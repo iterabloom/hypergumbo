@@ -18,3 +18,18 @@
     pr_ref:  # beb3
     description: "FOUND by WI-tusad F3 (containment check on the openzeppelin sample). Solidity `struct` declarations emit no symbol: in solidity/token/common/ERC2981.sol the fields `RoyaltyInfo.receiver` / `RoyaltyInfo.royaltyFraction` are emitted, the struct `RoyaltyInfo` is not (an `external_symbol RoyaltyInfo` stands in), so the fields are contained by the contract (span fallback) and a type that 12 fields on the sample name has no node. Fix: emit `struct` (a backstop table kind; nested in a contract it needs overload_arity.scoped_table_stable_id over the contract) and enums if also missing (not checked)."  # beb3
     fields: {}  # beb3
+- op: discuss  # 3831
+  at: '2026-11-01T10:55:53Z'  # 3831
+  by: agent  # 3831
+  actor: jgstern_agent  # 3831
+  clock: 2  # 3831
+  nonce: '3831'  # 3831
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: fixture ERC.sol with top-level struct/enum and in-contract struct RoyaltyInfo/enum Mode emits fields RoyaltyInfo.receiver, RoyaltyInfo.royaltyFraction, TopLevel.a, but no struct or enum node; containment uses span_overlap to the contract/file. Enums, previously 'not checked', are also missing. MECHANISM: solidity analyzer has no symbol arm for struct_declaration / enum_declaration; only struct members are emitted. SHARES MECHANISM WITH: WI-kajoh,WI-volus."  # 3831
+- op: update  # c132
+  at: '2026-11-01T10:55:53Z'  # c132
+  by: agent  # c132
+  actor: jgstern_agent  # c132
+  clock: 3  # c132
+  nonce: c132  # c132
+  set:  # c132
+    title: "solidity: struct and enum declarations (top-level and in-contract) emit no symbol; struct fields are contained by the contract/file by span fallback"  # c132

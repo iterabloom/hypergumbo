@@ -18,3 +18,10 @@
     pr_ref:  # 2ddb
     description: "FOUND 2026-10-13 by WI-tusad F4 (INV-punig two-parent probes); coverage gap, not identity.\n\nREPRO: rtl/a.v\n  module a;\n    task run; begin end endtask\n    function integer f; input x; f = x; endfunction\n    wire w;\n  endmodule\n`hypergumbo run --include-docs` emits only `module a`: tasks, functions (and nets) inside a module produce no symbol, so calls into them have no target and the module's internals are invisible. The F3 live check listed verilog as \"clean\" on a nested-task probe for this reason: nothing was emitted to move.\n\nThe stable_id gate lists verilog in FLAT_LANGUAGES (\"only modules and interfaces are emitted\"); emitting tasks/functions will make it nest, and the gate will then demand a two-parent fixture (module a / module b each with `task run`)."  # 2ddb
     fields: {}  # 2ddb
+- op: discuss  # b66f
+  at: '2026-11-01T10:55:53Z'  # b66f
+  by: agent  # b66f
+  actor: jgstern_agent  # b66f
+  clock: 2  # b66f
+  nonce: b66f  # b66f
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. The item repro rtl/a.v emits only module a plus the file node, with no task/function/net symbols. test_stable_id_floor_gate.py:1542 still lists verilog in FLAT_LANGUAGES ('only modules and interfaces are emitted'). MECHANISM: verilog extraction stops at module/interface declarations."  # b66f

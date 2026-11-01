@@ -29,3 +29,10 @@
   clock: 2  # c4a8
   nonce: c4a8  # c4a8
   message: "Reproduced a sibling case 2026-10-16 (docstring audit): the field-chain arm also binds an in-repo method when the field's type is KNOWN EXTERNAL. Temp module: mylog/logger.go declares (*Logger).Info; app/engine.go has type Engine struct{ logger *slog.Logger } and calls e.logger.Info(\"hi\"). analyze_go emits Engine.Run -> go:mylog/logger.go:5-5:Logger.Info:method, meta receiver=typed_field, confidence 0.85. Cause: go.py ~4451-4461 does the bare local/global lookup before the _external_package_for_type check in the elif (~4478-4492). go.py's docstring L64-67 states the intended rule (never looked up in-repo); fix order: external check first, then the package-scoped lookup this item already asks for."  # c4a8
+- op: discuss  # dd72
+  at: '2026-11-01T10:56:11Z'  # dd72
+  by: agent  # dd72
+  actor: jgstern_agent  # dd72
+  clock: 3  # dd72
+  nonce: dd72  # dd72
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/). VERDICT: CURRENT. 2026-11-01 review (dev 100b6fbb6e): two-package fixture (aaa/zzz Config.Load, field typed *aaa.Config) gives h.cfg.Load() -> zzz Config.Load typed_field and m.Make().Load() -> zzz chained_return_type (both wrong) while var c *aaa.Config; c.Load() -> aaa (right). External-field sibling also holds: h.logger.Info with *slog.Logger -> repo mylog Logger.Info 0.85. Code moved to go.py:4567-4573 and 4706-4712; still target = candidates[0], external check after the lookup. MECHANISM: unqualified Type.Method key looked up as global candidates[0] without the type's package. SHARES MECHANISM WITH: WI-punat,WI-garol."  # dd72

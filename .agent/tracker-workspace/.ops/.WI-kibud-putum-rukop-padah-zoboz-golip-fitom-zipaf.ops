@@ -22,3 +22,18 @@
     pr_ref:  # 3bfb
     description: "Every precision number in the Django receiver-typing family (measurements 0013, 0015, 0016, 0021) rests on ONE Django APPLICATION: pretix. kserve is the control and shows the changes do not leak outside Django, but a control cannot show that the rates generalise to a second Django application, and nothing in the family has shown that.\n\nA second Django repository IS in the corpus and was not being used: /home/jgstern_agent/whole_bunch_of_repos/django (86 MB, Django itself). Crude comparable scan (`def save(self` + 3 lines, counting `super().save(`): pretix 29, django 11. The careful count on pretix is 56 of 66 overrides, so this scan undercounts by roughly half; the point is the ratio, not the absolute. django carries real population, not a token amount.\n\nWHY IT IS A WEAKER SUBJECT THAN IT LOOKS, AND STILL WORTH RUNNING: Django's own source is the FRAMEWORK, not an application built on it. It defines `Model.save` rather than calling it, and most of its model definitions live under `tests/`. That makes it a genuinely different position for the rules to be exercised in -- useful as an external-validity check, and a poor substitute for a second real application.\n\nTHE COST OBJECTION IS GONE. Round 1's two arms cost ~2.2 hours of wall clock, which is why a third repository was never added. Measured 2026-09-09 on measurement 0021's arms: pretix collect 1,937 s -> 370 s (5.2x), kserve 172 s -> 104 s, after WI-bavuz. An arm is now ~12-15 minutes.\n\nSIZED: reuse 0021's arm.sh with one repo added; no new instrument. Report (a) how many `super()` write sites type, (b) whether an independent bare-name read-back finds any wrong-type, (c) the finding-level delta. Full note: ~/hypergumbo_lab_notebook/sihoh_superwrite_09092026/EXTERNAL_VALIDITY.md"  # 3bfb
     fields: {}  # 3bfb
+- op: discuss  # 0165
+  at: '2026-11-01T10:55:36Z'  # 0165
+  by: agent  # 0165
+  actor: jgstern_agent  # 0165
+  clock: 2  # 0165
+  nonce: '0165'  # 0165
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint4/). VERDICT: CURRENT. Re-checked at dev 100b6fbb6e: /home/jgstern_agent/whole_bunch_of_repos/django exists (86M); docs/measurements 0021 and 0022 both state cohort pretix + kserve and that the second Django repo was NOT used (0022 line 27 cites WI-kibud). No measurement since uses django/. The family grew by one (0022) since filing. Arm cost and arm.sh viability on current scripts (WI-tumog changed measurement scripts) were not re-run here: corpus-scale. MECHANISM: single-application sample frame for a framework-gated rule family (external validity)."  # 0165
+- op: update  # b5d8
+  at: '2026-11-01T10:55:36Z'  # b5d8
+  by: agent  # b5d8
+  actor: jgstern_agent  # b5d8
+  clock: 3  # b5d8
+  nonce: b5d8  # b5d8
+  set:  # b5d8
+    title: "Django receiver-typing precision (measurements 0013/0015/0016/0021/0022) rests on ONE application repo, pretix: run django/ as a second subject"  # b5d8

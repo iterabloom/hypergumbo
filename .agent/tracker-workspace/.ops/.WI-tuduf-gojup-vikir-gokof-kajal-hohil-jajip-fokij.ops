@@ -64,3 +64,26 @@
   clock: 6  # 96c6
   nonce: 96c6  # 96c6
   message: "OBSERVATION 2026-10-01 (WI-nasil A/B, not diagnosed). analyze_bash on ~/whole_bunch_of_repos/fluent-bit (410 .sh files, 185 MB) did not finish within a 300 s wall-clock alarm in either arm (CPU-bound: 5:00 CPU at the alarm) (dev c05393f974 baseline and the WI-nasil branch); a first unbounded baseline run reached 26 CPU-minutes on that one repo before I killed it. The repo's largest scripts are NOT the cause by themselves: lib/c-ares-1.34.6/config/ltmain.sh (333 KB) analysed alone takes 0.9 s. Every other one of 29 measured repos took 0.1-8.7 s (git: 1292 bash files in 6.9-8.7 s). So the cost is a repo-level interaction (candidates, unverified: the _RepoBashIndex source graph / transitive closure, or a pathological file other than ltmain.sh). This is a per-repo blow-up, a different shape from this row's 631 ms/file."  # 96c6
+- op: discuss  # 14ff
+  at: '2026-11-01T10:55:59Z'  # 14ff
+  by: agent  # 14ff
+  actor: jgstern_agent  # 14ff
+  clock: 7  # 14ff
+  nonce: 14ff  # 14ff
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e. Per-file claim stale: hypergumbo survey on a copy of the repo's 76 shell files analyzed 44 bash files in 1.66-2.02s wall / 1.09-1.13s CPU (~25ms CPU/file), not 631ms/file. Blow-up current: analyze_bash on ~/whole_bunch_of_repos/fluent-bit (477 files) hit timeout 200 (exit 124). A faulthandler sample at 75s was ~30 frames deep in bash.py:918 _origins (from _redirect_origin_names:950, added 49f3b78d5c, WI-zovuz). MECHANISM: _redirect_origin_names._origins enumerates derivation paths recursively with a per-path seen set and no memo, which is exponential on dense assignment graphs."  # 14ff
+- op: update  # d1ef
+  at: '2026-11-01T10:55:59Z'  # d1ef
+  by: agent  # d1ef
+  actor: jgstern_agent  # d1ef
+  clock: 8  # d1ef
+  nonce: d1ef  # d1ef
+  set:  # d1ef
+    title: "bash analyzer CPU blow-up on fluent-bit (>200s, 477 files): stack sample is in the unmemoized recursive _origins of _redirect_origin_names"  # d1ef
+- op: update  # 2745
+  at: '2026-11-01T10:56:00Z'  # 2745
+  by: agent  # 2745
+  actor: jgstern_agent  # 2745
+  clock: 9  # 2745
+  nonce: '2745'  # 2745
+  set:  # 2745
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e. Per-file claim stale: hypergumbo survey on a copy of the repo's 76 shell files analyzed 44 bash files in 1.66-2.02s wall / 1.09-1.13s CPU (~25ms CPU/file), not 631ms/file. Blow-up current: analyze_bash on ~/whole_bunch_of_repos/fluent-bit (477 files) hit timeout 200 (exit 124). A faulthandler sample at 75s was ~30 frames deep in bash.py:918 _origins (from _redirect_origin_names:950, added 49f3b78d5c, WI-zovuz). (Original text below; the review entry in the thread has the evidence.)\n\nPass 13: bash pass in self-analysis: duration_ms=26518, files_analyzed=42. Per-file: 631ms. Compare Python (838 files, 34.5s = 41ms/file), markdown (107 files, 3s = 28ms/file). Bash analyzer dominates ~23% of the 114s wall-clock budget on ~5% of the file count. No failed_files / warnings. Worth profiling — possible candidate: shellcheck subprocess overhead, or tree-sitter-bash grammar."  # 2745

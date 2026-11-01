@@ -18,3 +18,26 @@
     pr_ref:  # f77f
     description: "sketch._collect_important_files.walk_additional_files (sketch.py ~L3597) filters rglob results with `any(fnmatch(p, pat) for p in item.parts for pat in excludes)` -- item.parts of an rglob result are ABSOLUTE path parts, so DEFAULT_EXCLUDES entries (.cache, build, dist, vendor, ...) match directories ABOVE the repo root. A repo checked out anywhere under a directory with an excluded name (e.g. ~/.cache/..., /srv/build/..., /home/me/vendor/...) gets zero additional-file candidates. Evidence (2026-10-07, while testing WI-vosag): running smart-test with TMPDIR=/home/jgstern_agent/.cache/hg-smarttest-tmp left sketch.py lines 3610-3613 and 3622-3632 (the candidate loop) uncovered -- every tmp_path fixture file was excluded by '.cache' in its absolute parts; with TMPDIR=/home/jgstern_agent/hg-smarttest-tmp the same tests cover them. Fix: match excludes against item.relative_to(repo_root).parts (and audit other `.parts` exclude checks for the same absolute-vs-relative mistake). The `file_index` branch (only via run_behavior_map) is pragma'd and not affected the same way. Also note that tests are sensitive to TMPDIR location because of this."  # f77f
     fields: {}  # f77f
+- op: discuss  # 2f25
+  at: '2026-11-01T10:56:07Z'  # 2f25
+  by: agent  # 2f25
+  actor: jgstern_agent  # 2f25
+  clock: 2  # 2f25
+  nonce: 2f25  # 2f25
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 100b6fbb6e. sketch.py ~:3693 still tests `any(fnmatch(p, pat) for p in item.parts ...)` on absolute paths. Direct call of _collect_important_files: the fixture at <batch>/fx_dizad3 returns ['onlydocs/guide.md'], and the same tree under <batch>/.cache/ returns []. Stale part: build/dist/vendor/out/target were removed from DEFAULT_EXCLUDES (b89cc2e5a2, 2026-10-12), so a repo under */build/* now works (verified: same result as the control). At small fixture size the end-to-end sketch output did not differ. MECHANISM: exclude patterns tested against item.parts of absolute paths instead of parts relative to repo_root. SHARES MECHANISM WITH: WI-gimis."  # 2f25
+- op: update  # bd1c
+  at: '2026-11-01T10:56:07Z'  # bd1c
+  by: agent  # bd1c
+  actor: jgstern_agent  # bd1c
+  clock: 3  # bd1c
+  nonce: bd1c  # bd1c
+  set:  # bd1c
+    title: "sketch additional-files walk matches excludes against ABSOLUTE path parts: a repo under a .cache/.git-named ancestor gets no candidates"  # bd1c
+- op: update  # d585
+  at: '2026-11-01T10:56:07Z'  # d585
+  by: agent  # d585
+  actor: jgstern_agent  # d585
+  clock: 4  # d585
+  nonce: d585  # d585
+  set:  # d585
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 100b6fbb6e. sketch.py ~:3693 still tests `any(fnmatch(p, pat) for p in item.parts ...)` on absolute paths. Direct call of _collect_important_files: the fixture at <batch>/fx_dizad3 returns ['onlydocs/guide.md'], and the same tree under <batch>/.cache/ returns []. Stale part: build/dist/vendor/out/target were removed from DEFAULT_EXCLUDES (b89cc2e5a2, 2026-10-12), so a repo under */build/* now works (verified: same result as the control). At small fixture size the end-to-end sketch output did not differ. (Original text below; the review entry in the thread has the evidence.)\n\nsketch._collect_important_files.walk_additional_files (sketch.py ~L3597) filters rglob results with `any(fnmatch(p, pat) for p in item.parts for pat in excludes)` -- item.parts of an rglob result are ABSOLUTE path parts, so DEFAULT_EXCLUDES entries (.cache, build, dist, vendor, ...) match directories ABOVE the repo root. A repo checked out anywhere under a directory with an excluded name (e.g. ~/.cache/..., /srv/build/..., /home/me/vendor/...) gets zero additional-file candidates. Evidence (2026-10-07, while testing WI-vosag): running smart-test with TMPDIR=/home/jgstern_agent/.cache/hg-smarttest-tmp left sketch.py lines 3610-3613 and 3622-3632 (the candidate loop) uncovered -- every tmp_path fixture file was excluded by '.cache' in its absolute parts; with TMPDIR=/home/jgstern_agent/hg-smarttest-tmp the same tests cover them. Fix: match excludes against item.relative_to(repo_root).parts (and audit other `.parts` exclude checks for the same absolute-vs-relative mistake). The `file_index` branch (only via run_behavior_map) is pragma'd and not affected the same way. Also note that tests are sensitive to TMPDIR location because of this."  # d585

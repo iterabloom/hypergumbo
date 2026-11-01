@@ -21,3 +21,10 @@
     fields:  # 407c
       statement: "A call edge's dst is the callee, never an argument."  # 407c
       root_cause: "_get_call_target (~L97) takes the first @name token in the call instruction rather than the callee operand, so for an indirect call through %fp it picks an argument."  # 407c
+- op: discuss  # 814c
+  at: '2026-11-01T10:55:55Z'  # 814c
+  by: agent  # 814c
+  actor: jgstern_agent  # 814c
+  clock: 2  # 814c
+  nonce: 814c  # 814c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: fixture m.ll 'call void %fp(ptr @g)' in @ind yields calls ind -> llvm_ir:m.ll:1-1:g:variable. _get_call_target (llvm_ir.py:119) still returns the first global_var from iter_tree(call_node); ac651f01d5 changed only caller-by-position. MECHANISM: callee taken as the first global_var anywhere in the call instruction instead of the callee operand. SHARES MECHANISM WITH: WI-dibiv,WI-jalal."  # 814c

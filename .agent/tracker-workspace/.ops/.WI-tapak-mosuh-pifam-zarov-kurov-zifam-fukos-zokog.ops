@@ -23,3 +23,18 @@
     pr_ref:  # 3b7c
     description: "Introduce NewType aliases for identifier-bearing fields: StableId, NodeId, EdgeId, ConfigFingerprint, etc. Pair each with a canonical factory function (compute_stable_id, make_node_id, etc.) that's the only entry point for constructing the NewType. Refactor emitters that currently use raw str for these fields. Closes some INV-kurup canonical-factory-bypass sub-cases at type-check time — direct str → NewType assignment becomes a type error, forcing the call site through the factory. Also closes part of INV-lidul (config_fingerprint constant) — the factory can refuse to construct a fingerprint from an empty config dict."  # 3b7c
     fields: {}  # 3b7c
+- op: discuss  # 5556
+  at: '2026-11-01T10:55:49Z'  # 5556
+  by: agent  # 5556
+  actor: jgstern_agent  # 5556
+  clock: 2  # 5556
+  nonce: '5556'  # 5556
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at 100b6fbb6e: NewType has 0 uses in packages/*/src. INV-lidul was satisfied 2026-06-17 via fingerprint stamping (PR #271), not NewType, and compute_config_fingerprint({}) still returns sha256:44136fa355b3678a (no refusing factory). INV-kurup's Symbol.id/Edge.id bypasses now have a static lint (scripts/check-id-construction, WI-vodin, in pre-commit). The INV-lidul rationale is void; re-scope to fields that lint does not cover. MECHANISM: identifiers typed as raw str so factory bypass is not a type error. SHARES MECHANISM WITH: INV-kurup,WI-totov."  # 5556
+- op: update  # 238b
+  at: '2026-11-01T10:55:49Z'  # 238b
+  by: agent  # 238b
+  actor: jgstern_agent  # 238b
+  clock: 3  # 238b
+  nonce: 238b  # 238b
+  set:  # 238b
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at 100b6fbb6e: NewType has 0 uses in packages/*/src. INV-lidul was satisfied 2026-06-17 via fingerprint stamping (PR #271), not NewType, and compute_config_fingerprint({}) still returns sha256:44136fa355b3678a (no refusing factory). INV-kurup's Symbol.id/Edge.id bypasses now have a static lint (scripts/check-id-construction, WI-vodin, in pre-commit). The INV-lidul rationale is void; re-scope to fields that lint does not cover. (Original text below; the review entry in the thread has the evidence.)\n\nIntroduce NewType aliases for identifier-bearing fields: StableId, NodeId, EdgeId, ConfigFingerprint, etc. Pair each with a canonical factory function (compute_stable_id, make_node_id, etc.) that's the only entry point for constructing the NewType. Refactor emitters that currently use raw str for these fields. Closes some INV-kurup canonical-factory-bypass sub-cases at type-check time — direct str → NewType assignment becomes a type error, forcing the call site through the factory. Also closes part of INV-lidul (config_fingerprint constant) — the factory can refuse to construct a fingerprint from an empty config dict."  # 238b

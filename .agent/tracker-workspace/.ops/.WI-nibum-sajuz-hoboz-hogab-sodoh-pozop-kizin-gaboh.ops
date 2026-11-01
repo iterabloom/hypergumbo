@@ -22,3 +22,26 @@
     pr_ref:  # 9ce1
     description: "Filed 2026-09-07 from WI-gulaz's pre-build shape scan: 150 pretix call sites of the form `<v>.<accessor>.<orm method>(...)` where `<v>` is the loop variable of a `for` (136) or a comprehension (14) over a QuerySet -- `for cp in order.positions.all(): cp.addons.all()`, `[item.variations.all() for item in event.items.all()]`. The variable is a Model instance whose class is knowable from the iterated expression's manager root, and today it is untyped.\n\nMECHANISM. WI-fasap emits the evaluation of a QuerySet as a `django.db.models.__iter__` call site; the same site knows the iterable expression. Walking that expression's QuerySet-returning hops back to its manager root (the rule `_DjangoReceiverOracle.instance_from_call` applies for `.get()`/`.first()`) gives the model the loop yields; binding the loop target Name to it in `var_types` for the loop body makes `cp.addons` a manager root. A tuple target (`for a, b in qs.values_list(...)`) yields no instance and must bind nothing; `.values()` / `.values_list()` hops yield dicts/tuples, not instances, and must stop the walk.\n\nMEASURE with 0003's method against measurement 0015's ledger; pre-register that a loop over a non-QuerySet iterable (a list of instances from a project function) binds nothing."  # 9ce1
     fields: {}  # 9ce1
+- op: discuss  # 4b5e
+  at: '2026-11-01T10:55:34Z'  # 4b5e
+  by: agent  # 4b5e
+  actor: jgstern_agent  # 4b5e
+  clock: 2  # 4b5e
+  nonce: 4b5e  # 4b5e
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint3/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 on dev 100b6fbb6e. Fixture 'for cp in Position.objects.all(): cp.addons.exists(); cp.save()' gives cp.save -> python:external:0-0:save (untyped), whereas cp = Position.objects.first() types both calls type_inferred. But cp.addons.exists() in the loop already reaches django.db.models:exists with resolution_quality accessor_name, because INV-mumov (559919e8ad, 2026-09-10, after filing) fills the ORM slot from a declared related_name. So the 150 <v>.<accessor>.<orm>() sites are mostly reached but carry the accessor_name caveat; what remains is loop-target typing (precision, and non-accessor methods). MECHANISM: loop target Name not bound in var_types from the iterated QuerySet's manager root. SHARES MECHANISM WITH: WI-ribiz,WI-lurob,WI-zupiz."  # 4b5e
+- op: update  # e311
+  at: '2026-11-01T10:55:35Z'  # e311
+  by: agent  # e311
+  actor: jgstern_agent  # e311
+  clock: 3  # e311
+  nonce: e311  # e311
+  set:  # e311
+    title: "Loop variable over a QuerySet is untyped: cp.save() goes external; <v>.<accessor> reaches the ORM only via accessor_name (disclosed), not type_inferred"  # e311
+- op: update  # 95ec
+  at: '2026-11-01T10:55:35Z'  # 95ec
+  by: agent  # 95ec
+  actor: jgstern_agent  # 95ec
+  clock: 4  # 95ec
+  nonce: 95ec  # 95ec
+  set:  # 95ec
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 100b6fbb6e. Fixture 'for cp in Position.objects.all(): cp.addons.exists(); cp.save()' gives cp.save -> python:external:0-0:save (untyped), whereas cp = Position.objects.first() types both calls type_inferred. But cp.addons.exists() in the loop already reaches django.db.models:exists with resolution_quality accessor_name, because INV-mumov (559919e8ad, 2026-09-10, after filing) fills the ORM slot from a declared related_name. So the 150 <v>.<accessor>.<orm>() sites are mostly reached but carry the accessor_name caveat; what remains is loop-target typing (precision, and non-accessor methods). (Original text below; the review entry in the thread has the evidence.)\n\nFiled 2026-09-07 from WI-gulaz's pre-build shape scan: 150 pretix call sites of the form `<v>.<accessor>.<orm method>(...)` where `<v>` is the loop variable of a `for` (136) or a comprehension (14) over a QuerySet -- `for cp in order.positions.all(): cp.addons.all()`, `[item.variations.all() for item in event.items.all()]`. The variable is a Model instance whose class is knowable from the iterated expression's manager root, and today it is untyped.\n\nMECHANISM. WI-fasap emits the evaluation of a QuerySet as a `django.db.models.__iter__` call site; the same site knows the iterable expression. Walking that expression's QuerySet-returning hops back to its manager root (the rule `_DjangoReceiverOracle.instance_from_call` applies for `.get()`/`.first()`) gives the model the loop yields; binding the loop target Name to it in `var_types` for the loop body makes `cp.addons` a manager root. A tuple target (`for a, b in qs.values_list(...)`) yields no instance and must bind nothing; `.values()` / `.values_list()` hops yield dicts/tuples, not instances, and must stop the walk.\n\nMEASURE with 0003's method against measurement 0015's ledger; pre-register that a loop over a non-QuerySet iterable (a list of instances from a project function) binds nothing."  # 95ec

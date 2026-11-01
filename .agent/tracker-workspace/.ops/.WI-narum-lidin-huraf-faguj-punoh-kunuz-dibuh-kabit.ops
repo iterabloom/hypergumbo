@@ -69,3 +69,26 @@
   clock: 8  # 847f
   nonce: 847f  # 847f
   message: "CANDIDATE DIAGNOSIS from WI-zimor (2026-10-01): an inherited SIG_IGN for SIGHUP, from launching smart-test under `nohup`. I have not verified it with a passing run under the board.\nObserved: test_a_hangup_is_named_too failed (TimeoutExpired 30s) in BOTH of my 481-file targeted runs. I launched both as `nohup slot run test ... &`, which is the detached pattern LIVE section 6 prescribes. Every other test passed (16,635 and 16,636 passed).\nMechanism: nohup sets SIGHUP to SIG_IGN. That disposition is inherited through slot, smart-test, pytest and subprocess.Popen: Python's restore_signals resets only SIGPIPE/SIGXFZ/SIGXFSZ, not SIGHUP. POSIX: a signal that was ignored on entry to a non-interactive shell cannot be trapped or reset, so act.sh's HUP trap never fires, the child never exits, and proc.wait(timeout=30) expires.\nMinimal repro (this box): nohup bash -c 'bash -c \"trap \\\"echo TRAPPED; exit 129\\\" HUP; kill -HUP \\$\\$; echo NOT-KILLED\"; echo rc=$?' prints NOT-KILLED rc=0. The same command without nohup prints TRAPPED rc=129.\nThis would explain \"fails loaded, passes alone\": the loaded runs are the detached/nohup ones, and the alone re-runs are foreground. It is not about load.\nSuggested fix (not made; out of my scope): in the test's Popen calls (lines 127 and 266), reset the disposition in the child, e.g. preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_DFL). Do not change auto-pr: ignoring SIGHUP under nohup is what the user asked for.\nCheck before closing: run the file under nohup with and without the fix, and confirm it fails without the fix and passes with it."  # 847f
+- op: discuss  # 3385
+  at: '2026-11-01T10:55:47Z'  # 3385
+  by: agent  # 3385
+  actor: jgstern_agent  # 3385
+  clock: 9  # 3385
+  nonce: '3385'  # 3385
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: MIS-PREMISED. Reviewed 2026-11-01 at dev 100b6fbb6e (test file unchanged since 65394b20f0). Called the test's own _run_and_signal(..., SIGHUP) from a driver script: foreground -> rc 129, terminated_sighup; `timeout 120 nohup python3 drive.py` -> parent SIGHUP disposition 1 (SIG_IGN) and subprocess.TimeoutExpired 30, the filed failure; the same run under nohup with SIGHUP reset to SIG_DFL first -> rc 129. The 2026-10-01 diagnosis holds and load is not the cause. `nohup timeout ...` does NOT reproduce (timeout resets the handler). The test_watcher_lifecycle failure in entry 2 is not SIGHUP-related and was not checked. MECHANISM: SIG_IGN for SIGHUP inherited from nohup through pytest and Popen; a non-interactive bash cannot trap an ignored-on-entry signal."  # 3385
+- op: update  # 7b68
+  at: '2026-11-01T10:55:47Z'  # 7b68
+  by: agent  # 7b68
+  actor: jgstern_agent  # 7b68
+  clock: 10  # 7b68
+  nonce: 7b68  # 7b68
+  set:  # 7b68
+    title: "test_a_hangup_is_named_too hangs 30s when pytest inherits SIGHUP=SIG_IGN (nohup-launched runs): act.sh's HUP trap cannot fire; not load"  # 7b68
+- op: update  # f55f
+  at: '2026-11-01T10:55:47Z'  # f55f
+  by: agent  # f55f
+  actor: jgstern_agent  # f55f
+  clock: 11  # f55f
+  nonce: f55f  # f55f
+  set:  # f55f
+    description: "[REVIEW 2026-11-01, MIS-PREMISED] Reviewed 2026-11-01 at dev 100b6fbb6e (test file unchanged since 65394b20f0). Called the test's own _run_and_signal(..., SIGHUP) from a driver script: foreground -> rc 129, terminated_sighup; `timeout 120 nohup python3 drive.py` -> parent SIGHUP disposition 1 (SIG_IGN) and subprocess.TimeoutExpired 30, the filed failure; the same run under nohup with SIGHUP reset to SIG_DFL first -> rc 129. The 2026-10-01 diagnosis holds and load is not the cause. `nohup timeout ...` does NOT reproduce (timeout resets the handler). The test_watcher_lifecycle failure in entry 2 is not SIGHUP-related and was not checked. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-09-27 during a 287-file targeted smart-test run (8,779 passed, 1 failed) on branch jgstern-agent/fix/haskell-rows-that-cross-nothing, which changes only haskell.yaml and adds one test; nothing auto-pr related was touched.\n\n  tests/test_autopr_signal_termination.py::test_a_hangup_is_named_too\n  subprocess.TimeoutExpired: Command ['bash', .../act.sh] timed out after 30 seconds   (the proc.wait(timeout=30) at test line 149)\n\nRe-run alone immediately after: the file's 8 tests pass in 1.70s. So under a loaded xdist run the SIGHUP'd action script did not exit within 30s, while its normal exit takes well under a second.\n\nNOT DIAGNOSED. The harness waits for READY and for the .git/armed marker before signalling, so \"signalled before the trap was installed\" is ruled out by construction as far as the test's own comment claims; that was not re-verified. 30s is far above any plausible scheduling delay, so a lost or deferred trap (bash defers a trap while waiting on a foreground child) is more likely than slowness, and would be a real defect in the fixture or in _autopr_install_traps' SIGHUP path rather than noise. First step: loop the single test under load (e.g. beside a full smart-test) and capture the script's stderr on timeout."  # f55f

@@ -23,3 +23,18 @@
     pr_ref:  # 6fc0
     description: "Adopt Literal[...] types for the axis-bearing fields the ADR-0024 axis-declaration playbook enumerates: Language, EdgeKind, SymbolKind, AccessMode, FrameworkDispatch, etc. Derive the Literal type from the existing axis registries (hypergumbo_core.axes) so the registry remains source-of-truth. Catches typos and out-of-axis assignments at type-check time. Closes some INV-numat (vocab axes mix) sub-cases — emitters can't assign a string that isn't in the registered axis. Note: ADR-0024 currently exempts List[str] and Dict; this WI doesn't change that scope, only strengthens the scalar/Optional[str]/Literal checking inside the existing scope."  # 6fc0
     fields: {}  # 6fc0
+- op: discuss  # 687a
+  at: '2026-11-01T10:55:45Z'  # 687a
+  by: agent  # 687a
+  actor: jgstern_agent  # 687a
+  clock: 2  # 687a
+  nonce: 687a  # 687a
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: CURRENT. At dev 100b6fbb6e the axis fields are still str (ir.py:735 kind, :1026 edge_type, :1032 evidence_type); Literal appears only on bounded enums. Corrections: there is no hypergumbo_core.axes; registries are runtime tuples (edge_types.EDGE_TYPES, symbol_kinds.SYMBOL_KINDS, evidence_types.EVIDENCE_TYPES, taxonomy.LANGUAGES), and EdgeKind/AccessMode/FrameworkDispatch do not exist. mypy cannot derive a Literal from a runtime tuple; invert (Literal as source, registry asserts get_args) or generate it. MECHANISM: axis vocabulary is enforced only at runtime and by # axis comments, never by the type checker. SHARES MECHANISM WITH: WI-kibiz,WI-kobot,INV-zogud."  # 687a
+- op: update  # 486f
+  at: '2026-11-01T10:55:45Z'  # 486f
+  by: agent  # 486f
+  actor: jgstern_agent  # 486f
+  clock: 3  # 486f
+  nonce: 486f  # 486f
+  set:  # 486f
+    description: "[REVIEW 2026-11-01, CURRENT] At dev 100b6fbb6e the axis fields are still str (ir.py:735 kind, :1026 edge_type, :1032 evidence_type); Literal appears only on bounded enums. Corrections: there is no hypergumbo_core.axes; registries are runtime tuples (edge_types.EDGE_TYPES, symbol_kinds.SYMBOL_KINDS, evidence_types.EVIDENCE_TYPES, taxonomy.LANGUAGES), and EdgeKind/AccessMode/FrameworkDispatch do not exist. mypy cannot derive a Literal from a runtime tuple; invert (Literal as source, registry asserts get_args) or generate it. (Original text below; the review entry in the thread has the evidence.)\n\nAdopt Literal[...] types for the axis-bearing fields the ADR-0024 axis-declaration playbook enumerates: Language, EdgeKind, SymbolKind, AccessMode, FrameworkDispatch, etc. Derive the Literal type from the existing axis registries (hypergumbo_core.axes) so the registry remains source-of-truth. Catches typos and out-of-axis assignments at type-check time. Closes some INV-numat (vocab axes mix) sub-cases — emitters can't assign a string that isn't in the registered axis. Note: ADR-0024 currently exempts List[str] and Dict; this WI doesn't change that scope, only strengthens the scalar/Optional[str]/Literal checking inside the existing scope."  # 486f

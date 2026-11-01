@@ -46,3 +46,26 @@
   clock: 5  # fcd3
   nonce: fcd3  # fcd3
   message: "ADVANCED (not closed) by this session's schema work, and re-measured so the residual is exact.\n\nThe item names five contentless {\"type\": \"object\"} emissions: limits, Edge.quality, Symbol.quality, Symbol.meta, UsageContext.metadata. Two are already gone for other reasons — Edge.quality was REMOVED entirely at SCHEMA_VERSION 0.20.0 (D9b R4, register pt.30), and Symbol.meta now carries 47 registry-derived properties after the WI-zisig fix in this session (Edge.meta likewise went 2 -> 34).\n\nMeasured remainder: 10 contentless object schemas, of which UsageContext.metadata is the only one this item names by name. The other 9 are metrics.languages / metrics.by_supply_chain_tier (additionalProperties), the *.items of AnalysisRun.skipped_passes / AnalysisRun.failed_files / Limits.skipped_passes / Limits.truncated_files, and Feature.node_depths / node_tiers / admission_stats.\n\nWorth noting for whoever takes it: the WI-zisig fix is a reusable shape only where a REGISTRY already enumerates the keys. These 10 have no such registry, so they need either a dataclass to introspect or hand-authored properties — which is the same judgement WI-libib's author made when rejecting the full 312-cell matrix as over-broad. Not a mechanical repeat of what just landed."  # fcd3
+- op: discuss  # 5f41
+  at: '2026-11-01T10:55:58Z'  # 5f41
+  by: agent  # 5f41
+  actor: jgstern_agent  # 5f41
+  clock: 6  # 5f41
+  nonce: 5f41  # 5f41
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review of docs/schema.json @20afff7c67: counted object schemas with no properties/additionalProperties/$ref/oneOf. Limits, Edge.quality (removed) and Symbol.meta (registry-expanded) are fixed. Two of the five named sites remain: UsageContext.metadata and Symbol.quality (oneOf[object,null]). The total is now 15, up from 10 on 2026-07-30. Five are new sites: Symbol/Edge attribution and alternatives (ADR-0057) and Feature.limits_detail. Symbol.quality (a oneOf branch) was missing from the July count. Limits.skipped_passes items is gone. MECHANISM: Generator falls back to bare {\"type\":\"object\"} for Dict[str,Any] / un-introspected fields with no registry or dataclass to expand."  # 5f41
+- op: update  # 7191
+  at: '2026-11-01T10:55:59Z'  # 7191
+  by: agent  # 7191
+  actor: jgstern_agent  # 7191
+  clock: 7  # 7191
+  nonce: '7191'  # 7191
+  set:  # 7191
+    title: "Schema still emits contentless {\"type\":\"object\"} at 15 sites (UsageContext.metadata, Symbol.quality, attribution/alternatives, Feature maps, AR/Limits list items, metrics maps)"  # 7191
+- op: update  # ad6a
+  at: '2026-11-01T10:55:59Z'  # ad6a
+  by: agent  # ad6a
+  actor: jgstern_agent  # ad6a
+  clock: 8  # ad6a
+  nonce: ad6a  # ad6a
+  set:  # ad6a
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review of docs/schema.json @20afff7c67: counted object schemas with no properties/additionalProperties/$ref/oneOf. Limits, Edge.quality (removed) and Symbol.meta (registry-expanded) are fixed. Two of the five named sites remain: UsageContext.metadata and Symbol.quality (oneOf[object,null]). The total is now 15, up from 10 on 2026-07-30. Five are new sites: Symbol/Edge attribution and alternatives (ADR-0057) and Feature.limits_detail. Symbol.quality (a oneOf branch) was missing from the July count. Limits.skipped_passes items is gone. (Original text below; the review entry in the thread has the evidence.)"  # ad6a

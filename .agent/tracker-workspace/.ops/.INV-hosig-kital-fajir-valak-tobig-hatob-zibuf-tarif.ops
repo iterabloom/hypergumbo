@@ -107,3 +107,18 @@
   set:  # acc7
     fields:  # acc7
       root_cause: "di-resolution reads the FILESYSTEM, not the in-memory IR: extract_bindings_from_source walks find_non_test_files(root, _SOURCE_GLOBS) and read_masked_source's every match -- 396 files measured at tip. The filed files_analyzed=0 was a MISSING COUNTER, never a measurement, and derive_silence_reason converted it into a false positive claim of silence_reason='no_candidate_files'. Counter fixed in PR #1005 (now 396 files / 'unreported'). The remaining defect is cost-only: the pass declares activation=LinkerActivation(always=True) explicitly and so runs with no DI markers present -- 988 ms / 0.48% of pass time at tip, down from 2550 ms / 2.7% as filed."  # acc7
+- op: discuss  # b509
+  at: '2026-11-01T10:56:06Z'  # b509
+  by: agent  # b509
+  actor: jgstern_agent  # b509
+  clock: 12  # b509
+  nonce: b509  # b509
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: OBSOLETE. Reviewed 2026-11-01 at dev 100b6fbb6e. di_resolution.py:806 still declares activation=LinkerActivation(always=True). On a DI-free py/js fixture the pass runs (files_analyzed=1, 0 nodes, 0 edges, silence_reason=no_candidate_construct), so it still does not short-circuit. But its canonical INV-bikaj is satisfied (2026-09-16), the silence-disclosure residual WI-finij is done, and INV-nanon's 2026-10-25 entry records the gate as refused by ADR-0055, naming this item as an instance of it. The filed 2550 ms and files_analyzed=0 figures are stale or wrong (988 ms and 396 files at 2026-09-16). What is left is a refused design choice, not a defect. MECHANISM: di-resolution-linker declares activation=LinkerActivation(always=True); gating it is the activation-tightening ADR-0055 refuses. SHARES MECHANISM WITH: INV-nanon, INV-bikaj. PROPOSED DISPOSITION: merge-into INV-nanon (awaiting owner authorization; status unchanged)."  # b509
+- op: update  # 02ee
+  at: '2026-11-01T10:56:06Z'  # 02ee
+  by: agent  # 02ee
+  actor: jgstern_agent  # 02ee
+  clock: 13  # 02ee
+  nonce: 02ee  # 02ee
+  set:  # 02ee
+    description: "[REVIEW 2026-11-01, OBSOLETE] Reviewed 2026-11-01 at dev 100b6fbb6e. di_resolution.py:806 still declares activation=LinkerActivation(always=True). On a DI-free py/js fixture the pass runs (files_analyzed=1, 0 nodes, 0 edges, silence_reason=no_candidate_construct), so it still does not short-circuit. But its canonical INV-bikaj is satisfied (2026-09-16), the silence-disclosure residual WI-finij is done, and INV-nanon's 2026-10-25 entry records the gate as refused by ADR-0055, naming this item as an instance of it. The filed 2550 ms and files_analyzed=0 figures are stale or wrong (988 ms and 396 files at 2026-09-16). What is left is a refused design choice, not a defect. (Original text below; the review entry in the thread has the evidence.)"  # 02ee

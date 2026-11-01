@@ -19,3 +19,18 @@
     description: ""  # 6bed
     fields:  # 6bed
       description: "rotate-on-session-end.sh:49 states the intent plainly -- 'Per ADR-0018, we keep cross-session history for retrospective analysis' -- so unbounded growth is a DECISION, not an oversight. Filing it to make the number visible rather than to reverse the decision. Measured 2026-07-29: .agent/.archived-transcripts/ = 475MB across 237 session dirs (388 .gz files); live slots (.last_*, .second_to_last_*, per-session .current_*) = 89MB; .agent/.training-data.jsonl = 1.19GB; .agent/.deprecated-datasets/ = 479MB. Total ~2.2GB under .agent/, all gitignored, growing per session with nothing that prunes. Open questions a decision would need to answer: is the retrospective workflow's value actually a function of DEPTH (does anything read a 3-month-old transcript?); would a cap-by-count or cap-by-age lose anything the ledger does not already capture; and should .deprecated-datasets/ (referenced by no script) simply be deleted rather than retained. NOT proposing a cap unilaterally -- the ADR chose retention deliberately."  # 6bed
+- op: discuss  # 453e
+  at: '2026-11-01T10:55:49Z'  # 453e
+  by: agent  # 453e
+  actor: jgstern_agent  # 453e
+  clock: 2  # 453e
+  nonce: 453e  # 453e
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: du shows .archived-transcripts 743MB in 275 dirs (432 .gz), .training-data.jsonl 1.3GB, .deprecated-datasets 484MB, .agent/ 2.9GB total (was 2.2GB). rotate-on-session-end.sh:63 still cites ADR-0018 retention; the only writers are rotation and the crashed-/stray- archivers in launch-transcript-sync.sh, and scrub-transcript-corpus only redacts in place. Premise holds; numbers grew. MECHANISM: append-only transcript archive by design; no pruning path exists."  # 453e
+- op: update  # 06c6
+  at: '2026-11-01T10:55:49Z'  # 06c6
+  by: agent  # 06c6
+  actor: jgstern_agent  # 06c6
+  clock: 3  # 06c6
+  nonce: 06c6  # 06c6
+  set:  # 06c6
+    title: "Transcript archive has no retention policy: 743MB / 275 session dirs (.agent/ 2.9GB total, 2026-11-01), unbounded by deliberate ADR-0018 choice"  # 06c6

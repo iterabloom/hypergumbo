@@ -20,3 +20,26 @@
     pr_ref:  # ebf0
     description: "Found while closing WI-pogar (PR #1500). io_boundary.module_ecosystem returns None for every catalogue except python (javascript, go, rust, elixir, java, ... carry no stdlib_modules/stdlib_prefixes), so boundary nodes there get no meta.ecosystem and io-boundaries/verify-claims cannot say 'untraced dependency' -- they report the call as 'dependency or runtime module, I/O unknown'. The verdict is still never clean (same population), but the reader cannot tell a --trace-deps/overlay errand from a catalogue errand, and supply_chain_summary.external_dep.ecosystem reads 'unknown' for all JS/Go/Elixir externals. Repro: JS fixture src/index.js 'require(\"llmkit\").run(x)' with node_modules/llmkit -> io-boundaries groups llmkit under 'dependency or runtime module (this language's standard library is not enumerated)'. Fix shape: per-language provenance-cited stdlib enumerations (node builtins, Go std import paths, Rust std/core/alloc, Elixir/Erlang OTP apps), single-sourced like python_stdlib_versions.py."  # ebf0
     fields: {}  # ebf0
+- op: discuss  # 3d7c
+  at: '2026-11-01T10:55:37Z'  # 3d7c
+  by: agent  # 3d7c
+  actor: jgstern_agent  # 3d7c
+  clock: 2  # 3d7c
+  nonce: 3d7c  # 3d7c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat1/). VERDICT: PARTLY-STALE. Review 2026-11-01 on dev 100b6fbb6e: the item's JS repro (package.json-declared llmkit) now reports 'untraced dependency: llmkit' with untraced_modules third_party=[llmkit], via WI-juzaj's manifest stamp (9b3ee5db28, ir.py:2245). Still true: only python.yaml has stdlib_modules; with no manifest, require('worker_threads') and require('llmkit') both land in 'unknown' ('standard library is not enumerated'). Remaining scope is stdlib/runtime modules and manifest-unresolved deps; the elixir/js half overlaps WI-hotut. MECHANISM: catalogue lacks stdlib enumeration so ADR-0041 s3 predicate cannot tell stdlib from third_party. SHARES MECHANISM WITH: WI-hotut,WI-hajag,WI-tikar."  # 3d7c
+- op: update  # 1414
+  at: '2026-11-01T10:55:37Z'  # 1414
+  by: agent  # 1414
+  actor: jgstern_agent  # 1414
+  clock: 3  # 1414
+  nonce: '1414'  # 1414
+  set:  # 1414
+    title: "Only python.yaml enumerates a stdlib: Node/Go/Rust/Erlang runtime modules and manifest-unresolved deps still get no ecosystem (declared deps fixed by WI-juzaj)"  # 1414
+- op: update  # 1cfe
+  at: '2026-11-01T10:55:37Z'  # 1cfe
+  by: agent  # 1cfe
+  actor: jgstern_agent  # 1cfe
+  clock: 4  # 1cfe
+  nonce: 1cfe  # 1cfe
+  set:  # 1cfe
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Review 2026-11-01 on dev 100b6fbb6e: the item's JS repro (package.json-declared llmkit) now reports 'untraced dependency: llmkit' with untraced_modules third_party=[llmkit], via WI-juzaj's manifest stamp (9b3ee5db28, ir.py:2245). Still true: only python.yaml has stdlib_modules; with no manifest, require('worker_threads') and require('llmkit') both land in 'unknown' ('standard library is not enumerated'). Remaining scope is stdlib/runtime modules and manifest-unresolved deps; the elixir/js half overlaps WI-hotut. (Original text below; the review entry in the thread has the evidence.)\n\nFound while closing WI-pogar (PR #1500). io_boundary.module_ecosystem returns None for every catalogue except python (javascript, go, rust, elixir, java, ... carry no stdlib_modules/stdlib_prefixes), so boundary nodes there get no meta.ecosystem and io-boundaries/verify-claims cannot say 'untraced dependency' -- they report the call as 'dependency or runtime module, I/O unknown'. The verdict is still never clean (same population), but the reader cannot tell a --trace-deps/overlay errand from a catalogue errand, and supply_chain_summary.external_dep.ecosystem reads 'unknown' for all JS/Go/Elixir externals. Repro: JS fixture src/index.js 'require(\"llmkit\").run(x)' with node_modules/llmkit -> io-boundaries groups llmkit under 'dependency or runtime module (this language's standard library is not enumerated)'. Fix shape: per-language provenance-cited stdlib enumerations (node builtins, Go std import paths, Rust std/core/alloc, Elixir/Erlang OTP apps), single-sourced like python_stdlib_versions.py."  # 1cfe

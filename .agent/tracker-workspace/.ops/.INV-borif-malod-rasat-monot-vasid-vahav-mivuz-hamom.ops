@@ -21,3 +21,18 @@
     fields:  # 86a6
       statement: "Every declared supertype relation in a supported language yields an extends/implements edge."  # 86a6
       root_cause: "java.py emits extends/implements edges only inside 'if node.type == \"class_declaration\"' (~L2547). Records and interfaces get edges via meta base_classes and the core inheritance linker; enums carry nothing that linker reads."  # 86a6
+- op: discuss  # 37aa
+  at: '2026-11-01T10:56:17Z'  # 37aa
+  by: agent  # 37aa
+  actor: jgstern_agent  # 37aa
+  clock: 2  # 37aa
+  nonce: 37aa  # 37aa
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs2/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: fixture interface Shape; enum Kind implements Shape; record Circle implements Shape; class Sq implements Shape. survey emits implements for Sq and Circle (plus dispatches_to Shape.area -> Sq.area / Circle.area) and nothing for Kind or Kind.area. The guard is now java.py L2767 (root_cause cites ~L2547); gikuk 495f9747f5 changed how the extends source is found but not which node types are handled. MECHANISM: java.py emits extends/implements only for class_declaration; enum_declaration carries no base meta the inheritance linker reads."  # 37aa
+- op: update  # e554
+  at: '2026-11-01T10:56:17Z'  # e554
+  by: agent  # e554
+  actor: jgstern_agent  # e554
+  clock: 3  # e554
+  nonce: e554  # e554
+  set:  # e554
+    description: "[REVIEW 2026-11-01, CURRENT] 2026-11-01 review at dev 100b6fbb6e: fixture interface Shape; enum Kind implements Shape; record Circle implements Shape; class Sq implements Shape. survey emits implements for Sq and Circle (plus dispatches_to Shape.area -> Sq.area / Circle.area) and nothing for Kind or Kind.area. The guard is now java.py L2767 (root_cause cites ~L2547); gikuk 495f9747f5 changed how the extends source is found but not which node types are handled. (Original text below; the review entry in the thread has the evidence.)\n\nFound by the 2026-10-05 docstring staleness audit and reproduced on the shipped CLI: for 'enum Kind implements Shape' no implements edge exists, while 'record Circle(...) implements Shape' (inheritance-linker) and 'class Sq implements Shape' (java) both have one. Consequence: enum method dispatch through the interface is invisible to inherited_calls and type_hierarchy. java.py's module docstring now states the gap."  # e554

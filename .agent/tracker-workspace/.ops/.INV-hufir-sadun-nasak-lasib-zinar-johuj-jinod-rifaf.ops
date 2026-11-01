@@ -23,3 +23,10 @@
     fields:  # d5f3
       statement: "An Elm call edge targets the applied function, not one of its arguments."  # d5f3
       root_cause: "elm.py ~365 `find_child_by_type(node, \"value_expr\")` returns the first value_expr child, not the callee position."  # d5f3
+- op: discuss  # 9420
+  at: '2026-11-01T10:56:08Z'  # 9420
+  by: agent  # 9420
+  actor: jgstern_agent  # 9420
+  clock: 2  # 9420
+  nonce: '9420'  # 9420
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs1/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: main = (identity2 helper) other with all names in-repo emits calls main -> other (the argument credited as callee) plus main -> identity2 (inner application). elm.py:398-403 unchanged (find_child_by_type(node, 'value_expr')). Minor wording: it is the first DIRECT child, not 'anywhere in the node'. MECHANISM: callee chosen as the first direct value_expr child rather than the application's function position. SHARES MECHANISM WITH: WI-gutup."  # 9420

@@ -18,3 +18,18 @@
     pr_ref:  # 525a
     description: "EVIDENCE (production entry point, 2026-09-25):\n  class A { private const SECRET = 1; public const OPEN = 2; }\n  -> A.SECRET field is_exported=True; A.OPEN field is_exported=True.\n\nMECHANISM: php.py ~L1135 passes `[], True` for every class constant, so the constant's visibility modifier is never read. Properties do read it. PHP 7.1+ class constants accept public/protected/private.\n\nPRIOR ART:\n- WI-fosuh (done) introduced PHP field/constant symbols. The constant branch was written without modifiers there.\n- INV-jusot (visibility axis, satisfied) and INV-kubus (is_exported null-when-unmeasured) are general and do not cover this case.\nPR #1197 made the module docstring state the current behaviour (\"class constants are always exported, because their visibility modifier is not read\"). Update that sentence when this is fixed.\n\nASKED: read the const declaration's visibility_modifier the same way properties do. Add a fixture covering private, protected, public and no modifier (PHP's default is public). Check the dead-code-maybe effect on one PHP corpus repo, since private constants become non-exported."  # 525a
     fields: {}  # 525a
+- op: discuss  # ed86
+  at: '2026-11-01T10:55:53Z'  # ed86
+  by: agent  # ed86
+  actor: jgstern_agent  # ed86
+  clock: 2  # ed86
+  nonce: ed86  # ed86
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. Fixture: private/protected/public/default class constants all serialize visibility=public with modifiers [], while a private property serializes private. php.py:1292-1310 passes [], True and visibility_from_modifiers([]). The symptom is wider than is_exported: serialized visibility and the stable_id visibility component are also wrong. MECHANISM: php const_declaration branch never reads visibility_modifier (passes [] and True)."  # ed86
+- op: update  # 6ddb
+  at: '2026-11-01T10:55:53Z'  # 6ddb
+  by: agent  # 6ddb
+  actor: jgstern_agent  # 6ddb
+  clock: 3  # 6ddb
+  nonce: 6ddb  # 6ddb
+  set:  # 6ddb
+    title: "php: class constants ignore their visibility modifier: private/protected consts get visibility=public, is_exported=True, and a public-visibility stable_id"  # 6ddb

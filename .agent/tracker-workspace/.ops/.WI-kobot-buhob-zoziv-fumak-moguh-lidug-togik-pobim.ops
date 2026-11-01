@@ -31,3 +31,18 @@
   nonce: 2a25  # 2a25
   set:  # 2a25
     description: "Declare TypedDict classes for each survey.json schema sub-structure: AnalysisRunDict, SymbolDict, EdgeDict, MetricsDict, LimitsDict, SketchPrecomputedDict, etc. Consumers that read survey.json get keys-checked at member access. Closes some WI-gogif envelope-incomplete sub-cases (the new D.3b sub-axis) at type-check time: missing required envelope fields become type errors when constructing the dict, not runtime gaps. Use total=False where appropriate; document required-key sets explicitly. Cross-ref bakeoff-validation tag if the change is claimed to reduce missing-field defects on real-repo runs."  # 2a25
+- op: discuss  # 01b3
+  at: '2026-11-01T10:55:46Z'  # 01b3
+  by: agent  # 01b3
+  actor: jgstern_agent  # 01b3
+  clock: 3  # 01b3
+  nonce: 01b3  # 01b3
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: CURRENT. At dev 100b6fbb6e there is no TypedDict anywhere in packages/*/src; schema.new_behavior_map returns Dict[str, Any]. The title's bm.json is now survey.json (ADR-0042), and symbols live under 'nodes'. The cited motivator WI-gogif is done, so that cross-ref no longer adds scope. MECHANISM: survey envelope typed Dict[str, Any]; key presence is checked only at runtime/schema validation. SHARES MECHANISM WITH: WI-kibiz,WI-fofud,INV-zogud."  # 01b3
+- op: update  # 92cf
+  at: '2026-11-01T10:55:46Z'  # 92cf
+  by: agent  # 92cf
+  actor: jgstern_agent  # 92cf
+  clock: 4  # 92cf
+  nonce: 92cf  # 92cf
+  set:  # 92cf
+    title: "mypy: adopt TypedDict for survey.json sub-structures (analysis_runs, nodes, edges, metrics, limits, sketch_precomputed, module_sets)"  # 92cf

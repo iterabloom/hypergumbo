@@ -26,3 +26,10 @@
   clock: 2  # 3482
   nonce: '3482'  # 3482
   message: "Population measured while validating WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin on django (kutal+ratid, ff18f6ceee): 425 call sites whose (caller, ancestor method) pair IS resolved by inherited-calls-linker, but on another line of the same caller, so the site itself has no resolved edge (e.g. AutodetectorTests.test_circular_dependency_swappable2 calls BaseAutodetectorTests.assertOperationTypes at tests/migrations/test_autodetector.py:5316 and :5323; one edge). Before WI-kutal those 425 were bound per-line by py.py's bare-name Case 2a. Rows: ~/hypergumbo_lab_notebook/decontend/run_10032026/ratid/django_recover_rows.json, key still_unresolved_but_pair_resolved_on_other_line."  # 3482
+- op: discuss  # aa06
+  at: '2026-11-01T10:56:04Z'  # aa06
+  by: agent  # aa06
+  actor: jgstern_agent  # aa06
+  clock: 3  # aa06
+  nonce: aa06  # aa06
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: Kid.go calls inherited self.helper() on lines 5,7,8; the analyzer stub carries call_lines [5,7,8] but the inherited-calls-linker edge Kid.go -> Base.helper carries only line 5 and no call_lines (in-class control self.local() carries call_lines [9,10]). inherited_calls.py:976/1039 dedup unchanged. Premise holds. MECHANISM: inherited_calls dedups by (src,dst) via existing_call_pairs and does not copy the stub edge's call_lines."  # aa06

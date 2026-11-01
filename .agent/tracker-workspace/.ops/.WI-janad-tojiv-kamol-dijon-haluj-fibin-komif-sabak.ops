@@ -34,3 +34,10 @@
   clock: 3  # ec83
   nonce: ec83  # ec83
   message: "From WI-hojib/WI-tagir (branch jgstern-agent/fix/hojib, not merged): a corpus instance where the existential gap now costs a right stamp. Kingfisher Sources/Views/AnimatedImageView.swift:820/838 `frameSource.duration(at:)` / `frameSource.frame(at:maxSize:)`, inside `Animator`, whose member is `private let frameSource: any ImageFrameSource`.\n\nOn origin/dev these RESOLVED to `CGImageFrameSource.duration` / `.frame` through the pooled file-level var_types. That was right only by coincidence: CGImageFrameSource is the only conformer. With members scoped to their type, the member is `any ImageFrameSource`, which nothing reads as a type, so both calls are now untyped. Reading `any P` as P would type them `ImageFrameSource`. 2 sites."  # ec83
+- op: discuss  # 0bfd
+  at: '2026-11-01T10:55:39Z'  # 0bfd
+  by: agent  # 0bfd
+  actor: jgstern_agent  # 0bfd
+  clock: 4  # 0bfd
+  nonce: 0bfd  # 0bfd
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat2/). VERDICT: CURRENT. Re-checked 2026-11-01 at dev 100b6fbb6e with the item's fixture shape: self.plain.writeAndFlush (let plain: Channel) -> swift:Channel:0-0:writeAndFlush hint=Channel; self.exist / param ch: any Channel / closure (c: any Channel) -> swift:external:0-0:writeAndFlush hint=None; if-let m: any Channel is typed from the initializer (Optional), not the annotation. existential_type is read only for arity in _SWIFT_TYPE_NODES (WI-sogof, cdddef709a), not for receiver typing. Premise holds. MECHANISM: swift declared-type readers (property, parameter, if-let, closure-param) do not unwrap existential_type, so `any P` yields no receiver type. SHARES MECHANISM WITH: WI-mofil."  # 0bfd

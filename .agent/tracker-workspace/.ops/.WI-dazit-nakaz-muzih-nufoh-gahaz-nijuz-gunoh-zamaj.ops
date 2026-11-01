@@ -19,3 +19,26 @@
     pr_ref:  # 145c
     description: "Split out of WI-togop-hikog-domub-gofor-puriv-fakov-bojus-jozus's discussion (it blocks WI-togop's closure). The tool processes function aliasing / name rebinding (f = g) statically but mis-resolves the alias, dead-ending the call graph: a call through the alias is not connected to the real target. A genuine call-graph correctness defect, distinct from WI-togop's limits.not_captured disclosure concern. Strategy Wave-0 B4."  # 145c
     fields: {}  # 145c
+- op: discuss  # f58d
+  at: '2026-11-01T10:56:05Z'  # f58d
+  by: agent  # f58d
+  actor: jgstern_agent  # f58d
+  clock: 2  # f58d
+  nonce: f58d  # f58d
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 100b6fbb6e. The item names no language. Fixture run: Python module-level `f = real_target; f()` now emits calls caller -> real_target (fixed by 1aff4e7d51, WI-gulot, 2026-07-03, after this item was filed). Still dead-ending: JS `const jf = jsTarget; jf()` -> calls to jf:variable only; Python class-body `alias = meth` -> calls to K.alias:field; local `h = real_target; h()` (Python) and `const loc = jsTarget; loc()` (JS) -> references only, no calls edge. Go package-level aliases were fixed by WI-labik (98a5b50e98). MECHANISM: alias LHS minted as a variable/field node with no continuation edge to the aliased function; only Python module scope (WI-gulot) and Go package scope (WI-labik) chase the alias. SHARES MECHANISM WITH: WI-gulot (done), WI-labik."  # f58d
+- op: update  # 8e2a
+  at: '2026-11-01T10:56:05Z'  # 8e2a
+  by: agent  # 8e2a
+  actor: jgstern_agent  # 8e2a
+  clock: 3  # 8e2a
+  nonce: 8e2a  # 8e2a
+  set:  # 8e2a
+    title: "f = g aliasing still dead-ends for JS/TS module consts and Python class-body/local aliases (Python module scope fixed by WI-gulot, Go by WI-labik)"  # 8e2a
+- op: update  # c7b7
+  at: '2026-11-01T10:56:05Z'  # c7b7
+  by: agent  # c7b7
+  actor: jgstern_agent  # c7b7
+  clock: 4  # c7b7
+  nonce: c7b7  # c7b7
+  set:  # c7b7
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 100b6fbb6e. The item names no language. Fixture run: Python module-level `f = real_target; f()` now emits calls caller -> real_target (fixed by 1aff4e7d51, WI-gulot, 2026-07-03, after this item was filed). Still dead-ending: JS `const jf = jsTarget; jf()` -> calls to jf:variable only; Python class-body `alias = meth` -> calls to K.alias:field; local `h = real_target; h()` (Python) and `const loc = jsTarget; loc()` (JS) -> references only, no calls edge. Go package-level aliases were fixed by WI-labik (98a5b50e98). (Original text below; the review entry in the thread has the evidence.)\n\nSplit out of WI-togop-hikog-domub-gofor-puriv-fakov-bojus-jozus's discussion (it blocks WI-togop's closure). The tool processes function aliasing / name rebinding (f = g) statically but mis-resolves the alias, dead-ending the call graph: a call through the alias is not connected to the real target. A genuine call-graph correctness defect, distinct from WI-togop's limits.not_captured disclosure concern. Strategy Wave-0 B4."  # c7b7

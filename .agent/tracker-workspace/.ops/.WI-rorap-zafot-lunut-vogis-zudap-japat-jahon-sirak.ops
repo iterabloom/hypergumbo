@@ -19,3 +19,18 @@
     pr_ref:  # a8d8
     description: "Residual of WI-lijaz-tazom-guguj-vukas-puzat-sozuh-hupab-pakin (branch jgstern-agent/fix/lijaz, not merged).\n\nWI-lijaz added hypergumbo_core.meta_key_coherence, a registration gate for meta KEYS on the shrink-only ratchet in scripts/check-producer-axis-coherence (axis \"Edge.meta key\"). It checks: every key passed to Edge(...) / Edge.create(meta=...) is registered on edge_meta, and every key written to any .meta after construction is registered on some axis.\n\nNOT gated: keys passed to Symbol(...) / Symbol.create(meta=...). Measured on the branch head (2026-10-03) with the same enumeration (producer_coherence._iter_file_sites with keyword_arg=\"meta\", helper descent on; keys via value_flow resolve(expr, ((\"key\",),), readers=Edge constructors)):\n- 206 distinct keys at Symbol construction sites\n- 137 not registered at all (e.g. arity, artifactId, base_image, framework, is_public, language, module, path, ...)\n- 31 registered only on edge_meta (the cross-axis family, filed separately)\n- 21 construction sites whose keys value_flow cannot enumerate (analyze/base.py:1265, cli.py:8805, cpp.py x2, csharp.py x2, java.py x2, js_ts.py x2, rust.py x4, scala.py x4, ...)\n\nShape of the fix: a symbol arm in meta_key_coherence (constructor names Symbol / Symbol.create, axis symbol_meta), registering the 137 with descriptions read from their producers (the WI-lijaz section of axis_meta_keys.py is the pattern), pinning the unenumerable sites by equality, and a \"Symbol.meta key\" ratchet axis. The 31 cross-axis keys cannot be registered until the one-axis-per-key question is decided."  # a8d8
     fields: {}  # a8d8
+- op: discuss  # 40d7
+  at: '2026-11-01T10:56:08Z'  # 40d7
+  by: agent  # 40d7
+  actor: jgstern_agent  # 40d7
+  clock: 2  # 40d7
+  nonce: 40d7  # 40d7
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs1/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: meta_key_coherence.py still documents Symbol construction as unseen and check-producer-axis-coherence has no Symbol.meta axis. Re-measured with the item's enumeration (_iter_file_sites, Symbol/Symbol.create, meta=, helper descent): 216 distinct keys, 49 registered on symbol_meta, 31 registered only on another axis, 136 unregistered, 47 unenumerable sites (was 206/137/31/21). Premise holds; counts drifted. MECHANISM: meta-key registration gate enumerates only Edge constructors; no Symbol arm or ratchet axis. SHARES MECHANISM WITH: WI-janon."  # 40d7
+- op: update  # efd6
+  at: '2026-11-01T10:56:08Z'  # efd6
+  by: agent  # efd6
+  actor: jgstern_agent  # efd6
+  clock: 3  # efd6
+  nonce: efd6  # efd6
+  set:  # efd6
+    title: "Symbol.meta construction keys are not gated: 136 of the 216 keys passed to Symbol(meta=...) are unregistered, 47 sites unenumerable (residual of WI-lijaz)"  # efd6

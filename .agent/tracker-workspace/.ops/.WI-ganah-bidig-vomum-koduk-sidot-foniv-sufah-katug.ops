@@ -19,3 +19,10 @@
     pr_ref:  # 9232
     description: "Split from WI-jusus's residual language tail. Per the 2026-07-08 human ruling: emit kind=variable for an Elixir module @attr ONLY when (a) it is referenced as @attr in a value position elsewhere in the module (positive fails-safe signal) AND (b) it is not in a merged reserved-attribute YAML catalog (base elixir-reserved-attributes.yaml extended by framework YAMLs on detection). Build TDD. Distinct from INV-sinah (quote-block mis-attribution, satisfied)."  # 9232
     fields: {}  # 9232
+- op: discuss  # c829
+  at: '2026-11-01T10:56:01Z'  # c829
+  by: agent  # c829
+  actor: jgstern_agent  # c829
+  clock: 2  # c829
+  nonce: c829  # c829
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: a fixture module with @timeout 5000 read in two functions and an unused @unused_attr emits module, 2 functions, file and the GenServer external, and no variable for either attribute. No elixir reserved-attributes YAML exists in the tree. WI-jusus is done; this residual is unbuilt. The P2 item WI-kavam's elixir limb (@app C.new() emits no symbol) needs the same emitter, so the two should be cross-linked; this row holds the owner's 2026-07-08 Option-C rule. MECHANISM: elixir analyzer has no emitter for a module attribute (@attr) and no reserved-attribute catalogue. SHARES MECHANISM WITH: WI-kavam (P2, elixir limb)."  # c829

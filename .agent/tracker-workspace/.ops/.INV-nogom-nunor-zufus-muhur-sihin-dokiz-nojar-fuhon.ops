@@ -30,3 +30,10 @@
   clock: 2  # 9e25
   nonce: '9e25'  # 9e25
   message: "DEFERRED (demand-gated) in the G8 sweep. config_fingerprint (ir.py) keys on producer identity and does NOT distinguish same-pass runs under different runtime CLI flags (--include-docs/--max-tier/frameworks/file-lang filters) — the invariant IS violated. But it has NO internal consumer (external cache-keying only, ir.py:267-274), and the fix is a SEMANTIC REDEFINITION (identity -> runtime-config) that also perturbs the finalize run_signature recompute. Per the item's own re-eval trigger and the hypergumbo-spirit 'no complexity without a consumer' call, do NOT redefine config_fingerprint until a consumer needs same-pass/different-flag distinction. Left violated (honest) + this note; reopen when a cache-distinction consumer appears. This does not need human input — it's a deliberate scope call. G8 now COMPLETE: WI-pifaj #7, WI-fonod/WI-givad #12, WI-sijug #13 done; INV-nogom demand-gated-deferred."  # 9e25
+- op: discuss  # af25
+  at: '2026-11-01T10:55:58Z'  # af25
+  by: agent  # af25
+  actor: jgstern_agent  # af25
+  clock: 3  # af25
+  nonce: af25  # af25
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: surveyed one 2-file fixture twice, plain vs --include-docs --max-tier 1 --exclude README*. All 72 passes common to both runs had identical config_fingerprint and identical run_signature (python sha256:5af069a90f8b2584 in both). ir.py:383-391 still documents this as a known residual. The demand-gated deferral from 2026-07-26 still holds; no cache-key consumer has appeared. MECHANISM: config_fingerprint is a producer-identity digest; runtime CLI flags are never fed into compute_config_fingerprint, so run_signature also collides."  # af25

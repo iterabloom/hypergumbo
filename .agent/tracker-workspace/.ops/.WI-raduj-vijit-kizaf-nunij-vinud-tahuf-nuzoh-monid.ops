@@ -18,3 +18,18 @@
     pr_ref:  # cdda
     description: "FOUND 2026-10-13 by WI-tusad F4 (gate registry check); not fixed there.\n\nREPRO: a sub-project routes file `sub/conf/routes` (`GET /a controllers.A.index()`) next to a Scala file.\n- `analyze_play_routes(root)` called directly finds it (`find_play_routes_files` globs `*/conf/routes`) and emits 2 route markers.\n- `hypergumbo run root` emits nothing for it: the play-routes run records `files_analyzed=0`, `silence_reason=no_candidate_files`. A root-level `conf/routes` IS found and emitted.\nSo multi-module SBT builds (the case the `*/conf/routes` glob exists for) lose their routes under the pipeline; the file index the pipeline hands `find_files` apparently does not serve that pattern.\n\nAlso: route markers carry language `scala`, so the stable_id gate has no `play-routes` fixture (exempted with this reason in test_stable_id_floor_gate._NO_FIXTURE)."  # cdda
     fields: {}  # cdda
+- op: discuss  # 7465
+  at: '2026-11-01T10:55:54Z'  # 7465
+  by: agent  # 7465
+  actor: jgstern_agent  # 7465
+  clock: 2  # 7465
+  nonce: '7465'  # 7465
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: STALE-FIXED. 2026-11-01 review on dev 100b6fbb6e: sub/conf/routes, x/y/conf/routes and root-Scala variants all emit the route marker under hypergumbo survey (play-routes files_analyzed=1, silence_reason None). Fixed by e0bd0ecdf8 (INV-kalaj, FileIndex matches directory-segment patterns like rglob). Residual: test_stable_id_floor_gate.py _NO_FIXTURE['play-routes'] still gives 'reads only the root conf/routes' as its reason, which is no longer true. MECHANISM: FileIndex fnmatched the bare filename so directory-segment patterns (*/conf/routes) never matched under the pipeline. SHARES MECHANISM WITH: INV-kalaj. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # 7465
+- op: update  # 3c8e
+  at: '2026-11-01T10:55:54Z'  # 3c8e
+  by: agent  # 3c8e
+  actor: jgstern_agent  # 3c8e
+  clock: 3  # 3c8e
+  nonce: 3c8e  # 3c8e
+  set:  # 3c8e
+    description: "[REVIEW 2026-11-01, STALE-FIXED] 2026-11-01 review on dev 100b6fbb6e: sub/conf/routes, x/y/conf/routes and root-Scala variants all emit the route marker under hypergumbo survey (play-routes files_analyzed=1, silence_reason None). Fixed by e0bd0ecdf8 (INV-kalaj, FileIndex matches directory-segment patterns like rglob). Residual: test_stable_id_floor_gate.py _NO_FIXTURE['play-routes'] still gives 'reads only the root conf/routes' as its reason, which is no longer true. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-10-13 by WI-tusad F4 (gate registry check); not fixed there.\n\nREPRO: a sub-project routes file `sub/conf/routes` (`GET /a controllers.A.index()`) next to a Scala file.\n- `analyze_play_routes(root)` called directly finds it (`find_play_routes_files` globs `*/conf/routes`) and emits 2 route markers.\n- `hypergumbo run root` emits nothing for it: the play-routes run records `files_analyzed=0`, `silence_reason=no_candidate_files`. A root-level `conf/routes` IS found and emitted.\nSo multi-module SBT builds (the case the `*/conf/routes` glob exists for) lose their routes under the pipeline; the file index the pipeline hands `find_files` apparently does not serve that pattern.\n\nAlso: route markers carry language `scala`, so the stable_id gate has no `play-routes` fixture (exempted with this reason in test_stable_id_floor_gate._NO_FIXTURE)."  # 3c8e

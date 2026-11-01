@@ -21,3 +21,18 @@
     fields:  # a0a0
       statement: "greedy_trajectory returns the same pick order as plain cost-weighted greedy (recompute every ratio each step), which is what its docstring and ln(n) / (1-1/e) guarantee claim."  # a0a0
       root_cause: "coverage_census.py: gain_and_cost adds a group's fixed cost only while the group is uncharged (~:565); the heap stores gain/cost ratios (~:573); after charged_groups.add (~:609) the remaining members of that group get cheaper so their true ratio RISES above the queued one; the early-accept at ~:586 assumes the stale entry is an upper bound. Nothing re-pushes group members when a group is charged."  # a0a0
+- op: discuss  # 823b
+  at: '2026-11-01T10:55:58Z'  # 823b
+  by: agent  # 823b
+  actor: jgstern_agent  # 823b
+  clock: 2  # 823b
+  nonce: 823b  # 823b
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: re-ran the filed 4-test repro through the public API (build_cost_model/CoverageIndex.add/greedy_trajectory). At target 250/265 CELF picks t1,v,t2 (265 lines/112.0s); plain greedy picks t1,t2 (250/102.0s). At 1.0 the cumulative seconds are 101,111,112 vs 101,102,112. greedy_trajectory has not changed since f590a68477. That commit fixed the description's side note: the docstring now says no line->tests map is built, and it cites INV-jupaf. The pick-order defect remains. MECHANISM: CELF early-accept treats stale heap ratios as upper bounds, but a group charge lowers its members' costs and nothing re-queues them."  # 823b
+- op: update  # a271
+  at: '2026-11-01T10:55:58Z'  # a271
+  by: agent  # a271
+  actor: jgstern_agent  # a271
+  clock: 3  # a271
+  nonce: a271  # a271
+  set:  # a271
+    description: "[REVIEW 2026-11-01, CURRENT] 2026-11-01 review @100b6fbb6e: re-ran the filed 4-test repro through the public API (build_cost_model/CoverageIndex.add/greedy_trajectory). At target 250/265 CELF picks t1,v,t2 (265 lines/112.0s); plain greedy picks t1,t2 (250/102.0s). At 1.0 the cumulative seconds are 101,111,112 vs 101,102,112. greedy_trajectory has not changed since f590a68477. That commit fixed the description's side note: the docstring now says no line->tests map is built, and it cites INV-jupaf. The pick-order defect remains. (Original text below; the review entry in the thread has the evidence.)\n\nFound by the 2026-10-06 docstring-audit random sample (blind re-review of coverage_census.py), reproduced by a verifier through the public API (build_cost_model, CoverageIndex.add, greedy_trajectory) vs a plain greedy: t1 (g.py, setup 100, call 1, lines 1-200), t2 (g.py, call 1, lines 201-250), t3 (g.py, no coverage, sets median setup 0), v (h.py, call 10, lines 251-265). Target 250/265: CELF picks t1,v,t2 = 265 lines / 112.0s; plain greedy t1,t2 = 250 lines / 102.0s. Target 1.0: CELF cumulative 101,111,112 vs greedy 101,102,112. Script: ~/hypergumbo_lab_notebook/staleness_audit_10052026 follow-up (scratch celf.py). Existing grouped fixed-cost test (test_coverage_census.py ~:372-382) checks only total seconds, not pick order. Fix shapes: re-push the group's members when a group is charged, or treat a group charge as invalidating their heap entries. Module docstring (lines 7-8, 53-55) also claims an inverted line->tests index that is not built."  # a271

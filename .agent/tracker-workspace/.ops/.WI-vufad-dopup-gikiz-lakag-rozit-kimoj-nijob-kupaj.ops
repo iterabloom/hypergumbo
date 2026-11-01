@@ -20,3 +20,10 @@
     pr_ref:  # 29e7
     description: "Optional / experimental alternative-or-complement to the `hypergumbo diff` command (WI-zomuk): commit a CANONICAL survey into the target repo (e.g. `.hypergumbo/survey.json`) and let git do the storage + diffing.\n\nPayoff: git becomes the base-survey cache for free (base = the file at the merge-base; no SHA-keyed cache service), and the survey delta rides along as a NATIVE reviewable diff in the forge's own UI. WI-zomuk's structural diff is then the *polished* renderer; the git line-diff is the cheap storage + rough view.\n\nRequires the `--reproducible` byte-repro MODE (WI-sazap) first — a non-canonical survey produces a giant meaningless git patch every run (WI-pifaj churn).\n\nKnown \"commit a generated artifact\" tradeoffs to design for: a CI drift-check (regenerate + assert equal, or the file goes stale), merge conflicts on the file, repo growth (git delta absorbs most).\n\nBelongs to the (separable) aijo epic, not G8. Demand-gated on aijo. Blocked-by: WI-sazap (the `--reproducible` mode)."  # 29e7
     fields: {}  # 29e7
+- op: discuss  # ce64
+  at: '2026-11-01T10:55:46Z'  # ce64
+  by: agent  # ce64
+  actor: jgstern_agent  # ce64
+  clock: 2  # ce64
+  nonce: ce64  # ce64
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: CURRENT. At dev 100b6fbb6e the blocker WI-sazap (--reproducible) is still todo_soft and survey has no reproducible/canonical flag. Two consecutive surveys of a 1-file fixture differ in execution_id, started_at, duration_ms and cpu_ms, so a committed survey would still churn. The premise holds; the dependency on WI-sazap is in prose only (isbefore empty). MECHANISM: survey output is not byte-canonical (uuid4 execution_id and wall-clock fields). SHARES MECHANISM WITH: WI-sazap,WI-situf,WI-zomuk."  # ce64

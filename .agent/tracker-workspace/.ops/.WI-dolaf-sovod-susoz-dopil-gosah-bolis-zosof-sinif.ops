@@ -50,3 +50,18 @@
   clock: 5  # 7a8b
   nonce: 7a8b  # 7a8b
   message: "DOC HALF SHIPPED, PR #880 (merged, dev a76dd23d34). Corrected six surfaces, not one: AGENTS.md:82 (a hand copy -- it is NOT inside the managed block, so htrac setup was not rewriting it); setup.py MANAGED_BLOCK_CONTENT, which ships the same error into ADOPTING repos; ADR-0013 x3; the tracker-hygiene playbook x4, one of them a RUNNABLE './scripts/tracker list --json > corpus.json' that would have exited 2 and left that sweep's workers reading an empty corpus; and on_transcript_change.py's injected playbook summary. Guard: tests/test_tracker_json_flag_documented.py -- anchors on --json still being registered once ahead of add_subparsers (so this item's structural half RELAXES the guard rather than silently voiding it), forbids the trailing form per BACKTICK SPAN rather than per line (prose explaining the hazard names both orders in one sentence; a line-level regex flagged my own fix and forced a reword), and REQUIRES AGENTS.md to show the working form, since a forbid-only guard is satisfiable by deleting the documentation. The guard earned itself on first run, finding a THIRD ADR-0013 occurrence two hand greps had called clean: the second sweep piped through 'grep -v \\.ops' to drop op-log paths, and the offending line's own text ends 'files ending in `.ops`' -- 3 matches unfiltered, 2 filtered, sweep exited 0 printing nothing. STAYS OPEN on part (b), the structural half: accept the trailing form as an argparse alias and/or emit a JSON error object on stdout under --json, so a parser sees {\"error\": ...} instead of empty input. That is what removes the hazard rather than documenting around it. Sibling defect in the same string constant filed separately as WI-mudov (holding/wontfix), deliberately not folded in -- stale enum, different mechanism."  # 7a8b
+- op: discuss  # 96a7
+  at: '2026-11-01T10:55:50Z'  # 96a7
+  by: agent  # 96a7
+  actor: jgstern_agent  # 96a7
+  clock: 6  # 96a7
+  nonce: 96a7  # 96a7
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: CURRENT. Reviewed 2026-11-01 at 100b6fbb6e: part (a) shipped (AGENTS.md:82 correct). Part (b) reproduces: 'tracker show WI-dolaf --json' gives exit 2 and 0 bytes stdout; '--json show' from a non-repo cwd gives exit 1 and 0 bytes; '--json show WI-zzzzz' (missing item) gives exit 1 and 0 bytes. cli.py:2705 registers --json only at top level. Wrong-cwd and missing-item are indistinguishable even by exit code. MECHANISM: under --json, error paths write stderr only, no JSON error object on stdout; flag not accepted on subparsers. SHARES MECHANISM WITH: WI-mudov."  # 96a7
+- op: update  # 4547
+  at: '2026-11-01T10:55:50Z'  # 4547
+  by: agent  # 4547
+  actor: jgstern_agent  # 4547
+  clock: 7  # 4547
+  nonce: '4547'  # 4547
+  set:  # 4547
+    title: "tracker CLI under --json: trailing 'show <ID> --json' still exits 2, and usage/wrong-cwd/missing-item errors all leave stdout empty (last two share exit 1)"  # 4547

@@ -21,3 +21,18 @@
     fields:  # e9be
       statement: "56 DRF router.register(...) viewset registrations produce 0 ViewSet-targeted routes and include(router.urls) resolves to django:unknown (pretix); Django REST Framework router/viewset routing is not modeled."  # e9be
       root_cause: "The Django route model does not understand DRF router.register() plus include(router.urls) indirection, which generates viewset routes dynamically at runtime rather than via explicit path() calls."  # e9be
+- op: discuss  # 36d6
+  at: '2026-11-01T10:56:02Z'  # 36d6
+  by: agent  # 36d6
+  actor: jgstern_agent  # 36d6
+  clock: 2  # 36d6
+  nonce: 36d6  # 36d6
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: fixture router=DefaultRouter(); router.register(r'events', views.EventViewSet); path('api/', include(router.urls)). Result: 0 ViewSet routes. The include() becomes a handler-less synthetic function route 'GET /api/' (view_name null). `hypergumbo routes` lists '[GET] /api/'. router.register is only an external_symbol call. The 'django:unknown' label in the title no longer appears; today the include shows as a fake GET route with no handler. MECHANISM: django route extraction reads only literal path()/re_path() calls; DRF router.register() and include(router.urls) indirection are not modelled. SHARES MECHANISM WITH: none."  # 36d6
+- op: update  # fe7d
+  at: '2026-11-01T10:56:02Z'  # fe7d
+  by: agent  # fe7d
+  actor: jgstern_agent  # fe7d
+  clock: 3  # fe7d
+  nonce: fe7d  # fe7d
+  set:  # fe7d
+    description: "[REVIEW 2026-11-01, CURRENT] 2026-11-01 review @100b6fbb6e: fixture router=DefaultRouter(); router.register(r'events', views.EventViewSet); path('api/', include(router.urls)). Result: 0 ViewSet routes. The include() becomes a handler-less synthetic function route 'GET /api/' (view_name null). `hypergumbo routes` lists '[GET] /api/'. router.register is only an external_symbol call. The 'django:unknown' label in the title no longer appears; today the include shows as a fake GET route with no handler. (Original text below; the review entry in the thread has the evidence.)"  # fe7d

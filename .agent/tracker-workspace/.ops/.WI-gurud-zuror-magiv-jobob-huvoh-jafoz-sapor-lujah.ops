@@ -28,3 +28,10 @@
   clock: 2  # 95d3
   nonce: 95d3  # 95d3
   message: "SIBLING FILED from WI-vafad tranche 3 (2026-10-03, docs/audits/0022 T3-A4 / T3-H1). python `subprocess.Popen.{terminate, kill, send_signal}` are rowed subprocess (python.yaml:930-931), which contradicts the dated WI-dupok ruling (signals to a running child are ipc_send) that python's own multiprocessing.Process rows follow. That is the same \"operating on a program already running is not a launch\" shape as this item's Port.command. Reaping / polling a child is also rowed three different ways across c and python. Filed as WI-jipip-kufif-linan-nitol-povit-gihun-monuv-ralih; cross-reference when either is fixed so the two land on one rule."  # 95d3
+- op: discuss  # 8e9e
+  at: '2026-11-01T10:55:40Z'  # 8e9e
+  by: agent  # 8e9e
+  actor: jgstern_agent  # 8e9e
+  clock: 3  # 8e9e
+  nonce: 8e9e  # 8e9e
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat2/). VERDICT: CURRENT. Re-checked 2026-11-01 at dev 100b6fbb6e: elixir.yaml:236-237 `Port: [open, command]` under subprocess; erlang.yaml has no port_command/port_connect; neither catalogue has an ipc_send section. Fixture .ex: io-boundaries reports Port.command and Port.open both subprocess (HIGH RISK) and :erlang.port_command only as external_potential (unclassified). No change since filing. MECHANISM: elixir Port row puts command (a write to an already-running port program) under subprocess beside open; erlang:port_command is unrowed. SHARES MECHANISM WITH: WI-jipip."  # 8e9e

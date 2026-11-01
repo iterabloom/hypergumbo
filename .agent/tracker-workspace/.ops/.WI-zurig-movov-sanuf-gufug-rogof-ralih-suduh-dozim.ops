@@ -55,3 +55,26 @@
   clock: 6  # cf08
   nonce: cf08  # cf08
   message: "Re-measured 2026-07-30 on a fresh self-survey (40979 nodes / 138626 edges), while closing the sibling WI-gomuj.\n\nwebsocket-linker now emits 4 edges, 0 with a test-file src and 0 with a test-file dst. This CONFIRMS the 2026-06-29 assessment on this item (the linker-evidence-gating:F1 drain) on current dev, and updates its figures: that note recorded \"12 -> 1\"; today it is 4, still all production. The count moved because the repo's own WS surface grew, not because test fixtures returned.\n\nThe item's TITLE still reads \"(11 test / 1 prod)\", which is now false and is the first thing a reader sees in `tracker ready`. The residual this item is actually kept open for is unchanged and unaddressed: the surviving edges' src is the FILE node (ws-client.ts:1-1:file:file) rather than the resolved `new WebSocket()` call site, and cross_language is graph-unverifiable (dst language=None, ties INV-zigup). No code change this session."  # cf08
+- op: discuss  # c3e9
+  at: '2026-11-01T10:56:01Z'  # c3e9
+  by: agent  # c3e9
+  actor: jgstern_agent  # c3e9
+  clock: 7  # c3e9
+  nonce: c3e9  # c3e9
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e. Fixture: web/ws-client.ts (new WebSocket('/ws') inside connect()) plus a FastAPI @app.websocket('/ws'). The calls edge src is typescript:web/ws-client.ts:1-1:file:file, not connect; dst ws:/ws has language=None. Stale: '11 test / 1 prod' (test fixtures are excluded), and ws-client.ts was deleted in 86cb7d3a37. meta.cross_language was removed in d624311970 (INV-zigup) and is now derived, which the null dst language defeats. MECHANISM: websocket-linker anchors client edges at the file node and mints language-less endpoint nodes, so derived cross-language is unknowable."  # c3e9
+- op: update  # 0997
+  at: '2026-11-01T10:56:01Z'  # 0997
+  by: agent  # 0997
+  actor: jgstern_agent  # 0997
+  clock: 8  # 0997
+  nonce: '0997'  # 0997
+  set:  # 0997
+    title: "websocket-linker client->server calls edge has a FILE-node src (not the new WebSocket() site) and a language=None synthetic dst"  # 0997
+- op: update  # 459d
+  at: '2026-11-01T10:56:01Z'  # 459d
+  by: agent  # 459d
+  actor: jgstern_agent  # 459d
+  clock: 9  # 459d
+  nonce: 459d  # 459d
+  set:  # 459d
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e. Fixture: web/ws-client.ts (new WebSocket('/ws') inside connect()) plus a FastAPI @app.websocket('/ws'). The calls edge src is typescript:web/ws-client.ts:1-1:file:file, not connect; dst ws:/ws has language=None. Stale: '11 test / 1 prod' (test fixtures are excluded), and ws-client.ts was deleted in 86cb7d3a37. meta.cross_language was removed in d624311970 (INV-zigup) and is now derived, which the null dst language defeats. (Original text below; the review entry in the thread has the evidence.)\n\n**Mechanism.** The websocket-linker pairs WS clients to WS servers purely by URL-path string match with NO same-file / same-package / is-test-file scoping (linkers/websocket.py:903-943 cross-products _CLIENT_PATTERN_TYPES x _SERVER_PATTERN_TYPES grouped only by_path[ep.event], no file/package/test branch). The single real frontend client ws-client.ts (-> /ws) is linked by 12 calls edges to 12 synthetic /ws-endpoint:function nodes (name ws:/ws, kind=function), 11 of which are test fixtures (test_websocket.py x9, test_starlette_routes.py x2), only 1 production (serve.py:433).\n\n**Evidence (frozen substrate).** 12 edges with meta.url_path, all type=calls, origin=['websocket-linker'], conf 0.85, evidence_type=ast_call_direct, cross_language=true. src on ALL 12 = typescript:packages/htrac-frontend/src/ws-client.ts:1-1:file:file (a FILE node, not a call site). dst is_test_file: 11 test / 1 prod. meta.server_framework split fastapi=6 / starlette=6 (fastapi is NOT a declared dep, ties WI-babun).\n\n**Consequence.** An agent seeding a call graph / reachability from ws-client.ts is handed 11 phantom edges into test fixtures; cross_language=true is also graph-unverifiable (dst language=None, ties INV-zigup).\n\n**Related (distinct).** Same phantom-cross-link-from-test-code ROOT class as WI-nitob (message-queue-linker/event_publishes), WI-rilin (database-query-linker/references), but a THIRD producer (websocket-linker), DIFFERENT edge-type (calls), DIFFERENT meta family (url_path/protocol/client_framework/server_framework). src is a file node + dst is synthetic (ties WI-vuzaf). Source: dogfood_tranche_07 F125.A1, substrate-direct + source-confirmed producer."  # 459d

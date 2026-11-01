@@ -102,3 +102,10 @@
   clock: 11  # 1053
   nonce: '1053'  # 1053
   message: "Fresh repro 2026-10-16, hypergumbo 9.1.0, external repo /tmp/pf-prelim (55 .md files): `run --include-docs` emits 4,764 section / 1,166 code_block / 55 link nodes and 21 markdown `references` edges — 0 resolved, 21 unresolved. All 21 targets are sibling files in the same directory (manual-test-checklists.md, what-not-needed.md, milestone-definitions.md, 7 each), i.e. the simplest relative-link case, and each resolves to a synthetic <external> rather than the existing `markdown:<path>:1-1:file:file` node. Still violated."  # 1053
+- op: discuss  # 102e
+  at: '2026-11-01T10:56:01Z'  # 102e
+  by: agent  # 102e
+  actor: jgstern_agent  # 102e
+  clock: 12  # 102e
+  nonce: 102e  # 102e
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: a 4-file fixture run with `survey --include-docs` gives 4 file, 6 section and 7 link nodes, plus 7 references edges. All 7 point at external_symbol placeholders, including README's root-relative docs/adr/0003-thing.md, which names an existing file node exactly. adr/0003, 0003 and docs/adr/0003 each become a different placeholder. _make_link_dst_id has moved to markdown.py:107 with the same shape. No markdown link-resolver linker exists. Matches the 2026-10-17 repro. MECHANISM: _make_link_dst_id builds the link target from the raw URL text, with no resolution against the linking file's directory, and no linker binds a doc link to the file/section node. SHARES MECHANISM WITH: WI-jodag (related, noise filter)."  # 102e

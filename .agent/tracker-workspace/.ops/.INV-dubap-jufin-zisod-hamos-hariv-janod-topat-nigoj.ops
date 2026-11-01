@@ -22,3 +22,10 @@
     fields:  # 59c2
       statement: "An HTTP GET client call whose path matches a Phoenix live route links to that route."  # 59c2
       root_cause: "Elixir live route markers carry http_method LIVE and the http linker buckets routes by exact method (linkers/http.py routes_by_method), so GET lookups never see them; Phoenix live expands to Phoenix.Router.get."  # 59c2
+- op: discuss  # 3f81
+  at: '2026-11-01T10:56:15Z'  # 3f81
+  by: agent  # 3f81
+  actor: jgstern_agent  # 3f81
+  clock: 2  # 3f81
+  nonce: 3f81  # 3f81
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: Phoenix router fixture with `live \"/red_carpet\"` and `get \"/plain\"` plus JS fetch GET to both. Survey links GET /plain call_site -> GET /plain route, but GET /red_carpet call_site has no edge to LIVE /red_carpet. linkers/http.py routes_by_method (~:1484-1514) is unchanged and elixir.py:1699 still stamps http_method=LIVE. MECHANISM: http linker buckets routes by exact method string; the LIVE transport sentinel is not treated as answering GET."  # 3f81

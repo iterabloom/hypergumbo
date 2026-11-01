@@ -21,3 +21,10 @@
     pr_ref:  # e67d
     description: "Analogue check for WI-juzaj. Neither Ruby (Gemfile / Gemfile.lock) nor PHP (composer.json / composer.lock) feeds a DependencyManifest, so Ruby and PHP boundary nodes get no directness stamp. Both need a name rule from the code reference to the package: Ruby require paths -> gem names (require 'active_support/core_ext' -> activesupport; not 1:1, needs a conservative rule + Gemfile.lock specs), PHP namespaces -> composer packages (composer.lock autoload psr-4 prefixes give an exact namespace->package map, preferable to any heuristic). Mirror mix_deps.py / npm_deps.py: scoped tables in DependencyManifest.scoped, a resolver in supply_chain._SCHEME_RESOLVERS, a LANGUAGE_PACKAGE_SCHEME entry, unmatched -> no stamp."  # e67d
     fields: {}  # e67d
+- op: discuss  # e2d5
+  at: '2026-11-01T10:56:15Z'  # e2d5
+  by: agent  # e2d5
+  actor: jgstern_agent  # e2d5
+  clock: 2  # e2d5
+  nonce: e2d5  # e2d5
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: survey of a fixture with Gemfile+Gemfile.lock (httparty) and composer.json (guzzle) stamps directness=None on all four ruby/php external_symbol nodes (summary direct:1 unknown:4). Only the composer.json dependency declaration node is stamped direct (INV-fuhin, 3c53837bb5). The npm control stamps axios boundary nodes direct. supply_chain.py LANGUAGE_PACKAGE_SCHEME is still {elixir, javascript, typescript}. MECHANISM: no manifest reader or package-name resolver for ruby/php schemes (LANGUAGE_PACKAGE_SCHEME / _SCHEME_RESOLVERS cover hex+npm only). SHARES MECHANISM WITH: WI-hajag,WI-hotut."  # e2d5

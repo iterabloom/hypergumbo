@@ -22,3 +22,18 @@
     fields:  # bf78
       statement: "The LaTeX analyzer produces the same run bookkeeping as TreeSitterAnalyzer analyzers and canonical edge endpoints."  # bf78
       root_cause: "latex.py ~412 replaces analyze() with its own loop, skipping the base loop's pass_version stamping, record_partial_parse and warnings; the labels set (~463) is never read, \\ref dst is the raw label (`sec:intro`) and src is `{rel_path}:file` instead of make_file_id."  # bf78
+- op: discuss  # b952
+  at: '2026-11-01T10:56:09Z'  # b952
+  by: agent  # b952
+  actor: jgstern_agent  # b952
+  clock: 2  # b952
+  nonce: b952  # b952
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: latex.py:449 still overrides analyze() wholesale. analyze_latex() on a 2-file fixture (one file with tree.has_error=True) gives run.pass_version='' and failed_files=[]; \\ref{sec:intro} edge is 'a.tex:file -> sec:intro'; the labels arg of _extract_edges_from_file is never read. Premise holds. The edge-endpoint half is the same defect INV-zipaj (filed 10-17) describes in more detail; suggest this item keep the run-bookkeeping half. MECHANISM: analyzer overrides TreeSitterAnalyzer.analyze() with a private loop, skipping base bookkeeping (pass_version stamping, record_partial_parse) and canonical id helpers. SHARES MECHANISM WITH: INV-zipaj."  # b952
+- op: update  # 6ca8
+  at: '2026-11-01T10:56:09Z'  # 6ca8
+  by: agent  # 6ca8
+  actor: jgstern_agent  # 6ca8
+  clock: 3  # 6ca8
+  nonce: 6ca8  # 6ca8
+  set:  # 6ca8
+    title: "latex: analyze() is overridden wholesale, so runs lack pass_version and failed_files (partial parses unrecorded); edge endpoints tracked in INV-zipaj"  # 6ca8

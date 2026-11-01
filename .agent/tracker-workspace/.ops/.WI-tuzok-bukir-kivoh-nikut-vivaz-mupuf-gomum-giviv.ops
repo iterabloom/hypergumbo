@@ -19,3 +19,18 @@
     pr_ref:  # 2d2e
     description: "FOUND 2026-09-24 in WI-mapor's nix A/B (postgrest). A curried application emits one calls edge per application level.\n\n`checkedShellScript { name = ...; } ''...''` parses as apply_expression(apply_expression(checkedShellScript, {...}), ''...''). Pass 2 visits BOTH apply_expression nodes, and each resolves its innermost function to checkedShellScript, so one call site yields 2 identical edges at one line. Present on dev before WI-mapor (13 edges on postgrest, 6 of them in 3 duplicate pairs), and unchanged by it.\n\nASKED: emit the edge from the OUTERMOST apply_expression of a chain only (skip an apply_expression whose parent is an apply_expression with it as the function child). Measure the edge delta on postgrest and loki."  # 2d2e
     fields: {}  # 2d2e
+- op: discuss  # 8e8d
+  at: '2026-11-01T10:55:57Z'  # 8e8d
+  by: agent  # 8e8d
+  actor: jgstern_agent  # 8e8d
+  clock: 2  # 8e8d
+  nonce: 8e8d  # 8e8d
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: analyze_nix_files on a fixture emits 2 identical edges for checkedShellScript {..} ''..'' and 3 for three 1 2 3. hypergumbo run shows one of each because deduplicate_edges collapses identical (src,dst,type,line) edges, so the duplicates are analyzer-level only; the behavior map is unaffected. MECHANISM: nix Pass 2 visits every nested apply_expression of a curried chain as its own call. SHARES MECHANISM WITH: WI-gadag."  # 8e8d
+- op: update  # d68a
+  at: '2026-11-01T10:55:57Z'  # d68a
+  by: agent  # d68a
+  actor: jgstern_agent  # d68a
+  clock: 3  # d68a
+  nonce: d68a  # d68a
+  set:  # d68a
+    description: "[REVIEW 2026-11-01, CURRENT] Review 2026-11-01 at dev 100b6fbb6e: analyze_nix_files on a fixture emits 2 identical edges for checkedShellScript {..} ''..'' and 3 for three 1 2 3. hypergumbo run shows one of each because deduplicate_edges collapses identical (src,dst,type,line) edges, so the duplicates are analyzer-level only; the behavior map is unaffected. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-09-24 in WI-mapor's nix A/B (postgrest). A curried application emits one calls edge per application level.\n\n`checkedShellScript { name = ...; } ''...''` parses as apply_expression(apply_expression(checkedShellScript, {...}), ''...''). Pass 2 visits BOTH apply_expression nodes, and each resolves its innermost function to checkedShellScript, so one call site yields 2 identical edges at one line. Present on dev before WI-mapor (13 edges on postgrest, 6 of them in 3 duplicate pairs), and unchanged by it.\n\nASKED: emit the edge from the OUTERMOST apply_expression of a chain only (skip an apply_expression whose parent is an apply_expression with it as the function child). Measure the edge delta on postgrest and loki."  # d68a

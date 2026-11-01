@@ -22,3 +22,10 @@
     fields:  # 4593
       statement: "not_duplicate_of is semantically symmetric (A distinct-from B implies B distinct-from A) but the tracker stores, mutates, and displays it directionally on the editing item only; a link recorded on one item is invisible from the other on text show, JSON, web UI, and TUI. Only the dedup validators read both directions; there is no mirroring, no shared symmetric read-resolution, and no symmetry repair."  # 4593
       root_cause: "not_duplicate_of is modeled as a per-item directional list[str] (models.py:381-383) like the genuinely-directed duplicate_of and isbefore, but its semantics are symmetric. Only the dedup-suppression consumers (validation.py:832, embeddings.py:353) read both directions; every display surface reads the edited item only, so one-sided storage is never reconciled into a symmetric view."  # 4593
+- op: discuss  # 77ec
+  at: '2026-11-01T10:55:48Z'  # 77ec
+  by: agent  # 77ec
+  actor: jgstern_agent  # 77ec
+  clock: 2  # 77ec
+  nonce: 77ec  # 77ec
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. Shape unchanged, lines moved: models.py:400 list field; tracker cli.py:253-254 (text show) and :306 (_item_to_dict) print the item's own list; validation.py:862 and embeddings.py:353 read both directions; serve.py/tui.py have no not_duplicate_of reference; _cmd_delete (cli.py:1306) sweeps isbefore only. Live: in `tracker --json list`, 163 of 165 links are one-sided; `tracker show WI-falum` lists not_duplicate_of WI-titiz, while `tracker --json show WI-titiz` gives not_duplicate_of: []. MECHANISM: symmetric relation stored and displayed as a per-item directional list with no read-time union."  # 77ec
