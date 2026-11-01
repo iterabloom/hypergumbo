@@ -19,3 +19,10 @@
     pr_ref:  # 683c
     description: "2026-10-14: prepare-release 9.0.0 ran on dev while ci-debug cron-status showed full-suite FAIL (test-all-packages, self-tree-validation, self-claims-gate, test-agent-infra) and all four nightly legs FAIL. release-check's own full suite caught only the one package-test failure; the self-claims, test-only-reachability and root-tests failures are cron-only gates it never runs. Proposed: release-check runs ./scripts/ci-debug cron-status and fails when the most recent full-suite or nightly verdict on dev is red (or older than N hours)."  # 683c
     fields: {}  # 683c
+- op: discuss  # 69c3
+  at: '2026-11-01T09:32:32Z'  # 69c3
+  by: agent  # 69c3
+  actor: jgstern_agent  # 69c3
+  clock: 2  # 69c3
+  nonce: 69c3  # 69c3
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT. scripts/release-check has no ci-debug / cron-status call (only the comment at :340-341 naming full-suite and nightly as siblings); scripts/prepare-release's only gate is ./scripts/release-check (:379); ci-debug cron-status exists (scripts/ci-debug:277, args ref/limit). Last changes: release-check e67891020a (10-14, pins), prepare-release 56f069874e (09-25) - neither added the check. ROOT-CAUSE GROUP: release/CI tooling reads only local or flattened evidence (with INV-libib, WI-totak). Status unchanged."  # 69c3

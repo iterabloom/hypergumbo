@@ -40,3 +40,18 @@
   clock: 4  # 3e93
   nonce: '3e93'  # 3e93
   message: "2026-10-27 correction to my note above: the decision is not open. The delegated ruling of 2026-09-25 (first entry) settles it: these rows move to net_listen when (a) INV-fogum is satisfied (done, PR #1221) and (b) WI-ritog seeds the handler argument of a net_listen call as untrusted_input (open; it already blocks this item). The strict xfails in test_medium_families.py are therefore correct as they stand and flip when the retag lands. Ignore the sentence 'If the decision is to keep JS on net_recv'."  # 3e93
+- op: update  # cbcd
+  at: '2026-11-01T09:32:31Z'  # cbcd
+  by: agent  # cbcd
+  actor: jgstern_agent  # cbcd
+  clock: 5  # cbcd
+  nonce: cbcd  # cbcd
+  set:  # cbcd
+    title: "Retag JS server launches (createServer / createSocket / Deno.listen*) to net_listen once WI-ritog seeds the handler argument as untrusted_input (ruled 2026-09-25; plan in thread)"  # cbcd
+- op: discuss  # 771a
+  at: '2026-11-01T09:32:31Z'  # 771a
+  by: agent  # 771a
+  actor: jgstern_agent  # 771a
+  clock: 6  # 771a
+  nonce: 771a  # 771a
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B2/). VERDICT: CURRENT on the premise; the title was stale ('decide'): the 2026-09-25 delegated ruling plus the 10-27 correction settle it - retag when WI-ritog seeds the handler argument. io_primitives/javascript.yaml:231-240 still lists http/https/net.createServer, dgram.createSocket, Deno.listen/listenTls/listenDatagram under net_recv; fixture server.js: io-boundaries http.createServer = net_recv, verify-claims untrusted-input-no-host-fs violated with source_primitives [http.createServer] (arm A). test_medium_families.py:124-126 strict xfails name this item; WI-ritog.isbefore includes it; INV-fogum satisfied. Stale text the plan already names: javascript.yaml EventSource/WebSocket notes cite analyzer_disclosure.CONSTRUCT_BLIND_ROWS, which is {} (analyzer_disclosure.py:322); docs/adr/0049:336 still says JavaScript is F2_EXEMPT / INV-misup-unreachable. Title re-scoped. ROOT-CAUSE GROUP: taint seeding bound to the launch call (blocked by WI-ritog). Status unchanged."  # 771a

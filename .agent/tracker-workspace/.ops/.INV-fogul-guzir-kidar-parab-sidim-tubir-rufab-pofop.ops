@@ -48,3 +48,10 @@
   set:  # d967
     fields:  # d967
       statement: "A citation or grandfather list stored in one place that points into source owned by another must stay valid under any edit that does not touch the construct it names. RE-SCOPED 2026-10-25: three consumers key on (path, line): test_module_key_axis.py (MODULE_KEY_NOTIONS), test_signature_axis.py (FACT_HOMES, LEGACY_VALUE_PARSERS) and signature_axis.find_undeclared_value_parsers, the closure gate, which reports false NEW undeclared parse sites after an unrelated insertion above a grandfathered line. The test-selection half is fixed (WI-lujon, scripts/citation_gate_tests.py)."  # d967
+- op: discuss  # d994
+  at: '2026-11-01T09:32:33Z'  # d994
+  by: agent  # d994
+  actor: jgstern_agent  # d994
+  clock: 5  # d994
+  nonce: d994  # d994
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C2/). VERDICT: CURRENT. module_key_axis.py:167,181,217,258,307,362,374 and signature_axis.py:195-398 still store line=N, anchor=...; the guarding tests still index the line (test_module_key_axis.py:126 `site.anchor not in lines[site.line - 1]`; test_signature_axis.py:113,153); signature_axis._declared_sites (:464) keys grandfathered parse sites by (path, line). Live probe: 18 pins, 0 broken right now, 17/18 anchors unique in-file (js_ts.py:1384 JS_KNOWN_GLOBALS occurs 5x). Churn: git log --since=2026-10-25 -G'line=[0-9]+,' on the two modules = 17 re-pin commits in 7 days (117 since filing; latest 2e78e70d27). The test-selection half is fixed (scripts/citation_gate_tests.py, 07b9ccef7d) as the 10-25 entry records. ROOT-CAUSE GROUP: hand-maintained cross-references with no mechanical check (with WI-kitij - the name-keyed twin - WI-nifif, META-jotob). Status unchanged."  # d994

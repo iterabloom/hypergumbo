@@ -72,3 +72,18 @@
   clock: 8  # 9dd6
   nonce: 9dd6  # 9dd6
   message: "FIX MERGED in PR #1383; status UNCHANGED (todo_hard), because the title's condition still largely holds: most of the 622 named-but-untyped receivers have causes this branch did not address. What merged: every let/var clause of if/guard/while binds (if flag, let s = f() no longer stamps f()'s type on flag); generic constructors, identifier initialisers and annotated closure parameters typed; position-aware, per-callable-body scope map. vapor module slot 1038 -> 1068 (4 other repos also up), call edges identical. Acceptance number (io-boundary primitives reached on vapor): UNCHANGED, 89 chains / 21 primitives in both arms -- a correct change with zero measured io effect. The remaining causes are filed: WI-dimad (P2, subscript emitted as a call), WI-zobif (closure params without annotation, the largest bucket), WI-silos, WI-hubik, WI-rajig, WI-jofin (P3). PROPOSAL: re-scope this row to the sizing it now carries, or close it in favour of those six.\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/mofil.md"  # 9dd6
+- op: update  # 398d
+  at: '2026-11-01T09:32:29Z'  # 398d
+  by: agent  # 398d
+  actor: jgstern_agent  # 398d
+  clock: 9  # 398d
+  nonce: 398d  # 398d
+  set:  # 398d
+    title: "swift: 510 untyped receivers on vapor carry a NAME that _type_of cannot resolve (36.2% of classified untyped sites, the largest bucket; was 622 / 27.1%) -- umbrella over WI-zobif, WI-hubik, WI-rajig, WI-jofin, WI-sizas"  # 398d
+- op: discuss  # ed52
+  at: '2026-11-01T09:32:29Z'  # ed52
+  by: agent  # ed52
+  actor: jgstern_agent  # ed52
+  clock: 10  # ed52
+  nonce: ed52  # ed52
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: PARTLY-STALE: mechanism holds, number and population stale, the item is now an umbrella. Re-ran the item's own instrument (~/hypergumbo_lab_notebook/dodop_swift_09102026/untyped.py, vapor @ ff88583): 4,886 method edges (was 5,243), typed 55.0% (was 36.0%), 1,407 classified; bucket B 'lowercase hint, _type_of None' = 510 (was 622), now the LARGEST bucket at 36.2%, ahead of chain-off-identifier 417 and self.<method> 331 (A1/mofil_untyped_now.out). Children: WI-dimad, WI-silos done; WI-zobif (unannotated closure param, swift.py:2758-2770 binds it untyped - the biggest cause), WI-hubik, WI-rajig, WI-jofin, WI-sizas todo_hard. Title re-scoped to the umbrella. PROPOSED (owner): keep as umbrella, or close on the 510 re-measure and let the five children carry it. ROOT-CAUSE GROUP: receiver type not carried to the emission site. Status unchanged."  # ed52

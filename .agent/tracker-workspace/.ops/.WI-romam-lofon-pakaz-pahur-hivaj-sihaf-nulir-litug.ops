@@ -19,3 +19,18 @@
     pr_ref:  # 1ebc
     description: "smart-test's coverage-select step queries ~/hypergumbo_lab_notebook/selection_index.sqlite (2.3 GB). Observed 2026-10-06 on this VM: with the file cold in page cache, coverage-select sat in D state (folio_wait) for 12+ min reading ~110 KB/s by random page access (81 MB read), although the disk reads sequentially at ~40 MB/s and 4 KB direct reads take 4-20 ms. A full sequential read (`cat file > /dev/null`, ~100 s) unblocked it; even then only ~1.1 GB stayed resident, so it recurs under memory pressure. Every agent run since has needed the warm-up advice. Fix in coverage-select: check the query plans (missing index → full scans in random order), shrink the index (prune/compact/VACUUM), or read the needed table sequentially. Acceptance: coverage-select finishes in < 1 min from a cold cache."  # 1ebc
     fields: {}  # 1ebc
+- op: update  # 5a38
+  at: '2026-11-01T09:32:32Z'  # 5a38
+  by: agent  # 5a38
+  actor: jgstern_agent  # 5a38
+  clock: 2  # 5a38
+  nonce: 5a38  # 5a38
+  set:  # 5a38
+    title: "smart-test coverage-select crawls on a cold page cache: selection_index.sqlite is 3.4 GB and uncompacted (auto_vacuum off, no VACUUM/prune); the cost is random B-tree page access on the fold and point lookups, not missing indexes"  # 5a38
+- op: discuss  # 7ce1
+  at: '2026-11-01T09:32:32Z'  # 7ce1
+  by: agent  # 7ce1
+  actor: jgstern_agent  # 7ce1
+  clock: 3  # 7ce1
+  nonce: 7ce1  # 7ce1
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT, numbers worse, one premise wrong. ~/hypergumbo_lab_notebook/selection_index.sqlite = 3,385,262,080 B (3.15 GiB; 2.3 GB at filing), page_size 4096, 826,480 pages, auto_vacuum 0, freelist 1,313; fincore 4.3 MB resident (cold again). No VACUUM/prune anywhere (selection_index.py:392 says 'nothing prunes it'). EXPLAIN (read-only): block WHERE path=? -> covering autoindex; test_block WHERE path=? AND name=? -> test_block_by_block; a full covering-index SCAN only on SELECT DISTINCT test_id FROM test_block (touching_test_files :430, speakable_test_files :452 - the opt-in narrow path). So 'missing index -> full scans' is wrong: every point query is indexed; the random reads are B-tree page access on the per-run fold (DELETE ... WHERE test_id=? + executemany INSERT into two B-trees, smart-test:702/1969) and point lookups over a file nothing compacts (about 1 GB/month). open_index (:125-126) sets no PRAGMA (no mmap_size/cache_size). Title re-scoped. ROOT CAUSE: append-only index with no compaction, so cold-cache cost scales with total size, not the query's working set (singleton, CI tooling family). Status unchanged."  # 7ce1

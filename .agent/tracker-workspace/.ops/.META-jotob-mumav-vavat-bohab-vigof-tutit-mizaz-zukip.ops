@@ -41,3 +41,10 @@
   clock: 4  # 3d11
   nonce: 3d11  # 3d11
   message: "Cross-ref (2026-10-25): the derived_skipped undercount is WI-munih."  # 3d11
+- op: discuss  # dac0
+  at: '2026-11-01T09:32:33Z'  # dac0
+  by: agent  # dac0
+  actor: jgstern_agent  # dac0
+  clock: 5  # dac0
+  nonce: dac0  # dac0
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C2/). VERDICT: PARTLY-STALE: two residuals closed since 10-25, three remain. Fixture survey: node supply_chain = the 8 spec keys (spec:1148-1151). Now documented: directness/ecosystem on nodes and the external_dep sub-buckets (spec:1170-1171, :1411, ADR-0041 2/3), vendored_analysed (spec:217), the in-tree-package tier rule (1ecb54e013). Still failing: (1) spec:1430 says max_tier_applied is null/absent when no tier filter was applied, but a default run emits 3 (cli.py:13307 limits.max_tier_applied = effective_tier); (2) the 9 limits list (spec:1417-1432) omits limits.supply_chain (emitted {} every run; limits.py:91-96; schema.json:2241 SupplyChainLimits), tier_filtered_files (schema.json:2319) and test_files_excluded (emitted false; schema.json:2337) - 0 spec hits each. MECHANISM: limits.* fields are added at the emitter and regenerated into schema.json, but the spec 9 list is hand-maintained with no schema-to-spec cross-check. ROOT-CAUSE GROUP: hand-maintained cross-references with no mechanical check (with INV-fogul, WI-kitij, WI-nifif). Status unchanged."  # dac0

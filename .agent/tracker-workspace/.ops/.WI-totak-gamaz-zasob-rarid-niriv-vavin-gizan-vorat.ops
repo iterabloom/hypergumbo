@@ -47,3 +47,18 @@
   clock: 5  # 9ec4
   nonce: 9ec4  # 9ec4
   message: "ML-STACK CARVE-OUT RETIRED in PR #1250 (6d01ea8d9f). 24 ids removed from all four lists (ci.yml, release.yml, woodpecker.yml, scripts/release-check).\n\nEvidence, 2026-09-27, live pip-audit -f json runs (records: ~/hypergumbo_lab_notebook/totak_09272026/):\n- dev box (torch 2.14.0, transformers 5.17.0, joblib 1.5.3), NO ignores: only diskcache PYSEC-2026-2447 (alias CVE-2025-69872) and nltk PYSEC-2026-3740 fire, both fix_versions [].\n- rebuilt ci.yml/woodpecker audit env and rebuilt release.yml env (core[dev] + 4 lang pkgs + tracker + pins): neither installs torch, transformers, joblib, nltk or diskcache; each exits 0 with only the two CI ignores.\n- release-check's new audit command on the dev box exits 0.\n\nStructural: the files claimed the lists were identical / in sync and nothing checked it. tests/test_audit_ignore_lists.py now pins the three CI lists equal and release-check = CI + its two named local-only carve-outs. Mutation: adding PYSEC-2026-139 back to woodpecker.yml alone turns it red.\n\nCorrection: release-check said diskcache arrives via CairoSVG/safety; pip show says llama_cpp_python. Fixed in the comments.\n\nSTAYS OPEN per its own close condition: diskcache and nltk still have no fix.\n\nALSO SEEN, NOT ACTED ON (outside this row's defined scope, filed separately): in both rebuilt envs an audit with NO ignores at all exits 0 -- pytest 9.0.3 and pip 26.2.1 resolve, which fix the two \"permanent\" CI ignores CVE-2025-71176 and CVE-2026-3219. Not dropped here: the self-hosted runner's toolcache Python is not what I rebuilt."  # 9ec4
+- op: update  # 7d50
+  at: '2026-11-01T09:32:32Z'  # 7d50
+  by: agent  # 7d50
+  actor: jgstern_agent  # 7d50
+  clock: 6  # 7d50
+  nonce: 7d50  # 7d50
+  set:  # 7d50
+    title: "Re-check the four pip-audit ignores in release-check (diskcache CVE-2025-69872 and nltk PYSEC-2026-3740 no-fix; pytest CVE-2025-71176 / pip CVE-2026-3219 possibly dead); drop each when its fix is installed"  # 7d50
+- op: discuss  # 707c
+  at: '2026-11-01T09:32:33Z'  # 707c
+  by: agent  # 707c
+  actor: jgstern_agent  # 707c
+  clock: 7  # 707c
+  nonce: 707c  # 707c
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: the ignore list is CURRENT but the title/description were stale; 'has upstream fixed it' is not checkable here (no network). Live ignores scripts/release-check:277-279: CVE-2025-71176 (pytest) and CVE-2026-3219 (pip), mirrored in ci.yml:437, release.yml:88, woodpecker.yml:166; CVE-2025-69872 (diskcache, alias PYSEC-2026-2447) and PYSEC-2026-3740 (nltk, CVE-2026-81726) local-only. Installed here: diskcache 5.6.3, nltk 3.10.3, llama_cpp_python 0.3.19; pytest 9.0.3, pip 26.2.2 (the 09-27 entry says these resolve the two CI ignores, so those two may be dead). Neither diskcache nor nltk is in any pyproject.toml. torch PYSEC-2026-139 was retired 09-27. tests/test_audit_ignore_lists.py exists. Title re-scoped to the four. ROOT CAUSE: a static carve-out list with no mechanised re-check cadence (CI tooling family). Status unchanged."  # 707c

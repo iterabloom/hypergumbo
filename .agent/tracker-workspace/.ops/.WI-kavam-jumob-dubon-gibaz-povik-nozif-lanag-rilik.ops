@@ -27,3 +27,18 @@
   clock: 2  # 45f6
   nonce: 45f6  # 45f6
   message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). THE RUBY LIMB'S PREMISE IS WRONG; php and elixir hold. Status unchanged.\n\nRUBY: the \"NO SYMBOL\" claim is false today, and it was false at filing.\n- The parity test's own fixture (m.rb = `APP = C.new`), run through the full survey pipeline, emits `ruby:m.rb:1-1:APP:variable`. The direct analyzer call emits it too.\n- The emitter is WI-jusus, 699239d969 (2026-07-13), \"emit kind=field/variable symbols for Ruby data members\". That landed 18 days BEFORE this row (07-31).\n- What Ruby actually lacks is the `constructed_from` meta key: the emitted APP node's meta is {'visibility_signal': 'default'}. So Ruby is the row's OTHER, \"bounded\" shape, KEY MISSING, the same fix the six languages already closed.\n- Consequently the strict-xfail reason for ruby in packages/hypergumbo-core/tests/test_constructed_from_parity.py (KNOWN_HOLES[\"ruby\"], \"NO SYMBOL (WI-kavam) ... emits no module-level variable/constant symbol\") is a false statement. The cell stays red only because the key is missing, so the xfail still holds for a different reason than the one it states.\n\nPHP, reproduced: `<?php $app = new C();` at file scope emits only the class/file symbols, no variable.\nELIXIR, reproduced: `defmodule M do @app C.new() end` emits only module M.\n\nSuggested re-scope: split Ruby out as a key-stamping fix (and correct the xfail reason in the same PR). php + elixir stay the prerequisite-symbol gap this row describes."  # 45f6
+- op: update  # f461
+  at: '2026-11-01T09:32:28Z'  # f461
+  by: agent  # f461
+  actor: jgstern_agent  # f461
+  clock: 3  # f461
+  nonce: f461  # f461
+  set:  # f461
+    title: "php and elixir emit no file-scope binding symbol, so a binding has nothing to carry constructed_from; ruby emits the variable but never stamps constructed_from (the parity xfail reason text is wrong)"  # f461
+- op: discuss  # bcc5
+  at: '2026-11-01T09:32:28Z'  # bcc5
+  by: agent  # bcc5
+  actor: jgstern_agent  # bcc5
+  clock: 4  # bcc5
+  nonce: bcc5  # bcc5
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: PARTLY-STALE, confirming the 2026-09-25 entry; nothing changed since. Fixture: ruby emits ruby:m.rb:2-2:APP:variable (meta visibility_signal only, no constructed_from); php emits only C:class + file; elixir emits C, C.new, M, M.a and `calls M -> C.new` on the module, no @app symbol. test_constructed_from_parity.py:64-69 still says 'NO SYMBOL (WI-kavam)' for ruby (wrong). MECHANISM: php (php.py:1264) and elixir (_module_attribute_call :879 reads attributes for behaviours only) have no file-scope binding-symbol arm; ruby lacks only the constructed_from stamp. Title re-scoped. PROPOSED (owner): split into ruby key-stamp (+ fix the xfail reason) vs php/elixir symbol emission. ROOT-CAUSE GROUP: analyzer has no arm for the construct. Status unchanged."  # bcc5

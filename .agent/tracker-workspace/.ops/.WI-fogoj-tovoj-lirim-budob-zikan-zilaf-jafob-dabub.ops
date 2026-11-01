@@ -1,0 +1,23 @@
+- op: create  # 4d7f
+  at: '2026-11-01T09:32:34Z'  # 4d7f
+  by: agent  # 4d7f
+  actor: jgstern_agent  # 4d7f
+  clock: 1  # 4d7f
+  nonce: 4d7f  # 4d7f
+  data:  # 4d7f
+    kind: work_item  # 4d7f
+    title: "rust: var_types is FILE-scoped, so an annotated `let child: Child` in one function types every same-named binding in the file (false-positive direction; WI-rupah's own fixture is confounded by it)"  # 4d7f
+    status: todo_hard  # 4d7f
+    priority: 3  # 4d7f
+    parent:  # 4d7f
+    tags:  # 4d7f
+    - rust  # 4d7f
+    - analysis_quality  # 4d7f
+    - taint  # 4d7f
+    - receiver_typing  # 4d7f
+    isbefore: []  # 4d7f
+    duplicate_of: []  # 4d7f
+    not_duplicate_of: []  # 4d7f
+    pr_ref:  # 4d7f
+    description: "FOUND 2026-11-01 during the P2 review of WI-rupah (evidence: ~/hypergumbo_lab_notebook/p2_review_11012026/B1/fx_rupah*). WHAT. _extract_var_types_rust builds one name -> type map per FILE (rust.py:412, 493-497: 'file-scoped (not method-scoped) ... same variable name carries different types across functions'). In WI-rupah's five-function fixture the one annotated `let child: std::process::Child` in annotated() typed every `child` in the file, so all five functions reported the Child wait_with_output source - including unannotated_q, which alone (fx_rupah_single: the same code in its own file) mints nothing. So a type annotation in an unrelated function manufactures receiver types, and with them taint sources and typed call binds, for any same-named binding elsewhere in the file. INVARIANT: a binding's type comes from its own scope (WI-kosar: resolve by position, not by name). SWEEP: check the other analyzers that keep a per-file var_types map (grep 'file-scoped' / var_types under packages/hypergumbo-lang-*/src) for the same leak. ACCEPTANCE: in one file with `fn a(){ let child: Child = ...; child.wait_with_output(); }` and `fn b(){ let child = Command::new(\"x\").spawn().unwrap(); child.wait_with_output(); }`, b's call carries no receiver_type_hint Child and mints no source (until WI-rupah gives it one for the right reason); add that single-file control to WI-rupah's acceptance too."  # 4d7f
+    fields: {}  # 4d7f
