@@ -1562,7 +1562,7 @@
               "description": "ipc event_publishes edge: what the sender/receiver join compared (``_name_args`` join kind: 'literal', 'constant', 'variable' or 'unresolved')."
             },
             "class_name": {
-              "description": "Puppet includes edge: the included class's name."
+              "description": "Puppet includes / inherits edge: the named class's full name."
             },
             "client_directive": {
               "description": "Astro component edge: the ``client:*`` hydration directive on the tag, '' when none."
