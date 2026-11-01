@@ -27,3 +27,20 @@
   clock: 2  # 229b
   nonce: 229b  # 229b
   message: "Sibling: WI-povub-butok-vunij-filar-lojom-nuzif-pivag-kikol (js, same bare-name last-writer-wins shape); test limb: WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum."  # 229b
+- op: update  # 3928
+  at: '2026-11-01T23:36:04Z'  # 3928
+  by: agent  # 3928
+  actor: jgstern_agent  # 3928
+  clock: 3  # 3928
+  nonce: '3928'  # 3928
+  set:  # 3928
+    status: wont_do  # 3928
+  add:  # 3928
+    duplicate_of: [WI-dabul-dolib-lakuk-suzov-nugad-jodap-gizin-dasot]  # 3928
+- op: discuss  # 35dd
+  at: '2026-11-01T23:36:04Z'  # 35dd
+  by: agent  # 35dd
+  actor: jgstern_agent  # 35dd
+  clock: 4  # 35dd
+  nonce: 35dd  # 35dd
+  message: "MERGED into WI-dabul (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: same root (LlvmIrAnalyzer inherits base register_symbol, an unconditional overwrite, so a declare replaces a define in the bare-name table) and same fix (prefer definitions over declarations, the pattern c.py already uses). WI-pagoj was the 11-01 split restating it with acceptance criteria; those criteria now apply here. The test-order half stays in WI-sipoj."  # 35dd

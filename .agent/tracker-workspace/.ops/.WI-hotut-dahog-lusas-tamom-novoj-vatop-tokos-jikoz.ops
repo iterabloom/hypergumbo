@@ -36,3 +36,20 @@
   nonce: 28f9  # 28f9
   set:  # 28f9
     description: "[REVIEW 2026-11-01, CURRENT] @100b6fbb6e elixir.yaml/javascript.yaml carry no stdlib_modules/stdlib_prefixes; io_boundary.module_ecosystem unchanged. Fixture fx_hotut: fs.readFileSync chain dst_ecosystem None (axios.get third_party, Python builtins.open stdlib); fx_hotut2: elixir File.read!/Enum.map/:ets.new nodes carry no ecosystem/directness. New since filing: WI-tufob (2613b61e34, 2026-10-30) added js_package_entry.NODE_CORE_MODULES, a reader-local Node core list ADR-0041 s3 says must not be the source. Overlaps WI-biruk (all non-Python catalogues). (Original text below; the review entry in the thread has the evidence.)\n\nAfter WI-juzaj, an Elixir or JS/TS boundary node that maps to a declared/locked package gets ecosystem=third_party, but stdlib references still get no ecosystem and no directness: Elixir (Enum, String, Map, GenServer, Logger...) and Erlang/OTP atom modules (:ets, :crypto, :erlang...) - the most common Elixir boundary paths on thc - and Node built-ins (fs, path, url, assert/strict; the JS analyzer strips 'node:'). ADR-0041 §3 requires the stdlib list to come from the single-source io_primitives catalog (stdlib_modules / stdlib_prefixes in elixir.yaml / javascript.yaml), not from a reader-local list. Blocker to solve first: io_boundary.module_ecosystem returns third_party for EVERY non-stdlib module once a catalog enumerates a stdlib, and Elixir/JS boundary paths also carry unresolved in-repo references (un-expanded aliases like 'Repo'/'JS', first-party modules the analyzer did not resolve, relative imports the JS analyzer strips to a bare name, the 'external' placeholder) - they would be mislabelled third_party. Also check verify_claims consumers of is_stdlib_module (untraced_modules grouping) before populating the catalogs."  # 28f9
+- op: update  # 4b69
+  at: '2026-11-01T23:36:13Z'  # 4b69
+  by: agent  # 4b69
+  actor: jgstern_agent  # 4b69
+  clock: 4  # 4b69
+  nonce: 4b69  # 4b69
+  set:  # 4b69
+    status: wont_do  # 4b69
+  add:  # 4b69
+    duplicate_of: [WI-biruk-lamig-fibov-vusih-jalul-jolim-punaf-zikul]  # 4b69
+- op: discuss  # c07b
+  at: '2026-11-01T23:36:15Z'  # c07b
+  by: agent  # c07b
+  actor: jgstern_agent  # c07b
+  clock: 5  # c07b
+  nonce: c07b  # c07b
+  message: "MERGED into WI-biruk (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: same root (only python.yaml enumerates stdlib_modules) and fix site (module_ecosystem + per-catalogue stdlib enumeration). CARRY WI-hotut's blocker: enumerating one stdlib makes every other module of that language read third_party, so the enumeration must land with the third_party labelling decided."  # c07b

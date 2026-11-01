@@ -52,3 +52,10 @@
   nonce: e4bc  # e4bc
   set:  # e4bc
     description: "[REVIEW 2026-11-01, PARTLY-STALE] Checked at dev 100b6fbb6e: tui.py:369 still imports only preview.extract_svg_paths and format_preview_placeholder; no caller of render_svg_preview, preview_pipeline, svg_detection, svg_injection or screenshot_save in packages/*/src, scripts, hooks or workflows. The detectors still disagree: preview drops 'docs/x.svg', svg_detection keeps it. ADR-0020 Status was already corrected (PR #1538), so the title's ADR clause is stale; the wire-vs-delete decision is still open. (Original text below; the review entry in the thread has the evidence.)\n\nThe TUI imports only preview.extract_svg_paths and preview.format_preview_placeholder. render_svg_preview (preview.py), preview_pipeline (whole module, its PreviewCache unused), svg_detection (a second path detector that disagrees: 'docs/x.svg' accepted vs rejected) and svg_injection (a second annotation transform; tui.py ~3815-3899 reimplements it differently) have no production caller (checked packages/, scripts/, hooks, workflows, entry points, git log -S: never wired since e4a0c60237). ADR-0020's Status lists them as shipped. Decide: wire the preview or delete the dead pairs and correct ADR-0020. Docstrings and the I/O allowlist were corrected in the 2026-10-10 audit PR.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # e4bc
+- op: discuss  # 4b0d
+  at: '2026-11-01T23:36:09Z'  # 4b0d
+  by: agent  # 4b0d
+  actor: jgstern_agent  # 4b0d
+  clock: 6  # 4b0d
+  nonce: 4b0d  # 4b0d
+  message: "Folds in WI-busad (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-busad closed wont_do with duplicate_of here). WI-hobuj's wire-or-delete decision names screenshot_save explicitly; WI-busad is that one module (plus the TUI save path, which follows the wiring choice). Same audit, filed 5 s apart. Read WI-busad's thread for its repro and evidence."  # 4b0d

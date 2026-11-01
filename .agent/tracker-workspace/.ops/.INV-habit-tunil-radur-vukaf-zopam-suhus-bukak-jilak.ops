@@ -37,3 +37,10 @@
   nonce: 6ca8  # 6ca8
   set:  # 6ca8
     title: "latex: analyze() is overridden wholesale, so runs lack pass_version and failed_files (partial parses unrecorded); edge endpoints tracked in INV-zipaj"  # 6ca8
+- op: discuss  # b95f
+  at: '2026-11-01T23:36:20Z'  # b95f
+  by: agent  # b95f
+  actor: jgstern_agent  # b95f
+  clock: 4  # b95f
+  nonce: b95f  # b95f
+  message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-habit's partial-parse half is covered by WI-tikul (latex is on its 23-analyzer custom-analyze-loop list) and its pass_version half is fixed by the same move onto the base loop; its edge-endpoint half belongs to INV-zipaj."  # b95f

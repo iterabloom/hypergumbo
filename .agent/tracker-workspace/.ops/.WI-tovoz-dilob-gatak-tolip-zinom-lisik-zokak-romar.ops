@@ -20,3 +20,10 @@
     pr_ref:  # 07cd
     description: "From the WI-kosup reader census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §2.2-2.4). READERS KEYED TO A KEY OR VALUE NO PRODUCER WRITES (LIVE rule 7, the inverse shape), all six emit shapes checked plus the meta_key_coherence scan:\n- datamodels.py ~:242 reads Symbol.meta[\"parent_bases\"]; producers write base_classes / parent_base_classes. The base-class data-model detection there never fires.\n- grpc.py ~:1130 reads meta[\"extends\"]; Java writes base_classes.\n- entrypoints.py ~:160 reads meta[\"imports\"], which nothing writes.\n- cli.py ~:8808 and jackson_dispatch.py ~:311 fall back to meta copies of typed fields that are never written there.\n- call_kind (the ADR-0027 fold target for function_call/subprocess_call/db_query/abi_call) has no reader, while the CLI hint at cli.py ~:2403 still counts the pre-fold kind names db_query / subprocess_call: those two counts are always zero.\n- scripts/bakeoff-broad ~:1097 filters meta.framework against the concepts[].framework vocabulary; 15 of its 16 values never occur there.\nEach: either point the reader at the key/value producers write (and test it on a fixture that reaches it), or delete the dead read."  # 07cd
     fields: {}  # 07cd
+- op: discuss  # 44d4
+  at: '2026-11-01T23:36:06Z'  # 44d4
+  by: agent  # 44d4
+  actor: jgstern_agent  # 44d4
+  clock: 2  # 44d4
+  nonce: 44d4  # 44d4
+  message: "Folds in WI-kiluh (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-kiluh closed wont_do with duplicate_of here). WI-kiluh is exactly this item's first bullet: datamodels.py reads meta parent_bases, which no analyzer writes (they write base_classes); same fix. WI-kiluh's measure-first plan carries over. Read WI-kiluh's thread for its repro and evidence."  # 44d4

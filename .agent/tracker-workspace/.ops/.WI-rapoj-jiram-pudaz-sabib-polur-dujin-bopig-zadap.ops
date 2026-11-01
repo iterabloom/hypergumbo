@@ -19,3 +19,20 @@
     pr_ref:  # 1784
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. jni.py:162 checks parts[i + 1] == \"1\"; a mid-name underscore splits to \"1data\". my_1pkg also becomes my.1pkg. v11."  # 1784
     fields: {}  # 1784
+- op: update  # bd95
+  at: '2026-11-01T23:36:07Z'  # bd95
+  by: agent  # bd95
+  actor: jgstern_agent  # bd95
+  clock: 2  # bd95
+  nonce: bd95  # bd95
+  set:  # bd95
+    status: wont_do  # bd95
+  add:  # bd95
+    duplicate_of: [WI-pimiz-zaput-ditom-fiduz-sagib-guzok-nigis-juvad]  # bd95
+- op: discuss  # d7a4
+  at: '2026-11-01T23:36:07Z'  # d7a4
+  by: agent  # d7a4
+  actor: jgstern_agent  # d7a4
+  clock: 3  # d7a4
+  nonce: d7a4  # d7a4
+  message: "MERGED into WI-pimiz (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: same function (jni.py parse_jni_function_name), same root (split on '_' first, then patch escapes, instead of decoding the JNI mangling grammar); one real decoder fixes both the lowercase overload-suffix case (this item) and the mid-segment _1 escape (WI-rapoj: Java_..._process_1data)."  # d7a4

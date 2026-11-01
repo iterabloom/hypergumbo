@@ -19,3 +19,20 @@
     pr_ref:  # 96a6
     description: "From WI-borib (docs/audits/0026). Verdict SINGLE-SOURCE.\n\ncmd_dead_code_maybe rebuilds each node into a Symbol by hand for detect_entrypoints (cli.py ~9408-9430), keeping id/name/kind/language/discovery_language/protocol_origin/path/span/meta and dropping supply_chain (tier) and modifiers. The edges on the same path already go through Edge.from_dict for exactly this reason (WI-higap, INV-nudoj). So the one shared helper, detect_entrypoints, gets different inputs in dead-code than in survey/slice/sketch: agent A's map (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/A_runs/synth.json) with one export set to tier 3 -- slice, sketch and the persisted entrypoints drop it, dead-code keeps it as a seed at rank 0.84.\n\nNOT measured on a real repo (dead-code does not print its seeds; agent A's appendix has an in-process diff). ACCEPTANCE: the rebuild goes through the one Symbol deserializer; a test that detect_entrypoints over dead-code's Symbols equals it over the survey's on a map with a tier-3 export."  # 96a6
     fields: {}  # 96a6
+- op: update  # 92b5
+  at: '2026-11-01T23:36:05Z'  # 92b5
+  by: agent  # 92b5
+  actor: jgstern_agent  # 92b5
+  clock: 2  # 92b5
+  nonce: 92b5  # 92b5
+  set:  # 92b5
+    status: wont_do  # 92b5
+  add:  # 92b5
+    duplicate_of: [WI-zijop-kalib-hiris-fopuf-budig-sijof-batuv-nudaz]  # 92b5
+- op: discuss  # 3c33
+  at: '2026-11-01T23:36:05Z'  # 3c33
+  by: agent  # 3c33
+  actor: jgstern_agent  # 3c33
+  clock: 3  # 3c33
+  nonce: 3c33  # 3c33
+  message: "MERGED into WI-zijop (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: same site (cmd_dead_code_maybe builds Symbol(...) by hand), same dropped fields (supply_chain tier, modifiers), same fix (Symbol.from_dict). WI-misin's WI-borib acceptance test carries over here. NOTE: WI-misin was P3, this item is P4; the priority was NOT changed (owner call)."  # 3c33

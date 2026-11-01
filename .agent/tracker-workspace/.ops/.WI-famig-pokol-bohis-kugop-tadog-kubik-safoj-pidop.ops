@@ -105,3 +105,10 @@
   clock: 12  # e04c
   nonce: e04c  # e04c
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint1/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: infer_summary (function_summaries/__init__.py:397) still has no production caller; param_to_calls/CallArgFlow/param_to_param absent from packages/*/src; return_sources still computed and dropped (:442-453); cross_function bail at taint.py:6262; ADR-0017 Status line splits §4a/§4b. ADR-0052 (2026-09-09) retiring the removal-coverage goal reinforces the 09-01 option-3 ruling; walk vocabulary 'unconfirmed' is now 'refuted'. Remains the deferred decision's home. MECHANISM: §4a summary dataclass has no param-to-call-argument field and infer_summary is unwired, so §3a bails cross_function. SHARES MECHANISM WITH: WI-ritog,WI-nulam."  # e04c
+- op: discuss  # eb77
+  at: '2026-11-01T23:36:19Z'  # eb77
+  by: agent  # eb77
+  actor: jgstern_agent  # eb77
+  clock: 13  # eb77
+  nonce: eb77  # eb77
+  message: "PARTIAL overlap noted on WI-ditom (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ditom's 'infer_summary has no production caller; summary fields unread' bullet is WI-famig's §4a-unwired finding; track it there."  # eb77

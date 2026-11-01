@@ -27,3 +27,10 @@
   clock: 2  # e7f1
   nonce: e7f1  # e7f1
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint1/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: CFG+def/use probe still gives python 'o.attr = 1' def=[o] use=[] and go 'cmd.Stdin, cmd.Stdout = os.Stdin, x' def=[cmd,cmd] use=[os,x]; the earlier def of o/cmd is killed. verify-claims on the Request/req.timeout/urlopen shape: ddg_mixed escaped with the field store, ddg reached without it. NOT-CHECKED part probed: msg = secret; msg.tag = 1; sock.sendall(msg) escapes (refuted 0, removed 0). Premise unchanged. MECHANISM: field/attribute store recorded as a strong def of the base variable with no use (no weak update). SHARES MECHANISM WITH: WI-ruhuv,INV-dukam,WI-buzup."  # e7f1
+- op: discuss  # 3444
+  at: '2026-11-01T23:36:20Z'  # 3444
+  by: agent  # 3444
+  actor: jgstern_agent  # 3444
+  clock: 3  # 3444
+  nonce: '3444'  # 3444
+  message: "PARTIAL overlap noted on WI-ruhuv (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ruhuv part 3 (TS this.a=v / Python self.a=v treated as a STRONG receiver write) is WI-jahip's weak-update ask for those languages; part 1 (short-circuit nested assignment) stays here."  # 3444

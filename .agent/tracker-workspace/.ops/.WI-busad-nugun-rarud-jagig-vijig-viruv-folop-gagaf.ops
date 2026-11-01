@@ -36,3 +36,20 @@
   nonce: 98ff  # 98ff
   set:  # 98ff
     description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 100b6fbb6e. Still holds: no production code references save_screenshot_with_item (collect_production_references: loads=[]; save_screenshot is referenced only inside screenshot_save.py), the key is in .ci/test-only-reachability-baseline.json, and tui.action_capture_screenshot (now ~3821-3871) writes <tracker_root>/screenshots with a $TMPDIR/<uid>-htrac-screenshots fallback. No longer holds: 'ADR-0020 lists it shipped'. 17a5440feb (2026-10-11 07:32, after filing) rewrote ADR-0020 to say screenshot_save.py exists and 'the TUI uses neither'. (Original text below; the review entry in the thread has the evidence.)\n\nWI-rujoz was closed done with 'TUI wiring is part of WI-fubij/WI-gikut'; both are done and neither wired it. tui.action_capture_screenshot (~3740-3791) saves under .agent/screenshots/ with a $TMPDIR fallback. .ci/test-only-reachability-baseline.json lists save_screenshot_with_item. Decide: wire or delete (ADR-0020 lists it shipped).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 98ff
+- op: update  # 35e9
+  at: '2026-11-01T23:36:09Z'  # 35e9
+  by: agent  # 35e9
+  actor: jgstern_agent  # 35e9
+  clock: 4  # 35e9
+  nonce: '35e9'  # 35e9
+  set:  # 35e9
+    status: wont_do  # 35e9
+  add:  # 35e9
+    duplicate_of: [WI-hobuj-susot-rohob-dofug-jodut-lumik-zufor-dijog]  # 35e9
+- op: discuss  # 38c2
+  at: '2026-11-01T23:36:09Z'  # 38c2
+  by: agent  # 38c2
+  actor: jgstern_agent  # 38c2
+  clock: 5  # 38c2
+  nonce: 38c2  # 38c2
+  message: "MERGED into WI-hobuj (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: WI-hobuj's wire-or-delete decision names screenshot_save explicitly; WI-busad is that one module (plus the TUI save path, which follows the wiring choice). Same audit, filed 5 s apart."  # 38c2

@@ -19,3 +19,10 @@
     pr_ref:  # 5c2e
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. jni.py:145 r\"__[A-Z\\d_]+$\". ..._processData__Ljava_lang_String_2 gives package com.example.MyClass.processData..Ljava.lang, class String, method 2; ..._processData__ gives empty class and method. v11."  # 5c2e
     fields: {}  # 5c2e
+- op: discuss  # 166b
+  at: '2026-11-01T23:36:07Z'  # 166b
+  by: agent  # 166b
+  actor: jgstern_agent  # 166b
+  clock: 2  # 166b
+  nonce: 166b  # 166b
+  message: "Folds in WI-rapoj (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-rapoj closed wont_do with duplicate_of here). same function (jni.py parse_jni_function_name), same root (split on '_' first, then patch escapes, instead of decoding the JNI mangling grammar); one real decoder fixes both the lowercase overload-suffix case (this item) and the mid-segment _1 escape (WI-rapoj: Java_..._process_1data). Read WI-rapoj's thread for its repro and evidence."  # 166b

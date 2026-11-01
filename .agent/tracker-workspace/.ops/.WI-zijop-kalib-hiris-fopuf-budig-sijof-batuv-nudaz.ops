@@ -35,3 +35,10 @@
   nonce: f7d7  # f7d7
   set:  # f7d7
     description: "[REVIEW 2026-11-01, CURRENT] Review 2026-11-01 at dev 9ae4abe13f. cmd_dead_code_maybe (cli.py:9421-9442) still builds Symbol by hand. It now also passes discovery_language/protocol_origin, but not supply_chain_tier or modifiers. Fixture with vendor/lib/server.py + app/main.py flask handlers: hand-built gives the vendored handler tier 1, rank 1.0; Symbol.from_dict gives tier 3, rank 0.354. Correction: the impact is not limited to --min-confidence > 0, because detect_entrypoints applies its own MIN_ENTRYPOINT_CONFIDENCE=0.10 floor and the size cap (_diversity_cap) by rank_score, and both run at the default. (Original text below; the review entry in the thread has the evidence.)\n\ncmd_dead_code_maybe (cli.py ~:9192-9207) builds Symbol(id, name, kind, language, path, span, meta) by hand for entrypoint detection instead of Symbol.from_dict, dropping supply_chain_tier (defaults to 1) and modifiers. detect_entrypoints reads both (tier>=3 rank penalties ~entrypoints.py:1735/1852; declaration-vs-definition dedup ~:1585), so vendored entrypoints are not demoted and declaration duplicates are not collapsed. Impact limited to --min-confidence > 0 (default 0.0). Fix: route through Symbol.from_dict like every other read path. Confirmed by reading, 2026-10-16 docstring-staleness audit."  # f7d7
+- op: discuss  # 732b
+  at: '2026-11-01T23:36:05Z'  # 732b
+  by: agent  # 732b
+  actor: jgstern_agent  # 732b
+  clock: 4  # 732b
+  nonce: 732b  # 732b
+  message: "Folds in WI-misin (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-misin closed wont_do with duplicate_of here). same site (cmd_dead_code_maybe builds Symbol(...) by hand), same dropped fields (supply_chain tier, modifiers), same fix (Symbol.from_dict). WI-misin's WI-borib acceptance test carries over here. NOTE: WI-misin was P3, this item is P4; the priority was NOT changed (owner call). Read WI-misin's thread for its repro and evidence."  # 732b

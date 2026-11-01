@@ -34,3 +34,20 @@
   nonce: bff9  # bff9
   set:  # bff9
     description: "[REVIEW 2026-11-01, CURRENT] Review 2026-11-01 at dev 100b6fbb6e: the fallback is now profile.py:3530, text unchanged. The shared right-anchored helper exists (ir.symbol_path_slot, d1116cc1af): on dart:dart:io:0-0:module:module it returns dart:io vs bare split dart. Sibling ir._extract_path_slot is fixed. The same bare split also parses the dst at profile.py:3519-3523 (imported_module = parts[1]). (Original text below; the review entry in the thread has the evidence.)\n\nprofile.py:3366 parses a symbol id path slot with a bare split(\":\")[1], inline, with no helper and no colon-tolerance.\n\nTHE CODE:\n    src_path = sym_path.get(edge.src, \"\")\n    if not src_path and \":\" in edge.src:\n        src_path = edge.src.split(\":\")[1] if len(edge.src.split(\":\")) > 1 else \"\"\n\nSame defect as ir._extract_path_slot (filed separately): per ADR-0036 D1a the path slot is the one colon-TOLERANT slot in the grammar, so parts[1] truncates any path containing a colon -- dart:dart:io:0-0:module:module yields dart rather than dart:io.\n\nDISTINCT CONSUMER, DISTINCT SYMPTOM, which is why it is its own item. This value feeds module_importers, keyed by imported module and used to attribute WHICH FILES import a module in the profile output. A truncated path attributes the import to a path that does not exist, in a report a human reads to understand dependency structure.\n\nMITIGATING: it is a FALLBACK, reached only when the sym_path lookup misses, so it fires less often than a primary parse would. That lowers frequency, not correctness, and the fallback path is exactly where nobody looks.\n\nAlso note the belt-and-braces shape of the guard -- it splits the string twice and checks the length after already testing \":\" in edge.src -- which reads as code written defensively without a contract to be defensive ABOUT. A shared helper removes both the duplication and the guesswork.\n\nFixed for free if the six-homes consolidation item lands; filed separately because the standalone fix is one line."  # bff9
+- op: update  # c484
+  at: '2026-11-01T23:36:17Z'  # c484
+  by: agent  # c484
+  actor: jgstern_agent  # c484
+  clock: 4  # c484
+  nonce: c484  # c484
+  set:  # c484
+    status: wont_do  # c484
+  add:  # c484
+    duplicate_of: [WI-ribuz-tobig-fahun-fojik-tusuk-lofuv-kumoh-gafok]  # c484
+- op: discuss  # 4a1e
+  at: '2026-11-01T23:36:17Z'  # 4a1e
+  by: agent  # 4a1e
+  actor: jgstern_agent  # 4a1e
+  clock: 5  # 4a1e
+  nonce: 4a1e  # 4a1e
+  message: "MERGED into WI-ribuz (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: WI-nukas is this item's profile.py bullet verbatim: the module_importers fallback parses a symbol-id path slot with a bare split(':')[1] instead of ir.symbol_path_slot. Found when the P2 grouping was merged into the P3/P4 sweep."  # 4a1e

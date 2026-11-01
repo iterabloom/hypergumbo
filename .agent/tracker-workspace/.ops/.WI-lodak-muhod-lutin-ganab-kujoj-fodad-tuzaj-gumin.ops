@@ -20,3 +20,18 @@
     pr_ref:  # 535a
     description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). starlark.py ~L325 builds `dst=f\"starlark:{ctx.rel_path}:{dep}\"` from the raw deps label, which never equals a target Symbol id (`starlark:<path>:<s>-<e>:<name>:target`), even for a same-package `\":lib\"` dep. `target_ids` is written (~L316) and passed along (~L490/518/546) but never read; no linker rewrites starlark depends_on dsts. So every depends_on edge dangles. Fix: resolve `:name` (and `//pkg:name` when the BUILD file is in the repo) through target_ids. Docstring \"Dependency edges between targets\" left stating the intent."  # 535a
     fields: {}  # 535a
+- op: update  # 74e6
+  at: '2026-11-01T23:36:00Z'  # 74e6
+  by: agent  # 74e6
+  actor: jgstern_agent  # 74e6
+  clock: 2  # 74e6
+  nonce: '74e6'  # 74e6
+  set:  # 74e6
+    status: done  # 74e6
+- op: discuss  # 8a59
+  at: '2026-11-01T23:36:00Z'  # 8a59
+  by: agent  # 8a59
+  actor: jgstern_agent  # 8a59
+  clock: 3  # 8a59
+  nonce: 8a59  # 8a59
+  message: "Closed (owner-approved, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). Fixed by WI-pusan in PR #1833 (dev 9814ac193b). Live repro today on dev b27eb0e0d0, fixture BUILD: cc_library lib + cc_binary app deps [':lib','//pkg:util','@ext//x:y'], pkg/BUILD: cc_library util. analyze_starlark emits depends_on app -> starlark:BUILD:1-1:lib:target and app -> starlark:pkg/BUILD:1-1:util:target, both ids of emitted target symbols; the external @ext//x:y stays an unresolved dst, which is correct. Residual noted, not filed: target_ids is still written and nothing reads it."  # 8a59

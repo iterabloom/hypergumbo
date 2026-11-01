@@ -34,3 +34,18 @@
   clock: 3  # 5d0f
   nonce: 5d0f  # 5d0f
   message: "WI-kosup sweep decision (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/D_functions.md): DELETE, not WIRE. claims_total / claims_confirmed / claims_violated / claim_verdict_pct (scripts/bakeoff-deep ~:403-406, computed ~:2696-2709) have no reader that branches on them: they are not in the GOOD/WARN/FAIL assessment, status or active output; their only reader is cmd_compare's 'six numeric metrics that changed most', which all-zero values can never enter; the reflect pipeline reads the raw verify-claims.txt instead. And the INPUT never existed: no script creates <workdir>/claims/, and across 121 deep-session entries there is no claims/ directory and no verify-claims.txt; all 56 recorded claims_total values are 0. So the miscount this item describes is moot. Action: delete the four fields and their computation (and the verify-claims run step, whose input never exists); if the owner prefers WIRE, the reader would be _diagnose_cohort's verdict assessment with confirmed_with_caveats counted as decided."  # 5d0f
+- op: update  # 3e04
+  at: '2026-11-01T23:36:03Z'  # 3e04
+  by: agent  # 3e04
+  actor: jgstern_agent  # 3e04
+  clock: 4  # 3e04
+  nonce: '3e04'  # 3e04
+  set:  # 3e04
+    title: "bakeoff-deep: DELETE the unread claims_total / claims_confirmed / claims_violated / claim_verdict_pct metrics (WI-kosup verdict); the confirmed-only count goes with them"  # 3e04
+- op: discuss  # 73d2
+  at: '2026-11-01T23:36:03Z'  # 73d2
+  by: agent  # 73d2
+  actor: jgstern_agent  # 73d2
+  clock: 5  # 73d2
+  nonce: 73d2  # 73d2
+  message: "RE-SCOPED, not closed (root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). The owner agreed this item is moot as a count fix, because WI-kosup (done) ruled DELETE on 2026-10-28. But the deletion has not happened: QualityMetrics still declares the four fields (scripts/bakeoff-deep:375-377) and still computes them (~:2674-2678), and no other open item carries the deletion. Closing would drop the work, so the item now IS the deletion. Done-when: the four fields and their computation are gone from scripts/bakeoff-deep, and cmd_compare no longer lists them."  # 73d2

@@ -39,3 +39,10 @@
   clock: 4  # e4a3
   nonce: e4a3  # e4a3
   message: "WI-kosup sweep decision (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §3b). meta['receiver']: OK -- 11 values, both readers' value sets match the producers', and an existing partition test guards it (the keep-with-trigger on it fired and was acted on). meta['resolution_quality']: WIRE -- 7 values and every reader value is written, but the value set is declared nowhere, so the magnet detector's != 'ambiguous' treats any new value as 'receiver identified', and typed / typed_receiver / type_inferred look like synonyms no production reader tells apart. Action: declare the value set (a bounded-enum with its values) with a partition test, as receiver has, and fold or distinguish the three typed spellings. This item now carries that action."  # e4a3
+- op: discuss  # 4ba9
+  at: '2026-11-01T23:36:12Z'  # 4ba9
+  by: agent  # 4ba9
+  actor: jgstern_agent  # 4ba9
+  clock: 5  # 4ba9
+  nonce: 4ba9  # 4ba9
+  message: "Folds in WI-botam (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-botam closed wont_do with duplicate_of here). WI-botam facet A (give-up mislabel in csharp/dart) checked out clean; its live facet B is resolution_quality's open value vocabulary, which is this item's remaining half. Both close with WI-vusot's MetaKeySpec value layer. Read WI-botam's thread for its repro and evidence."  # 4ba9

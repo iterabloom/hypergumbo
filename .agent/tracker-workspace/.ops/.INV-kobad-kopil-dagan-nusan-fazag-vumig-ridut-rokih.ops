@@ -183,3 +183,10 @@
   clock: 22  # ab6c
   nonce: ab6c  # ab6c
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: CURRENT as restated 10-25; the description field still carried the Feb-2026 'All items resolved (1)..(7)' text, contradicting the matrix statement - replaced with the open cells. Row 1 ruby: `a > b ? a : b` and `return 1 if a` both cc=1 (java control cc=2); analyze/cyclomatic.py:116-119 lists 'ternary' (tree-sitter-ruby: conditional) and no *_modifier forms; WI-harij todo_hard P3. Row 2 signature populated across ruby/python/swift/kotlin/php/ts/java. Row 3 INV-bamij satisfied. Row 4 java/ts extends reach an external placeholder. Row 5 = META-sigap. isbefore links INV-nogas, INV-vusog are satisfied (inert). ROOT CAUSE: per-language feature tables extended analyzer-by-analyzer with no cross-grammar parity gate. Status unchanged."  # ab6c
+- op: discuss  # 56ec
+  at: '2026-11-01T23:36:20Z'  # 56ec
+  by: agent  # 56ec
+  actor: jgstern_agent  # 56ec
+  clock: 23  # 56ec
+  nonce: 56ec  # 56ec
+  message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-kobad's row 5 is META-sigap's cell set (external-constructor instantiates outside Python); its row 1 is WI-harij (ruby cyclomatic node names)."  # 56ec
