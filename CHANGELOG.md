@@ -54,6 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A node id whose kind or name slot disagrees with its node is a validator error** (ADR-0036 Ruling 3); such ids are corrected, `stable_id`s unchanged.
 - **Edges start and end on real nodes** for Starlark `deps`, json, make, jsonnet, astro, svelte, Cargo and CSS imports, bridging headers, WebAssembly loads and JSX references.
 - **Every linker call-site stand-in is attached to its enclosing function.**
+- **A Svelte or Vue file has one file symbol, and each `<script>` block is parsed in the language its `lang` names**, wherever the attribute sits.
 
 #### Imports of your own code
 
@@ -76,6 +77,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Kotlin and Scala bare `java.lang` receivers resolve**, so `verify-claims` sees the process launch.
 - **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`.**
 - **A Yjs map entry read links from the code that wrote it**, by map and key; `getMap<T>()` is recognised.
+- **An edge's caller is found by position, its callee in the same file first**, in Luau, Apex, Hack, Smithy and Prisma: two files defining one name no longer cross edges.
+- **Circom resolves names in their template's scope**: a signal binds its own template's, `c.in` the bound component's; includes reach their file.
+- **Puppet `include` binds a class declared later or in another file.**
+- **Electron `contextBridge` calls reach the preload's send**, so renderer → preload → main connects.
 
 #### I/O boundaries and taint
 
