@@ -42,3 +42,18 @@
   nonce: fada  # fada
   set:  # fada
     description: "[REVIEW 2026-11-01, STALE-FIXED] Review 2026-11-01 on 100b6fbb6e: installed tree-sitter-rust 0.24.2 (floor from 1856bcf2fe, PR #1459). Fixture 'unsafe extern \"C\" { pub fn getpid(); pub fn write(..); pub safe fn abs(..); }' yields 3 function symbols with ffi_import abi C, and calls resolve to them. Corpus re-measure with the shipped grammar: unsafe-extern block lines starting a foreign_mod_item: pdfium-render 11056/11056, nextjs 3/3, wasmtime 80/82 (the 2 are inside a cfg_if! macro and a block scope, not the 2024-syntax failure). (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-10-04 while fixing INV-lopus-mamoz-tokum-padab-mivuv-vomum-gosal-votit (branch jgstern-agent/fix/lopus, not integrated).\n\nThe shipped tree-sitter-rust (0.24.0) does not parse a Rust 2024 `unsafe extern \"C\" { ... }` block. It yields a top-level function_signature_item carrying function_modifiers + an ERROR node, and a stray ERROR for the closing brace. No foreign_mod_item exists, so the INV-lopus extern-block arm (which requires item -> declaration_list -> foreign_mod_item) emits no symbol for any declaration in it, and a call to one stays an `external` stub exactly as before INV-lopus.\n\nPinned as a stated gap by test_rust_extern_block_symbols.py::test_a_signature_outside_any_block_is_no_foreign_symbol.\n\nPOPULATION (grep, corpus ~/whole_bunch_of_repos, lines matching `^\\s*unsafe extern( \"..\")? *\\{`): 11146, of which pdfium-render 11056 (bindgen output under src/bindgen/, which the survey does not analyse at all), wasmtime 82, nextjs 3. Plain `extern {}` blocks: 146. bindgen >= 0.71 emits the unsafe form, so the share grows with every regenerated binding.\n\nNOT MEASURED: whether a newer tree-sitter-rust grammar parses the form (no network check made); how many calls into these declarations hit a catalogue row by short name.\n\nDIRECTION: upgrade the grammar if a release parses it; otherwise recognise the error-recovery shape (function_signature_item whose function_modifiers holds an extern_modifier, at a level no block encloses) as a foreign declaration."  # fada
+- op: update  # f30b
+  at: '2026-11-01T20:00:34Z'  # f30b
+  by: agent  # f30b
+  actor: jgstern_agent  # f30b
+  clock: 5  # f30b
+  nonce: f30b  # f30b
+  set:  # f30b
+    status: done  # f30b
+- op: discuss  # 7630
+  at: '2026-11-01T20:00:34Z'  # 7630
+  by: agent  # 7630
+  actor: jgstern_agent  # 7630
+  clock: 6  # 7630
+  nonce: '7630'  # 7630
+  message: "DONE. Fixed by the tree-sitter-rust 0.24.2 floor (1856bcf2fe, PR #1459). Live: an `unsafe extern \"C\" { ... pub safe fn abs(..); }` fixture yields 3 ffi_import function symbols and calls resolve to them; corpus re-measure pdfium-render 11056/11056, nextjs 3/3, wasmtime 80/82 (the 2 are cfg_if!/block scope, not this defect). Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review."  # 7630

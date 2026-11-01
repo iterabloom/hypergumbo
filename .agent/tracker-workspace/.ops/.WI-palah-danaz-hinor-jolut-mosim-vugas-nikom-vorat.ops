@@ -55,3 +55,18 @@
   nonce: 007e  # 007e
   set:  # 007e
     description: "[REVIEW 2026-11-01, STALE-FIXED] Reviewed 2026-11-01 at dev 100b6fbb6e. Fixed by d79bc37f45 (INV-somup, 2026-07-11, satisfied): _get_or_run_analysis (cli.py:795-813) now selects survey.json from run_survey's generated_files instead of calling _discover_input_file after the run. Live: cold XDG_CACHE_HOME, fixture git repo with a file rewritten every 20ms during the run, `hypergumbo slice . --files f.txt --output o.txt` -> rc=0, 'No cached results found, running analysis...' then 'Found 2 dependent files'; no 'Input file not found: None'. (Original text below; the review entry in the thread has the evidence.)\n\nObserved 3x during the 2026-06-17 Wave-2 multi-PR campaign (PR2 x2, PR3 x1). When 'pytest' (full smart-test) runs the forward slice to compute the affected-test manifest, the stable hypergumbo 'slice --files <list> --output <out>' sometimes runs the full analysis (340-552s) then errors 'Error: Input file not found: None' (exit 1), tripping smart-test's fallback to a full-suite manifest (which the pre-commit hook + CI then reject). Root cause (cli.py:_get_or_run_analysis ~510-512): run_behavior_map() completes (reaches validation) but the subsequent _discover_input_file(repo_root) returns None, so input_path is None -> 'Input file not found: None'. The cache <state> dir is keyed on git/working-tree state; the leading hypothesis is that something shifts that state between the analysis-WRITE and the discover-READ during the ~5-9min slice — most likely the tracker AUTO-SYNC firing mid-slice (it creates a branch + commits + pushes when pending ops cross 80, changing git state), compounded by cache bloat (~/.cache/hypergumbo was 40G, disk 94% full). RELIABLE WORKAROUND: regenerate the manifest standalone via 'pytest --manifest' with nothing else running (no concurrent test run, no pending tracker auto-sync) — succeeded every time. Candidate fixes: (a) make the cache <state> key stable across a single slice invocation (snapshot once); (b) have smart-test's slice pin the analysis output path explicitly instead of round-tripping through _discover_input_file; (c) suppress tracker auto-sync during a slice; (d) cap/GC ~/.cache/hypergumbo. Also worth a smart-test self-test that asserts the slice fallback diagnostic (.ci/smart-test-fallback.log) is written and surfaces the real stderr (it does — that's how this was diagnosed)."  # 007e
+- op: update  # 7229
+  at: '2026-11-01T20:00:35Z'  # 7229
+  by: agent  # 7229
+  actor: jgstern_agent  # 7229
+  clock: 7  # 7229
+  nonce: '7229'  # 7229
+  set:  # 7229
+    status: done  # 7229
+- op: discuss  # a936
+  at: '2026-11-01T20:00:36Z'  # a936
+  by: agent  # a936
+  actor: jgstern_agent  # a936
+  clock: 8  # a936
+  nonce: a936  # a936
+  message: "DONE. Fixed by d79bc37f45 (INV-somup): _get_or_run_analysis takes survey.json from run_survey's generated_files. Live: cold cache, file rewritten every 20ms during the run, `hypergumbo slice . --files f.txt` rc=0, no 'Input file not found: None'. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review."  # a936

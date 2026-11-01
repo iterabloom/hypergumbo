@@ -28,3 +28,10 @@
   clock: 2  # 322d
   nonce: 322d  # 322d
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat2/). VERDICT: CURRENT. Re-checked 2026-11-01 at dev 100b6fbb6e: erlang.yaml:238 still lists register/unregister/monitor/link/process_flag/exit under process_send, :262 proc_lib includes hibernate, :267 global includes whereis_name. Fixture .erl: io-boundaries reports proc_lib.hibernate, global.whereis_name, erlang.register, erlang.process_flag, erlang.monitor all as process_send beside erlang.send. No change since filing. MECHANISM: a module-wide erlang/proc_lib/global process_send row sweeps in members that send no message (WI-jupaf module-sweep shape). SHARES MECHANISM WITH: WI-paful, WI-gurud."  # 322d
+- op: discuss  # 366b
+  at: '2026-11-01T20:00:45Z'  # 366b
+  by: agent  # 366b
+  actor: jgstern_agent  # 366b
+  clock: 3  # 366b
+  nonce: 366b  # 366b
+  message: "SPLIT IN from WI-livod-fozoz-vanus-sobas-sudus-radog-rakat-gakuv (owner-approved 2026-11-01, P3 review). erlang exit/1 (process self-termination) shares exit/2's row in the erlang module process_send row (erlang.yaml:236-238), so io-boundaries on erlang:exit(normal) reports process_send: erlang.exit (1) at dev 100b6fbb6e. exit/2 sends an exit signal to another process; exit/1 sends nothing. This item now owns that arity split, alongside the other erlang-module rows it already lists."  # 366b

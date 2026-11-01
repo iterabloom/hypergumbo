@@ -35,3 +35,20 @@
   nonce: 73a7  # 73a7
   set:  # 73a7
     description: "[REVIEW 2026-11-01, MIS-PREMISED] 2026-11-01 review at dev 100b6fbb6e: survey of the filed Base/Kid fixture still shows no calls edge from Kid.go, but analyze_java DOES emit one - Kid.go -> Kid.go (ast_call_direct), the WI-hatov self-recursion - and cli.py deduplicate_edges(remove_self_loops=True) removes it. Same for an external base: K extends OutputStream, super.write(b) -> K.write self-loop, dropped. So the cause is java.py Case 1 (L3021, 'super' handled like 'this'), not a missing emission. The fix shape here (resolve via the extends base; external base -> unresolved edge with base hint) belongs on WI-hatov. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-09-28 while fixing INV-dupol (the kotlin twin, now satisfied). Probe at dev 27747d2af7, shipped survey, one file:\n\n    class Base { int go() { return 1; } }\n    class Kid extends Base { int go() { return super.go(); } }\n\nKid.go emits NO calls edge. Kotlin's super.go() now resolves to Base.go (INV-dupol, via the class's declared bases), and java does not emit at all. A call with no edge is invisible to io-boundaries, taint and the coverage gate. A super call into an EXTERNAL base (an overridden stream write, a framework lifecycle hook) is the population that matters for I/O.\n\nThe same probe showed java handles the other INV-dupol shapes: a fully-qualified inline call names its owner, System.out.println and \"x\".trim() keep the external placeholder, and this.file.length() names java.io.File.\n\nFIX SHAPE (not built): mirror kotlin._emit_super_call. Resolve through the enclosing class's extends base via the resolver; for an external base, emit an unresolved edge whose module is the base's import and whose receiver_type_hint is the base. Measure on a java corpus repo before closing."  # 73a7
+- op: update  # 8edb
+  at: '2026-11-01T20:00:39Z'  # 8edb
+  by: agent  # 8edb
+  actor: jgstern_agent  # 8edb
+  clock: 4  # 8edb
+  nonce: 8edb  # 8edb
+  set:  # 8edb
+    status: wont_do  # 8edb
+  add:  # 8edb
+    duplicate_of: [WI-hatov-tijuj-vigup-tulul-hogin-hojon-jonak-bozif]  # 8edb
+- op: discuss  # 6878
+  at: '2026-11-01T20:00:39Z'  # 6878
+  by: agent  # 6878
+  actor: jgstern_agent  # 6878
+  clock: 5  # 6878
+  nonce: '6878'  # 6878
+  message: "MERGED into WI-hatov (owner-approved 2026-11-01). The stated cause (missing emission) was wrong; the edge is emitted as the WI-hatov self-loop and then deduplicated away. Fix shape copied to WI-hatov. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/)."  # 6878

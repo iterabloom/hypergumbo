@@ -35,3 +35,18 @@
   nonce: ceaf  # ceaf
   set:  # ceaf
     description: "[REVIEW 2026-11-01, STALE-FIXED] Reviewed 2026-11-01 at dev 100b6fbb6e. WI-digaj (e436ecd67f C++, 435f4b47bb C#, 2026-10-18) moved the dispatch decision from per-hop to per-method. Filed fixture: cpp now emits Shape.area -> Fancy.area and Square.area -> Fancy.area as well as Shape.area -> Square.area; the C# analogue (abstract CShape, CSquare, CFancy with override) emits all three. Precision control: a non-virtual Base/Mid/Leaf f() chain emits no dispatches_to edge. The concrete-intermediate gap no longer reproduces. (Original text below; the review entry in the thread has the evidence.)\n\n**Residual of WI-nizug-lavig-duhob-finog-mudus-rizut-zidub-jurit (branch `jgstern-agent/fix/nizug`).**\n\nWI-nizug widened `type_hierarchy._extends_admits_dispatch` so that, in the deny-list languages (`NO_VIRTUAL_EXTENDS_LANGUAGES` = go/cpp/rust/csharp), an `extends` hop is admitted when its CHILD **or its PARENT** is an abstract type. The test is per HOP. A concrete intermediate class therefore still breaks the chain:\n\n    class Shape  { public: virtual int area() = 0; };            // abstract\n    class Square : public Shape  { public: int area() override { return 1; } };\n    class Fancy  : public Square { public: int area() override { return 3; } };\n\nMeasured on the worktree code (fixture survey, run_behavior_map): `Shape::area -> Square::area` IS emitted; `Shape::area -> Fancy::area` and `Square::area -> Fancy::area` are NOT, because the hop `Fancy -> Square` has a concrete child and a concrete parent and is denied. In C++ (and C#: `override` of an override) both are real virtual dispatch: virtual-ness is inherited.\n\n**Candidate shape.** Admit a hop whose parent is abstract OR transitively derives (through any inheritance edge) from an abstract type, i.e. the C++ notion of a *polymorphic* class, approximated by \"has an abstract ancestor\". This keeps the same approximation level as WI-nizug (non-virtual name-hiding methods also get edges) and widens it to deeper hierarchies, so it moves more edges than WI-nizug did; measure on a C++ corpus repo (sherpa-onnx, powerdns, grpc) before shipping. Per-method precision (separate item) would make both rules exact for C#.\n\n**Size, measured on the WI-nizug after-surveys** (cpp `extends` edges that are still denied — neither end abstract — but whose parent has an abstract ancestor through `extends`): grpc 98 of 966 denied hops (1829 cpp extends total), sherpa-onnx 0 of 27, powerdns 0 of 72. Not counted: how many `dispatches_to` edges those 98 hops would add, or how many of them are true (needs the after-run with the candidate rule)."  # ceaf
+- op: update  # 3a18
+  at: '2026-11-01T20:00:37Z'  # 3a18
+  by: agent  # 3a18
+  actor: jgstern_agent  # 3a18
+  clock: 4  # 3a18
+  nonce: 3a18  # 3a18
+  set:  # 3a18
+    status: done  # 3a18
+- op: discuss  # 9b7a
+  at: '2026-11-01T20:00:37Z'  # 9b7a
+  by: agent  # 9b7a
+  actor: jgstern_agent  # 9b7a
+  clock: 5  # 9b7a
+  nonce: 9b7a  # 9b7a
+  message: "DONE. Fixed by WI-digaj (e436ecd67f C++, 435f4b47bb C#): the filed fixture now emits Shape.area->Fancy.area and Square.area->Fancy.area; the C# analogue emits all three; the non-virtual control emits no dispatches_to edge. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review."  # 9b7a

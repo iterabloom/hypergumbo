@@ -26,3 +26,18 @@
   clock: 2  # e668
   nonce: e668  # e668
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint4/). VERDICT: CURRENT. Re-checked at dev 100b6fbb6e: swift.yaml:264-270 still rows Swift fatalError/preconditionFailure/assertionFailure under process_send; erlang.yaml:236-238 still includes exit in the erlang process_send row. Fixtures: io-boundaries on fatalError(\"negative\") -> process_send: Swift.fatalError (1); on erlang:exit(normal) (exit/1) -> process_send: erlang.exit (1). Both halves reproduce. The erlang half is the same module-sweep row WI-bavat (open) already lists exit in; suggest swift stays here and erlang exit/1 folds into WI-bavat. MECHANISM: process_send rows keyed by name (no arity, no per-function behaviour), so process-termination calls are rowed as an ipc crossing. SHARES MECHANISM WITH: WI-bavat, WI-kizur, WI-vahad."  # e668
+- op: update  # d797
+  at: '2026-11-01T20:00:46Z'  # d797
+  by: agent  # d797
+  actor: jgstern_agent  # d797
+  clock: 3  # d797
+  nonce: d797  # d797
+  set:  # d797
+    title: "swift fatalError/preconditionFailure/assertionFailure are rowed under process_send (an ipc sink), though they terminate the process and send nothing (residual of INV-mulul)"  # d797
+- op: discuss  # 9efe
+  at: '2026-11-01T20:00:46Z'  # 9efe
+  by: agent  # 9efe
+  actor: jgstern_agent  # 9efe
+  clock: 4  # 9efe
+  nonce: 9efe  # 9efe
+  message: "SPLIT (owner-approved 2026-11-01). This item now covers the swift rows only (swift.yaml:264-270, still reproducing: fatalError(\"negative\") -> process_send: Swift.fatalError). The erlang exit/1 half moved to WI-bavat-kabap-barun-gubop-vupij-jajiv-mahaj-diman."  # 9efe

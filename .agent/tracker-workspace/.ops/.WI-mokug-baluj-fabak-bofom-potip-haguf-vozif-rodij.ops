@@ -35,3 +35,18 @@
   nonce: '3167'  # 3167
   set:  # 3167
     description: "[REVIEW 2026-11-01, STALE-FIXED] Reviewed 2026-11-01 on dev 100b6fbb6e. 7ed180a2e7 (WI-surun, 2026-08-28) removed the http_client row. erlang.yaml:141-150 records the removal with match evidence (httpc 10/9 vs http_client 0 on ejabberd/emqx), and status is now provenance_declared rather than complete. Sibling check against local OTP 27: code:which found every one of the 26 row modules in erlang.yaml (application ... supervisor); none are missing. (Original text below; the review entry in the thread has the evidence.)\n\nFound incidentally during the WI-bahid investigation. erlang.yaml:93 declares module 'http_client' with function 'request'. No such module exists in OTP; the inets HTTP client is 'httpc', which is already catalogued at erlang.yaml:90. So the row can never match anything.\n\nWHY IT MATTERS BEYOND ONE DEAD ROW: erlang.yaml declares status: complete, which io_boundary.py:893-898 documents as asserting 'a provenance-backed stdlib enumeration'. A phantom row means that provenance was not checked, at least once, in a catalogue making the stronger of the two status claims. Worth asking how it got there and whether sibling rows share the defect, rather than just deleting the line.\n\nUNVERIFIED BY ME: I have not run an OTP module-existence check across erlang.yaml, only noted this one. The cheap version is to compare declared modules against a real OTP install's module list, which would also settle whether this is isolated."  # 3167
+- op: update  # 0f15
+  at: '2026-11-01T20:00:35Z'  # 0f15
+  by: agent  # 0f15
+  actor: jgstern_agent  # 0f15
+  clock: 4  # 0f15
+  nonce: 0f15  # 0f15
+  set:  # 0f15
+    status: done  # 0f15
+- op: discuss  # e2c3
+  at: '2026-11-01T20:00:35Z'  # e2c3
+  by: agent  # e2c3
+  actor: jgstern_agent  # e2c3
+  clock: 5  # e2c3
+  nonce: e2c3  # e2c3
+  message: "DONE. Fixed by 7ed180a2e7 (WI-surun): http_client row removed with match evidence in erlang.yaml:141-150; all 26 remaining row modules found by code:which on OTP 27. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review."  # e2c3

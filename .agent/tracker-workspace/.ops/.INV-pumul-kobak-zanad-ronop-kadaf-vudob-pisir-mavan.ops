@@ -36,3 +36,18 @@
   nonce: '1404'  # 1404
   set:  # 1404
     description: "[REVIEW 2026-11-01, OBSOLETE] 2026-11-01 review on dev 100b6fbb6e: block_hash.py is unchanged since f1250331f6, so both channels still perturb no digest. But the item's trigger (narrowing lands) fired in 1ee9984304 (WI-bolot, done, opt-in, CI-off), and narrowing keeps touching_test_files (selection_index.py:403): every test observed executing ANY block of a changed FILE, independent of digests. A shadowing def or pragma edit still keeps that file's tests. This is from a code read; no live narrow was run. (Original text below; the review entry in the thread has the evidence.)\n\nTwo known channels, both documented in-code at the point of the compromise and\nneither fixed, where a behaviour-changing edit perturbs NO block digest and the\ncoverage selector therefore selects nothing.\n\n(1) SHADOWING REDEFINITION. Two defs sharing a name at one scope are keyed\n`f` and `f#2` by source order. Adding the second creates a NEW key with no\ntest history while leaving `f` untouched, so nothing is selected although the\nsecond definition now wins at runtime. Linters flag this shape, which is why\nit was accepted rather than solved.\n\n(2) PRAGMA EDITS. Digests are `ast.dump(node, include_attributes=False)`, so\ncomments are discarded -- deliberately, since a comment edit is not a\nbehaviour change. But `# pragma: no cover` IS load-bearing: editing it changes\nwhat coverage measures without changing the AST.\n\nWHY THIS IS FILED AND NOT FIXED: both fall through to the import-graph slice,\nwhich is exactly the argument for coverage being a FOURTH selector unioned\nwith the others rather than a replacement. The invariant is only genuinely\nviolated if narrowing (Phase 3) ever lands, at which point the union no longer\ncovers for them. Re-evaluate then, not before."  # 1404
+- op: update  # a55a
+  at: '2026-11-01T20:01:06Z'  # a55a
+  by: agent  # a55a
+  actor: jgstern_agent  # a55a
+  clock: 4  # a55a
+  nonce: a55a  # a55a
+  set:  # a55a
+    status: needs_human_review  # a55a
+- op: discuss  # ffc8
+  at: '2026-11-01T20:01:06Z'  # ffc8
+  by: agent  # ffc8
+  actor: jgstern_agent  # ffc8
+  clock: 5  # ffc8
+  nonce: ffc8  # ffc8
+  message: "CLOSED AS OBSOLETE (invariants have no wont_do; the tracker reserves status deleted for a human). The two digest-blind channels are still there (block_hash.py unchanged since f1250331f6), but the trigger this item waited on, narrowing, landed in 1ee9984304 (WI-bolot) and keeps touching_test_files (selection_index.py:403), i.e. every test observed executing any block of a changed FILE, so a shadowing def or a pragma edit still keeps that file's tests. This rests on a code read; no live narrow was run. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review. ACTION FOR THE OWNER: set status deleted (the agent cannot); parked at needs_human_review so it no longer blocks."  # ffc8
