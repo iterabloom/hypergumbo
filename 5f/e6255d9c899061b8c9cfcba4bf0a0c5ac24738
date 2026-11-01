@@ -1,0 +1,32 @@
+Original commit body from 3c6e2b8e5e63e12eb455b5758cff2f5951f9d63d:
+
+Mark Read / Mark Unread rebuilt the item table through
+_reload_active_table() + _restore_selection(). _populate_table clears the
+table and leaves the cursor on row 0, which scrolls the viewport to the
+top, and only _reload_after_write captured and restored the offset. So
+with the list scrolled at all, every Mark Read click jumped it to the top.
+
+The same unguarded pair sat behind the status, tag and meta:tagged
+toggles, clear/restore filters, the full-ID toggle, reorder (</>), the
+edit-mode toggle and the tier change on resize. All of them, and
+_reload_after_write, now go through one _rebuild_in_place():
+
+- capture the scroll offset and the cursor row, rebuild, put the cursor
+  back on the selected item, restore the offset after the next refresh;
+- if the selected item is gone (Mark Read on an unread row that a filter
+  hides), keep the cursor at the same row index, clamped;
+- if the cursor was on screen before, keep it on screen: the restored
+  offset is applied immediately and the cursor scrolled into view, which
+  moves only when rows above it were filtered away. A cursor the user
+  wheel-scrolled out of view is left alone, so a background reload
+  never yanks the view back to it.
+
+The live-search path (typing in the filter input) and Esc-dismiss still
+start from the top on purpose.
+
+Tests: TestRebuildKeepsViewport (Mark Read button at wide size; seven
+rebuild paths; reorder; cursor brought into view when the rows above it
+vanish; cursor index kept when its row vanishes) plus pre-mount guards.
+Tracker package coverage 100% in isolation.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
