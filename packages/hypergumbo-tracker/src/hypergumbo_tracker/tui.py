@@ -79,6 +79,16 @@ discussion length changes, after which automatic detection applies again.
 Unread items hidden by the status/tag filters are still appended to the end
 of the list.
 
+The standard/wide table (``ItemTable``) keeps a multi-selection. Shift+click
+on a row adds or removes it, starting from the row that was highlighted; Space
+does the same for the highlighted row, for terminals that keep Shift+click for
+their own text selection and never report it to the app. Selected rows carry a
+check in the ``#`` column, the right panel shows a generic "(N items selected)"
+message, and Mark Read / Mark Unread apply to every selected item with one
+preferences save and one rebuild. Esc or a plain click clears the selection; a
+rebuild drops selected items that are no longer listed; tree view and compact
+tier have no multi-select and drop it.
+
 See ADR-0013 §TUI for the responsive design specification.
 """
 
@@ -97,6 +107,7 @@ from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.events import Click, MouseDown, MouseMove, MouseUp, Resize
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.strip import Strip
 from textual.widget import Widget
@@ -402,6 +413,9 @@ _TIER_INDICATOR = {
     Tier.WORKSPACE: "W",
     Tier.STEALTH: "S",
 }
+
+# Prefix of the ``#`` cell of a row in the multi-selection.
+_SELECT_MARK = "\u2713"
 
 
 def _label(name: str) -> str:
@@ -2213,6 +2227,47 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 # ---------------------------------------------------------------------------
 
 
+class ItemTable(DataTable[Any]):
+    """The standard/wide item list: a DataTable that reports row clicks so
+    the app can keep a multi-selection.
+
+    A Shift+click on a row posts :class:`RowShiftClicked` and is consumed:
+    ``prevent_default`` stops DataTable's own click handler, which Textual
+    would otherwise run next in the MRO walk and which would move the cursor
+    as a plain click. Any other click on a row posts :class:`RowPlainClicked`
+    and then proceeds as usual (cursor move, selection message). Header and
+    out-of-range clicks post nothing.
+    """
+
+    class RowShiftClicked(Message):
+        """A row was clicked with Shift held."""
+
+        def __init__(self, row_index: int, item_id: str) -> None:
+            self.row_index = row_index
+            self.item_id = item_id
+            super().__init__()
+
+    class RowPlainClicked(Message):
+        """A row was clicked without Shift."""
+
+        def __init__(self, row_index: int, item_id: str) -> None:
+            self.row_index = row_index
+            self.item_id = item_id
+            super().__init__()
+
+    async def _on_click(self, event: Click) -> None:
+        row_index = event.style.meta.get("row")
+        if row_index is None or not 0 <= row_index < self.row_count:
+            return
+        item_id = str(self.ordered_rows[row_index].key.value)
+        if event.shift:
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.RowShiftClicked(row_index, item_id))
+            return
+        self.post_message(self.RowPlainClicked(row_index, item_id))
+
+
 class TrackerApp(App[None]):
     """Textual TUI for the hypergumbo tracker.
 
@@ -2390,6 +2445,7 @@ class TrackerApp(App[None]):
         ("i", "toggle_full_ids", "Full IDs"),
         ("ctrl+c", "yank", "Copy"),
         ("ctrl+e", "toggle_edit_mode", "Edit-Mode"),
+        ("space", "toggle_select", "Select"),
         ("S", "capture_screenshot", "Screenshot"),
     ]
 
@@ -2423,6 +2479,9 @@ class TrackerApp(App[None]):
         self._items: list[CompiledItem] = []
         self._in_detail = False
         self._selected_item_id: str | None = None
+        # Multi-selection on the std table (Shift+click / Space); empty
+        # means the ordinary single-item view.
+        self._multi_selected: set[str] = set()
         self._tree_mode: bool = False
         self._filter_active: bool = False
         self._filter_text: str = ""
@@ -2476,7 +2535,7 @@ class TrackerApp(App[None]):
         # Standard/wide two-pane widgets
         with Horizontal(id="two-pane"):
             with Vertical(id="left-panel"):
-                yield DataTable(id="std-table", cursor_type="row")
+                yield ItemTable(id="std-table", cursor_type="row")
                 yield Tree("Items", id="item-tree")
             yield Rule(orientation="vertical", id="divider")
             with Vertical(id="right-panel"):
@@ -2832,7 +2891,7 @@ class TrackerApp(App[None]):
             )
 
             row: list[str | RichText] = [
-                str(idx + 1),
+                self._row_num_label(idx, item.id),
                 tier_char,
                 str(item.priority),
                 truncated_id,
@@ -3224,11 +3283,15 @@ class TrackerApp(App[None]):
                 style = ""
                 marker_char = ""
 
-            # Update row_num column with marker
-            if style:
+            # Update row_num column with marker (and the multi-select check)
+            check = _SELECT_MARK if rid in self._multi_selected else ""
+            num_style = style or ("bold" if check else "")
+            if num_style:
                 table.update_cell(
                     row_key, "row_num",
-                    RichText.from_markup(f"[{style}]{marker_char}{plain_num}[/]"),
+                    RichText.from_markup(
+                        f"[{num_style}]{check}{marker_char}{plain_num}[/]",
+                    ),
                 )
             else:
                 table.update_cell(row_key, "row_num", plain_num)
@@ -3308,7 +3371,11 @@ class TrackerApp(App[None]):
         if event.row_key is None:
             return
         item_id = str(event.row_key.value)
-        self._show_std_detail(item_id)
+        if self._multi_selected:
+            self._selected_item_id = item_id
+            self._show_multi_detail()
+        else:
+            self._show_std_detail(item_id)
         self._update_chain_highlight(item_id)
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted[Any]) -> None:
@@ -3341,7 +3408,11 @@ class TrackerApp(App[None]):
     # ------------------------------------------------------------------
 
     def action_back(self) -> None:
-        """Return from detail view to list view (compact), or dismiss filter."""
+        """Clear a multi-selection, else dismiss the filter, else return from
+        the compact detail view to the list."""
+        if self._multi_selected:
+            self._clear_multi_selection()
+            return
         if self._filter_active:
             self._dismiss_filter()
             return
@@ -3355,6 +3426,9 @@ class TrackerApp(App[None]):
         if self._layout_tier not in ("standard", "wide"):
             return
         self._tree_mode = not self._tree_mode
+        # The tree has no multi-select; drop it rather than act on rows the
+        # user can no longer see.
+        self._multi_selected.clear()
         self._apply_layout()
 
         # If switching to tree and we have a selection, the tree
@@ -4072,6 +4146,8 @@ class TrackerApp(App[None]):
         else:
             self._reload_active_table()
         self._restore_selection(fallback_row=saved_row)
+        if self._multi_selected:
+            self._prune_multi_selection()
         self.call_after_refresh(
             self._restore_active_scroll, saved_scroll,
             keep_cursor_visible=cursor_was_visible,
@@ -4211,38 +4287,139 @@ class TrackerApp(App[None]):
             return
 
     # ------------------------------------------------------------------
+    # Multi-selection (Shift+click / Space on the std table)
+    # ------------------------------------------------------------------
+
+    def _row_num_label(self, idx: int, item_id: str) -> str:
+        """The ``#`` cell text: the 1-based row number, with the
+        multi-select check in front when the row is selected."""
+        check = _SELECT_MARK if item_id in self._multi_selected else ""
+        return f"{check}{idx + 1}"
+
+    def on_item_table_row_shift_clicked(
+        self, message: ItemTable.RowShiftClicked,
+    ) -> None:
+        """Shift+click toggles the clicked row in the multi-selection.
+
+        Starting a selection takes the row that was highlighted before the
+        click as its first member, so highlight-then-Shift+click selects
+        both. The cursor follows the click.
+        """
+        anchor = self._selected_item_id
+        if not self._multi_selected and anchor and anchor != message.item_id:
+            self._multi_selected.add(anchor)
+        self._multi_selected ^= {message.item_id}
+        table = self.query_one("#std-table", DataTable)
+        self._selected_item_id = message.item_id
+        table.move_cursor(row=message.row_index)
+        self._refresh_selection_view()
+
+    def on_item_table_row_plain_clicked(
+        self, message: ItemTable.RowPlainClicked,
+    ) -> None:
+        """A plain click ends a multi-selection and shows the clicked item."""
+        if not self._multi_selected:
+            return
+        self._multi_selected.clear()
+        self._selected_item_id = message.item_id
+        self._refresh_selection_view()
+
+    def action_toggle_select(self) -> None:
+        """Space: add or remove the highlighted row in the multi-selection.
+
+        The keyboard route to the same selection, for terminals that keep
+        Shift+click for their own text selection and never report it.
+        Standard/wide table only; a no-op in compact tier and tree view.
+        """
+        if self._layout_tier not in ("standard", "wide") or self._tree_mode:
+            return
+        item = self._get_selected_item()
+        if item is None:
+            return  # pragma: no cover — an empty table has no cursor row
+        self._multi_selected ^= {item.id}
+        self._refresh_selection_view()
+
+    def _clear_multi_selection(self) -> None:
+        self._multi_selected.clear()
+        self._refresh_selection_view()
+
+    def _prune_multi_selection(self) -> None:
+        """Keep only selected items that are still rows of the std table, so
+        a batch action never reaches an item the user can no longer see,
+        and redraw the selection view."""
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
+        listed = {str(rk.value) for rk in table.rows}
+        if self._layout_tier not in ("standard", "wide") or self._tree_mode:
+            listed = set()
+        self._multi_selected &= listed
+        self._refresh_selection_view()
+
+    def _refresh_selection_view(self) -> None:
+        """Redraw the check marks and the right panel for the current
+        selection state."""
+        item_id = self._selected_item_id
+        if item_id is None:
+            return  # pragma: no cover — a row is always highlighted here
+        self._update_chain_highlight(item_id)
+        if self._multi_selected:
+            self._show_multi_detail()
+        else:
+            self._show_std_detail(item_id)
+
+    def _show_multi_detail(self) -> None:
+        """Right panel for a multi-selection: a generic message, since the
+        detail view is per item."""
+        n = len(self._multi_selected)
+        noun = "item" if n == 1 else "items"
+        lines = [
+            f"[bold]({n} {noun} selected)[/bold]",
+            "",
+            "Mark Read / Mark Unread apply to every selected item.",
+            "Shift+click or Space adds or removes a row; "
+            "Esc or a plain click clears the selection.",
+        ]
+        if self._selected_item_id:
+            lines += [
+                "",
+                "[dim]Other keys act on the highlighted row: "
+                f"{self._selected_item_id}[/dim]",
+            ]
+        self.query_one("#std-detail-content", Static).update("\n".join(lines))
+        if self._layout_tier == "wide":
+            self.query_one("#activity-content", Static).update("")
+
+    # ------------------------------------------------------------------
     # Human read/unread state management
     # ------------------------------------------------------------------
 
     def _mark_human_read(self, item_id: str) -> None:
-        """Mark an item as read by the human.
-
-        Stores the override in ``_human_read_state`` keyed by discussion
-        length so auto-toggle can invalidate it when new entries arrive.
-        """
-        item = next((i for i in self._items if i.id == item_id), None)
-        if not item:
-            return  # pragma: no cover
-        self._human_read_state[item_id] = {
-            "read": True,
-            "discussion_len": len(item.discussion),
-        }
-        self._save_human_read_state()
-        self._rebuild_in_place()
+        """Mark an item as read by the human."""
+        self._set_human_read([item_id], read=True)
 
     def _mark_human_unread(self, item_id: str) -> None:
-        """Mark an item as unread by the human.
+        """Mark an item as unread by the human."""
+        self._set_human_read([item_id], read=False)
 
-        Stores the override in ``_human_read_state`` keyed by discussion
-        length so auto-toggle can invalidate it when new entries arrive.
+    def _set_human_read(self, item_ids: list[str], *, read: bool) -> None:
+        """Set the human read state of every item in *item_ids* at once.
+
+        Stores each override in ``_human_read_state`` keyed by discussion
+        length so auto-toggle can invalidate it when new entries arrive,
+        then saves the preferences once and rebuilds the list once, however
+        many items there are (the batch Mark Read of a multi-selection).
         """
-        item = next((i for i in self._items if i.id == item_id), None)
-        if not item:
-            return  # pragma: no cover
-        self._human_read_state[item_id] = {
-            "read": False,
-            "discussion_len": len(item.discussion),
-        }
+        by_id = {i.id: i for i in self._items}
+        items = [by_id[i] for i in item_ids if i in by_id]
+        if not items:
+            return  # pragma: no cover — ids come from the listed rows
+        for item in items:
+            self._human_read_state[item.id] = {
+                "read": read,
+                "discussion_len": len(item.discussion),
+            }
         self._save_human_read_state()
         self._rebuild_in_place()
 
@@ -4263,15 +4440,17 @@ class TrackerApp(App[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses: chat Send, mark-read, mark-unread."""
-        if event.button.id == "mark-read":
+        if event.button.id in ("mark-read", "mark-unread"):
+            read = event.button.id == "mark-read"
+            if self._multi_selected:
+                targets = sorted(self._multi_selected)
+                self._set_human_read(targets, read=read)
+                state = "read" if read else "unread"
+                self.notify(f"Marked {len(targets)} item(s) {state}")
+                return
             item = self._get_selected_item()
             if item:
-                self._mark_human_read(item.id)
-            return
-        if event.button.id == "mark-unread":
-            item = self._get_selected_item()
-            if item:
-                self._mark_human_unread(item.id)
+                self._set_human_read([item.id], read=read)
             return
         if event.button.id != "chat-send":
             return

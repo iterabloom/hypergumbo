@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-select in the TUI item list, with batch Mark Read / Mark Unread.** Shift+click a row to add it to the selection or remove it. The first Shift+click also selects the row that was highlighted. Space does the same for the highlighted row, for terminals that use Shift+click for their own text selection. Selected rows show a check in the `#` column and the right panel reads "(N items selected)". Mark Read and Mark Unread then apply to every selected item at once, with one save. Esc or a plain click clears the selection.
+
 ### Fixed
 
 - **The TUI list keeps its place when it rebuilds.** Mark Read and Mark Unread jumped the list back to the top whenever it was scrolled. The same happened on the status, tag and full-ID toggles, on reorder (`<`/`>`), and on the edit-mode toggle. All of these now keep the scroll offset and the cursor's item. If the cursor's row disappears (Mark Read on an unread item a filter hides), the cursor stays at the same row number. If the rows above the cursor were filtered away, the list scrolls just enough to keep it in view.
