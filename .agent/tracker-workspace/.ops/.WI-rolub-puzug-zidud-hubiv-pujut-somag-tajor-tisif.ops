@@ -19,3 +19,25 @@
     pr_ref:  # 1ce7
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. The Svelte/Vue loops call _extract_symbols once per block (js_ts.py:7681, 7715), each minting make_file_id(lang, path). <script lang=ts> plus <script setup lang=ts> gives two typescript:B.vue:1-1:file:file nodes in survey output; a mixed Svelte file gives two file nodes. v03."  # 1ce7
     fields: {}  # 1ce7
+- op: discuss  # f004
+  at: '2026-10-31T23:33:41Z'  # f004
+  by: agent  # f004
+  actor: jgstern_agent  # f004
+  clock: 2  # f004
+  nonce: f004  # f004
+  message: "Fix on local branch jgstern-agent/fix/zakij, commit 424004303e (on top of the WI-zakij fix e26e5a942b; not pushed; integration pending). Premise reproduced: B.vue (<script lang=\"ts\"> + <script setup lang=\"ts\">) gave two typescript:B.vue:1-1:file:file Symbols (spans 1-3, 4-7); C.svelte (JS context=\"module\" + TS instance) gave a javascript: and a typescript: file node. Decision: the one file symbol is typescript when any block is TypeScript (superset; Vue's compiler rejects <script> and <script setup> of different langs), else javascript; its span covers all blocks; members keep their block's language but fold the file symbol's identity anchor (new _extract_symbols file_lang parameter). Edges: _extract_edges now starts imports/require edges at the module_symbol it is handed (identical id for every non-SFC caller), so a JS block's imports no longer hang off a javascript: file id with no symbol. One helper, _parse_sfc_blocks, now serves the main loop (one loop over both hosts) and the single-file _analyze_svelte_file / _analyze_vue_file (one _analyze_sfc_file, which also resolves across blocks now). Tests: test_js_ts_sfc_one_file_symbol.py (8 cases; 7 RED on pre-fix code; edge-anchor-only mutant fails the 2 mixed-language cases). Affected-test run: 12054 passed, 16 xfailed, changed files 100% covered. Corpus A/B (129 components in 5 dirs that hold the construct): file symbols 132 -> 129, duplicate ids 2 -> 0. Not changed, a cross-analyzer question for whoever owns it: lang-common svelte.py / vue.py / astro.py anchor their template edges on a svelte:/vue:/astro: file id, beside this analyzer's typescript:/javascript: file symbol for the same path (on the scratch fixture, whose templates use no components, survey showed only the one typescript: file node per component)."  # f004
+- op: update  # 7b9a
+  at: '2026-11-01T02:26:27Z'  # 7b9a
+  by: agent  # 7b9a
+  actor: jgstern_agent  # 7b9a
+  clock: 3  # 7b9a
+  nonce: 7b9a  # 7b9a
+  set:  # 7b9a
+    status: done  # 7b9a
+- op: discuss  # 0d7e
+  at: '2026-11-01T02:26:27Z'  # 0d7e
+  by: agent  # 0d7e
+  actor: jgstern_agent  # 0d7e
+  clock: 4  # 0d7e
+  nonce: 0d7e  # 0d7e
+  message: "Fixed in PR #1983 (79f4e3ef61 on dev). Root cause: _extract_symbols minted a file symbol per parsed <script> block, and edges took their source id from the block language. Now every block of a Svelte/Vue file is extracted against one file symbol (typescript if any block is TS), its span covers all blocks, and imports from every block start at it. Live repro on merged dev: hypergumbo survey on B.vue (<script lang=ts> plus <script setup lang=ts>) and C.svelte (JS module block plus TS instance block): rc=0, exactly one file symbol each, typescript:B.vue:1-1:file:file and typescript:C.svelte:1-1:file:file (before: two each). Tests: test_js_ts_sfc_one_file_symbol.py (8, 7 red before). Corpus: duplicate file ids 2 to 0."  # 0d7e

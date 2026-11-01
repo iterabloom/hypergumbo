@@ -19,3 +19,25 @@
     pr_ref:  # 5a27
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. luau.py:364 symbol_registry.get(current_function), registry keyed by bare name, last file wins (luau.py:500, 513-515). a.luau and b.luau each with local function helper(): b's call comes out from a.luau's helper. WI-kosar fixed this family for tlaplus, zig, llvm_ir, agda and cobol, not luau. v10."  # 5a27
     fields: {}  # 5a27
+- op: discuss  # 2f87
+  at: '2026-10-31T23:28:31Z'  # 2f87
+  by: agent  # 2f87
+  actor: jgstern_agent  # 2f87
+  clock: 2  # 2f87
+  nonce: 2f87  # 2f87
+  message: "Concurrent fix run 2026-10-31 (agent jusah), branch jgstern-agent/fix/jusah (local, not pushed; commit 2b4a9d9dfd). Premise REPRODUCED: a.luau and b.luau each with local function helper; b's line-5 call came out with src luau:a.luau:4-6:helper. A second symptom of the same mechanism: a call inside a nested local function was credited to the OUTER function (the walk carried the outermost named function's name). The CALLEE had the same cross-file problem: two files each with helper/run, both run->helper edges came out a.luau->a.luau (the registry is last-wins).\n\nFix (luau): the caller is the innermost function_declaration containing the call, by POSITION (enclosing_declared_symbol over symbols_at(self.file_symbols(local_symbols))); the callee tries full text then short name, this file's symbols before the run-wide table at each step (so a same-file short name never pre-empts another file's exact Mod.fn).\n\nFamily swept in lang-extended1, all REPRODUCED on two-file fixtures and fixed in the same commit: apex (src = registry.get(\"Class.method\"): overloads crossed within ONE file, and an inner class named the same in two files crossed), hack (registry.get(\"ns\\Class::method\"), crossed on duplicate class copies), smithy (registry.get(\"ns#Shape\") for service/operation/structure sources), prisma (global_symbols.get(model_name) for both source and @relation target). Not members: odin, lean, verilog, jsonnet, d_lang. Outside the package: filed WI-gikuk-lorus-tilod-pimim-latoz-pinot-vuvih-nikov (java extends/implements src by package-less class name, reproduced; java pre-pass, kotlin super.m(), ruby _superclass_of, shape only).\n\nCorpus A/B (prisma, litellm, 5 schema.prisma copies): 82 edges both sides; cross-file src/dst edges 27 -> 0; edges whose line lies outside their src model's span 57/82 -> 0/82; three schemas that owned no edges before now own 23 each. No .luau file exists in ~/whole_bunch_of_repos or ~/curriculum_repos, so luau has no corpus A/B.\n\nResiduals, not done: (1) the luau/apex/hack/smithy file fallback src is the malformed 2-part 'luau:<path>:file' (no file symbol is created; make_file_id gives a 5-part id), unchanged here; (2) prisma's unresolved dst 'prisma:unresolved:<T>' is the WI-bagon 2-part shape; (3) smithy edges all carry line=1; (4) hack credits calls in a standalone function to the file (documented); (5) callee lookups in the other extended1 analyzers (e.g. odin's symbol_registry.get(callee_name)) are run-wide last-wins with no same-file preference. That is a related but different defect, and it was not swept."  # 2f87
+- op: update  # 5ae7
+  at: '2026-11-01T02:26:27Z'  # 5ae7
+  by: agent  # 5ae7
+  actor: jgstern_agent  # 5ae7
+  clock: 3  # 5ae7
+  nonce: 5ae7  # 5ae7
+  set:  # 5ae7
+    status: done  # 5ae7
+- op: discuss  # d83c
+  at: '2026-11-01T02:26:27Z'  # d83c
+  by: agent  # d83c
+  actor: jgstern_agent  # d83c
+  clock: 4  # d83c
+  nonce: d83c  # d83c
+  message: "Fixed in PR #1983 (e0e236386c on dev). Root cause: the caller was fetched by bare name from a run-wide registry (last file wins), and the walk carried the outermost function name into nested functions. Now the WI-kosar mechanism: the enclosing symbol by position (symbols_at over file_symbols), the callee from this file first, full name before short name. The same family was fixed in apex, hack, smithy and prisma. Live repro on merged dev: hypergumbo survey on a.luau/b.luau each with local function helper(): rc=0, b.luau:5 beta() comes from b.luau:4-6:helper and b.luau:10 beta() from b.luau:9-11:inner (before: from a.luau helper, and from outer). Tests in test_luau/apex/hack/smithy/prisma. Corpus litellm prisma: cross-file edges 27 to 0. Residual filed: WI-gikuk (java extends/implements source by package-less name)."  # d83c

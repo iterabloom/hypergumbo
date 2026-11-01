@@ -19,3 +19,10 @@
     pr_ref:  # d8af
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. puppet.py:374/388 dst=f\"puppet:resource:{value}\". service { 'nginx': require => Package['nginx'] } gives dst puppet:resource:Package['nginx'], which finalize pads with an <unknown> path; the package[nginx] resource two lines above is never reached. Same class as WI-zihij, which does not list puppet. v10."  # d8af
     fields: {}  # d8af
+- op: discuss  # 9372
+  at: '2026-10-31T23:30:03Z'  # 9372
+  by: agent  # 9372
+  actor: jgstern_agent  # 9372
+  clock: 2  # 9372
+  nonce: '9372'  # 9372
+  message: "FYI from WI-vahun-fijuv-vojag-rogij-bujaf-lagam-vuhaf-logup (branch jgstern-agent/fix/vahun, c352cb51f6): the require/notify edges now come from Pass 2 (PuppetAnalyzer.extract_edges_from_file -> _relationship_edges). The source resource is found by its declaration position (symbols_at). The dst, evidence_type and meta are unchanged, so this item is still open as filed. For the fix here, Pass 2 now has the whole repository's symbols available. Resources are deliberately NOT in global_symbols (register_symbol keeps classes only), so binding Package['nginx'] to the package[nginx] resource needs its own resource index, keyed by lowercased type plus title."  # 9372

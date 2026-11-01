@@ -1,0 +1,20 @@
+- op: create  # b7e6
+  at: '2026-11-01T02:26:27Z'  # b7e6
+  by: agent  # b7e6
+  actor: jgstern_agent  # b7e6
+  clock: 1  # b7e6
+  nonce: b7e6  # b7e6
+  data:  # b7e6
+    kind: work_item  # b7e6
+    title: "core in isolation (check-package-coverage core) misses 3 lines on dev: c_family.py:256, sketch.py:6657, verify_claims.py:7160, covered only by other packages tests"  # b7e6
+    status: todo_hard  # b7e6
+    priority: 3  # b7e6
+    parent:  # b7e6
+    tags:  # b7e6
+    - ci  # b7e6
+    isbefore: []  # b7e6
+    duplicate_of: []  # b7e6
+    not_duplicate_of: []  # b7e6
+    pr_ref:  # b7e6
+    description: "Seen 2026-10-31 at PR #1983 integration: check-package-coverage core reports c_family.py 256 (the class/struct member continue in c_family_file_scope_variables), sketch.py 6657 (the vendored-disclosure header line) and verify_claims.py 7160 (_withhold_for_unfollowed_escapes call). The branch changed no code in those files (core diff: linkers/ipc.py, two pin files, test_ipc_linker.py), so the gaps predate it. Each needs a core-package test. Cause of drift: WI-sagar (no live CI runs per-package isolation)."  # b7e6
+    fields: {}  # b7e6
