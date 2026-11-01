@@ -1,0 +1,22 @@
+- op: create  # fb43
+  at: '2026-11-01T09:56:10Z'  # fb43
+  by: agent  # fb43
+  actor: jgstern_agent  # fb43
+  clock: 1  # fb43
+  nonce: fb43  # fb43
+  data:  # fb43
+    kind: work_item  # fb43
+    title: "ruby: a module-level binding (APP = C.new) emits its variable symbol but never stamps constructed_from, so the parity column's 'NO SYMBOL' xfail for ruby is wrong and the key is simply missing"  # fb43
+    status: todo_hard  # fb43
+    priority: 2  # fb43
+    parent:  # fb43
+    tags:  # fb43
+    - ruby  # fb43
+    - analyzer  # fb43
+    - linker_gap  # fb43
+    isbefore: []  # fb43
+    duplicate_of: []  # fb43
+    not_duplicate_of: []  # fb43
+    pr_ref:  # fb43
+    description: "SPLIT 2026-11-01 from WI-kavam-jumob-dubon-gibaz-povik-nozif-lanag-rilik (which keeps the php/elixir limb: no binding symbol at all). Found in the 2026-09-25 P2 review and re-confirmed 2026-11-01 (dev 24d0b860ee; ~/hypergumbo_lab_notebook/p2_review_11012026/A1/fx_kavam, dump_kavam.txt): m.rb `APP = C.new` emits ruby:m.rb:2-2:APP:variable with meta {visibility_signal} only - no constructed_from. So ruby is the bounded KEY-MISSING shape the other six languages had (all six closed in the parity sweep), not the prerequisite-symbol gap; test_constructed_from_parity.py:64-69 still says 'NO SYMBOL (WI-kavam)' for ruby and must be corrected. ASK: stamp constructed_from on the ruby variable/constant symbol at the construction site the way the other six analyzers do (write the meta as a dict literal at the construction site so the meta-key coherence gate can enumerate it; include packages/hypergumbo-core/tests/test_meta_key_coherence.py in the test run), flip the parity xfail to a pass, and update ruby.py's module docstring if it describes binding meta. ACCEPTANCE: the parity test's ruby cell is green with no xfail, and a fixture `APP = C.new; APP.run` resolves APP.run to C#run through the stamp."  # fb43
+    fields: {}  # fb43

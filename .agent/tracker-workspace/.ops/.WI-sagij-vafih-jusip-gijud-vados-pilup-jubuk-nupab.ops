@@ -1,0 +1,22 @@
+- op: create  # f629
+  at: '2026-11-01T09:56:04Z'  # f629
+  by: agent  # f629
+  actor: jgstern_agent  # f629
+  clock: 1  # f629
+  nonce: f629  # f629
+  data:  # f629
+    kind: work_item  # f629
+    title: "Commit the INV-nular remainder-sweep instruments (probe-first candidate pool, blind plants, verifier) under scripts/ with tests; today they live only in the lab notebook"  # f629
+    status: todo_hard  # f629
+    priority: 3  # f629
+    parent:  # f629
+    tags:  # f629
+    - catalogue  # f629
+    - tooling  # f629
+    - measurement  # f629
+    isbefore: []  # f629
+    duplicate_of: []  # f629
+    not_duplicate_of: []  # f629
+    pr_ref:  # f629
+    description: "SPLIT 2026-11-01 from WI-vafad-vatos-fozos-pugol-fivak-hopif-bisoh-mijur (closed). The three tranches' instruments (check_rulings, probe_py, build_units and the plant/verify harness) exist only under ~/hypergumbo_lab_notebook/vafad_t3_10032026/instruments/ and the earlier tranche dirs; `git ls-files | grep -i 'check_rulings|probe_py|build_units'` is empty. The next re-take of the catalogue (259 rows were added or re-pointed between tranches 2 and 3 alone) has to rebuild them from the notebook. ASK: move them under scripts/ (one entry point, e.g. scripts/catalogue-kind-sweep with --pool / --plant / --verify), with tests on a tiny catalogue fixture (the probe pools a row with an unrouted name; a planted wrong kind is caught; a sourced ruling passes), and point docs/audits/0022's method section at them. Not a CI gate."  # f629
+    fields: {}  # f629
