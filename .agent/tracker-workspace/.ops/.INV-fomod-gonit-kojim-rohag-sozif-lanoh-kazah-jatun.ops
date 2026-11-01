@@ -38,3 +38,10 @@
   clock: 3  # 1a94
   nonce: 1a94  # 1a94
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): grep confirms FRAMEWORK_FILE_STRUCTURE_SIGNATURES is not yet defined anywhere in packages/hypergumbo-core/. The mechanism remains unimplemented as of dev @ 77a69627b8. INV-rojip (pending_validation) handles import-edge promotion; this item is its file-structure complement per its own \"Why this is distinct from INV-rojip\" framing. P4 is appropriate given the small expected hit rate (residue of post-WI-palol post-WI-pusad post-WI-lohok cases)."  # 1a94
+- op: discuss  # f792
+  at: '2026-11-01T22:22:25Z'  # f792
+  by: agent  # f792
+  actor: jgstern_agent  # f792
+  clock: 4  # f792
+  nonce: f792  # f792
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: CURRENT. Re-checked 2026-11-01 at 9ae4abe13f: grep finds no FRAMEWORK_FILE_STRUCTURE_SIGNATURES or file-structure detector under packages/*/src. Fixture with no Gemfile, config/application.rb (class Application < Rails::Application), config/routes.rb (Rails.application.routes.draw), a UsersController and a Rakefile: survey reports frameworks=[] and dev_frameworks=[]. Two related items have since closed (INV-rojip satisfied, WI-pusad done; the description still calls them violated/todo_hard), but neither covers this file-structure case. MECHANISM: Framework detection has no file-structure signal path; with no manifest declaration and no import edges, Rails is not detected."  # f792

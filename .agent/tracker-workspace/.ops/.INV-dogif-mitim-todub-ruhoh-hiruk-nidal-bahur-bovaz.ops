@@ -230,3 +230,26 @@
   clock: 29  # fbe0
   nonce: fbe0  # fbe0
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): three-item routes-coverage cluster spans detection (this item, P4), slice emission (INV-nubub, P1), and bm.json output (INV-pomol, P1 under WI-gogif). No umbrella exists; the priority gap makes a META filing unattractive (P4 + P1 + P1 doesn't compose as a single closure criterion). Cross-references via Phase-1 backfill are already in place; recommend leaving as-is unless a fourth routes-related item surfaces."  # fbe0
+- op: discuss  # fdc1
+  at: '2026-11-01T22:22:25Z'  # fdc1
+  by: agent  # fdc1
+  actor: jgstern_agent  # fdc1
+  clock: 30  # fdc1
+  nonce: fdc1  # fdc1
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: PARTLY-STALE. Re-checked 2026-11-01 at 9ae4abe13f. fields.root_cause still lists five gaps, but PR #3892 (21527cbba4) closed gaps 3-5. Live: a {path: P} object config and <Route path={P}> with const P = \"/dyn\" emit no junk route (gap 5 FP gone; the dynamic path is dropped, not folded). Gaps 1-2 reproduce: hypergumbo routes on a fixture with <Route index element={<DashHome/>}/> under /dash and {index: true} under /shop lists /, /about, /dash, /shop and /shop/cart, but no index route. Side observation: object-config routes show the handler as \"GET /shop\" rather than the element component. MECHANISM: index-route Route nodes are filtered out because the JSX and object-config route extractors require a path attribute or key."  # fdc1
+- op: update  # 5608
+  at: '2026-11-01T22:22:25Z'  # 5608
+  by: agent  # 5608
+  actor: jgstern_agent  # 5608
+  clock: 31  # 5608
+  nonce: '5608'  # 5608
+  set:  # 5608
+    title: "React Router index routes (<Route index> JSX and {index: true} object config) are absent from routes output; needs the index-route path design call first"  # 5608
+- op: update  # d57e
+  at: '2026-11-01T22:22:25Z'  # d57e
+  by: agent  # d57e
+  actor: jgstern_agent  # d57e
+  clock: 32  # d57e
+  nonce: d57e  # d57e
+  set:  # d57e
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Re-checked 2026-11-01 at 9ae4abe13f. fields.root_cause still lists five gaps, but PR #3892 (21527cbba4) closed gaps 3-5. Live: a {path: P} object config and <Route path={P}> with const P = \"/dyn\" emit no junk route (gap 5 FP gone; the dynamic path is dropped, not folded). Gaps 1-2 reproduce: hypergumbo routes on a fixture with <Route index element={<DashHome/>}/> under /dash and {index: true} under /shop lists /, /about, /dash, /shop and /shop/cart, but no index route. Side observation: object-config routes show the handler as \"GET /shop\" rather than the element component. (Original text below; the review entry in the thread has the evidence.)"  # d57e

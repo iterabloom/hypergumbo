@@ -23,3 +23,18 @@
     pr_ref:  # 1db5
     description: "Mechanical sweep: add @override (typing.override on 3.12+, typing_extensions.override on 3.10/3.11) to every method that overrides a base-class method. Then enable the explicit-override error code in [tool.mypy] (already proposed in W4's error-code list; this is the sweep that lets the gate close). Catches drift when a base-class method signature changes but a subclass doesn't update. Useful for the analyzer-base-class family and any linker subclasses that override base behavior."  # 1db5
     fields: {}  # 1db5
+- op: discuss  # 204a
+  at: '2026-11-01T22:22:31Z'  # 204a
+  by: agent  # 204a
+  actor: jgstern_agent  # 204a
+  clock: 2  # 204a
+  nonce: 204a  # 204a
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: OBSOLETE. P4 review 2026-11-01 at dev 9ae4abe13f: pyproject.toml [tool.mypy] enable_error_code omits explicit-override, and lines 130-134 record why. Commit 12c4dbc65e (2026-07-19, after this item was filed) dropped it, citing 289 errors, a stricter-than-pyright default, the typing_extensions dependency on 3.10, and low bug value. 0 @override uses in packages/*/src. The item's premise that the code is 'already proposed in W4's list; this sweep lets the gate close' was superseded. mypy's default `override` check (2 errors in the baseline) already catches incompatible subclass signatures. Close as wont_do unless the owner reverses 12c4dbc65e. MECHANISM: explicit-override deliberately dropped from the mypy bar (12c4dbc65e, WI-rokup refinement; pyproject.toml:130-134). SHARES MECHANISM WITH: INV-zogud. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # 204a
+- op: update  # fa26
+  at: '2026-11-01T22:22:31Z'  # fa26
+  by: agent  # fa26
+  actor: jgstern_agent  # fa26
+  clock: 3  # fa26
+  nonce: fa26  # fa26
+  set:  # fa26
+    description: "[REVIEW 2026-11-01, OBSOLETE] P4 review 2026-11-01 at dev 9ae4abe13f: pyproject.toml [tool.mypy] enable_error_code omits explicit-override, and lines 130-134 record why. Commit 12c4dbc65e (2026-07-19, after this item was filed) dropped it, citing 289 errors, a stricter-than-pyright default, the typing_extensions dependency on 3.10, and low bug value. 0 @override uses in packages/*/src. The item's premise that the code is 'already proposed in W4's list; this sweep lets the gate close' was superseded. mypy's default `override` check (2 errors in the baseline) already catches incompatible subclass signatures. Close as wont_do unless the owner reverses 12c4dbc65e. (Original text below; the review entry in the thread has the evidence.)\n\nMechanical sweep: add @override (typing.override on 3.12+, typing_extensions.override on 3.10/3.11) to every method that overrides a base-class method. Then enable the explicit-override error code in [tool.mypy] (already proposed in W4's error-code list; this is the sweep that lets the gate close). Catches drift when a base-class method signature changes but a subclass doesn't update. Useful for the analyzer-base-class family and any linker subclasses that override base behavior."  # fa26

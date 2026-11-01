@@ -19,3 +19,10 @@
     pr_ref:  # e9e2
     description: "## Statement\nThe sketch's Key Symbols global footer (`sketch.py:6271`) reports `(... and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files)`. `unselected` counts candidate symbols not selected anywhere, but the file-count term is the number of files with *no* selected symbol — so whenever the unselected candidates live in files that are already shown, the line reads \"... across 0 other files\".\n\n## Observed (dogfood 2026-10-16, hypergumbo 9.1.0, /tmp/pf-prelim)\nKey Symbols shows one file with 5 symbols and \"(... +39 more, top score: 1.46)\", followed by \"(... and 27 more symbols across 0 other files)\". The 27 are lower-ranked candidates in the same file; the per-file \"+39 more\" already covers that file's remainder, so the reader gets two overlapping remainders and an impossible file count.\n\n## Expected\nWhen the file-count term is 0, say so truthfully — e.g. \"(... and 27 lower-ranked symbols in the files above)\" — or fold them into the per-file remainder. When it is >0, keep the current wording. A unit test with a single-file repo whose candidate count exceeds the per-file cap pins it."  # e9e2
     fields: {}  # e9e2
+- op: discuss  # 1ef9
+  at: '2026-11-01T22:22:29Z'  # 1ef9
+  by: agent  # 1ef9
+  actor: jgstern_agent  # 1ef9
+  clock: 2  # 1ef9
+  nonce: 1ef9  # 1ef9
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. The footer is unchanged at sketch.py:6277 (cited as 6271). Repro: a single-file fixture with 121 functions, hypergumbo sketch -t 2000 --config-extraction heuristic, gives '(... +5 more, top score: 0.00)' followed by '(... and 111 more symbols across 0 other files)'. MECHANISM: The global footer's file-count term counts files with no selected symbol, not the files that hold the unselected candidates."  # 1ef9

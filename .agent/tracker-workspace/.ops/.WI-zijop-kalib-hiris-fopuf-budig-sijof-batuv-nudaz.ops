@@ -20,3 +20,18 @@
     pr_ref:  # c22e
     description: "cmd_dead_code_maybe (cli.py ~:9192-9207) builds Symbol(id, name, kind, language, path, span, meta) by hand for entrypoint detection instead of Symbol.from_dict, dropping supply_chain_tier (defaults to 1) and modifiers. detect_entrypoints reads both (tier>=3 rank penalties ~entrypoints.py:1735/1852; declaration-vs-definition dedup ~:1585), so vendored entrypoints are not demoted and declaration duplicates are not collapsed. Impact limited to --min-confidence > 0 (default 0.0). Fix: route through Symbol.from_dict like every other read path. Confirmed by reading, 2026-10-16 docstring-staleness audit."  # c22e
     fields: {}  # c22e
+- op: discuss  # 0f81
+  at: '2026-11-01T22:22:28Z'  # 0f81
+  by: agent  # 0f81
+  actor: jgstern_agent  # 0f81
+  clock: 2  # 0f81
+  nonce: 0f81  # 0f81
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. cmd_dead_code_maybe (cli.py:9421-9442) still builds Symbol by hand. It now also passes discovery_language/protocol_origin, but not supply_chain_tier or modifiers. Fixture with vendor/lib/server.py + app/main.py flask handlers: hand-built gives the vendored handler tier 1, rank 1.0; Symbol.from_dict gives tier 3, rank 0.354. Correction: the impact is not limited to --min-confidence > 0, because detect_entrypoints applies its own MIN_ENTRYPOINT_CONFIDENCE=0.10 floor and the size cap (_diversity_cap) by rank_score, and both run at the default. MECHANISM: A hand-written dict-to-Symbol conversion instead of the single deserializer Symbol.from_dict drops fields the consumer reads."  # 0f81
+- op: update  # f7d7
+  at: '2026-11-01T22:22:29Z'  # f7d7
+  by: agent  # f7d7
+  actor: jgstern_agent  # f7d7
+  clock: 3  # f7d7
+  nonce: f7d7  # f7d7
+  set:  # f7d7
+    description: "[REVIEW 2026-11-01, CURRENT] Review 2026-11-01 at dev 9ae4abe13f. cmd_dead_code_maybe (cli.py:9421-9442) still builds Symbol by hand. It now also passes discovery_language/protocol_origin, but not supply_chain_tier or modifiers. Fixture with vendor/lib/server.py + app/main.py flask handlers: hand-built gives the vendored handler tier 1, rank 1.0; Symbol.from_dict gives tier 3, rank 0.354. Correction: the impact is not limited to --min-confidence > 0, because detect_entrypoints applies its own MIN_ENTRYPOINT_CONFIDENCE=0.10 floor and the size cap (_diversity_cap) by rank_score, and both run at the default. (Original text below; the review entry in the thread has the evidence.)\n\ncmd_dead_code_maybe (cli.py ~:9192-9207) builds Symbol(id, name, kind, language, path, span, meta) by hand for entrypoint detection instead of Symbol.from_dict, dropping supply_chain_tier (defaults to 1) and modifiers. detect_entrypoints reads both (tier>=3 rank penalties ~entrypoints.py:1735/1852; declaration-vs-definition dedup ~:1585), so vendored entrypoints are not demoted and declaration duplicates are not collapsed. Impact limited to --min-confidence > 0 (default 0.0). Fix: route through Symbol.from_dict like every other read path. Confirmed by reading, 2026-10-16 docstring-staleness audit."  # f7d7

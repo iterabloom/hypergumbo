@@ -22,3 +22,10 @@
     pr_ref:  # fa47
     description: "_extract_config_embedding encodes ANSWER_PATTERNS (41), BIG_PICTURE_QUESTIONS (127) and NEGATIVE_PATTERNS (12) live on every call (fake-model repro: encode batches [41,127,4,12,41,127,4,12] over two calls). _embedding_data ships ANSWER/BIGPIC/NEGATIVE_PROBES_B64; the ANSWER/BIGPIC getters (sketch_embeddings ~751/768) have no caller and NEGATIVE has no reader; sketch.py and sketch_embeddings.py keep duplicate pattern lists. Either use the precomputed arrays (guarded by a model/list hash) or stop generating them.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # fa47
     fields: {}  # fa47
+- op: discuss  # ddf0
+  at: '2026-11-01T22:22:29Z'  # ddf0
+  by: agent  # ddf0
+  actor: jgstern_agent  # ddf0
+  clock: 2  # ddf0
+  nonce: ddf0  # ddf0
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. Patching sketch_embeddings._load_embedding_model with a fake encoder and calling sketch._extract_config_embedding twice on a 2-file fixture gives encode batches [41, 127, 5, 12, 41, 127, 5, 12]. ANSWER_PATTERNS and BIG_PICTURE_QUESTIONS are encoded live at sketch.py:1867/1872, and NEGATIVE_PATTERNS at about 1964. _get_answer_probe_embeddings and _get_bigpic_probe_embeddings have no caller in src, tests or scripts. sketch.py and sketch_embeddings.py keep equal but separate copies of the lists (41 and 127 entries). MECHANISM: Precomputed probe embeddings are generated and shipped, but the consumer encodes the probe lists live; the getters have no caller. SHARES MECHANISM WITH: WI-fidan."  # ddf0

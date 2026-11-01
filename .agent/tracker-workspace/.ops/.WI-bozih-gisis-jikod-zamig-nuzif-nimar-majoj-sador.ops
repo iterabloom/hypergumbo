@@ -38,3 +38,10 @@
   clock: 3  # 47ac
   nonce: 47ac  # 47ac
   message: "Should grow a PermissionError case. Today WI-bozih positive-controls only the SyntaxError face (caught at the py.py extraction site -> exit 0, lands in failed_files). Per the WI-madal investigation 2026-06-09, a chmod-000 .py file raises PermissionError, which is NOT in the extraction except tuple (py.py:2175 catches only SyntaxError/UnicodeDecodeError) and crashes the run (exit 1, no JSON). Once the leaf fix lands (OSError/PermissionError -> failed_files), this positive control should also assert that an UNREADABLE file lands in failed_files with a clean exit and valid partial JSON — extending the contract test from unparseable to unreadable. See WI-madal for the full three-level analysis."  # 47ac
+- op: discuss  # 0965
+  at: '2026-11-01T22:22:29Z'  # 0965
+  by: agent  # 0965
+  actor: jgstern_agent  # 0965
+  clock: 4  # 0965
+  nonce: '0965'  # 0965
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f: fixture with a SyntaxError .py, a chmod-000 .py and a good .py. `hypergumbo survey fx --out X.json` exited 0 and analyzed good.py (10 nodes/11 edges). limits.failed_files = [{analyzer:python,path:pkg/bad.py,reason:'SyntaxError: invalid syntax ...'},{analyzer:python,path:pkg/noperm.py,reason:'PermissionError: [Errno 13] ...'}]. The control holds, and the PermissionError extension asked for on 06-09 now holds too (WI-madal done). Tests test_cli_run_behavior_map.py:459-517 and test_python_ast_analysis.py:106-148 pin it. No work is left, so it can close as a recorded control. MECHANISM: per-file read/parse exceptions (SyntaxError, UnicodeDecodeError, OSError incl. PermissionError) are caught at the extraction site (py.py:3332) and recorded in limits.failed_files; the run fails open. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # 0965

@@ -50,3 +50,10 @@
   clock: 5  # a03e
   nonce: a03e  # a03e
   message: "Cross-ref backfill: closure of this item (and child Phases B/C/D — WI-mogan, WI-lugag, WI-vaguk) advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster covering call-graph non-traversal of dispatch-primitive patterns. Constant-composed URL folding is one such dispatch primitive (HTTP routing)."  # a03e
+- op: discuss  # d6db
+  at: '2026-11-01T22:22:25Z'  # d6db
+  by: agent  # d6db
+  actor: jgstern_agent  # d6db
+  clock: 6  # d6db
+  nonce: d6db  # d6db
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: CURRENT. Re-checked 2026-11-01 at dev 9ae4abe13f. Phase A (WI-mugog, 833d95a40f) shipped the url_folding/ substrate; string_interpolation.yaml covers only javascript/typescript, array_join.yaml only elm, and SCOPE.md still lists python/go/ruby/java as literal-only. WI-luhod (d2f7d0bba0) added bare-identifier constant resolution only. Fixture with a Flask route and requests.get(f\"{BASE}/users/{uid}\"), requests.get(\"/api/%s\" % \"items\") and requests.get(BASE + \"/orders\") produced one HTTP edge, for the plain-literal call only. Phases B/C/D are all open, so the invariant is still violated. MECHANISM: HTTP-linker per-language scanners accept only a bare quoted literal or a bare identifier as the URL argument (_URL_ARG); f-string, printf and concat forms are never folded. SHARES MECHANISM WITH: WI-mogan,WI-lugag,WI-vaguk."  # d6db

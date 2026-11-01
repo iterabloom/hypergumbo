@@ -63,3 +63,18 @@
     tags: [dogfood]  # c308
   remove:  # c308
     tags: [dogfooding]  # c308
+- op: discuss  # 3af8
+  at: '2026-11-01T22:22:30Z'  # 3af8
+  by: agent  # 3af8
+  actor: jgstern_agent  # 3af8
+  clock: 6  # 3af8
+  nonce: 3af8  # 3af8
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f: `timeout --preserve-status -s INT 4 hypergumbo survey <copy of core/linkers> --out X.json` gave rc=130 and a 30-line traceback ending in concurrent/futures/_base.py as_completed -> threading wait -> KeyboardInterrupt, with no output file. `hypergumbo run` reproduces it the same way. Root-cause field correction: the top-level handler now EXISTS (WI-himas done, PR #546), but it deliberately catches Exception only, so Ctrl-C still escapes. The fix is one `except KeyboardInterrupt` branch there. MECHANISM: main()'s top-level handler (cli.py ~13919-13970, WI-himas) catches Exception, not BaseException; KeyboardInterrupt raised in as_completed() in run_all_analyzers (all_analyzers.py:476) propagates to the interpreter."  # 3af8
+- op: update  # eb6a
+  at: '2026-11-01T22:22:30Z'  # eb6a
+  by: agent  # eb6a
+  actor: jgstern_agent  # eb6a
+  clock: 7  # eb6a
+  nonce: eb6a  # eb6a
+  set:  # eb6a
+    title: "SIGINT during hypergumbo survey (or the run alias) dumps a raw KeyboardInterrupt traceback; main()'s safety net catches Exception, not KeyboardInterrupt"  # eb6a

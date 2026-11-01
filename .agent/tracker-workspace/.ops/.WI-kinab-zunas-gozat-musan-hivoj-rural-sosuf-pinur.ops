@@ -27,3 +27,26 @@
   clock: 2  # 67a5
   nonce: 67a5  # 67a5
   message: "Scaffold note 2026-10-16: the Lit scaffold in packages/htrac-frontend is being removed (owner decision; see WI-popal). This view starts from a fresh React scaffold (Vite + React), since BlockNote, @xyflow/react and Excalidraw are all React; the old ws-client.ts / service worker are recoverable from git history if useful."  # 67a5
+- op: discuss  # 2e76
+  at: '2026-11-01T22:22:32Z'  # 2e76
+  by: agent  # 2e76
+  actor: jgstern_agent  # 2e76
+  clock: 3  # 2e76
+  nonce: '2e76'  # 2e76
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 9ae4abe13f. ADR-0019 (amended) and ADR-0062 (2026-10-29) name WI-kinab as the planned @xyflow/react view, so the item is re-scoped, not obsolete. packages/htrac-frontend was removed in 86cb7d3a37, so the title prefix and 'in packages/htrac-frontend' are stale. The rest matches ADR-0062: isbefore and parent are projected as op-only plain values (section 1), and awareness carries item_id (section 4), so highlights are possible. Item D is WI-vojil (todo_hard); WI-sunan and WI-vojil are isbefore predecessors. MECHANISM: the view was specced against the removed packages/htrac-frontend scaffold; its data and awareness needs match ADR-0062. SHARES MECHANISM WITH: WI-fujus."  # 2e76
+- op: update  # 149d
+  at: '2026-11-01T22:22:32Z'  # 149d
+  by: agent  # 149d
+  actor: jgstern_agent  # 149d
+  clock: 4  # 149d
+  nonce: 149d  # 149d
+  set:  # 149d
+    title: "Live tracker doc (ADR-0062): @xyflow/react read-only isbefore/parent graph from the live Y.Doc with awareness highlights (new React app)"  # 149d
+- op: update  # 5e7c
+  at: '2026-11-01T22:22:32Z'  # 5e7c
+  by: agent  # 5e7c
+  actor: jgstern_agent  # 5e7c
+  clock: 5  # 5e7c
+  nonce: 5e7c  # 5e7c
+  set:  # 5e7c
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 9ae4abe13f. ADR-0019 (amended) and ADR-0062 (2026-10-29) name WI-kinab as the planned @xyflow/react view, so the item is re-scoped, not obsolete. packages/htrac-frontend was removed in 86cb7d3a37, so the title prefix and 'in packages/htrac-frontend' are stale. The rest matches ADR-0062: isbefore and parent are projected as op-only plain values (section 1), and awareness carries item_id (section 4), so highlights are possible. Item D is WI-vojil (todo_hard); WI-sunan and WI-vojil are isbefore predecessors. (Original text below; the review entry in the thread has the evidence.)\n\n## What\nA read-only `@xyflow/react` (MIT, 12.12) graph view in packages/htrac-frontend rendering items as nodes and `isbefore` / parent relationships as edges, sourced from the live Y.Doc over the sync endpoint (item D), with awareness highlights (nodes other clients are currently viewing). This is the tracker's \"edgeless\" view -- the structured-graph half of what ADR-0019 originally imagined BlockSuite's edgeless mode doing -- and the natural view for the `isbefore` chains the trackerize playbook produces.\n## Scope\nRead-only. Layout: dagre/elk via xyflow examples or manual layering by priority; filter by tag/status; click a node to open its item. No editing of relationships from the graph (that stays CLI/op-only per the ADR).\n## Done when\nGraph renders the live tracker, updates within one sync round-trip of a CLI `update --add-isbefore`, and shows another client's awareness highlight. Typechecks and builds locally.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4."  # 5e7c

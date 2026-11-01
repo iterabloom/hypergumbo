@@ -26,3 +26,10 @@
   clock: 2  # 8e3c
   nonce: 8e3c  # 8e3c
   message: "Two more from the 2026-10-16 docstring audit (verifier-checked greps of packages/, scripts/, hooks, workflows, entry points; git log -S): (1) hypergumbo_core.test_masking has no caller since 6c95b9d784 removed its smart-test integration (only its tests and a comment at scripts/smart-test:872); docstring now says so. (2) selection_index writes meta last_full_run_sha but nothing reads it (never landed: only f1250331f6 introduced it); docstring now says 'nothing reads it yet'. Decide: delete or wire."  # 8e3c
+- op: discuss  # 00ad
+  at: '2026-11-01T22:22:29Z'  # 00ad
+  by: agent  # 00ad
+  actor: jgstern_agent  # 00ad
+  clock: 3  # 00ad
+  nonce: 00ad  # 00ad
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. Grep of packages/*/src, scripts, .agent/hooks, .githooks and CI workflows: cache.invalidate_stale (cache.py:230) and query_blocking (cache.py:400) have no non-test caller. TOKENS_PER_NODE_OVERHEAD appears only in its definition and the selection/__init__ re-export. TaintFlowConstraint.allowed_sanitizers is parsed (verify_claims.py:2332) but read only by its own __post_init__. test_masking has no caller. last_full_run_sha is written (selection_index.py:270) and never read. All six still hold. MECHANISM: Public helpers kept after their only caller or use case was removed or never landed. SHARES MECHANISM WITH: WI-pizos,WI-tovoz."  # 00ad

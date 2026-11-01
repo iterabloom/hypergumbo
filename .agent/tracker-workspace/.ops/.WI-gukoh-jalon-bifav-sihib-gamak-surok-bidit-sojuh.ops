@@ -31,3 +31,10 @@
     tags: [dogfood_tranche_04]  # 5db3
   remove:  # 5db3
     tags: [dogfood_tranch_04]  # 5db3
+- op: discuss  # 35c2
+  at: '2026-11-01T22:22:30Z'  # 35c2
+  by: agent  # 35c2
+  actor: jgstern_agent  # 35c2
+  clock: 3  # 35c2
+  nonce: 35c2  # 35c2
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f, py fixture. Reverse slices of normalize (8 nodes/9 edges), Engine.compute (6/7) and the pytest fixture engine (1/0, own file only) were fully closed, with correct callers and depths; --max-files 1 set limits_hit=[file_limit]. The control holds. The forward side still leaks: a forward slice of service_b had 12 edges, 10 closed. The 2 open ones were 'imports lib/core.py file -> normalize/os', added because the BFS reached class Engine and slice.py:903-908 calls add_file_imports on container kinds. This is an untracked residual of INV-tarol (satisfied). Close this control and file the residual. MECHANISM: reverse BFS never calls add_file_imports; forward BFS still calls it when it reaches a container-kind node (slice.py:903-908), adding src=file-node import edges whose src is not in node_ids. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # 35c2

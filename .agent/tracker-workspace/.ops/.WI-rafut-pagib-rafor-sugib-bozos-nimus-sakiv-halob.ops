@@ -18,3 +18,10 @@
     pr_ref:  # ed39
     description: "The jsonnet analyzer's calls edge (jsonnet.py ~line 283, evidence_type='tree_sitter') passes a computed confidence that is 1.0 for a resolved local call (0.6 for unresolved), breaching the 0.95 evidence-derived ceiling (ADR-0039). Surfaced adjacent to WI-radim (which fixed the three literal-1.0 sites: meson build_dependency/subdir_include + the jsonnet import edge). DIFFERENT mechanism: the calls confidence is a computed variable, not a dropped literal, so the fix is to cap/derive the resolved-call value in-band (and consider relabeling evidence_type='tree_sitter' to a specific pathway, as WI-radim did for the import edge). Repro: test_extracts_call_edges in packages/hypergumbo-lang-extended1/tests/test_jsonnet.py asserts edge.confidence == 1.0."  # ed39
     fields: {}  # ed39
+- op: discuss  # cc1e
+  at: '2026-11-01T22:22:24Z'  # cc1e
+  by: agent  # cc1e
+  actor: jgstern_agent  # cc1e
+  clock: 2  # cc1e
+  nonce: cc1e  # cc1e
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f. jsonnet.py:306 still sets confidence = 1.0 for a resolved call (0.6 otherwise), and test_jsonnet.py:149 asserts 1.0. Survey on fx_rafut emits calls edges at 1.0, confidence_source=emitter_constant, evidence_type=tree_sitter. Same computed-1.0 shape at hack.py:441, smithy.py:399, apex.py:774, prisma.py:309 and luau.py:426; luau checked live (twice -> add at 1.0, emitter_constant). Fix as a family. Side note: jsonnet call edges have the FILE as src, not the enclosing local function. MECHANISM: analyzer computes resolved-call confidence as a private 1.0 constant instead of the evidence-derived pathway band (<=0.95)."  # cc1e

@@ -139,3 +139,11 @@
   clock: 15  # 8d84
   nonce: 8d84  # 8d84
   message: "MERGED into INV-nanon (owner-approved 2026-11-01; the convention for duplicate invariants is status deleted, which the tracker reserves for a human). The pass still runs on DI-free repos, but the gate was refused by ADR-0055 and its canonical INV-bikaj is satisfied; the live measurement was copied to INV-nanon. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). ACTION FOR THE OWNER: set status deleted (the agent cannot); parked at needs_human_review so it no longer blocks."  # 8d84
+- op: update  # fe5e
+  at: '2026-11-01T20:09:02Z'  # fe5e
+  by: human  # fe5e
+  actor: jgstern  # fe5e
+  clock: 16  # fe5e
+  nonce: fe5e  # fe5e
+  set:  # fe5e
+    status: deleted  # fe5e

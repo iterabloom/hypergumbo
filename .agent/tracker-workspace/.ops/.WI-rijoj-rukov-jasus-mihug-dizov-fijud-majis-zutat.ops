@@ -39,3 +39,10 @@
   clock: 4  # a093
   nonce: a093  # a093
   message: "(no cross-ref proposed — item's discussion thread already provides current upstream status with five forum-thread citations; blocked-soft state is correct)"  # a093
+- op: discuss  # 2ca9
+  at: '2026-11-01T22:22:31Z'  # 2ca9
+  by: agent  # 2ca9
+  actor: jgstern_agent  # 2ca9
+  clock: 5  # 2ca9
+  nonce: 2ca9  # 2ca9
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 9ae4abe13f. Repo side unchanged: session_id_helpers.sh:99-101 extract_cursor_session_id echoes 'cursor-singleton'; cursor/session-start.sh:44-67 sibling check still enforces single-session-per-repo; no code reads cursorDiskKV/composerData. The upstream blocker (Cursor hook additional_context/agent_message dropped) was last checked 2026-04-11 and was not re-checked here (no network). Note that the short ID 'WI-rijoj' cited in AGENTS.md and the hooks is now ambiguous with WI-rijoj-bimar (done); cite WI-rijoj-rukov. MECHANISM: Cursor's transcript store is one global SQLite db, so extract_cursor_session_id returns the constant 'cursor-singleton' and session-start.sh refuses a second watcher; no per-conversation extractor exists. SHARES MECHANISM WITH: WI-subiz."  # 2ca9

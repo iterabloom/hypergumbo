@@ -26,3 +26,18 @@
   clock: 2  # 1e39
   nonce: '1e39'  # 1e39
   message: "From WI-tusad F2 (2026-10-13), recorded by F3: the bundled tree-sitter-agda 1.3.3 (grammar_module) (1) swallows EVERY declaration after a one-constructor data type into it (not only misparses the type), and (2) nests the next module inside an EMPTY nested module body (`module C where` with nothing after it). The tree-sitter-language-pack agda grammar parses both correctly. Workaround in the WI-tusad gate fixtures: a two-constructor Nat and non-empty module bodies. Consequence for identity: declarations after such a type hash the wrong scope chain and are named under it."  # 1e39
+- op: discuss  # 92fc
+  at: '2026-11-01T22:22:23Z'  # 92fc
+  by: agent  # 92fc
+  actor: jgstern_agent  # 92fc
+  clock: 3  # 92fc
+  nonce: 92fc  # 92fc
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 on dev 9ae4abe13f (tree-sitter-agda 1.3.3, fx_molon). Part 1 reproduces but is INV-vokir's (P3) mechanism: after a one-constructor data block the next signature splits into two function nodes (foo not emitted), and a following 'data Bool' header is lost too. It does not swallow every later declaration. Part 2 as titled does NOT reproduce: in 4 where-block probes each block nests under its own clause. The F2 correction does reproduce: an empty nested 'module C where' gives an ERROR, enclosing module A is not emitted, and 'run' loses its A chain. agda.py:65-69 repeats the where claim. MECHANISM: tree-sitter-agda 1.3.3 layout errors: a one-entry layout block splits the next declaration (INV-vokir), and an empty nested module body ERRORs the enclosing module. SHARES MECHANISM WITH: INV-vokir. PROPOSED DISPOSITION: split (awaiting owner authorization; status unchanged). PROPOSED REMAINDER TITLE: agda: an empty nested module body (module C where, nothing after) makes tree-sitter-agda ERROR the enclosing module, losing it and later scope chains"  # 92fc
+- op: update  # 5178
+  at: '2026-11-01T22:22:23Z'  # 5178
+  by: agent  # 5178
+  actor: jgstern_agent  # 5178
+  clock: 4  # 5178
+  nonce: '5178'  # 5178
+  set:  # 5178
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 9ae4abe13f (tree-sitter-agda 1.3.3, fx_molon). Part 1 reproduces but is INV-vokir's (P3) mechanism: after a one-constructor data block the next signature splits into two function nodes (foo not emitted), and a following 'data Bool' header is lost too. It does not swallow every later declaration. Part 2 as titled does NOT reproduce: in 4 where-block probes each block nests under its own clause. The F2 correction does reproduce: an empty nested 'module C where' gives an ERROR, enclosing module A is not emitted, and 'run' loses its A chain. agda.py:65-69 repeats the where claim. (Original text below; the review entry in the thread has the evidence.)\n\nReported by the WI-tusad B4 fix agent (PR #1562, 2026-10-12); not independently reproduced. Two tree-sitter-agda parse defects seen while migrating Agda stable_ids: (1) a data declaration with exactly one constructor is misparsed; (2) only the first clause-level where block in a file is nested under its clause, later ones are not. Neither was caused by B4. Effect on output not measured: symbols inside a mis-nested where may get the wrong scope chain (and so a different stable_id than intended). Next step: minimal repro for each, then decide grammar upgrade/patch vs analyzer-side workaround (see scripts/build-source-grammars if agda is built from source)."  # 5178

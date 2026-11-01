@@ -20,3 +20,26 @@
     pr_ref:  # 59d0
     description: "Observed 2026-09-06 in WI-komun's A/B read-back (jsleg_completeness_09062026/compare_komun.out). Two module names in the uncatalogued-module reason of clean javascript verdicts belong to modules that HAVE rows:\n  express  NO-FSWRITE / NO-SUBPROC: \"... could not classify (assert, body-parser, document, mime-types, node:http (+4 more))\"   -- `http` has rows (net_send request/get, net_recv createServer); `node:http` is the same module under the Node 16+ canonical import spelling.\n  winston  NO-NET / NO-SUBPROC:     \"... (assert, hock, logform, os, rimraf (+4 more))\"                                   -- `os` has 12 host_info_read rows.\njs_ts.py strips the `node:` prefix for import resolution (its docstring at ~391-404: \"node:fs -> fs\"), so some emission path still carries `node:http` into the module slot -- find it by fixture (`import http from 'node:http'; http.get(u)` vs `const http = require('node:http')`). `os` reaching the list means a call into os with a name the catalogue does not row (os.EOL? os.constants? a pure helper) -- the uncatalogued-module rung counts the MODULE, and a module with rows but an unrowed name is exactly what a module_completeness grant answers (WI-nolut granted 10 modules; os was not audited). Two small pieces: (1) the `node:` slot leak, a reach defect; (2) an `os` audit + grant, the js leg's next module.\n\nBoth keep a clean express/winston verdict withheld one rung longer than necessary; neither is a false all-clear. Phase 5 residue shape (a clean verdict reachable), small."  # 59d0
     fields: {}  # 59d0
+- op: discuss  # a89d
+  at: '2026-11-01T22:22:26Z'  # a89d
+  by: agent  # a89d
+  actor: jgstern_agent  # a89d
+  clock: 2  # a89d
+  nonce: a89d  # a89d
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: PARTLY-STALE. Re-checked 2026-11-01 at 9ae4abe13f. The node: slot-leak half is fixed by WI-fiham (1b66138525, 2026-10-03), which strips the scheme on import, require and attribute-read edges. A NO-SUBPROC claim on import http from 'node:http' with http.STATUS_CODES now reports \"(http)\", not node:http (http itself is deliberately withheld from a grant). The os half reproduces: const os = require('os') with os.EOL and os.hostname() gives NO-SUBPROC inconclusive \"could not classify (os)\". javascript.yaml module_completeness still has no os entry. MECHANISM: module rows without a completeness grant: the uncatalogued-module rung counts a module whose called name has no row."  # a89d
+- op: update  # ef3c
+  at: '2026-11-01T22:22:26Z'  # ef3c
+  by: agent  # ef3c
+  actor: jgstern_agent  # ef3c
+  clock: 3  # ef3c
+  nonce: ef3c  # ef3c
+  set:  # ef3c
+    title: "javascript: os has 12 rows but no module_completeness grant, so a call to an unrowed os name (os.EOL) keeps a clean verdict inconclusive"  # ef3c
+- op: update  # 1653
+  at: '2026-11-01T22:22:26Z'  # 1653
+  by: agent  # 1653
+  actor: jgstern_agent  # 1653
+  clock: 4  # 1653
+  nonce: '1653'  # 1653
+  set:  # 1653
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Re-checked 2026-11-01 at 9ae4abe13f. The node: slot-leak half is fixed by WI-fiham (1b66138525, 2026-10-03), which strips the scheme on import, require and attribute-read edges. A NO-SUBPROC claim on import http from 'node:http' with http.STATUS_CODES now reports \"(http)\", not node:http (http itself is deliberately withheld from a grant). The os half reproduces: const os = require('os') with os.EOL and os.hostname() gives NO-SUBPROC inconclusive \"could not classify (os)\". javascript.yaml module_completeness still has no os entry. (Original text below; the review entry in the thread has the evidence.)\n\nObserved 2026-09-06 in WI-komun's A/B read-back (jsleg_completeness_09062026/compare_komun.out). Two module names in the uncatalogued-module reason of clean javascript verdicts belong to modules that HAVE rows:\n  express  NO-FSWRITE / NO-SUBPROC: \"... could not classify (assert, body-parser, document, mime-types, node:http (+4 more))\"   -- `http` has rows (net_send request/get, net_recv createServer); `node:http` is the same module under the Node 16+ canonical import spelling.\n  winston  NO-NET / NO-SUBPROC:     \"... (assert, hock, logform, os, rimraf (+4 more))\"                                   -- `os` has 12 host_info_read rows.\njs_ts.py strips the `node:` prefix for import resolution (its docstring at ~391-404: \"node:fs -> fs\"), so some emission path still carries `node:http` into the module slot -- find it by fixture (`import http from 'node:http'; http.get(u)` vs `const http = require('node:http')`). `os` reaching the list means a call into os with a name the catalogue does not row (os.EOL? os.constants? a pure helper) -- the uncatalogued-module rung counts the MODULE, and a module with rows but an unrowed name is exactly what a module_completeness grant answers (WI-nolut granted 10 modules; os was not audited). Two small pieces: (1) the `node:` slot leak, a reach defect; (2) an `os` audit + grant, the js leg's next module.\n\nBoth keep a clean express/winston verdict withheld one rung longer than necessary; neither is a false all-clear. Phase 5 residue shape (a clean verdict reachable), small."  # 1653
