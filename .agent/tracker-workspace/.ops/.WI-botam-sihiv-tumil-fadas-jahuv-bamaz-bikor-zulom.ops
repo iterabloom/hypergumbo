@@ -25,3 +25,20 @@
   clock: 2  # 2030
   nonce: '2030'  # 2030
   message: "2026-10-25: facet B (vocabulary normalisation) overlaps WI-mujug's resolution_quality half -- 8 values now (adds accessor_name), 3 readers (receiver_blind_magnets.py:174, verify_claims.py:4520, :4674), 'ambiguous' with at least three meanings. Coordinate or fold."  # 2030
+- op: update  # 0ebd
+  at: '2026-11-01T23:36:11Z'  # 0ebd
+  by: agent  # 0ebd
+  actor: jgstern_agent  # 0ebd
+  clock: 3  # 0ebd
+  nonce: 0ebd  # 0ebd
+  set:  # 0ebd
+    status: wont_do  # 0ebd
+  add:  # 0ebd
+    duplicate_of: [WI-mujug-vahuh-mipog-rofob-zujij-humuz-nujol-jukul]  # 0ebd
+- op: discuss  # d8a0
+  at: '2026-11-01T23:36:11Z'  # d8a0
+  by: agent  # d8a0
+  actor: jgstern_agent  # d8a0
+  clock: 4  # d8a0
+  nonce: d8a0  # d8a0
+  message: "MERGED into WI-mujug (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: WI-botam facet A (give-up mislabel in csharp/dart) checked out clean; its live facet B is resolution_quality's open value vocabulary, which is this item's remaining half. Both close with WI-vusot's MetaKeySpec value layer."  # d8a0

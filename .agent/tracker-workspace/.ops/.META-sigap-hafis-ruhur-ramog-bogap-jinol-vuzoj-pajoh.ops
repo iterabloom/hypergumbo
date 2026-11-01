@@ -58,3 +58,10 @@
   clock: 6  # d6dd
   nonce: d6dd  # d6dd
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: CURRENT as re-scoped 10-25; title was stale. One 9-language fixture: python Path('x') -> instantiates -> python:pathlib:0-0:Path:external_symbol; ruby Set.new, swift DateFormatter(), kotlin File('x') -> plain calls to an external_symbol; java new File, C# new StringBuilder, PHP new DateTime, TS new Thing (imported), Scala new File -> NO edge from m. Members: INV-jukok satisfied, WI-mujor/WI-ninuv done, WI-jubag todo_hard P3. No instantiates change in the 8 analyzers since 10-25. The src half (a04ea91b99) and extends half (70d0cc067e) are fixed; only the instantiates half is live. Title re-scoped. ROOT-CAUSE GROUP: placeholder minting is per-arm, not chokepointed (with INV-kobad row 5; WI-jubag, WI-gaduf, WI-josik carry the cells). Status unchanged."  # d6dd
+- op: discuss  # eb54
+  at: '2026-11-01T23:36:21Z'  # eb54
+  by: agent  # eb54
+  actor: jgstern_agent  # eb54
+  clock: 7  # eb54
+  nonce: eb54  # eb54
+  message: "PARTIAL overlap noted on INV-kobad (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-kobad's row 5 is META-sigap's cell set (external-constructor instantiates outside Python); its row 1 is WI-harij (ruby cyclomatic node names)."  # eb54

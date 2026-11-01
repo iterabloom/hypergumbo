@@ -28,3 +28,10 @@
   clock: 2  # 3df8
   nonce: 3df8  # 3df8
   message: "2026-10-25: WI-sufon (rewrite ADR-0041 §1 / spec §14 to the owner's project-frame ruling) rewrites tier row 2, which today names internal_package_roots -- the SupplyChainConfig arm this item decides to wire or delete. If deleted, tier 2 has zero producers once INV-kutub lands, and row 2 must say so."  # 3df8
+- op: discuss  # a7e4
+  at: '2026-11-01T23:36:19Z'  # a7e4
+  by: agent  # a7e4
+  actor: jgstern_agent  # a7e4
+  clock: 3  # a7e4
+  nonce: a7e4  # a7e4
+  message: "PARTIAL overlap noted on WI-ditom (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ditom's 'SupplyChainConfig is never constructed' bullet is WI-jaloz (WI-ditom already cites it); track it there."  # a7e4

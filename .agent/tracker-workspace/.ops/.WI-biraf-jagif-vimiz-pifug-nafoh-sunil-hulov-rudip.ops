@@ -33,3 +33,17 @@
   clock: 3  # f0f4
   nonce: f0f4  # f0f4
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint4/). VERDICT: CURRENT. Re-checked at dev 100b6fbb6e: allowed_sanitizers appears only in docstrings, the dataclass default (verify_claims.py:1570-1571), the key allowlist (1997) and the parse (2332); no other reader in packages/*/src. Fixture os.environ->clean(v)->subprocess.run: verdict violated, sanitized_flows 0, identical for allowed_sanitizers [], [app.clean, clean] and \"notalist\" (all load without error). Premise and the 10-16 note both hold. MECHANISM: claim key parsed into TaintFlowConstraint with no consumer and no value type check."  # f0f4
+- op: discuss  # f75d
+  at: '2026-11-01T23:36:18Z'  # f75d
+  by: agent  # f75d
+  actor: jgstern_agent  # f75d
+  clock: 4  # f75d
+  nonce: f75d  # f75d
+  message: "PARTIAL overlap noted on WI-fidan (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-fidan's allowed_sanitizers bullet is WI-biraf (delete-or-wire TaintFlowConstraint.allowed_sanitizers); track that bullet there. WI-fidan's other helpers stay here."  # f75d
+- op: discuss  # e52d
+  at: '2026-11-01T23:36:19Z'  # e52d
+  by: agent  # e52d
+  actor: jgstern_agent  # e52d
+  clock: 5  # e52d
+  nonce: e52d  # e52d
+  message: "PARTIAL overlap noted on WI-ditom (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ditom's 'claims taint_flow.allowed_sanitizers is allowlisted and stored, never read' bullet is WI-biraf; track it there."  # e52d

@@ -113,3 +113,10 @@
   clock: 14  # c62c
   nonce: c62c  # c62c
   message: "PREMISE CHECK 2026-10-25: title corrected from 'Kotlin/Ruby currently emit 0'. Constructor fixture (no generics, so no overlap with WI-buhip): Python is the only language typing an external constructor as instantiates (e.g. Path); Java new File, C# new StringBuilder, PHP new Thing / new DateTime, TS new Thing from lib produce NO edge (each does emit instantiates for an in-repo new Local(), so the path is reached); Kotlin File(...) -> calls kotlin:java.io.File:0-0:File:external_symbol; Ruby .new -> calls; Swift URL(...) -> calls; Scala emits no construction edge of any type even for an in-repo new Local() (filed separately). Not checked: dart, groovy, c++, objc. META-sigap re-scoped to this half."  # c62c
+- op: discuss  # c5f5
+  at: '2026-11-01T23:36:08Z'  # c5f5
+  by: agent  # c5f5
+  actor: jgstern_agent  # c5f5
+  clock: 15  # c5f5
+  nonce: c5f5  # c5f5
+  message: "Folds in WI-josik (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-josik closed wont_do with duplicate_of here). WI-jubag's own scope line 'Scala none (even in-repo)' is WI-josik: scala.py has no instance_expression arm and emits no instantiates anywhere. Fix site is the same per-analyzer construction arm WI-jubag already covers. Read WI-josik's thread for its repro and evidence."  # c5f5

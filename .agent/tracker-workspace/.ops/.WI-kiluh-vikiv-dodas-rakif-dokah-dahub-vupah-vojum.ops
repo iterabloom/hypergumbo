@@ -26,3 +26,20 @@
   clock: 2  # ac60
   nonce: ac60  # ac60
   message: "2026-10-31 docstring audit re-reproduced this: datamodels.py:242 reads parent_bases, which no producer writes (analyzers write base_classes); Thing(Base) and Widget(BaseModel) are not detected, a @dataclass control is. No new item filed."  # ac60
+- op: update  # ad55
+  at: '2026-11-01T23:36:05Z'  # ad55
+  by: agent  # ad55
+  actor: jgstern_agent  # ad55
+  clock: 3  # ad55
+  nonce: ad55  # ad55
+  set:  # ad55
+    status: wont_do  # ad55
+  add:  # ad55
+    duplicate_of: [WI-tovoz-dilob-gatak-tolip-zinom-lisik-zokak-romar]  # ad55
+- op: discuss  # 3fa4
+  at: '2026-11-01T23:36:06Z'  # 3fa4
+  by: agent  # 3fa4
+  actor: jgstern_agent  # 3fa4
+  clock: 4  # 3fa4
+  nonce: 3fa4  # 3fa4
+  message: "MERGED into WI-tovoz (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: WI-kiluh is exactly this item's first bullet: datamodels.py reads meta parent_bases, which no analyzer writes (they write base_classes); same fix. WI-kiluh's measure-first plan carries over."  # 3fa4

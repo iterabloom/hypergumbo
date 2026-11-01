@@ -20,3 +20,17 @@
     pr_ref:  # 8389
     description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced in four scratch dirs). `_resolve_calls` short-circuits only on a local symbol of kind function; a local `declare` (kind declaration) falls through to the repo-wide registry, which is last-wins by bare name (analyze/base.py ~L4069). So when a.ll declares @puts and def.ll defines it, main -> puts resolves to def.ll's define if a.ll registers first, and to a.ll's own declaration otherwise: output differs across checkouts. Fix: LlvmIrAnalyzer.register_symbol must not let a declaration overwrite a function of the same name."  # 8389
     fields: {}  # 8389
+- op: discuss  # b0ed
+  at: '2026-11-01T23:36:05Z'  # b0ed
+  by: agent  # b0ed
+  actor: jgstern_agent  # b0ed
+  clock: 2  # b0ed
+  nonce: b0ed  # b0ed
+  message: "Folds in WI-pagoj (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-pagoj closed wont_do with duplicate_of here). same root (LlvmIrAnalyzer inherits base register_symbol, an unconditional overwrite, so a declare replaces a define in the bare-name table) and same fix (prefer definitions over declarations, the pattern c.py already uses). WI-pagoj was the 11-01 split restating it with acceptance criteria; those criteria now apply here. The test-order half stays in WI-sipoj. Read WI-pagoj's thread for its repro and evidence."  # b0ed
+- op: discuss  # 94ec
+  at: '2026-11-01T23:36:20Z'  # 94ec
+  by: agent  # 94ec
+  actor: jgstern_agent  # 94ec
+  clock: 3  # 94ec
+  nonce: 94ec  # 94ec
+  message: "PARTIAL overlap noted on WI-sipoj (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-sipoj's LLVM half (a declare shadows the define in the bare-name table, so the test passes only in lucky tmp_path order) is WI-dabul's bug (WI-pagoj folded into WI-dabul today); WI-sipoj's js_ts global_symbols last-writer-wins half stays here."  # 94ec

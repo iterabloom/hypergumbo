@@ -28,3 +28,20 @@
   clock: 2  # f2f6
   nonce: f2f6  # f2f6
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: a survey of a .ll fixture prints 'Detected 1 llvm_ir file(s) but Llvm_Ir analyzer not installed. Install hypergumbo-lang-extended1' while emitting llvm_ir symbols. The probe 'llvm_ir' in _get_registered_analyzer_languages() gives False; the heuristic at partial_install_warnings.py:232-236 is unchanged. llvm_ir is the only LANGUAGE_PACKAGES key missing from the set. The message wording changed. MECHANISM: registered-language set guessed by splitting analyzer names instead of read from each analyzer's declared languages."  # f2f6
+- op: update  # cff7
+  at: '2026-11-01T23:36:18Z'  # cff7
+  by: agent  # cff7
+  actor: jgstern_agent  # cff7
+  clock: 3  # cff7
+  nonce: cff7  # cff7
+  set:  # cff7
+    status: needs_human_review  # cff7
+  add:  # cff7
+    duplicate_of: [WI-nifog-dogoj-rifis-vajih-didad-mimuv-bifoj-dipon]  # cff7
+- op: discuss  # 3f78
+  at: '2026-11-01T23:36:18Z'  # 3f78
+  by: agent  # 3f78
+  actor: jgstern_agent  # 3f78
+  clock: 4  # 3f78
+  nonce: 3f78  # 3f78
+  message: "MERGE into WI-nifog approved by the owner 2026-11-01 (root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: WI-nifog's limb 2 is this invariant verbatim (partial_install_warnings._get_registered_analyzer_languages guesses languages by splitting pass names; fix: read RegisteredAnalyzer.languages). An invariant cannot be wont_do and 'deleted' needs human authority, so this is parked at needs_human_review with duplicate_of set. OWNER: please set status deleted."  # 3f78

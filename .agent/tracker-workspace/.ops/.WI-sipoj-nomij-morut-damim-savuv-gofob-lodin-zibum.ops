@@ -48,3 +48,10 @@
   clock: 5  # d1b1
   nonce: d1b1  # d1b1
   message: "SPLIT 2026-11-01 (owner-approved, P2 review): the two product bugs are WI-povub-butok-vunij-filar-lojom-nuzif-pivag-kikol (js namespace path_hint does not override the bare-name last-writer-wins table) and WI-pagoj-guviv-miton-zupaj-dipub-bupuf-pirur-lijoz (llvm declare shadows define). This item keeps the test limb: both tests pass today only because pytest's tmp_path on this box creates files in the passing order (verified on tmpfs, where readdir is reverse creation order: a_early created first -> PASS, z_late created first -> FAIL; utils.ll first -> PASS, main.ll first -> FAIL). Make them create the files in the failing order (z_late before a_early; main.ll before utils.ll), or sort find_js_ts_files (js_ts.py:286) and the llvm discovery, so the tests pin the two bugs; fix the docstring's false 'rglob processes alphabetically'. Title re-scoped; priority unchanged."  # d1b1
+- op: discuss  # 8a97
+  at: '2026-11-01T23:36:20Z'  # 8a97
+  by: agent  # 8a97
+  actor: jgstern_agent  # 8a97
+  clock: 6  # 8a97
+  nonce: 8a97  # 8a97
+  message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-sipoj's LLVM half (a declare shadows the define in the bare-name table, so the test passes only in lucky tmp_path order) is WI-dabul's bug (WI-pagoj folded into WI-dabul today); WI-sipoj's js_ts global_symbols last-writer-wins half stays here."  # 8a97

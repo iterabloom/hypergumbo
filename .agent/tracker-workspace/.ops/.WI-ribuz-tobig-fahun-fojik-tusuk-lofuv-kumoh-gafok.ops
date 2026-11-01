@@ -41,3 +41,10 @@
   clock: 4  # 0b9c
   nonce: 0b9c  # 0b9c
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: PARTLY-STALE (4 of 6 homes folded, as the 09-25 entry records). Direct calls on dart:dart:io:0-0:module:module, rust:std::fs:0-0:write:external_symbol, python:src/a:b.py:1-1:file:file: ir.symbol_path_slot (ir.py:1819), cli._extract_path_from_symbol_id (:1493), ranking._extract_path_from_id (:139), js_module._extract_path_from_id (:169) all return the full slot; the one remaining naive site profile.py:3530 `edge.src.split(':')[1]` (fallback when sym_path misses) returns dart/std/src/a. Docstrings at cli.py:1496 and ranking.py:147 still spell the retired {kind}:{name} order. Blast radius of profile.py:3530 still uncounted. Title re-scoped. ROOT-CAUSE GROUP: the ADR-0036 id contract bypassed on the READ side (INV-dulah, WI-hulup are the emission side). Status unchanged."  # 0b9c
+- op: discuss  # 51a3
+  at: '2026-11-01T23:36:18Z'  # 51a3
+  by: agent  # 51a3
+  actor: jgstern_agent  # 51a3
+  clock: 5  # 51a3
+  nonce: 51a3  # 51a3
+  message: "Folds in WI-nukas (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-nukas closed wont_do with duplicate_of here). WI-nukas is this item's profile.py bullet verbatim: the module_importers fallback parses a symbol-id path slot with a bare split(':')[1] instead of ir.symbol_path_slot. Found when the P2 grouping was merged into the P3/P4 sweep. Read WI-nukas's thread for its repro and evidence."  # 51a3

@@ -19,3 +19,18 @@
     pr_ref:  # e096
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _extract_edges_recursive walks the outer body with the outer name and returns (luau.py:441-448); _extract_calls_recursive never resets current_function (406-419). inner's doB() comes out as outer -> doB. v10."  # e096
     fields: {}  # e096
+- op: update  # f347
+  at: '2026-11-01T23:36:01Z'  # f347
+  by: agent  # f347
+  actor: jgstern_agent  # f347
+  clock: 2  # f347
+  nonce: f347  # f347
+  set:  # f347
+    status: done  # f347
+- op: discuss  # b0cb
+  at: '2026-11-01T23:36:02Z'  # b0cb
+  by: agent  # b0cb
+  actor: jgstern_agent  # b0cb
+  clock: 3  # b0cb
+  nonce: b0cb  # b0cb
+  message: "Closed (owner-approved, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). Fixed by WI-jusah in PR #1983 (dev a1a0a8e7ae: luau takes an edge's source by position). Live repro today on dev b27eb0e0d0: outer() calls doA(), declares local function inner() calling doB() and function inner2() calling doA(), then calls inner(). analyze_luau emits calls outer->doA (line 4), inner->doB (line 6), inner2->doA (line 9), outer->inner (line 11): each nested call is credited to its own nested function, not to outer."  # b0cb

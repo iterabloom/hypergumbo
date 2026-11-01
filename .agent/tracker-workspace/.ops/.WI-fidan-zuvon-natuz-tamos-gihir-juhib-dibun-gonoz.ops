@@ -33,3 +33,10 @@
   clock: 3  # 00ad
   nonce: 00ad  # 00ad
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. Grep of packages/*/src, scripts, .agent/hooks, .githooks and CI workflows: cache.invalidate_stale (cache.py:230) and query_blocking (cache.py:400) have no non-test caller. TOKENS_PER_NODE_OVERHEAD appears only in its definition and the selection/__init__ re-export. TaintFlowConstraint.allowed_sanitizers is parsed (verify_claims.py:2332) but read only by its own __post_init__. test_masking has no caller. last_full_run_sha is written (selection_index.py:270) and never read. All six still hold. MECHANISM: Public helpers kept after their only caller or use case was removed or never landed. SHARES MECHANISM WITH: WI-pizos,WI-tovoz."  # 00ad
+- op: discuss  # 9c1c
+  at: '2026-11-01T23:36:18Z'  # 9c1c
+  by: agent  # 9c1c
+  actor: jgstern_agent  # 9c1c
+  clock: 4  # 9c1c
+  nonce: 9c1c  # 9c1c
+  message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-fidan's allowed_sanitizers bullet is WI-biraf (delete-or-wire TaintFlowConstraint.allowed_sanitizers); track that bullet there. WI-fidan's other helpers stay here."  # 9c1c
