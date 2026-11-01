@@ -1,0 +1,21 @@
+- op: create  # ec1f
+  at: '2026-11-01T07:56:28Z'  # ec1f
+  by: agent  # ec1f
+  actor: jgstern_agent  # ec1f
+  clock: 1  # ec1f
+  nonce: ec1f  # ec1f
+  data:  # ec1f
+    kind: work_item  # ec1f
+    title: "Core inheritance linker adds a sorted-id fallback base for a base name the analyzer already resolved to another target (Java b.Foo extends y.Base also gets -> x.Base at 0.5)"  # ec1f
+    status: todo_hard  # ec1f
+    priority: 3  # ec1f
+    parent:  # ec1f
+    tags:  # ec1f
+    - analysis_quality  # ec1f
+    - call_resolution  # ec1f
+    isbefore: []  # ec1f
+    duplicate_of: []  # ec1f
+    not_duplicate_of: []  # ec1f
+    pr_ref:  # ec1f
+    description: "Found closing WI-gikuk (PR #1985) on its own filed fixture: x/Base.java and y/Base.java (package x / y, each `public class Base`), a/Foo.java `package a; import x.Base; public class Foo extends Base`, b/Foo.java `package b; import y.Base; public class Foo extends Base`. After #1985 the Java ANALYZER is right: a/Foo -> x/Base and b/Foo -> y/Base, conf 0.95, origin java. But the core inheritance linker (linkers/inheritance.py) ALSO emits b/Foo -> x/Base, conf 0.5, origin inheritance-linker, meta disambiguation_fallback=True. Mechanism: the linker re-resolves every base_classes entry. `Base` has two same-language candidates and neither is in b/Foo's file, so resolve_target_symbol falls to the sorted-by-id fallback and picks x/Base. The skip check is `(sym.id, target_sym.id) in existing_pairs` - keyed by the PAIR, so an analyzer edge to a DIFFERENT target (y/Base) for the same base name does not suppress it. For a/Foo the fallback happens to pick the analyzer's own target, so it is skipped; for b/Foo it adds a second, wrong base. Java records no base_class_imports hint, so _qualifier_fit has no import to check either. Invariant: a base name an analyzer already resolved for a source symbol is not re-resolved by the linker to another target. Pre-dates #1985 (before it the analyzer gave b/Foo no edge and the linker added the same fallback edge). Candidate fix: seed a per-src set of base NAMES the analyzer already resolved (the way seen_base_names_by_src already works for external edges, via _edge_target_base_name) and skip those; check the other analyzers that emit their own extends/implements (kotlin, js_ts, py, csharp ...) for the same double-emit."  # ec1f
+    fields: {}  # ec1f

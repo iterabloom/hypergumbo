@@ -26,3 +26,10 @@
   clock: 2  # 9372
   nonce: '9372'  # 9372
   message: "FYI from WI-vahun-fijuv-vojag-rogij-bujaf-lagam-vuhaf-logup (branch jgstern-agent/fix/vahun, c352cb51f6): the require/notify edges now come from Pass 2 (PuppetAnalyzer.extract_edges_from_file -> _relationship_edges). The source resource is found by its declaration position (symbols_at). The dst, evidence_type and meta are unchanged, so this item is still open as filed. For the fix here, Pass 2 now has the whole repository's symbols available. Resources are deliberately NOT in global_symbols (register_symbol keeps classes only), so binding Package['nginx'] to the package[nginx] resource needs its own resource index, keyed by lowercased type plus title."  # 9372
+- op: discuss  # b7cc
+  at: '2026-11-01T04:09:00Z'  # b7cc
+  by: agent  # b7cc
+  actor: jgstern_agent  # b7cc
+  clock: 3  # b7cc
+  nonce: b7cc  # b7cc
+  message: "FYI from WI-hozot-lahub-tazis-gozap-galad-lokat-himof-hidab (branch jgstern-agent/fix/hozot, not merged): one more facet of this item, observed on a fixture while A/B-ing the hozot fix and NOT fixed there. The require/notify depends_on edge with the raw dst puppet:resource:Service['apache2'] is emitted with is_resolved=True (Edge.create's default; _relationship_edges never passes is_resolved), although its dst names no symbol. Repro: class apache::config { file { '/etc/x': ensure => file, notify => Service['apache2'] } } gives EDGE depends_on notify ... -> puppet:resource:Service['apache2'] is_resolved=True. A fix here should set is_resolved from whether the resource index binds the reference. Also for whoever fixes this: hozot adds a shared _class_dst(name, classes) helper in puppet.py that returns (dst, is_resolved) and mints the dangling id through make_symbol_id (so a colon in the name slot is folded); a resource dst could follow the same shape. The require FUNCTION (require apache::service, a require_statement) is a different construct: hozot gives it an includes edge from the file with evidence_type require, ref_construct puppet_class."  # b7cc

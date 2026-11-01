@@ -19,3 +19,26 @@
     pr_ref:  # 8f36
     description: "Found while fixing WI-vahun-fijuv-vojag-rogij-bujaf-lagam-vuhaf-logup (2026-10-31, dev 217890b1aa). These are separate from that item's order-dependence: every one happens however the files are ordered. All are in puppet.py and all show the same symptom, an include or class reference that exists in the repository and still does not bind. Reproduced with tree-sitter-language-pack's puppet grammar:\n\n1. A namespaced class is not extracted at all. class a::b {} parses as class_definition > class_identifier(identifier a, identifier b). The class builder (_extract_class on dev; _class_symbol on the fix branch) only reads an identifier child, so it returns early on the line marked pragma: no cover, and no symbol is emitted. Namespaced classes (apache::params, nginx::config) are what most real Puppet modules use, so an include of one of them can never resolve, and the class is missing from the graph. The defined-type builder already reads class_identifier, and the scope labeller _NAMED_SCOPES has the same identifier-only gap for class_definition.\n\n2. An include list keeps only its last name. include a::b, c parses as include_statement > class_identifier, identifier, and the include loop overwrites class_name on every child, so only c gets an edge. include ::beta, gamma (leading ::) gives ERROR, identifier beta, identifier gamma, and only gamma gets an edge.\n\n3. A quoted include, include \"c\" (include_statement > string), gets no edge.\n\n4. No edge for a class's inherits parent (class alpha inherits beta, a class_inherits node) or for the require function form (require delta, a require_statement node). This grammar parses contain x and class { 'x': } as ERROR/identifiers, so those two cannot be fixed in the analyzer.\n\nFixture: m.pp = 'class a::b {}  class c {}  class top { include a::b, c  include \"c\" }' gives one includes edge (to c). Expected: three include edges, all resolved, and three class symbols (a::b, c, top). No corpus repo contains Puppet: the 21 .pp files under ~/whole_bunch_of_repos are compiled SELinux policy packages."  # 8f36
     fields: {}  # 8f36
+- op: discuss  # 9cb1
+  at: '2026-11-01T04:09:00Z'  # 9cb1
+  by: agent  # 9cb1
+  actor: jgstern_agent  # 9cb1
+  clock: 2  # 9cb1
+  nonce: 9cb1  # 9cb1
+  message: "Fix on branch jgstern-agent/fix/hozot, commit 392f052f05 (not merged). One name reader (_class_names) now serves the class / defined-type builders, the scope labeller, include, the require function and inherits. Item fixture m.pp before: classes c, top; 1 includes edge (c). After: classes a::b, c, top; 3 includes edges, all is_resolved=True to the declared ids. Edge labels chosen: require function = includes edge from the file, evidence_type require, ref_construct puppet_class; inherits = inherits edge from the child class symbol, evidence_type ast_extends (solidity's label). Dangling dst now minted by make_symbol_id (name slot :: folded to ..), passing _CANONICAL_ID_PATTERN. Two grammar mis-shapes are read back: require_statement ends at its first name (rest are ', name' siblings), and 'beta, ::gamma' can fold into one class_identifier split by a comma ERROR. Left as grammar limits (documented): contain x (two bare identifiers), class { 'x': } (ERROR + hash), include [a, b] (ERROR). Behaviour change: resources inside a namespaced class get new stable_ids (the class now enters their scope chain). No Puppet in the corpus (21 .pp files are SELinux policy modules), so no corpus A/B."  # 9cb1
+- op: update  # dd81
+  at: '2026-11-01T07:56:28Z'  # dd81
+  by: agent  # dd81
+  actor: jgstern_agent  # dd81
+  clock: 3  # dd81
+  nonce: dd81  # dd81
+  set:  # dd81
+    status: done  # dd81
+    pr_ref: '1985'  # dd81
+- op: discuss  # 8a69
+  at: '2026-11-01T07:56:28Z'  # 8a69
+  by: agent  # 8a69
+  actor: jgstern_agent  # 8a69
+  clock: 4  # 8a69
+  nonce: 8a69  # 8a69
+  message: "Fixed in PR #1985 (merged to dev 6afecacb1b). Root cause: puppet.py read a class name as one bare identifier, so `class a::b` was never extracted, and it read only the first name of an include, so `include a::b, c` and `include \"c\"` dropped names; includes of existing classes stayed unbound in any order. Fix: _class_names reads every name an include / require-function / inherits writes (lists, quoted, ::-prefixed); class definitions keep their full namespaced name; `require x` gives an includes edge with evidence_type require; `inherits` gives an inherits edge (ast_extends); an undeclared class gets a dst minted by make_symbol_id. 20 tests. Behaviour change: resources inside a namespaced class get new stable_ids (the class is now extracted). Live repro on merged dev, a multi-line m.pp: class a::b {}, class c {}, class d inherits c {}, class top { include a::b, c / include \"c\" / require d / include missing::thing }. `hypergumbo survey pp2` rc=0 -> classes [a::b, c, d, top]; inherits d -> c (ast_extends, real dst); includes -> a::b (include), -> c (include, once), -> d (require), all real dsts; -> missing::thing (include) to a minted external_symbol. Before: a::b not a class, `c` from the list and the quoted \"c\" dropped. Residual, filed separately: include/require edges still start at the manifest FILE, not the enclosing class (documented design before and after this PR)."  # 8a69
