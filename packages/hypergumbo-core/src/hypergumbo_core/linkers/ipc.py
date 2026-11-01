@@ -24,7 +24,8 @@ Electron IPC (main → renderer):
 - event.sender.send('channel', data)       -> event_publishes (channel_kind='ipc')
 
 Electron IPC (receive side — main and renderer):
-- ipcMain.on / .handle / .handleOnce       -> detected and used as the DST of the forward
+- ipcMain.on / .once / .handle /           -> detected and used as the DST of the forward
+  .handleOnce
 - ipcRenderer.on / .once                      edge; a receive symbol is emitted only for a
                                               receiver some sender joins (an unpaired
                                               ipcMain.handle gets no node). Only the
@@ -47,6 +48,34 @@ Electron contextBridge (preload → renderer):
   separate ``0-0`` stand-in with no outgoing edge). A bridge send through a custom
   ``ipcInvoke('ch')`` wrapper, which no ``ipcRenderer.*`` pattern detects, is added
   to the senders before the join and publishes to the receivers itself.
+
+Electron IPC wrappers (WI-pumit):
+- A same-repo function or method whose body forwards its first PARAMETER as
+  the channel of any call above is a wrapper: podman-desktop's main-process
+  ``ipcHandle(channel, l) { ipcMain.handle(channel, ...) }``, its preload's
+  ``ipcInvoke(channel, ...a) { ipcRenderer.invoke(channel, ...a) }``, vscode's
+  ``ValidatedIpcMain.on(channel, l) { electron.ipcMain.on(channel, ...) }``.
+  Every call shape is one ``_ELECTRON_SITE_RULES`` row, read by both the site
+  scan and the wrapper scan, so the two directions share one mechanism.
+- A call to a wrapper, with a literal or same-file-constant channel, is a site
+  of the forwarded call's direction at the call's line (``this.ipcHandle('ch',
+  ...)`` is a receive site). The forwarding call inside the wrapper names a
+  parameter, not a channel, and is no site: it used to join every other
+  wrapper's same-named parameter on the identifier (``variable_match``).
+- Scope: names match repo-wide, but a call must show it can reach a wrapper
+  of that name -- a bare ``f('ch')`` in the wrapper's file or a file that
+  imports ``f``; ``this.f('ch')`` inside the wrapper's class or in a class that
+  declares an ``f`` member (dependency injection, podman's ``IPCHandle``);
+  ``x.f('ch')`` where ``x`` is bound to ``new C()`` of the wrapper's class
+  (vscode's ``validatedIpcMain``). A non-literal channel, a call in a comment
+  or string, and a wrapper of a wrapper (not followed: one level) give no
+  site. The scan is regex plus bracket matching over comment- and
+  string-masked text, not a parse: an object-literal method wrapper's
+  forwards are dropped, but no call form resolves to it.
+- The contextBridge function-exposure path still accepts ``ipcInvoke('ch')`` /
+  ``ipcSend('ch')`` by NAME (``_FUNC_BODY_IPC_PATTERN``), for a wrapper whose
+  definition is not in the repo; where the definition is, both paths mint the
+  same (file, line, channel) send node.
 
 Web Workers / postMessage:
 - worker.postMessage(data)                 -> detected, but NO edge and NO symbol: the
@@ -90,6 +119,9 @@ How It Works
    ``bridge_invokes``) linking those calls to the IPC send symbols. The same
    path also covers individually-exposed functions and custom ``ipcInvoke`` /
    ``ipcSend`` wrappers
+6. Between steps 2 and 4, detect IPC wrappers per file, drop their forwarding
+   calls, and add every call that can see a wrapper as a site (repo-wide; see
+   "Electron IPC wrappers" above)
 
 Why This Design
 ---------------
@@ -179,9 +211,9 @@ ELECTRON_SEND_PATTERN = re.compile(
 )
 
 # Electron IPC receive patterns - matches both literals and variables
-# Covers: ipcMain.on, ipcMain.handle, ipcMain.handleOnce
+# Covers: ipcMain.on, ipcMain.once, ipcMain.handle, ipcMain.handleOnce
 ELECTRON_RECEIVE_PATTERN = re.compile(
-    rf"ipcMain\s*\.\s*(on|handle|handleOnce)\s*\(\s*{_CHANNEL_ARG}",
+    rf"ipcMain\s*\.\s*(on|once|handle|handleOnce)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
 )
 
@@ -196,6 +228,32 @@ WEBCONTENTS_SEND_PATTERN = re.compile(
 ELECTRON_RENDERER_RECEIVE_PATTERN = re.compile(
     rf"ipcRenderer\s*\.\s*(on|once)\s*\(\s*{_CHANNEL_ARG}",
     re.MULTILINE,
+)
+
+
+@dataclass(frozen=True)
+class _SiteRule:
+    """One Electron IPC call shape: its regex, direction and channel groups."""
+
+    regex: re.Pattern[str]
+    type: str  # 'send' | 'receive'
+    literal_group: int
+    identifier_group: int
+    method: str | None = None  # fixed method label; None reads regex group 1
+
+    def method_of(self, match: re.Match[str]) -> str:
+        return self.method or match.group(1)
+
+
+#: Every Electron IPC call shape, in detection order. The site scan
+#: (:func:`detect_ipc_patterns`) and the wrapper scan (:func:`_ipc_wrappers`)
+#: read the same table, so a call shape is a site exactly when a wrapper that
+#: forwards its channel parameter to that shape is a wrapper.
+_ELECTRON_SITE_RULES: tuple[_SiteRule, ...] = (
+    _SiteRule(ELECTRON_SEND_PATTERN, "send", 2, 3),
+    _SiteRule(ELECTRON_RECEIVE_PATTERN, "receive", 2, 3),
+    _SiteRule(WEBCONTENTS_SEND_PATTERN, "send", 1, 2, method="webcontents_send"),
+    _SiteRule(ELECTRON_RENDERER_RECEIVE_PATTERN, "receive", 2, 3),
 )
 
 # postMessage patterns (window, worker, etc.)
@@ -392,60 +450,19 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
     text = source.decode("utf-8", errors="replace")
     resolver = ConstantResolver(text, language)
 
-    # Detect Electron ipcRenderer.send/invoke
-    # Groups: 1=method, 2=literal channel, 3=variable channel
-    for match in ELECTRON_SEND_PATTERN.finditer(text):
-        method = match.group(1)  # 'send' or 'invoke'
-        arg = name_arg_from_match(match, 2, 3, resolver)
-        line = text[:match.start()].count("\n") + 1
-        patterns.append({
-            "type": "send",
-            **_channel_site(arg),
-            "line": line,
-            "pattern_type": "electron",
-            "method": method,
-        })
-
-    # Detect Electron ipcMain.on/handle/handleOnce
-    # Groups: 1=method, 2=literal channel, 3=variable channel
-    for match in ELECTRON_RECEIVE_PATTERN.finditer(text):
-        method = match.group(1)  # 'on' or 'handle' or 'handleOnce'
-        arg = name_arg_from_match(match, 2, 3, resolver)
-        line = text[:match.start()].count("\n") + 1
-        patterns.append({
-            "type": "receive",
-            **_channel_site(arg),
-            "line": line,
-            "pattern_type": "electron",
-            "method": method,
-        })
-
-    # Detect Electron main-to-renderer push: webContents.send / sender.send
-    # Groups: 1=literal channel, 2=variable channel
-    for match in WEBCONTENTS_SEND_PATTERN.finditer(text):
-        arg = name_arg_from_match(match, 1, 2, resolver)
-        line = text[:match.start()].count("\n") + 1
-        patterns.append({
-            "type": "send",
-            **_channel_site(arg),
-            "line": line,
-            "pattern_type": "electron",
-            "method": "webcontents_send",
-        })
-
-    # Detect Electron renderer-side receive: ipcRenderer.on/once
-    # Groups: 1=method, 2=literal channel, 3=variable channel
-    for match in ELECTRON_RENDERER_RECEIVE_PATTERN.finditer(text):
-        method = match.group(1)  # 'on' or 'once'
-        arg = name_arg_from_match(match, 2, 3, resolver)
-        line = text[:match.start()].count("\n") + 1
-        patterns.append({
-            "type": "receive",
-            **_channel_site(arg),
-            "line": line,
-            "pattern_type": "electron",
-            "method": method,
-        })
+    # Electron sites, one table for every direction (send / receive).
+    for rule in _ELECTRON_SITE_RULES:
+        for match in rule.regex.finditer(text):
+            arg = name_arg_from_match(
+                match, rule.literal_group, rule.identifier_group, resolver,
+            )
+            patterns.append({
+                "type": rule.type,
+                **_channel_site(arg),
+                "line": _line_at(text, match.start()),
+                "pattern_type": "electron",
+                "method": rule.method_of(match),
+            })
 
     # Detect postMessage
     for match in POSTMESSAGE_PATTERN.finditer(text):
@@ -472,6 +489,338 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
         })
 
     return patterns
+
+
+# ---------------------------------------------------------------------------
+# IPC wrappers (WI-pumit)
+# ---------------------------------------------------------------------------
+#
+# A wrapper is a same-repo function or method whose body forwards its first
+# PARAMETER as the channel of an Electron IPC call (any ``_ELECTRON_SITE_RULES``
+# shape): podman-desktop's ``ipcHandle(channel, l) { ipcMain.handle(channel, ...) }``,
+# its preload's ``ipcInvoke(channel, ...a) { ipcRenderer.invoke(channel, ...a) }``,
+# vscode's ``ValidatedIpcMain.on(channel, l) { electron.ipcMain.on(channel, ...) }``.
+# A call to a wrapper that can see it, with a literal or same-file-constant
+# channel, is a site of the forwarded call's direction at the call's line; the
+# forwarding call itself names a parameter, not a channel, and is no site.
+
+_JS_IDENT = r"[A-Za-z_$][\w$]*"
+_BRACKET = re.compile(r"[()\[\]{}]")
+#: An arrow's expression body ends at a depth-0 ``;`` / ``,`` / closer, or at a
+#: depth-0 newline that no continuation (``.x``, ``? :``, an operator) follows.
+_EXPR_END = re.compile(r"[()\[\]{};,]|\n(?![ \t]*[.?:+\-*/&|])")
+_NOT_A_DEFINITION = frozenset({
+    "if", "for", "while", "switch", "catch", "with", "return", "function",
+    "typeof", "await", "new", "super", "import", "export", "delete", "void",
+    "yield", "constructor",
+})
+_CLASS_HEAD = re.compile(rf"\bclass\s+(?P<name>{_JS_IDENT})[^{{;]*\{{")
+_FUNCTION_HEAD = re.compile(
+    rf"\bfunction\b\s*\*?\s*(?P<name>{_JS_IDENT})\s*(?:<[^<>()]*>)?\s*\(",
+)
+_METHOD_HEAD = re.compile(
+    r"^[ \t]*(?:(?:public|private|protected|static|async|override)\s+)*"
+    rf"(?P<name>{_JS_IDENT})\s*(?:<[^<>()]*>)?\s*\(",
+    re.MULTILINE,
+)
+#: ``const f = (`` / ``const f = function (`` / class field ``f = async (``,
+#: or a bare-parameter arrow ``const f = channel =>`` (``param`` group).
+_ASSIGN_HEAD = re.compile(
+    rf"(?:\b(?P<decl>const|let|var)\s+|^[ \t]*(?:(?:public|private|protected"
+    rf"|static|readonly)\s+)*)(?P<name>{_JS_IDENT})\s*(?::[^=;\n]*)?=\s*"
+    rf"(?:async\s+)?(?:(?P<fn>function\b\s*\*?\s*(?:{_JS_IDENT})?\s*)?"
+    rf"(?:<[^<>()]*>)?\s*\(|(?P<param>{_JS_IDENT})\s*=>)",
+    re.MULTILINE,
+)
+_FIRST_PARAM = re.compile(rf"\s*(?:\.\.\.)?(?P<p>{_JS_IDENT})")
+_BLOCK_AFTER_PARAMS = re.compile(r"\s*(?::[^{;=]*?)?\s*\{")
+_ARROW_AFTER_PARAMS = re.compile(r"\s*(?::[^;{=]*?)?\s*=>\s*")
+
+
+def _mask_js(text: str) -> str:
+    """``text`` with comment and string-literal contents blanked to spaces.
+
+    Same length and the same newlines, so offsets and line numbers carry
+    over; quote characters are kept. The bracket scans below read the masked
+    text, so a brace written inside a string or a comment is no delimiter.
+    A template literal is blanked whole, ``${...}`` included; a regex literal
+    is not recognised (its characters stay code).
+    """
+    out = list(text)
+    i, n = 0, len(text)
+
+    def blank(start: int, end: int) -> None:
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        c = text[i]
+        if c == "/" and text.startswith(("//", "/*"), i):
+            close = text.find("\n" if text[i + 1] == "/" else "*/", i + 2)
+            end = n if close == -1 else close + (0 if text[i + 1] == "/" else 2)
+            blank(i, end)
+            i = end
+        elif c in "'\"`":
+            j = i + 1
+            while j < n and text[j] != c and not (text[j] == "\n" and c != "`"):
+                j += 2 if text[j] == "\\" else 1
+            blank(i + 1, min(j, n))
+            i = j + 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _close_of(masked: str, open_index: int) -> int:
+    """Index of the bracket closing the one at ``open_index`` (len if none)."""
+    depth = 0
+    for m in _BRACKET.finditer(masked, open_index):
+        depth += 1 if m.group() in "([{" else -1
+        if depth == 0:
+            return m.start()
+    return len(masked)
+
+
+def _expression_end(masked: str, start: int) -> int:
+    """End of an arrow's expression body that starts at ``start``."""
+    depth = 0
+    for m in _EXPR_END.finditer(masked, start):
+        token = m.group()
+        if token in "([{":
+            depth += 1
+        elif depth == 0:
+            return m.start()
+        elif token in ")]}":
+            depth -= 1
+    return len(masked)
+
+
+@dataclass(frozen=True)
+class _IpcWrapper:
+    """A function or method that forwards its channel parameter to IPC.
+
+    ``owner`` says which call forms can reach it (see
+    :func:`_wrapper_call_sites`): ``function`` (a bare ``f('ch')``),
+    ``method`` (``this.f('ch')`` / ``instance.f('ch')``; ``class_name`` and
+    ``class_span`` locate the class), or ``object`` (an object-literal method:
+    no call form is resolved, but its forwards are still no sites).
+    """
+
+    name: str
+    file_path: str
+    owner: str  # 'function' | 'method' | 'object'
+    param: str
+    forwards: tuple[tuple[str, int], ...]  # (site type, line of the forwarding call)
+    class_name: str | None = None
+    class_span: tuple[int, int] = (0, 0)
+
+
+def _ipc_wrappers(text: str, file_path: str) -> list[_IpcWrapper]:
+    """The IPC wrappers ``text`` defines (WI-pumit)."""
+    candidates = [
+        (rule, m) for rule in _ELECTRON_SITE_RULES
+        for m in rule.regex.finditer(text) if m.group(rule.identifier_group)
+    ]
+    if not candidates:
+        return []
+    masked = _mask_js(text)
+    classes = [
+        (m.group("name"), m.end() - 1, _close_of(masked, m.end() - 1))
+        for m in _CLASS_HEAD.finditer(masked)
+    ]
+
+    def enclosing_class(offset: int) -> tuple[str, int, int] | None:
+        inside = [c for c in classes if c[1] < offset < c[2]]
+        return max(inside, key=lambda c: c[1]) if inside else None
+
+    # (name, header offset, '(' offset -- or, for a bare-parameter arrow, the
+    # offset after its '=>' --, bare param, owner hint, arrow?)
+    heads: list[tuple[str, int, int, str | None, str, bool]] = []
+    for m in _FUNCTION_HEAD.finditer(masked):
+        heads.append((m.group("name"), m.start(), m.end() - 1, None, "function", False))
+    for m in _METHOD_HEAD.finditer(masked):
+        if m.group("name") not in _NOT_A_DEFINITION:
+            heads.append((m.group("name"), m.start(), m.end() - 1, None, "member", False))
+    for m in _ASSIGN_HEAD.finditer(masked):
+        hint = "function" if m.group("decl") else "field"
+        if m.group("param"):
+            heads.append((m.group("name"), m.start(), m.end(), m.group("param"), hint, True))
+        else:
+            heads.append((m.group("name"), m.start(), m.end() - 1, None, hint,
+                          not m.group("fn")))
+
+    wrappers: list[_IpcWrapper] = []
+    for name, head_start, open_index, bare_param, hint, arrow in heads:
+        if bare_param is not None:
+            param: str | None = bare_param
+            after = open_index
+        else:
+            close = _close_of(masked, open_index)
+            first = _FIRST_PARAM.match(masked, open_index + 1, close)
+            param = first.group("p") if first else None
+            joint = (_ARROW_AFTER_PARAMS if arrow else _BLOCK_AFTER_PARAMS).match(
+                masked, close + 1,
+            )
+            if joint is None:
+                continue  # a call, a declaration without a body, or an overload
+            after = joint.end() - (0 if arrow else 1)
+        if not param or param == "this":
+            continue
+        while after < len(masked) and masked[after] in " \t\r\n":
+            after += 1
+        if after < len(masked) and masked[after] == "{":
+            body = (after, _close_of(masked, after))
+        else:
+            body = (after, _expression_end(masked, after))
+        forwards = tuple(
+            (rule.type, _line_at(text, m.start()))
+            for rule, m in candidates
+            if body[0] <= m.start() < body[1]
+            and m.group(rule.identifier_group) == param
+            and masked[m.start()] != " "
+        )
+        if not forwards:
+            continue
+        cls = enclosing_class(head_start)
+        if hint == "function" or (hint == "field" and cls is None):
+            owner = "function"
+        elif cls is None:
+            owner = "object"
+        else:
+            owner = "method"
+        wrappers.append(_IpcWrapper(
+            name=name, file_path=file_path, owner=owner, param=param,
+            forwards=forwards,
+            class_name=cls[0] if owner == "method" and cls else None,
+            class_span=(cls[1], cls[2]) if owner == "method" and cls else (0, 0),
+        ))
+    return wrappers
+
+
+def _imports_name(content: str, name: str) -> bool:
+    """Whether ``content`` imports or requires a binding spelled ``name``.
+
+    Name-level, not module-level: which module the binding comes from is not
+    checked against the wrapper's file.
+    """
+    n = re.escape(name)
+    return re.search(
+        rf"\bimport\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?(?:{n}\b|\{{[^}}]*\b{n}\b)"
+        rf"|\{{[^}}]*\b{n}\b[^}}]*\}}\s*=\s*require\s*\(|\b{n}\s*=\s*require\s*\(",
+        content,
+    ) is not None
+
+
+def _declares_member(content: str, name: str) -> bool:
+    """Whether a class in ``content`` declares a field or parameter property
+    ``name`` (``private readonly ipcHandle: IPCHandle``) -- the shape through
+    which a dependency-injected wrapper reaches ``this.name(...)``."""
+    n = re.escape(name)
+    return re.search(
+        rf"\b(?:private|public|protected|readonly)\s+(?:readonly\s+)?{n}\s*[?!]?\s*:",
+        content,
+    ) is not None
+
+
+def _wrapper_call_sites(
+    file_contents: dict[str, str], wrappers: list[_IpcWrapper],
+) -> list[IpcPattern]:
+    """Repo-wide: each call that can see a wrapper is a site (WI-pumit).
+
+    Scope -- which calls "see" a wrapper. Names match repo-wide, because a
+    main process routinely reaches its wrapper through dependency injection
+    from another file (podman's ``this.ipcHandle`` in a class handed the
+    method by an ``IPCHandle`` token), but each call form must show it can
+    reach a wrapper of that name:
+
+    * ``f('ch')`` -- ``f`` is a function wrapper defined in this file, or a
+      binding this file imports as ``f``;
+    * ``this.f('ch')`` -- ``f`` is a method wrapper and the call is inside
+      its class, or this file declares a member ``f`` (the injected shape);
+    * ``x.f('ch')`` -- ``f`` is a method of class ``C`` and ``x`` is bound
+      to ``new C(...)`` somewhere in the repo.
+
+    So ``emitter.on('data')`` stays no site even where a wrapper method is
+    named ``on``, and a file's own same-named non-forwarding function is not
+    mistaken for an imported wrapper. The channel must be a literal or a
+    same-file constant: a parameter or dotted expression names no channel,
+    and it is what a wrapper-of-a-wrapper forwards (not followed: one level).
+    A call inside a comment or a string is no site.
+    """
+    callable_wrappers = [w for w in wrappers if w.owner != "object"]
+    if not callable_wrappers:
+        return []
+    by_name: dict[str, list[_IpcWrapper]] = {}
+    for w in callable_wrappers:
+        by_name.setdefault(w.name, []).append(w)
+    names = "|".join(re.escape(n) for n in sorted(by_name, key=len, reverse=True))
+    call_re = re.compile(
+        rf"(?:(?<![\w$.])(?P<recv>{_JS_IDENT})\s*\.\s*|(?<![\w$.]))"
+        rf"(?P<name>{names})(?![\w$])\s*(?:<[^<>()]*>)?\s*\(\s*{NAME_ARG_RE}",
+    )
+    literal_group, identifier_group = call_re.groups - 1, call_re.groups
+
+    instances: dict[str, set[str]] = {}
+    class_names = {w.class_name for w in callable_wrappers if w.class_name}
+    if class_names:
+        alt = "|".join(re.escape(c) for c in sorted(class_names))
+        new_re = re.compile(
+            rf"(?<![\w$.])(?P<var>{_JS_IDENT})\s*(?::[^=;\n]*)?=\s*new\s+(?P<cls>{alt})\b",
+        )
+        for content in file_contents.values():
+            for m in new_re.finditer(content):
+                instances.setdefault(m.group("cls"), set()).add(m.group("var"))
+
+    def visible(w: _IpcWrapper, recv: str | None, file_str: str, offset: int,
+                content: str) -> bool:
+        if recv is None:
+            return w.owner == "function" and (
+                w.file_path == file_str or _imports_name(content, w.name)
+            )
+        if w.owner != "method":
+            return False
+        if recv == "this":
+            in_class = w.file_path == file_str and (
+                w.class_span[0] < offset < w.class_span[1]
+            )
+            return in_class or _declares_member(content, w.name)
+        return recv in instances.get(w.class_name or "", set())
+
+    sites: list[IpcPattern] = []
+    for file_str, content in file_contents.items():
+        matches = list(call_re.finditer(content))
+        if not matches:
+            continue
+        masked = _mask_js(content)
+        language = _get_language(Path(file_str))
+        resolver = ConstantResolver(content, language)
+        seen: set[tuple[int, str, str]] = set()
+        for m in matches:
+            name_at = m.start("name")
+            if masked[name_at] == " ":
+                continue  # inside a comment or a string
+            arg = name_arg_from_match(m, literal_group, identifier_group, resolver)
+            if arg.value is None:
+                continue
+            line = _line_at(content, name_at)
+            for w in by_name[m.group("name")]:
+                if not visible(w, m.group("recv"), file_str, name_at, content):
+                    continue
+                for site_type, _forward_line in w.forwards:
+                    if (line, site_type, arg.label) in seen:
+                        continue
+                    seen.add((line, site_type, arg.label))
+                    sites.append(IpcPattern(
+                        type=site_type,
+                        channel=arg.label,
+                        line=line,
+                        file_path=file_str,
+                        pattern_type="electron",
+                        channel_type=arg.kind,
+                        channel_identifier=arg.identifier,
+                    ))
+    return sites
 
 
 def _find_js_files(repo_root: Path) -> Iterator[Path]:
@@ -549,6 +898,26 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 str(file_path.relative_to(repo_root)),
                 f"{type(e).__name__}: {e}",
             )
+
+    # WI-pumit: a wrapper's forwarding call names its parameter, not a
+    # channel -- no site; each call that can see the wrapper is the site.
+    wrappers = [
+        w for file_str, content in file_contents.items()
+        for w in _ipc_wrappers(content, file_str)
+    ]
+    forwarding = {
+        (w.file_path, line, site_type, w.param)
+        for w in wrappers for site_type, line in w.forwards
+    }
+    all_patterns = [
+        p for p in all_patterns
+        if (p.file_path, p.line, p.type, p.channel_identifier) not in forwarding
+    ]
+    detected = {(p.file_path, p.line, p.type, p.channel) for p in all_patterns}
+    all_patterns.extend(
+        site for site in _wrapper_call_sites(file_contents, wrappers)
+        if (site.file_path, site.line, site.type, site.channel) not in detected
+    )
 
     # Named-channel sites only: postMessage / 'message' listeners carry no
     # channel, and the join skips them (see the module docstring).
