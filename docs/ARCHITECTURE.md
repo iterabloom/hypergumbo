@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **57900** symbols (functions, classes, methods)
-- **231869** edges by type:
-  - calls: 131335
-  - contains: 53908
-  - imports: 19878
-  - instantiates: 12858
-  - references: 9980
+- **57929** symbols (functions, classes, methods)
+- **232017** edges by type:
+  - calls: 131415
+  - contains: 53935
+  - imports: 19894
+  - instantiates: 12881
+  - references: 9982
   - module_attr_ref: 2127
   - other: 1783
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57900 Symbols + 231869 Edges + UsageContexts           │
+│  Output: 57929 Symbols + 232017 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -282,12 +282,12 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10596.1 | ir.py |
-| `len` | external_symbol | 8070.0 | <external> |
+| `Symbol` | class | 10615.0 | ir.py |
+| `len` | external_symbol | 8085.0 | <external> |
 | `write_text` | external_symbol | 7371.0 | <external> |
-| `Span` | class | 6784.4 | ir.py |
+| `Span` | class | 6796.2 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3697.0 | <external> |
+| `get` | external_symbol | 3698.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
 | `Path` | external_symbol | 2518.0 | <external> |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: a63cda7ea797
-  commit_count: 8761
+  commit: 63c60d3c93e4
+  commit_count: 8765
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
