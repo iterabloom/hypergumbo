@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **57961** symbols (functions, classes, methods)
-- **232164** edges by type:
-  - calls: 131498
-  - contains: 53964
-  - imports: 19912
-  - instantiates: 12886
-  - references: 9990
+- **57992** symbols (functions, classes, methods)
+- **232282** edges by type:
+  - calls: 131552
+  - contains: 53992
+  - imports: 19935
+  - instantiates: 12890
+  - references: 9998
   - module_attr_ref: 2127
-  - other: 1787
+  - other: 1788
 
 ## Package Architecture
 
@@ -50,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 108 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 53 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 39 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57961 Symbols + 232164 Edges + UsageContexts           │
+│  Output: 57992 Symbols + 232282 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -94,7 +94,7 @@ Source Files
 │                     4. PATTERN ENRICHMENT                       │
 │  YAML-driven pattern matching (ADR-3aaa):                       │
 │  - 8 convention patterns (always loaded)                        │
-│  - 99 framework patterns (loaded when framework detected)       │
+│  - 100 framework patterns (loaded when framework detected)      │
 │  Output: Symbols enriched with meta.concepts                    │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -282,19 +282,19 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10619.7 | ir.py |
-| `len` | external_symbol | 8088.0 | <external> |
+| `Symbol` | class | 10629.1 | ir.py |
+| `len` | external_symbol | 8090.0 | <external> |
 | `write_text` | external_symbol | 7376.0 | <external> |
-| `Span` | class | 7107.4 | ir.py |
+| `Span` | class | 7113.5 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3703.0 | <external> |
+| `get` | external_symbol | 3708.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
-| `Path` | external_symbol | 2520.0 | <external> |
+| `Path` | external_symbol | 2521.0 | <external> |
 | `str` | external_symbol | 2504.0 | <external> |
-| `next` | external_symbol | 2276.0 | <external> |
+| `next` | external_symbol | 2277.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
-| `load_framework_patterns` | function | 2099.7 | framework_patterns.py |
+| `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `append` | external_symbol | 1957.0 | <external> |
 | `main` | function | 1792.0 | cli.py |
 
@@ -303,7 +303,7 @@ These symbols have the highest bidirectional centrality
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 107 pattern files (8 convention + 99 framework)
+- **`frameworks/*.yaml`**: 108 pattern files (8 convention + 100 framework)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
@@ -364,11 +364,11 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 182 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 183 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
-| `frameworks/` | 107 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
+| `frameworks/` | 108 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
 | `dataflow_patterns/` | 21 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
 | `io_primitives/` | 15 | `io_primitives.d` | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
 | `io_primitives_overlays/` | 8 | internal | ADR-0047 | `hypergumbo_core.io_boundary` | Community I/O primitive overlays that ship in the wheel and load by default, disclosed as unvouched (ADR-0047). |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 6a6297fa0a66
-  commit_count: 8784
+  commit: 57222b80d742
+  commit_count: 8787
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
