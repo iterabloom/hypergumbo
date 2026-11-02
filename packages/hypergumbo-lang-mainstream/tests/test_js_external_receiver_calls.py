@@ -133,3 +133,21 @@ def test_an_in_tree_binding_still_resolves(
     calls = _calls(tmp_path, monkeypatch, {"src/caller.js": code})
     assert any(_in_repo(d) and f":{target}:" in d
                for d in calls.get(caller, set())), calls.get(caller)
+
+
+def test_an_untyped_receivers_weak_in_file_pick_is_still_deferred(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallback the external rule sits in front of is unchanged (INV-fahub):
+    an untyped ``obj.run()`` whose one in-file candidate belongs to ANOTHER
+    class is withheld for the inherited-calls walker, not bound."""
+    calls = _calls(tmp_path, monkeypatch, {
+        "src/a.js": (
+            "class Other { run() { return 1; } }\n"
+            "class Mine { go(obj) { return obj.run(); } }\n"
+        ),
+        "src/b.js": "class Third { run() { return 2; } }\n",
+    })
+    dsts = calls.get("Mine.go", set())
+    assert not [d for d in dsts if _in_repo(d)], dsts
+    assert any(d.endswith(":run:unresolved") for d in dsts), dsts
