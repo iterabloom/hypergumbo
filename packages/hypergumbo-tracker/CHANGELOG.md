@@ -9,13 +9,13 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
-- **Multi-select in the TUI item list, with batch Mark Read / Mark Unread.** Shift+click a row to add it to the selection or remove it. The first Shift+click also selects the row that was highlighted. Space does the same for the highlighted row, for terminals that use Shift+click for their own text selection. Selected rows show a check in the `#` column and the right panel reads "(N items selected)". Mark Read and Mark Unread then apply to every selected item at once, with one save. Esc or a plain click clears the selection.
+- **Multi-select in the TUI item list, with batch Mark Read / Mark Unread.** Shift+click (or Space, for terminals that keep Shift+click for text selection) adds or removes a row; selected rows show a check, and Mark Read / Mark Unread apply to all of them in one save. Esc or a plain click clears the selection.
 
 ### Fixed
 
-- **The TUI list keeps its place when it rebuilds.** Mark Read and Mark Unread jumped the list back to the top whenever it was scrolled. The same happened on the status, tag and full-ID toggles, on reorder (`<`/`>`), and on the edit-mode toggle. All of these now keep the scroll offset and the cursor's item. If the cursor's row disappears (Mark Read on an unread item a filter hides), the cursor stays at the same row number. If the rows above the cursor were filtered away, the list scrolls just enough to keep it in view.
+- **The TUI list keeps its place when it rebuilds**: Mark Read / Mark Unread, the status, tag and full-ID toggles, reorder (`<`/`>`) and the edit-mode toggle no longer jump a scrolled list back to the top. If the cursor's row disappears, the cursor stays at the same row number.
 - **TUI preferences are per user**: they live in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`, not in the shared checkout, where `git clean` removed them and two accounts overwrote each other's on every save. An existing in-repo file is read once and carried over.
-- **TUI tests click only once the target is under the pointer.** On a starved run a button reported a stale region, the click landed on the dialog, and the modal was never dismissed. Every `pilot.click` in the TUI tests now goes through a helper that waits for the target and fails if the click did not land.
+- **TUI tests click only once the target is under the pointer**, and fail if the click did not land; on a slow run a stale button region had sent clicks to the dialog behind it.
 
 ### Documentation
 
