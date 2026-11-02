@@ -241,7 +241,11 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.supply_chain import own_package_name
 from hypergumbo_core.js_package_entry import is_node_core_module, package_entry, probe_file
 from hypergumbo_core.qualified_name_axis import separator_for_language
-from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
+from hypergumbo_core.symbol_resolution import (
+    ListNameResolver,
+    LookupResult,
+    NameResolver,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -3253,6 +3257,7 @@ def _extract_inheritance_edges(
     classes_by_name: dict[str, list[Symbol]],
     parsed_files: list["_ParsedFile"],
     run: AnalysisRun,
+    package_index: _JsPackageIndex,
 ) -> list[Edge]:
     """Extract extends/implements edges from class and interface inheritance.
 
@@ -3312,8 +3317,6 @@ def _extract_inheritance_edges(
                     implements_by_class.setdefault((pf_path, cname), set()).update(
                         n.split("<")[0].split(".")[-1] for n in impls
                     )
-
-    package_index = _JsPackageIndex([pf.path for pf in parsed_files])
 
     def external_edge(sym: Symbol, base_name: str, canonical: str, raw_module: str | None) -> Edge:
         sym_path = sym.path or ""
@@ -6116,6 +6119,7 @@ def _extract_edges(
     file_symbols: list[Symbol] | None = None,
     default_export_of: "Callable[[str, Path], Symbol | None] | None" = None,
     module_objects: frozenset[str] = frozenset(),
+    package_index: "_JsPackageIndex | None" = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -6142,6 +6146,16 @@ def _extract_edges(
     ``named_imports`` and ``symbols_by_name`` are used to pick the correct
     symbol by matching the relative import path against candidate file paths.
     This applies to Cases 1b (this.property.method()) and 3 (variable.method()).
+
+    External bindings (WI-jomik): a callee reached through a binding of a
+    module ``package_index`` positively shows external (a Node core module or a
+    declared registry package, ``_bare_specifier_is_external``) is that
+    module's and never an in-repo symbol: a namespace or default import's
+    member (``path.join``), a named or destructured import (``const {resolve}
+    = require('node:path')``), and a method on a receiver whose type is a named
+    import from one (``new Subject()`` from ``rxjs``). Each gets the
+    unresolved edge with the module as hint that the module's unmatched
+    members already got. Without the index nothing is shown external.
     """
     if namespace_imports is None:
         namespace_imports = {}
@@ -6152,6 +6166,13 @@ def _extract_edges(
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     _caller_path = str(file_path)
+
+    def _external_module(specifier: str | None) -> bool:
+        return (
+            specifier is not None and package_index is not None
+            and _bare_specifier_is_external(specifier, file_path, package_index)
+        )
+
     # WI-rolub: file-anchored edges (imports, requires) start at the file
     # symbol the caller hands in. Minting ``make_file_id(lang, ...)`` here
     # instead named a ``javascript:`` file for a JavaScript ``<script>`` block
@@ -6414,7 +6435,18 @@ def _extract_edges(
                         # specific module).  Falls back to resolver if no named
                         # import exists for this function name.
                         import_module = (named_imports or {}).get(func_name)
-                        if callee is None and import_module and symbols_by_name:
+                        # WI-jomik: a name imported from an external module is
+                        # that module's; no name lookup may hand it a same-named
+                        # in-repo symbol (``const {resolve} =
+                        # require('node:path')`` -> express's ``var resolve``).
+                        # It falls to the named-import unresolved edge below.
+                        _import_external = (
+                            callee is None and _external_module(import_module)
+                        )
+                        if (
+                            callee is None and import_module and symbols_by_name
+                            and not _import_external
+                        ):
                             callee = _disambiguate_by_import(
                                 import_module, file_path, func_name, symbols_by_name,
                             )
@@ -6424,7 +6456,7 @@ def _extract_edges(
                         # Try same-package preference (avoids cross-package
                         # false positives for common names like error,
                         # resolve, reject when there's no import).
-                        if callee is None and symbols_by_name:
+                        if callee is None and symbols_by_name and not _import_external:
                             callee = _same_package_candidate(
                                 file_path, func_name, symbols_by_name,
                             )
@@ -6438,7 +6470,7 @@ def _extract_edges(
                         # recover a genuine inherited implicit-``this`` call; free
                         # functions, same-class methods, and exact matches bind.
                         magnet_deferred = False
-                        if callee is None:
+                        if callee is None and not _import_external:
                             lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: the resolver fallback
@@ -6735,6 +6767,11 @@ def _extract_edges(
                             # Resolve via global symbols using import path as hint
                             # to disambiguate when same name exists in multiple modules
                             import_path = namespace_imports[obj_name]
+                            # WI-jomik: a member of an external module is the
+                            # module's; a lone same-named in-repo symbol is a
+                            # namesake (knex ``path.join`` -> ``Builder.join``:
+                            # NameResolver applies a hint only AMONG candidates).
+                            _ns_external = _external_module(import_path)
                             # WI-halol: a member of an in-tree package's module
                             # object (``const b = require('@ws/b'); b.helper()``,
                             # ``import * as C from '@ws/c'; C.shout()``) takes
@@ -6746,9 +6783,16 @@ def _extract_edges(
                                 )
                                 if symbols_by_name and obj_name in module_objects
                                 and not import_path.startswith(".")
+                                and not _ns_external
                                 else None
                             )
-                            lookup_result = resolver.lookup(method_name, path_hint=import_path, caller_path=_caller_path)
+                            lookup_result = (
+                                LookupResult(symbol=None) if _ns_external
+                                else resolver.lookup(
+                                    method_name, path_hint=import_path,
+                                    caller_path=_caller_path,
+                                )
+                            )
                             if ns_target is None and lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: block resolution when
                                 # the target lives in a different npm package.
@@ -6804,6 +6848,34 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+
+                        # WI-jomik: a receiver whose TYPE is a named import
+                        # from an external module (``new Subject()`` from
+                        # ``rxjs``, ``s: Subject``) calls that module's method,
+                        # not a same-named in-repo one (jotai: rxjs
+                        # ``subject.subscribe`` -> a test object's
+                        # ``subscribe``). A catalogued constructor keeps its
+                        # own route below (``_named_receiver_module``).
+                        elif (
+                            obj_name and obj_name in var_types
+                            and _external_module(
+                                (named_imports or {}).get(var_types[obj_name]),
+                            )
+                            and _named_receiver_module(
+                                obj_name, var_types, var_ctor_modules,
+                            ) is None
+                        ):
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, method_name,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                module_hint=_normalize_import_module_hint(
+                                    (named_imports or {})[var_types[obj_name]],
+                                ),
+                                receiver_type_hint=var_types[obj_name],
+                                call_construct="method",
+                            ))
+                            edge_added = True
 
                         # Case 3: variable.method() via type inference
                         elif obj_name and obj_name in var_types:
@@ -7812,6 +7884,7 @@ def _analyze_javascript_impl(
     method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     class_resolver = NameResolver(global_classes)
     default_export_of = _InTreeDefaultExports(parsed_files, symbols_by_name)
+    package_index = _JsPackageIndex([pf.path for pf in parsed_files])
     all_edges: list[Edge] = []
     for pf in parsed_files:
         # INV-kokaj: look up the file pseudo-node by its new canonical
@@ -7835,6 +7908,7 @@ def _analyze_javascript_impl(
             file_symbols=symbols_for_path(_symbols_by_path, str(pf.path), pf_name),
             default_export_of=default_export_of,
             module_objects=pf.module_objects,
+            package_index=package_index,
         )
         # WI-lozug: emit module_attr_ref edges for attribute reads on
         # imported modules and well-known JS/Node globals (``process``,
@@ -7958,7 +8032,7 @@ def _analyze_javascript_impl(
                 classes_by_name[sym.name] = []
             classes_by_name[sym.name].append(sym)
     inheritance_edges = _extract_inheritance_edges(
-        all_symbols, classes_by_name, parsed_files, run
+        all_symbols, classes_by_name, parsed_files, run, package_index,
     )
     all_edges.extend(inheritance_edges)
 
