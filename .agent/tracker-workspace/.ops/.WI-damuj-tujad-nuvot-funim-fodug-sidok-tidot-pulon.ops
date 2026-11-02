@@ -1,0 +1,22 @@
+- op: create  # bb69
+  at: '2026-11-02T10:17:14Z'  # bb69
+  by: agent  # bb69
+  actor: jgstern_agent  # bb69
+  clock: 1  # bb69
+  nonce: bb69  # bb69
+  data:  # bb69
+    kind: work_item  # bb69
+    title: "scala: a bare call to a member imported from an object (import Scoped.extendScoped; extendScoped(..)) stays unresolved -- dev reached 9 sbt sites only through the companion misassignment"  # bb69
+    status: todo_soft  # bb69
+    priority: 3  # bb69
+    parent:  # bb69
+    tags:  # bb69
+    - scala  # bb69
+    - call_graph  # bb69
+    - analysis_quality  # bb69
+    isbefore: []  # bb69
+    duplicate_of: []  # bb69
+    not_duplicate_of: []  # bb69
+    pr_ref:  # bb69
+    description: "Residual found by the 2026-11-02 drain's A/B of the companion-object owner fix (the WI-vidof regression). With method owners resolved by position, 9 sbt call sites (and 2 on gatling) lose a resolution that dev had only BY ACCIDENT: a bare call to a member of a companion OBJECT, brought in by an import, e.g. sbt main-settings Structure.scala:834 `extendScoped(..)` inside `object SettingKey`, with `import Scoped.extendScoped` at line 717 and the definition in `object Scoped` (line 673); Parser.scala `mkFailure(..)` calls into object Parser. On dev those methods were credited to the same-named TRAIT and the inherited-calls linker reached them through that misassignment. The correct route is the analyzer binding a bare name through an explicit `import Obj.member` / `import Obj.*` -- the WI-tipoh / WI-kipol import-reading path, not the linker. Record: ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/fix_ab/."  # bb69
+    fields: {}  # bb69

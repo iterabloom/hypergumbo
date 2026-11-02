@@ -67,3 +67,19 @@
   clock: 7  # 8b60
   nonce: 8b60  # 8b60
   message: "INCONCLUSIVE ON THIS COHORT — TAG KEPT, and this is what was searched (2026-09-04\nbakeoff-queue drain). Recording the search so the next attempt does not repeat it.\n\nFIRST PROBE, AND WHY ITS EMPTY WAS WORTHLESS. Six cold repos, generic claims\n(`untrusted_input` -> host_fs / network / subprocess): ZERO bash-touching flows anywhere,\ndespite 336 bash symbols in hypergumbo, 145 in gocryptfs and 133 in beads. That empty was\nMANUFACTURED. bash's `io_primitives` catalogue declares only `env_read`, `fs_read`,\n`fs_write` and `host_info_read` -- NONE of which mint an `untrusted_input` source -- so the\ninstrument was structurally incapable of producing a bash flow. An honest empty must name\nwhat was searched; that one named nothing.\n\nRE-ASKED WITH TAINTS BASH CAN CARRY (`plaintext`, `key_material`, `host_description`), the\nwhole cohort yields exactly ONE bash-touching flow, on gocryptfs:\n\n    HE-FS  source_primitive=hostinfo\n           bash:test.bash:1-1:file:file  ->  bash:redirect:0-0:>:external_symbol\n\nOne file. No `source` crossed, so it exercises nothing of what `_RepoBashIndex` was built\nfor -- this item's third deliverable, whose own entry says 80 of the cohort's 97 `source/.`\nstatements are a variable or command substitution.\n\nSO THE COHORT HAS NO POPULATION FOR THE CLAIM. Not a refutation, not a validation. The tag\nstays. What the next attempt needs is a repository with MULTI-FILE bash that `source`s\nbetween files, chosen deliberately for that property rather than inherited from a cohort\npicked for other reasons -- and a claims file whose source taint bash actually mints, which\non today's catalogue means `host_description` and little else.\n\nArtifacts: ~/hypergumbo_lab_notebook/bakeoff_queue_09042026/PHASE4_RESULTS.md"  # 8b60
+- op: update  # cf55
+  at: '2026-11-02T10:19:35Z'  # cf55
+  by: agent  # cf55
+  actor: jgstern_agent  # cf55
+  clock: 8  # cf55
+  nonce: cf55  # cf55
+  set: {}  # cf55
+  remove:  # cf55
+    tags: [awaits_bakeoff_validation]  # cf55
+- op: discuss  # 1620
+  at: '2026-11-02T10:19:35Z'  # 1620
+  by: agent  # 1620
+  actor: jgstern_agent  # 1620
+  clock: 9  # 1620
+  nonce: '1620'  # 1620
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). confluent-examples bash subset (117 files, 62 sourcing) / git bash subset (1,277 files): measured THE POPULATION THE 09-04 DRAIN LACKED. A/B on dev with _RepoBashIndex reach forced empty vs live (zovuz_ab.py): host-secret-no-host-fs evidence 22 -> 11 on confluent (11 removed, 0 added; read 2: the redirect names are assigned in the sourced utils/ccloud_library.sh); git unchanged (22 = 22). Sourcing files with >=1 resolved target: 54/62, 1,107/1,141 (recorded 8 rows removed, 0 added; 12 -> 81 of 97 statements resolvable). Tag stripped."  # 1620

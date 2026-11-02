@@ -94,3 +94,19 @@
     status: satisfied  # ab21
   add:  # ab21
     tags: [awaits_bakeoff_validation]  # ab21
+- op: update  # 8529
+  at: '2026-11-02T10:19:34Z'  # 8529
+  by: agent  # 8529
+  actor: jgstern_agent  # 8529
+  clock: 11  # 8529
+  nonce: '8529'  # 8529
+  set: {}  # 8529
+  remove:  # 8529
+    tags: [awaits_bakeoff_validation]  # 8529
+- op: discuss  # 46c3
+  at: '2026-11-02T10:19:35Z'  # 46c3
+  by: agent  # 46c3
+  actor: jgstern_agent  # 46c3
+  clock: 12  # 46c3
+  nonce: 46c3  # 46c3
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). killbill: measured java.lang statics carry their slot: java.lang.System.getProperty 12, .exit 5, .nanoTime 5, .currentTimeMillis 5, java.lang.Thread.sleep 19, java.lang.Integer.parseInt 11 (recorded placeholder slot -> java.lang.*). Tag stripped."  # 46c3

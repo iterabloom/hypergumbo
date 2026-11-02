@@ -51,3 +51,19 @@
   set: {}  # 6388
   add:  # 6388
     tags: [awaits_bakeoff_validation]  # 6388
+- op: update  # 6e80
+  at: '2026-11-02T10:19:49Z'  # 6e80
+  by: agent  # 6e80
+  actor: jgstern_agent  # 6e80
+  clock: 6  # 6e80
+  nonce: '6e80'  # 6e80
+  set: {}  # 6e80
+  remove:  # 6e80
+    tags: [awaits_bakeoff_validation]  # 6e80
+- op: discuss  # d8a3
+  at: '2026-11-02T10:19:49Z'  # d8a3
+  by: agent  # d8a3
+  actor: jgstern_agent  # d8a3
+  clock: 7  # d8a3
+  nonce: d8a3  # d8a3
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sherpa-onnx: measured InitKeywords L300 / L314 -> the 283-292 overload, src 294-316 (not a self-call) (recorded self-call -> sibling). Tag stripped."  # d8a3

@@ -54,3 +54,19 @@
   set: {}  # 4d7d
   add:  # 4d7d
     isbefore: [WI-gulaz-kuval-kohit-torad-bajah-duviz-rugob-nahos]  # 4d7d
+- op: update  # ca04
+  at: '2026-11-02T10:19:36Z'  # ca04
+  by: agent  # ca04
+  actor: jgstern_agent  # ca04
+  clock: 6  # ca04
+  nonce: ca04  # ca04
+  set: {}  # ca04
+  remove:  # ca04
+    tags: [awaits_bakeoff_validation]  # ca04
+- op: discuss  # f03d
+  at: '2026-11-02T10:19:36Z'  # f03d
+  by: agent  # f03d
+  actor: jgstern_agent  # f03d
+  clock: 7  # f03d
+  nonce: f03d  # f03d
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). pretix: measured db_read chains on a lazy combinator 0; on __iter__/__getitem__ 392; db_compose chains 1,880 (recorded 28 of 40 lazy -> 0; db_compose 0 -> >0). Tag stripped."  # f03d

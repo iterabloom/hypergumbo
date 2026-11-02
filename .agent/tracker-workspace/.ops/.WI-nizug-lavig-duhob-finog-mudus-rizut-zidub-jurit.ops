@@ -77,3 +77,19 @@
   clock: 8  # e397
   nonce: e397  # e397
   message: "DONE: merged in PR #1379 (commit 5fce3889fd). Root cause: type_hierarchy._extends_admits_dispatch tested only the CHILD of an `extends` hop for abstractness; in C++/C# abstract-base hierarchies the abstract type is the PARENT, so in the four deny-list languages those hops were always denied. Fix: admit when either endpoint is_abstract_type; deny-list unchanged; unresolved external parent tests the child only. Behavioural evidence: TestAbstractBaseDispatchEndToEnd (cpp and csharp through run_behavior_map) and the parity cell [cpp] strict-xfail -> hard pass; fixture survey emits Shape::area -> Square::area and Shape.Area -> Square.Area (dev: neither). Corpus: +406 (sherpa-onnx), +1905 (grpc), +4 (powerdns) dispatches_to, 0 removed; dead-code-maybe candidates 4178->3657, 17157->15099, 0 entering; source read: 2304/2315 plausible, 11 grpc edges false (static members). Same dispatch set under WI-kalug's relabelling (checked on a scratch merge). NOT asserted: per-method precision (WI-digaj), reach through a concrete middle class (WI-rabut). Tagged awaits_bakeoff_validation (quantitative claim). Report: run_09302026/nizug.md"  # e397
+- op: update  # f377
+  at: '2026-11-02T10:19:34Z'  # f377
+  by: agent  # f377
+  actor: jgstern_agent  # f377
+  clock: 9  # f377
+  nonce: f377  # f377
+  set: {}  # f377
+  remove:  # f377
+    tags: [awaits_bakeoff_validation]  # f377
+- op: discuss  # 42dc
+  at: '2026-11-02T10:19:34Z'  # 42dc
+  by: agent  # 42dc
+  actor: jgstern_agent  # 42dc
+  clock: 10  # 42dc
+  nonce: 42dc  # 42dc
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sherpa-onnx: measured cpp dispatches_to edges 418 (recorded +406, 0 removed). Tag stripped."  # 42dc

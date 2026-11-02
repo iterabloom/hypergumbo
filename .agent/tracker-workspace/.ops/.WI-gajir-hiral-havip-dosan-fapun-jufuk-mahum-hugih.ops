@@ -43,3 +43,19 @@
   clock: 4  # 846d
   nonce: 846d  # 846d
   message: "Fixed in PR #1469 (stage 9a). Root cause: the per-situation collapse took resource_naming_only and trusted_sink from its first member. Both flags are now in the grouping key. Behavioural evidence (live verify-claims repro, gajir.md): Go net.Dial + fmt.Fprintln(conn, os.Getenv(\"API_KEY\")), claim host_secret->network: before confirmed with 0 evidence; after violated, 1 evidence row at fmt.Fprintln. Python trusted subprocess.run + untrusted Popen in one helper: before confirmed_with_caveats, after violated at subprocess.Popen. Merged tree: 22975 passed, 0 failed, scoped coverage 100%. Corpus claim (2 container-libs claims inconclusive->violated) is from the branch A/B, not re-measured on dev: tagged awaits_bakeoff_validation."  # 846d
+- op: update  # 6a50
+  at: '2026-11-02T10:19:41Z'  # 6a50
+  by: agent  # 6a50
+  actor: jgstern_agent  # 6a50
+  clock: 5  # 6a50
+  nonce: 6a50  # 6a50
+  set: {}  # 6a50
+  remove:  # 6a50
+    tags: [awaits_bakeoff_validation]  # 6a50
+- op: discuss  # c9fe
+  at: '2026-11-02T10:19:41Z'  # c9fe
+  by: agent  # c9fe
+  actor: jgstern_agent  # c9fe
+  clock: 6  # c9fe
+  nonce: c9fe  # c9fe
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). container-libs / ingress-nginx / redis: measured gajir’s 18 claims: container-libs host_secret->network violated(70), untrusted_input->network violated(114); ingress-nginx untrusted->network 5 rows; redis host_fs counted rows carry no stdio.fflush, resource_naming_flows 7/10/47 disclosed (recorded inconclusive -> violated; 1 -> 3; fflush disclosed). Tag stripped."  # c9fe

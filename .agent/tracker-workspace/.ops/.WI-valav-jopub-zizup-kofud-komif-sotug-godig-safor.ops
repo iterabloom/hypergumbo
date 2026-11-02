@@ -78,3 +78,19 @@
   clock: 8  # 1f1e
   nonce: 1f1e  # 1f1e
   message: "DONE (with folded WI-tabig): merged in PR #1387. A @property/@cached_property getter on a Django MODEL class with exactly one return of a manager root, .objects, a related manager called with only manager=, or a QuerySet-preserving chain is admitted (decided on the return expression, never the name; fixed point over property-of-property). Behavioural evidence (live fixture): order.fees.filter(a=1) python:external:0-0:filter -> python:django.db.models:0-0:filter (type_inferred); refused shapes stay external; six guard-removal mutations each flipped a pinned fixture line. Both filed instances typed (Order.fees, OrderPosition.checkins). pretix: +785 ORM-slot edges, 0 lost (161 production; all 33 name-only production sites read: genuine); taint situations 192 -> 194, both new ones true (n=2, not a precision estimate); django/django unchanged. NOT asserted: every manager-returning property is typed (local-variable returns, abstract-base accessors refused). Tagged awaits_bakeoff_validation (one Django repo). Residual: WI-tumog (P2, A/B script sys.path trap).\nFull report (closure evidence, measurements, residuals): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/valav.md"  # 1f1e
+- op: update  # 8ce5
+  at: '2026-11-02T10:19:39Z'  # 8ce5
+  by: agent  # 8ce5
+  actor: jgstern_agent  # 8ce5
+  clock: 9  # 8ce5
+  nonce: 8ce5  # 8ce5
+  set: {}  # 8ce5
+  remove:  # 8ce5
+    tags: [awaits_bakeoff_validation]  # 8ce5
+- op: discuss  # 7d38
+  at: '2026-11-02T10:19:39Z'  # 7d38
+  by: agent  # 7d38
+  actor: jgstern_agent  # 7d38
+  clock: 10  # 7d38
+  nonce: 7d38  # 7d38
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). pretix: measured site-level against valav’s OWN pretix_changed_sites.json (809 sites): kept django.db.models 784 (314 accessor_name + 470 type_inferred), back to external 4, other 21 (now resolved in-repo, e.g. refresh_from_db) (recorded external -> django.db.models). Tag stripped."  # 7d38

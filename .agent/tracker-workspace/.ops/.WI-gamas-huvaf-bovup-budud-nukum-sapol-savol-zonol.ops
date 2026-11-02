@@ -39,3 +39,19 @@
   clock: 3  # b600
   nonce: b600  # b600
   message: "DONE 2026-09-07, PR pending at the time of writing; measured by docs/measurements/0016-django-instance-write-delta.md.\n\nSHIPPED: the model gate moved from WI-sozoj's direct-dotted-`models.Model`-base test to `DjangoRelationIndex.model_ids` (repo-wide, transitive through resolved project bases), and the receiver widened from `self` to any receiver the index resolves to a model instance -- a local bound from a manager or a constructor, an annotated parameter, a forward-relation hop -- on the UNRESOLVED branch only, so a project-defined `save` keeps its first-party edge. `DjangoRelationIndex.__bool__` now counts `model_ids`, without which a Django app declaring no relation and no custom manager would pass `None` and lose the rules entirely. `_class_directly_extends_django_model` stays as the fallback for a class the index skips (a short name that is not unique in its file), so WI-sozoj's shipped behaviour does not silently narrow.\n\nCAPABILITY, measured on the full pretix production survey in both arms: 2 -> 75 typed `save`/`delete` sites. WI-sozoj's gate recognised TWO ORM instance writes in a repository containing about 2,900 such call sites.\n\nBEHAVIOURAL EVIDENCE (the premise this item was filed on, re-run at tip before any code changed, `fx/` + `dump.py`, two controls in the same run): `d.delete()` after `d = Direct.objects.create(...)` and `p.save()` after `p = Payment()` emitted `python:external:0-0:<m>:unresolved` on dev and carry `django.db.models` on the branch; `self.delete()` in a direct subclass carried it in BOTH arms (the control); an untyped parameter's `.save()` carries `external` in both (the negative control).\n\nREFUTATION: RC1 (a `ModelForm` / serializer `save()` typed as an ORM write) did not fire, and RC3 read every marker edge in the survey back against source through an independent scan with 0 violations.\n\nWITHHELD AND FILED, not dropped: the `super().save()` rule -- see the residual item and the walk invariant it is gated on."  # b600
+- op: update  # e600
+  at: '2026-11-02T10:19:36Z'  # e600
+  by: agent  # e600
+  actor: jgstern_agent  # e600
+  clock: 4  # e600
+  nonce: e600  # e600
+  set: {}  # e600
+  remove:  # e600
+    tags: [awaits_bakeoff_validation]  # e600
+- op: discuss  # ca6d
+  at: '2026-11-02T10:19:37Z'  # ca6d
+  by: agent  # ca6d
+  actor: jgstern_agent  # ca6d
+  clock: 5  # ca6d
+  nonce: ca6d  # ca6d
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). pretix: measured save/delete sites typed django.db.models, production files: 207 (recorded 2 -> 75). Tag stripped."  # ca6d

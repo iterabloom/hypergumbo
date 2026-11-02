@@ -52,3 +52,19 @@
   set: {}  # f64a
   add:  # f64a
     tags: [awaits_bakeoff_validation]  # f64a
+- op: update  # 63ea
+  at: '2026-11-02T10:19:33Z'  # 63ea
+  by: agent  # 63ea
+  actor: jgstern_agent  # 63ea
+  clock: 6  # 63ea
+  nonce: 63ea  # 63ea
+  set: {}  # 63ea
+  remove:  # 63ea
+    tags: [awaits_bakeoff_validation]  # 63ea
+- op: discuss  # ad39
+  at: '2026-11-02T10:19:33Z'  # ad39
+  by: agent  # ad39
+  actor: jgstern_agent  # ad39
+  clock: 7  # ad39
+  nonce: ad39  # ad39
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sbt: measured scala ext method sites with a real module slot 3,765/15,007 (25.09%); io chains with scala dst 488 (recorded 0/10,985 -> 595/11,032 (5.39%); 0 -> 38). Tag stripped."  # ad39

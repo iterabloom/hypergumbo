@@ -51,3 +51,19 @@
   set: {}  # 2167
   add:  # 2167
     tags: [awaits_bakeoff_validation]  # 2167
+- op: update  # 4c24
+  at: '2026-11-02T10:19:46Z'  # 4c24
+  by: agent  # 4c24
+  actor: jgstern_agent  # 4c24
+  clock: 6  # 4c24
+  nonce: 4c24  # 4c24
+  set: {}  # 4c24
+  remove:  # 4c24
+    tags: [awaits_bakeoff_validation]  # 4c24
+- op: discuss  # 4d01
+  at: '2026-11-02T10:19:46Z'  # 4d01
+  by: agent  # 4d01
+  actor: jgstern_agent  # 4d01
+  clock: 7  # 4d01
+  nonce: 4d01  # 4d01
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). vpnkit: measured dialer_darwin.go: io.WriteString is ipc_send (net.Dial itself stays net_send) (recorded net_send -> ipc_send). Tag stripped."  # 4d01

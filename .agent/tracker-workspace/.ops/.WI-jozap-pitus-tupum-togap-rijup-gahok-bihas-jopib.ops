@@ -59,3 +59,19 @@
   clock: 6  # 5c1a
   nonce: 5c1a  # 5c1a
   message: "Tagged awaits_bakeoff_validation per the tagging discipline: the PR carries raw count deltas attributed to the change (653 branch edges removed -- phoenix-framework 427 -> 0, livebook 226 -> 0). ASK OF THE NEXT COHORT: elixir edge counts and io-boundary primitives on any elixir repo in the pool, against the pre-fix baseline. THE EXPECTED DIRECTION IS DOWN AND THAT IS THE POINT -- all 653 were adjudicated as false attributions of Kernel auto-imports, so a cohort finding FEWER elixir edges is confirming the fix, not regressing. What WOULD be a regression: a drop in io-boundary primitives or chains, since none of the removed edges reached a catalogue row. Also worth reading: every elixir number in the pool is now reproducible across processes, so a cohort can compare two runs directly for the first time."  # 5c1a
+- op: update  # f9bf
+  at: '2026-11-02T10:19:33Z'  # f9bf
+  by: agent  # f9bf
+  actor: jgstern_agent  # f9bf
+  clock: 7  # f9bf
+  nonce: f9bf  # f9bf
+  set: {}  # f9bf
+  remove:  # f9bf
+    tags: [awaits_bakeoff_validation]  # f9bf
+- op: discuss  # 3293
+  at: '2026-11-02T10:19:34Z'  # 3293
+  by: agent  # 3293
+  actor: jgstern_agent  # 3293
+  clock: 8  # 3293
+  nonce: '3293'  # 3293
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). phoenix-framework: measured analyze_elixir edge multiset identical across PYTHONHASHSEED 0 / 12345 / 777 (0 appeared, 0 vanished); no Kernel-branch binding remains (recorded 101 edges differed across seeds -> 0; 653 branch edges -> 0). Tag stripped."  # 3293

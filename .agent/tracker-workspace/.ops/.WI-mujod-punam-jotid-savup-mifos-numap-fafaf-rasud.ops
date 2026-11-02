@@ -64,3 +64,19 @@
   set: {}  # d1fb
   add:  # d1fb
     tags: [awaits_bakeoff_validation]  # d1fb
+- op: update  # 2ab9
+  at: '2026-11-02T10:19:40Z'  # 2ab9
+  by: agent  # 2ab9
+  actor: jgstern_agent  # 2ab9
+  clock: 8  # 2ab9
+  nonce: 2ab9  # 2ab9
+  set: {}  # 2ab9
+  remove:  # 2ab9
+    tags: [awaits_bakeoff_validation]  # 2ab9
+- op: discuss  # 99f8
+  at: '2026-11-02T10:19:40Z'  # 99f8
+  by: agent  # 99f8
+  actor: jgstern_agent  # 99f8
+  clock: 9  # 99f8
+  nonce: 99f8  # 99f8
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). koel / prometheus: measured koel net_send chains on node http.* from TS/JS: 0; prometheus spells path/filepath.Glob / .Walk (recorded 41 -> 0; filepath -> path/filepath). Tag stripped."  # 99f8

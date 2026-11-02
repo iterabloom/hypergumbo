@@ -48,3 +48,19 @@
   set: {}  # 0f2d
   add:  # 0f2d
     tags: [awaits_bakeoff_validation]  # 0f2d
+- op: update  # 626e
+  at: '2026-11-02T10:19:44Z'  # 626e
+  by: agent  # 626e
+  actor: jgstern_agent  # 626e
+  clock: 6  # 626e
+  nonce: 626e  # 626e
+  set: {}  # 626e
+  remove:  # 626e
+    tags: [awaits_bakeoff_validation]  # 626e
+- op: discuss  # a7d7
+  at: '2026-11-02T10:19:45Z'  # a7d7
+  by: agent  # a7d7
+  actor: jgstern_agent  # a7d7
+  clock: 7  # a7d7
+  nonce: a7d7  # a7d7
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). phoenix-framework / livebook: measured analyzer self-call sites 70 / 252 (recorded 118 -> 68 / 287 -> 251). Tag stripped."  # a7d7
