@@ -1246,6 +1246,28 @@ def defer_bare_method_call(
     return match_type not in ("exact", "path_hint")
 
 
+
+def defer_unresolved_tie(lookup_result: Any) -> bool:
+    """INV-fahub x WI-jomik: should an UNRESOLVED tie be deferred to Site-1?
+
+    The shared resolvers no longer pick among two or more candidates without
+    in-file evidence (``symbol_resolution`` module docstring): such a lookup
+    returns no symbol, its candidates kept. Before that, the pick reached
+    :func:`defer_bare_method_call`, which deferred a weak hit on a method by
+    stamping ``enclosing_class`` so the ``inherited_calls`` Site-1 walker could
+    recover a genuine own-class or inherited implicit-``this`` call. A tie
+    among methods is the same call with the guess removed, so it is deferred
+    the same way: True when the lookup found nothing and at least two of its
+    candidates exist, one of them a method. Callers OR this into their
+    ``_defer`` and emit the unresolved edge with ``enclosing_class``.
+    """
+    if getattr(lookup_result, "found", True):
+        return False
+    candidates = getattr(lookup_result, "candidates", None) or []
+    return len(candidates) >= 2 and any(
+        getattr(c, "kind", None) == "method" for c in candidates
+    )
+
 def make_route_stable_id(method: str, path: str) -> str:
     """Compute a collision-free stable_id for route symbols.
 

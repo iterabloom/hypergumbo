@@ -191,6 +191,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    defer_unresolved_tie,
     emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
     iter_tree,
@@ -2280,11 +2281,11 @@ def _extract_edges_from_tree(
                                 _arity_factor = _choice.confidence
                                 if _choice.ambiguous:
                                     _arity_meta["resolution_quality"] = "ambiguous"
-                        _defer = _sym is not None and defer_bare_method_call(
+                        _defer = (_sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, _enclosing_type,
                             separator="::",
-                        )
+                        )) or defer_unresolved_tie(lookup_result)
                         # WI-rimon, C's twin (io_boundary's
                         # declared_by_an_included_header): a FREE call whose
                         # declaring header this file includes is the declared

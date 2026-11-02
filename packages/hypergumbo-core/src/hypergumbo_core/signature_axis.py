@@ -322,7 +322,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=562,
+        line=563,
         anchor="_extract_csharp_return_type_name(resolved_sym.signature)",
         fact="return_type",
         note="Resolves a class from the parsed return type.",
@@ -332,7 +332,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=2041,
+        line=2047,
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2489,
+        line=2488,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",
@@ -362,14 +362,14 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=6603,
+        line=6614,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
     ),
     LegacyValueParser(
         path="packages/hypergumbo-lang-common/src/hypergumbo_lang_common/dart.py",
-        line=893,
+        line=894,
         anchor="resolved_sym.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

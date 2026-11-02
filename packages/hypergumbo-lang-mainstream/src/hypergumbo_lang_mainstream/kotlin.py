@@ -2427,8 +2427,7 @@ def _extract_edges_from_file(
                     # AMB-METHOD guard: when 3+ classes define the same
                     # method name, suppress the edge to avoid false positives.
                     if method_resolver is not None:
-                        amb_check = method_resolver.lookup(callee_name)
-                        if not amb_check.found and amb_check.candidates:
+                        if method_resolver.too_ambiguous(callee_name):
                             continue  # 3+ method candidates, suppress
                     # Check local symbols first
                     if callee_name in local_symbols:

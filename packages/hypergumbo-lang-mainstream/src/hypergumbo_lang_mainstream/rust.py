@@ -3534,11 +3534,13 @@ def _extract_edges_from_file(
                                         # false edges.
                                         lookup_result = LookupResult(symbol=None)
                                     else:
-                                        # Pass the caller's directory as path_hint
-                                        # to prefer same-module methods over
-                                        # cross-module ones with the same name
-                                        # (e.g., nova/nifs.rs over
-                                        # neutron/nifs.rs when called from nova/).
+                                        # Pass the caller's directory as a soft
+                                        # path_hint to prefer same-module methods
+                                        # over cross-module ones with the same name
+                                        # (e.g., nova/nifs.rs over neutron/nifs.rs
+                                        # when called from nova/). A tie inside it
+                                        # with none in this file is a guess and
+                                        # stays unresolved (WI-jomik: ~80% wrong).
                                         caller_dir = (
                                             file_path.rsplit("/", 1)[0]
                                             if "/" in file_path else ""
@@ -3547,6 +3549,7 @@ def _extract_edges_from_file(
                                             callee_name,
                                             path_hint=caller_dir if caller_dir else None,
                                             soft_hint=True,
+                                            caller_path=_caller_path,
                                         )
                                 else:
                                     import_hint = use_aliases.get(callee_name)

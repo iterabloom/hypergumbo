@@ -1843,7 +1843,11 @@ class DeferredResolutionStats:
     """Statistics from deferred symbol resolution phase.
 
     Tracks how many UsageContexts were resolved and by which strategy,
-    enabling observability into the resolution process.
+    enabling observability into the resolution process. ``resolved_ambiguous``
+    counts a handler chosen among several same-named candidates because it is
+    defined in the usage context's own file (``caller_file``); a tie with no
+    such evidence is left unresolved by the resolver (WI-jomik) and counts in
+    ``still_unresolved``.
     """
 
     total_unresolved: int = 0
@@ -1940,6 +1944,7 @@ def resolve_deferred_symbol_refs(
             resolution_hints["name"],
             allow_suffix=True,
             path_hint=path_hint,
+            caller_path=ctx.path,
         )
 
         if result.found:
@@ -1954,7 +1959,7 @@ def resolve_deferred_symbol_refs(
                 stats.resolved_exact += 1
             elif match_type == "path_hint":
                 stats.resolved_path_hint += 1
-            elif match_type == "suffix_ambiguous":
+            elif match_type == "caller_file":
                 stats.resolved_ambiguous += 1
             else:
                 stats.resolved_suffix += 1

@@ -69,6 +69,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     make_symbol_id,
     make_unresolved_edge,
@@ -623,7 +624,7 @@ def _extract_edges_from_tree(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, container,
                         )
-                    ):
+                    ) or defer_unresolved_tie(lookup_result):
                         edges.append(make_unresolved_edge(
                             "zig", current_function_sym.id, call_name,
                             line, PASS_ID, run.execution_id,

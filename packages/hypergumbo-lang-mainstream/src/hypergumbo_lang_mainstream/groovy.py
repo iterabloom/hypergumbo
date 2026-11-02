@@ -72,6 +72,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -899,8 +900,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         if not edge_added:
                             # AMB-METHOD guard: when 3+ classes define the same
                             # method name, suppress the edge to avoid false positives.
-                            amb_check = method_resolver.lookup(callee_name)
-                            if not amb_check.found and amb_check.candidates:
+                            if method_resolver.too_ambiguous(callee_name):
                                 continue  # 3+ method candidates, suppress
 
                             # Check local symbols first
@@ -941,10 +941,12 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                 _sym = lookup_result.symbol
                                 _defer = (
                                     receiver is None
-                                    and _sym is not None
-                                    and defer_bare_method_call(
+                                    and (
+                                        (_sym is not None and defer_bare_method_call(
                                         _sym.kind, _sym.name,
                                         lookup_result.match_type, _enclosing_type,
+                                    ))
+                                        or defer_unresolved_tie(lookup_result)
                                     )
                                 )
                                 if lookup_result.found and _sym is not None and not _defer:
