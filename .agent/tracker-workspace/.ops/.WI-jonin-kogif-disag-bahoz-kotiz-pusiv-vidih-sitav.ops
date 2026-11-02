@@ -21,3 +21,52 @@
     pr_ref:  # 67d0
     description: "PROBLEM. WI-fuzik (PR #2008) withholds a clean untrusted_input / net_recv verdict while the graph holds request-handler entrypoints (entrypoints.REQUEST_INGRESS_KINDS), naming each handler. It reads ENTRYPOINTS, so a server whose handlers are not detected as entrypoints gets no disclosure. Measured on ~/curriculum_repos/caddy (dev after #2008): 31 non-test `ServeHTTP` methods -- Go `http.Handler` implementations, each receiving `*http.Request` -- and the survey's entrypoint kinds are library_export 65, main_function 1, shell_script 1: zero request-ingress entrypoints. So `unseeded_ingress_handlers` returns [] on caddy.\n\nWHY IT MATTERS. On caddy today the untrusted_input database claim is withheld only by unclassified stdlib modules and a catalogue deferred crossing -- the same accident WI-fuzik's step 0 measured for Flask/Express, where declaring the framework module complete turned a path-traversal write into confirmed_with_caveats. NOT measured for Go: whether classifying caddy's modules flips a verdict to a confirming one. Measure that first (WI-fuzik step 0a's method, ~/hypergumbo_lab_notebook/fuzik_step0_11022026/).\n\nDIRECTION. Detect a method named ServeHTTP whose signature takes (http.ResponseWriter, *http.Request) -- and http.HandlerFunc / mux.HandleFunc registrations -- as a go_handler entrypoint (EntrypointKind.GO_HANDLER exists and is in REQUEST_INGRESS_KINDS), then re-run the caddy before/after. Sweep by mechanism: the same \"handler implements an interface instead of being registered by a decorator\" shape may hold in other languages (Java Servlet.service, Rust tower::Service)."  # 67d0
     fields: {}  # 67d0
+- op: update  # 715a
+  at: '2026-11-02T17:06:45Z'  # 715a
+  by: agent  # 715a
+  actor: jgstern_agent  # 715a
+  clock: 2  # 715a
+  nonce: 715a  # 715a
+  set:  # 715a
+    status: done  # 715a
+  add:  # 715a
+    tags: [awaits_bakeoff_validation]  # 715a
+- op: discuss  # 148e
+  at: '2026-11-02T17:06:46Z'  # 148e
+  by: agent  # 148e
+  actor: jgstern_agent  # 148e
+  clock: 3  # 148e
+  nonce: 148e  # 148e
+  message: "DONE in PR #2014 (merged; dev 3aff3c11f0). A Go method named ServeHTTP whose signature takes a *Request (outside test code) gets concept go_http_handler (new always-loaded builtin frameworks/go-net-http.yaml), mapped to EntrypointKind.GO_HANDLER -- a REQUEST_INGRESS kind that had no producer. Patterns gain a `signature` filter (searched in Symbol.signature; no signature never matches). STEP 0 (lab ~/hypergumbo_lab_notebook/jonin_step0_11022026/): on dev dfe0abf947 a one-file server whose ServeHTTP writes r.URL.Query().Get(\"p\") to disk read confirmed_with_caveats on untrusted-input-no-host-fs and -no-subprocess with NO overlay (only caveats deferred_crossing + unknown_receiver_scope) -- worse than the flask case WI-fuzik measured. BEHAVIOURAL EVIDENCE on merged dev, cold cache: `hypergumbo verify-claims probe_servehttp --claims p2_review_11012026/B1/claims_generic.yaml --json` -> rc 2, all three untrusted_input claims inconclusive, details \"1 request handler(s) receive network data that no taint source represents (saver.ServeHTTP at main.go:10 (Go http.Handler: saver.ServeHTTP))\". Production-path tests: test_verify_claims_unseeded_ingress.py (go ServeHTTP + HandleFunc control, with and without an overlay declaring net/http complete), test_go_http_handler.py (rule, lookalikes, test-file strip, kind). Mutations (drop the signature filter; unmap the concept) turn them red. CADDY (~/curriculum_repos/caddy, before = fuzik_step0 run, after = this tree): request-ingress entrypoints 0 -> 28 (every non-test implementation; the item's 31 included 3 interface method declarations, which carry no signature and are excluded; 3 more are in _test.go); library_export 65 -> 37 (demoted beneath semantic kinds, the existing rule); untrusted-input-no-database now names all 28 handlers; the violated no-subprocess (3) and no-host-fs (14) verdicts are unchanged. HandleFunc registrations were already HTTP_ROUTE entrypoints (control passes before and after). test_go_deferred_crossing_taint_verdict pinned the old confirmed_with_caveats over this same shape; it now expects inconclusive naming app.ServeHTTP. SWEEP BY MECHANISM -> residuals: WI-losij (python BaseHTTPRequestHandler measured: a latent confirmed_with_caveats once http.server is declared complete; blocked by WI-sorop; java HttpServlet and rust tower Service, unprobed/unfixed); WI-vumig (the disclosure reads the CAPPED entrypoint list; caddy not cut, large repos unmeasured -- the cilium run was stopped by memory pressure). Seen, not filed: alertmanager's go-swagger API handlers (api/v2/restapi/operations/*) are in generated files the survey skips, so they are not entrypoints; its 24 http_route entrypoints still fire the withhold."  # 148e
+- op: update  # dc25
+  at: '2026-11-02T18:23:58Z'  # dc25
+  by: agent  # dc25
+  actor: jgstern_agent  # dc25
+  clock: 4  # dc25
+  nonce: dc25  # dc25
+  set:  # dc25
+    status: todo_hard  # dc25
+  remove:  # dc25
+    tags: [awaits_bakeoff_validation]  # dc25
+- op: discuss  # ccf2
+  at: '2026-11-02T18:23:59Z'  # ccf2
+  by: agent  # ccf2
+  actor: jgstern_agent  # ccf2
+  clock: 5  # ccf2
+  nonce: ccf2  # ccf2
+  message: "REOPENED 2026-11-02: PR #2014 REVERTED in PR #2016 (dev dc6725d28e). The rule's `signature` pattern filter read a parameter type back out of Symbol.signature, which ADR-0058 forbids (facts inside a signature are read from their declared homes; parameters live in the `parameters` / `params` meta keys; LEGACY_VALUE_PARSERS may only shrink). test_signature_axis.py::test_no_undeclared_value_parser_exists failed on the merged tree; PR CI's affected-test selection did not run it, so dev's push CI stayed green. Missed by me: rule 1, the ruling existed. The measurements in the DONE entry above (step 0 false all-clear; caddy 0 -> 28) stand as measurements of the mechanism, but nothing is shipped: on dev the probe reads confirmed_with_caveats again.\nREDO: (1) the Go analyzer writes meta[\"parameters\"] ([{name, type}], the registered MetaKeySpec) for functions, methods and interface method specs, from the same parameter loop _extract_go_signature walks; (2) a pattern filter that reads parameter types from that declared home (AND semantics, like symbol_path), replacing `signature`; (3) frameworks/go-net-http.yaml as before; (4) RUN test_signature_axis.py and test_module_key_axis.py EXPLICITLY, plus the full affected set. The interface-declaration exclusion must be re-checked: an interface method spec would now carry parameters, so \"no signature\" no longer excludes it."  # ccf2
+- op: update  # 0447
+  at: '2026-11-02T21:24:47Z'  # 0447
+  by: agent  # 0447
+  actor: jgstern_agent  # 0447
+  clock: 6  # 0447
+  nonce: '0447'  # 0447
+  set:  # 0447
+    status: done  # 0447
+- op: discuss  # 1b08
+  at: '2026-11-02T21:24:47Z'  # 1b08
+  by: agent  # 1b08
+  actor: jgstern_agent  # 1b08
+  clock: 7  # 1b08
+  nonce: 1b08  # 1b08
+  message: "DONE (redo) in PR #2018 (merged; dev ba432fd845). Replaces #2014 (reverted in #2016 for parsing Symbol.signature, ADR-0058). Nothing reads the signature now. (1) go.py writes meta[\"parameters\"] (overload_arity.parameter_entry: name, type, variadic) for functions, methods and interface method specs from the parameter list, receiver excluded; a spec has no body and carries the abstract modifier (the marking cpp/kotlin give an abstract member). Go stable ids unchanged (hashed from the signature). (2) framework_patterns: parameter_type declared beside symbol_name is an AND and decisive; no existing rule declared both, parameter_type alone unchanged. (3) frameworks/go-net-http.yaml: method named ServeHTTP, parameter_type ^\\*(\\w+\\.)?Request$, modifiers_exclude ^abstract$, never in test code -> go_http_handler -> EntrypointKind.GO_HANDLER (0.90). BEHAVIOURAL EVIDENCE on merged dev, cold cache: hypergumbo verify-claims jonin_step0_11022026/probe_servehttp --claims p2_review_11012026/B1/claims_generic.yaml --format json -> rc 2; untrusted-input-no-subprocess / -no-host-fs / -no-database all inconclusive, naming saver.ServeHTTP at main.go:10 (Go http.Handler: saver.ServeHTTP). Before (dev): confirmed_with_caveats with no overlay. CADDY (this tree vs the reverted fix): the identical 28 go_handler entrypoints (28 of 28 same symbols); of 37 ServeHTTP symbols, the 3 interface specs are excluded by abstract (positive, not an absent signature), 3 are in test files, 3 are external stubs; untrusted-input-no-database inconclusive naming 28 handlers; violated verdicts unchanged (lab ~/hypergumbo_lab_notebook/jonin_redo_11022026/). test_signature_axis and test_module_key_axis run explicitly and listed in the PR manifest. Mutations (AND off, abstract exclusion off, method parameters off, abstract marking off) each redden only their own tests. Residuals unchanged: WI-losij, WI-vumig."  # 1b08

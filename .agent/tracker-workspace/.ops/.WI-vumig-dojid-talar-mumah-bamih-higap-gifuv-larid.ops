@@ -20,3 +20,12 @@
     pr_ref:  # 8da1
     description: "PROBLEM. verify_claims.unseeded_ingress_handlers (WI-fuzik) reads the behavior map's `entrypoints`, which detect_entrypoints CAPS: compute_entrypoint_cap(node_count) = node_count // 100 clamped to [50, 500], then _diversity_cap limits any one kind to 40% of the cap before overflow fills the rest. A request handler cut by the cap is absent from the disclosure, so \"N request handler(s) receive network data...\" can UNDERSTATE N and omit handlers a reader would check. The verdict itself stays withheld while at least one handler survives; it would read clean only if every request-ingress entrypoint were cut, which the ranking (semantic kinds outrank library_export) makes unlikely but nothing asserts.\n\nMEASURED. caddy (dev after PR #2014): cap 67, 28 go_handler entrypoints, all 28 survived (library_export 65 -> 37). NOT MEASURED on a repo whose handlers exceed the cap's share: the cilium survey (56 non-test, non-vendor files with ServeHTTP) was stopped by the session's memory-pressure reaper before it finished. Candidates: cilium, kubernetes (68 files), gitlab (693 controllers per the cap's own comment).\n\nDIRECTION. The disclosure is a completeness claim and should not read a ranked, truncated list: compute it from the uncapped request-ingress set (detect_entrypoints before the cap, or a dedicated pass over symbols' concepts), and assert in a test that a handler beyond the cap is still named. Measure first on one large repo."  # 8da1
     fields: {}  # 8da1
+- op: update  # f930
+  at: '2026-11-02T17:06:45Z'  # f930
+  by: agent  # f930
+  actor: jgstern_agent  # f930
+  clock: 2  # f930
+  nonce: f930  # f930
+  set: {}  # f930
+  add:  # f930
+    not_duplicate_of: [WI-lokok-bisub-tijis-nolit-sabuk-nafap-jikip-vodor]  # f930
