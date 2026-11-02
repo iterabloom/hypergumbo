@@ -1,0 +1,38 @@
+- op: create  # 23a4
+  at: '2026-11-02T01:07:31Z'  # 23a4
+  by: agent  # 23a4
+  actor: jgstern_agent  # 23a4
+  clock: 1  # 23a4
+  nonce: 23a4  # 23a4
+  data:  # 23a4
+    kind: work_item  # 23a4
+    title: "verify-claims: measure, then disclose, the unseeded web ingress -- route handlers exist but no untrusted_input source is placed at them, and today the clean verdict is withheld only by an unrelated 'framework module unclassified' reason"  # 23a4
+    status: todo_hard  # 23a4
+    priority: 2  # 23a4
+    parent:  # 23a4
+    tags:  # 23a4
+    - taint  # 23a4
+    - verify_claims  # 23a4
+    - analysis_quality  # 23a4
+    isbefore: []  # 23a4
+    duplicate_of: []  # 23a4
+    not_duplicate_of: []  # 23a4
+    pr_ref:  # 23a4
+    description: "PRE-APPROVED BY THE OWNER (2026-11-01), END TO END. Both steps below, every design choice inside them, every PR (auto-pr, self-merge), any ADR edit or new ADR, and any re-scoping the evidence calls for are approved in advance. The owner's expectation: when the agent or a subagent is uncertain, it INVESTIGATES CAREFULLY — in light of docs/adr/, docs/hypergumbo-spec.md and the hypergumbo spirit (positive claims over inferred emptiness, never a false all-clear, measure before sizing, ship the scope you measured, structural over per-instance) — and DECIDES, recording the reasoning on this item. Do not interrupt work to ask the owner a question the owner would almost certainly answer with \"investigate carefully and come back with a recommended path forward\": do that investigation yourself and proceed on your recommendation. Escalate only what investigation genuinely cannot settle (e.g. two owner rulings that collide), and then bring a recommendation, not an open question.\n\nPROBLEM. verify-claims stays honest on web apps today, but partly BY ACCIDENT. Taint sources are minted only from catalogue rows matched on call edges at the caller (WI-ritog), so request data arriving as a route handler's parameter (Express req.query.p, a property read) or a framework global (Flask request.args) is never a source. The clean verdict is still withheld, but the stated reason is an unrelated one: \"framework module not classified\" plus unknown receivers. Nothing names the real gap: route entrypoints exist and no source was placed at them. If the framework module became classified (a community or claims-file overlay) and the receivers typed, the same run might return a false \"confirmed\". That flip is UNTESTED.\n\nEVIDENCE (dev fbff2b8a04, ~/hypergumbo_lab_notebook/taint_runnerup_11012026/, claims ~/hypergumbo_lab_notebook/p2_review_11012026/B1/claims_generic.yaml):\n- flask/app.py: @app.route handler opens a path from request.args.get and writes. untrusted-input-no-host-fs: inconclusive, withheld for \"1 module(s) the I/O catalog could not classify (flask)\" + unknown_receiver_scope (get). Every claim inconclusive, rc 2.\n- express/server.js: app.get handler fs.writeFileSync(req.query.p, ...). untrusted-input-no-host-fs: inconclusive, withheld for \"express\" unclassified + 3 of 3 receivers untyped. Every claim inconclusive, rc 2.\n- P2 review fixtures (~/hypergumbo_lab_notebook/p2_review_11012026/B1/fx_ritog_js, fx_ritog_py): exec(req.query.c) / subprocess.run(request.args...) inside a route: subprocess claim inconclusive (launch + unclassified framework). The Express run's only \"violated\" flow is anchored at http.createServer on the FILE node (WI-pimun's shape — owner-DEFERRED; out of scope here, do not act on it).\n\nSTEP 0 — MEASURE (no behaviour change).\n(a) The flip test: for each probe, classify the framework module in an overlay (claims-file extra_catalogs or $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/) so that withholding reason disappears, and, if needed, make the receivers typeable. Record whether untrusted-input-* goes to \"confirmed\". \"confirmed\" = a latent false all-clear, and step 1 becomes urgent. Still inconclusive = record which reason holds it, and whether that reason is a principled disclosure or another accident.\n(b) The verdict distribution on a few real web apps from ~/curriculum_repos (Express, Flask/Django, one more framework; find them, don't assume they exist): per untrusted_input claim, the verdict and every withholding reason. Pre-register the expectation before running. Respect the verify-claims OOM limit (at most 4 at once, never beside smart-test).\n\nSTEP 1 — DISCLOSE THE UNSEEDED INGRESS (tightens a withholding gate = the safe direction).\nWhen a run has route/handler entrypoints (entrypoints records, route concepts, or dispatches_to targets) and no untrusted_input source was placed at any of them, an untrusted_input claim must be withheld with THAT as its stated reason. Name the handlers, so the disclosure can be checked against the source. It must not depend on any framework module staying unclassified. Read first: ADR-0049 rulings 2-3, ADR-0016 §7, ADR-0046 (read it, don't paraphrase), and verify_claims.py's existing disclosure siblings (_opaque_launch_sites; the deferred-crossing shadow from INV-fogum / WI-nosah) — build next to them, keyed the same way. Watch the INV-fogum lesson: the boundary arm AND the taint arm must both read it.\n\nSCOPE LIMIT. Placing the sources (WI-ritog tier 1) is NOT this item. This item ships the measurement and the disclosure only; WI-ritog then narrows the disclosure framework by framework as seeding lands. That is why this item blocks WI-ritog.\n\nACCEPTANCE. Step-0 numbers and the flip-test result recorded on this item. A production-CLI test (cold cache): the flask and express probes read inconclusive with the unseeded-ingress reason naming the handler, AND still do so with the framework module classified in an overlay (the control that shows the accident no longer carries the verdict). A no-route control fixture shows no new disclosure. Corpus before/after verdict diff recorded."  # 23a4
+    fields: {}  # 23a4
+- op: update  # fe74
+  at: '2026-11-02T01:08:02Z'  # fe74
+  by: agent  # fe74
+  actor: jgstern_agent  # fe74
+  clock: 2  # fe74
+  nonce: fe74  # fe74
+  set: {}  # fe74
+  add:  # fe74
+    isbefore: [WI-ritog-riduj-filij-batul-tugid-jonuz-jatol-gifar]  # fe74
+- op: discuss  # 3eb0
+  at: '2026-11-02T01:08:03Z'  # 3eb0
+  by: agent  # 3eb0
+  actor: jgstern_agent  # 3eb0
+  clock: 3  # 3eb0
+  nonce: 3eb0  # 3eb0
+  message: "Precedent to read before designing step 1: INV-dabov (satisfied), the same false-CONFIRMED shape one level up -- a language with an analyzer but no io_primitives catalogue confirmed rc 0 until a disclosure named it. The step-1 disclosure is that cure applied to framework ingress. Filed together with WI-jomik on 2026-11-01 from the meta-analysis question in this session; the later steps (WI-ritog tier 1, the ADR-0017 4a summaries in WI-famig/WI-potan, globals in WI-zitul) are separate items and are NOT pre-approved by this entry."  # 3eb0
