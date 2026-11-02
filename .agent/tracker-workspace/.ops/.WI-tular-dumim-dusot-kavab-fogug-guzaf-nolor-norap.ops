@@ -20,3 +20,10 @@
     pr_ref:  # c155
     description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). starlark.py ~L275 stores only `ctx.load_aliases[alias] = source_file` and drops the original name; ~L423-430 looks up `original_name = target_name`, i.e. the alias (`cr` for `load(\"//x:defs.bzl\", cr = \"custom_rule\")`). That is never a registered symbol name, so `cr(...)` resolves to `starlark:external:cr:function` instead of the loaded `custom_rule`. The module docstring and `_extract_starlark_edges` docstring both claim load aliases are used as path hints for cross-file resolution. Fix: keep (label, original_name) per alias, look up the original name, normalise the label to a path fragment for the hint. Docstring left stating the intent."  # c155
     fields: {}  # c155
+- op: discuss  # 60bf
+  at: '2026-11-02T06:06:57Z'  # 60bf
+  by: agent  # 60bf
+  actor: jgstern_agent  # 60bf
+  clock: 2  # 60bf
+  nonce: 60bf  # 60bf
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_B/tular: x/defs.bzl defines custom_rule. use.bzl has load(\"//x:defs.bzl\", cr = \"custom_rule\") and def macro(): cr(name=\"b\"). Control use2.bzl has load(\"//x:defs.bzl\", \"custom_rule\") and def macro2(): custom_rule(name=\"c\"). Run with hypergumbo survey.. Observed: calls starlark:use.bzl:3-4:macro:function -> starlark:<unknown>:0-0:cr:external_symbol L4 conf=0.4 res=False. Control: starlark:use2.bzl:3-4:macro2:function -> starlark:x/defs.bzl:1-2:custom_rule:function L4 conf=0.85 res=True.. Note: The filed dst spelling was starlark:external:cr:function. It now prints as starlark:<unknown>:0-0:cr:external_symbol, and the defect (lookup by alias) is the same. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 60bf

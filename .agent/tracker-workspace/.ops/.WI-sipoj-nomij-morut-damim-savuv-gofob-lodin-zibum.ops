@@ -55,3 +55,10 @@
   clock: 6  # 8a97
   nonce: 8a97  # 8a97
   message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-sipoj's LLVM half (a declare shadows the define in the bare-name table, so the test passes only in lucky tmp_path order) is WI-dabul's bug (WI-pagoj folded into WI-dabul today); WI-sipoj's js_ts global_symbols last-writer-wins half stays here."  # 8a97
+- op: discuss  # f675
+  at: '2026-11-02T06:06:58Z'  # f675
+  by: agent  # f675
+  actor: jgstern_agent  # f675
+  clock: 7  # f675
+  nonce: f675  # f675
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: pytest test_js_ts.py::TestNamespaceImports::test_namespace_import_disambiguates_same_name_functions and test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution (tmp_path on tmpfs /tmp); plus the same fixture shapes on ext4 via povub_drive.py / dabul_drive.py. Observed: pytest: 2 passed (tmpfs). Same fixtures on ext4 scratch: js a_early__z_late -> z_late/utils.js:2-4:process:function (test would fail); llvm utils.ll+main.ll -> main.ll:1-1:utility_func:declaration (test would fail). Note: Tests still create files in the passing order (a_early before z_late; utils.ll before main.ll). The docstring still says ’rglob processes alphabetically’. Discovery is unsorted. The tests pass on this box only because tmp_path is on tmpfs. Their verdict depends on the filesystem, so they do not pin WI-povub or WI-dabul. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # f675

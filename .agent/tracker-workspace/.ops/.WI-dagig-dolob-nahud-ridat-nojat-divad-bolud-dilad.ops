@@ -35,3 +35,10 @@
   clock: 3  # f47c
   nonce: f47c  # f47c
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint2/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: the item's repro still fabricates: shadow(fs,p) -> javascript:fs:0-0:readFileSync (fs_read), shadow2(cp,..) and a local const cp = makeRunner() -> javascript:child_process:0-0:exec, io-boundaries 'child_process.exec (3) *** HIGH RISK ***'. WI-sofuh's _ScopeBinder is integrated (js_ts.py:5652) but Case 2 (now js_ts.py:6722) still does not consult it; new ns.X sites now at 4162/7183. Fix described in the 10-03 note is now applicable on dev. MECHANISM: file-scoped import map qualifies a member call by receiver root name with no scope check for a shadowing value binding. SHARES MECHANISM WITH: WI-kizih,WI-lijab."  # f47c
+- op: discuss  # 38b6
+  at: '2026-11-02T06:06:56Z'  # 38b6
+  by: agent  # 38b6
+  actor: jgstern_agent  # 38b6
+  clock: 4  # 38b6
+  nonce: 38b6  # 38b6
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: filed 4-line a.js (import fs; const cp=require(’child_process’); shadow(fs,p); shadow2(cp,cmd)) in /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_A/dagig; hypergumbo survey + io-boundaries. Observed: calls shadow -> javascript:fs:0-0:readFileSync (0.7, ast_method_inferred); calls shadow2 -> javascript:child_process:0-0:exec; io-boundaries: ’child_process.exec (1) *** HIGH RISK *** <- shadow2 (a.js:4)’. Note: Only the parameter-shadow spelling was run; the local-const shadow and new ns.X() sites named in the item were not re-run. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 38b6

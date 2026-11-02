@@ -27,3 +27,10 @@
   clock: 2  # 87ba
   nonce: 87ba  # 87ba
   message: "Sibling: WI-pagoj-guviv-miton-zupaj-dipub-bupuf-pirur-lijoz (llvm, same bare-name last-writer-wins shape); test limb: WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum."  # 87ba
+- op: discuss  # 5aed
+  at: '2026-11-02T06:06:57Z'  # 5aed
+  by: agent  # 5aed
+  actor: jgstern_agent  # 5aed
+  clock: 3  # 5aed
+  nonce: 5aed  # 5aed
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/povub_drive.py: 8 dir-name pairs, each with two <dir>/utils.js defining process() and main.js ’import * as correct from ./<good>/utils; correct.process()’; analyze_javascript with find_js_ts_files order printed (ext4). Observed: a_early__z_late enum [main.js, a_early/utils.js, z_late/utils.js] -> z_late/utils.js:2-4:process:function WRONG; good/bad, one/two, src/other, alpha/beta also WRONG (last-enumerated file); lib/vendor, x1/y2, core/extra CORRECT only because the imported file enumerated last. Note: 4/8 pairs bind to the file the import does not name. In all 8 the bound file is the one enumerated last. find_js_ts_files output is unsorted. Commit a6f7c1aabc (bare-call tie deferral) does not change the namespace-import path. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 5aed

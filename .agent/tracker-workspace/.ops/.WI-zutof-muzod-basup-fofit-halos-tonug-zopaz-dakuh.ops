@@ -26,3 +26,10 @@
   clock: 2  # 5546
   nonce: '5546'  # 5546
   message: "Related, filed 2026-11-01 as WI-dijof: a prerequisite naming a target defined LATER in the Makefile never resolves (all: foo before foo: gives makefile:foo:0-0:foo:target). Same registry, same walk. A collect-then-resolve pass per Makefile (targets only, exact case) probably fixes both items; verify each separately."  # 5546
+- op: discuss  # 790a
+  at: '2026-11-02T06:06:57Z'  # 790a
+  by: agent  # 790a
+  actor: jgstern_agent  # 790a
+  clock: 3  # 790a
+  nonce: 790a  # 790a
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/zutof/Makefile: ’CC := gcc’ then ’all: cc main.o’; hypergumbo survey. Observed: depends_on makefile:Makefile:3-6:all:target -> makefile:Makefile:1-3:CC:variable 0.9 (evidence_type make_prerequisite). Note: Prerequisite ’cc’ (lowercase) still binds the variable CC. Same run also shows the WI-dijof sibling: ’main.o’ prereq declared before target main.o -> makefile:main.o:0-0:main.o:external_symbol 0.7. The define-name case was not built. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 790a

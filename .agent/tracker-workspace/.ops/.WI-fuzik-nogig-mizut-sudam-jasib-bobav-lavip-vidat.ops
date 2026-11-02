@@ -36,3 +36,18 @@
   clock: 3  # 3eb0
   nonce: 3eb0  # 3eb0
   message: "Precedent to read before designing step 1: INV-dabov (satisfied), the same false-CONFIRMED shape one level up -- a language with an analyzer but no io_primitives catalogue confirmed rc 0 until a disclosure named it. The step-1 disclosure is that cure applied to framework ingress. Filed together with WI-jomik on 2026-11-01 from the meta-analysis question in this session; the later steps (WI-ritog tier 1, the ADR-0017 4a summaries in WI-famig/WI-potan, globals in WI-zitul) are separate items and are NOT pre-approved by this entry."  # 3eb0
+- op: discuss  # 80e1
+  at: '2026-11-02T06:12:50Z'  # 80e1
+  by: agent  # 80e1
+  actor: jgstern_agent  # 80e1
+  clock: 4  # 80e1
+  nonce: '80e1'  # 80e1
+  message: "WI-fuzik STEP 0 RESULT (2026-11-02, dev ae02786fca; lab ~/hypergumbo_lab_notebook/fuzik_step0_11022026/).\n\n(a) FLIP TEST -- POSITIVE: A LATENT FALSE ALL-CLEAR. Probes ~/hypergumbo_lab_notebook/taint_runnerup_11012026/{flask,express} (a route handler writes a request value to disk; no subprocess), claims p2_review_11012026/B1/claims_generic.yaml. Base: every untrusted_input claim inconclusive (rc 2), withheld by \"1 module(s) the I/O catalog could not classify (flask|express)\". With ONE overlay entry declaring the framework module complete (`--io-primitives overlays/{flask,express}_complete.yaml`: language + module_completeness [module, completeness: complete]):\n- flask: untrusted-input-no-host-fs, -no-subprocess, -no-database -> confirmed_with_caveats (rc 3). The only caveat is unknown_receiver_scope (\"1 of 2 method call sites ... get\"). evidence_count 0. Over `open(request.args.get(\"p\"), \"w\")`.\n- express: -no-host-fs and -no-subprocess -> confirmed_with_caveats; -no-database inconclusive. Only caveat: unknown_receiver_scope (get, listen, send).\nNothing in either verdict names the real gap (route handler entrypoint present, no source placed at it). The existing deferred-crossing shadow (INV-fogum/WI-nosah) cannot fire: it is keyed to catalogue rows that declare a deferred crossing, and a module declared complete has none. Precedent: the self overlay's own header records the same mechanism for telnetlib (one completeness entry: inconclusive -> confirmed).\n-> Step 1 is urgent, per the item.\n\n(b) CORPUS DISTRIBUTION (pre-registered in PREREGISTER.md before the runs). express (examples/ apps), mitmproxy (tornado mitmweb), caddy (Go net/http):\n- express: all three untrusted_input claims inconclusive; reasons: 30 unclassified modules (accepts, body-parser, cookie, ...) + unknown_receiver_scope.\n- mitmproxy: no-subprocess VIOLATED (6), no-host-fs VIOLATED (2) (flows from minted sources, not route handlers); no-database inconclusive: deferred_crossing + untyped_receiver + unknown_receiver_scope + analyzer_method_call_blind.\n- caddy: no-subprocess VIOLATED (3), no-host-fs VIOLATED (14); no-database inconclusive: unclassified stdlib modules + deferred_crossing + unknown_receiver_scope.\nPre-registration HELD: no untrusted_input claim confirmed; every withholding reason is an unclassified module, a receiver gap or a catalogue deferred crossing; none names an unseeded handler (no such reason exists). The real-repo verdicts are safe for the same accidental reason as the probes."  # 80e1
+- op: update  # 38aa
+  at: '2026-11-02T08:51:41Z'  # 38aa
+  by: agent  # 38aa
+  actor: jgstern_agent  # 38aa
+  clock: 5  # 38aa
+  nonce: 38aa  # 38aa
+  set:  # 38aa
+    status: done  # 38aa

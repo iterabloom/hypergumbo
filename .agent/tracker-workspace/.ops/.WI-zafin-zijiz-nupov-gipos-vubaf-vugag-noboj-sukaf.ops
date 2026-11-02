@@ -25,3 +25,10 @@
   clock: 2  # 6c02
   nonce: 6c02  # 6c02
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: fixture set_defaults(func=sub.func) with sub a typed parameter yields dispatches_to edges to both helpers.py:func and helpers.py:outer.func (disambiguation_fallback True, handler_name sub.func). argparse_dispatch.py:225-226 still retries rsplit('.')[-1] unconditionally; later commits (16fb262338, 1a995434ea, 4727c6fb84) did not touch it. MECHANISM: dotted handler resolved by its last component without first resolving the root through the file's import bindings. SHARES MECHANISM WITH: WI-vipir,WI-kazut."  # 6c02
+- op: discuss  # ed33
+  at: '2026-11-02T06:06:57Z'  # ed33
+  by: agent  # ed33
+  actor: jgstern_agent  # ed33
+  clock: 3  # ed33
+  nonce: ed33  # ed33
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/zafin/fx (copy of p3_review misc2/fx_zafin: _add_action_command(sub: ActionCommand, sub_proc) -> sub_proc.set_defaults(func=sub.func); other/helpers.py defines func and outer.func); hypergumbo survey. Observed: dispatches_to _add_action_command -> python:other/helpers.py:7-8:func:function 0.5 and -> python:other/helpers.py:2-3:outer.func:function 0.5, both disambiguation_fallback True, handler_name ’sub.func’, framework_dispatch argparse. Note: Ambiguous short name WI-zafin: picked the argparse-dispatch item (F-qualifier-dropped member), not WI-zafin-rulag (stop-hook PID). Airflow 58-edge measurement not re-run. Module-alias control case not built. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # ed33
