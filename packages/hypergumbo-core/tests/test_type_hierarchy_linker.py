@@ -714,6 +714,54 @@ class TestResolveMethodClassId:
         )
         assert result == struct_a.id
 
+    @staticmethod
+    def _scala(kind: str, name: str, start: int, end: int) -> Symbol:
+        return Symbol(
+            id=f"scala:/app/P.scala:{start}-{end}:{name}:{kind}",
+            name=name,
+            kind=kind,
+            language="scala",
+            path="/app/P.scala",
+            span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
+            origin="scala",
+            origin_run_id="test",
+        )
+
+    @pytest.mark.parametrize("object_first", [True, False])
+    def test_a_same_file_namesake_owns_the_method_only_if_it_contains_it(
+        self, object_first: bool,
+    ) -> None:
+        """A class and its companion object share a name AND a file (gatling's
+        ``LogFileParser``). The owner is the one whose span CONTAINS the method
+        (INV-mozas), so the declaration order cannot decide it (WI-vidof)."""
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        obj = self._scala("object", "Parser", 3, 5)
+        cls = self._scala("class", "Parser", 7, 9)
+        in_class = self._scala("method", "Parser.readInt", 8, 8)
+        in_object = self._scala("method", "Parser.magic", 4, 4)
+        order = [obj, cls] if object_first else [cls, obj]
+        class_symbols = {s.id: s for s in order}
+        class_ids_by_name = {"Parser": [s.id for s in order]}
+
+        assert _resolve_method_class_id(in_class, class_ids_by_name, class_symbols) == cls.id
+        assert _resolve_method_class_id(in_object, class_ids_by_name, class_symbols) == obj.id
+
+    def test_a_same_file_method_outside_every_namesake_keeps_the_file_pick(self) -> None:
+        """No candidate contains the method (an out-of-line definition, a
+        method in an extension): the same-file pick stands, as before."""
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        cls = self._scala("class", "Parser", 7, 9)
+        outside = self._scala("method", "Parser.extra", 20, 22)
+        assert _resolve_method_class_id(
+            outside, {"Parser": [cls.id]}, {cls.id: cls},
+        ) == cls.id
+
 
 class TestHelperFunctions:
     """Tests for helper functions."""

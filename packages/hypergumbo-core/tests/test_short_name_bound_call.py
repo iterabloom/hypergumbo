@@ -20,6 +20,15 @@ THE CONTROL THAT MATTERS: ``import scala.io.StdIn._; readInt()`` emits the
 same ``external`` stub with NO superseder. It is a genuine stdin read and must
 still classify -- which is the reason ``ambiguous_names`` (the item's first
 proposal) was the wrong lever: it cannot tell the two apart.
+
+THE COMPANION CASE. gatling's base is ``private abstract class LogFileParser``
+AND a ``private object LogFileParser`` declared ABOVE it in the same file. Once
+the inherited-calls linker indexed ``object`` kinds (WI-kipol), the method
+``LogFileParser.readInt`` was credited to whichever same-named, same-file type
+came FIRST -- the object -- so the walk from ``FirstPassParser`` to the class
+found no ``readInt``, the stub stayed unsuperseded, and all 15 false reads came
+back. The owner is the type whose span CONTAINS the method (INV-mozas: by
+position, never by name), so the declaration order cannot decide it.
 """
 
 from __future__ import annotations
@@ -130,9 +139,17 @@ object UsesStdIn {
 """
 
 
+_COMPANION = """object Parser {
+  val Magic = 1
+}
+
+"""
+
+
+@pytest.mark.parametrize("companion", ["", _COMPANION], ids=["class_only", "companion_first"])
 def test_io_boundaries_keeps_the_stdin_read_and_drops_the_inherited_call(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, companion: str,
 ) -> None:
     """Through ``io-boundaries`` itself, so the stamp is the one finalize
     writes and not one this file invented."""
@@ -140,7 +157,7 @@ def test_io_boundaries_keeps_the_stdin_read_and_drops_the_inherited_call(
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "P.scala").write_text(_SCALA)
+    (repo / "P.scala").write_text(_SCALA.replace("abstract class", companion + "abstract class", 1))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     main(["io-boundaries", str(repo), "--format", "json"])
     report = json.loads(capsys.readouterr().out)

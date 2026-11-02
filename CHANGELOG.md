@@ -178,6 +178,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **C++ and Perl member calls resolve on the receiver's type**, not by short name.
 - **C calls through a function-pointer variable reach the function it holds.**
 - **Scala and Kotlin**: calls on project objects and companions resolve; parameterless JDK calls and Kotlin synthetic getters emit edges; `println` and `Console` writes are logging.
+- **A Scala class keeps its methods when its companion object comes first**, so inherited calls resolve again.
 - **Ruby emits the calls it used to drop** (untyped receivers, implicit `self`, `super`, recursion) and resolves constants through the enclosing module.
 - **C dispatch tables are variable symbols**, so `dispatches_to` edges no longer start at a missing node; arrays of function pointers count as dispatch tables.
 - **A base class links to an in-repo class only when an import or qualifier names that class**, in Java, Kotlin, JS/TS, PHP, Groovy, Scala, C# and C++; otherwise it is external.

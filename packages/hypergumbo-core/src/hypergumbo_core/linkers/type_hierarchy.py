@@ -466,6 +466,15 @@ def _resolve_method_class_id(
     Go — always same package, usually same file), same-file matching
     is the correct disambiguation.
 
+    Within that file, the owner is the candidate whose span CONTAINS the
+    method -- by position, never by name (INV-mozas). A Scala / Kotlin class
+    and its companion ``object`` share a name AND a file; once ``object`` kinds
+    were indexed (WI-kipol), "first same-file namesake" credited the class's
+    methods to whichever was declared first, so an inherited call into the
+    class found nothing (WI-vidof: gatling's ``LogFileParser``). When no
+    candidate contains the method (an out-of-line definition), the first
+    same-file namesake stands, as before.
+
     Falls back to the first candidate if no same-file class exists, to
     preserve behavior for languages that allow methods in different
     files than their class.
@@ -476,11 +485,21 @@ def _resolve_method_class_id(
     candidate_ids = class_ids_by_name.get(class_name, [])
     if not candidate_ids:
         return None
-    # Prefer a class in the same file as the method
-    for cid in candidate_ids:
-        csym = class_symbols.get(cid)
-        if csym and csym.path == method_sym.path:
-            return cid
+    same_file = [
+        cid for cid in candidate_ids
+        if (csym := class_symbols.get(cid)) is not None and csym.path == method_sym.path
+    ]
+    mspan = method_sym.span
+    enclosing = [
+        (cid, cspan) for cid in same_file
+        if (cspan := class_symbols[cid].span) is not None
+        and mspan is not None and cspan.encloses(mspan)
+    ]
+    if enclosing:
+        # The TIGHTEST encloser: a nested namesake owns its own members.
+        return min(enclosing, key=lambda pair: pair[1].end_line - pair[1].start_line)[0]
+    if same_file:
+        return same_file[0]
     # Fallback: first candidate (historical behavior for cross-file cases)
     return candidate_ids[0]
 
