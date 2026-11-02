@@ -19,3 +19,10 @@
     pr_ref:  # 1eec
     description: "Found while fixing WI-riziv (PR #1771). VAnalyzer (v_lang.py, file_patterns ['*.v']) and the Verilog analyzer (find_verilog_files: *.v, *.vh, *.sv, *.svh) both claim .v, and neither disambiguates by content, unlike .m (classify_dot_m_file), .d (classify_dot_d_file) and .php (classify_dot_php_file).\nRepro: r/counter.v = 'module counter(input clk, output reg [3:0] q); always @(posedge clk) q <= q + 1; endmodule', r/main.v = 'module main / fn add(a int, b int) int { return a + b } / fn main() { println(add(1, 2)) }'. analyze_v(r).run.files_analyzed == 2 and analyze_verilog_files(r).run.files_analyzed == 2: each parses the other language's file. In this repro neither emitted wrong symbols (V: add, main from main.v; Verilog: counter from counter.v). I have not checked larger files for spurious symbols or edges, and have not checked whether the profile counts each file under both languages.\nSuggested fix: a classify_dot_v_file in discovery.py (V: 'fn ', 'module main', ':='; Verilog: 'module x(' with 'endmodule', 'always @', 'input'/'output'), applied by both analyzers' discovery and registered as each one's find_files."  # 1eec
     fields: {}  # 1eec
+- op: discuss  # bea7
+  at: '2026-11-02T00:04:11Z'  # bea7
+  by: agent  # bea7
+  actor: jgstern_agent  # bea7
+  clock: 2  # bea7
+  nonce: bea7  # bea7
+  message: "Third instance of the same mechanism filed 2026-11-01 as WI-favig: Apex and LaTeX both claim *.cls (repro: files_analyzed=2 for each on a 2-file fixture). A registry-time check that every glob claimed by more than one analyzer has a classifier would cover .v, .pp and .cls together."  # bea7

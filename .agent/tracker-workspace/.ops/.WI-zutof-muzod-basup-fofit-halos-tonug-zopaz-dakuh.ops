@@ -19,3 +19,10 @@
     pr_ref:  # 65c5
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. target_registry holds variables (make.py:215), targets (268) and defines (336), lowercased, read at 278. CC := gcc then all: cc main.o gives depends_on all -> CC:variable 0.9. v10."  # 65c5
     fields: {}  # 65c5
+- op: discuss  # 5546
+  at: '2026-11-02T00:04:11Z'  # 5546
+  by: agent  # 5546
+  actor: jgstern_agent  # 5546
+  clock: 2  # 5546
+  nonce: '5546'  # 5546
+  message: "Related, filed 2026-11-01 as WI-dijof: a prerequisite naming a target defined LATER in the Makefile never resolves (all: foo before foo: gives makefile:foo:0-0:foo:target). Same registry, same walk. A collect-then-resolve pass per Makefile (targets only, exact case) probably fixes both items; verify each separately."  # 5546

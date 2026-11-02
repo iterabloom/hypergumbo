@@ -1,0 +1,21 @@
+- op: create  # d7b2
+  at: '2026-11-02T00:03:17Z'  # d7b2
+  by: agent  # d7b2
+  actor: jgstern_agent  # d7b2
+  clock: 1  # d7b2
+  nonce: d7b2  # d7b2
+  data:  # d7b2
+    kind: work_item  # d7b2
+    title: "agda: ERROR/MISSING nodes in 45% of agda-stdlib files (40% under the language-pack grammar); the failing constructs are uncharacterized"  # d7b2
+    status: todo_soft  # d7b2
+    priority: 4  # d7b2
+    parent:  # d7b2
+    tags:  # d7b2
+    - agda  # d7b2
+    - analysis_quality  # d7b2
+    isbefore: []  # d7b2
+    duplicate_of: []  # d7b2
+    not_duplicate_of: []  # d7b2
+    pr_ref:  # d7b2
+    description: "MEASURED 2026-11-01 in the Agda grammar A/B (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/agda_grammar_check/cmp.py; data in cmp_stdlib.json and cmp_plfa.json). Counted: files whose parse tree holds at least one ERROR or MISSING node.\n- agda-stdlib, 1264 files: PyPI tree-sitter-agda 1.3.3 (bundled today) 571 files (45%), 2160 nodes; tree-sitter-language-pack 508 files (40%), 2064 nodes.\n- plfa, 40 files: 26 vs 23.\n\nINV-vokir (a declaration after a layout block) and WI-molon (an empty nested module body) are two named shapes. The rest is NOT CHARACTERIZED: which constructs produce the errors, and how many declarations, references and stable_ids are lost or misplaced because of them.\n\nASKED: classify the ERROR and MISSING nodes over agda-stdlib by enclosing construct (and the first token inside the error); rank the shapes by file count; for each, decide between an analyzer workaround, an upstream grammar issue, or an accepted loss, and file per-shape items. This also bears on the owner's pending grammar-swap decision (bundled 1.3.3 vs language pack; see INV-vokir and WI-molon), since both grammars share the upstream and most of the errors."  # d7b2
+    fields: {}  # d7b2

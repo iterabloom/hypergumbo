@@ -19,3 +19,10 @@
     pr_ref:  # 9912
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. linkers/build_target.py:93 `target_path.lstrip('./')`; normpath on the next line already handles ./. Under crates/app/Cargo.toml, ./.bin/main.rs -> crates/app/bin/main.rs and ./../shared/main.rs -> crates/app/shared/main.rs. v08."  # 9912
     fields: {}  # 9912
+- op: discuss  # cc1b
+  at: '2026-11-02T00:04:12Z'  # cc1b
+  by: agent  # cc1b
+  actor: jgstern_agent  # cc1b
+  clock: 2  # cc1b
+  nonce: cc1b  # cc1b
+  message: "The same lstrip idiom sits at six producer sites, filed 2026-11-01 as WI-hubir: analyze/base.py:689 and json_config.py:359, 415, 482, 600, 661. Live repro: package.json bin ./.bin/cli.js yields a dst of javascript:bin/cli.js. Fix all seven sites in one PR."  # cc1b

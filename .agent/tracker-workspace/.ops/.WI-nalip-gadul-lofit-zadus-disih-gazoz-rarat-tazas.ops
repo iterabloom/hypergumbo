@@ -19,3 +19,10 @@
     pr_ref:  # e8e7
     description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- rust.py: Two members of one `pub trait` get opposite `is_exported` values, decided only by whether they have a default body. Trait-impl methods are always False. Bodyless methods are always True, even in a private trait, which contradicts the code's own comment at rust.py:1972-1973 \"Reachable exactly when the trait is\". -- evidence: repro (scratchpad/verify/tmp/repro_rust.py over rustrepo/src/lib.rs, which has `pub trait Greeter { fn required(&self)->u32; fn defaulted(&self)->u32 { 1 } }`, `trait Private { fn p(&self); }`, `pub struct S; impl Greeter for S { fn required(&self)->u32 { 2 } }`, `pub type R = u32;`), run with `.venv/bin/python -I`. Observed output:\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # e8e7
     fields: {}  # e8e7
+- op: discuss  # 6fcd
+  at: '2026-11-02T00:04:12Z'  # 6fcd
+  by: agent  # 6fcd
+  actor: jgstern_agent  # 6fcd
+  clock: 2  # 6fcd
+  nonce: 6fcd  # 6fcd
+  message: "The same shape in swift, filed 2026-11-01 as WI-nobup: protocol requirement members (methods and inits) are hard-coded is_exported=True at swift.py:1448-1450, so an internal protocol has exported members. Fix both languages by taking the container export."  # 6fcd

@@ -1,0 +1,20 @@
+- op: create  # d038
+  at: '2026-11-02T00:03:06Z'  # d038
+  by: agent  # d038
+  actor: jgstern_agent  # d038
+  clock: 1  # d038
+  nonce: d038  # d038
+  data:  # d038
+    kind: work_item  # d038
+    title: "lstrip('./') used as a prefix strip at 6 producer sites (base.py make_manifest_target_dst, json_config.py x5): './.bin/x' and '../x' manifest targets get wrong dsts"  # d038
+    status: todo_hard  # d038
+    priority: 3  # d038
+    parent:  # d038
+    tags:  # d038
+    - analysis_quality  # d038
+    isbefore: []  # d038
+    duplicate_of: []  # d038
+    not_duplicate_of: []  # d038
+    pr_ref:  # d038
+    description: "FOUND 2026-11-01 by the tracker-hygiene sweep (the investigator for WI-hohul; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z). Re-reproduced at dev e362b4ba4f.\n\nstr.lstrip(\"./\") strips a CHARACTER SET, not the \"./\" prefix: './.bin/cli' becomes 'bin/cli' and '../dist/x.js' becomes 'dist/x.js'. WI-hohul files this idiom at build_target.py:94 (the build-target linker). The same idiom sits at six PRODUCER sites with no item:\n- packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py:689 (make_manifest_target_dst)\n- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/json_config.py:359, 415 (npm bin), 482 (main), 600, 661 (exports)\n\nREPRO (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/unfiled_repros/fixtures/npm/package.json: \"bin\": {\"cli\": \"./.bin/cli.js\"}, \"main\": \"../dist/index.js\"). analyze_json emits json:package.json:1-1:cli:bin -> javascript:bin/cli.js:1-1:file:file (the real file is .bin/cli.js) and json:package.json:1-1:x:file -> javascript:dist/index.js:1-1:file:file (the spec points outside the package, at ../dist).\n\nFIX: str.removeprefix(\"./\"), or drop the strip and let posixpath.normpath handle a leading \"./\". Do all seven sites in one PR with WI-hohul, with a test in each package (core and lang-mainstream). NOT MEASURED: how often corpus manifests use paths starting with './.' or '../'."  # d038
+    fields: {}  # d038

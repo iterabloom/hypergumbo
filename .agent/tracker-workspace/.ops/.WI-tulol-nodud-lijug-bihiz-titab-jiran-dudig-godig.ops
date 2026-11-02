@@ -19,3 +19,10 @@
     pr_ref:  # c44b
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _LIB_CALL_RE_TEMPLATE = r'{var}\\.(\\w+)\\s*\\(' (lua_ffi.py:81). With local lib = ffi.load(\"mylib\") in scope, stdlib.compress(1) is scanned as compress. v11."  # c44b
     fields: {}  # c44b
+- op: discuss  # e05e
+  at: '2026-11-02T00:04:11Z'  # e05e
+  by: agent  # e05e
+  actor: jgstern_agent  # e05e
+  clock: 2  # e05e
+  nonce: e05e  # e05e
+  message: "Siblings filed 2026-11-01 as WI-gujot: pyffi _ATTR_CALL_RE_TEMPLATE (pyffi.py:108, a verbatim copy of this template), lua_ffi _FFI_C_CALL_RE and ruby_ffi _ATTACH_FUNCTION_RE have the same missing left boundary (each reproduced with python3 re.findall). Fix all four in one PR."  # e05e
