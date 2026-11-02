@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **57952** symbols (functions, classes, methods)
-- **232119** edges by type:
-  - calls: 131471
-  - contains: 53956
-  - imports: 19906
-  - instantiates: 12885
-  - references: 9987
+- **57961** symbols (functions, classes, methods)
+- **232164** edges by type:
+  - calls: 131498
+  - contains: 53964
+  - imports: 19912
+  - instantiates: 12886
+  - references: 9990
   - module_attr_ref: 2127
   - other: 1787
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57952 Symbols + 232119 Edges + UsageContexts           │
+│  Output: 57961 Symbols + 232164 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -284,14 +284,14 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 10619.7 | ir.py |
 | `len` | external_symbol | 8088.0 | <external> |
-| `write_text` | external_symbol | 7375.0 | <external> |
+| `write_text` | external_symbol | 7376.0 | <external> |
 | `Span` | class | 7107.4 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3701.0 | <external> |
+| `get` | external_symbol | 3703.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
-| `Path` | external_symbol | 2519.0 | <external> |
-| `str` | external_symbol | 2503.0 | <external> |
+| `Path` | external_symbol | 2520.0 | <external> |
+| `str` | external_symbol | 2504.0 | <external> |
 | `next` | external_symbol | 2276.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2099.7 | framework_patterns.py |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 35bd97b24ed9
-  commit_count: 8782
+  commit: 6a6297fa0a66
+  commit_count: 8784
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
