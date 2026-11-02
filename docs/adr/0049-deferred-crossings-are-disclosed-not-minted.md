@@ -340,6 +340,8 @@ relocate the receive to nothing. **`Phoenix.Router`** is held because step 3
 produced *no adjudicated findings* for the route-registration shape, which is
 absence of evidence rather than evidence of harmlessness.
 
+**Ruling 3's disclosure half also covers request handlers, read off the graph rather than the catalogue.** A route handler receives its request as a parameter or a framework global, so its arrival scope is never a source until request carriers are seeded. `verify_claims.unseeded_ingress_handlers` lists every entrypoint of a `REQUEST_INGRESS_KINDS` kind, and `_withhold_for_unseeded_ingress` withholds a clean `untrusted_input` taint verdict or `net_recv` boundary verdict while any exists, naming the handlers. It is keyed to the entrypoints because the deferred-crossing shadow is keyed to catalogue rows: a framework module declared complete in an overlay has no such row, and one completeness entry for `flask` was measured turning a route that writes `request.args` to disk into `confirmed_with_caveats`. Seeding a framework's request carrier as a source is what narrows the list.
+
 **Ruling 3's proof was run per language, not argued.** An idiomatic server
 probe in each affected language, before and after the move: go keeps
 `net.Listener.Accept`, python keeps `socket.socket.accept`, haskell keeps

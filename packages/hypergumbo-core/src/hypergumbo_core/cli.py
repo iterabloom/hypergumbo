@@ -7193,6 +7193,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ScopedBlindness,
         compute_boundary_coverage,
         load_claims,
+        unseeded_ingress_handlers,
         untyped_receiver_sink_zones,
         verify_claims as _verify,
     )
@@ -7893,6 +7894,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         blind_by_source_taint=blind_by_source_taint,
         sink_zone_gaps=sink_zone_gaps,
         unfollowed_escapes=unfollowed_escapes,
+        # WI-fuzik: the request handlers no taint source represents -- read
+        # off the graph's entrypoints, so it holds whatever the catalogue says.
+        unseeded_ingress=unseeded_ingress_handlers(
+            behavior_map.get("entrypoints", []),
+            include_non_production=getattr(
+                args, "include_non_production_sources", False
+            ),
+        ),
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the

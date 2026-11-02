@@ -272,6 +272,46 @@ class EntrypointKind(Enum):
     CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
 
+#: The entrypoint kinds whose handler RECEIVES AN EXTERNAL REQUEST: an HTTP
+#: route, a controller action, a WebSocket handler, middleware, a GraphQL
+#: server. A framework hands that request to the handler as a parameter or a
+#: framework global, not through a call the catalogue can match, so it is
+#: never a taint source by itself (WI-ritog); ``verify_claims`` withholds a
+#: clean ``untrusted_input`` / ``net_recv`` verdict while such a handler exists
+#: (WI-fuzik, ADR-0049 ruling 3). Kinds that run on a schedule, a CLI, an
+#: in-process event or a test receive no request and are left out.
+REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(k.value for k in (
+    EntrypointKind.HTTP_ROUTE,
+    EntrypointKind.DJANGO_VIEW,
+    EntrypointKind.EXPRESS_ROUTE,
+    EntrypointKind.NESTJS_CONTROLLER,
+    EntrypointKind.SPRING_CONTROLLER,
+    EntrypointKind.RAILS_CONTROLLER,
+    EntrypointKind.PHOENIX_CONTROLLER,
+    EntrypointKind.GO_HANDLER,
+    EntrypointKind.LARAVEL_CONTROLLER,
+    EntrypointKind.RUST_HANDLER,
+    EntrypointKind.ASPNET_CONTROLLER,
+    EntrypointKind.SINATRA_ROUTE,
+    EntrypointKind.KTOR_ROUTE,
+    EntrypointKind.VAPOR_ROUTE,
+    EntrypointKind.PLUG_ROUTE,
+    EntrypointKind.HAPI_ROUTE,
+    EntrypointKind.FASTIFY_ROUTE,
+    EntrypointKind.KOA_ROUTE,
+    EntrypointKind.GRAPE_API,
+    EntrypointKind.TORNADO_HANDLER,
+    EntrypointKind.AIOHTTP_VIEW,
+    EntrypointKind.SLIM_ROUTE,
+    EntrypointKind.MICRONAUT_CONTROLLER,
+    EntrypointKind.GRAPHQL_SERVER,
+    EntrypointKind.CONTROLLER,
+    EntrypointKind.WEBSOCKET_HANDLER,
+    EntrypointKind.MIDDLEWARE_HANDLER,
+    EntrypointKind.ERROR_HANDLER,
+))
+
+
 def all_known_entrypoint_kinds() -> frozenset[str]:
     """Single-source catalog of every entrypoint-kind value (WI-pupiz).
 
