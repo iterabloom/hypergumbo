@@ -11033,6 +11033,24 @@ class TestJsTsBareMethodMagnetGate:
         ]
         assert (deferred[0].meta or {}).get("enclosing_class") == "Handler"
 
+    def test_bare_call_tie_among_methods_is_deferred(self, tmp_path: Path) -> None:
+        """A bare ``compute()`` that two OTHER classes' methods could answer is
+        a tie the resolver no longer guesses (WI-jomik): it is deferred with
+        ``enclosing_class``, exactly as a weak pick of one of them was."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "w.ts").write_text("class Widget {\n  compute() { return 1; }\n}\n")
+        (tmp_path / "g.ts").write_text("class Gadget {\n  compute() { return 2; }\n}\n")
+        (tmp_path / "h.ts").write_text(
+            "class Handler {\n  process() {\n    compute();\n  }\n}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls" and "process" in e.src]
+        assert not [e for e in calls if e.is_resolved], calls
+        deferred = [e for e in calls if e.dst.endswith(":compute:unresolved")]
+        assert len(deferred) == 1, [e.dst for e in calls]
+        assert (deferred[0].meta or {}).get("enclosing_class") == "Handler"
+
     def test_untyped_receiver_single_class_method_still_resolves(
         self, tmp_path: Path
     ) -> None:
