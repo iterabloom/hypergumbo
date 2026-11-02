@@ -45,3 +45,11 @@
   clock: 4  # 3f78
   nonce: 3f78  # 3f78
   message: "MERGE into WI-nifog approved by the owner 2026-11-01 (root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)). TRUE_DUPLICATE: WI-nifog's limb 2 is this invariant verbatim (partial_install_warnings._get_registered_analyzer_languages guesses languages by splitting pass names; fix: read RegisteredAnalyzer.languages). An invariant cannot be wont_do and 'deleted' needs human authority, so this is parked at needs_human_review with duplicate_of set. OWNER: please set status deleted."  # 3f78
+- op: update  # 1758
+  at: '2026-11-01T23:41:39Z'  # 1758
+  by: human  # 1758
+  actor: jgstern  # 1758
+  clock: 5  # 1758
+  nonce: '1758'  # 1758
+  set:  # 1758
+    status: deleted  # 1758
