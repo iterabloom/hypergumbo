@@ -300,6 +300,15 @@ class Span:
             "end_col": self.end_col,
         }
 
+    def encloses(self, other: "Span") -> bool:
+        """Whether ``other``'s lines lie within this span's (line granularity).
+
+        The one containment test for "which declaration holds this one" --
+        position, never name (INV-mozas). Callers choosing among several
+        enclosers take the tightest (smallest ``end_line - start_line``).
+        """
+        return self.start_line <= other.start_line and self.end_line >= other.end_line
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Span":
         return cls(

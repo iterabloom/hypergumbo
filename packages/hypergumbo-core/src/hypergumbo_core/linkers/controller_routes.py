@@ -102,13 +102,6 @@ logger = logging.getLogger(__name__)
 PASS_ID = make_pass_id("controller-routes-linker")
 
 
-def _encloses(container_span: "Span", member_span: "Span") -> bool:
-    return (
-        container_span.start_line <= member_span.start_line
-        and container_span.end_line >= member_span.end_line
-    )
-
-
 def _span_size(span: "Span") -> int:
     return span.end_line - span.start_line
 
@@ -161,7 +154,7 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
             enclosing = [
                 (c, c_span)
                 for c, c_span in controllers
-                if _encloses(c_span, route_span)
+                if c_span.encloses(route_span)
             ]
             if not enclosing:
                 continue
