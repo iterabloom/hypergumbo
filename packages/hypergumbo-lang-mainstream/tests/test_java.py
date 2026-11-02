@@ -2589,7 +2589,8 @@ class TestJpaInheritedMethodFallback:
     user code. When a controller calls repo.save(entity), the analyzer can
     infer the type (OwnerRepository) but can't find OwnerRepository.save as a
     symbol. The analyzer should fall back to linking to the repository
-    interface/class itself.
+    interface/class itself, with a ``uses`` edge: the repository is a
+    dependency, not the callee (WI-jomik).
     """
 
     def test_jpa_inherited_method_falls_back_to_type(self, tmp_path: Path) -> None:
@@ -2626,11 +2627,18 @@ public class OwnerController {
 
         # WI-puvil (PR-5): linker's Site-2 resolver falls back to the
         # type symbol when the method isn't on the type or any ancestor.
+        # WI-jomik: as a ``uses`` edge -- the repository is a dependency,
+        # not the callee (``save`` is JpaRepository's).
+        assert not [
+            e for e in all_edges
+            if e.src == controller_method.id and e.dst == repo_iface.id
+            and e.edge_type == "calls"
+        ]
         call_edges = [
             e for e in all_edges
             if e.src == controller_method.id
             and e.dst == repo_iface.id
-            and e.edge_type == "calls"
+            and e.edge_type == "uses"
             and e.is_resolved
         ]
         assert len(call_edges) == 1, (
@@ -5337,8 +5345,9 @@ public class Reader {
     ) -> None:
         """WI-puvil (PR-5): the ``ast_call_inherited_method`` fallback
         for ``var.method()`` now fires from the inherited_calls linker
-        (Site 2, Step 3 — fallback to the type symbol when neither
-        direct nor MRO walk resolves)."""
+        (Site 2, Step 3 — a ``uses`` edge to the type symbol when neither
+        direct nor MRO walk resolves; WI-jomik made it ``uses``, not
+        ``calls``)."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "OwnerRepository.java").write_text("""
@@ -5373,6 +5382,7 @@ public class OwnerController {
             and e.is_resolved
         ]
         assert len(inherited_method_edges) == 1
+        assert inherited_method_edges[0].edge_type == "uses"  # WI-jomik
 
     def test_site3_unresolved_carries_inherited_field_receiver(
         self, tmp_path: Path,

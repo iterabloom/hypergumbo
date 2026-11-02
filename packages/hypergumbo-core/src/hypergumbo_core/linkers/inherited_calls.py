@@ -37,12 +37,20 @@ The linker dispatches per unresolved-call edge by which hint(s)
   BFS.
 
 - **Site 2** (``receiver_type_hint``): ``var.method()`` where the
-  analyzer inferred ``var``'s type. Three-step resolution:
+  analyzer inferred ``var``'s type. Resolution:
   (1) direct method on the type → ``ast_call_type_inferred`` at 0.85;
-  (2) MRO walk on the type → ``ast_call_inherited_method`` at 0.70;
-  (3) fallback to the type symbol itself → ``ast_call_inherited_method``
-  at 0.70. Step (2) is a forward improvement over the pre-PR-5
-  in-analyzer behavior, which never walked the chain for Site 2.
+  (2) MRO walk on the type → ``ast_call_inherited_method`` at 0.70.
+  Step (2) is a forward improvement over the pre-PR-5 in-analyzer
+  behavior, which never walked the chain for Site 2. A method on neither
+  leaves the CALL unresolved; for Java (``_SITE2_TYPE_USE_LANGS``) step (3)
+  adds a ``uses`` edge from the caller to the type (``ast_call_inherited_method``
+  at 0.70): the caller depends on the type, which is not the callee. That
+  edge was a ``calls`` edge until WI-jomik measured it (jedis 620,
+  commons-compress 182): it stood for a method inherited from an external
+  base (``getMessage``, ``getClass``, an ``InputStream`` subclass's ``read``)
+  or an in-repo method the walk missed, and as a ``calls`` edge it handed
+  ``method_call_recovery`` a class hint that bound ``...builder().build()``
+  to an unrelated ``Builder.build``.
 
 - **Site 1** (``enclosing_class`` only): bare or ``this.method()`` call.
   Walks the enclosing class's MRO via the registered per-language
@@ -77,7 +85,7 @@ ceremony for static language semantics). Initial table (PR-2):
   in-tree ``extends`` chain. Python's MRO is C3, not insertion-order BFS —
   the two diverge on uneven-depth diamonds, where BFS picks the wrong
   ancestor. Registered for ``python`` only; deliberately NOT added to
-  ``_LEGACY_SITE2_LANGS`` (Python keeps strict Site-2, no Step-3 fallback).
+  ``_LEGACY_SITE2_LANGS`` (Python keeps the strict Site-2 collision guard).
 
 - ``_walk_linearization`` (Scala; WI-nazab): right-to-left BFS
   approximating Scala trait linearization (``extends B with T1 with T2``
@@ -742,26 +750,36 @@ def _python_stdlib_base_shadows(
     return False  # pragma: no cover - the subset guard guarantees an in-tree hit
 
 
-# Languages that get the LEGACY-PERMISSIVE Site-2 typed-receiver resolution:
-# the Step-3 type-symbol fallback fires, and a same-name-class collision
-# resolves by first-match rather than biasing to unresolved. This preserves
-# the Java analyzer's pre-PR-5 behavior and the INV-nilud-validated Java
-# Site-2 edges. Only ``java`` currently emits ``receiver_type_hint`` (Ruby /
-# Groovy emit Site-1/Site-3 hints only), so ``java`` is the sole member.
+# Languages whose Site-2 typed-receiver resolution is LEGACY-PERMISSIVE: a
+# same-name-class collision resolves by first match (the first same-named
+# class that has the method) rather than biasing to unresolved. Java only,
+# kept on measurement, not precedent: Java has no ``receiver_type_id``
+# producer yet, and on commons-compress the guard would drop 507 collision
+# edges of which Java's own name rule (same file, single-type import, same
+# package) says 457 were right and 42 wrong (WI-jomik). The cure is an
+# import-resolved ``receiver_type_id`` from the Java analyzer (the WI-supat
+# channel); then Java can leave this set.
 #
-# Every OTHER (newly-onboarded) language — Python (WI-noham Part A) and any
-# future emitter — gets the STRICT INV-fahub mode: resolve ONLY when the
-# method is directly on the concretely-named, unambiguous type (linker Step 1
-# / Step 2 MRO), NEVER the Step-3 type-symbol fallback (which would mint a
-# ``calls→class`` edge — a new runtime_coherence partition — and bind an
-# under-determined receiver to a class), and NEVER a same-name-class first
-# match (INV-fahub: an under-determined receiver must stay ambiguous/external).
+# Every OTHER language — Python (WI-noham Part A) and any future emitter —
+# gets the STRICT INV-fahub mode: a same-name-class collision is unresolved
+# (an under-determined receiver must stay ambiguous/external). No language
+# gets a ``calls→class`` fallback (module docstring, Site 2).
 #
 # DELIBERATELY DECOUPLED from ``_MRO_WALKERS``: this is NOT ``set(_MRO_WALKERS)``.
-# Adding a Python MRO walker (deferred D1) must NOT silently re-enable Python's
-# permissive Step-3 fallback; a language opts into permissiveness only by being
-# listed HERE, consciously, after allowlisting the ``calls→class`` partition.
+# Adding an MRO walker must NOT silently make a language permissive; a
+# language opts in only by being listed HERE, consciously.
 _LEGACY_SITE2_LANGS: frozenset[str] = frozenset({"java"})
+
+# Languages whose Site-2 step 3 records a ``uses`` edge from the caller to the
+# receiver's TYPE when the method is nowhere on its chain: ``repo.save(e)``
+# on a Spring Data ``OwnerRepository`` (``save`` is ``JpaRepository``'s) is a
+# controller -> repository dependency the DEEP bakeoff asked for on
+# spring-petclinic, and Java emits no other method -> type edge. It is
+# ``uses``, not ``calls``: the type is not the callee, and a ``calls`` edge
+# here handed ``method_call_recovery`` a false class hint (module docstring,
+# Site 2). Java only, the one language measured with it; another opts in
+# after its own A/B.
+_SITE2_TYPE_USE_LANGS: frozenset[str] = frozenset({"java"})
 
 
 # ``_SITE1_STRICT_LANGS`` — languages whose Site-1 (``enclosing_class``)
@@ -1067,7 +1085,7 @@ def _same_language_class_ids(
     * **Confidently-wrong cross-language edge** — the concrete leak was the
       Java legacy-permissive Site-2 (``_LEGACY_SITE2_LANGS``), which skips the
       same-name ambiguity guard and so would bind a Java receiver to a Python
-      namesake's method (Step 1) or type symbol (Step 3 fallback).
+      namesake's method (Step 1).
     * **False-negative from count pollution** — a foreign-language namesake
       inflates the strict ``len(...) > 1`` ambiguity guard, suppressing a
       legitimate same-language resolution that was never actually ambiguous.
@@ -1267,39 +1285,38 @@ def _resolve_site2(
 ) -> Edge | None:
     """Site 2: ``var.method()`` typed receiver.
 
-    Three-step resolution preserving the Java analyzer's pre-PR-5 behavior:
+    Resolution:
 
     1. **Direct lookup** — method defined on the type itself →
        ``ast_call_type_inferred`` at 0.85 (matches analyzer's Case 3 if).
     2. **MRO walk** — method on an ancestor of the type →
        ``ast_call_inherited_method`` at 0.70 (forward improvement: the
        analyzer never walked the chain for Site 2).
-    3. **Type-symbol fallback** — method nowhere on the chain →
-       ``ast_call_inherited_method`` at 0.70 pointing to the type
-       symbol itself (matches analyzer's Case 3 else fallback).
+
+    3. **Type use** — method on neither: the call stays unresolved, and a
+       language in ``_SITE2_TYPE_USE_LANGS`` (Java) gets a ``uses`` edge to
+       the type symbol at 0.70, never a ``calls`` edge (module docstring,
+       Site 2).
 
     Step 2 requires the language to have an MRO walker; step 1 works
     without one.
 
-    Two ``src_lang``-gated modes (WI-noham Part A):
+    Two ``src_lang``-gated modes for a same-name-class collision
+    (``len(type_class_ids) > 1``, WI-noham Part A):
 
     * **Legacy-permissive** (``src_lang in _LEGACY_SITE2_LANGS`` — Java only):
-      steps 1-3 as above, first same-name class wins. Preserves the
-      INV-nilud-validated Java edges.
-    * **Strict INV-fahub** (every other language, e.g. Python): step 3 is
-      DISABLED (no ``calls→class`` under-determined bind / new ratchet
-      partition), and a same-name-class collision (``len(type_class_ids) > 1``)
-      biases to unresolved rather than binding by first match. Only a method
-      DIRECTLY on the single, concretely-named type (step 1 / step 2 MRO)
-      resolves.
+      the first same-name class that has the method wins.
+    * **Strict INV-fahub** (every other language, e.g. Python): the collision
+      biases to unresolved. Only a method on the single, concretely-named
+      type (step 1 / step 2 MRO) resolves.
     """
     # WI-supat (D3): prefer the concrete receiver-type id the producer threaded.
     # It is stamped only when the type's short name is UNIQUE within the file (so
     # the bare-name inference that produced it could not have hit the wrong
     # same-file twin) and is validated here as a real, same-language
     # ``class_symbols`` key. A valid id names exactly one type, so the receiver is
-    # NOT under-determined — resolve it precisely (Step 1/2 only; Step 3 stays
-    # gated below) and SKIP the ambiguity guard, recovering the recall the guard
+    # NOT under-determined — resolve it precisely (Step 1/2) and SKIP the
+    # ambiguity guard, recovering the recall the guard
     # sacrifices. Absent / stale / foreign-language → the original name path.
     if (
         receiver_type_id is not None
@@ -1370,22 +1387,17 @@ def _resolve_site2(
                     derived_from=[edge.id, type_class_id],
                 )
 
-    # Step 3: fallback to the type symbol itself.
-    # Strict INV-fahub gate: only legacy-permissive languages fall back. For
-    # every newly-onboarded language the method was nowhere on the (single)
-    # type's chain, so we leave the call unresolved rather than mint a
-    # low-confidence ``calls→class`` edge (a new runtime_coherence partition
-    # and an under-determined bind).
-    if src_lang not in _LEGACY_SITE2_LANGS:
+    # Step 3: the method is nowhere on the type's chain (an external base's,
+    # or one the walk cannot see). The call stays unresolved; a language in
+    # _SITE2_TYPE_USE_LANGS records that the caller USES the type.
+    if src_lang not in _SITE2_TYPE_USE_LANGS:
         return None
     type_class_id = type_class_ids[0]
     type_sym = class_symbols.get(type_class_id)
     if type_sym is None:  # pragma: no cover
         return None
-    if (edge.src, type_sym.id) in existing_call_pairs:  # pragma: no cover
-        return None
     return Edge.create(
-        src=edge.src, dst=type_sym.id, edge_type="calls",
+        src=edge.src, dst=type_sym.id, edge_type="uses",
         line=edge.line, confidence=_SITE_2_INHERITED_CONFIDENCE,
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_method",
