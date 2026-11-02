@@ -27,3 +27,12 @@
   nonce: 2f39  # 2f39
   set:  # 2f39
     description: "Found doing WI-hapon (2026-10-28), on fixtures through the production survey.\n(1) Pattern.matches' parent_base_class / method_name arm reads symbol.meta['parent_base_classes'], which only java.py and objc.py write. So flask-restful.yaml's route_handler rule (method_name ^(get|post|...)$ + parent_base_class Resource) matches nothing on Python, and a Graphene resolver rule (resolve_* on an ObjectType) cannot be written: graphql-python.yaml's old name_pattern rule was unread and was deleted in WI-hapon with a note. Fixture: class Query(graphene.ObjectType) with def resolve_hello -> Query.resolve_hello carries no concept.\n(2) zio-http: Routes(Method.GET / \"hello\" -> handler(hello _)) in an object val emits NO usage context from the scala analyzer, so neither zio.yaml's old usage_call rules (unread, deleted in WI-hapon) nor a 'usage: kind call' rule can match; zio-http apps get no route concepts.\nFix candidates: stamp parent_base_classes on python methods (the java/objc pass-1.5 shape) and measure on flask-restful / graphene repos; give scala a usage context for the Routes(...) construction, or a route extraction for the 'Method.X / path -> handler' operator form."  # 2f39
+- op: update  # 5e5d
+  at: '2026-11-02T17:05:24Z'  # 5e5d
+  by: agent  # 5e5d
+  actor: jgstern_agent  # 5e5d
+  clock: 3  # 5e5d
+  nonce: 5e5d  # 5e5d
+  set: {}  # 5e5d
+  add:  # 5e5d
+    isbefore: [WI-losij-sodov-saluj-jusuj-habop-lizap-kavor-pafif]  # 5e5d

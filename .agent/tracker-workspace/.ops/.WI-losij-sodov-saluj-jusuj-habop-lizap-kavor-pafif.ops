@@ -1,0 +1,32 @@
+- op: create  # 8ff5
+  at: '2026-11-02T17:04:52Z'  # 8ff5
+  by: agent  # 8ff5
+  actor: jgstern_agent  # 8ff5
+  clock: 1  # 8ff5
+  nonce: 8ff5  # 8ff5
+  data:  # 8ff5
+    kind: work_item  # 8ff5
+    title: "Request handlers reached through an interface or base class are not request-ingress entrypoints in python (BaseHTTPRequestHandler.do_*), java (HttpServlet) and rust (tower Service), so WI-fuzik's withhold cannot fire on them"  # 8ff5
+    status: todo_hard  # 8ff5
+    priority: 3  # 8ff5
+    parent:  # 8ff5
+    tags:  # 8ff5
+    - taint  # 8ff5
+    - verify_claims  # 8ff5
+    - entrypoints  # 8ff5
+    - analysis_quality  # 8ff5
+    isbefore: []  # 8ff5
+    duplicate_of: []  # 8ff5
+    not_duplicate_of: []  # 8ff5
+    pr_ref:  # 8ff5
+    description: "PROBLEM. WI-fuzik withholds a clean untrusted_input / net_recv verdict while the graph holds request-handler entrypoints (entrypoints.REQUEST_INGRESS_KINDS). A handler reached through an INTERFACE or BASE CLASS rather than a registration is not an entrypoint in these languages, so the withhold cannot fire on it. WI-jonin fixed Go in PR #2014 (http.Handler / ServeHTTP, frameworks/go-net-http.yaml). Same mechanism, not fixed:\n\n- PYTHON http.server: `class H(BaseHTTPRequestHandler): def do_GET(self): open(self.path...)`. Measured (probe ~/hypergumbo_lab_notebook/jonin_step0_11022026/probe_pyhttp, claims p2_review_11012026/B1/claims_generic.yaml): base inconclusive ONLY because http.server is unclassified (no ingress reason); with one overlay entry declaring http.server complete (overlays/http_server_complete.yaml) all three untrusted_input claims are confirmed_with_caveats over open(self.path) -- the same latent false all-clear WI-fuzik step 0 measured for flask. BLOCKED BY WI-sorop: the python analyzer stamps no parent_base_classes, so a `method_name: ^do_[A-Z]+$` + `parent_base_class: BaseHTTPRequestHandler` rule cannot fire. Corpus: 10 non-test subclasses (pants 3, pytorch, grpc, trino, v8, powerdns, whisper.cpp, onion-pow-example).\n- JAVA javax/jakarta.servlet HttpServlet (doGet/doPost/doPut/doDelete/service): no framework rule at all (scalatra's `servlet` concept is Scala-only). Probe probe_servlet: inconclusive only because java.io.FileWriter and javax.servlet.http.HttpServletRequest are unclassified, no ingress reason. (Aside: java.yaml classifies FileWriter.write/append but not the constructor that names the path.) Corpus: 4 subclasses (gradle 2, spark, iceberg).\n- RUST tower/hyper `impl Service<Request<..>> for T` (call): corpus 10 files (reqwest 5, pants 4, deno 1); not probed.\n\nDIRECTION. Per language, a definition rule keyed on the interface/base class + method name (+ a request-typed parameter where the analyzer records signatures, via the `signature` pattern filter WI-jonin added), mapped to a REQUEST_INGRESS kind; for each, run the flip test first and the probe after. Python waits on WI-sorop."  # 8ff5
+    fields: {}  # 8ff5
+- op: update  # 2d28
+  at: '2026-11-02T17:05:24Z'  # 2d28
+  by: agent  # 2d28
+  actor: jgstern_agent  # 2d28
+  clock: 2  # 2d28
+  nonce: 2d28  # 2d28
+  set: {}  # 2d28
+  add:  # 2d28
+    not_duplicate_of: [WI-lagod-razav-bopif-rivum-dogan-bahig-mimin-gujid]  # 2d28

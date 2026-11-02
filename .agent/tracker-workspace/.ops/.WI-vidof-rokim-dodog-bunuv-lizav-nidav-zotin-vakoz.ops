@@ -58,3 +58,19 @@
   clock: 6  # da22
   nonce: da22  # da22
   message: "VALIDATION VERDICT: no_move. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). gatling: measured 15 scala.io.StdIn ipc_recv chains, all LogFileReader.scala subclass calls (recorded 15 -> 0). Regression sub-item filed: WI-lafug-fusog-vudib-gubom-zusam-lovav-voloj-fuvib (P1; bisected to 74ffde9e1f, WI-kipol: a companion object declared before its class took the class’s methods). Tag KEPT until the fix merges and gatling re-measures 0."  # da22
+- op: update  # bfc9
+  at: '2026-11-02T11:44:42Z'  # bfc9
+  by: agent  # bfc9
+  actor: jgstern_agent  # bfc9
+  clock: 7  # bfc9
+  nonce: bfc9  # bfc9
+  set: {}  # bfc9
+  remove:  # bfc9
+    tags: [awaits_bakeoff_validation]  # bfc9
+- op: discuss  # a136
+  at: '2026-11-02T11:44:42Z'  # a136
+  by: agent  # a136
+  actor: jgstern_agent  # a136
+  clock: 8  # a136
+  nonce: a136  # a136
+  message: "VALIDATED after the regression fix: moved. The 11-02 drain read no_move (gatling 15 StdIn chains were back since WI-kipol 74ffde9e1f); regression WI-lafug-fusog-vudib-gubom-zusam-lovav-voloj-fuvib fixed in PR #2012. Re-measured with the merged code (cold survey + io-boundaries on whole_bunch_of_repos/gatling): scala.io.StdIn chains 0 (recorded 15 -> 0); the import scala.io.StdIn._ control in test_short_name_bound_call.py still classifies; sbt StdIn chains 0 on the cohort run. Record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md. Tag stripped."  # a136

@@ -21,3 +21,18 @@
     pr_ref:  # 9b1b
     description: "Regression found by the 2026-11-02 awaits_bakeoff_validation drain (record: ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md). WI-vidof's corpus claim (gatling: 15 false scala.io.StdIn ipc_recv chains -> 0) reads no_move on dev b20da19ff3: all 15 are back, every one a LogFileReader.scala subclass call (FirstPassParser / SecondPassParser) to the superclass's own readInt / readLong / readBoolean / readByte.\n\nBISECTED (git bisect run over 618 commits, probe = gatling StdIn chain count): first bad commit 74ffde9e1f \"fix(scala): a call on a project object or companion resolves where Scala binds the name (WI-kipol)\". Its inherited_calls change indexes `object` kinds into class_ids_by_name.\n\nMECHANISM: gatling declares `private object LogFileParser` ABOVE `private abstract class LogFileParser[T]` in the same file. type_hierarchy._resolve_method_class_id credits a method to its owner by NAME plus \"first same-file namesake\", so LogFileParser.readInt went to the object. The walk FirstPassParser -> (class) LogFileParser found no readInt, the stub kept no superseded_by, and the stub took the StdIn row by short name. Minimal fixture (companion object first) reproduces it; dropping the object makes it resolve. Not caused by PR #2004 (the pre-#2004 tree 64a87d13ff shows the same 15).\n\nFIX SHAPE: the owner is the same-file candidate whose span CONTAINS the method (INV-mozas: position, never name), tightest first; the old same-file pick stays only when no candidate contains it."  # 9b1b
     fields: {}  # 9b1b
+- op: update  # 18ef
+  at: '2026-11-02T11:44:42Z'  # 18ef
+  by: agent  # 18ef
+  actor: jgstern_agent  # 18ef
+  clock: 2  # 18ef
+  nonce: 18ef  # 18ef
+  set:  # 18ef
+    status: done  # 18ef
+- op: discuss  # 893b
+  at: '2026-11-02T11:44:42Z'  # 893b
+  by: agent  # 893b
+  actor: jgstern_agent  # 893b
+  clock: 3  # 893b
+  nonce: 893b  # 893b
+  message: "Fixed in PR #2012 (dev d9d6f46b5d + dfe0abf947). Root cause: type_hierarchy._resolve_method_class_id credited a method to the FIRST same-file namesake, so a Scala companion object declared above its class took the class’s methods once WI-kipol indexed object kinds. Fix: the owner is the same-file candidate whose span encloses the method, tightest first (INV-mozas, position never name); the old same-file pick stays only when none encloses it. Span.encloses is now the one containment test (router_routes / controller_routes dropped their private copies). BEHAVIORAL EVIDENCE, the filed repro re-run: hypergumbo survey + io-boundaries --format json on whole_bunch_of_repos/gatling with the merged code (tree 6a44b2b2af, code-identical to dfe0abf947 by git diff over packages/docs/.ci): scala.io.StdIn chains 15 -> 0 (lab bakeoff_queue_11022026/io/gatling.merged.json). Production-path test: test_short_name_bound_call.py::test_io_boundaries_keeps_the_stdin_read_and_drops_the_inherited_call[companion_first] (red on the old owner pick: owner followed declaration order, shown in the drain record) plus unit tests in test_type_hierarchy_linker.py (both declaration orders). Corpus A/B (lab bakeoff_queue_11022026/fix_ab/): gatling 63 call sites newly resolved, 17 retargeted, 2 lost; sbt 40 retargeted to the class over its companion, 9 lost, ~356 false sibling-to-sibling dispatches_to removed; okhttp and sherpa-onnx unchanged. The 11 lost sites were companion-object members reached only through the misassignment; residual WI-damuj-tujad-nuvot-funim-fodug-sidok-tidot-pulon carries their real route (import binding)."  # 893b
