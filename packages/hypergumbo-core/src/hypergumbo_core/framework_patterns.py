@@ -188,7 +188,8 @@ class Pattern:
     Language convention patterns (v1.2.x):
     - symbol_name: Match symbol name directly (for main() detection, etc.)
     - language: Filter by symbol's language (AND'd with other conditions)
-    When symbol_name + symbol_kind are both specified, they're AND'd together.
+    When symbol_name + symbol_kind are both specified, they're AND'd together;
+    so are symbol_name + parameter_type (WI-jonin).
 
     Usage-based patterns (v1.1.x):
     - usage: UsagePatternSpec to match against UsageContext records
@@ -209,7 +210,8 @@ class Pattern:
         symbol_name: Regex pattern to match symbol name directly
         language: Regex pattern to filter by symbol's language
         annotation: Regex pattern to match against Java annotations
-        parameter_type: Regex pattern to match against parameter types
+        parameter_type: Regex pattern to match against parameter types, read
+            from ``Symbol.meta["parameters"]`` (ADR-0058: never the signature)
         symbol_kind: Regex pattern to match against symbol kind field
         framework_role: Regex pattern to match against ``Symbol.meta["framework_role"]``
             (ADR-0027 Phase 3 fold residue — see audit-findings 0013). Use this
@@ -352,6 +354,28 @@ class Pattern:
             matched[key] = value_str
         return True, matched
 
+    def _kind_and_role(self, symbol: Symbol) -> dict[str, str] | None:
+        """The ``symbol_kind`` / ``framework_role`` conjunct of a match.
+
+        ``symbol_kind`` matches ``Symbol.kind`` (canonical Cluster A
+        construct); ``framework_role`` matches ``Symbol.meta["framework_role"]``
+        (ADR-0027 Phase 3 fold residue per audit-findings 0013). Either can be
+        declared alone; both must match when both are. Returns the
+        ``matched_*`` keys to record (empty when neither is declared), or None
+        when a declared one does not match.
+        """
+        matched: dict[str, str] = {}
+        if self._symbol_kind_re:
+            if self._symbol_kind_re.match(symbol.kind) is None:
+                return None
+            matched["matched_symbol_kind"] = symbol.kind
+        if self._framework_role_re:
+            framework_role = (symbol.meta or {}).get("framework_role")
+            if framework_role is None or self._framework_role_re.match(framework_role) is None:
+                return None
+            matched["matched_framework_role"] = framework_role
+        return matched
+
     def _check_filters(self, symbol: Symbol) -> bool:
         """Check language, path, and modifier filters.
 
@@ -460,15 +484,27 @@ class Pattern:
         # one match per symbol, so wrap in a list.
         result = {"concept": self.concept}
 
-        # Try parameter type match
+        # Try parameter type match. Declared beside symbol_name it is an AND
+        # (WI-jonin: a method NAMED ``ServeHTTP`` that TAKES a ``*Request``),
+        # and decisive: neither half may then match alone below.
         if self._param_type_re:
-            for param in parameters:
-                param_type = (
+            matched_type = next((
+                param_type for param in parameters
+                if (param_type := (
                     param.get("type") or "" if isinstance(param, dict) else str(param)
-                )
-                if param_type and self._param_type_re.match(param_type):
-                    result["matched_parameter_type"] = param_type
-                    return [result]
+                )) and self._param_type_re.match(param_type)
+            ), None)
+            if self._symbol_name_re:
+                if matched_type is None or not self._symbol_name_re.search(symbol.name):
+                    return []
+                kind_role = self._kind_and_role(symbol)
+                if kind_role is None:
+                    return []
+                result["matched_symbol_name"] = symbol.name
+                result.update(kind_role)
+            if matched_type is not None:
+                result["matched_parameter_type"] = matched_type
+                return [result]
 
         # Try symbol_name + symbol_kind combined match (for language conventions like main())
         # When both are specified, both must match (AND semantics)
@@ -484,33 +520,12 @@ class Pattern:
                 # symbol_name matches
                 result["matched_symbol_name"] = symbol.name
 
-                # Check symbol_kind / framework_role if specified (AND condition).
-                # symbol_kind matches Symbol.kind (canonical Cluster A construct);
-                # framework_role matches Symbol.meta["framework_role"] (ADR-0027
-                # Phase 3 fold residue per audit-findings 0013). Either kind of
-                # constraint can be specified independently; both must match
-                # when both are specified. When neither matches, fall through
-                # so other pattern types can still try.
-                if self._symbol_kind_re or self._framework_role_re:
-                    kind_ok = (
-                        self._symbol_kind_re is None
-                        or self._symbol_kind_re.match(symbol.kind) is not None
-                    )
-                    framework_role = (symbol.meta or {}).get("framework_role")
-                    role_ok = (
-                        self._framework_role_re is None
-                        or (framework_role is not None
-                            and self._framework_role_re.match(framework_role) is not None)
-                    )
-                    if kind_ok and role_ok:
-                        if self._symbol_kind_re:
-                            result["matched_symbol_kind"] = symbol.kind
-                        if self._framework_role_re:
-                            result["matched_framework_role"] = framework_role
-                        return [result]
-                    # else: don't match this pattern; fall through
-                else:
-                    # Only symbol_name specified, and it matches
+                # Check symbol_kind / framework_role if specified (AND
+                # condition, :meth:`_kind_and_role`). When they do not match,
+                # fall through so other pattern types can still try.
+                kind_role = self._kind_and_role(symbol)
+                if kind_role is not None:
+                    result.update(kind_role)
                     return [result]
 
         # Try symbol_kind / framework_role / meta_match match (alone,
@@ -536,22 +551,10 @@ class Pattern:
             and not self._annotation_re
             and not self._param_type_re
         ):
-            kind_ok = (
-                self._symbol_kind_re is None
-                or self._symbol_kind_re.match(symbol.kind) is not None
-            )
-            framework_role = (symbol.meta or {}).get("framework_role")
-            role_ok = (
-                self._framework_role_re is None
-                or (framework_role is not None
-                    and self._framework_role_re.match(framework_role) is not None)
-            )
+            kind_role = self._kind_and_role(symbol)
             meta_ok, matched_meta = self._meta_match_ok(symbol)
-            if kind_ok and role_ok and meta_ok:
-                if self._symbol_kind_re:
-                    result["matched_symbol_kind"] = symbol.kind
-                if self._framework_role_re:
-                    result["matched_framework_role"] = framework_role
+            if kind_role is not None and meta_ok:
+                result.update(kind_role)
                 if self._meta_match_re:
                     result["matched_meta"] = matched_meta
                 return [result]
@@ -1443,6 +1446,7 @@ _CONVENTION_PATTERN_IDS: tuple[str, ...] = (
     "library-exports",
     "logging-conventions",
     "go-encoding-callbacks",
+    "go-net-http",
     "node-http",
 )
 
@@ -1644,6 +1648,7 @@ def enrich_symbols(
     # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
+    # - go-net-http.yaml: Go http.Handler implementations, ServeHTTP (WI-jonin)
     # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
     for convention_id in _CONVENTION_PATTERN_IDS:
         convention_patterns = load_framework_patterns(convention_id)

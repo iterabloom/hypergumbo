@@ -46,7 +46,7 @@ line is how you vouch for it, and it is then yours.
 
 | family | built-in files | community files | your channel | what it is for |
 |---|---|---|---|---|
-| `frameworks` | 8 | 99 | `frameworks.d/` | Without these, a symbol is just a function: decorators, annotations and naming conventions stop being read as routes, handlers or entrypoints, so reachability starts from less than it should. |
+| `frameworks` | 9 | 99 | `frameworks.d/` | Without these, a symbol is just a function: decorators, annotations and naming conventions stop being read as routes, handlers or entrypoints, so reachability starts from less than it should. |
 | `dataflow_patterns` | 20 | 1 | `dataflow_patterns.d/`, `library_patterns` only | Decides whether a call READS or MUTATES its receiver. Without them the taint walk cannot tell `x.append(secret)` from `len(x)`. |
 | `io_primitives` | 15 | 0 | `io_primitives.d/` | The rows that make a call count as I/O at all. Without them no boundary is recognised, every boundary claim goes inconclusive, and a repository looks clean because nothing was examined. |
 | `io_primitives_overlays` | 0 | 8 | none | Third-party I/O that hypergumbo ships but does NOT vouch for. Without them a call to `requests.post` is invisible, because hypergumbo analyses your repository and not site-packages. |
