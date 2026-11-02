@@ -26,3 +26,10 @@
   clock: 2  # 7106
   nonce: '7106'  # 7106
   message: "P3 REVIEW 2026-11-01 side finding (misc2): still live on dev 100b6fbb6e: limits.failed_files lists BOTH pascal and puppet for the same init.pp."  # 7106
+- op: discuss  # 6904
+  at: '2026-11-02T00:04:11Z'  # 6904
+  by: agent  # 6904
+  actor: jgstern_agent  # 6904
+  clock: 3  # 6904
+  nonce: '6904'  # 6904
+  message: "Third instance of the same mechanism filed 2026-11-01 as WI-favig: Apex and LaTeX both claim *.cls. See WI-fovop for the shared registry-time check."  # 6904

@@ -1,0 +1,21 @@
+- op: create  # 456c
+  at: '2026-11-02T00:03:11Z'  # 456c
+  by: agent  # 456c
+  actor: jgstern_agent  # 456c
+  clock: 1  # 456c
+  nonce: 456c  # 456c
+  data:  # 456c
+    kind: work_item  # 456c
+    title: "swift: protocol requirement members (methods, inits) are is_exported=True even when the protocol is internal"  # 456c
+    status: todo_hard  # 456c
+    priority: 3  # 456c
+    parent:  # 456c
+    tags:  # 456c
+    - visibility  # 456c
+    - analysis_quality  # 456c
+    isbefore: []  # 456c
+    duplicate_of: []  # 456c
+    not_duplicate_of: []  # 456c
+    pr_ref:  # 456c
+    description: "FOUND 2026-11-01 by the tracker-hygiene sweep (the investigator for WI-nalip; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z). Re-reproduced at dev e362b4ba4f.\n\nREPRO (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/unfiled_repros/fixtures/sw and sw2). For \"protocol Hidden { init(x: Int); func secret() }\" (no access modifier, so internal) analyze_swift emits protocol Hidden is_exported=False, but constructor Hidden.init is_exported=True and method Hidden.secret is_exported=True. Members of \"public protocol Open\" are True, as expected.\n\nMECHANISM. swift.py:1448-1450 hard-codes is_exported=True under the comment \"Reachable exactly when the protocol is; a requirement carries no access modifier of its own\". The comment states the right rule, but the code never consults the protocol. The init requirement goes through _swift_lifecycle_symbol (is_requirement) and shows the same result.\n\nSAME SHAPE as WI-nalip (rust: a bodyless trait method is hard-coded True). Fix both by taking the container's export: protocol public/open for swift, trait pub for rust. Sweep family F-sibling-arm-out-of-sync. NOT MEASURED: which consumers are affected (dead-code, library_export entrypoints) and by how much."  # 456c
+    fields: {}  # 456c
