@@ -148,12 +148,15 @@ def test_the_handlers_are_the_request_ingress_entrypoints_only() -> None:
          "label": "CLI run"},
         {"kind": "http_route", "symbol_id": "python:tests/test_app.py:1-3:fake:function",
          "label": "HTTP route /fake"},
+        {"kind": "http_route", "label": "HTTP route /no-symbol"},
+        {"kind": "go_handler", "node_id": "go:srv.go:4-9:Serve:function"},
     ]
     assert unseeded_ingress_handlers(entrypoints) == [
-        "h at s.js:6 (HTTP GET /h)", "save at app.py:7 (HTTP route /save)",
+        "Serve at srv.go:4", "h at s.js:6 (HTTP GET /h)",
+        "save at app.py:7 (HTTP route /save)",
     ]
     assert unseeded_ingress_handlers(entrypoints, include_non_production=True) == [
-        "fake at tests/test_app.py:1 (HTTP route /fake)",
+        "Serve at srv.go:4", "fake at tests/test_app.py:1 (HTTP route /fake)",
         "h at s.js:6 (HTTP GET /h)", "save at app.py:7 (HTTP route /save)",
     ]
 
