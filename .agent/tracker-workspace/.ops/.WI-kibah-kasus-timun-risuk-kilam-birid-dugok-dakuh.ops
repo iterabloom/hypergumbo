@@ -65,3 +65,19 @@
   set: {}  # d229
   add:  # d229
     tags: [awaits_bakeoff_validation]  # d229
+- op: update  # 34df
+  at: '2026-11-02T10:19:47Z'  # 34df
+  by: agent  # 34df
+  actor: jgstern_agent  # 34df
+  clock: 8  # 34df
+  nonce: 34df  # 34df
+  set: {}  # 34df
+  remove:  # 34df
+    tags: [awaits_bakeoff_validation]  # 34df
+- op: discuss  # 8a57
+  at: '2026-11-02T10:19:48Z'  # 8a57
+  by: agent  # 8a57
+  actor: jgstern_agent  # 8a57
+  clock: 9  # 8a57
+  nonce: 8a57  # 8a57
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). alertmanager / coredns / cert-manager / prometheus: measured three-way by call site, kibah’s OWN dump_edges.py on dev vs its before/after3 dumps: dev == after at 763/771, 484/524, 945/961, 1,639/1,678; 0 reverted; the rest later deliberate changes (#2004 ties left unresolved, json.Decoder typing) (recorded —). Tag stripped."  # 8a57

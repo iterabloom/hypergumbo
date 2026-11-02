@@ -46,3 +46,19 @@
   set: {}  # 5977
   add:  # 5977
     tags: [awaits_bakeoff_validation]  # 5977
+- op: update  # afaa
+  at: '2026-11-02T10:19:44Z'  # afaa
+  by: agent  # afaa
+  actor: jgstern_agent  # afaa
+  clock: 5  # afaa
+  nonce: afaa  # afaa
+  set: {}  # afaa
+  remove:  # afaa
+    tags: [awaits_bakeoff_validation]  # afaa
+- op: discuss  # 38c5
+  at: '2026-11-02T10:19:44Z'  # 38c5
+  by: agent  # 38c5
+  actor: jgstern_agent  # 38c5
+  clock: 6  # 38c5
+  nonce: 38c5  # 38c5
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). servant: measured Prelude.print chains 3; total_io_edges 57 (recorded 0; 50 -> 3; 53). Tag stripped."  # 38c5

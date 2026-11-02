@@ -51,3 +51,19 @@
   set: {}  # 553e
   add:  # 553e
     tags: [awaits_bakeoff_validation]  # 553e
+- op: update  # bc8d
+  at: '2026-11-02T10:19:48Z'  # bc8d
+  by: agent  # bc8d
+  actor: jgstern_agent  # bc8d
+  clock: 6  # bc8d
+  nonce: bc8d  # bc8d
+  set: {}  # bc8d
+  remove:  # bc8d
+    tags: [awaits_bakeoff_validation]  # bc8d
+- op: discuss  # a13c
+  at: '2026-11-02T10:19:48Z'  # a13c
+  by: agent  # a13c
+  actor: jgstern_agent  # a13c
+  clock: 7  # a13c
+  nonce: a13c  # a13c
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). same four: measured NAME, err := NAME( sites with a calls edge to NAME: 1/1, 3/3, 9/9, 7/8 (the 8th is a local closure parser) (recorded filed 1/3/9/7 regained). Tag stripped."  # a13c

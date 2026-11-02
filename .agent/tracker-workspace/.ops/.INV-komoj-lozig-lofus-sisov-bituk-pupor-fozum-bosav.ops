@@ -53,3 +53,19 @@
   clock: 5  # 8bd2
   nonce: 8bd2  # 8bd2
   message: "Status check 2026-10-20 (owner sequence stage 9 resumed). Of the two residuals named when this went pending_validation, WI-sodoj is done (dbeef1ab2a: an expression-bodied helper - Rust tail expression, JS/TS arrow body - is lifted). WI-sitaf is still open and re-confirmed on dev 2760e4010b: go_def_use drops '_' (go_def_use.py _BLANK), so '_, err := get()' defines ('err',) against arity 2 and taint._received_seeds falls back to seeding every variable. Stays pending_validation: WI-sitaf, plus the awaits_bakeoff_validation tag (runc/podman-compose corpus claims)."  # 8bd2
+- op: update  # ca62
+  at: '2026-11-02T10:19:41Z'  # ca62
+  by: agent  # ca62
+  actor: jgstern_agent  # ca62
+  clock: 6  # ca62
+  nonce: ca62  # ca62
+  set: {}  # ca62
+  remove:  # ca62
+    tags: [awaits_bakeoff_validation]  # ca62
+- op: discuss  # 678a
+  at: '2026-11-02T10:19:41Z'  # 678a
+  by: agent  # 678a
+  actor: jgstern_agent  # 678a
+  clock: 7  # 678a
+  nonce: 678a  # 678a
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). podman-compose / runc: measured kanor claims_ab.yaml: podman-compose host-secret-no-subprocess violated(1); runc untrusted-input-no-subprocess violated(21) (recorded inconclusive -> violated (both)). Status stays pending_validation: WI-sitaf (the Go _, err := arity fallback) is still open; this validates only the corpus claim. Tag stripped."  # 678a

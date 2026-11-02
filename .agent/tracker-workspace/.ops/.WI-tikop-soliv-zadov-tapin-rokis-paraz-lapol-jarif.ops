@@ -52,3 +52,19 @@
   set: {}  # 5661
   add:  # 5661
     tags: [awaits_bakeoff_validation]  # 5661
+- op: update  # eac6
+  at: '2026-11-02T10:19:49Z'  # eac6
+  by: agent  # eac6
+  actor: jgstern_agent  # eac6
+  clock: 6  # eac6
+  nonce: eac6  # eac6
+  set: {}  # eac6
+  remove:  # eac6
+    tags: [awaits_bakeoff_validation]  # eac6
+- op: discuss  # ec1d
+  at: '2026-11-02T10:19:49Z'  # ec1d
+  by: agent  # ec1d
+  actor: jgstern_agent  # ec1d
+  clock: 7  # ec1d
+  nonce: ec1d  # ec1d
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). tmate: measured analyzer edges with src_stands_in_for=unnamed_definition: 26 (recorded 0 -> 26 of 26) ; redis: measured analyzer edges marked src_stands_in_for: 3,054 (recorded 0 -> 2,985 calls + 54 refs). Tag stripped."  # ec1d

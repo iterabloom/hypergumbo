@@ -52,3 +52,19 @@
   set: {}  # fd0e
   add:  # fd0e
     tags: [awaits_bakeoff_validation]  # fd0e
+- op: update  # 6d04
+  at: '2026-11-02T10:19:46Z'  # 6d04
+  by: agent  # 6d04
+  actor: jgstern_agent  # 6d04
+  clock: 6  # 6d04
+  nonce: 6d04  # 6d04
+  set: {}  # 6d04
+  remove:  # 6d04
+    tags: [awaits_bakeoff_validation]  # 6d04
+- op: discuss  # c099
+  at: '2026-11-02T10:19:47Z'  # c099
+  by: agent  # c099
+  actor: jgstern_agent  # c099
+  clock: 7  # c099
+  nonce: c099  # c099
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sherpa-onnx / whisper.cpp: measured cpp-src io chains on C-library stems: stdio 192 / 207, stdlib 17 / 31, time, unistd, sys/socket, netdb ... (recorded unclassified -> classified). Tag stripped."  # c099

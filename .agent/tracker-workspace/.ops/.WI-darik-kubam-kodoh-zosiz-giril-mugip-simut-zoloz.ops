@@ -50,3 +50,19 @@
   set: {}  # 89cf
   add:  # 89cf
     tags: [awaits_bakeoff_validation]  # 89cf
+- op: update  # cd66
+  at: '2026-11-02T10:19:45Z'  # cd66
+  by: agent  # cd66
+  actor: jgstern_agent  # cd66
+  clock: 6  # cd66
+  nonce: cd66  # cd66
+  set: {}  # cd66
+  remove:  # cd66
+    tags: [awaits_bakeoff_validation]  # cd66
+- op: discuss  # f4dd
+  at: '2026-11-02T10:19:45Z'  # f4dd
+  by: agent  # f4dd
+  actor: jgstern_agent  # f4dd
+  clock: 7  # f4dd
+  nonce: f4dd  # f4dd
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sherpa-onnx: measured pascal methods 134; pascal call sites 810 (recorded 0; 163 -> 134; 810). Tag stripped."  # f4dd

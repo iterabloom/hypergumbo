@@ -59,3 +59,19 @@
   clock: 6  # 0f8d
   nonce: 0f8d  # 0f8d
   message: "TAG APPLIED LATE — `awaits_bakeoff_validation` should have gone on at merge time\n(PR #892) and did not. My miss, corrected here rather than left to be discovered\nby the next queue sweep.\n\nWHY IT QUALIFIES. The tagging discipline fires on any PR whose description or\ntracker discussion carries a quantitative bakeoff-improvement claim, including\n\"NN% improvement\" and raw count deltas attributed to the change. This item's\nclosure records hinted-receiver share 9.0->23.4% (sbt) and 4.5->8.0% (lila),\nwith module-slot share up roughly 4x on both. That is squarely inside the rule.\n\nWHAT IT MEANS. Nothing about the fix changes; the item stays `done`, closed on\nits filed row with residual WI-gokop already filed. The tag records only that the\ncorpus movement has not yet been reproduced by a DEEP bakeoff cycle. It resolves\non a `moved` verdict from such a cycle, or becomes a regression sub-item on\n`no_move`.\n\nCONTEXT WORTH CARRYING: this is now the 15th item on the validation queue, and\nthe most recent DEEP cycle ran 2026-07-17 — roughly 55 days stale against a\n72-hour staleness knob and a threshold of 5. The queue is the problem, not this\nitem.\n\nA NOTE ON THE MEASUREMENT ITSELF, so a validator does not read the headline\nnaively: this item's own acceptance metric PREFERRED THE WORSE VERSION. The\nfirst cut scored 28.07% hinted — higher than what shipped — while binding 44 of\n185 newly-resolved edges to a project `Map.get` when the receiver was a stdlib\n`Map[K,V]`. The shipped version scores LOWER on the item's own metric and is\ncorrect. Any bakeoff validation of \"hinted share went up\" must not treat a\nlarger number as automatically better here."  # 0f8d
+- op: update  # 544f
+  at: '2026-11-02T10:19:38Z'  # 544f
+  by: agent  # 544f
+  actor: jgstern_agent  # 544f
+  clock: 7  # 544f
+  nonce: 544f  # 544f
+  set: {}  # 544f
+  remove:  # 544f
+    tags: [awaits_bakeoff_validation]  # 544f
+- op: discuss  # 50cf
+  at: '2026-11-02T10:19:39Z'  # 50cf
+  by: agent  # 50cf
+  actor: jgstern_agent  # 50cf
+  clock: 8  # 50cf
+  nonce: 50cf  # 50cf
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sbt: measured module-slot share 25.09%; receiver_type_hint share 23.18% (recorded 4.63 -> 18.19%; 9.03 -> 23.43%). Tag stripped."  # 50cf

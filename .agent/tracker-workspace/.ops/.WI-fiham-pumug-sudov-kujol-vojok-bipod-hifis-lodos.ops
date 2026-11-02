@@ -51,3 +51,19 @@
   set: {}  # f7cd
   add:  # f7cd
     tags: [awaits_bakeoff_validation]  # f7cd
+- op: update  # ca88
+  at: '2026-11-02T10:19:43Z'  # ca88
+  by: agent  # ca88
+  actor: jgstern_agent  # ca88
+  clock: 6  # ca88
+  nonce: ca88  # ca88
+  set: {}  # ca88
+  remove:  # ca88
+    tags: [awaits_bakeoff_validation]  # ca88
+- op: discuss  # 4188
+  at: '2026-11-02T10:19:44Z'  # 4188
+  by: agent  # 4188
+  actor: jgstern_agent  # 4188
+  clock: 7  # 4188
+  nonce: '4188'  # 4188
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). express: measured node:-spelled import / module_attr_ref edges 0; no node: in any verdict detail (recorded 86+14 -> 0). Tag stripped."  # 4188

@@ -57,3 +57,19 @@
   set: {}  # fbf0
   add:  # fbf0
     tags: [awaits_bakeoff_validation]  # fbf0
+- op: update  # cd7d
+  at: '2026-11-02T10:19:47Z'  # cd7d
+  by: agent  # cd7d
+  actor: jgstern_agent  # cd7d
+  clock: 7  # cd7d
+  nonce: cd7d  # cd7d
+  set: {}  # cd7d
+  remove:  # cd7d
+    tags: [awaits_bakeoff_validation]  # cd7d
+- op: discuss  # 2737
+  at: '2026-11-02T10:19:47Z'  # 2737
+  by: agent  # 2737
+  actor: jgstern_agent  # 2737
+  clock: 8  # 2737
+  nonce: '2737'  # 2737
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). vapor / hummingbird / Kingfisher / Alamofire: measured three-way by call site, their own arm.py on their frozen copies: of the sites A->B3 changed, dev == B3 at 800/919, 129/193, 258/394, 935/949; == A (reverted) 51, 0, 19, 0; the rest later deliberate changes (constructor binds, slot fills) (recorded —). Residual filed: WI-fihod-piluh-huzob-rigag-tomup-hubof-pivak-pujuk (70 member-chain sites untyped on dev). Tag stripped."  # 2737
