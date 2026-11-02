@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **57948** symbols (functions, classes, methods)
-- **232103** edges by type:
-  - calls: 131464
-  - contains: 53953
+- **57947** symbols (functions, classes, methods)
+- **232119** edges by type:
+  - calls: 131471
+  - contains: 53956
   - imports: 19906
-  - instantiates: 12883
+  - instantiates: 12885
   - references: 9987
   - module_attr_ref: 2127
-  - other: 1783
+  - other: 1787
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57948 Symbols + 232103 Edges + UsageContexts           │
+│  Output: 57947 Symbols + 232119 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -282,10 +282,10 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10615.0 | ir.py |
+| `Symbol` | class | 10619.7 | ir.py |
 | `len` | external_symbol | 8088.0 | <external> |
 | `write_text` | external_symbol | 7375.0 | <external> |
-| `Span` | class | 6796.2 | ir.py |
+| `Span` | class | 7107.4 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
 | `get` | external_symbol | 3701.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 1c7dd6e39005
-  commit_count: 8771
+  commit: 1edac3b7358b
+  commit_count: 8775
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
