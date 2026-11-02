@@ -11,6 +11,11 @@ the same program gave::
 
     untrusted-input-no-host-fs   confirmed               caveats []
     no-net-recv                  confirmed_with_caveats  [deferred_crossing]
+
+After INV-fogum the taint verdict was ``confirmed_with_caveats``. Since
+WI-jonin the handler, ``app.ServeHTTP``, is a request-ingress entrypoint, so
+WI-fuzik's unseeded-ingress rule withholds it: ``inconclusive``, naming the
+handler, with the deferred-crossing caveat still carried.
 """
 
 from __future__ import annotations
@@ -86,7 +91,8 @@ def test_both_arms_disclose_the_launch_in_one_run(
     assert boundary_cav["entries"] == ["net/http.ListenAndServe"]
 
     taint = verdicts["untrusted-no-fs"]
-    assert taint["verdict"] == "confirmed_with_caveats", taint
+    assert taint["verdict"] == "inconclusive", taint
+    assert "app.ServeHTTP at main.go:10" in taint["details"], taint["details"]
     [cav] = _deferred(taint)
     assert (cav["boundary"], cav["arm"], cav["entries"]) == (
         "net_recv", "taint", ["net/http.ListenAndServe"],

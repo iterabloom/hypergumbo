@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Go net/http handler implementations (WI-jonin)
+#
+# Go's standard library reaches a request handler through an INTERFACE:
+# any type with ``ServeHTTP(http.ResponseWriter, *http.Request)`` is an
+# ``http.Handler``, and the server calls that method for every request it
+# routes there. Nothing registers the method by name, so no route, decorator
+# or usage pattern sees it. ``mux.HandleFunc("/x", h)`` registrations are a
+# different shape, emitted as route symbols by the Go analyzer.
+#
+# Measured before this file: caddy has 31 non-test ServeHTTP methods (its
+# modules implement http.Handler, or caddyhttp.MiddlewareHandler whose
+# ServeHTTP adds a ``next`` parameter) and zero request-ingress entrypoints,
+# so verify-claims' unseeded-ingress withhold (WI-fuzik) never fired there.
+# Across the Go corpus, every one of the 442 single-line ServeHTTP
+# declarations takes a ``*http.Request``; the signature filter states that
+# contract rather than trusting the name.
+#
+# Always loaded: net/http is the standard library, so no import detection
+# gates it. Test files are excluded: a test server's fake handler is not the
+# program's ingress.
+
+# ADR-0061: net/http is the Go standard library; no third-party library is
+# named, the same line CATALOGUE_SCOPE's go entry draws.
+provenance: builtin
+id: go-net-http
+language: go
+
+patterns:
+  - concept: go_http_handler
+    symbol_name: "(^|\\.)ServeHTTP$"
+    symbol_kind: "^method$"
+    language: "^go$"
+    signature: "\\*(\\w+\\.)?Request\\b"
+    is_test_file: false
