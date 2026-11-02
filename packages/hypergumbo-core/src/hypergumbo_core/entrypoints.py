@@ -561,7 +561,6 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
     - "graphql_schema" -> GRAPHQL_SERVER (GraphQL schema definition)
     - "lifecycle_hook" -> ANDROID_ACTIVITY/ANDROID_APPLICATION/CONTROLLER (Android lifecycle)
-    - "go_http_handler" -> GO_HANDLER (Go http.Handler ServeHTTP; confidence=0.90)
 
     Detected concepts (generic entrypoint, confidence=0.90):
     - "entrypoint" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others)
@@ -1145,24 +1144,6 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
-
-            # Go http.Handler implementation -> GO_HANDLER (WI-jonin). The
-            # server calls ServeHTTP through the interface for every request
-            # routed to the type, so it receives a request no call edge
-            # carries: a request-ingress entrypoint, the first producer of
-            # this kind. go-net-http.yaml requires the request parameter.
-            elif concept_type == "go_http_handler":
-                if EntrypointKind.GO_HANDLER in added_kinds:
-                    continue
-                entrypoints.append(Entrypoint.create(
-                    symbol_id=sym.id,
-                    kind=EntrypointKind.GO_HANDLER,
-                    confidence=0.90,
-                    label=f"Go http.Handler: {sym.name}",
-                    source="concept_detector",
-                    evidence_type="framework_pattern",
-                ))
-                added_kinds.add(EntrypointKind.GO_HANDLER)
 
             # Naming-based heuristics (lowest confidence tier)
             # These are fallbacks when no explicit annotation/base class is found

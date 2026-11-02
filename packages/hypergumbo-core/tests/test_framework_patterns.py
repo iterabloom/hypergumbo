@@ -324,9 +324,6 @@ class TestPattern:
             "_modifiers_re": "re.compile",
             "_modifiers_exclude_re": "re.compile",
             "_symbol_path_re": "re.compile",
-            # WI-jonin: searched over the whole signature text, which holds
-            # several spellings at once; no single name to canonicalize.
-            "_signature_re": "re.compile",
         }
 
         source = textwrap.dedent(inspect.getsource(Pattern.__post_init__))
