@@ -55,31 +55,6 @@ _EXPRESS_APP = (
     "});\n\n"
     "app.listen(3000);\n"
 )
-# WI-jonin: Go reaches a handler through the http.Handler INTERFACE. Before it
-# was an entrypoint this read confirmed_with_caveats with NO overlay: nothing
-# withheld it at all. The HandleFunc registration was already a route.
-_GO_SERVEHTTP = (
-    "package main\n\n"
-    'import (\n\t"net/http"\n\t"os"\n)\n\n'
-    "type saver struct{}\n\n"
-    "func (saver) ServeHTTP(w http.ResponseWriter, r *http.Request) {\n"
-    '\tos.WriteFile(r.URL.Query().Get("p"), []byte("x"), 0o644)\n'
-    "}\n\n"
-    "func main() {\n"
-    '\thttp.ListenAndServe(":8080", saver{})\n'
-    "}\n"
-)
-_GO_HANDLEFUNC = (
-    "package main\n\n"
-    'import (\n\t"net/http"\n\t"os"\n)\n\n'
-    "func save(w http.ResponseWriter, r *http.Request) {\n"
-    '\tos.WriteFile(r.URL.Query().Get("p"), []byte("x"), 0o644)\n'
-    "}\n\n"
-    "func main() {\n"
-    '\thttp.HandleFunc("/save", save)\n'
-    '\thttp.ListenAndServe(":8080", nil)\n'
-    "}\n"
-)
 _NO_ROUTE_SCRIPT = (
     "import os\n\n\n"
     "def main():\n"
@@ -104,7 +79,7 @@ _CLAIMS = (
 
 
 def _overlay(tmp_path: Path, language: str, module: str) -> Path:
-    path = tmp_path / f"{module.replace('/', '_')}_complete.yaml"
+    path = tmp_path / f"{module}_complete.yaml"
     path.write_text(
         f"language: {language}\n"
         "module_completeness:\n"
@@ -137,8 +112,6 @@ def _verdicts(
 @pytest.mark.parametrize("app,language,module,handler", [
     (("app.py", _FLASK_APP), "python", "flask", "save"),
     (("server.js", _EXPRESS_APP), "javascript", "express", "_GET_save_handler"),
-    (("main.go", _GO_SERVEHTTP), "go", "net/http", "saver.ServeHTTP"),
-    (("main.go", _GO_HANDLEFUNC), "go", "net/http", "save"),
 ])
 @pytest.mark.parametrize("classified", [False, True])
 def test_a_request_handler_withholds_the_untrusted_input_verdict(

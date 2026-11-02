@@ -228,10 +228,6 @@ class Pattern:
         modifiers: Regex pattern requiring at least one modifier to match (positive filter)
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
         symbol_path: Regex pattern to match against symbol's file path (search, not match)
-        signature: Regex searched in ``Symbol.signature``, a FILTER like
-            ``symbol_path``: a symbol with no signature never matches. It
-            states what an interface method takes, which its name alone does
-            not (WI-jonin: ``ServeHTTP`` with a request parameter).
         extract_path: JSONPath-like expression to extract route path from metadata
         extract_method: How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)
         prefix_from_parent: Concept name to look up on parent class for path prefix
@@ -257,7 +253,6 @@ class Pattern:
     modifiers: str | None = None
     modifiers_exclude: str | None = None
     symbol_path: str | None = None
-    signature: str | None = None
     # WI-bosab: when set to False, the concept this pattern produces is stripped
     # from symbols the supply-chain classifier marks as test code (see
     # ``strip_test_file_only_concepts``). A plain tri-state bool (not a regex),
@@ -288,8 +283,7 @@ class Pattern:
         # Non-symbol-meta fields (method_name, symbol_name, language,
         # modifiers, symbol_path, symbol_kind) compare against structural
         # symbol attributes — not import-scoped spellings — so they stay
-        # on raw re.compile. ``signature`` (WI-jonin) is searched over the
-        # whole parameter-list text, not one name, so it does too.
+        # on raw re.compile.
         self._decorator_re = (
             re.compile(self.decorator) if self.decorator else None
         )
@@ -326,9 +320,6 @@ class Pattern:
         )
         self._symbol_path_re = (
             re.compile(self.symbol_path) if self.symbol_path else None
-        )
-        self._signature_re = (
-            re.compile(self.signature) if self.signature else None
         )
         # WI-limas: compile per-key meta_match regexes. Values that don't
         # appear on Symbol.meta (or whose values fail to match) yield no
@@ -371,9 +362,6 @@ class Pattern:
                 return False
         if self._symbol_path_re:
             if not symbol.path or not self._symbol_path_re.search(symbol.path):
-                return False
-        if self._signature_re:
-            if not symbol.signature or not self._signature_re.search(symbol.signature):
                 return False
         if self._modifiers_re:
             if not symbol.modifiers:
@@ -884,7 +872,7 @@ _PATTERN_KEYS: frozenset[str] = frozenset({
     "concept", "decorator", "base_class", "parent_base_class", "method_name",
     "symbol_name", "language", "annotation", "parameter_type", "symbol_kind",
     "framework_role", "meta_match", "modifiers", "modifiers_exclude",
-    "symbol_path", "signature", "is_test_file", "extract_path", "extract_method",
+    "symbol_path", "is_test_file", "extract_path", "extract_method",
     "prefix_from_parent", "usage", "extract",
 })
 _USAGE_KEYS: frozenset[str] = frozenset({"kind", "name", "position"})
@@ -966,7 +954,6 @@ class FrameworkPatternDef:
                 modifiers=p.get("modifiers"),
                 modifiers_exclude=p.get("modifiers_exclude"),
                 symbol_path=p.get("symbol_path"),
-                signature=p.get("signature"),
                 is_test_file=p.get("is_test_file"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
@@ -1456,7 +1443,6 @@ _CONVENTION_PATTERN_IDS: tuple[str, ...] = (
     "library-exports",
     "logging-conventions",
     "go-encoding-callbacks",
-    "go-net-http",
     "node-http",
 )
 
@@ -1658,7 +1644,6 @@ def enrich_symbols(
     # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
-    # - go-net-http.yaml: Go http.Handler implementations, ServeHTTP (WI-jonin)
     # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
     for convention_id in _CONVENTION_PATTERN_IDS:
         convention_patterns = load_framework_patterns(convention_id)

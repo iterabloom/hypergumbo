@@ -644,8 +644,6 @@ BUILTIN_FRAMEWORK_FILES: dict[str, str] = {
     "jakarta.* and javax.* as what the Java platform IS.",
     "jakarta-cdi.yaml": "Jakarta CDI annotations, jakarta.* / javax.* only; "
     "admitted by the same java line as jax-rs.",
-    "go-net-http.yaml": "The Go standard library's http.Handler interface "
-    "(ServeHTTP); net/http is on the go line above.",
 }
 
 
