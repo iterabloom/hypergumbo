@@ -874,7 +874,7 @@ def _go_lookup_through_dot_imports(
         hint = _strip_module_prefix(dot_path, module_path) if module_path else dot_path
         if not hint or "." in hint.split("/", 1)[0]:
             continue  # external (host-qualified) package: nothing in-repo to match
-        result = resolver.lookup(name, path_hint=hint)
+        result = resolver.lookup(name, path_hint=hint, admit=_go_package_member)
         if result.found and result.match_type in ("exact", "path_hint"):
             return result
     return LookupResult(symbol=None)
@@ -3679,7 +3679,7 @@ def _go_selector_reference_target(
     if alias in import_aliases and alias not in bound:
         path = import_aliases[alias]
         hint = _strip_module_prefix(path, module_path) if module_path else path
-        found = resolver.lookup(name, path_hint=hint)
+        found = resolver.lookup(name, path_hint=hint, admit=_go_package_member)
         if (
             found.symbol is not None
             and found.symbol.kind == "function"
@@ -4064,6 +4064,17 @@ _GO_INSTANTIABLE_KINDS: Final[frozenset[str]] = frozenset(
     {"function", "struct", "interface", "type"})
 
 
+def _go_package_member(sym: Symbol) -> bool:
+    """A package-qualified ``pkg.F()`` reaches a package member, never a method.
+
+    The shared resolver's call-shape filter (WI-jomik): methods share the
+    short-name registry with package functions, so ``log.Err()`` saw both
+    ``func Err`` and ``(*Handler) Err`` in ``pkg/log`` -- a tie the resolver
+    no longer guesses -- though only one of them can be called that way.
+    """
+    return sym.kind != "method"
+
+
 def _go_selector_parts(
     node: "tree_sitter.Node",
 ) -> "tuple[Optional[tree_sitter.Node], Optional[tree_sitter.Node]]":
@@ -4184,7 +4195,9 @@ def _extract_edges_from_file(
     # No ambiguity threshold: every candidate is the caller's own package, so
     # several are build-constraint variants of ONE declaration, and binding the
     # path-sorted first at 1/sqrt(N) beats withholding a call Go scoping places.
-    own_package = ListNameResolver(package_scope)
+    # A package declares a name once per build: same-named entries are
+    # build-constraint variants of one function (WI-jomik), so a tie binds.
+    own_package = ListNameResolver(package_scope, variants=True)
     if import_aliases is None:
         import_aliases = {}
     if resolver is None:
@@ -5050,7 +5063,10 @@ def _extract_edges_from_file(
                         _named = (
                             own_package.lookup(callee_name)
                             if callee_shape == "identifier"
-                            else resolver.lookup(callee_name, path_hint=import_path_hint)
+                            else resolver.lookup(
+                                callee_name, path_hint=import_path_hint,
+                                admit=_go_package_member if package_qualified else None,
+                            )
                         ).symbol
                         if _named is not None and _named.kind not in _GO_INSTANTIABLE_KINDS:
                             callee_name = None
@@ -5104,7 +5120,10 @@ def _extract_edges_from_file(
                                 if receiver_type_is_external
                                 else own_package.lookup(callee_name)
                                 if callee_shape == "identifier"
-                                else resolver.lookup(callee_name, path_hint=import_path_hint)
+                                else resolver.lookup(
+                                callee_name, path_hint=import_path_hint,
+                                admit=_go_package_member if package_qualified else None,
+                            )
                             )
                             if (
                                 not lookup_result.found

@@ -65,6 +65,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Calls, types and references
 
+- **Name lookups no longer guess between same-named definitions**: a call two or more could answer, none in the caller's own file, is unresolved instead of binding the first by path. On just, 2,327 such calls go (a read sample: three in four were wrong); the tie is handed to inherited-call recovery as a weak match was (knex: 99 recovered). A package-qualified Go call cannot bind a method; a Go package's build-constraint variants still bind.
 - **A function used as a value is a reference, not dead code**, in Go, JS/TS, Rust, C and C++ (dispatch tables included); Java and Ruby method references outside methods are kept.
 - **A method call on a Rust field of an external type** (`Vec`, `HashMap`) no longer binds a same-named first-party method.
 - **The final call-resolution pass no longer overrides a resolver's graded confidence** (ADR-0039 ruling 6); on apollo-server, 244 of 18,684 edges move, all down.

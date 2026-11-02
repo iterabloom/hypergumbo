@@ -247,6 +247,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     emit_module_attribute_refs,
     stamp_io_mode_from_call,
     symbols_by_path_index,
@@ -6466,6 +6467,16 @@ def _extract_edges(
                                             _JS_ROUTE_SCORE_RESOLVER
                                             * lookup_result.confidence
                                         )
+                            elif defer_unresolved_tie(lookup_result):
+                                # A tie among methods (WI-jomik: no guess) is
+                                # deferred exactly as a weak pick was.
+                                edges.append(make_unresolved_edge(
+                                    lang, current_function.id, func_name,
+                                    node.start_point[0] + 1 + line_offset,
+                                    PASS_ID, run.execution_id,
+                                    enclosing_class=_jsts_enclosing_class(node, source),
+                                ))
+                                magnet_deferred = True
                         if (
                             callee is not None
                             and _called_module is not None
@@ -6955,7 +6966,7 @@ def _extract_edges(
                         # that exist on Array/Map/Set/Object — resolving these
                         # to user-defined classes inflates in-degree.
                         if not edge_added and method_name not in JS_BUILTIN_METHODS:
-                            lookup_result = method_resolver.lookup(method_name)
+                            lookup_result = method_resolver.lookup(method_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: low-confidence method
                                 # inference should not cross npm packages.
@@ -6993,6 +7004,16 @@ def _extract_edges(
                                         )
                                         edges.append(edge)
                                         edge_added = True
+                            elif defer_unresolved_tie(lookup_result):
+                                # A tie among methods (WI-jomik: no guess) is
+                                # deferred exactly as a weak pick was.
+                                edges.append(make_unresolved_edge(
+                                    lang, current_function.id, method_name,
+                                    node.start_point[0] + 1 + line_offset,
+                                    PASS_ID, run.execution_id,
+                                    enclosing_class=_jsts_enclosing_class(node, source),
+                                ))
+                                edge_added = True
 
                         # WI-nasuf (javascript): an instance-method call on a
                         # receiver nothing above could type or resolve --

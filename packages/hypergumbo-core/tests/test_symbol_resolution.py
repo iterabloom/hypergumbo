@@ -222,7 +222,7 @@ class TestSymbolResolverLookupByName:
         assert result.symbol is sym
 
     def test_lookup_by_name_multiple_matches(self) -> None:
-        """Multiple name matches returns first with low confidence."""
+        """Multiple name matches: unresolved, both candidates kept."""
         sym1 = make_symbol("common", "/pkg1/utils.py", "pkg1.utils")
         sym2 = make_symbol("common", "/pkg2/utils.py", "pkg2.utils")
         registry = {
@@ -233,10 +233,9 @@ class TestSymbolResolverLookupByName:
 
         result = resolver.lookup_by_name("common")
 
-        assert result.found is True
-        assert result.symbol in [sym1, sym2]
-        import math
-        assert abs(result.confidence - SymbolResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
+        assert result.found is False
+        assert result.symbol is None
+        assert result.match_type == "ambiguous"
         assert result.is_ambiguous is True
 
     def test_lookup_by_name_with_path_hint(self) -> None:
@@ -447,7 +446,7 @@ class TestNameResolverPathHints:
         assert result.confidence == NameResolver.CONFIDENCE_EXACT
 
     def test_path_hints_no_match_falls_through(self) -> None:
-        """When path_hints don't match any candidate, return ambiguous result."""
+        """When path_hints don't match any candidate: an unresolved tie."""
         sym_a = make_symbol("error", "test/a.d", "d")
         sym_b = make_symbol("error", "test/b.d", "d")
         registry = {
@@ -459,8 +458,8 @@ class TestNameResolverPathHints:
 
         result = resolver.lookup("error", path_hints=["nonexistent"])
 
-        # Should still find something (ambiguous/suffix match)
-        assert result.found is True
+        assert result.found is False
+        assert {c.path for c in result.candidates} == {"test/a.d", "test/b.d"}
 
 
 class TestNameResolverSuffixMatch:
@@ -496,7 +495,7 @@ class TestNameResolverSuffixMatch:
         assert result.confidence == 1.0  # Exact match confidence
 
     def test_suffix_match_ambiguous_returns_first(self) -> None:
-        """Ambiguous suffix match returns first with scaled confidence."""
+        """Ambiguous suffix match: no guess, candidates kept."""
         sym1 = make_symbol("doWork", "/pkg1/MyClass.java", "java")
         sym2 = make_symbol("doWork", "/pkg2/OtherClass.java", "java")
         registry = {
@@ -507,18 +506,13 @@ class TestNameResolverSuffixMatch:
 
         result = resolver.lookup("doWork")
 
-        assert result.found is True
-        assert result.symbol in [sym1, sym2]
-        # Confidence scales as CONFIDENCE_AMBIGUOUS / sqrt(N)
-        import math
-        expected = NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)
-        assert abs(result.confidence - expected) < 0.01
+        assert result.found is False
+        assert result.symbol is None
         assert "ambiguous" in result.match_type
         assert len(result.candidates) == 2
 
     def test_suffix_match_many_candidates_low_confidence(self) -> None:
-        """Many ambiguous candidates produce very low confidence."""
-        # Simulate 15 classes defining Initialize()
+        """Many suffix candidates (15 classes defining Initialize()): unresolved."""
         registry = {}
         for i in range(15):
             sym = make_symbol("Initialize", f"/pkg{i}/Class{i}.cpp", "cpp")
@@ -527,12 +521,8 @@ class TestNameResolverSuffixMatch:
 
         result = resolver.lookup("Initialize")
 
-        assert result.found is True
-        # 15 candidates: 0.70 / sqrt(15) ≈ 0.18
-        import math
-        expected = NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(15)
-        assert abs(result.confidence - expected) < 0.01
-        assert result.confidence < 0.20  # sanity: very low
+        assert result.found is False
+        assert result.symbol is None
         assert len(result.candidates) == 15
 
     def test_suffix_key_disambiguation_same_file(self) -> None:
@@ -733,47 +723,20 @@ class TestListNameResolverExactMatch:
         assert result.found is False
         assert result.symbol is None
 
-    def test_soft_hint_single_candidate_non_matching_returns_symbol(self) -> None:
-        """With soft_hint=True, a single candidate is returned even when path_hint
-        doesn't match — with reduced confidence instead of rejection.
-
-        This supports Rust-style "prefer same-module" semantics where the hint is
-        the caller's directory (preference evidence), not Go-style import-path
-        evidence (filter evidence).
-        """
-        sym = make_symbol("prove", "/crates/util/tower/src/lib.rs", "tower")
-        registry = {"prove": [sym]}
-        resolver = ListNameResolver(registry)
-
-        result = resolver.lookup(
-            "prove",
-            path_hint="crates/core/keys/src/keys",
-            soft_hint=True,
-        )
-
-        assert result.found is True
-        assert result.symbol is sym
-        # Confidence should be reduced (not 1.0) since path didn't match
-        assert result.confidence < 1.0
-
-    def test_soft_hint_single_candidate_matching_returns_exact(self) -> None:
-        """With soft_hint=True and matching path, returns with exact confidence."""
+    def test_hint_single_candidate_matching_returns_exact(self) -> None:
+        """A path hint that matches a lone candidate returns it, exact."""
         sym = make_symbol("prove", "/crates/core/nifs/src/lib.rs", "nifs")
         registry = {"prove": [sym]}
         resolver = ListNameResolver(registry)
 
-        result = resolver.lookup(
-            "prove",
-            path_hint="crates/core/nifs/src",
-            soft_hint=True,
-        )
+        result = resolver.lookup("prove", path_hint="crates/core/nifs/src")
 
         assert result.found is True
         assert result.symbol is sym
         assert result.confidence == 1.0
 
     def test_hard_hint_single_candidate_non_matching_rejects(self) -> None:
-        """Default (soft_hint=False) still rejects non-matching single candidates.
+        """A lone candidate outside the path hint is rejected.
 
         Preserves Go-style import-path filtering behavior.
         """
@@ -811,7 +774,7 @@ class TestListNameResolverDisambiguation:
     """Tests for disambiguation in ListNameResolver."""
 
     def test_multiple_candidates_without_hint_returns_first(self) -> None:
-        """Multiple candidates without hint returns first with scaled confidence."""
+        """Multiple candidates without hint: no guess, both candidates kept."""
         sym_grpc = make_symbol("Register", "/grpc/server.go", "grpc")
         sym_http = make_symbol("Register", "/http/server.go", "http")
         registry = {"Register": [sym_grpc, sym_http]}
@@ -819,12 +782,10 @@ class TestListNameResolverDisambiguation:
 
         result = resolver.lookup("Register")
 
-        assert result.found is True
-        assert result.symbol is sym_grpc  # First candidate (sorted by path)
-        # 1/sqrt(2) ≈ 0.707
-        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+        assert result.found is False
+        assert result.symbol is None
         assert result.match_type == "ambiguous"
-        assert len(result.candidates) == 2
+        assert result.candidates == [sym_grpc, sym_http]
 
     def test_path_hint_disambiguates(self) -> None:
         """Path hint selects correct candidate."""
@@ -855,7 +816,7 @@ class TestListNameResolverDisambiguation:
         assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
 
     def test_path_hint_no_match_falls_back(self) -> None:
-        """Path hint with no match falls back to first candidate."""
+        """Path hint with no match: no fallback to the first candidate."""
         sym_grpc = make_symbol("Register", "/grpc/server.go", "grpc")
         sym_http = make_symbol("Register", "/http/server.go", "http")
         registry = {"Register": [sym_grpc, sym_http]}
@@ -863,10 +824,9 @@ class TestListNameResolverDisambiguation:
 
         result = resolver.lookup("Register", path_hint="nonexistent")
 
-        assert result.found is True
-        assert result.symbol is sym_grpc  # Falls back to first
-        # 1/sqrt(2) ≈ 0.707
-        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+        assert result.found is False
+        assert result.symbol is None
+        assert len(result.candidates) == 2
 
     def test_short_path_hint_uses_full_path(self) -> None:
         """Short path hint like 'entities/bug' disambiguates via full path match.
@@ -898,31 +858,31 @@ class TestListNameResolverCandidateScaling:
     """
 
     def test_two_candidates_confidence(self) -> None:
-        """Two candidates gives ~0.71 confidence."""
+        """2 candidates: unresolved, every candidate kept (no 1/sqrt(N) guess)."""
         syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(2)]
-        resolver = ListNameResolver({"Close": syms})
-        result = resolver.lookup("Close")
-        assert result.found is True
+        result = ListNameResolver({"Close": syms}).lookup("Close")
+        assert result.found is False
+        assert result.symbol is None
         assert result.match_type == "ambiguous"
-        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+        assert len(result.candidates) == 2
 
     def test_ten_candidates_lower_confidence(self) -> None:
-        """Ten candidates gives ~0.32 confidence."""
+        """10 candidates: unresolved, every candidate kept (no 1/sqrt(N) guess)."""
         syms = [make_symbol("String", f"/pkg{i}/x.go", "go") for i in range(10)]
-        resolver = ListNameResolver({"String": syms})
-        result = resolver.lookup("String")
-        assert result.found is True
-        assert result.confidence < 0.35
-        assert result.confidence > 0.28
+        result = ListNameResolver({"String": syms}).lookup("String")
+        assert result.found is False
+        assert result.symbol is None
+        assert result.match_type == "ambiguous"
+        assert len(result.candidates) == 10
 
     def test_fifty_candidates_very_low_confidence(self) -> None:
-        """Fifty candidates gives ~0.14 confidence."""
+        """50 candidates: unresolved, every candidate kept (no 1/sqrt(N) guess)."""
         syms = [make_symbol("Name", f"/pkg{i:02d}/x.go", "go") for i in range(50)]
-        resolver = ListNameResolver({"Name": syms})
-        result = resolver.lookup("Name")
-        assert result.found is True
-        assert result.confidence < 0.18
-        assert result.confidence > 0.10
+        result = ListNameResolver({"Name": syms}).lookup("Name")
+        assert result.found is False
+        assert result.symbol is None
+        assert result.match_type == "ambiguous"
+        assert len(result.candidates) == 50
 
     def test_path_hint_not_affected_by_scaling(self) -> None:
         """Path hint disambiguation maintains full confidence regardless of candidate count."""
@@ -975,15 +935,16 @@ class TestListNameResolverAmbiguityThreshold:
         assert result.is_ambiguous is True
 
     def test_below_threshold_still_resolves(self) -> None:
-        """2 candidates with threshold=3 → still resolves (below threshold)."""
+        """2 candidates with threshold=3: the guard does not fire, but a tie
+        with no in-file evidence is still not a binding (WI-jomik)."""
         syms = [make_symbol("Run", f"/pkg{i}/x.go", "go") for i in range(2)]
         resolver = ListNameResolver({"Run": syms}, ambiguity_threshold=3)
+        assert resolver.too_ambiguous("Run") is False
         result = resolver.lookup("Run")
-        assert result.found is True, (
-            "2 candidates below threshold=3 should still resolve"
-        )
+        assert result.found is False
+        assert result.symbol is None
         assert result.match_type == "ambiguous"
-        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+        assert len(result.candidates) == 2
 
     def test_path_hint_bypasses_threshold(self) -> None:
         """Path hint resolves even when candidate count >= threshold."""
@@ -996,13 +957,15 @@ class TestListNameResolverAmbiguityThreshold:
         assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
 
     def test_default_threshold_is_none(self) -> None:
-        """Default threshold is None (no guard), preserving backward compat."""
+        """Default threshold is None: the guard never fires; a tie is unresolved."""
         syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(10)]
         resolver = ListNameResolver({"Close": syms})
+        assert resolver.ambiguity_threshold is None
+        assert resolver.too_ambiguous("Close") is False
         result = resolver.lookup("Close")
-        assert result.found is True, (
-            "Default (no threshold) should still resolve ambiguous lookups"
-        )
+        assert result.found is False
+        assert result.symbol is None
+        assert len(result.candidates) == 10
 
     def test_threshold_single_candidate_unaffected(self) -> None:
         """Single candidate is never affected by threshold."""
@@ -1021,9 +984,9 @@ class TestListNameResolverAmbiguityThreshold:
           - /repo/pkg/log/handler.go  (Handler.Err, stored by short name)
           - /repo/pkg/parser/lexer.go (Lexer.Err)
 
-        Path hint "pkg/log" matches 2/3 candidates (both in pkg/log/).
-        Without narrowing, the threshold fires (3 >= 3 → unresolved).
-        With narrowing, the filtered set is 2 < 3 → resolves.
+        Path hint "pkg/log" matches 2/3 candidates (both in pkg/log/), so the
+        guard (3 >= 3) does not fire. The two left are a tie, and both in one
+        file is no evidence for either, so the lookup is still unresolved.
         """
         syms = [
             make_symbol("Err", "/repo/pkg/log/handler.go", "go"),
@@ -1032,15 +995,13 @@ class TestListNameResolverAmbiguityThreshold:
         ]
         # Store all under short name "Err" (as Go analyzer does)
         resolver = ListNameResolver({"Err": syms}, ambiguity_threshold=3)
-        result = resolver.lookup("Err", path_hint="pkg/log")
-        assert result.found is True, (
-            "Path hint 'pkg/log' should narrow from 3 to 2 candidates, "
-            "avoiding threshold=3"
+        assert resolver.too_ambiguous("Err") is True
+        assert resolver.too_ambiguous("Err", path_hint="pkg/log") is False
+        result = resolver.lookup(
+            "Err", path_hint="pkg/log", caller_path="/repo/pkg/log/handler.go",
         )
-        # Should pick one of the two pkg/log symbols
-        assert "log" in result.symbol.path, (
-            f"Should resolve to a symbol in pkg/log, got {result.symbol.path}"
-        )
+        assert result.found is False
+        assert result.symbol is None
 
     def test_path_component_suffix_match_helper_edge_cases(self) -> None:
         """Direct tests for the _path_component_suffix_match helper.
@@ -1157,7 +1118,7 @@ class TestNameResolverRustSeparator:
         assert result.match_type == "exact"
 
     def test_ambiguous_double_colon(self) -> None:
-        """Multiple :: entries with same suffix → ambiguous."""
+        """Multiple :: entries with same suffix → unresolved suffix tie."""
         sym1 = make_symbol("Diff::compute", "/src/diff.rs", "rust")
         sym2 = make_symbol("Parser::compute", "/src/parser.rs", "rust")
         registry = {"Diff::compute": sym1, "Parser::compute": sym2}
@@ -1165,9 +1126,8 @@ class TestNameResolverRustSeparator:
 
         result = resolver.lookup("compute")
 
-        assert result.found is True
-        import math
-        assert abs(result.confidence - NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(2)) < 0.01
+        assert result.found is False
+        assert result.symbol is None
         assert result.match_type == "suffix_ambiguous"
         assert len(result.candidates) == 2
 
@@ -1232,7 +1192,7 @@ class TestNameResolverRustSeparator:
 
         # "method" suffix matches both
         result = resolver.lookup("method")
-        assert result.found is True
+        assert result.found is False
         assert result.match_type == "suffix_ambiguous"
         assert len(result.candidates) == 2
 
@@ -1273,16 +1233,16 @@ class TestNameResolverTestPathPreference:
         )
 
     def test_suffix_no_preference_when_caller_is_test(self) -> None:
-        """When caller_path is a test file, no test-path preference applied."""
+        """When caller_path is a test file, no test-path filtering: both stay."""
         prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
         test_sym = make_symbol("TestHelper.startup", "src/test/java/TestHelper.java", "java")
         registry = {"Server.startup": prod_sym, "TestHelper.startup": test_sym}
         resolver = NameResolver(registry)
 
-        # From a test file, both candidates are equally valid
         result = resolver.lookup("startup", caller_path="src/test/java/MyTest.java")
-        assert result.found is True
-        # Should still resolve (to either candidate), no preference filtering
+        assert result.found is False
+        assert result.symbol is None
+        assert len(result.candidates) == 2
 
     def test_suffix_single_test_candidate_still_resolves(self) -> None:
         """When only test candidates exist, still resolve (no elimination)."""
@@ -1295,15 +1255,16 @@ class TestNameResolverTestPathPreference:
         assert result.symbol is test_sym  # Only option, still returned
 
     def test_no_caller_path_no_preference(self) -> None:
-        """Without caller_path, no test-path preference applied (backward compat)."""
+        """Without caller_path, no test-path preference: both stay candidates."""
         prod_sym = make_symbol("Server.startup", "src/main/java/Server.java", "java")
         test_sym = make_symbol("LogCleanerTest.startup", "src/test/java/LogCleanerTest.java", "java")
         registry = {"Server.startup": prod_sym, "LogCleanerTest.startup": test_sym}
         resolver = NameResolver(registry)
 
         result = resolver.lookup("startup")
-        assert result.found is True
-        # Without caller_path, returns first match (ambiguous) — no preference
+        assert result.found is False
+        assert result.symbol is None
+        assert len(result.candidates) == 2
 
     def test_suffix_test_filter_with_path_hint_no_crash(self) -> None:
         """Test filtering + path_hint zip must not crash (B905 strict zip).
@@ -1334,3 +1295,126 @@ class TestNameResolverTestPathPreference:
         )
         assert result.found is True
         assert result.symbol is prod_sym
+
+
+class TestNonUniquePickNeedsCallerFile:
+    """WI-jomik phase 2: a pick among 2+ candidates needs in-file evidence.
+
+    Measured on an 11-repo corpus, a non-unique pick (``ambiguous`` /
+    ``suffix_ambiguous``) or a soft-hint fallback with no evidence from the
+    caller's own file or its imports bound the wrong target ~80% of the time
+    (45 of 57 judged), and 0 of 13 with it. So the resolvers no longer guess:
+    such a lookup is unresolved, its candidates kept, unless exactly one
+    candidate is defined in the caller's own file.
+    """
+
+    def _two(self) -> tuple[Symbol, Symbol]:
+        return (make_symbol("doWork", "/pkg1/A.java", "pkg1"),
+                make_symbol("doWork", "/pkg2/B.java", "pkg2"))
+
+    def test_name_resolver_suffix_tie_is_unresolved(self) -> None:
+        a, b = self._two()
+        resolver = NameResolver({"pkg1.A.doWork": a, "pkg2.B.doWork": b})
+        result = resolver.lookup("doWork", caller_path="/pkg3/C.java")
+        assert result.found is False
+        assert result.match_type == "suffix_ambiguous"
+        assert sorted(c.path for c in result.candidates) == ["/pkg1/A.java", "/pkg2/B.java"]
+
+    def test_name_resolver_suffix_tie_without_caller_is_unresolved(self) -> None:
+        a, b = self._two()
+        result = NameResolver({"pkg1.A.doWork": a, "pkg2.B.doWork": b}).lookup("doWork")
+        assert result.found is False
+        assert len(result.candidates) == 2
+
+    def test_name_resolver_caller_file_candidate_wins(self) -> None:
+        a, b = self._two()
+        resolver = NameResolver({"pkg1.A.doWork": a, "pkg2.B.doWork": b})
+        result = resolver.lookup("doWork", caller_path="/pkg2/B.java")
+        assert result.symbol is b
+        assert result.match_type == "caller_file"
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
+
+    def test_two_candidates_in_the_caller_file_stay_unresolved(self) -> None:
+        a = make_symbol("doWork", "/pkg1/A.java", "pkg1")
+        b = make_symbol("doWork", "/pkg1/A.java", "pkg1")
+        resolver = NameResolver({"pkg1.A.doWork": a, "pkg1.A.Inner.doWork": b})
+        assert resolver.lookup("doWork", caller_path="/pkg1/A.java").found is False
+
+    def test_list_resolver_tie_is_unresolved(self) -> None:
+        a, b = self._two()
+        result = ListNameResolver({"doWork": [a, b]}).lookup("doWork")
+        assert result.found is False
+        assert result.match_type == "ambiguous"
+        assert len(result.candidates) == 2
+
+    def test_list_resolver_hint_narrowed_tie_is_unresolved(self) -> None:
+        syms = [make_symbol("Init", f"/src/{d}/init.go", d) for d in ("a/x", "b/x", "c/y")]
+        result = ListNameResolver({"Init": syms}).lookup("Init", path_hint="x")
+        assert result.found is False
+        assert len(result.candidates) == 3
+
+    def test_list_resolver_caller_file_candidate_wins(self) -> None:
+        a, b = self._two()
+        result = ListNameResolver({"doWork": [a, b]}).lookup(
+            "doWork", caller_path="/pkg1/A.java")
+        assert result.symbol is a
+        assert result.match_type == "caller_file"
+
+    def test_list_resolver_single_candidate_outside_hint_is_unresolved(self) -> None:
+        sym = make_symbol("prove", "/crates/util/tower/src/lib.rs", "tower")
+        result = ListNameResolver({"prove": [sym]}).lookup(
+            "prove", path_hint="crates/core/keys/src/keys")
+        assert result.found is False
+
+    def test_soft_hint_lone_candidate_outside_hint_is_kept(self) -> None:
+        sym = make_symbol("prove", "/crates/util/tower/src/lib.rs", "tower")
+        result = ListNameResolver({"prove": [sym]}).lookup(
+            "prove", path_hint="crates/core/keys/src/keys", soft_hint=True)
+        assert result.symbol is sym
+        assert result.match_type == "soft_hint_fallback"
+        assert result.confidence < 1.0
+
+    def test_soft_hint_does_not_license_a_tie(self) -> None:
+        syms = [make_symbol("prove", f"/crates/{d}/src/lib.rs", d) for d in ("a", "b")]
+        result = ListNameResolver({"prove": syms}).lookup(
+            "prove", path_hint="crates/core/keys/src/keys", soft_hint=True)
+        assert result.found is False
+
+    def test_list_resolver_unique_and_path_hint_hits_unchanged(self) -> None:
+        a, b = self._two()
+        assert ListNameResolver({"doWork": [a]}).lookup("doWork").symbol is a
+        hit = ListNameResolver({"doWork": [a, b]}).lookup("doWork", path_hint="pkg2")
+        assert hit.symbol is b and hit.match_type == "path_hint"
+
+    def test_symbol_resolver_name_tie_is_unresolved(self) -> None:
+        a, b = self._two()
+        result = SymbolResolver({("pkg1", "doWork"): a, ("pkg2", "doWork"): b}).lookup_by_name("doWork")
+        assert result.found is False
+        assert result.match_type == "ambiguous"
+        assert len(result.candidates) == 2
+
+    def test_too_ambiguous_single_candidate_and_selecting_hint(self) -> None:
+        one = make_symbol("Run", "/pkg0/x.go", "go")
+        assert ListNameResolver({"Run": [one]}, ambiguity_threshold=1).too_ambiguous("Run") is False
+        syms = [make_symbol("Run", f"/pkg{i}/x.go", "go") for i in range(3)]
+        resolver = ListNameResolver({"Run": syms}, ambiguity_threshold=3)
+        assert resolver.too_ambiguous("Run") is True
+        assert resolver.too_ambiguous("Run", path_hint="pkg1") is False
+
+    def test_admit_filters_candidates_by_call_shape(self) -> None:
+        fn = make_symbol("Err", "/repo/pkg/log/handler.go", "go")
+        meth = Symbol(id="go:/repo/pkg/log/handler.go:3-5:Handler.Err:method", name="Handler.Err",
+                      kind="method", language="go", path="/repo/pkg/log/handler.go",
+                      span=Span(start_line=3, start_col=0, end_line=5, end_col=0))
+        resolver = ListNameResolver({"Err": [meth, fn]})
+        assert resolver.lookup("Err", path_hint="pkg/log").found is False  # a tie
+        hit = resolver.lookup("Err", path_hint="pkg/log", admit=lambda s: s.kind != "method")
+        assert hit.symbol is fn and hit.match_type == "exact"
+        assert resolver.lookup("Err", admit=lambda s: False).found is False
+
+    def test_variant_registry_binds_a_tie_deterministically(self) -> None:
+        syms = [make_symbol("platform", f"/a/p_{o}.go", "a") for o in ("linux", "darwin")]
+        result = ListNameResolver({"platform": syms}, variants=True).lookup("platform")
+        assert result.symbol is not None and result.symbol.path == "/a/p_darwin.go"
+        assert result.match_type == "ambiguous"
+        assert abs(result.confidence - 1 / 2 ** 0.5) < 1e-9

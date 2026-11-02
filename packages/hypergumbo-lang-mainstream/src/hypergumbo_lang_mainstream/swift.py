@@ -147,6 +147,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     defer_bare_method_call,
+    defer_unresolved_tie,
     file_anchor_symbol,
     enclosing_declared_symbol,
     make_file_id,
@@ -3043,10 +3044,10 @@ def _extract_edges_from_file(
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         _sym = lookup_result.symbol
-                        _defer = _sym is not None and defer_bare_method_call(
+                        _defer = (_sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, _enclosing_type,
-                        )
+                        )) or defer_unresolved_tie(lookup_result)
                         if lookup_result.found and _sym is not None and not _defer:
                             _callee, _score, _ambiguous = _constructed(
                                 _sym, node, lookup_result.confidence,

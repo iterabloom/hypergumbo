@@ -87,6 +87,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -971,10 +972,7 @@ def _extract_edges_from_file(
                         # method name, suppress the edge to avoid false positives.
                         path_hint = import_hints.get(first_ident)
                         if method_resolver is not None:
-                            amb_check = method_resolver.lookup(
-                                first_ident, path_hint=path_hint,
-                            )
-                            if not amb_check.found and amb_check.candidates:
+                            if method_resolver.too_ambiguous(first_ident, path_hint=path_hint):
                                 continue  # 3+ method candidates, suppress
                         lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
@@ -1017,6 +1015,15 @@ def _extract_edges_from_file(
                                     meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
+                        elif defer_unresolved_tie(lookup_result):
+                            # A tie among methods (WI-jomik: no guess) is deferred
+                            # exactly as a weak pick was.
+                            edges.append(make_unresolved_edge(
+                                "dart", caller.id, first_ident,
+                                node.start_point[0] + 1, PASS_ID, run_id,
+                                module_hint=path_hint or "external",
+                                enclosing_class=_find_enclosing_class(node, source),
+                            ))
 
         # Method call in selector (obj.method()) - complex AST pattern
         if node.type == "selector":  # pragma: no cover - method call detection
@@ -1072,6 +1079,15 @@ def _extract_edges_from_file(
                                             meta={"call_construct": "method"},
                                         )
                                         edges.append(edge)
+                                elif defer_unresolved_tie(lookup_result):
+                                    # A tie among methods (WI-jomik: no guess) is deferred
+                                    # exactly as a weak pick was.
+                                    edges.append(make_unresolved_edge(
+                                        "dart", caller.id, method_name,
+                                        node.start_point[0] + 1, PASS_ID, run_id,
+                                        module_hint=path_hint or "external",
+                                        enclosing_class=_find_enclosing_class(node, source),
+                                    ))
 
         # Constructor invocation (ClassName() or new ClassName())
         if node.type in ("new_expression", "const_object_expression"):

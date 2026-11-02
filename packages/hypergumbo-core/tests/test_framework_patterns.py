@@ -9686,10 +9686,31 @@ class TestResolveDeferredSymbolRefs:
 
         stats = resolve_deferred_symbol_refs(symbols, [ctx])
 
-        # Should resolve to one of them (ambiguous)
-        assert ctx.symbol_ref is not None
-        assert stats.total_resolved == 1
-        assert stats.resolved_ambiguous == 1  # Should be ambiguous
+        # A tie with no evidence is not guessed (WI-jomik).
+        assert ctx.symbol_ref is None
+        assert stats.total_resolved == 0
+        assert stats.still_unresolved == 1
+
+    def test_suffix_tie_resolved_by_the_usage_context_file(self) -> None:
+        """Among same-named handlers, the one in the context's own file wins."""
+        symbols = [
+            Symbol(
+                id=f"python:{p}:10:{c}.list_users:method", name=f"{c}.list_users",
+                kind="method", language="python", path=p,
+                span=Span(10, 10, 0, 50), meta={},
+            )
+            for p, c in (("views1.py", "AdminViewSet"), ("views2.py", "UserViewSet"))
+        ]
+        ctx = UsageContext.create(
+            kind="call", context_name="path", position="args[1]",
+            path="views2.py", span=Span(5, 5, 0, 50), symbol_ref=None,
+            metadata={"view_name": "list_users"},
+        )
+
+        stats = resolve_deferred_symbol_refs(symbols, [ctx])
+
+        assert ctx.symbol_ref == "python:views2.py:10:UserViewSet.list_users:method"
+        assert stats.resolved_ambiguous == 1
 
     def test_suffix_match_with_path_hint(self) -> None:
         """Uses path hint to disambiguate suffix matches."""

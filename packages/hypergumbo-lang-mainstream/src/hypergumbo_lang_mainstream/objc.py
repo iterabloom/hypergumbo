@@ -80,6 +80,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -1031,9 +1032,9 @@ def _extract_edges_from_file(
                     _enclosing_type = _get_enclosing_class_objc(node, source)
                     lookup_result = method_resolver.lookup(selector, caller_path=_caller_path)
                     _sym = lookup_result.symbol
-                    _defer = _sym is not None and defer_bare_method_call(
+                    _defer = (_sym is not None and defer_bare_method_call(
                         _sym.kind, _sym.name, "suffix", _enclosing_type,
-                    )
+                    )) or defer_unresolved_tie(lookup_result)
                     if lookup_result.found and _sym is not None and not _defer:
                         edges.append(Edge.create(
                             src=current_method.id,

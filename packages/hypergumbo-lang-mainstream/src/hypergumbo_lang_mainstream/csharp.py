@@ -101,6 +101,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     enclosing_declared_symbol,
@@ -1898,8 +1899,7 @@ def _extract_edges_from_file(
                         _get_enclosing_class(node, source),
                     )
                     if method_resolver is not None:
-                        amb_check = method_resolver.lookup(callee_name)
-                        if not amb_check.found and amb_check.candidates:
+                        if method_resolver.too_ambiguous(callee_name):
                             # 3+ method candidates: no BINDING (the guard is
                             # right), but the call still happened (INV-bamij:
                             # this used to be a bare ``continue``).
@@ -2000,6 +2000,12 @@ def _extract_edges_from_file(
                                 module_hint=_unresolved_module,
                                 call_construct=(
                                     "method" if receiver_name else None
+                                ),
+                                # A tie among methods (WI-jomik: no guess) is
+                                # deferred exactly as a weak pick was.
+                                enclosing_class=(
+                                    _get_enclosing_class(node, source)
+                                    if defer_unresolved_tie(lookup_result) else None
                                 ),
                             ))
 

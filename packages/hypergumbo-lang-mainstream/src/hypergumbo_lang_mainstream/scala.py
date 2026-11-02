@@ -134,6 +134,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
@@ -2887,10 +2888,10 @@ def _extract_edges_from_file(
                         # withhold-not-pick-first). Exact / path-hint matches and
                         # free-function / object targets are unaffected.
                         _sym = lookup_result.symbol
-                        _defer = _sym is not None and defer_bare_method_call(
+                        _defer = (_sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, enclosing_type,
-                        )
+                        )) or defer_unresolved_tie(lookup_result)
                         if (
                             lookup_result.found
                             and _sym is not None

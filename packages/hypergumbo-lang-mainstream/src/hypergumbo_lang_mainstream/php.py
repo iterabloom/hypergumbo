@@ -77,6 +77,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    defer_unresolved_tie,
     iter_tree,
     make_file_id,
     make_file_stable_id,
@@ -1405,10 +1406,10 @@ def _extract_edges(
                     # Free functions and same-enclosing-class methods bind.
                     _enclosing_type = _get_enclosing_class(node, source)
                     _sym = lookup_result.symbol
-                    _defer = _sym is not None and defer_bare_method_call(
+                    _defer = (_sym is not None and defer_bare_method_call(
                         _sym.kind, _sym.name,
                         lookup_result.match_type, _enclosing_type,
-                    )
+                    )) or defer_unresolved_tie(lookup_result)
                     if lookup_result.found and _sym is not None and not _defer:
                         edge = Edge.create(
                             src=current_function.id,
@@ -1467,7 +1468,7 @@ def _extract_edges(
                         # Try to resolve to any method with this name.
                         # Emit only one edge to the best candidate (not all
                         # candidates) to avoid name-collision fanout.
-                        lookup_result = method_resolver.lookup(method_name)
+                        lookup_result = method_resolver.lookup(method_name, caller_path=_caller_path)
                         # INV-fahub: this fallback ignores the receiver's static
                         # type — a weak (ambiguous / suffix) short-name match to a
                         # DIFFERENT class's method is the magnet. Withhold it and
@@ -1475,10 +1476,10 @@ def _extract_edges(
                         # walker can recover a genuine inherited call; an exact
                         # single-candidate match and same-class methods still bind.
                         _sym = lookup_result.symbol
-                        _defer = _sym is not None and defer_bare_method_call(
+                        _defer = (_sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, current_class_name,
-                        )
+                        )) or defer_unresolved_tie(lookup_result)
                         if lookup_result.found and _sym is not None and not _defer:
                             edge = Edge.create(
                                 src=current_function.id,
