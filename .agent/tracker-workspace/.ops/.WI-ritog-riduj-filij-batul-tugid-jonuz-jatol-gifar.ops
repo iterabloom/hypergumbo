@@ -50,3 +50,10 @@
   clock: 5  # 2bbf
   nonce: 2bbf  # 2bbf
   message: "2026-11-01: now blocked by WI-fuzik-nogig-mizut-sudam-jasib-bobav-lavip-vidat (owner pre-approved). It measures whether the web-ingress verdicts are withheld for a principled reason or by accident (probes: flask/express route handlers writing a request value to disk read inconclusive only because the framework module is unclassified; ~/hypergumbo_lab_notebook/taint_runnerup_11012026/), then adds an unseeded-ingress disclosure that names the handlers. This item then narrows that disclosure framework by framework as tier-1 seeding lands."  # 2bbf
+- op: discuss  # 87fd
+  at: '2026-11-02T08:52:53Z'  # 87fd
+  by: agent  # 87fd
+  actor: jgstern_agent  # 87fd
+  clock: 6  # 87fd
+  nonce: 87fd  # 87fd
+  message: "UNBLOCKED 2026-11-02: WI-fuzik is done (PR #2008). The disclosure half of ADR-0049 ruling 3 now exists for request handlers: verify_claims.unseeded_ingress_handlers(entrypoints) lists every entrypoint of an entrypoints.REQUEST_INGRESS_KINDS kind, and _withhold_for_unseeded_ingress withholds a clean untrusted_input taint verdict and a net_recv boundary verdict while any is listed (an already-inconclusive verdict gets the reason appended). CONTRACT FOR THIS ITEM: it deliberately lists EVERY handler, because nothing emits a seed marker yet. When this item seeds a framework's request carrier as an untrusted_input source, it must also NARROW that list for the handlers it seeded (same change, per ruling 3: removal only against a represented crossing), and the WI-fuzik tests must keep passing for a framework it does not seed. Measurement to reuse: ~/hypergumbo_lab_notebook/fuzik_step0_11022026/ (flip test + corpus before/after). Related residual: WI-jonin (Go ServeHTTP handlers are not entrypoints, so the list is empty on caddy)."  # 87fd

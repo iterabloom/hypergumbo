@@ -51,3 +51,10 @@
   nonce: 38aa  # 38aa
   set:  # 38aa
     status: done  # 38aa
+- op: discuss  # ab55
+  at: '2026-11-02T08:52:37Z'  # ab55
+  by: agent  # ab55
+  actor: jgstern_agent  # ab55
+  clock: 6  # ab55
+  nonce: ab55  # ab55
+  message: "DONE: PR #2008 (merged; HEAD 888627d). Steps 0 and 1 both shipped; the later steps (WI-ritog tier 1, ADR-0017 4a summaries in WI-famig/WI-potan, globals in WI-zitul) were not in scope and are untouched.\n\nBEHAVIOURAL EVIDENCE (production CLI, cold cache, dev after #2008; re-runnable with ~/hypergumbo_lab_notebook/fuzik_step0_11022026/run_after.sh):\n- `hypergumbo verify-claims ~/hypergumbo_lab_notebook/taint_runnerup_11012026/flask --io-primitives overlays/flask_complete.yaml --claims p2_review_11012026/B1/claims_generic.yaml --json` -> rc 2; untrusted-input-no-host-fs / -no-subprocess / -no-database all `inconclusive` (were `confirmed_with_caveats`, rc 3, before #2008), details: \"1 request handler(s) receive network data that no taint source represents (save at app.py:7 (HTTP route /save)) ...\".\n- Same for express with overlays/express_complete.yaml: -no-host-fs and -no-subprocess `confirmed_with_caveats` -> `inconclusive`, naming `_GET_save_handler at server.js:6`.\n- Without the overlay (framework unclassified) both probes stay `inconclusive` and now ALSO state the ingress reason.\n- No-route control (tests/test_verify_claims_unseeded_ingress.py): no disclosure. Both arms: a `net_recv must_not_exist` boundary claim is withheld the same way.\nCORPUS BEFORE/AFTER (claims_generic.yaml): express repo (8 handlers) and mitmproxy (33) gain the stated reason on already-inconclusive untrusted_input verdicts; caddy unchanged; no `violated` verdict moved; no other claim changed. The 18 self-claims include no untrusted_input or net_recv claim.\n\nRESIDUAL, FILED SEPARATELY: the disclosure reads request-handler ENTRYPOINTS, so it is only as good as entrypoint detection. caddy has 31 non-test ServeHTTP methods (Go http.Handler implementations) and ZERO request-ingress entrypoints, so on caddy nothing fires."  # ab55
