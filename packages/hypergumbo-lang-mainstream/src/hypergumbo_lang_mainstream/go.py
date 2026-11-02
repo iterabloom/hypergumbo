@@ -306,7 +306,7 @@ from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Container, Final, Iterator, Mapping, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Container, Final, Iterator, Mapping, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -347,6 +347,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_core.overload_arity import PARAMETERS_KEY, parameter_entry
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -565,6 +566,40 @@ def _extract_go_signature(
         sig += f" {ret_text}"
 
     return sig
+
+
+def _go_parameters(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` for a Go func / method / interface-method spec.
+
+    The declared home of the parameter list (ADR-0058; ``overload_arity``
+    fixes the entry shape), so a consumer asking what a callable TAKES reads
+    it here and never re-parses ``Symbol.signature`` (WI-jonin: a
+    ``ServeHTTP`` taking a ``*http.Request``). ``a, b int`` is two entries of
+    type ``int``; ``func(int, string)`` has unnamed entries (name ``""``); a
+    ``rest ...string`` entry is ``variadic`` with element type ``string``. Go
+    has no default values. The receiver is not a parameter.
+    """
+    params_node = find_child_by_field(node, "parameters")
+    entries: list[dict[str, Any]] = []
+    if params_node is None:
+        return entries  # pragma: no cover - every callable node carries one
+    for child in params_node.children:
+        if child.type not in (
+            "parameter_declaration", "variadic_parameter_declaration",
+        ):
+            continue
+        type_node = child.child_by_field_name("type")
+        type_text = node_text(type_node, source) if type_node is not None else None
+        variadic = child.type == "variadic_parameter_declaration"
+        names = [
+            node_text(n, source) for n in child.children_by_field_name("name")
+        ] or [""]
+        entries.extend(
+            parameter_entry(name, type_text, variadic=variadic) for name in names
+        )
+    return entries
 
 
 def normalize_go_signature(
@@ -1708,6 +1743,7 @@ def _extract_symbols_from_file(
                     is_exported=bool(func_name) and func_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "go"),
+                    meta={PARAMETERS_KEY: _go_parameters(node, source)},
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -1773,6 +1809,7 @@ def _extract_symbols_from_file(
                     is_exported=bool(method_name) and method_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "go"),
+                    meta={PARAMETERS_KEY: _go_parameters(node, source)},
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -1883,13 +1920,19 @@ def _extract_symbols_from_file(
                                     ),
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    modifiers=m_modifiers,
+                                    # A spec has no body: ``abstract``, the
+                                    # marking cpp and kotlin give an abstract
+                                    # member (WI-jonin: an interface's own
+                                    # ServeHTTP is no handler). Visibility was
+                                    # read off m_modifiers above.
+                                    modifiers=[*m_modifiers, "abstract"],
                                     line_span=1,
                                     stable_id=m_stable_id,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
                                     qualified_name=_make_go_qualified_name(package_name, type_name, mname),
                                     cyclomatic_complexity=compute_cyclomatic_complexity(iface_child, "go"),
+                                    meta={PARAMETERS_KEY: _go_parameters(iface_child, source)},
                                 )
                                 analysis.symbols.append(m_sym)
                                 analysis.symbol_by_name[qualified] = m_sym
