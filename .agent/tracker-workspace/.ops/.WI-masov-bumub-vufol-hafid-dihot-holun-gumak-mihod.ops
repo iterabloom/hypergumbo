@@ -48,3 +48,10 @@
   clock: 5  # 716a
   nonce: 716a  # 716a
   message: "PRIORITY P4 -> P3 (owner-approved 2026-11-01). Reason: a confidently-wrong edge is live. With pkg/m.py defining class Foo, then 'from pkg.other import Foo', then def use(x: Foo): x.bar(), survey emits a RESOLVED calls edge to the shadowed local Foo.bar at 0.85 (Case-2 direct method path); the right target is pkg/other.py Foo.bar. The earlier low-priority rationale (the wrong edge already closed by WI-supat PR-A) is false."  # 716a
+- op: discuss  # 0ff9
+  at: '2026-11-02T06:06:56Z'  # 0ff9
+  by: agent  # 0ff9
+  actor: jgstern_agent  # 0ff9
+  clock: 6  # 0ff9
+  nonce: 0ff9  # 0ff9
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: Filed fixture fx_masov, rebuilt at /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_B/masov: pkg/m.py has class Foo, then from pkg.other import Foo, then def use(x: Foo): return x.bar(). pkg/other.py has class Foo with bar(). Run with hypergumbo survey.. Observed: calls python:pkg/m.py:9-10:use:function -> python:pkg/m.py:2-3:Foo.bar:method L10 conf=0.85 res=True (evidence ast_call). This is the shadowed local Foo.bar, not pkg/other.py Foo.bar.. Note: This is the confidently-wrong resolved edge the review recorded. The variable map itself was not inspected; the evidence is this edge. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 0ff9

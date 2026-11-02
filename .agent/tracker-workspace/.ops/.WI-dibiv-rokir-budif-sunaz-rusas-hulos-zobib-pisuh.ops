@@ -33,3 +33,10 @@
   nonce: d46f  # d46f
   set:  # d46f
     title: "ocaml: calls resolve to TYPE symbols (types share the call-resolution table): `config x` -> type config, `path f` -> type Destination.path"  # d46f
+- op: discuss  # 3979
+  at: '2026-11-02T06:06:57Z'  # 3979
+  by: agent  # 3979
+  actor: jgstern_agent  # 3979
+  clock: 4  # 3979
+  nonce: '3979'  # 3979
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_B/dibiv/dest.ml (the 11-01 review fixture): module Destination = struct type path = string list end; type config = int; let mime_type f = Filename.extension (path f); let other x = config x. Run with hypergumbo survey.. Observed: calls ocaml:dest.ml:7-7:mime_type:function -> ocaml:dest.ml:2-2:Destination.path:type L7 conf=0.7825 res=True; calls ocaml:dest.ml:9-9:other:function -> ocaml:dest.ml:5-5:config:type L9 conf=0.85 res=True.. Note: Both title cases still bind a TYPE. Module-symbol binds were not tested. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 3979

@@ -34,3 +34,10 @@
   clock: 3  # 94ec
   nonce: 94ec  # 94ec
   message: "PARTIAL overlap noted on WI-sipoj (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-sipoj's LLVM half (a declare shadows the define in the bare-name table, so the test passes only in lucky tmp_path order) is WI-dabul's bug (WI-pagoj folded into WI-dabul today); WI-sipoj's js_ts global_symbols last-writer-wins half stays here."  # 94ec
+- op: discuss  # ef30
+  at: '2026-11-02T06:06:57Z'  # ef30
+  by: agent  # ef30
+  actor: jgstern_agent  # ef30
+  clock: 4  # ef30
+  nonce: ef30  # ef30
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/dabul_drive.py and dabul_drive2.py: one file declares @f and calls it, another defines it; analyze_llvm_ir with find_llvm_ir_files order printed; roots on ext4 (name-hashed readdir). Observed: enum [utils.ll, main.ll] -> llvm_ir:main.ll:1-1:utility_func:declaration (24/24 roots, exact test_cross_file_call_resolution content); enum [utils.ll, main.ll] with @puts -> main.ll:1-1:puts:declaration; enum [a.ll, def.ll] -> def.ll:1-3:puts:function; [x.ll, lib.ll] -> lib.ll:1-3:puts:function. Note: The bound callee depends on which file enumerates last: declaration when the declaring file is last, define otherwise. WI-pagoj’s acceptance (bind the define in both orders) is not met. LlvmIrAnalyzer still inherits base register_symbol. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # ef30

@@ -29,3 +29,10 @@
   clock: 2  # 53db
   nonce: 53db  # 53db
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs1/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: the item's own repro (Data/Lib.agda mapper; Use.agda renaming (mapper to lm), go x = lm x, go2 x = mapper x) still yields only references go2 -> mapper and nothing from go. Code shape unchanged, lines moved: resolver.lookup(ref_name) agda.py:444, get_import_aliases :621, '_aliases' discarded :651. WI-kosar (ac651f01d5) touched agda but not this path. MECHANISM: alias map built by get_import_aliases is discarded; references looked up by literal name."  # 53db
+- op: discuss  # ff36
+  at: '2026-11-02T06:06:57Z'  # ff36
+  by: agent  # ff36
+  actor: jgstern_agent  # ff36
+  clock: 3  # ff36
+  nonce: ff36  # ff36
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: The item’s repro at /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_B/damas: Data/Lib.agda defines mapper; Use.agda has open import Data.Lib renaming (mapper to lm), go x = lm x, go2 x = mapper x. Run with hypergumbo survey.. Observed: Only one references edge: agda:Use.agda:8-8:go2:function -> agda:Data/Lib.agda:3-3:mapper:function L9. Node agda:Use.agda:5-5:go:function exists but has no outgoing references edge.. Note: My fixture uses {A : Set} -> A -> A signatures instead of Agda.Builtin.Nat; the shape is otherwise the filed one. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # ff36

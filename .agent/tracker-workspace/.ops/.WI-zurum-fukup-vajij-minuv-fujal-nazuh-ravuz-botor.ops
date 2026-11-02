@@ -19,3 +19,10 @@
     pr_ref:  # 87f2
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. rust.py:4072-4079: local_symbols.get(short) then resolver.lookup with no INV-fahub defer and no ffi exclusion. println!(\"{:?}\", Instant::now()) binds a same-file extern \"C\" fn now; a bare helper() in a macro binds another file's A::helper; both stay unresolved outside a macro. Related to but distinct from WI-hilib. v07."  # 87f2
     fields: {}  # 87f2
+- op: discuss  # 9764
+  at: '2026-11-02T06:06:56Z'  # 9764
+  by: agent  # 9764
+  actor: jgstern_agent  # 9764
+  clock: 2  # 9764
+  nonce: '9764'  # 9764
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_A/zurum1 (extern \"C\" { fn now(); }; println!(\"{:?}\", Instant::now()) vs plain let t = Instant::now()) and /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_A/zurum2 (src/a.rs impl A { fn helper() }; lib.rs println!(\"{}\", helper()) vs let x = helper()). Observed: calls inside_macro -> rust:src/lib.rs:1-1:now:function (0.85, the extern decl) vs outside_macro -> rust:std::time::Instant:0-0:now:external_symbol; calls in_macro -> rust:src/a.rs:2-2:A.helper:method (0.85) vs plain -> rust:external:0-0:helper:external_symbol. Note: Checked at dev ae02786fca, after 767c6ef2c2 ’fix(rust): a method call never binds a free function’; that change did not cover the macro arm. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 9764
