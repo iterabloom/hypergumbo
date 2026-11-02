@@ -198,6 +198,10 @@ How It Works
    ``_withhold_for_tainted_evaluation`` withdraws the opaque qualification
    for a taint claim whose own label reaches such an evaluation site, so
    that verdict stays ``inconclusive``. ``violated`` is never touched.
+   After the gate, :func:`_withhold_for_unseeded_ingress` states the request
+   handlers no taint source represents (WI-fuzik, ADR-0049 ruling 3) on a
+   ``net_recv`` boundary verdict and an ``untrusted_input`` taint verdict:
+   a clean one is withheld, an inconclusive one gets the reason appended.
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in (WI-rusil).
@@ -1004,6 +1008,96 @@ def _withhold_for_unfollowed_escapes(
         f"was never examined"
     ))
 
+
+
+#: The boundary a request handler's ingress belongs to, and so the scope the
+#: unseeded-ingress withhold applies to: a ``net_recv`` boundary claim and a
+#: taint claim on the label ``net_recv`` derives (``untrusted_input``).
+REQUEST_INGRESS_BOUNDARY = "net_recv"
+
+
+def unseeded_ingress_handlers(
+    entrypoints: Sequence[Mapping[str, Any]],
+    *,
+    include_non_production: bool = False,
+) -> list[str]:
+    """The request handlers no taint source represents (WI-fuzik).
+
+    A web framework hands each route handler its request as a PARAMETER
+    (Express ``req.query.p``) or a framework GLOBAL (Flask ``request.args``).
+    Taint sources are minted only from catalogue rows matched on call edges,
+    so that request is never a source (WI-ritog) and what the handler does
+    with it is never examined. ADR-0049 ruling 3 licenses such an ingress
+    only when its arrival scope is represented as a source OR a disclosure is
+    in place; this is the disclosure, read off the graph's own request-handler
+    entrypoints (:data:`entrypoints.REQUEST_INGRESS_KINDS`) so it does not
+    depend on any catalogue row -- the deferred-crossing shadow does, and a
+    framework module declared complete leaves it nothing to fire on.
+
+    Every handler is listed: nothing seeds a request carrier yet, and a
+    narrowing keyed to a seed marker nothing emits would be a consumer of a
+    shape nothing produces. WI-ritog narrows this list framework by framework
+    as it lands seeds. Scoped like flows: a handler in test code counts only
+    under ``include_non_production``. Each entry names the handler, its file
+    and line and the route, so the disclosure can be checked against source.
+    """
+    from .entrypoints import REQUEST_INGRESS_KINDS
+
+    handlers: set[str] = set()
+    for ep in entrypoints:
+        if ep.get("kind") not in REQUEST_INGRESS_KINDS:
+            continue
+        symbol_id = str(ep.get("symbol_id") or ep.get("node_id") or "")
+        if not symbol_id:
+            continue
+        if (
+            not include_non_production
+            and symbol_source_scope(symbol_id) != SOURCE_SCOPE_PRODUCTION
+        ):
+            continue
+        parts = symbol_id.rsplit(":", 3)
+        line = parts[1].split("-", 1)[0] if len(parts) == 4 else "?"
+        label = ep.get("label")
+        handlers.add(
+            f"{symbol_name_slot(symbol_id)} at {symbol_path_slot(symbol_id)}:{line}"
+            + (f" ({label})" if label else "")
+        )
+    return sorted(handlers)
+
+
+def _withhold_for_unseeded_ingress(
+    verdict: ClaimVerdict, scope: str, handlers: Sequence[str],
+) -> ClaimVerdict:
+    """State the unseeded request ingress on a ``net_recv``-scoped verdict.
+
+    ``scope`` is the claim's taint label or its boundary. On a clean verdict
+    the ingress WITHHOLDS (``inconclusive``), as an unfollowed escape does
+    (INV-nohob): the absence of a finding is ignorance, not evidence. Measured
+    before this existed (WI-fuzik step 0): one overlay entry declaring
+    ``flask`` complete turned "untrusted input never chooses a file to write"
+    into ``confirmed_with_caveats`` over ``open(request.args.get("p"), "w")``.
+    On a verdict ALREADY withheld for another reason it is appended, so the
+    real gap is stated whether or not an unrelated reason happens to hold the
+    verdict. ``violated`` is untouched: a finding stands on its own.
+    """
+    from .taint import AUTO_SOURCE_LABEL_MAP
+
+    if not handlers or scope not in (
+        REQUEST_INGRESS_BOUNDARY, AUTO_SOURCE_LABEL_MAP.get(REQUEST_INGRESS_BOUNDARY),
+    ):
+        return verdict
+    reason = (
+        f"{len(handlers)} request handler(s) receive network data that no "
+        f"taint source represents ({_render_capped_names(list(handlers))}): "
+        f"the framework hands each its request as a parameter or a framework "
+        f"global, which this analysis does not seed as a source (ADR-0049 "
+        f"ruling 3), so what the handler does with that data was never examined"
+    )
+    if verdict.verdict in CONFIRMING_VERDICTS:
+        return _require_coverage_to_confirm(verdict, reason)
+    if verdict.verdict == "inconclusive":
+        return replace(verdict, details=f"{verdict.details} ALSO: {reason}.")
+    return verdict
 
 def is_choice_shaped_source(primitive: str) -> bool:
     """Whether a source primitive's value was CHOSEN rather than authored.
@@ -7084,6 +7178,7 @@ def verify_claims(
     blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
     sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
     unfollowed_escapes: Sequence[Any] = (),
+    unseeded_ingress: Sequence[str] = (),
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -7116,6 +7211,10 @@ def verify_claims(
             :func:`taint.find_unfollowed_escapes`; a clean taint verdict whose
             label has one is withheld (INV-nohob,
             :func:`_withhold_for_unfollowed_escapes`).
+        unseeded_ingress: :func:`unseeded_ingress_handlers` of the run's
+            entrypoints; a ``net_recv`` boundary verdict and an
+            ``untrusted_input`` taint verdict state it, and a clean one is
+            withheld (WI-fuzik, :func:`_withhold_for_unseeded_ingress`).
 
     Returns:
         List of ClaimVerdict objects, one per claim.
@@ -7159,6 +7258,14 @@ def verify_claims(
         if tf is not None and unfollowed_escapes:
             verdict = _withhold_for_unfollowed_escapes(
                 verdict, tf.source_taint, unfollowed_escapes, include_non_production,
+            )
+        if unseeded_ingress:
+            # BOTH ARMS (the INV-fogum lesson): the taint arm by its label, the
+            # boundary arm by its boundary.
+            verdict = _withhold_for_unseeded_ingress(
+                verdict,
+                tf.source_taint if tf is not None else claim.constraint_boundary or "",
+                unseeded_ingress,
             )
         if scoped is not None and claim.constraint_taint_flow is not None:
             verdict = _disclose_scoped_blindness(
