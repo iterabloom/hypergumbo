@@ -1,0 +1,21 @@
+- op: create  # 8422
+  at: '2026-11-02T00:02:00Z'  # 8422
+  by: agent  # 8422
+  actor: jgstern_agent  # 8422
+  clock: 1  # 8422
+  nonce: '8422'  # 8422
+  data:  # 8422
+    kind: work_item  # 8422
+    title: "make: a prerequisite naming a target defined later in the Makefile never resolves (all: foo before foo: gives a placeholder dst)"  # 8422
+    status: todo_hard  # 8422
+    priority: 3  # 8422
+    parent:  # 8422
+    tags:  # 8422
+    - analysis_quality  # 8422
+    - resolution  # 8422
+    isbefore: []  # 8422
+    duplicate_of: []  # 8422
+    not_duplicate_of: []  # 8422
+    pr_ref:  # 8422
+    description: "FOUND 2026-11-01 by the tracker-hygiene sweep (the investigator for WI-zutof; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z). Re-reproduced at dev e362b4ba4f.\n\nREPRO (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/unfiled_repros/fixtures/mk/Makefile: \"all: foo\" on line 1, \"foo:\" on line 4). analyze_make_files emits symbols makefile:Makefile:1-4:all:target and makefile:Makefile:4-6:foo:target, but the edge is all -> makefile:foo:0-0:foo:target, an unresolved placeholder, not the foo target symbol.\n\nMECHANISM. make.py keeps ONE target_registry for the whole run (created in analyze_make_files, shared across every Makefile) and fills it during the same walk that resolves prerequisites, so a prerequisite naming a target defined LATER is read before that target is registered. The conventional top-of-file \"all:\" target is exactly this shape, so this is plausibly the largest-volume make symptom. NOT MEASURED on a corpus.\n\nThe same registry has two further faults the sweep saw but did not run: (a) it is repo-wide, so sub/Makefile's prerequisite can bind to a same-named target in another Makefile, last-registered wins (file-order dependent); (b) it lowercases keys although make target names are case-sensitive (part of WI-zutof's scope).\n\nFIX: collect-then-resolve. Pass 1 collects targets per Makefile (targets only, exact case); pass 2 resolves prerequisites. That is the WI-zotoh two-pass shape. One change probably also fixes WI-zutof (prerequisite resolves to a variable or define); verify both separately. Sweep family F-read-before-write-registry (WI-zotoh, WI-bagus)."  # 8422
+    fields: {}  # 8422
