@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **57992** symbols (functions, classes, methods)
-- **232282** edges by type:
-  - calls: 131552
-  - contains: 53992
-  - imports: 19935
+- **58001** symbols (functions, classes, methods)
+- **232320** edges by type:
+  - calls: 131568
+  - contains: 54000
+  - imports: 19941
   - instantiates: 12890
-  - references: 9998
-  - module_attr_ref: 2127
-  - other: 1788
+  - references: 10004
+  - module_attr_ref: 2128
+  - other: 1789
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57992 Symbols + 232282 Edges + UsageContexts           │
+│  Output: 58001 Symbols + 232320 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -287,12 +287,12 @@ These symbols have the highest bidirectional centrality
 | `write_text` | external_symbol | 7376.0 | <external> |
 | `Span` | class | 7113.5 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3708.0 | <external> |
+| `get` | external_symbol | 3709.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
-| `Path` | external_symbol | 2521.0 | <external> |
-| `str` | external_symbol | 2504.0 | <external> |
-| `next` | external_symbol | 2277.0 | <external> |
+| `Path` | external_symbol | 2522.0 | <external> |
+| `str` | external_symbol | 2505.0 | <external> |
+| `next` | external_symbol | 2278.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `append` | external_symbol | 1957.0 | <external> |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 57222b80d742
-  commit_count: 8787
+  commit: 20f5c4d8fa00
+  commit_count: 8789
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
