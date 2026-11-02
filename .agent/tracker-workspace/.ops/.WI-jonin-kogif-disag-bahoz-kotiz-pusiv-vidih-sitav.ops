@@ -1,0 +1,23 @@
+- op: create  # 67d0
+  at: '2026-11-02T08:52:37Z'  # 67d0
+  by: agent  # 67d0
+  actor: jgstern_agent  # 67d0
+  clock: 1  # 67d0
+  nonce: 67d0  # 67d0
+  data:  # 67d0
+    kind: work_item  # 67d0
+    title: "verify-claims: Go http.Handler implementations (ServeHTTP) are not request-ingress entrypoints, so WI-fuzik's unseeded-ingress withhold never fires on caddy"  # 67d0
+    status: todo_hard  # 67d0
+    priority: 2  # 67d0
+    parent:  # 67d0
+    tags:  # 67d0
+    - taint  # 67d0
+    - verify_claims  # 67d0
+    - entrypoints  # 67d0
+    - analysis_quality  # 67d0
+    isbefore: []  # 67d0
+    duplicate_of: []  # 67d0
+    not_duplicate_of: []  # 67d0
+    pr_ref:  # 67d0
+    description: "PROBLEM. WI-fuzik (PR #2008) withholds a clean untrusted_input / net_recv verdict while the graph holds request-handler entrypoints (entrypoints.REQUEST_INGRESS_KINDS), naming each handler. It reads ENTRYPOINTS, so a server whose handlers are not detected as entrypoints gets no disclosure. Measured on ~/curriculum_repos/caddy (dev after #2008): 31 non-test `ServeHTTP` methods -- Go `http.Handler` implementations, each receiving `*http.Request` -- and the survey's entrypoint kinds are library_export 65, main_function 1, shell_script 1: zero request-ingress entrypoints. So `unseeded_ingress_handlers` returns [] on caddy.\n\nWHY IT MATTERS. On caddy today the untrusted_input database claim is withheld only by unclassified stdlib modules and a catalogue deferred crossing -- the same accident WI-fuzik's step 0 measured for Flask/Express, where declaring the framework module complete turned a path-traversal write into confirmed_with_caveats. NOT measured for Go: whether classifying caddy's modules flips a verdict to a confirming one. Measure that first (WI-fuzik step 0a's method, ~/hypergumbo_lab_notebook/fuzik_step0_11022026/).\n\nDIRECTION. Detect a method named ServeHTTP whose signature takes (http.ResponseWriter, *http.Request) -- and http.HandlerFunc / mux.HandleFunc registrations -- as a go_handler entrypoint (EntrypointKind.GO_HANDLER exists and is in REQUEST_INGRESS_KINDS), then re-run the caddy before/after. Sweep by mechanism: the same \"handler implements an interface instead of being registered by a decorator\" shape may hold in other languages (Java Servlet.service, Rust tower::Service)."  # 67d0
+    fields: {}  # 67d0
