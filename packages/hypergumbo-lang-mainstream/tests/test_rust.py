@@ -6327,3 +6327,28 @@ class TestRustEveryUseFormIsAnImportNotAnAttributeRead:
             f"the grammar declares {sorted(missing)} but no row of _USE_FORMS "
             f"produces it; add a row before this shape leaks as a read"
         )
+
+
+def test_a_method_call_never_binds_a_free_function(tmp_path: Path) -> None:
+    """WI-jomik call shape: ``p.join("x")`` calls a METHOD on ``p``; a free
+    ``fn join`` elsewhere in the crate is not a candidate. The method pool
+    holds free functions too (for ``module::f()`` paths), so the lone free
+    ``join`` used to bind every ``.join()`` -- std's ``Path::join`` on just."""
+    from hypergumbo_lang_mainstream.rust import analyze_rust
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "function.rs").write_text(
+        "pub fn join(a: &str) -> String { a.to_string() }\n")
+    (tmp_path / "src" / "main.rs").write_text(
+        "mod function;\n"
+        "fn u(p: std::path::PathBuf) { let _ = p.join(\"x\").join(\"y\"); }\n"
+        "fn v() { let _ = function::join(\"z\"); }\n"
+        "fn main() {}\n")
+    result = analyze_rust(tmp_path)
+    to_free_join = [
+        e for e in result.edges
+        if e.edge_type == "calls" and e.dst.endswith("function.rs:1-1:join:function")
+    ]
+    assert {e.src.split(":")[-2] for e in to_free_join} == {"v"}, [
+        (e.src, e.line) for e in to_free_join
+    ]

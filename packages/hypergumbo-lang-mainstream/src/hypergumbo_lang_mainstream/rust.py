@@ -903,6 +903,17 @@ def _make_rust_qualified_name(
     return sep.join(parts)
 
 
+def _rust_method_candidate(sym: Symbol) -> bool:
+    """A method call ``x.f()`` reaches a METHOD, never a free function.
+
+    The shared resolver's call-shape filter (WI-jomik). The method pool also
+    holds free functions, for ``module::f()`` paths, so a lone free ``fn join``
+    bound every ``p.join("x")`` in the crate -- std's ``Path::join`` on just.
+    Calling a function-valued field needs ``(x.f)()``, which is not this shape.
+    """
+    return sym.kind == "method"
+
+
 def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing impl block's target type.
 
@@ -3550,6 +3561,10 @@ def _extract_edges_from_file(
                                             path_hint=caller_dir if caller_dir else None,
                                             soft_hint=True,
                                             caller_path=_caller_path,
+                                            admit=(
+                                                _rust_method_candidate
+                                                if is_method_call else None
+                                            ),
                                         )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
