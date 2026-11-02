@@ -46,3 +46,10 @@
   nonce: b321  # b321
   set:  # b321
     description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review at dev 100b6fbb6e: f and g each with local inner calling helper now give inner(4)->helper and inner(8)->helper - caller crediting is by position and seen_names is gone (907d2f25d3, 2026-10-12), so 'first definition wins / replaces f->helper' no longer reproduces; local value lets make no symbol. Still wrong: f -> inner(8-8), i.e. f's call to its own local inner binds to g's inner by name. (Original text below; the review entry in the thread has the evidence.)\n\nRepro: f and g each define a local `inner` calling helper -> edges credited to the first inner; inner -> helper replaces f -> helper. Related family: WI-tosum (enclosing lookup by name).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # b321
+- op: discuss  # e742
+  at: '2026-11-02T06:06:55Z'  # e742
+  by: agent  # e742
+  actor: jgstern_agent  # e742
+  clock: 5  # e742
+  nonce: e742  # e742
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: hypergumbo survey on /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_A/hakof/m.ml: helper; f and g each with local ’let inner z = helper z in inner a/b’. Observed: calls ocaml:m.ml:3-5:f:function -> ocaml:m.ml:8-8:inner:function (f’s own inner is at 4-4; 8-8 is g’s). inner(4)->helper and inner(8)->helper are correct.. Note: Same residual as the 2026-11-01 review (dev ae02786fca now): only the f -> g’s inner by-name binding remains; the original ’first definition wins’ half stays fixed. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # e742

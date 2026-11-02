@@ -27,3 +27,10 @@
   clock: 2  # c9da
   nonce: c9da  # c9da
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/). VERDICT: CURRENT. 2026-11-01 review (dev 100b6fbb6e): the item's if/else fixture still binds both branches' reg(h.Serve) and h.Serve() to A.Serve (L18 function_reference_arg, L19 typed_receiver 0.85); no B.Serve edge. _extract_go_var_types docstring still states first assignment wins; _GoLocalScope and _go_last_binding exist as described. Premise unchanged. MECHANISM: var types keyed by (function,name) first-binding-wins instead of by binding position. SHARES MECHANISM WITH: WI-bopiv."  # c9da
+- op: discuss  # 265e
+  at: '2026-11-02T06:06:56Z'  # 265e
+  by: agent  # 265e
+  actor: jgstern_agent  # 265e
+  clock: 3  # 265e
+  nonce: 265e  # 265e
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: The item’s if/else fixture at /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_B/nazub/a.go: A.Serve and B.Serve; F(x) with h := &A{}; reg(h.Serve); h.Serve() in one branch and h := &B{} with the same calls in the other. Run with hypergumbo survey.. Observed: calls go:a.go:11-21:F:function -> go:a.go:6-6:A.Serve:method L14 conf=0.7 function_reference_arg, call_lines [14, 15, 18, 19]. There is no edge to B.Serve; the else-branch lines 18 and 19 are attributed to A.Serve.. Note: Edge output now merges the function_reference_arg and ast_call sites into one edge with call_lines. The 11-01 review saw a separate L19 typed_receiver edge. The defect is the same. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 265e

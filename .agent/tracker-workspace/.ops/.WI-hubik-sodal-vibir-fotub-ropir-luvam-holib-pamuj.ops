@@ -34,3 +34,10 @@
   nonce: '5918'  # 5918
   set:  # 5918
     parent: WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid  # 5918
+- op: discuss  # 4913
+  at: '2026-11-02T06:06:57Z'  # 4913
+  by: agent  # 4913
+  actor: jgstern_agent  # 4913
+  clock: 4  # 4913
+  nonce: '4913'  # 4913
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/hubik/fx2: struct Parser with read(_ char:)->Bool, read(_ string:)->Bool, read(count:)->Parser, read(until:)->Parser (hummingbird order); URI2.swift: let key = try query.read(until: \"=\"); key.reset(); hypergumbo survey. Observed: URI2.a -> swift:Bool:0-0:reset:external_symbol (receiver_type_hint Bool) after read(until:) -> Parser. With Parser-returning overloads declared first (fx): read(\"x\") -> Bool receiver typed Parser (flag.toggle() -> receiver_type_hint Parser). Note: In this repro the FIRST-declared overload wins, not the last as the description says (matches the vapor discussion entry’s ’first writer’). Also observed, separate from this item: every read(...) call edge binds Parser.swift:20-22 regardless of labels. key.string (property) emits no edge in this fixture, so the receiver is probed via an undefined method call. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 4913

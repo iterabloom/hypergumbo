@@ -48,3 +48,10 @@
   clock: 5  # a61c
   nonce: a61c  # a61c
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: fixture with project `class Client; def go` and calls Prometheus::Client.registry / Prometheus::Client.go. Output: registry -> ruby:Client:0-0:registry:unresolved (project owner hint) and .go resolves outright to Client#go (0.85), a wrong binding. ruby.py _try_receiver_call still appends short_name for scope_resolution receivers (~:2663) and project_owners takes it. Siblings WI-ratid/WI-pivap/WI-surar are done but did not change this path. MECHANISM: last segment of a namespaced external constant matched to a project class by bare name (no namespace/import signal). SHARES MECHANISM WITH: WI-ratid,WI-pivap."  # a61c
+- op: discuss  # 6766
+  at: '2026-11-02T06:06:57Z'  # 6766
+  by: agent  # 6766
+  actor: jgstern_agent  # 6766
+  clock: 6  # 6766
+  nonce: '6766'  # 6766
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/kazut: client.rb ’class Client; def go’; metrics.rb module HasPrometheusMetrics calling Prometheus::Client.registry and Prometheus::Client.go; hypergumbo survey. Observed: HasPrometheusMetrics.setup -> ruby:client.rb:2-4:Client#go:method 0.85 (wrong bind); .registry -> ruby:Client:0-0:registry:external_symbol 0.5 receiver_type_hint ’Client’ (project short name, not Prometheus::Client). Note: Same output as the 2026-11-01 review. The postal corpus measurement (inherited-calls hop) was not re-run. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 6766
