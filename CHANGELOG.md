@@ -12,13 +12,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Summary
+
+- **Imports of your own code reach your own code**: npm workspace siblings, Rust `use` paths, Python tests and scripts beside their modules, console scripts and Puppet includes no longer stop at a third-party stand-in.
+- **Fewer wrong and missing call edges**: same-named classes and functions in different places stay apart, and a function used as a value counts as used.
+- **Every command agrees on what is test code**: on ripgrep, dead-code candidates fall 817 → 383.
+- **`verify-claims` is stricter about "confirmed"**: a zone a language has no sink for, or a merged flow that also reaches another sink, is now inconclusive. Command-line arguments count as untrusted input.
+- **Run reports are complete**: every pass that ran appears in `analysis_runs`, and one that found nothing says why.
+- **Electron IPC connects renderer → preload → main**; on podman-desktop, 66 of 66 bridge calls reach the main process.
+- **Sketch no longer downloads models on first use**: `hypergumbo install-embeddings` fetches them.
+
 ### Breaking and contract changes
 
-- **Behavior map, `SCHEMA_VERSION` 0.20.15 → 0.21.0**: a C/C++ module slot naming several headers is a `module-set-<hex>` handle into a new `module_sets` table.
-- **`stable_id_scheme` v9 → v13**: BitBake, SCIP-only and `@hg:route` symbols, and C/C++ externals with a header-set module slot, get new `stable_id`s.
+- **Behavior map, `SCHEMA_VERSION` 0.20.15 → 0.21.0**: a C/C++ module slot naming several headers is now a `module-set-<hex>` handle; the header list is in the new top-level `module_sets` table.
+- **`stable_id_scheme` v9 → v13**: BitBake symbols, SCIP-only symbols, `@hg:route` markers, and C/C++ externals whose module slot names several headers get new `stable_id`s. Every other `stable_id` is unchanged; re-analyze before comparing ids of those kinds.
+- **`verify-claims` envelope 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` are renamed `reached` / `refuted` (3.0); command-line arguments are `untrusted_input`, and their flows are set aside unless a claim sets `include_command_line: true` (3.1).
 - **Route markers no longer claim a language** (ADR-0031 Class B): `language` is `null`; read `Symbol.host_language`, `discovery_language` or `protocol_origin`. Route ids and ranks are unchanged; `dead-code-maybe` no longer lists markers.
-- **`verify-claims` envelope 2.6 → 3.0**: walk verdicts `confirmed` / `unconfirmed` are renamed `reached` / `refuted`.
-- **`verify-claims` envelope 3.0 → 3.1**: command-line arguments are `untrusted_input`, and their flows are set aside unless a claim counts them.
 - **Taint: a child's exit status is no longer a source** (ADR-0049); its output still is.
 - **`confidence_source` drops `composite`**, which nothing produced.
 - **Contract only: a `calls` edge's `src` is the calling code unit** (ADR-0023); output is unchanged.
@@ -44,18 +53,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-#### Run reporting and graph integrity
-
-- **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, now including framework patterns, five post-passes and 13 more linkers.
-- **A pass that found nothing to analyse is no longer reported as not having run** (`prerequisite_absent`).
-- **Wolfram `.m` files are analysed**: the profile counts them, so a `.m`-only package is no longer skipped.
-- **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`).
-- **The JS module linker counts its `package.json` reads** in `files_analyzed`.
-- **A node id whose kind or name slot disagrees with its node is a validator error** (ADR-0036 Ruling 3); such ids are corrected, `stable_id`s unchanged.
-- **Edges start and end on real nodes** for Starlark `deps`, json, make, jsonnet, astro, svelte, Cargo and CSS imports, bridging headers, WebAssembly loads and JSX references.
-- **Every linker call-site stand-in is attached to its enclosing function.**
-- **A Svelte or Vue file has one file symbol, and each `<script>` block is parsed as the language its `lang` attribute names**, wherever the attribute sits in the tag.
-
 #### Imports of your own code
 
 - **An import of in-tree code reaches its source**, not a third-party stand-in or `external_symbol`: npm workspace siblings, and Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate.
@@ -65,7 +62,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **JS/TS import resolution**: `require('..')` imports the directory, via its `package.json`; Node core modules (`fs`, `node:*`) are not npm dependencies; `./X.test-wrapper` reaches its own file, not `X.tsx`.
 - **Rust brace-list (`use a::{b, c}`), top-level `use {...}` and aliased `use` declarations emit imports edges**, and a call through a `use` path, aliased or not, reaches the function that path names, not whichever same-named function was indexed last.
 - **Rust `use` paths count as framework import evidence** (`actix-web` is imported as `actix_web`).
-- **A Puppet `include` reaches its class** wherever it is declared, later in the file or in another one, and namespaced classes (`class a::b`) are now found. Each name in an include list, a quoted name, `require` and `inherits` gives its own edge. Resources inside a namespaced class get new `stable_id`s.
+- **A Puppet `include` reaches its class** wherever it is declared, namespaced classes (`class a::b`) included; every name in an include list, and each `require` and `inherits`, gives its own edge. Resources inside a namespaced class get new `stable_id`s.
 - **A placeholder a linker resolves (console scripts, JS/TS imports) is demoted, not deleted** (ADR-0057 §14.1): it ranks lower and names its resolution in `superseded_by`.
 
 #### Calls, types and references
@@ -82,6 +79,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Circom names resolve in the right template**: a signal finds its own template's signal, `c.in` finds the signal of the template `c` instantiates, and an `include` reaches the file it names.
 - **Electron IPC connects renderer → preload → main**, both through `contextBridge` and through a project's own IPC wrapper (`this.ipcHandle('ch', …)`): on podman-desktop, 66 of 66 bridge calls reach the main process, up from 1.
 
+#### Dead code, tiers and sketch
+
+- **A linker stand-in takes its file's supply-chain tier**, so a bundle's stand-ins are filtered with it.
+- **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name (`tests.py`, `FooTest.java`, `FooTests.swift`, `intTest/`): on ripgrep, dead-code candidates fall 817 → 383 and test coverage rises 9.3% → 36.2%.
+- **Code called only from module level or a class body is not dead or untested**; on django, 43 more functions are tested and none is newly dead.
+- **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1); on nest, 172 of 1,379 move from tier 3 to 1.
+- **External dependency declarations carry `directness` and `ecosystem`**, no longer `unknown`.
+- **Sketch names a data model's framework once.**
+
 #### I/O boundaries and taint
 
 - **Unix-domain sockets are IPC, not network**: a server is `ipc_listen` (ADR-0050 §1; io-boundaries schema 2.4 → 2.5), and a Go connection's `Write` / `Read` are `ipc_send` / `ipc_recv`.
@@ -97,14 +103,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures; false leaks from `build_opener().open(url)` and Go's `_, err := get()` are gone.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
 
-#### Dead code, tiers and sketch
+#### Run reporting and graph integrity
 
-- **A linker stand-in takes its file's supply-chain tier**, so a bundle's stand-ins are filtered with it.
-- **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name (`tests.py`, `FooTest.java`, `FooTests.swift`, `intTest/`): on ripgrep, dead-code candidates fall 817 → 383 and test coverage rises 9.3% → 36.2%.
-- **Code called only from module level or a class body is not dead or untested**; on django, 43 more functions are tested and none is newly dead.
-- **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1); on nest, 172 of 1,379 move from tier 3 to 1.
-- **External dependency declarations carry `directness` and `ecosystem`**, no longer `unknown`.
-- **Sketch names a data model's framework once.**
+- **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, now including framework patterns, five post-passes and 13 more linkers.
+- **A pass that found nothing to analyse is no longer reported as not having run** (`prerequisite_absent`).
+- **Wolfram `.m` files are analysed**: the profile counts them, so a `.m`-only package is no longer skipped.
+- **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`).
+- **The JS module linker counts its `package.json` reads** in `files_analyzed`.
+- **A node id whose kind or name slot disagrees with its node is a validator error** (ADR-0036 Ruling 3); such ids are corrected, `stable_id`s unchanged.
+- **Edges start and end on real nodes** for Starlark `deps`, json, make, jsonnet, astro, svelte, Cargo and CSS imports, bridging headers, WebAssembly loads and JSX references.
+- **Every linker call-site stand-in is attached to its enclosing function.**
+- **A Svelte or Vue file has one file symbol, and each `<script>` block is parsed as the language its `lang` attribute names**, wherever the attribute sits in the tag.
 
 #### SCIP, run limits and security
 
@@ -122,6 +131,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The per-PR pytest step fails a run whose every test skipped**, or that left no report.
 - **A test fails when a classified module is reported starved** (`classified_yet_starved`).
 - **Every spec-validator check has something to inspect**, and parallel tests no longer race.
+- **The mypy strict surface shrinks 492 → 477.**
 
 ### Documentation
 
