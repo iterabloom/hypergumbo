@@ -891,9 +891,10 @@ class TestSite2TypedReceiverResolution:
 
     def test_falls_back_to_type_symbol_when_method_not_found(self) -> None:
         """``var.method()`` where ``Type`` exists but method isn't on it
-        or any ancestor — fall back to an edge to the type symbol itself
-        at confidence 0.70 (ast_call_inherited_method, matching the
-        analyzer's pre-PR-5 behavior)."""
+        or any ancestor — a ``uses`` edge to the type symbol itself at
+        confidence 0.70 (ast_call_inherited_method). WI-jomik: never a
+        ``calls`` edge, which named a non-callee and fed
+        method_call_recovery a false class hint."""
         repo_iface = _java_iface(
             "sym:OwnerRepository", "OwnerRepository",
         )
@@ -911,6 +912,7 @@ class TestSite2TypedReceiverResolution:
         resolved = [e for e in result.edges if e.src == caller.id]
         assert len(resolved) == 1
         assert resolved[0].dst == repo_iface.id
+        assert resolved[0].edge_type == "uses"
         assert resolved[0].evidence_type == "ast_call_inherited_method"
         assert resolved[0].confidence == 0.70
 
@@ -2642,8 +2644,9 @@ class TestCrossLanguageReceiverFilter:
     def test_site2_java_fallback_does_not_bind_to_python_namesake_type(
         self,
     ) -> None:
-        """Java Site-2 Step-3 fallback (method nowhere on the chain) binds to
-        the JAVA type symbol, not a same-named Python class listed first."""
+        """Java Site-2 Step-3 fallback (method nowhere on the chain) is a
+        ``uses`` edge to the JAVA type symbol, not a same-named Python class
+        listed first."""
         py_shared = _py_cls("sym:py.Shared", "Shared", path="/shared.py")
         java_shared = _java_cls("sym:java.Shared", "Shared", path="/a.java")
         caller = _java_caller()
@@ -2661,13 +2664,14 @@ class TestCrossLanguageReceiverFilter:
         resolved = [e for e in result.edges if e.src == caller.id]
         assert len(resolved) == 1
         assert resolved[0].dst == java_shared.id
+        assert resolved[0].edge_type == "uses"
         by_id = {s.id: s for s in [py_shared, java_shared, caller]}
         assert by_id[resolved[0].dst].language == "java"
 
     def test_site2_java_does_not_bind_to_python_namesake_method(self) -> None:
         """Java Site-2 Step-1 direct lookup must NOT resolve to a Python
         namesake class's method (the confidently-wrong cross-language bind);
-        it falls back to the Java type symbol instead."""
+        it falls back to a ``uses`` edge to the Java type symbol instead."""
         py_shared = _py_cls("sym:py.Shared", "Shared", path="/shared.py")
         py_save = _py_method(
             "sym:py.Shared.save", "Shared.save", path="/shared.py",
@@ -2688,6 +2692,7 @@ class TestCrossLanguageReceiverFilter:
         assert all(e.dst != py_save.id for e in result.edges)
         assert len(resolved) == 1
         assert resolved[0].dst == java_shared.id
+        assert resolved[0].edge_type == "uses"
 
     def test_site2_python_resolves_despite_foreign_language_namesake(
         self,
