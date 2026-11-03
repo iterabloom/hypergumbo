@@ -22,8 +22,7 @@ import pytest
 from hypergumbo_lang_mainstream.js_ts import (
     _get_parser_for_lang,
     analyze_javascript,
-    extract_svelte_scripts,
-    extract_vue_scripts,
+    _extract_sfc_scripts,
     is_tree_sitter_available,
 )
 
@@ -88,49 +87,45 @@ def test_lang_ts_anywhere_in_the_tag_selects_typescript(
     assert by_name["typed"].span.start_line == body_line
 
 
-@pytest.mark.parametrize("extract", [extract_svelte_scripts, extract_vue_scripts])
 @pytest.mark.parametrize("tag", _JS_TAGS)
-def test_no_ts_lang_attribute_selects_javascript(extract, tag: str) -> None:
-    blocks = extract(f"{tag}\nconst x = 1;\n</script>\n")
+def test_no_ts_lang_attribute_selects_javascript(tag: str) -> None:
+    blocks = _extract_sfc_scripts(f"{tag}\nconst x = 1;\n</script>\n")
     assert len(blocks) == 1
     assert blocks[0].is_typescript is False
     assert blocks[0].is_tsx is False
 
 
-@pytest.mark.parametrize("extract", [extract_svelte_scripts, extract_vue_scripts])
-def test_quoted_gt_does_not_end_the_tag(extract) -> None:
+def test_quoted_gt_does_not_end_the_tag() -> None:
     source = (
         '<script setup generic="T extends Record<string, unknown>" lang="ts">\n'
         "const a = 1\n"
         "</script>\n"
     )
-    blocks = extract(source)
+    blocks = _extract_sfc_scripts(source)
     assert len(blocks) == 1
     assert blocks[0].is_typescript is True
     # No leftover tag text (``unknown>" lang="ts">``) leaks into the body.
     assert blocks[0].content == "\nconst a = 1\n"
 
 
-@pytest.mark.parametrize("extract", [extract_svelte_scripts, extract_vue_scripts])
-def test_self_closing_script_does_not_swallow_the_next_block(extract) -> None:
+def test_self_closing_script_does_not_swallow_the_next_block() -> None:
     source = (
         '<script src="./external.ts" lang="ts" />\n'
         '<script setup lang="ts">\n'
         "const a = 1\n"
         "</script>\n"
     )
-    blocks = extract(source)
+    blocks = _extract_sfc_scripts(source)
     assert [b.content for b in blocks] == ["\nconst a = 1\n"]
     assert blocks[0].start_line == 2
 
 
-@pytest.mark.parametrize("extract", [extract_svelte_scripts, extract_vue_scripts])
-def test_lang_tsx_selects_the_tsx_grammar(extract) -> None:
+def test_lang_tsx_selects_the_tsx_grammar() -> None:
     body = (
         "const view = (x: unknown) => <div>{x as string}</div>\n"
         "export function after(a: number): number { return a }\n"
     )
-    blocks = extract(f'<script setup lang="tsx">\n{body}</script>\n')
+    blocks = _extract_sfc_scripts(f'<script setup lang="tsx">\n{body}</script>\n')
     assert len(blocks) == 1
     assert blocks[0].is_typescript is True
     assert blocks[0].is_tsx is True

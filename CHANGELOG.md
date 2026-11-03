@@ -139,6 +139,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)).
 - **A test checks that io-boundaries and taint classify each call alike**, except calls taint deliberately ignores (a write to `/dev/null`).
 - **The full-suite test-only-reachability gate is green again.**
+- **Four wrappers kept alive only by their tests are retired**, and the test-only-reachability baseline tightens by one key.
 - **The per-PR pytest step fails a run whose every test skipped**, or that left no report.
 - **A test fails when a classified module is reported starved** (`classified_yet_starved`).
 - **Every spec-validator check has something to inspect**, and parallel tests no longer race.

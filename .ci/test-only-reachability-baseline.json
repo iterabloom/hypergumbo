@@ -269,7 +269,6 @@
   "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/gate.py::_is_flag_enabled",
   "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/graceful_degrade.py::_reset_logged_fallback_for_tests",
   "packages/hypergumbo-tracker/src/hypergumbo_tracker/annotations.py::annotation_from_dict",
-  "packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py::textconv_main",
   "packages/hypergumbo-tracker/src/hypergumbo_tracker/models.py::dict_to_op",
   "packages/hypergumbo-tracker/src/hypergumbo_tracker/preview.py::clear_cache",
   "packages/hypergumbo-tracker/src/hypergumbo_tracker/preview.py::format_unavailable_notice",
