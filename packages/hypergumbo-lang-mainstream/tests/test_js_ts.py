@@ -4233,37 +4233,48 @@ function run() {
         )
         assert run_helper_edge is not None, "Expected call edge from run to helper via namespace"
 
-    def test_namespace_import_disambiguates_same_name_functions(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("first", ["a_early", "z_late"])
+    def test_relative_require_object_disambiguates_same_name_functions(
+        self, tmp_path: Path, first: str,
+    ) -> None:
+        """``const u = require('./a_early/utils'); u.process()`` names the file
+        too: it reaches a_early in both creation orders (WI-povub)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        for name in (first, *(d for d in ("a_early", "z_late") if d != first)):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "utils.js").write_text(
+                "function process() { return 1; }\nmodule.exports = { process };\n"
+            )
+        (tmp_path / "main.js").write_text(
+            "const u = require('./a_early/utils');\n"
+            "function run() { u.process(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        dsts = [e.dst for e in result.edges
+                if e.edge_type == "calls" and ":run:" in e.src and "process" in e.dst]
+        assert dsts and all("a_early" in d for d in dsts), dsts
+
+    @pytest.mark.parametrize("first", ["a_early", "z_late"])
+    def test_namespace_import_disambiguates_same_name_functions(
+        self, tmp_path: Path, first: str,
+    ) -> None:
         """When same function name exists in multiple modules, namespace import disambiguates.
 
-        This test uses directory structure to control file discovery order, ensuring
-        the "wrong" file is processed last (overwriting global_symbols). The namespace
-        import path_hint must be used to resolve to the correct target.
-
-        rglob discovery order: main.js -> a_early/utils.js -> z_late/utils.js
-        So z_late (WRONG) overwrites a_early (CORRECT) in global_symbols.
-        Without path_hint, resolution incorrectly picks z_late.
+        The bare-name table keeps whichever same-named function is enumerated
+        LAST, and file discovery follows directory order, which is not
+        alphabetical: on tmpfs it follows creation order, on ext4 a name hash
+        (WI-sipoj). So the fixture is built in BOTH creation orders; the call
+        must reach the file the relative import names in each (WI-povub).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
-        # Create two modules with same function name in different directories
-        # rglob processes alphabetically: a_early/ before z_late/
-        # So z_late/utils.js (WRONG) will be processed LAST, overwriting global_symbols
-        correct_dir = tmp_path / "a_early"
-        correct_dir.mkdir()
-        (correct_dir / "utils.js").write_text("""
-function process() {
-    return 'CORRECT';
-}
-""")
-
-        wrong_dir = tmp_path / "z_late"
-        wrong_dir.mkdir()
-        (wrong_dir / "utils.js").write_text("""
-function process() {
-    return 'WRONG';
-}
-""")
+        bodies = {"a_early": "CORRECT", "z_late": "WRONG"}
+        for name in (first, *(d for d in bodies if d != first)):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "utils.js").write_text(
+                f"\nfunction process() {{\n    return '{bodies[name]}';\n}}\n"
+            )
 
         # Import only a_early/utils and call process via namespace
         main_file = tmp_path / "main.js"

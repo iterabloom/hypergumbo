@@ -6777,13 +6777,16 @@ def _extract_edges(
                             # ``import * as C from '@ws/c'; C.shout()``) takes
                             # the answer a named binding of it takes (WI-rilof),
                             # before the cross-package guard below refuses it.
+                            # WI-povub: a RELATIVE one names the file, so of
+                            # several same-named functions the call is that
+                            # file's; the name-keyed table keeps only the one
+                            # enumerated last.
                             ns_target = (
                                 _disambiguate_by_import(
                                     import_path, file_path, method_name, symbols_by_name,
                                 )
-                                if symbols_by_name and obj_name in module_objects
-                                and not import_path.startswith(".")
-                                and not _ns_external
+                                if symbols_by_name and not _ns_external
+                                and (import_path.startswith(".") or obj_name in module_objects)
                                 else None
                             )
                             lookup_result = (
