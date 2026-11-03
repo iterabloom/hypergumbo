@@ -77,7 +77,7 @@ Projected-view shape
 The compact view and the tiered view share one projection:
 
 - Top-level blocks in ``_COMPACT_STRIP_KEYS`` (``usage_contexts``,
-  ``sketch_precomputed``) are dropped; ``_TIERED_STRIP_KEYS`` also drops
+  ``sketch_precomputed``, ``request_ingress``) are dropped; ``_TIERED_STRIP_KEYS`` also drops
   ``analysis_runs`` and ``validation_report``.
 - Each node is the slim ``compact_node`` projection (navigation fields only,
   no identity hashes, provenance or supply-chain block); compact nodes also
@@ -208,8 +208,11 @@ CROSS_CUTTING_EDGE_TYPES = frozenset({
 #
 #   _COMPACT_STRIP_KEYS — the compact view drops only the heavy, view-irrelevant
 #     blocks: usage_contexts (spec-mandated stripped from compact/tiered,
-#     docs/hypergumbo-spec.md §usage_contexts) and sketch_precomputed (an
-#     internal cache artifact consumers must not depend on, spec §707). It KEEPS
+#     docs/hypergumbo-spec.md §usage_contexts), sketch_precomputed (an
+#     internal cache artifact consumers must not depend on, spec §707) and
+#     request_ingress (WI-vumig: the UNCAPPED request-handler list verify-claims
+#     reads from the full survey -- mlflow's holds 356 entries -- while the
+#     capped ``entrypoints`` overview stays in the view). It KEEPS
 #     analysis_runs (provenance) and validation_report (the finalize quality
 #     signal) — ADR-0033/ADR-0043 preserve both through the compact projection
 #     (test_compact_preserves_validation_report_and_consistency).
@@ -219,6 +222,7 @@ CROSS_CUTTING_EDGE_TYPES = frozenset({
 _COMPACT_STRIP_KEYS = frozenset({
     "usage_contexts",
     "sketch_precomputed",
+    "request_ingress",
 })
 _TIERED_STRIP_KEYS = _COMPACT_STRIP_KEYS | frozenset({
     "analysis_runs",

@@ -788,8 +788,10 @@ class TestFormatCompactBehaviorMap:
         the finalize provenance/quality signals.
 
         ``usage_contexts`` is spec-mandated stripped from compact/tiered views
-        (spec §usage_contexts) and ``sketch_precomputed`` is an internal cache
-        artifact (spec §707) — both are dropped. But ``analysis_runs``
+        (spec §usage_contexts), ``sketch_precomputed`` is an internal cache
+        artifact (spec §707) and ``request_ingress`` is the uncapped handler
+        list verify-claims reads from the full survey (WI-vumig) — all three
+        are dropped. But ``analysis_runs``
         (provenance) and ``validation_report`` (the finalize quality signal)
         are deliberately PRESERVED through the compact projection per
         ADR-0033/ADR-0043 — unlike the more aggressive tiered view, which drops
@@ -804,6 +806,9 @@ class TestFormatCompactBehaviorMap:
             "analysis_runs": [{"analyzer": "py", "files": 3, "symbols": 9}],
             "usage_contexts": [{"symbol_id": "x", "kind": "call"}],
             "sketch_precomputed": {"config_info": "x" * 500},
+            "request_ingress": [
+                {"symbol_id": "x", "kind": "http_route", "label": "HTTP route /x"},
+            ],
             "validation_report": {"violations": [], "checks": 12},
         }
         config = CompactConfig(min_symbols=2, max_symbols=2)
@@ -814,7 +819,7 @@ class TestFormatCompactBehaviorMap:
                 connectivity_aware=connectivity_aware,
                 force_include_entrypoints=False,
             )
-            for stripped in ("usage_contexts", "sketch_precomputed"):
+            for stripped in ("usage_contexts", "sketch_precomputed", "request_ingress"):
                 assert stripped not in result, (
                     f"compact (connectivity_aware={connectivity_aware}) should "
                     f"strip {stripped} to save tokens"

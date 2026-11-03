@@ -39,6 +39,17 @@ The FRAMEWORK_PATTERNS phase enriches symbols with concept metadata
 (meta.concepts) based on pattern matching. This module then maps those
 concepts to entrypoint types.
 
+Two public shapes come out of one detection (WI-vumig).
+``detect_entrypoint_candidates`` is every candidate, deduplicated and ranked;
+``apply_rank_floor_and_cap`` drops entries under ``MIN_ENTRYPOINT_CONFIDENCE``
+and caps the rest by repo size (``compute_entrypoint_cap``, at most 40% per
+kind); ``detect_entrypoints`` is the two composed, the ranked overview every
+reader uses. The survey writer calls the halves so it can also write
+``request_ingress_entries(candidates)``: every request handler
+(``REQUEST_INGRESS_KINDS``) before the floor and the cap, the completeness
+list verify-claims' unseeded-ingress disclosure reads. Measured before the
+split, mlflow's capped list held 200 of 302 route handlers.
+
 Confidence Scores
 -----------------
 Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 framework-pattern
@@ -1596,11 +1607,16 @@ _BUILD_WRAPPER_BASENAMES: frozenset[str] = frozenset({
 })
 
 
-def detect_entrypoints(
+def detect_entrypoint_candidates(
     nodes: List[Symbol],
     edges: List[Edge],
 ) -> List[Entrypoint]:
-    """Detect entrypoints in the codebase using semantic detection.
+    """Every entrypoint candidate, ranked, BEFORE the rank floor and the cap.
+
+    :func:`detect_entrypoints` is this list floored and capped by
+    :func:`apply_rank_floor_and_cap`. The survey writer calls the two halves
+    itself, so ``request_ingress`` can list every request handler while
+    ``entrypoints`` stays the ranked overview (WI-vumig).
 
     Detection sources (ADR-3aaa v1.2.x):
     1. Framework patterns (HTTP routes, CLI commands, controllers, etc.)
@@ -2083,13 +2099,27 @@ def detect_entrypoints(
         reverse=True,
     )
 
+    return unique_entrypoints
+
+
+def apply_rank_floor_and_cap(
+    candidates: List[Entrypoint],
+    node_count: int,
+) -> List[Entrypoint]:
+    """The ranked overview: ``candidates`` floored, then capped.
+
+    Takes :func:`detect_entrypoint_candidates`'s list (sorted best first) and
+    ``len(nodes)`` of the same graph. Builds new lists and mutates nothing,
+    so the caller can derive ``request_ingress`` from the same candidates
+    afterwards.
+    """
     # Filter out entries below the minimum RANKING threshold (ADR-0039 ruling 3:
     # re-keyed from confidence to rank_score). After all adjustments (test
     # penalty, vendor penalty, library demotion), entries with very low
     # prominence are noise — e.g. library_export demoted from 0.80 to 0.08 when
     # semantic entries exist. MIN_ENTRYPOINT_CONFIDENCE is a rank floor.
-    unique_entrypoints = [
-        ep for ep in unique_entrypoints
+    kept = [
+        ep for ep in candidates
         if ep.rank_score >= MIN_ENTRYPOINT_CONFIDENCE
     ]
 
@@ -2097,11 +2127,51 @@ def detect_entrypoints(
     # The cap scales with repo size: small repos get 50, large repos up to 500.
     # This ensures large codebases (GitLab: 90K+ files, 693+ controllers)
     # don't lose most of their entrypoints to a fixed cap.
-    cap = compute_entrypoint_cap(len(nodes))
-    if len(unique_entrypoints) > cap:
-        unique_entrypoints = _diversity_cap(unique_entrypoints, cap)
+    cap = compute_entrypoint_cap(node_count)
+    if len(kept) > cap:
+        kept = _diversity_cap(kept, cap)
 
-    return unique_entrypoints
+    return kept
+
+
+def detect_entrypoints(
+    nodes: List[Symbol],
+    edges: List[Edge],
+) -> List[Entrypoint]:
+    """Detect entrypoints: the ranked candidates, floored and capped.
+
+    :func:`detect_entrypoint_candidates` detects and ranks;
+    :func:`apply_rank_floor_and_cap` applies the ``MIN_ENTRYPOINT_CONFIDENCE``
+    floor and the size cap. Every reader of a ranked overview calls this;
+    the survey writer calls the halves so it can also write
+    ``request_ingress`` (:func:`request_ingress_entries`).
+    """
+    return apply_rank_floor_and_cap(
+        detect_entrypoint_candidates(nodes, edges), len(nodes),
+    )
+
+
+def request_ingress_entries(
+    candidates: List[Entrypoint],
+) -> List[dict[str, str]]:
+    """The ``request_ingress`` list: every request handler, uncapped (WI-vumig).
+
+    One ``{symbol_id, kind, label}`` per candidate whose kind is in
+    :data:`REQUEST_INGRESS_KINDS`, in rank order, taken BEFORE the floor and
+    the cap. ``entrypoints`` is a ranked overview and the floor and cap are
+    right for it; verify-claims' unseeded-ingress disclosure is a
+    completeness statement and was silently partial while it read the
+    overview: mlflow (76k symbols, cap 500, 40% per kind) had 302 route
+    handlers, 200 in the capped list; the disclosure named 254 production
+    handlers of all ingress kinds and names 320 with this list.
+    A test-code handler is listed too (it ranks x0.1 and falls under the
+    floor); the disclosure's own production scope decides whether to name it.
+    """
+    return [
+        {"symbol_id": ep.symbol_id, "kind": ep.kind.value, "label": ep.label}
+        for ep in candidates
+        if ep.kind.value in REQUEST_INGRESS_KINDS
+    ]
 
 
 # Maximum fraction of the entrypoint cap that a single kind may occupy.

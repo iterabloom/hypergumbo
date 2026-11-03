@@ -402,6 +402,63 @@
       },
       "description": "Detected program entrypoints"
     },
+    "request_ingress": {
+      "type": "array",
+      "description": "Every request-handler entrypoint candidate (a kind in entrypoints.REQUEST_INGRESS_KINDS) before the rank floor and the size cap applied to entrypoints, in rank order: the list verify-claims' unseeded-ingress disclosure reads. Stripped from the compact and tiered views",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol_id",
+          "kind",
+          "label"
+        ],
+        "properties": {
+          "symbol_id": {
+            "type": "string",
+            "description": "ID of the handler Symbol"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aiohttp_view",
+              "aspnet_controller",
+              "controller",
+              "django_view",
+              "error_handler",
+              "express_route",
+              "fastify_route",
+              "go_handler",
+              "grape_api",
+              "graphql_server",
+              "hapi_route",
+              "http_route",
+              "koa_route",
+              "ktor_route",
+              "laravel_controller",
+              "micronaut_controller",
+              "middleware_handler",
+              "nestjs_controller",
+              "phoenix_controller",
+              "plug_route",
+              "rails_controller",
+              "rust_handler",
+              "sinatra_route",
+              "slim_route",
+              "spring_controller",
+              "tornado_handler",
+              "vapor_route",
+              "websocket_handler"
+            ],
+            "description": "The entrypoint kind, one of entrypoints.REQUEST_INGRESS_KINDS"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label (the route when known)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "usage_contexts": {
       "type": "array",
       "items": {

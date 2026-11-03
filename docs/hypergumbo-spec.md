@@ -1000,7 +1000,7 @@ Single file: `survey.json`
 ```
 `module_sets` (INV-jahuf) maps each `module-set-<16 hex>` handle the edges use to the list of modules it names, in slot order. A C or C++ call the analyzer cannot resolve could come from any header its file can see, and that list (often 100+ headers) was written into the module slot of every such call's id, display label, `dst` and `dst_ref`. A slot that names two or more modules is now the handle, the first 16 hex digits of sha256 of the comma-joined list, and the list is stored here once; a one-module slot is written as itself. `io_boundary.module_hint_disjuncts` and `_module_hint_candidates` expand a handle back (`module_sets.expand_module_slot`), so classification (ANY) and the coverage gate (ALL) read the same list as before. `survey_io.load_behavior_map` registers the table on every load. A handle with no table entry reads as one module no catalogue enumerates, so the coverage gate withholds (fail-closed). A reader that splits a slot on commas must expand it first. Only handles the edges reference are listed. On envoy-half the repeated lists were 2.07 GB of text in 151,591 edges, against 14 MB of distinct content.
 
-Code also emits `usage_contexts`, `entrypoints` (documented below), and `sketch_precomputed` (internal cache artifact — not part of the public schema; consumers should not depend on its presence).
+Code also emits `usage_contexts`, `entrypoints` and `request_ingress` (documented below), and `sketch_precomputed` (internal cache artifact — not part of the public schema; consumers should not depend on its presence).
 
 ### JSON Schema (Auto-Generated)
 
@@ -1347,6 +1347,20 @@ deletions-in-waiting.
 **Sorting:** Ranked by `rank_score` (highest first), not by `confidence` — ranking prominence is what ordering is for, and the two diverge whenever a penalty or boost applies (ADR-0039).
 
 **Not redundant with nodes:** While nodes carry `meta.concepts` metadata from framework pattern matching, the `entrypoints` array provides pre-computed confidence (with penalties and boosts), ranking, and labeled kinds. Consumers would otherwise need to iterate all nodes, check concepts, apply scoring logic, and sort. Used by sketch generation, slicing, and compact output.
+
+### request_ingress[] — every request handler, before the floor and the cap
+
+🟩 Every request-handler entrypoint candidate — an entry whose `kind` is in `entrypoints.REQUEST_INGRESS_KINDS` (`http_route`, `go_handler`, `graphql_server`, the framework controller kinds, …) — taken BEFORE the rank floor (`MIN_ENTRYPOINT_CONFIDENCE`) and the size cap (`compute_entrypoint_cap`: 50–500 by repo size, at most 40% of it per kind) that `entrypoints` applies. One `{symbol_id, kind, label}` per handler, in rank order.
+
+```json
+{
+  "request_ingress": [
+    {"symbol_id": "python:app.py:7-11:save:function", "kind": "http_route", "label": "HTTP route /save"}
+  ]
+}
+```
+
+**Why a second list:** `entrypoints` is a ranked overview and the floor and cap are right for it. The `verify-claims` unseeded-ingress disclosure ("N request handler(s) receive network data that no taint source represents", [ADR-0049](adr/0049-taint-source-arrival-scope.md) ruling 3) is a completeness statement, and read off the capped list it was silently partial: on mlflow the capped list held 200 of 302 route handlers, and the disclosure named 254 production handlers (all ingress kinds) where this list gives it 320. `verify-claims` reads `request_ingress` when the map carries the key and falls back to `entrypoints` on an older map. A handler in test code is listed here although it is below the floor in `entrypoints`; the disclosure's own production scope (`--include-non-production-sources`) decides whether it is named. Stripped from the compact and tiered projections, like `usage_contexts`.
 
 ### usage_contexts[] — framework pattern evidence
 
