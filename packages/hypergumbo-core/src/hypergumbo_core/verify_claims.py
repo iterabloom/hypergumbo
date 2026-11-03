@@ -260,7 +260,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Collection, NamedTuple, Optional
 
 if TYPE_CHECKING:
     from .taint import TaintFlowFinding
@@ -1041,6 +1041,7 @@ def unseeded_ingress_handlers(
     entrypoints: Sequence[Mapping[str, Any]],
     *,
     include_non_production: bool = False,
+    represented: Collection[str] = (),
 ) -> list[str]:
     """The request handlers no taint source represents (WI-fuzik).
 
@@ -1057,9 +1058,14 @@ def unseeded_ingress_handlers(
 
     The caller hands it :func:`ingress_candidates`: the map's
     ``request_ingress`` (every handler, before the entrypoint floor and cap)
-    or, on an older map, the capped ``entrypoints``. Every handler is listed:
-    nothing seeds a request carrier yet, and a narrowing keyed to a seed
-    marker nothing emits would be a consumer of a shape nothing produces. WI-ritog narrows this list framework by framework
+    or, on an older map, the capped ``entrypoints``. Every handler is listed
+    except one in ``represented``: the symbol ids
+    :func:`taint.represented_ingress_callers` found to be the CALLER of a
+    matched ``untrusted_input`` source from a builtin or user-vouched row
+    (WI-ritog; ADR-0049 ruling 3 removes a handler only against a represented
+    crossing, and ADR-0061 ruling 2 keeps a community row from cleaning). A
+    narrowing keyed to a seed marker nothing emits would be a consumer of a
+    shape nothing produces; this one keys on the walk's own source matches. WI-ritog narrows this list framework by framework
     as it lands seeds. Scoped like flows: a handler in test code counts only
     under ``include_non_production``. Each entry names the handler, its file
     and line and the route, so the disclosure can be checked against source.
@@ -1071,7 +1077,7 @@ def unseeded_ingress_handlers(
         if ep.get("kind") not in REQUEST_INGRESS_KINDS:
             continue
         symbol_id = str(ep.get("symbol_id") or ep.get("node_id") or "")
-        if not symbol_id:
+        if not symbol_id or symbol_id in represented:
             continue
         if (
             not include_non_production

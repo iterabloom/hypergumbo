@@ -106,7 +106,7 @@ class TestTheyShipAndLoad:
 
 class TestTheyAreDisclosable:
     @pytest.mark.parametrize(
-        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml"],
+        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml", "java-servlet.yaml"],
     )
     def test_each_declares_community_provenance_and_a_date(self, name: str):
         overlays = [o for o in _all_defaults() if o.path.name == name]
@@ -130,7 +130,7 @@ class TestTheGuardThatMattersMost:
     """
 
     @pytest.mark.parametrize(
-        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml"],
+        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml", "java-servlet.yaml"],
     )
     def test_no_shipped_default_grants_completeness(self, name: str):
         import yaml
@@ -204,7 +204,7 @@ class TestTheGuardThatMattersMost:
 
 
 def _all_defaults():
-    return default_overlays("python") + default_overlays("go")
+    return default_overlays("python") + default_overlays("go") + default_overlays("java")
 
 
 def test_an_overlay_still_loads_standalone():

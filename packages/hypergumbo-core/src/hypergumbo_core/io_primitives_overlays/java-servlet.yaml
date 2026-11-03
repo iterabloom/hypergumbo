@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — the Java Servlet API's request accessors
+# (javax.servlet and jakarta.servlet).
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT for Java, and every
+# run that loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS: `provenance: community` below.
+# java.yaml is strict JDK stdlib and the Servlet API is not the JDK, so these
+# rows live here. By ADR-0061 ruling 2 a community row may ADD a finding and
+# never make a verdict cleaner: a servlet handler whose request these rows
+# represent still appears in verify-claims' unseeded-ingress disclosure
+# (WI-fuzik) unless a builtin or user-vouched row matched it. Copy this file
+# into $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ and delete the provenance
+# line to vouch for it yourself.
+#
+# WHY THESE ROWS (WI-ritog step 2). A servlet container hands doGet/doPost/
+# service its request as a PARAMETER; the handler reads it through accessors,
+# and the Java analyzer emits each call with the parameter's DECLARED type as
+# the module slot (java:jakarta.servlet.http.HttpServletRequest:0-0:
+# getParameter). So the request's arrival is representable by an ordinary
+# caller-seeded net_recv source -- no new seed path -- and before this file no
+# catalogue carried one: the one-file servlet probe read every untrusted_input
+# claim as inconclusive over `new FileWriter(req.getParameter("p"))`, held
+# only by the disclosure. Rows list value-RETURNING request accessors only;
+# a parameter declared as the super-interface ServletRequest gets that slot,
+# so both interfaces are listed, under both namespaces.
+provenance: community
+language: java
+retrieved: "2026-11-03"
+
+net_recv:
+  - module: jakarta.servlet.http.HttpServletRequest
+    methods: [getParameter, getParameterValues, getParameterMap, getParameterNames,
+              getHeader, getHeaders, getHeaderNames, getQueryString, getPathInfo,
+              getRequestURI, getRequestURL, getCookies, getInputStream, getReader,
+              getPart, getParts, getContentType]
+  - module: jakarta.servlet.ServletRequest
+    methods: [getParameter, getParameterValues, getParameterMap, getParameterNames,
+              getInputStream, getReader, getContentType]
+  - module: javax.servlet.http.HttpServletRequest
+    methods: [getParameter, getParameterValues, getParameterMap, getParameterNames,
+              getHeader, getHeaders, getHeaderNames, getQueryString, getPathInfo,
+              getRequestURI, getRequestURL, getCookies, getInputStream, getReader,
+              getPart, getParts, getContentType]
+  - module: javax.servlet.ServletRequest
+    methods: [getParameter, getParameterValues, getParameterMap, getParameterNames,
+              getInputStream, getReader, getContentType]
+    notes: >-
+      Request DATA accessors. Not listed: getSession, getServletContext,
+      getRequestDispatcher (objects, not request data), getRemoteAddr /
+      getRemoteHost (peer identity; a host_info_read question, not decided
+      here), and every setter.

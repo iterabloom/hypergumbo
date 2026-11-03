@@ -7359,6 +7359,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
+    # WI-ritog: the request handlers a builtin or user-vouched untrusted_input
+    # source was matched IN (their arrival is represented); the unseeded-
+    # ingress disclosure below leaves them out. Filled per language beside
+    # the propagator call, from the same edges and sources it walks.
+    represented_ingress: set[str] = set()
     credited_user_summaries: set[str] = set()
     # INV-nohob: source values the walk saw leave through a construct taint
     # does not follow; a clean verdict on their label is withheld. Function
@@ -7766,6 +7771,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # taint does not follow -- run on BOTH arms, because a construct
                 # on the source line needs no walk (a plain ``g = getenv(..)``
                 # leaves the function with no DDG edge at all).
+                from .taint import represented_ingress_callers
+                represented_ingress.update(represented_ingress_callers(
+                    lang_edges, lang_sources, lang_ambiguous, lang,
+                ))
                 unfollowed_escapes.extend(find_unfollowed_escapes(
                     ddg_edges or [], lang_edges, lang_sources,
                     ambiguous_names=lang_ambiguous, language=lang,
@@ -7908,6 +7917,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             include_non_production=getattr(
                 args, "include_non_production_sources", False
             ),
+            represented=represented_ingress,
         ),
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that

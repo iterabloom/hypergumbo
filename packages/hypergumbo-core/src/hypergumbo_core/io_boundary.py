@@ -2422,6 +2422,27 @@ def default_overlays(language: str) -> list[DefaultOverlay]:
     lose its defaults by being spelled differently from the overlay's own
     ``language:`` key.
     """
+    return [
+        o for o in _scan_default_overlays()
+        if o.language in overlay_languages_for(language)
+    ]
+
+
+def overlay_languages_for(language: str) -> frozenset[str]:
+    """The overlay ``language:`` values that apply to a ``language`` catalogue.
+
+    The language itself, its catalogue alias (``typescript`` reads
+    ``javascript``, ``cpp`` reads ``c``) and its catalogue PARENT (``kotlin``
+    and ``scala`` read ``java``). One rule for both readers: which shipped
+    defaults a language gets (:func:`default_overlays`) and which overlay
+    :func:`load_catalog` accepts as "mine". They used to disagree: the
+    defaults resolved the parent while the loader compared the overlay's
+    language to the catalogue's exactly, so the first Java default overlay
+    (the servlet request accessors, WI-ritog) reached Java and was silently
+    dropped for Kotlin and Scala, whose builtin rows had already merged
+    Java's -- a Kotlin servlet calls the same
+    ``jakarta.servlet.http.HttpServletRequest.getParameter``.
+    """
     resolved = {language}
     alias = _CATALOG_ALIASES.get(language)
     if alias:
@@ -2429,7 +2450,7 @@ def default_overlays(language: str) -> list[DefaultOverlay]:
     parent = _CATALOG_PARENTS.get(language)
     if parent:
         resolved.add(parent)
-    return [o for o in _scan_default_overlays() if o.language in resolved]
+    return frozenset(resolved)
 
 
 def load_catalog(
@@ -2550,7 +2571,15 @@ def load_catalog(
                 f"produces. No run would ever apply it — check the "
                 f"spelling.",
             )
-        if overlay.language and overlay.language != catalog.language:
+        # "Mine" is the catalogue's language, its alias or its PARENT -- the
+        # resolution ``default_overlays`` already used, now shared
+        # (``overlay_languages_for``). A parent's overlay describes the API
+        # the child's builtin rows merged above (Kotlin / Scala call the
+        # Java servlet API through the same slots), so it applies; an exact
+        # comparison here dropped the first Java default for both children.
+        if overlay.language and (
+            overlay.language not in overlay_languages_for(catalog.language)
+        ):
             continue
         # ``merge`` is self-over-argument, so the overlay is the receiver: a
         # later overlay outranks an earlier one and both outrank the built-in.
@@ -2604,7 +2633,12 @@ def load_catalog(
         # whole row set (``overlay_only``), and a user overlay leaves it
         # in_progress — partial, which is true — rather than "unsupported".
         _status, _provenance = catalog.status, catalog.stdlib_provenance
-        catalog = overlay.merge(catalog)
+        # ``merge`` keeps the RECEIVER's language and the receiver is the
+        # overlay: a parent's overlay (java) applied to a child (kotlin) must
+        # not relabel the child's catalogue, so the language is restored with
+        # the status below. One catalogue, one language, whatever it merged.
+        _language = catalog.language
+        catalog = replace(overlay.merge(catalog), language=_language)
         if community or _status != CATALOG_STATUS_UNSUPPORTED:
             catalog = replace(
                 catalog, status=_status, stdlib_provenance=_provenance,
