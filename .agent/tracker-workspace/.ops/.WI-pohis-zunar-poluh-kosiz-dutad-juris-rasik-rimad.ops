@@ -1,0 +1,22 @@
+- op: create  # c427
+  at: '2026-11-03T07:51:28Z'  # c427
+  by: agent  # c427
+  actor: jgstern_agent  # c427
+  clock: 1  # c427
+  nonce: c427  # c427
+  data:  # c427
+    kind: work_item  # c427
+    title: "scala: zio-http Routes(Method.GET / path -> handler) emits no usage context, so no route rule can match and zio-http apps get no route concepts or entrypoints (WI-sorop scala half)"  # c427
+    status: todo_hard  # c427
+    priority: 3  # c427
+    parent:  # c427
+    tags:  # c427
+    - analyzer  # c427
+    - scala  # c427
+    - analysis_quality  # c427
+    isbefore: []  # c427
+    duplicate_of: []  # c427
+    not_duplicate_of: []  # c427
+    pr_ref:  # c427
+    description: "PROBLEM. The scala half of WI-sorop (found doing WI-hapon, 2026-10-28): zio-http routes written as `Routes(Method.GET / \"hello\" -> handler(hello _))` in an object val emit NO usage context from the scala analyzer, so neither zio.yaml's old usage_call rules (unread, deleted in WI-hapon) nor a `usage: kind call` rule can match, and zio-http apps get no route concepts and no entrypoints. WI-sorop's PR fixed the python half only (parent_base_classes on methods); this half is a different producer.\n\nFIX CANDIDATES (from the item): give scala a usage context for the `Routes(...)` construction (the argument expression `Method.X / path -> handler` as a call usage with position), or a route extraction for the `Method.X / path -> handler` operator form that mints a route symbol the way the Go analyzer does for HandleFunc. Measure on a zio-http repo (none in ~/whole_bunch_of_repos or ~/curriculum_repos was checked for this; find one first, or build the fixture from WI-hapon's). Not measured: how many zio-http apps the corpus has."  # c427
+    fields: {}  # c427
