@@ -1,0 +1,29 @@
+- op: create  # e69c
+  at: '2026-11-03T11:35:28Z'  # e69c
+  by: agent  # e69c
+  actor: jgstern_agent  # e69c
+  clock: 1  # e69c
+  nonce: e69c  # e69c
+  data:  # e69c
+    kind: work_item  # e69c
+    title: "python: a call on an attribute chain rooted at a from-imported name (request.args.get, from flask import request) loses its module slot (dst python:external:0-0:get), so no flask.request row can ever match"  # e69c
+    status: todo_hard  # e69c
+    priority: 2  # e69c
+    parent:  # e69c
+    tags:  # e69c
+    - analysis_quality  # e69c
+    - python  # e69c
+    - taint  # e69c
+    isbefore: []  # e69c
+    duplicate_of: []  # e69c
+    not_duplicate_of: []  # e69c
+    pr_ref:  # e69c
+    description: "PROBLEM. A Python call on an attribute chain rooted at a FROM-IMPORTED name loses its module slot. Fixture (fuzik's, ~/hypergumbo_lab_notebook/taint_runnerup_11012026/flask/app.py): `from flask import request` ... `p = request.args.get(\"p\")` inside the route handler `save`. The survey (dev 3b6463d531, ~/hypergumbo_lab_notebook/ritog_11032026/reach_probes.txt) carries the call as `python:app.py:7-11:save:function -calls-> python:external:0-0:get:external_symbol` with callee_name None and no module: the receiver `request.args` and its origin `flask` are gone, and no `module_attr_ref` edge is emitted for the `request.args` read either (the map has zero module_attr_ref edges). Consequence: no io_primitives / taint row for `flask.request.args.get` (or `flask.request.*` generally) can ever match this call site, so Flask's request VALUE cannot become an `untrusted_input` source (WI-ritog's Flask tier is blocked on this), and the WI-fuzik disclosure is the only thing standing between a clean `untrusted_input` verdict and `open(request.args.get(\"p\"), \"w\")`.\n\nRELATED, NOT THE SAME: WI-fuvuj (done) fixed the bare/method receiver losing the module qualifier for catalogued I/O calls; WI-zilag (done) routes a TRACKED receiver type (constructor-bound names) into the module slot; INV-linub (satisfied) is the class \"a catalogued I/O call site must reach its catalogue entry regardless of receiver syntax\". This instance is an attribute CHAIN on an IMPORTED MODULE ATTRIBUTE (`request` is `flask.request`, a module-level object, not a constructor-bound local), which neither fix covers; INV-linub is not reopened by it because `flask.request.args.get` is not a catalogued call today (fair objection), but it becomes one the moment a flask.request row is written.\n\nFIX CANDIDATES. (1) In the Python analyzer's call resolution, when the receiver chain's root is a name bound by `from M import X` (or `import M` + `M.X...`), emit the dst with module `M.X.<attrs>` (here `flask.request.args`) and name `get`, the way `java:jakarta.servlet.http.HttpServletRequest:0-0:getParameter` already carries its slot in the servlet probe; (2) additionally emit a `module_attr_ref` edge for the read `request.args` (WI-guhok's shape for `os.environ`) so a bare attribute read of the request object is a matchable source even without a call. Pin with the fixture above: the edge's dst module slot is `flask.request.args` (or the chain), and a test-only overlay row `flask.request.args.get` (net_recv) makes `untrusted-input-no-host-fs` VIOLATED through the flow. Measure on a Flask corpus repo (flask-restful's examples/, mlflow server handlers) before/after: count call edges whose dst is `python:external:0-0:<name>` from route handlers.\n\nNOT ASSERTED: that every `python:external:0-0:*` edge has this cause (there are bare-name and dynamic cases too); the right slot format for a chain (module vs class slot) is for the analyzer's convention to decide."  # e69c
+    fields: {}  # e69c
+- op: discuss  # 8f3c
+  at: '2026-11-03T11:38:19Z'  # 8f3c
+  by: agent  # 8f3c
+  actor: jgstern_agent  # 8f3c
+  clock: 2  # 8f3c
+  nonce: 8f3c  # 8f3c
+  message: "PREMISE CHECK at the taint level (2026-11-03, dev 3b6463d531): verify-claims refines python external dsts before taint (refine_external_edges, WI-dilih), so the survey-level edge alone was not proof. Ran verify-claims on the fixture with an overlay declaring flask complete AND three candidate net_recv rows (module flask.request.args methods [get]; module flask.request methods [args.get]; module flask methods [request.args.get]) against claim untrusted-input-no-host-fs: 0 flows, verdict inconclusive, held only by the WI-fuzik disclosure naming save. So no row shape reaches the call: the receiver is lost before taint, not merely in the survey. Artifacts: <scratch>/ritog/flask_request_source.yaml, flask_vc.json (session scratchpad; the command line is in ~/hypergumbo_lab_notebook/ritog_11032026/REACH.md's follow-up)."  # 8f3c

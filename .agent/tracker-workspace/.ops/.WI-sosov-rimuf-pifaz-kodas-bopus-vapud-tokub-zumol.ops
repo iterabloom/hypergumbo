@@ -1,0 +1,21 @@
+- op: create  # e4c7
+  at: '2026-11-03T15:09:12Z'  # e4c7
+  by: agent  # e4c7
+  actor: jgstern_agent  # e4c7
+  clock: 1  # e4c7
+  nonce: e4c7  # e4c7
+  data:  # e4c7
+    kind: work_item  # e4c7
+    title: "Express and Go request handlers receive the request as a PARAMETER (req / *http.Request) read by member access or a receiver-lost chain: no call edge a source row can match, so their arrival needs a DDG parameter seed minted without a call edge"  # e4c7
+    status: todo_hard  # e4c7
+    priority: 2  # e4c7
+    parent:  # e4c7
+    tags:  # e4c7
+    - taint  # e4c7
+    - analysis_quality  # e4c7
+    isbefore: []  # e4c7
+    duplicate_of: []  # e4c7
+    not_duplicate_of: []  # e4c7
+    pr_ref:  # e4c7
+    description: "PROBLEM. For Express and Go the request arrives as a PARAMETER of the handler and is read by member access or by a method chain on that parameter, so no call edge exists that a catalogue source row could match, and the handler's arrival cannot be represented by the mechanism WI-ritog step 2 shipped (a matched source call with the handler as caller). Measured 2026-11-03 (lab ~/hypergumbo_lab_notebook/ritog_11032026/REACH.md, reach_probes.txt, dev 3b6463d531): Express `app.get(\"/save\", (req, res) => { fs.writeFileSync(req.query.p, \"x\") })` -> handler `_GET_save_handler` has an inbound `dispatches_to` from the route marker, `signature: (req, res)` but no `meta.parameters`, and `req.query.p` is a member access with NO edge; Go `func (saver) ServeHTTP(w http.ResponseWriter, r *http.Request) { os.WriteFile(r.URL.Query().Get(\"p\"), ...) }` -> `meta.parameters` IS recorded with types (`r *http.Request`), but the chain lands as `go:external:0-0:Query` / `go:external:0-0:Get` with the receiver lost. In both, WI-fuzik's disclosure is the only thing between a clean `untrusted_input` verdict and a request-chosen file write. `start_at: callee` does not help: it only relocates the BFS seed, the source entry is still minted from a call edge into the callee (taint.find_source_callers), and a structural seed at the handler would taint everything it reaches (reachability semantics, a false-positive machine for request handlers).\n\nDESIGN TO EVALUATE. (1) A seed path that mints a source entry WITHOUT a call edge, keyed on (handler symbol, parameter index), for handlers in `behavior_map[\"request_ingress\"]` (every request handler, uncapped, WI-vumig) whose framework contract names the request parameter: Express handler arg 0 (`req`), Go `*http.Request`-typed parameter (the type is recorded), servlet `HttpServletRequest` parameter (already covered by accessor rows, so a control). (2) The DDG twin needs a DEF for the parameter at the function's entry so the walk has a value to follow (`ddg_build` records parameter annotations but no parameter def today: check `ts_def_use` / `go` def-use extractors). (3) The narrowing of the disclosure then keys on the minted seed exactly as step 2 keys on a matched source call: the handler leaves the list only when its parameter seed exists AND is vouched (builtin contract or user row), never by framework name. Pin with the fuzik express/go fixtures: `untrusted-input-no-host-fs` goes from inconclusive (disclosure) to VIOLATED through the seed and the handler leaves the disclosure; a handler that never touches `req` stays clean AND listed (no seed minted when the parameter has no use). A/B on the fuzik corpus (`fuzik_step0_11022026/corpus_express.json`, `corpus_caddy.json`).\n\nNOT ASSERTED: that Express's `_cb_*` / `_GET_*_handler` minted symbols carry an inbound edge in every registration shape (WI-ritog tier 3 note); that recording `meta.parameters` for JS is in scope here (it may be a prerequisite)."  # e4c7
+    fields: {}  # e4c7
