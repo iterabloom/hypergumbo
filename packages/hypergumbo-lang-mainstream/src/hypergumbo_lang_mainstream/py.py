@@ -6810,8 +6810,8 @@ def _extract_edges(
                 )
 
             # INV-ruluv: a comprehension / lambda is its OWN binding scope. Prune
-            # ``var_types`` of the names it binds before recursing into its
-            # scope-internal parts, so a target/param that SHADOWS an outer typed
+            # ``var_types`` (and, INV-hovoj, ``assigned_names``) of the names it
+            # binds before recursing into its scope-internal parts, so a target/param that SHADOWS an outer typed
             # name does not inherit the stale outer type (which would emit a
             # confidently-wrong receiver_type_hint). Pruning at scope ENTRY (per
             # node) — not at the child-descent site — is what keeps a NESTED
@@ -6845,11 +6845,15 @@ def _extract_edges(
                         node.lineno,
                         external_var_types if _gi == 0 else _pruned_ext,
                     )
+                # INV-hovoj: the comprehension's own targets are NEW bindings,
+                # not the block's assigned-but-untyped names: ``[label.x for
+                # label in events]`` after ``label = d.get(k)`` is a fresh
+                # ``label``, so the untyped-root guard must not refuse it.
                 for _part in _comprehension_scope_nodes(node):
                     process_code_block(
                         [_part], caller_symbol, _pruned_vt,
                         stack=_sub_stack, external_var_types=_pruned_ext,
-                        assigned_names=_assigned,
+                        assigned_names=_assigned - _shadow,
                     )
                 continue
 
@@ -6873,10 +6877,11 @@ def _extract_edges(
                         stack=stack, external_var_types=external_var_types,
                         assigned_names=_assigned,
                     )
+                # INV-hovoj: a lambda parameter is a new binding too.
                 process_code_block(
                     [node.body], caller_symbol, _pruned_vt,
                     stack=_sub_stack, external_var_types=_pruned_ext,
-                    assigned_names=_assigned,
+                    assigned_names=_assigned - _shadow,
                 )
                 continue
 

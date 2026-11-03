@@ -169,3 +169,10 @@ packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/requirements.
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/toml_config.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/xml_config.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+
+# py.py's tuple-unpacking of a catalogued tuple return (``reader, writer =
+# await asyncio.open_connection(...)``, py.py ~6680), the attribute-chain arms of
+# _call_qualified_name (~4374-4381) and the stale-medium prune on rebinding
+# (~6899) are covered only by the asyncio stream-reader test, which runs the
+# analyzer through the pipeline and never imports py.py (INV-hovoj PR).
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py  packages/hypergumbo-lang-mainstream/tests/test_py_asyncio_stream_readers.py
