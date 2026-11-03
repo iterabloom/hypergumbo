@@ -306,7 +306,7 @@ from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Container, Final, Iterator, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Container, Final, Iterator, Mapping, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -1185,6 +1185,8 @@ def _extract_struct_field_types(
         integration Integration      → integration: Integration
         metrics     *Metrics         → metrics: Metrics
         cache       pkg.Cache        → cache: Cache (unqualified)
+        handler     func(string) err → handler: func(string) err (its text;
+                                        a callable field, WI-surid)
         data        map[string]int   → (skipped, not a named type)
 
     Built-in types (string, int, bool, error, etc.) are excluded because
@@ -1238,7 +1240,12 @@ def _extract_struct_field_types(
                 type_name = node_text(tid, source)
                 if type_name not in _GO_BUILTINS:
                     field_types[field_name] = full_text
-
+        elif actual_type.type == "function_type":
+            # WI-surid: a field holding a function is callable through a
+            # value's selector; its text starts with ``func``, which is what
+            # ``_go_value_member`` asks. No chain walks through it: the text
+            # is no registry key.
+            field_types[field_name] = node_text(actual_type, source)
     return field_types
 
 
@@ -4118,6 +4125,37 @@ def _go_package_member(sym: Symbol) -> bool:
     return sym.kind != "method"
 
 
+def _go_value_member(
+    field_type_registry: "dict[str, dict[str, str]] | None",
+) -> Callable[[Symbol], bool]:
+    """``admit`` for a call on a VALUE (``x.F()``): a method, or a func-typed field.
+
+    Go reaches a method of the value's type, or a field of it that holds a
+    function, through a selector; never a package function, a struct or a
+    named type (WI-surid: cert-manager's ``corev1.SchemeGroupVersion
+    .WithResource("secrets")``, a method on an external package variable the
+    analyzer cannot type, bound ``func WithResource`` in ``pkg/logs`` 306
+    times). The rule #2006 gave Rust. A field's declared type is read from
+    ``field_type_registry`` (struct -> field -> type text), its declared home:
+    the field symbol's ``signature`` is display-only (ADR-0058). A data field
+    is refused: ``x.Name()`` cannot call a ``string``. Known gap, measured at
+    1 edge in 4 repos: a field typed by a NAMED function type (``Decode
+    PostingsDecoder``, ``type PostingsDecoder func(...)``) holds the name, not
+    ``func``, and is refused too.
+    """
+    registry = field_type_registry or {}
+
+    def admit(sym: Symbol) -> bool:
+        if sym.kind == "method":
+            return True
+        if sym.kind != "field":
+            return False
+        owner, _, field = sym.name.rpartition(".")
+        return registry.get(owner, {}).get(field, "").startswith("func")
+
+    return admit
+
+
 def _go_selector_parts(
     node: "tree_sitter.Node",
 ) -> "tuple[Optional[tree_sitter.Node], Optional[tree_sitter.Node]]":
@@ -4228,6 +4266,8 @@ def _extract_edges_from_file(
     declarations as the scope: what is known of its package, never another's.
     """
     # Every declaration of this file, by position (INV-midag).
+    # WI-surid: what a call on a value may reach (see _go_value_member).
+    _value_admit = _go_value_member(field_type_registry)
     own_decls = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
@@ -5108,7 +5148,7 @@ def _extract_edges_from_file(
                             if callee_shape == "identifier"
                             else resolver.lookup(
                                 callee_name, path_hint=import_path_hint,
-                                admit=_go_package_member if package_qualified else None,
+                                admit=_go_package_member if package_qualified else _value_admit,
                             )
                         ).symbol
                         if _named is not None and _named.kind not in _GO_INSTANTIABLE_KINDS:
@@ -5134,12 +5174,18 @@ def _extract_edges_from_file(
                         # for a BARE call, when the file's hit is a method or
                         # field listed under its bare name (WI-bivin): a bare
                         # identifier cannot name one.
+                        # WI-surid: nor, on a VALUE, when the file's hit is
+                        # not a method or a func-typed field.
                         if (
                             callee_name in local_symbols
                             and import_path_hint is None
                             and not (
                                 callee_shape == "identifier"
                                 and local_symbols[callee_name].kind in _GO_MEMBER_KINDS
+                            )
+                            and not (
+                                call_construct == "method"
+                                and not _value_admit(local_symbols[callee_name])
                             )
                         ):
                             callee = local_symbols[callee_name]
@@ -5165,7 +5211,7 @@ def _extract_edges_from_file(
                                 if callee_shape == "identifier"
                                 else resolver.lookup(
                                 callee_name, path_hint=import_path_hint,
-                                admit=_go_package_member if package_qualified else None,
+                                admit=_go_package_member if package_qualified else _value_admit,
                             )
                             )
                             if (
