@@ -1,0 +1,22 @@
+- op: create  # 7c38
+  at: '2026-11-03T19:08:48Z'  # 7c38
+  by: agent  # 7c38
+  actor: jgstern_agent  # 7c38
+  clock: 1  # 7c38
+  nonce: 7c38  # 7c38
+  data:  # 7c38
+    kind: work_item  # 7c38
+    title: "requirements.py hand-builds its depends_on endpoints (requirements:<path>, pypi:package:<name>), so the src has no node and surfaces as a requirements:<unknown> external_symbol stand-in"  # 7c38
+    status: todo_hard  # 7c38
+    priority: 3  # 7c38
+    parent:  # 7c38
+    tags:  # 7c38
+    - analysis_quality  # 7c38
+    - python  # 7c38
+    - catalogue  # 7c38
+    isbefore: []  # 7c38
+    duplicate_of: []  # 7c38
+    not_duplicate_of: []  # 7c38
+    pr_ref:  # 7c38
+    description: "requirements.py builds its depends_on edge endpoints by hand: src=f\"requirements:{rel_path}\" (three sites, ~230/315/351) and dst=f\"pypi:package:{name}\". Neither is the lang:path:span:name:kind id shape, so no Symbol exists for the src, make_file_id-shape synthesis (WI-ramuv) does not recognise it, and boundary synthesis parses its path slot as <unknown>: on a default survey of hypergumbo itself (dev cd6aeed541 + the INV-saruf fix) the four route-parity fixture requirements.txt files collapse into ONE edge `requirements:<unknown>:0-0:requirements:external_symbol -> pypi:<unknown>:0-0:package:external_symbol`, an in-tree manifest minted as an external node. Before the INV-saruf fix the tier filter's deleted shape predicate dropped these edges at the default tier by accident (their ids had no \":file\" and no py/js/ts extension), which is why the defect was invisible at max_tier 3 and visible at --max-tier 4. Found 2026-11-03 by the INV-saruf A/B (lab ~/hypergumbo_lab_notebook/saruf_11032026/RESULT.md, self_detail.txt). Fix shape (F-handbuilt-id): the src is the requirements file's own file id (make_file_id), the dst the dependency-declaration convention the other manifest analyzers use; check pyproject/package.json/Cargo producers for the same hand-built shape before fixing one. Family: F-handbuilt-id (INV-kurup's emission-boundary linter is the detector; it did not catch this site because the ids are built in f-strings, not Edge.create of a resolved node)."  # 7c38
+    fields: {}  # 7c38
