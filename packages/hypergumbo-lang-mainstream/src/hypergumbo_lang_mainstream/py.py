@@ -6474,9 +6474,32 @@ def _extract_edges(
             if not isinstance(sub.value, ast.Name):
                 return
             local_name = sub.value.id
-            if local_name not in module_imports or local_name in value_shadowed:
+            if local_name in value_shadowed:
                 return
-            real_module = module_imports[local_name]
+            real_module = module_imports.get(local_name)
+            _in_tree_from_import = False
+            if real_module is None:
+                # WI-gabak: the from-import spelling of the same read.
+                # ``from flask import request; request.data`` reads an
+                # attribute of the object ``flask.request``, which is what an
+                # ``attributes:`` row under ``module: flask.request``
+                # describes; this emitter read only ``module_imports``, so the
+                # spelling every Flask handler uses emitted nothing and such a
+                # row could never match. A binding of the PROJECT takes the
+                # retargets below exactly as ``import pkg.sub as sub`` does
+                # (``sub.CONST`` -> ``references``) and, where they place
+                # nothing (``Klass.X`` on a from-imported class, a name a
+                # generated module defines at import time), emits NOTHING:
+                # never a phantom under the project's own prefix (INV-nuzas;
+                # measured on mlflow before this guard: 65 under
+                # ``mlflow.entities.AssessmentSourceType`` alone).
+                _binding = imports.get(local_name)
+                if _binding is None:
+                    return
+                real_module = f"{_binding[0]}.{_binding[1]}"
+                _in_tree_from_import = _binding_in_tree(
+                    _binding[0], _binding[1], global_symbols, resolver,
+                )
             # WI-huhum retarget: an in-tree module VARIABLE resolves to its
             # real node. EXACT module match (global_symbols.get) — NOT the
             # suffix-matching _lookup_symbol_by_module — because on this
@@ -6499,7 +6522,14 @@ def _extract_edges(
                 # too (references not in TAINT_CALL_EDGE_TYPES; a call
                 # ``h.compute()`` is skipped above and handled by the calls
                 # pipeline, so this only fires on function-object reads).
-                if target is not None and target.kind in ("variable", "function"):
+                # WI-gabak widened it to a CLASS read as a value
+                # (``fields.String`` in a marshalling dict, ``m.Klass`` in an
+                # ``isinstance``): a construction is a call and skipped above,
+                # so what reaches here is the class OBJECT, and a phantom for a
+                # class of the project is the same INV-nuzas shape. Measured on
+                # flask-restful: 11 such phantoms under the from-import
+                # spelling the moment it was emitted at all.
+                if target is not None and target.kind in ("variable", "function", "class"):
                     edges.append(Edge.create(
                         src=caller_symbol.id,
                         dst=target.id,
@@ -6534,6 +6564,8 @@ def _extract_edges(
                             origin_run_id=run_id,
                         ))
                         return
+            if _in_tree_from_import:
+                return
             qname = f"{real_module}.{sub.attr}"
             carrier = attr_carriers.get(id(sub))
             edges.append(Edge.create(
@@ -8090,24 +8122,29 @@ def _unwind_attribute_chain(
 
 def _dotted_module_of_call(
     func: ast.Attribute, module_imports: dict[str, str],
+    imports: dict[str, tuple[str, str]] | None = None,
 ) -> str | None:
     """The module a dotted call's path names, or None (WI-lovun).
 
     ``pkg.sub.deep.deep_fn()`` under ``import pkg.sub.deep`` is
     ``pkg.sub.deep``: the root's import binding joined with every hop but the
     callee. An alias binds the root to its module (``import pkg.sub as s;
-    s.deep.f()`` is ``pkg.sub.deep``). A chain whose root no import binds -- a
-    local, ``self``, a builtin -- is not a module path and returns None.
-    ``module_imports`` is already narrowed to what is live at the call site, so
-    a parameter named like the import never reaches here.
+    s.deep.f()`` is ``pkg.sub.deep``), and so does a from-import of a
+    submodule (``from pkg import sub; sub.deep.f()``, WI-gabak) when *imports*
+    is given -- the same single answer :func:`_import_binding_for` gives every
+    other bare-name question here. A chain whose root no import binds -- a
+    local, ``self``, a builtin -- is not a module path and returns None. Both
+    maps are already narrowed to what is live at the call site, so a parameter
+    named like the import never reaches here.
     """
     chain = _unwind_attribute_chain(func)
     if chain is None:
         return None
     root, attrs = chain
-    if root.id not in module_imports or len(attrs) < 2:
+    bound = _import_binding_for(root.id, imports or {}, module_imports)
+    if bound is None or len(attrs) < 2:
         return None
-    return ".".join([module_imports[root.id], *attrs[:-1]])
+    return ".".join([bound, *attrs[:-1]])
 
 
 def _dotted_receiver_constant(
@@ -8211,7 +8248,7 @@ def _resolve_call_target(
             # resolver was asked first and typed the result as an EXTERNAL
             # ``pkg.sub.mod.Klass``, so ``pkg.sub.mod.Klass().m()`` minted a
             # stand-in named by an in-tree module (WI-homih, INV-nuzas).
-            dotted_module = _dotted_module_of_call(func, module_imports)
+            dotted_module = _dotted_module_of_call(func, module_imports, imports)
             if dotted_module is not None:
                 return _lookup_symbol_by_module(
                     global_symbols, dotted_module, func.attr, resolver=resolver
@@ -8937,6 +8974,68 @@ def _import_binding_for(
     return module_imports.get(name)
 
 
+def _binding_in_tree(
+    module: str,
+    name: str,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> bool:
+    """Whether ``from <module> import <name>`` binds something of this repository.
+
+    WI-gabak. Two tests, either suffices. The module's top-level package is a
+    top-level package of the registry (``SymbolResolver.module_in_tree``):
+    root-anchored, so a generated ``mlflow.protos.x_pb2`` that defines no
+    symbol is in, and the external ``tensorflow`` is out although mlflow has
+    a ``mlflow.tensorflow`` flavour. Or the pair resolves to a registered
+    symbol through the suffix-aware lookup Case 1 resolves the import with,
+    which also finds a class re-exported through a package ``__init__`` in a
+    layout whose modules are not rooted at the package.
+    """
+    if resolver is None:
+        from hypergumbo_core.symbol_resolution import SymbolResolver
+        resolver = SymbolResolver(global_symbols)
+    return resolver.module_in_tree(module) or (
+        _lookup_symbol_by_module(global_symbols, module, name, resolver=resolver)
+        is not None
+    )
+
+
+def _from_import_receiver_path(
+    name: str,
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> str | None:
+    """The import-anchored path of a from-imported root OUTSIDE the tree, else ``None``.
+
+    WI-gabak. ``from flask import request`` binds ``request`` to
+    ``flask.request``; a chain on it (``request.args.get()``, ``request.data``)
+    is a read of that object, and the catalogue keys such rows by the
+    receiver's import-anchored path the way it keys ``os.environ`` -- a path,
+    not necessarily a module. ``None`` when no from-import binds *name*, and
+    when the binding is of this repository (:func:`_binding_in_tree`),
+    whatever the name is: a class, a class re-exported through a package
+    ``__init__``, a submodule, a name a generated module defines at import
+    time. Two reasons, both measured on mlflow. A path minted under a module
+    of the project is the
+    workspace-prefixed phantom INV-nuzas forbids. And the ``external``
+    placeholder is what the downstream recovery passes key on:
+    ``rules.Klass.check(n)`` under ``from pkg import rules`` is recovered to
+    the real method by the method-call-recovery linker (WI-gigoz) from the
+    placeholder plus the caller's class hint, and a qualified slot took it
+    out of that linker's purview (27 resolved calls lost in mlflow's clint).
+    Both builders of *imports* skip an import whose module they could not
+    resolve, so the module half is never empty here.
+    """
+    binding = imports.get(name)
+    if binding is None:
+        return None
+    module, original = binding
+    if _binding_in_tree(module, original, global_symbols, resolver):
+        return None
+    return f"{module}.{original}"
+
+
 def _receiver_type_id_trustworthy(
     recv_sym: Symbol,
     class_name_counts: dict[str, int],
@@ -9490,7 +9589,7 @@ def _process_call(
         # modules OUTSIDE the tree, and landed on a phantom external_symbol
         # while the real function read as uncalled.
         elif isinstance(func.value, ast.Attribute):
-            dotted_module = _dotted_module_of_call(func, module_imports)
+            dotted_module = _dotted_module_of_call(func, module_imports, imports)
             if dotted_module is not None:
                 callee_symbol = _lookup_symbol_by_module(
                     global_symbols, dotted_module, attr_name, resolver=resolver
@@ -10203,8 +10302,31 @@ def _process_call(
                 # variable and no stub (WI-hotug CASE B); the dotted spelling
                 # takes the same answer instead of minting
                 # ``python:pkg.REGISTRY:0-0:get``, a module that does not exist.
+                # WI-gabak: a root bound by ``from flask import request`` is
+                # an OBJECT the module exports, and ``request.args.get()`` is
+                # a chain on it exactly as ``flask.request.args.get()`` is
+                # under ``import flask``; the catalogue keys both by the
+                # receiver's import-anchored path (``flask.request.args``),
+                # the way it keys ``os.environ``. The arm below read only
+                # ``module_imports``, so the from-import spelling -- the one
+                # every Flask handler uses -- fell to the ``external``
+                # placeholder, no ``flask.request.*`` row could ever match,
+                # and the request could never be an ``untrusted_input``
+                # source. An in-tree binding is refused the path (see
+                # ``_from_import_receiver_path``); the maps are
+                # scope-narrowed, so a parameter named ``request`` is a value
+                # and keeps the placeholder (INV-dulum).
+                _root_path = module_imports.get(root_name)
+                if _root_path is None:
+                    _root_path = _from_import_receiver_path(
+                        root_name, imports, global_symbols, resolver,
+                    )
+                # The constant check reads ANY binding (it answers only for an
+                # in-tree variable, ``from pkg.sub import core;
+                # core.CONSTANTS.values()``); the slot below reads only a path
+                # outside the tree.
                 _const_receiver = _dotted_receiver_constant(
-                    chain_attrs, module_imports.get(root_name),
+                    chain_attrs, _import_binding_for(root_name, imports, module_imports),
                     global_symbols, resolver,
                 )
                 if _const_receiver is not None:
@@ -10217,9 +10339,8 @@ def _process_call(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
-                elif root_name in module_imports and len(chain_attrs) >= 2:
-                    real_root = module_imports[root_name]
-                    submodule = real_root + "." + ".".join(chain_attrs[:-1])
+                elif _root_path is not None and len(chain_attrs) >= 2:
+                    submodule = _root_path + "." + ".".join(chain_attrs[:-1])
                     callee = chain_attrs[-1]
                     dst_id = f"python:{submodule}:0-0:{callee}:unresolved"
                     edges.append(Edge.create(
