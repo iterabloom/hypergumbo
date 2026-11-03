@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **58002** symbols (functions, classes, methods)
-- **232325** edges by type:
-  - calls: 131572
-  - contains: 54001
-  - imports: 19941
+- **58010** symbols (functions, classes, methods)
+- **232364** edges by type:
+  - calls: 131595
+  - contains: 54008
+  - imports: 19946
   - instantiates: 12890
-  - references: 10004
-  - module_attr_ref: 2128
-  - other: 1789
+  - references: 10005
+  - module_attr_ref: 2129
+  - other: 1791
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58002 Symbols + 232325 Edges + UsageContexts           │
+│  Output: 58010 Symbols + 232364 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -287,15 +287,15 @@ These symbols have the highest bidirectional centrality
 | `write_text` | external_symbol | 7377.0 | <external> |
 | `Span` | class | 7113.5 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3709.0 | <external> |
+| `get` | external_symbol | 3714.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
-| `Path` | external_symbol | 2522.0 | <external> |
-| `str` | external_symbol | 2505.0 | <external> |
+| `Path` | external_symbol | 2523.0 | <external> |
+| `str` | external_symbol | 2506.0 | <external> |
 | `next` | external_symbol | 2278.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
-| `append` | external_symbol | 1957.0 | <external> |
+| `append` | external_symbol | 1958.0 | <external> |
 | `main` | function | 1792.0 | cli.py |
 
 ## Pattern System
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: b66df441bc98
-  commit_count: 8792
+  commit: 2f6da823439c
+  commit_count: 8795
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
