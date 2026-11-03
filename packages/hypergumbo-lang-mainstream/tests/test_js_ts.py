@@ -1835,7 +1835,7 @@ class TestSvelteScriptExtraction:
 
     def test_extracts_typescript_script(self) -> None:
         """Extracts TypeScript script with lang='ts'."""
-        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<script lang="ts">
 const x: number = 1;
@@ -1844,7 +1844,7 @@ function foo() { return x; }
 
 <div>Hello</div>'''
 
-        blocks = extract_svelte_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         assert blocks[0].is_typescript is True
@@ -1853,13 +1853,13 @@ function foo() { return x; }
 
     def test_extracts_javascript_script(self) -> None:
         """Extracts JavaScript script without lang attribute."""
-        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<script>
 const x = 1;
 </script>'''
 
-        blocks = extract_svelte_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         assert blocks[0].is_typescript is False
@@ -1867,7 +1867,7 @@ const x = 1;
 
     def test_extracts_multiple_scripts(self) -> None:
         """Extracts multiple script blocks."""
-        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<script lang="ts">
 export let name: string;
@@ -1879,7 +1879,7 @@ export const preload = () => {};
 
 <div>{name}</div>'''
 
-        blocks = extract_svelte_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         # Should find both script blocks (context="module" is also matched)
         assert len(blocks) >= 1  # At least the first one
@@ -1887,20 +1887,20 @@ export const preload = () => {};
 
     def test_handles_no_script(self) -> None:
         """Returns empty list when no script block."""
-        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<div>Just HTML</div>
 <style>
 .foo { color: red; }
 </style>'''
 
-        blocks = extract_svelte_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 0
 
     def test_correct_line_offset(self) -> None:
         """Script content line offset is calculated correctly."""
-        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<!-- Comment -->
 <style>
@@ -1913,7 +1913,7 @@ function test() {
 }
 </script>'''
 
-        blocks = extract_svelte_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         # Script tag is on line 6, content starts there
@@ -2448,7 +2448,7 @@ class TestVueScriptExtraction:
 
     def test_extracts_typescript_script(self) -> None:
         """Extracts TypeScript script with lang='ts'."""
-        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<template>
 <div>Hello</div>
@@ -2462,7 +2462,7 @@ export default {
 }
 </script>'''
 
-        blocks = extract_vue_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         assert blocks[0].is_typescript is True
@@ -2470,13 +2470,13 @@ export default {
 
     def test_extracts_javascript_script(self) -> None:
         """Extracts JavaScript script without lang attribute."""
-        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<script>
 const x = 1;
 </script>'''
 
-        blocks = extract_vue_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         assert blocks[0].is_typescript is False
@@ -2484,7 +2484,7 @@ const x = 1;
 
     def test_extracts_script_setup(self) -> None:
         """Extracts <script setup> blocks (Vue 3 Composition API)."""
-        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<script setup lang="ts">
 import { ref } from 'vue'
@@ -2495,7 +2495,7 @@ const count = ref(0)
 <button @click="count++">{{ count }}</button>
 </template>'''
 
-        blocks = extract_vue_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         assert blocks[0].is_typescript is True
@@ -2503,7 +2503,7 @@ const count = ref(0)
 
     def test_handles_no_script(self) -> None:
         """Returns empty list when no script block."""
-        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<template>
 <div>Just HTML</div>
@@ -2513,13 +2513,13 @@ const count = ref(0)
 .foo { color: red; }
 </style>'''
 
-        blocks = extract_vue_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 0
 
     def test_correct_line_offset(self) -> None:
         """Script content line offset is calculated correctly."""
-        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import _extract_sfc_scripts
 
         source = '''<template>
 <div>Hello</div>
@@ -2531,7 +2531,7 @@ function test() {
 }
 </script>'''
 
-        blocks = extract_vue_scripts(source)
+        blocks = _extract_sfc_scripts(source)
 
         assert len(blocks) == 1
         # Script tag is on line 5, content starts there

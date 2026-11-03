@@ -309,7 +309,20 @@ def _line_at(text: str, offset: int) -> int:
 
 
 def _bridge_wrapper_sends(text: str) -> list[tuple[str, dict[str, _BridgeSend]]]:
-    """Object-literal contextBridge exposures, with each method's send site."""
+    """Object-literal contextBridge exposures, with each method's send site.
+
+    The preload maps method names to IPC channels::
+
+        contextBridge.exposeInMainWorld('api', {
+            openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
+            saveFile: (data) => ipcRenderer.send('save-file', data),
+        });
+
+    and the renderer calls ``window.api.openFile()``. Returns one
+    ``(namespace, {method: send})`` per exposure. This is the linker's own
+    reader; the public ``detect_context_bridge_wrappers`` view of it was
+    retired when nothing but its tests called it (WI-puvom).
+    """
     results: list[tuple[str, dict[str, _BridgeSend]]] = []
     for bridge_match in _CONTEXT_BRIDGE_PATTERN.finditer(text):
         body_start = bridge_match.start(2)
@@ -323,32 +336,6 @@ def _bridge_wrapper_sends(text: str) -> list[tuple[str, dict[str, _BridgeSend]]]
         if methods:
             results.append((bridge_match.group(1), methods))
     return results
-
-
-def detect_context_bridge_wrappers(
-    source: bytes,
-) -> list[tuple[str, dict[str, tuple[str, str]]]]:
-    """Detect contextBridge.exposeInMainWorld wrapper definitions.
-
-    Parses preload scripts for patterns like::
-
-        contextBridge.exposeInMainWorld('api', {
-            openFile: (...args) => ipcRenderer.invoke('open-file', ...args),
-            saveFile: (data) => ipcRenderer.send('save-file', data),
-        });
-
-    Args:
-        source: Source code bytes.
-
-    Returns:
-        List of (namespace, methods_dict) tuples, where methods_dict maps
-        method_name -> (channel_name, ipc_method).
-    """
-    text = source.decode("utf-8", errors="replace")
-    return [
-        (namespace, {name: (b.channel, b.ipc_method) for name, b in methods.items()})
-        for namespace, methods in _bridge_wrapper_sends(text)
-    ]
 
 
 # contextBridge.exposeInMainWorld('funcName', async (...) => { ... ipcRenderer.invoke('channel') ... })
@@ -371,37 +358,22 @@ _FUNC_BODY_IPC_PATTERN = re.compile(
 )
 
 
-def detect_context_bridge_functions(
-    source: bytes,
-) -> list[tuple[str, str, str]]:
-    """Detect individual function exposures via contextBridge.exposeInMainWorld.
+def _bridge_function_sends(text: str) -> list[tuple[str, _BridgeSend]]:
+    """Single-function contextBridge exposures, with each one's send site.
 
-    Some Electron apps expose individual functions rather than method objects::
+    Some Electron apps (podman-desktop) expose functions, not method
+    objects::
 
         contextBridge.exposeInMainWorld('listContainers', async () => {
             return ipcInvoke('container-provider-registry:listContainers');
         });
 
-    The renderer then calls ``window.listContainers()``.
-
-    Also detects custom wrappers like ``ipcInvoke('channel')`` which are
-    common in codebases that wrap ``ipcRenderer.invoke`` with error handling.
-
-    Args:
-        source: Source code bytes.
-
-    Returns:
-        List of (func_name, channel, ipc_method) tuples.
+    and the renderer calls ``window.listContainers()``. A custom
+    ``ipcInvoke`` / ``ipcSend`` wrapper around ``ipcRenderer`` counts as the
+    send. Returns one ``(func_name, send)`` per exposure. The public
+    ``detect_context_bridge_functions`` view was retired as test-only
+    (WI-puvom).
     """
-    text = source.decode("utf-8", errors="replace")
-    return [
-        (func_name, b.channel, b.ipc_method)
-        for func_name, b in _bridge_function_sends(text)
-    ]
-
-
-def _bridge_function_sends(text: str) -> list[tuple[str, _BridgeSend]]:
-    """Single-function contextBridge exposures, with each one's send site."""
     results: list[tuple[str, _BridgeSend]] = []
     for match in _CONTEXT_BRIDGE_FUNC_PATTERN.finditer(text):
         ipc_match = _FUNC_BODY_IPC_PATTERN.search(match.group(2))

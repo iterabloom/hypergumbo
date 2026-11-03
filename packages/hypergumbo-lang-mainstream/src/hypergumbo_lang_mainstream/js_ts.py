@@ -408,27 +408,6 @@ def _extract_sfc_scripts(source: str) -> list[SfcScriptBlock]:
     return blocks
 
 
-def extract_svelte_scripts(source: str) -> list[SfcScriptBlock]:
-    """Extract <script> blocks from Svelte file content.
-
-    Returns list of script blocks with their content and line offsets.
-    Handles both TypeScript (lang="ts") and JavaScript scripts, with
-    ``lang`` read wherever it sits among the tag's attributes.
-    """
-    return _extract_sfc_scripts(source)
-
-
-def extract_vue_scripts(source: str) -> list[SfcScriptBlock]:
-    """Extract <script> blocks from Vue SFC file content.
-
-    Returns list of script blocks with their content and line offsets.
-    Handles both TypeScript (lang="ts") and JavaScript scripts.
-    Also handles <script setup> blocks, ``generic`` attributes whose value
-    contains ``>``, and ``lang`` read wherever it sits among the attributes.
-    """
-    return _extract_sfc_scripts(source)
-
-
 class JstsTreeSitterAnalyzer(TreeSitterAnalyzer):
     """TreeSitterAnalyzer wrapper for JavaScript/TypeScript/Svelte/Vue files.
 

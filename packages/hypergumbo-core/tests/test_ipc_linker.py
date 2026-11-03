@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from hypergumbo_core.ir import AnalysisRun, Symbol, Span
+from hypergumbo_core.linkers.ipc import _bridge_function_sends, _bridge_wrapper_sends
 
 
 class TestIpcPatternDetection:
@@ -910,6 +911,24 @@ mainWindow.webContents.send(CHANNEL_NAME, payload);
         assert wc_sends[0]["channel_type"] == "unresolved"
         assert wc_sends[0]["channel_identifier"] == "CHANNEL_NAME"
 
+def _wrapper_map(source: bytes) -> list[tuple[str, dict[str, tuple[str, str]]]]:
+    """The namespace -> {method: (channel, ipc_method)} view of the preload's
+    object-literal bridges, read through the internal the linker itself calls
+    (the public wrapper was retired as test-only, WI-puvom)."""
+    return [
+        (ns, {name: (b.channel, b.ipc_method) for name, b in methods.items()})
+        for ns, methods in _bridge_wrapper_sends(source.decode("utf-8"))
+    ]
+
+
+def _function_exposures(source: bytes) -> list[tuple[str, str, str]]:
+    """(func_name, channel, ipc_method) for each single-function bridge
+    exposure, read through the internal the linker itself calls."""
+    return [
+        (name, b.channel, b.ipc_method)
+        for name, b in _bridge_function_sends(source.decode("utf-8"))
+    ]
+
 
 class TestContextBridgeDetection:
     """Tests for contextBridge.exposeInMainWorld wrapper resolution.
@@ -928,8 +947,6 @@ class TestContextBridgeDetection:
 
     def test_detect_context_bridge_wrapper(self) -> None:
         """Detects contextBridge.exposeInMainWorld wrapper definitions."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -938,7 +955,7 @@ contextBridge.exposeInMainWorld('api', {
     saveFile: (data) => ipcRenderer.send('save-file', data),
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         ns, methods = wrappers[0]
@@ -948,8 +965,6 @@ contextBridge.exposeInMainWorld('api', {
 
     def test_detect_multiple_namespaces(self) -> None:
         """Detects multiple exposeInMainWorld calls."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld('api', {
     getData: () => ipcRenderer.invoke('get-data'),
@@ -958,7 +973,7 @@ contextBridge.exposeInMainWorld('store', {
     saveItem: (item) => ipcRenderer.send('store-save', item),
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 2
         ns_names = {w[0] for w in wrappers}
@@ -966,14 +981,12 @@ contextBridge.exposeInMainWorld('store', {
 
     def test_detect_sendsync_in_bridge(self) -> None:
         """Detects ipcRenderer.sendSync in bridge wrappers."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld('electron', {
     getConfig: () => ipcRenderer.sendSync('get-config'),
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         ns, methods = wrappers[0]
@@ -981,27 +994,23 @@ contextBridge.exposeInMainWorld('electron', {
 
     def test_no_bridge_in_regular_code(self) -> None:
         """Returns empty for code without contextBridge patterns."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 const api = {
     openFile: (path) => fetch('/api/open', { body: path }),
 };
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
         assert len(wrappers) == 0
 
     def test_bridge_with_arrow_and_regular_functions(self) -> None:
         """Detects both arrow functions and regular function shorthand."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld('myApi', {
     method1: (...args) => ipcRenderer.invoke('chan-1', ...args),
     method2(...args) { return ipcRenderer.invoke('chan-2', ...args) },
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         _, methods = wrappers[0]
@@ -1254,8 +1263,6 @@ window.api.getData();
 
     def test_bridge_multiline_object(self) -> None:
         """Detects bridge wrappers spanning multiple lines."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld(
     'electronAPI',
@@ -1265,7 +1272,7 @@ contextBridge.exposeInMainWorld(
     }
 );
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         ns, methods = wrappers[0]
@@ -1275,14 +1282,12 @@ contextBridge.exposeInMainWorld(
 
     def test_bridge_double_quoted_namespace(self) -> None:
         """Detects bridge with double-quoted namespace."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b'''
 contextBridge.exposeInMainWorld("myApi", {
     doStuff: () => ipcRenderer.invoke("do-stuff"),
 });
 '''
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         assert wrappers[0][0] == "myApi"
@@ -1306,36 +1311,30 @@ class TestContextBridgeFunctionExposure:
 
     def test_detect_individual_function_exposure(self) -> None:
         """Detects contextBridge exposing a single function with ipcRenderer."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('clearTasks', async (): Promise<void> => {
     return ipcRenderer.invoke('tasks:clear-all');
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 1
         assert funcs[0] == ("clearTasks", "tasks:clear-all", "invoke")
 
     def test_detect_ipc_invoke_wrapper(self) -> None:
         """Detects custom ipcInvoke wrapper (common in podman-desktop)."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('listContainers', async (): Promise<ContainerInfo[]> => {
     return ipcInvoke('container-provider-registry:listContainers');
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 1
         assert funcs[0] == ("listContainers", "container-provider-registry:listContainers", "invoke")
 
     def test_detect_multiple_individual_functions(self) -> None:
         """Detects multiple individual function exposures."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('clearTasks', async () => {
     return ipcInvoke('tasks:clear-all');
@@ -1347,7 +1346,7 @@ contextBridge.exposeInMainWorld('listContainers', async () => {
     return ipcRenderer.invoke('container-provider-registry:listContainers');
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 3
         names = {f[0] for f in funcs}
@@ -1355,27 +1354,23 @@ contextBridge.exposeInMainWorld('listContainers', async () => {
 
     def test_ignores_object_exposure(self) -> None:
         """Does not match object-based exposures (handled by existing code)."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('api', {
     openFile: () => ipcRenderer.invoke('open-file'),
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 0
 
     def test_ipc_send_variant(self) -> None:
         """Detects ipcRenderer.send in function body."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('sendLog', (msg) => {
     ipcRenderer.send('log:write', msg);
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 1
         assert funcs[0] == ("sendLog", "log:write", "send")
