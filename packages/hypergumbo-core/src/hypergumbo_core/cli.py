@@ -13280,10 +13280,22 @@ def run_survey(
         ]
         filtered_symbol_ids = {s.id for s in filtered_symbols}
 
-        # Filter edges: src must be in filtered symbols (or file-level ref),
-        # AND dst must not reference a node that was explicitly removed by
-        # tier filtering. Edges whose dst is an unresolved external reference
-        # (never in the node set) are kept — they represent real dependencies.
+        # Filter edges: an edge goes when EITHER endpoint is a node this filter
+        # removed. Endpoints that were never in the node set (an unresolved
+        # external reference as dst; a producer-side gap as src) are kept:
+        # they represent real dependencies, and boundary synthesis (Phase E)
+        # is what gives them a node.
+        # INV-saruf (ADR-0043 section 4, owner ruling 2026-11-03): the src rule
+        # is membership, the same as the dst rule. It used to keep a removed
+        # file's edges by the SHAPE of the src id (":file" in it, or ".py:" /
+        # ".js:" / ".ts:" anywhere in it, which is every symbol-level source
+        # in those languages), so a tier-4 file came back from synthesis as
+        # "<path>:0-0:<name>:external_symbol" stand-ins that import, extend
+        # and call first-party code (knex lib/dialects/index.js: 27 edges).
+        # Section 4 mints boundary nodes only for endpoints that SURVIVE
+        # filtering; a removed file's edges leave with it. File-level srcs
+        # always have a node here: all_analyzers synthesizes one for every
+        # dangling file id before this block (WI-ramuv).
         # Exclude boundary nodes from "removed" set — they're synthetic
         # endpoints for external references and should be treated as if they
         # don't exist for tier filtering purposes (same as pre-boundary-node
@@ -13299,22 +13311,10 @@ def run_survey(
             and not is_external_boundary(s)
         }
 
-        def _is_valid_edge_src(src: str) -> bool:
-            if src in filtered_symbol_ids:
-                return True
-            # File-level symbols end with ":file" or ":file:file"
-            if src.endswith(":file") or ":file:" in src:
-                return True
-            # Defensive fallback: check for file extensions in path (unlikely path)
-            for ext in (".py:", ".js:", ".ts:", ".tsx:", ".jsx:"):  # pragma: no cover
-                if ext in src:
-                    return True
-            return False  # pragma: no cover
-
         filtered_edges = [
             e
             for e in all_edges
-            if _is_valid_edge_src(e.src) and e.dst not in removed_symbol_ids
+            if e.src not in removed_symbol_ids and e.dst not in removed_symbol_ids
         ]
 
         # WI-tulit: record which tier-dropped FILES vanished, so a consumer can see
@@ -13364,12 +13364,11 @@ def run_survey(
     # origin_run_id (the nodes previously carried origin=[] / origin_run_id='').
     # Only record the run when boundary nodes were actually created.
     # WI-pozur (ADR-0043 §4, C2 — Phase E): this block runs HERE, AFTER tier+noise
-    # filtering (Phase D), not before. Filtering can newly orphan an edge endpoint
-    # (e.g. a tier-4 file whose file-level outgoing edges the src carve-out keeps);
-    # running synthesis afterward sees that now-dangling src and mints/remaps a
-    # boundary for it, closing the dangling-source class by construction. The
-    # node/edge set is final at this point — finalize's (run-lifecycle:F1) R1 entry
-    # precondition. (Previously this ran pre-filter, leaving dangling srcs.)
+    # filtering (Phase D), not before, so the node/edge set it sees is final —
+    # finalize's (run-lifecycle:F1) R1 entry precondition. (Previously this ran
+    # pre-filter, leaving dangling srcs.) INV-saruf: the tier filter removes a
+    # removed node's edges with it, so nothing here is minted for a filtered
+    # in-tree source; what remains dangling are endpoints that never had a node.
     _boundary_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
         pass_id="boundary_external_symbol_synthesis", version=PASS_VERSION,
         config_fingerprint=compute_config_fingerprint(
