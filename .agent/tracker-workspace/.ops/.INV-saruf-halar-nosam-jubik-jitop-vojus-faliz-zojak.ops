@@ -30,3 +30,27 @@
   set: {}  # d0c6
   add:  # d0c6
     not_duplicate_of: [INV-polad-fimij-suhos-vanil-bokag-zanif-bunig-purak]  # d0c6
+- op: discuss  # 3d01
+  at: '2026-11-03T17:35:34Z'  # 3d01
+  by: agent  # 3d01
+  actor: jgstern_agent  # 3d01
+  clock: 3  # 3d01
+  nonce: 3d01  # 3d01
+  message: "TRACED 2026-11-03 (dev cd6aeed541; fixture under the session scratchpad, reproducible from this note). (1) Which pass: the tier filter at the default max_tier 3. supply_chain.classify_file on knex lib/dialects/index.js returns DERIVED 4, reason 'detected as minified/generated' (the content heuristic; index.ts beside it is FIRST_PARTY 1 by the lib/ path rule). (2) Why the edges survive: cli.py's _is_valid_edge_src inside the tier-filter block keeps an edge by the SHAPE of its src id, not by membership in the surviving node set. Two arms: the documented file-level carve-out (':file' in the id) keeps the 26 file-level edges; the 'defensive fallback' marked pragma no cover ('unlikely path') returns True for any src containing .py: .js: .ts: .tsx: or .jsx:, which is every symbol-level source in those languages, and it is what keeps the getDialectByNameOrAlias edge. Fixture: lib/app.min.js (tier 4) with a function pick calling lib/helpers.js helper, plus require('./helpers'); default survey removes all three app.min.js nodes and keeps all three of its out-edges, then boundary synthesis mints javascript:lib/app.min.js:0-0:file:external_symbol AND javascript:lib/app.min.js:0-0:pick:external_symbol as sources (tier 3, kind external_symbol). So for py/js/ts/tsx/jsx the src half of the tier filter is vacuous. (3) The reading conflict: ADR-0043 section 4 says 'Boundary nodes are minted only for endpoints that survive filtering, so the post-filter dangling-source class is closed by construction', which is this invariant's statement. a04ea91b99 (WI-pozur) closed the class the other way, by minting a boundary FOR the removed file's id, and test_phase_de_reorder.py G2 test_pb2_import_srcs_resolved pins that behaviour; META-sigap's 10-25 premise check counts it as the fixed source half. The two readings cannot both hold; the owner decides. If this invariant's reading stands, the cure is membership (src in filtered_symbol_ids), deleting the fallback, measuring first which analyzers emit file-level edges without a file node, and rewriting G2 to assert the derived file's edges are gone."  # 3d01
+- op: update  # e1e1
+  at: '2026-11-03T19:07:42Z'  # e1e1
+  by: agent  # e1e1
+  actor: jgstern_agent  # e1e1
+  clock: 4  # e1e1
+  nonce: e1e1  # e1e1
+  set:  # e1e1
+    status: satisfied  # e1e1
+    fields:  # e1e1
+      root_cause: "cli.py's tier filter kept a removed file's edges by the SHAPE of the src id (':file' in it, or a no-cover fallback matching .py:/.js:/.ts:/.tsx:/.jsx:, every symbol-level source in those languages); boundary synthesis, run after the filter per ADR-0043 s4, then minted <path>:0-0:<name>:external_symbol stand-ins for the removed file. knex's lib/dialects/index.js is tier 4 by the minified/generated content heuristic."  # e1e1
+- op: discuss  # 4357
+  at: '2026-11-03T19:07:42Z'  # 4357
+  by: agent  # 4357
+  actor: jgstern_agent  # 4357
+  clock: 5  # 4357
+  nonce: '4357'  # 4357
+  message: "SATISFIED on the filed instance in PR #2033 (dev fa70fb3680; lab /home/jgstern_agent/hypergumbo_lab_notebook/saruf_11032026/RESULT.md). Owner ruling 2026-11-03: ADR-0043 s4 'minted only for endpoints that SURVIVE filtering' stands; the tier filter drops an edge when either endpoint is a node it removed (symmetric with the dst rule) and the shape predicate is gone. Behavioural evidence, the item's own repro re-run: knex surveyed base (cd6aeed541, worktree) vs branch: the four external_symbol SOURCE nodes (lib/dialects/index.js file + getDialectByNameOrAlias, two path spellings) and all 42 edges leaving them are gone, zero external_symbol sources remain, no edge with a real source node removed, nothing dangling; a --max-tier 4 survey ties all 42 to knex's two tier-4 nodes. Self: 38 edges from scip_pb2.py and three vendored parser.c stand-ins gone. caddy: byte-identical. Gates: test_phase_de_reorder G2 (pb2 edges GONE, JS min.js arm), test_max_tier membership + reaching fixture. NOT ASSERTED: the general clause 'no external_symbol is ever minted for the SOURCE of an edge an in-tree file emitted' -- a no-node source still gets a stand-in (ADR-0037 synthesis), and on self one such edge comes from requirements.py's hand-built 'requirements:<path>' src id, filed as its own item from this batch."  # 4357

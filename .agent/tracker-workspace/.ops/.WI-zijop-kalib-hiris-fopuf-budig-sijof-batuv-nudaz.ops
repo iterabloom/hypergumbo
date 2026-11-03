@@ -42,3 +42,18 @@
   clock: 4  # 732b
   nonce: 732b  # 732b
   message: "Folds in WI-misin (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-misin closed wont_do with duplicate_of here). same site (cmd_dead_code_maybe builds Symbol(...) by hand), same dropped fields (supply_chain tier, modifiers), same fix (Symbol.from_dict). WI-misin's WI-borib acceptance test carries over here. NOTE: WI-misin was P3, this item is P4; the priority was NOT changed (owner call). Read WI-misin's thread for its repro and evidence."  # 732b
+- op: update  # f16c
+  at: '2026-11-03T17:30:49Z'  # f16c
+  by: agent  # f16c
+  actor: jgstern_agent  # f16c
+  clock: 5  # f16c
+  nonce: f16c  # f16c
+  set:  # f16c
+    priority: 3  # f16c
+- op: discuss  # 3a1b
+  at: '2026-11-03T17:30:49Z'  # 3a1b
+  by: agent  # 3a1b
+  actor: jgstern_agent  # 3a1b
+  clock: 6  # 3a1b
+  nonce: 3a1b  # 3a1b
+  message: "Priority P4 -> P3 on the owner's agreement, 2026-11-03. The P4 rationale (impact only with --min-confidence > 0) was refuted by the 2026-11-01 P4 review: detect_entrypoints applies its own 0.10 floor and the rank-score size cap at the default, so a vendored handler ranks 1.0 hand-built against 0.354 through Symbol.from_dict on every default run. The folded duplicate WI-misin (docs/audits/0026 consumer-agreement finding) was P3. The hand-built Symbol at cli.py:9449 still omits supply_chain_tier and modifiers on dev cd6aeed541."  # 3a1b

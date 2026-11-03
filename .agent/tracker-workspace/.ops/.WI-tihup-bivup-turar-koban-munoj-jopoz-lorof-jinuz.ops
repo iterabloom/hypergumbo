@@ -25,3 +25,17 @@
   clock: 2  # 6e96
   nonce: '6e96'  # 6e96
   message: "2026-10-06 docstring-audit random sample: ImportScope (packages/hypergumbo-core/src/hypergumbo_core/import_scope.py) has never been constructed by any analyzer — pickaxe over packages/*/src finds no importer in history; only tests/test_import_scope.py uses it. The ExternalRef / Edge.dst_ref IR did land (about 13 analyzers pass dst_ref=), but each builds it inline from its own dicts (py.py ~:2568 still builds symbol_imports / module_imports). The module docstring says 'PR1 of WI-tihup adopts ImportScope in py.py', and CHANGELOG.md:641 (6.0.0) says 'adopted by 18 analyzers via a shared ImportScope abstraction'; both overclaim. This item has had no update since 2026-04-23 and predates PR1 (1d1f01d515). Decision needed: adopt ImportScope, or retire import_scope.py and correct its docstring. I will correct the docstring either way in the next docs PR."  # 6e96
+- op: discuss  # bd8e
+  at: '2026-05-13T00:18:11Z'  # bd8e
+  by: agent  # bd8e
+  actor: jgstern_agent  # bd8e
+  clock: 3  # bd8e
+  nonce: bd8e  # bd8e
+  message: "Shipped via additive sibling-field pattern (ADR-0028 precedent) in 2 PRs:\n- PR1 (#3674, 1d1f01d515): foundation — ExternalRef + Edge.dst_ref field + ImportScope shared utility + py.py reference adoption; SCHEMA 0.7.1→0.7.2 (additive).\n- PR2 (this PR): 7-language adoption + 4 high-leverage consumer migrations (io_boundary._classify_call_edges, io_boundary._compose_primitive_chains, ir.create_boundary_nodes, plus make_unresolved_edge dst_ref kwarg); SCHEMA 0.7.2→0.8.0 (consumer-semantics shift, additive on wire).\n\nHeterogeneous dst string format addressed at the producer: Rust 6-seg outlier eliminated via use_aliases consultation; Java class-embedded-in-module slot kept (no consumer relied on it, and the dst_ref pathway is now the canonical surface). Edge.dst legacy string stays populated indefinitely; long-tail consumer migration is deferred per the original plan."  # bd8e
+- op: discuss  # 1109
+  at: '2026-11-03T17:16:35Z'  # 1109
+  by: agent  # 1109
+  actor: jgstern_agent  # 1109
+  clock: 4  # 1109
+  nonce: '1109'  # 1109
+  message: "Housekeeping 2026-11-03: the discussion entry dated 2026-05-13 above was recovered from git stash b61799019f (WIP on the wi-tihup-pr2 branch, 2026-05-12), where it had sat uncommitted since May. Only that discuss op was replayed; the stash's two status-update ops from the same session were not, since later ops set the current state. The stash is dropped."  # 1109
