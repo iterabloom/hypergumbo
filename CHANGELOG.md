@@ -90,6 +90,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Dead code, tiers and sketch
 
 - **A linker stand-in takes its file's supply-chain tier**, so a bundle's stand-ins are filtered with it.
+- **A tier-filtered file's edges leave with it**; in-tree derived code is no longer an external stand-in that imports and calls: on knex, 42 edges from a compiled dialect index go.
 - **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name (`tests.py`, `FooTest.java`, `intTest/`): on ripgrep, dead-code candidates fall 817 → 383 and test coverage rises 9.3% → 36.2%.
 - **Code called only from module level or a class body is not dead or untested**; on django, 43 more functions are tested, none newly dead.
 - **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1); on nest, 172 of 1,379 move from tier 3 to 1.
