@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **58083** symbols (functions, classes, methods)
-- **232694** edges by type:
-  - calls: 131759
-  - contains: 54073
-  - imports: 20010
+- **58047** symbols (functions, classes, methods)
+- **232638** edges by type:
+  - calls: 131733
+  - contains: 54076
+  - imports: 19976
   - instantiates: 12900
   - references: 10028
   - module_attr_ref: 2131
-  - other: 1793
+  - other: 1794
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58083 Symbols + 232694 Edges + UsageContexts           │
+│  Output: 58047 Symbols + 232638 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -283,8 +283,8 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 10652.7 | ir.py |
-| `len` | external_symbol | 8101.0 | <external> |
-| `write_text` | external_symbol | 7380.0 | <external> |
+| `len` | external_symbol | 8100.0 | <external> |
+| `write_text` | external_symbol | 7381.0 | <external> |
 | `Span` | class | 7128.9 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
 | `get` | external_symbol | 3719.0 | <external> |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 30636e7da138
-  commit_count: 8808
+  commit: aafcb33d3b76
+  commit_count: 8811
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
