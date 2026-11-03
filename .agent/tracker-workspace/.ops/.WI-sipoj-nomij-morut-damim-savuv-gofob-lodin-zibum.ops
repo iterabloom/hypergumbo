@@ -62,3 +62,18 @@
   clock: 7  # f675
   nonce: f675  # f675
   message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: pytest test_js_ts.py::TestNamespaceImports::test_namespace_import_disambiguates_same_name_functions and test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution (tmp_path on tmpfs /tmp); plus the same fixture shapes on ext4 via povub_drive.py / dabul_drive.py. Observed: pytest: 2 passed (tmpfs). Same fixtures on ext4 scratch: js a_early__z_late -> z_late/utils.js:2-4:process:function (test would fail); llvm utils.ll+main.ll -> main.ll:1-1:utility_func:declaration (test would fail). Note: Tests still create files in the passing order (a_early before z_late; utils.ll before main.ll). The docstring still says ’rglob processes alphabetically’. Discovery is unsorted. The tests pass on this box only because tmp_path is on tmpfs. Their verdict depends on the filesystem, so they do not pin WI-povub or WI-dabul. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # f675
+- op: update  # 884e
+  at: '2026-11-03T01:45:31Z'  # 884e
+  by: agent  # 884e
+  actor: jgstern_agent  # 884e
+  clock: 8  # 884e
+  nonce: 884e  # 884e
+  set:  # 884e
+    status: done  # 884e
+- op: discuss  # 9480
+  at: '2026-11-03T01:45:31Z'  # 9480
+  by: agent  # 9480
+  actor: jgstern_agent  # 9480
+  clock: 9  # 9480
+  nonce: '9480'  # 9480
+  message: "DONE for the half this item kept (js_ts; the llvm test_cross_file_call_resolution half is WI-dabul's, per the 11-01 split) in PR #2021 (merged; dev 21f8147afa). test_namespace_import_disambiguates_same_name_functions no longer depends on directory order: it is parametrized over creation order (first in [\"a_early\", \"z_late\"]) and its docstring's false 'rglob processes alphabetically' premise is gone; a require-object twin was added the same way. With the fix reverted, both z_late-first cases fail on tmpfs (2 failed, 10 passed); with it, 12 passed. The product bug behind it (WI-povub) is fixed: on ext4 the re-check driver reads 8/8 correct on merged dev. The llvm test still creates files in the passing order: tracked on WI-dabul."  # 9480
