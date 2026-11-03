@@ -1,0 +1,20 @@
+- op: create  # 517b
+  at: '2026-11-03T07:52:45Z'  # 517b
+  by: agent  # 517b
+  actor: jgstern_agent  # 517b
+  clock: 1  # 517b
+  nonce: 517b  # 517b
+  data:  # 517b
+    kind: work_item  # 517b
+    title: "Live full-suite cron RED since 2026-11-02 (97d50f7b): test-only-reachability names 4 callables reachable only from their own tests (ipc.py detect_context_bridge_*, js_ts.py extract_svelte/vue_scripts): wire or retire"  # 517b
+    status: todo_hard  # 517b
+    priority: 2  # 517b
+    parent:  # 517b
+    tags:  # 517b
+    - ci_infrastructure  # 517b
+    isbefore: []  # 517b
+    duplicate_of: []  # 517b
+    not_duplicate_of: []  # 517b
+    pr_ref:  # 517b
+    description: "PROBLEM. The live full-suite cron (ci/woodpecker/cron/full-suite) is RED on dev since 97d50f7b (2026-11-02 18:31 -05:00, pipeline 5933): step self-tree-validation exits 1 because scripts/check-test-only-reachability reports \"FAIL: 4 callable(s) are newly reachable only from their own tests\":\n  + packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py::detect_context_bridge_functions\n  + packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py::detect_context_bridge_wrappers\n  + packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py::extract_svelte_scripts\n  + packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py::extract_vue_scripts\n\"Wire it to production or retire it. The baseline is shrink-only and may not be raised.\" The nightly (4 legs) on e0dec741 is green; the PR gate does not run this ratchet, so every PR since has merged green while the cron stays red (the WI-pisal shape).\n\nEVIDENCE (2026-11-03, ci-debug cron-status + ci-debug logs self-tree-validation 97d50f7b): on dev e0dec7418e `grep -rn` over packages/*/src finds NO caller of any of the four outside its own `def`. Last commits touching their modules: ipc.py ad1de04eb4 (pumit: a call through a same-repo IPC wrapper is a site, the wrapper's forwarding call is none) and 26c72d61d8 (kokuv: contextBridge calls edge targets the preload send site); js_ts.py bb18012a37 (rolub: a Svelte / Vue file with several <script> blocks has one file symbol). The functions look superseded by those changes and kept only by their tests. The same log also says one callable is NO LONGER test-only (hypergumbo_tracker/cli.py::textconv_main) and the baseline may be tightened by removing its key. Not mine: none of PR #2018-#2025 touched ipc.py or the svelte/vue extraction.\n\nFIX. Read the three commits; for each of the four, either (a) retire it with its test-only tests if the new path supersedes it (expected for all four), or (b) wire it to the production path it was meant for. Then tighten the baseline by the textconv_main key. Verify with `scripts/check-test-only-reachability` locally (it needs the self-map with scip-python, see WI-losig) and the next full-suite cron (01:00 / 13:00 UTC).\n\nNOT ASSERTED: that retiring is right for all four; (a) vs (b) is decided by reading the commits, not by the ratchet's output."  # 517b
+    fields: {}  # 517b
