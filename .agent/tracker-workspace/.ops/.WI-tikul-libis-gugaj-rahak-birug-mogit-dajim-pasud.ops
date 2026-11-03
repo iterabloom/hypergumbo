@@ -55,3 +55,10 @@
   clock: 6  # 3f7e
   nonce: 3f7e  # 3f7e
   message: "PARTIAL overlap noted on INV-habit (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-habit's partial-parse half is covered by WI-tikul (latex is on its 23-analyzer custom-analyze-loop list) and its pass_version half is fixed by the same move onto the base loop; its edge-endpoint half belongs to INV-zipaj."  # 3f7e
+- op: discuss  # 4c10
+  at: '2026-11-03T17:28:12Z'  # 4c10
+  by: agent  # 4c10
+  actor: jgstern_agent  # 4c10
+  clock: 7  # 4c10
+  nonce: 4c10  # 4c10
+  message: "Design record 2026-11-03 (lab stash_archaeology_11032026/): the Phase 4 migration draft (git stash of 2026-02-19 04:58, dropped today) had erlang, latex, proto, c, lua, toml_config, xml_config, yaml_ansible and cmake on the TreeSitterAnalyzer template hooks (extract_symbols_from_file / extract_edges_from_file, some _find_source_files). The commit ca20c7c5f1 made 100 minutes later gave each a per-analyzer analyze() override instead, stating 'single-pass or custom-flow analyzers' as the reason and naming no failure. All nine still override analyze() on dev. The draft's full text for the nine is in draft_files/, with the draft-to-commit diff; it will not apply to today's tree, it shows what each looked like on the base loop."  # 4c10

@@ -44,3 +44,10 @@
   clock: 4  # b95f
   nonce: b95f  # b95f
   message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-habit's partial-parse half is covered by WI-tikul (latex is on its 23-analyzer custom-analyze-loop list) and its pass_version half is fixed by the same move onto the base loop; its edge-endpoint half belongs to INV-zipaj."  # b95f
+- op: discuss  # c251
+  at: '2026-11-03T17:28:12Z'  # c251
+  by: agent  # c251
+  actor: jgstern_agent  # c251
+  clock: 5  # c251
+  nonce: c251  # c251
+  message: "Design record 2026-11-03 (lab stash_archaeology_11032026/): latex.py was on the TreeSitterAnalyzer hooks (extract_symbols_from_file, extract_edges_from_file, _find_source_files) in the Phase 4 draft of 2026-02-19, and ca20c7c5f1 the same morning replaced that with the wholesale analyze() override this invariant is about, citing 'single-pass or custom-flow' and no failure. draft_files/latex.py holds that version."  # c251

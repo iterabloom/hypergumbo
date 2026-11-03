@@ -65,3 +65,10 @@
   clock: 7  # eb54
   nonce: eb54  # eb54
   message: "PARTIAL overlap noted on INV-kobad (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-kobad's row 5 is META-sigap's cell set (external-constructor instantiates outside Python); its row 1 is WI-harij (ruby cyclomatic node names)."  # eb54
+- op: discuss  # 62ab
+  at: '2026-11-03T17:35:34Z'  # 62ab
+  by: agent  # 62ab
+  actor: jgstern_agent  # 62ab
+  clock: 8  # 62ab
+  nonce: 62ab  # 62ab
+  message: "Cross-ref 2026-11-03: the 'SOURCE half FIXED' repro above (a tier-4-filtered file's srcs come out as 0-0 file external_symbol placeholders) is the behaviour INV-saruf (2026-10-30, violated P3) names as a violation of ADR-0043 section 4 ('minted only for endpoints that survive filtering'). Traced on INV-saruf today: the tier filter keeps a removed file's edges by id shape, including every symbol-level edge for py/js/ts via a no-cover fallback, and synthesis then mints in-tree derived code as an external_symbol SOURCE. Which reading of section 4 stands is an owner decision; this item's instantiates half is unaffected either way."  # 62ab

@@ -101,3 +101,17 @@
   clock: 12  # 2718
   nonce: '2718'  # 2718
   message: "A/B diff (2026-05-31) re-analyzed the same WI-kaziv cohort at pre-WI-mafik SHA 036e94aa20 vs HEAD 416f843499. Result: zero movement on resolved-vs-unresolved calls counts across all 6 repos (485/485 resolved, 651/651 unresolved, 1109/1109 total). dst_ref structured field: +8 on JS (socketio-chat-example), 0 on the other 5 cohort languages. The earlier discussion note's 'positive: Go aliased package imports verified working on webtunnel' is now understood differently: that resolution WAS working pre-WI-mafik too, so WI-mafik's Go contribution is orthogonal to anything webtunnel exercises. This NO_MOVE result is conclusive for this cohort but not a global refutation; the polyglot fixture (WI-pisab-furis Level 2, CI-gated) is the actual contract spec and confirms WI-mafik's per-construct claims at the unit level. No status change; WI-mafik stays done."  # 2718
+- op: discuss  # 3d8c
+  at: '2026-05-13T00:18:02Z'  # 3d8c
+  by: agent  # 3d8c
+  actor: jgstern_agent  # 3d8c
+  clock: 5  # 3d8c
+  nonce: 3d8c  # 3d8c
+  message: "All seven non-Python analyzer gap children closed in this PR via dst_ref + ImportScope-pattern adoption + analyzer-internal name-resolution fixes. Polyglot fixture: 1→8 passing, 7 strict-xfail markers removed. See companion CHANGELOG '[Unreleased] WI-tihup + WI-mafik closure' for per-language details. WI-tihup also closes in the same PR."  # 3d8c
+- op: discuss  # 2eec
+  at: '2026-11-03T17:16:35Z'  # 2eec
+  by: agent  # 2eec
+  actor: jgstern_agent  # 2eec
+  clock: 13  # 2eec
+  nonce: 2eec  # 2eec
+  message: "Housekeeping 2026-11-03: the discussion entry dated 2026-05-13 above was recovered from git stash b61799019f (WIP on the wi-tihup-pr2 branch, 2026-05-12), where it had sat uncommitted since May. Only that discuss op was replayed; the stash's two status-update ops were not, since later ops set the current state. The stash is dropped."  # 2eec
