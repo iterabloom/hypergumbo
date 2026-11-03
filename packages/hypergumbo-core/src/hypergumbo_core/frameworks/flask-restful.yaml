@@ -29,7 +29,10 @@ patterns:
     base_class: "^(flask_restful\\.)?Resource$"
 
   # Flask-RESTful HTTP method handlers (get, post, put, delete, patch)
-  # These are methods on Resource subclasses
+  # These are methods on Resource subclasses. A test file's handler loses
+  # the concept after classification: route_handler is test-excluded by the
+  # always-loaded python-http-server.yaml, and the strip is by concept name
+  # (WI-losij). It maps to an HTTP_ROUTE entrypoint.
   - concept: route_handler
     method_name: "^(get|post|put|delete|patch|head|options)$"
     parent_base_class: "^(flask_restful\\.)?Resource$"

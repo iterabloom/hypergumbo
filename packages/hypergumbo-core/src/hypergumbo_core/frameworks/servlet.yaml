@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Java Servlet API request handlers (WI-losij)
+#
+# A servlet container reaches a handler through a BASE CLASS: a subclass of
+# ``javax.servlet.http.HttpServlet`` / ``jakarta.servlet.http.HttpServlet``
+# overrides ``doGet`` / ``doPost`` / ... (or ``service``), and the container
+# calls the method named after the request's verb. The URL mapping lives in
+# web.xml or in ``@WebServlet`` on the CLASS, so no route, decorator or usage
+# pattern sees the method. Before this file such a handler was no entrypoint,
+# so verify-claims' unseeded-ingress withhold (WI-fuzik) could not fire on
+# it: a one-file probe whose ``doGet`` opens ``new FileWriter(
+# req.getParameter("p"))`` had no ingress reason to withhold.
+#
+# The rule reads the method's ``parent_base_classes`` (the enclosing class's
+# ``extends`` / ``implements`` as written) AND the method name. Detected
+# from the servlet API dependency (``javax.servlet`` / ``jakarta.servlet`` /
+# ``servlet-api`` in pom.xml or build.gradle, or the ``javax.servlet`` /
+# ``jakarta.servlet`` import). A test file's servlet loses the concept after
+# classification: ``route_handler`` is test-excluded by the always-loaded
+# python-http-server.yaml and the strip is by concept name. The key is not
+# declared here because ``_test_excluded_concepts`` reads convention files
+# only; in a framework file it would be decorative (filed).
+
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-11-03
+id: servlet
+language: java
+
+patterns:
+  - concept: route_handler
+    method_name: "^(doGet|doPost|doPut|doDelete|doHead|doOptions|doTrace|service)$"
+    parent_base_class: "^((javax|jakarta)\\.servlet\\.http\\.)?HttpServlet$"

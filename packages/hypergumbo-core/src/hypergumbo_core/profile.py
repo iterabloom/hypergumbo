@@ -367,6 +367,10 @@ JAVA_FRAMEWORKS = {
     "spark": ["spark-java", "com.sparkjava"],
     # JAX-RS and implementations
     "jax-rs": ["javax.ws.rs", "jakarta.ws.rs"],
+    # The Servlet API itself (HttpServlet doGet/doPost handlers, WI-losij):
+    # javax.servlet:javax.servlet-api / jakarta.servlet:jakarta.servlet-api
+    # coordinates, or the bare servlet-api artifact.
+    "servlet": ["javax.servlet", "jakarta.servlet", "servlet-api"],
     "jersey": ["org.glassfish.jersey", "jersey-server", "jersey-container"],
     "resteasy": ["org.jboss.resteasy", "resteasy-jaxrs"],
     # API documentation

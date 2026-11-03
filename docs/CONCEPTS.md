@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **320** (live: 44, inert: 276, ghost: 0).
+Total concepts: **320** (live: 45, inert: 275, ghost: 0).
 
 ## Inventory
 
@@ -238,7 +238,7 @@ Total concepts: **320** (live: 44, inert: 276, ghost: 0).
 | `route_config` | inert | remix, sveltekit | _(none)_ |
 | `route_definition` | inert | roda | _(none)_ |
 | `route_group` | inert | adonisjs, cakephp, codeigniter, giraffe, javalin, lumen, masonite, ring-compojure | _(none)_ |
-| `route_handler` | inert | falcon, flask-restful, nex | _(none)_ |
+| `route_handler` | live | falcon, flask-restful, nex, python-http-server, servlet | `entrypoints.py` |
 | `route_helper` | inert | pedestal | _(none)_ |
 | `route_prefix` | inert | javalin | _(none)_ |
 | `route_registration` | inert | pyramid | _(none)_ |

@@ -646,6 +646,9 @@ BUILTIN_FRAMEWORK_FILES: dict[str, str] = {
     "admitted by the same java line as jax-rs.",
     "go-net-http.yaml": "The Go standard library's http.Handler interface "
     "(ServeHTTP); net/http is on the go line above.",
+    "python-http-server.yaml": "The Python standard library's http.server "
+    "handler base classes (BaseHTTPRequestHandler and its stdlib subclasses); "
+    "http.server is on the python line above.",
 }
 
 
