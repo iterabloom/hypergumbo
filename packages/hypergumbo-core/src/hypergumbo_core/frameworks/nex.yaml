@@ -40,7 +40,11 @@ patterns:
     symbol_kind: "^function$"
 
   # API route handlers - HTTP method functions
-  # Only match when in pages/ or api/ paths to avoid false positives
+  # Only match when in pages/ or api/ paths to avoid false positives.
+  # route_handler maps to an HTTP_ROUTE entrypoint (suppressed in frontend
+  # paths such as pages/, like a route), and a test file's handler loses the
+  # concept after classification: it is test-excluded by the always-loaded
+  # python-http-server.yaml and the strip is by concept name (WI-losij).
   - concept: route_handler
     symbol_name: "\\.get$"
     symbol_kind: "^function$"

@@ -20,7 +20,10 @@ language: python
 patterns:
   # ==================== METHOD-BASED PATTERNS (Responders) ====================
   # Falcon responder methods - on_get, on_post, etc.
-  # These methods handle HTTP requests for a resource.
+  # These methods handle HTTP requests for a resource. route_handler maps to
+  # an HTTP_ROUTE entrypoint, and a test file's responder loses the concept
+  # after classification: the concept is test-excluded by the always-loaded
+  # python-http-server.yaml and the strip is by concept name (WI-losij).
 
   - concept: route_handler
     symbol_name: "^on_get$"

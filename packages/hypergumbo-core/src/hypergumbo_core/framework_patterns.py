@@ -14,7 +14,7 @@ How It Works
 
 Also provides:
 
-- Nine language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
+- Eleven language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
   main-functions, test-frameworks, library-exports, naming-conventions, ...)
   that ``enrich_symbols`` applies on every repo regardless of framework
   detection.
@@ -1448,6 +1448,7 @@ _CONVENTION_PATTERN_IDS: tuple[str, ...] = (
     "go-encoding-callbacks",
     "go-net-http",
     "node-http",
+    "python-http-server",
 )
 
 
@@ -1485,9 +1486,16 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
     from the broader ``paths.is_test_file`` ranking/scan heuristic that keys
     entrypoint deprioritization — WI-popok KEEP verdict) — is not yet set when
     concepts are attached. This
-    post-classification pass honors it: any concept whose producing pattern set
-    ``is_test_file: false`` is removed from a symbol the classifier marked
-    ``is_test_file``. Returns the number of concepts stripped.
+    post-classification pass honors it: any concept that SOME loaded pattern
+    declares ``is_test_file: false`` is removed from a symbol the classifier
+    marked ``is_test_file``. The key is the concept NAME, not the producing
+    rule (``_test_excluded_concepts``): once the always-loaded
+    python-http-server.yaml declares ``route_handler`` test-excluded, a
+    flask-restful or falcon fixture's handler in ``tests/`` loses the concept
+    too (WI-losij, measured: flask-restful's 41 test-file handlers), which is
+    the intended reading -- a test's handler is not the program's ingress --
+    and a comment on each of those rules says so. Returns the number of
+    concepts stripped.
     """
     excluded = _test_excluded_concepts()
     if not excluded:  # pragma: no cover - the convention corpus always declares some
@@ -1650,6 +1658,8 @@ def enrich_symbols(
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
     # - go-net-http.yaml: Go http.Handler implementations, ServeHTTP (WI-jonin)
     # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
+    # - python-http-server.yaml: http.server do_<VERB> handlers on a
+    #   BaseHTTPRequestHandler subclass (WI-losij)
     for convention_id in _CONVENTION_PATTERN_IDS:
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:

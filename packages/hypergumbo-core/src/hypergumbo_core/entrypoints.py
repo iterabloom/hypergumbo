@@ -546,6 +546,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
     Detected concepts (framework patterns, confidence=0.95):
     - "route" -> HTTP_ROUTE (HTTP endpoint handler)
+    - "route_handler" -> HTTP_ROUTE (a handler the framework reaches through a
+      base class or a verb-named method: flask-restful, falcon, nex,
+      http.server, servlets; WI-losij. A symbol also carrying "route" is one
+      entrypoint, labelled by the route.)
     - "controller" -> CONTROLLER (request handler class/method)
     - "task" -> BACKGROUND_TASK (async/background job)
     - "scheduled_task" -> SCHEDULED_TASK (cron/periodic job)
@@ -657,6 +661,36 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     kind=EntrypointKind.HTTP_ROUTE,
                     confidence=confidence,
                     label=label,
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
+                ))
+                added_kinds.add(EntrypointKind.HTTP_ROUTE)
+
+            # A handler the framework reaches through a BASE CLASS or a
+            # verb-named method -> HTTP_ROUTE (WI-losij). flask-restful
+            # (get/post on a Resource), falcon (on_get), nex, http.server
+            # (do_GET on a BaseHTTPRequestHandler) and the servlet API
+            # (doGet on an HttpServlet) emit ``route_handler``; nothing read
+            # it, so such a handler was no request-ingress entrypoint and
+            # verify-claims' unseeded-ingress withhold (WI-fuzik) could not
+            # fire on it. A symbol that also carries ``route`` is left to
+            # that arm (whichever order the concepts come in), so it is one
+            # entrypoint labelled by its method and path. The frontend-file
+            # suppression is the ``route`` arm's.
+            elif concept_type == "route_handler":
+                if EntrypointKind.HTTP_ROUTE in added_kinds or any(
+                    isinstance(c, dict) and c.get("concept") == "route"
+                    for c in concepts
+                ):
+                    continue
+                confidence = 0.90
+                if _is_frontend_file(sym):
+                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
+                entrypoints.append(Entrypoint.create(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.HTTP_ROUTE,
+                    confidence=confidence,
+                    label=f"HTTP handler: {sym.name}",
                     source="concept_detector",
                     evidence_type="framework_pattern",
                 ))
@@ -1353,8 +1387,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
 
             # Servlet concept -> CONTROLLER
-            # Used by scalatra.yaml (extends ScalatraServlet/ScalatraFilter),
-            # servlet.yaml (extends HttpServlet).
+            # Emitted by scalatra.yaml (extends ScalatraServlet/ScalatraFilter)
+            # only. A Java HttpServlet's handler methods are ``route_handler``
+            # (servlet.yaml, WI-losij), mapped above; no file has ever
+            # emitted ``servlet`` for Java, although a comment here said so.
             elif concept_type == "servlet":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue
