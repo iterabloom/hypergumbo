@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **58063** symbols (functions, classes, methods)
-- **232602** edges by type:
-  - calls: 131716
-  - contains: 54055
-  - imports: 19991
-  - instantiates: 12898
-  - references: 10018
+- **58083** symbols (functions, classes, methods)
+- **232694** edges by type:
+  - calls: 131759
+  - contains: 54073
+  - imports: 20010
+  - instantiates: 12900
+  - references: 10028
   - module_attr_ref: 2131
   - other: 1793
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58063 Symbols + 232602 Edges + UsageContexts           │
+│  Output: 58083 Symbols + 232694 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -284,14 +284,14 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 10652.7 | ir.py |
 | `len` | external_symbol | 8101.0 | <external> |
-| `write_text` | external_symbol | 7378.0 | <external> |
+| `write_text` | external_symbol | 7380.0 | <external> |
 | `Span` | class | 7128.9 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
 | `get` | external_symbol | 3719.0 | <external> |
-| `load_catalog` | function | 3551.1 | io_boundary.py |
+| `load_catalog` | function | 3600.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
-| `Path` | external_symbol | 2526.0 | <external> |
-| `str` | external_symbol | 2510.0 | <external> |
+| `Path` | external_symbol | 2527.0 | <external> |
+| `str` | external_symbol | 2512.0 | <external> |
 | `next` | external_symbol | 2278.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2114.3 | framework_patterns.py |
@@ -364,14 +364,14 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 185 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 186 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
 | `frameworks/` | 110 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
 | `dataflow_patterns/` | 21 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
 | `io_primitives/` | 15 | `io_primitives.d` | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
-| `io_primitives_overlays/` | 8 | internal | ADR-0047 | `hypergumbo_core.io_boundary` | Community I/O primitive overlays that ship in the wheel and load by default, disclosed as unvouched (ADR-0047). |
+| `io_primitives_overlays/` | 9 | internal | ADR-0047 | `hypergumbo_core.io_boundary` | Community I/O primitive overlays that ship in the wheel and load by default, disclosed as unvouched (ADR-0047). |
 | `cfg_nodes/` | 6 | internal | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
 | `taint_sources/` | 4 | `taint_sources.d` | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
 | `taint_sanitizers/` | 2 | `taint_sanitizers.d` | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f0d709c85a7b
-  commit_count: 8806
+  commit: 30636e7da138
+  commit_count: 8808
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
