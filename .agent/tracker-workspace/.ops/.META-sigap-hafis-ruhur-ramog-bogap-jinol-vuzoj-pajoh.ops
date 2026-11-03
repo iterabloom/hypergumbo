@@ -72,3 +72,10 @@
   clock: 8  # 62ab
   nonce: 62ab  # 62ab
   message: "Cross-ref 2026-11-03: the 'SOURCE half FIXED' repro above (a tier-4-filtered file's srcs come out as 0-0 file external_symbol placeholders) is the behaviour INV-saruf (2026-10-30, violated P3) names as a violation of ADR-0043 section 4 ('minted only for endpoints that survive filtering'). Traced on INV-saruf today: the tier filter keeps a removed file's edges by id shape, including every symbol-level edge for py/js/ts via a no-cover fallback, and synthesis then mints in-tree derived code as an external_symbol SOURCE. Which reading of section 4 stands is an owner decision; this item's instantiates half is unaffected either way."  # 62ab
+- op: discuss  # d039
+  at: '2026-11-03T19:08:48Z'  # d039
+  by: agent  # d039
+  actor: jgstern_agent  # d039
+  clock: 9  # d039
+  nonce: d039  # d039
+  message: "Amendment 2026-11-03 (PR #2033): the 10-25 'SOURCE half FIXED' repro ('a tier-4-filtered gen_pb2.py's srcs come out as python:src/gen_pb2.py:0-0:file:external_symbol placeholders') no longer describes dev. Owner ruling on INV-saruf: ADR-0043 s4 mints boundary nodes only for endpoints that survive filtering, so a tier-filtered file's edges are now removed with it and no placeholder is minted for them (zero dangling edges still holds). The source half stays FIXED in the sense that matters here, no dangling src; the instantiates half is unaffected."  # d039

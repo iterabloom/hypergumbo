@@ -1,0 +1,22 @@
+- op: create  # 681d
+  at: '2026-11-03T19:08:54Z'  # 681d
+  by: agent  # 681d
+  actor: jgstern_agent  # 681d
+  clock: 1  # 681d
+  nonce: 681d  # 681d
+  data:  # 681d
+    kind: work_item  # 681d
+    title: "go: four call arms still emit the retired ':unresolved' kind slot, which synthesis does not mint, leaving dangling edges (caddy: 7)"  # 681d
+    status: todo_hard  # 681d
+    priority: 3  # 681d
+    parent:  # 681d
+    tags:  # 681d
+    - go  # 681d
+    - analysis_quality  # 681d
+    - call_graph  # 681d
+    isbefore: []  # 681d
+    duplicate_of: []  # 681d
+    not_duplicate_of: []  # 681d
+    pr_ref:  # 681d
+    description: "go.py still emits call destinations with the retired \":unresolved\" kind slot at four sites (go.py ~4843, 4933, 5026, 5071: f\"go:external:0-0:{callee_name}:unresolved\" and f\"go:{_slot}:0-0:{callee_name}:unresolved\"), and boundary synthesis does not mint a node for that slot since ADR-0036 ruling 2 made external_symbol the kind. Result: dangling edges in the default output. Measured 2026-11-03 on caddy (curriculum_repos/caddy, dev cd6aeed541, identical with and without the INV-saruf fix; lab ~/hypergumbo_lab_notebook/saruf_11032026/caddy_dangling.txt): 7 calls edges whose dst is go:external:0-0:{RemoteAddr,LocalAddr,GetRecords,SetRecords}:unresolved, from modules/caddytls (interface-method calls through net.Conn / libdns), with no such node in the output. test_phase_de_reorder's G2 asserts zero dangling edges for its fixture; on a Go corpus repo the invariant does not hold. Fix shape: route these four arms through make_unresolved_edge (F-unresolved-edge-bypass / INV-hazov rule 3 sees helper-built edges), which gives the external_symbol slot; measure the dangling count on caddy and cert-manager to 0. Check first whether WI-jolif or another item already owns these sites."  # 681d
+    fields: {}  # 681d
