@@ -1,0 +1,22 @@
+- op: create  # 6611
+  at: '2026-11-03T03:33:32Z'  # 6611
+  by: agent  # 6611
+  actor: jgstern_agent  # 6611
+  clock: 1  # 6611
+  nonce: '6611'  # 6611
+  data:  # 6611
+    kind: work_item  # 6611
+    title: "go: the TYPED-receiver call arms return a struct's DATA field as the callee of x.F() (prometheus s.T() -> Sample.T int64 x8; alertmanager route.Match -> config.Route.Match map[string]string x2), a kind Go cannot call"  # 6611
+    status: todo_hard  # 6611
+    priority: 3  # 6611
+    parent:  # 6611
+    tags:  # 6611
+    - go  # 6611
+    - analysis_quality  # 6611
+    - call_resolution  # 6611
+    isbefore: []  # 6611
+    duplicate_of: []  # 6611
+    not_duplicate_of: []  # 6611
+    pr_ref:  # 6611
+    description: "PROBLEM. Go's TYPED-receiver call arms return a struct's DATA field as the callee of `x.F()`. Seen while measuring WI-surid (whose admit guards only the untyped value-receiver fallback; lab ~/hypergumbo_lab_notebook/surid_11022026/RESULT.md, classify_fields.py): resolved `ast_call` edges with call_construct=method at confidence 0.85 whose dst is a field of a non-function type -- prometheus tsdb/db_test.go:7255/7257/7264 `s.T()` -> field `Sample.T int64` (8 sites; the Sample interface's method T() is the callee), alertmanager dispatch/dispatch.go:244 and api/v2/api.go:297 `d.route.Match(alert.Labels)` -> field `config.Route.Match map[string]string` (the callee is the method `dispatch.Route.Match`; two types named Route). Go cannot call a data field, so each is wrong by construction; the arm that minted them was not identified (a typed receiver's lookup, not the shared resolver). NOT MEASURED beyond these two repos: count per arm.\n\nDIRECTION. Find the typed-receiver arm(s) that return a field symbol (`_go_method_of_type`, the field-chain walk, or the var_types path) and apply the same admit WI-surid gave the fallback: a method, or a field whose declared type is a function type. Measure with surid_11022026/measure.py: the 10 edges above go, no method bind moves."  # 6611
+    fields: {}  # 6611
