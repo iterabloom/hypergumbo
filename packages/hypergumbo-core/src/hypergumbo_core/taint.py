@@ -4463,6 +4463,39 @@ def _io_primitive_names(language: str, include_community: bool) -> frozenset[str
     )
 
 
+def represented_ingress_callers(
+    edges: Sequence[dict[str, Any]],
+    sources: Sequence[TaintSource],
+    ambiguous_names: frozenset[str],
+    language: str,
+) -> set[str]:
+    """The handlers whose request ARRIVAL a vouched source represents (WI-ritog).
+
+    verify-claims' unseeded-ingress disclosure (WI-fuzik) names every
+    request-handler entrypoint, because nothing seeded a request carrier.
+    ADR-0049 ruling 3 removes a handler from it only against a REPRESENTED
+    crossing: here, a matched ``untrusted_input`` source (the label
+    ``net_recv`` derives) whose CALLER is the handler -- the servlet that calls
+    ``req.getParameter`` once a row names that accessor. The match is made
+    by :func:`find_source_callers` on the SAME edges and sources the
+    propagator walks, so the disclosure cannot disagree with the walk.
+
+    A community row never counts (ADR-0061 ruling 2: it may add a finding,
+    never make a verdict cleaner), so a handler represented only by the
+    shipped servlet overlay stays named until a builtin or user-vouched row
+    matches it. Per handler, never per framework: a servlet reading an
+    accessor no row lists stays named.
+    """
+    ingress_label = AUTO_SOURCE_LABEL_MAP["net_recv"]
+    return {
+        caller
+        for caller, _callee, source in find_source_callers(
+            edges, sources, ambiguous_names, language,
+        )
+        if source.taint_label == ingress_label and not source.community
+    }
+
+
 def propagate_taint_structural(
     edges: list[dict[str, Any]],
     sources: list[TaintSource],
