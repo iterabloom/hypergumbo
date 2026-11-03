@@ -30,3 +30,32 @@
   set: {}  # 2d28
   add:  # 2d28
     not_duplicate_of: [WI-lagod-razav-bopif-rivum-dogan-bahig-mimin-gujid]  # 2d28
+- op: discuss  # 9d17
+  at: '2026-11-03T07:53:34Z'  # 9d17
+  by: agent  # 9d17
+  actor: jgstern_agent  # 9d17
+  clock: 3  # 9d17
+  nonce: 9d17  # 9d17
+  message: "Rust half split out as WI-basid-bavaz-nobof-tisij-biful-gapur-digih-gatab (probe 2026-11-03: rust.py stamps nothing on impl methods, only an implements edge; tower Service is also client-side, so precision needs its own measurement). This item proceeds with python + java + the route_handler -> HTTP_ROUTE mapping."  # 9d17
+- op: update  # 560b
+  at: '2026-11-03T09:31:44Z'  # 560b
+  by: agent  # 560b
+  actor: jgstern_agent  # 560b
+  clock: 4  # 560b
+  nonce: 560b  # 560b
+  set:  # 560b
+    status: done  # 560b
+- op: discuss  # d4de
+  at: '2026-11-03T09:31:44Z'  # d4de
+  by: agent  # d4de
+  actor: jgstern_agent  # d4de
+  clock: 5  # d4de
+  nonce: d4de  # d4de
+  message: "DONE for the PYTHON and JAVA halves and the concept mapping in PR #2028 (merged; dev 8f64e2e155); the RUST half is WI-basid (probe: rust.py stamps nothing on impl methods; tower Service is also client-side). Shipped: frameworks/python-http-server.yaml (builtin, always loaded via _CONVENTION_PATTERN_IDS: method_name ^do_[A-Z]+$ + parent_base_class ^(http\\.server\\.)?(Base|Simple|CGI)HTTPRequestHandler$, python, is_test_file false -> route_handler); frameworks/servlet.yaml (community, detected by the new JAVA_FRAMEWORKS \"servlet\" key = javax.servlet / jakarta.servlet / servlet-api: doGet|doPost|doPut|doDelete|doHead|doOptions|doTrace|service on HttpServlet -> route_handler); entrypoints._detect_from_concepts maps route_handler -> HTTP_ROUTE (request-ingress), skipping a symbol that also carries `route` so it stays one entrypoint labelled by the route, with the route arm's frontend-file suppression. BEHAVIOURAL EVIDENCE: production-path test packages/hypergumbo-core/tests/test_base_class_request_handlers.py (28 cases: always-loaded, four stdlib handler shapes, seven python lookalikes, test-file strip, four servlet shapes, four java lookalikes, detection gating, the kind + REQUEST_INGRESS membership, dedup in both concept orders, frontend suppression, twice-is-once); mutations: convention id removed -> 6 red, mapping arm off -> 2 red, frontend suppression off -> 1 red, each exactly the predicted set. PROBES through verify-claims (the item's own repro, lab losij_11032026/): http.server probe with the module declared complete: the three untrusted-input claims go confirmed_with_caveats -> inconclusive, each naming Saver.do_GET; the servlet probe, detected from its import alone, now names Saver.doGet as an unseeded request handler (its verdicts were already inconclusive for an unclassified java.io call). CORPUS (base = dev bb7e70cf48 content, per-symbol concept diff + entrypoint set diff, PREREGISTER.md/RESULT.md): onion-pow-example gains route_handler on exactly its three do_* handlers (do_PROXY, do_HEAD, do_GET; the HTTPServer subclass's do_CIRC* do not) and three http_route entrypoints; flask-restful's http_route entrypoints go 4 -> 12 (the eight handlers in examples/) while its 41 test-file handlers lose route_handler, because the test-file exclusion is keyed by concept name across files (a stated, tested property now; a test's handler is not the program's ingress); apt's handler file is Python 2 with mixed tabs and yields no symbols (0); iceberg's S3SignerServlet gains nothing because its servlet dependency sits in a Gradle version catalog the manifest scanner does not read (filed); no other concept changes anywhere. NOT ASSERTED: Rust (WI-basid); a handler on a subclass of an in-repo handler subclass (declared-bases matching, WI-pazok); a framework file's own `is_test_file: false` (ignored by the convention-only exclusion set; filed); Gradle version catalogs in detection (filed). flask-restful's 41 test-fixture handlers are NOT entrypoints: they lose route_handler at the strip, by design."  # d4de
+- op: discuss  # 367e
+  at: '2026-11-03T09:33:41Z'  # 367e
+  by: agent  # 367e
+  actor: jgstern_agent  # 367e
+  clock: 6  # 367e
+  nonce: 367e  # 367e
+  message: "Residuals filed after the merge: WI-sajok-lamut-kamuj-kidap-livom-todad-huzok-pobun (P4: Pattern.is_test_file in a framework YAML is decorative; the exclusion set is convention-only and concept-name keyed) and WI-hafib-mibab-lugav-pohut-bilid-toboh-tinoz-madod (P3: Java framework detection never reads gradle/libs.versions.toml, why iceberg gained nothing). The Rust half is WI-basid."  # 367e
