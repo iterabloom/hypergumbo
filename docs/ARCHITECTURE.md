@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **58019** symbols (functions, classes, methods)
-- **232405** edges by type:
-  - calls: 131612
-  - contains: 54016
-  - imports: 19952
+- **58027** symbols (functions, classes, methods)
+- **232431** edges by type:
+  - calls: 131623
+  - contains: 54023
+  - imports: 19957
   - instantiates: 12890
-  - references: 10013
-  - module_attr_ref: 2130
-  - other: 1792
+  - references: 10014
+  - module_attr_ref: 2131
+  - other: 1793
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58019 Symbols + 232405 Edges + UsageContexts           │
+│  Output: 58027 Symbols + 232431 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -287,11 +287,11 @@ These symbols have the highest bidirectional centrality
 | `write_text` | external_symbol | 7377.0 | <external> |
 | `Span` | class | 7113.5 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3714.0 | <external> |
+| `get` | external_symbol | 3715.0 | <external> |
 | `load_catalog` | function | 3551.1 | io_boundary.py |
 | `Edge.create` | method | 2655.9 | ir.py |
-| `Path` | external_symbol | 2524.0 | <external> |
-| `str` | external_symbol | 2507.0 | <external> |
+| `Path` | external_symbol | 2525.0 | <external> |
+| `str` | external_symbol | 2508.0 | <external> |
 | `next` | external_symbol | 2278.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
@@ -982,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 5a581f9a4e2f
-  commit_count: 8797
+  commit: e089eff50cf8
+  commit_count: 8799
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
