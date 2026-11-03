@@ -29,7 +29,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
-from hypergumbo_core.entrypoints import all_known_entrypoint_kinds
+from hypergumbo_core.entrypoints import REQUEST_INGRESS_KINDS, all_known_entrypoint_kinds
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
@@ -618,6 +618,45 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "array",
                 "items": {"$ref": "#/$defs/Entrypoint"},
                 "description": "Detected program entrypoints"
+            },
+            # WI-vumig: every request handler BEFORE the rank floor and the
+            # size cap `entrypoints` applies. verify-claims' unseeded-ingress
+            # disclosure is a completeness statement and reads this list (on
+            # mlflow the capped list held 200 of 302 route handlers).
+            "request_ingress": {
+                "type": "array",
+                "description": (
+                    "Every request-handler entrypoint candidate (a kind in "
+                    "entrypoints.REQUEST_INGRESS_KINDS) before the rank floor "
+                    "and the size cap applied to entrypoints, in rank order: "
+                    "the list verify-claims' unseeded-ingress disclosure "
+                    "reads. Stripped from the compact and tiered views"
+                ),
+                "items": {
+                    "type": "object",
+                    "required": ["symbol_id", "kind", "label"],
+                    "properties": {
+                        "symbol_id": {
+                            "type": "string",
+                            "description": "ID of the handler Symbol",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": sorted(REQUEST_INGRESS_KINDS),
+                            "description": (
+                                "The entrypoint kind, one of "
+                                "entrypoints.REQUEST_INGRESS_KINDS"
+                            ),
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": (
+                                "Human-readable label (the route when known)"
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
             },
             "usage_contexts": {
                 "type": "array",

@@ -1016,6 +1016,27 @@ def _withhold_for_unfollowed_escapes(
 REQUEST_INGRESS_BOUNDARY = "net_recv"
 
 
+def ingress_candidates(behavior_map: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The request-handler list the unseeded-ingress disclosure reads (WI-vumig).
+
+    A map written since this existed carries ``request_ingress``: every
+    request-handler candidate BEFORE ``detect_entrypoints`` applies its rank
+    floor and its size cap. ``entrypoints`` is a ranked OVERVIEW, floored at
+    ``MIN_ENTRYPOINT_CONFIDENCE`` and capped by repo size with a 40% per-kind
+    share, and a completeness statement read off it was silently partial: on
+    mlflow the capped list held 200 of 302 route handlers, and the
+    disclosure named 254 production handlers where the full list gives it
+    320. An older map has no such
+    key and the capped list is all there is, so that is read: partial, but
+    no handler invented. The key's PRESENCE decides -- an empty list is the
+    positive statement that the detector found no request handler.
+    """
+    entries = behavior_map.get("request_ingress")
+    if isinstance(entries, list):
+        return entries
+    return list(behavior_map.get("entrypoints") or [])
+
+
 def unseeded_ingress_handlers(
     entrypoints: Sequence[Mapping[str, Any]],
     *,
@@ -1034,9 +1055,11 @@ def unseeded_ingress_handlers(
     depend on any catalogue row -- the deferred-crossing shadow does, and a
     framework module declared complete leaves it nothing to fire on.
 
-    Every handler is listed: nothing seeds a request carrier yet, and a
-    narrowing keyed to a seed marker nothing emits would be a consumer of a
-    shape nothing produces. WI-ritog narrows this list framework by framework
+    The caller hands it :func:`ingress_candidates`: the map's
+    ``request_ingress`` (every handler, before the entrypoint floor and cap)
+    or, on an older map, the capped ``entrypoints``. Every handler is listed:
+    nothing seeds a request carrier yet, and a narrowing keyed to a seed
+    marker nothing emits would be a consumer of a shape nothing produces. WI-ritog narrows this list framework by framework
     as it lands seeds. Scoped like flows: a handler in test code counts only
     under ``include_non_production``. Each entry names the handler, its file
     and line and the route, so the disclosure can be checked against source.

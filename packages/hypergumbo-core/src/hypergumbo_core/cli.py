@@ -307,7 +307,10 @@ import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linke
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
-from .entrypoints import EntrypointKind, detect_entrypoints
+from .entrypoints import (
+    EntrypointKind, apply_rank_floor_and_cap, detect_entrypoint_candidates,
+    detect_entrypoints, request_ingress_entries,
+)
 from .routes import is_route, method_token, protocol_method_token, route_of
 # INV-nosoz: one registry-backed answer to "is this an inheritance edge?"
 from .edge_types import is_inheritance_edge_record
@@ -7192,6 +7195,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ClaimsFileError,
         ScopedBlindness,
         compute_boundary_coverage,
+        ingress_candidates,
         load_claims,
         unseeded_ingress_handlers,
         untyped_receiver_sink_zones,
@@ -7895,9 +7899,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         sink_zone_gaps=sink_zone_gaps,
         unfollowed_escapes=unfollowed_escapes,
         # WI-fuzik: the request handlers no taint source represents -- read
-        # off the graph's entrypoints, so it holds whatever the catalogue says.
+        # off the graph's own request handlers, so it holds whatever the
+        # catalogue says. WI-vumig: ``request_ingress`` (every handler, before
+        # the entrypoint rank floor and size cap), or the capped
+        # ``entrypoints`` on a map written before that key existed.
         unseeded_ingress=unseeded_ingress_handlers(
-            behavior_map.get("entrypoints", []),
+            ingress_candidates(behavior_map),
             include_non_production=getattr(
                 args, "include_non_production_sources", False
             ),
@@ -13441,9 +13448,18 @@ def run_survey(
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
     run_status.phase("Detecting entrypoints")
-    entrypoints = detect_entrypoints(all_symbols, all_edges)
-    behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
-    del entrypoints  # Free Entrypoint objects
+    candidates = detect_entrypoint_candidates(all_symbols, all_edges)
+    behavior_map["entrypoints"] = [
+        ep.to_dict()
+        for ep in apply_rank_floor_and_cap(candidates, len(all_symbols))
+    ]
+    # WI-vumig: every request handler BEFORE the rank floor and the size cap
+    # that ``entrypoints`` applies. ``entrypoints`` is a ranked overview;
+    # verify-claims' unseeded-ingress disclosure is a completeness statement
+    # and reads this list (mlflow: 302 route handlers, 200 in the capped
+    # list; the disclosure named 254 production handlers, now 320).
+    behavior_map["request_ingress"] = request_ingress_entries(candidates)
+    del candidates  # Free Entrypoint objects
 
     # WI-sihok: emit per-handler forward slices alongside the main output so
     # "what does this handler touch?" is answerable without a follow-up
