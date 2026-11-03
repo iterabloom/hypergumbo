@@ -34,3 +34,18 @@
   clock: 3  # 5aed
   nonce: 5aed  # 5aed
   message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/povub_drive.py: 8 dir-name pairs, each with two <dir>/utils.js defining process() and main.js ’import * as correct from ./<good>/utils; correct.process()’; analyze_javascript with find_js_ts_files order printed (ext4). Observed: a_early__z_late enum [main.js, a_early/utils.js, z_late/utils.js] -> z_late/utils.js:2-4:process:function WRONG; good/bad, one/two, src/other, alpha/beta also WRONG (last-enumerated file); lib/vendor, x1/y2, core/extra CORRECT only because the imported file enumerated last. Note: 4/8 pairs bind to the file the import does not name. In all 8 the bound file is the one enumerated last. find_js_ts_files output is unsorted. Commit a6f7c1aabc (bare-call tie deferral) does not change the namespace-import path. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 5aed
+- op: update  # 20d1
+  at: '2026-11-03T01:45:30Z'  # 20d1
+  by: agent  # 20d1
+  actor: jgstern_agent  # 20d1
+  clock: 4  # 20d1
+  nonce: 20d1  # 20d1
+  set:  # 20d1
+    status: done  # 20d1
+- op: discuss  # 0424
+  at: '2026-11-03T01:45:31Z'  # 0424
+  by: agent  # 0424
+  actor: jgstern_agent  # 0424
+  clock: 5  # 0424
+  nonce: '0424'  # 0424
+  message: "DONE in PR #2021 (merged; dev 21f8147afa). Cause confirmed in code: js_ts Case 2 (namespace / require-object member call) consulted _disambiguate_by_import -- which resolves a relative specifier to its file over the list-valued symbols_by_name -- only for BARE specifiers, so a relative one fell to the name-keyed global table holding the same-named function enumerated LAST. Fix: relative specifiers take that route too; no candidate in the named file falls through unchanged. BEHAVIOURAL EVIDENCE on merged dev, cold caches: (1) ext4, the re-check's own driver jomik_member_recheck_11022026/scratch_C/povub_drive.py (wrong dir created first, 8 name pairs, both enumeration orders occur): 8/8 CORRECT (the 11-02 re-check: 4/8 wrong); (2) tmpfs, a_early/z_late created in both orders: a_early both times (dev before: a_early / z_late). Production-path tests: test_js_ts.py TestNamespaceImports, test_namespace_import_disambiguates_same_name_functions and a new test_relative_require_object_disambiguates_same_name_functions, each parametrized over creation order; the z_late-first cases go red with the fix reverted. A/B (pre-registered, lab ~/hypergumbo_lab_notebook/lwr_11022026/): express, jotai 0 moved; knex 2 moved, 0 lost (Knex.js ColumnBuilder.extend / TableBuilder.extend from viewbuilder.js's extend to the columnbuilder.js / tablebuilder.js that Knex.js:10-11 require). Not asserted: other name-keyed tables in js_ts (the general last-write-wins claim); the relative-specifier route does not resolve a directory index (./dir -> dir/index.js), which falls back as before."  # 0424
