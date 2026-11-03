@@ -11,7 +11,9 @@ For each AST node in a function body, the extractor identifies:
 
 - **Defines**: Variables assigned by the node (left side of ``=``, loop
   variables, ``with ... as`` aliases, comprehension variables, ``del``
-  targets). Function parameters are not defined by this extractor.
+  targets). Function parameters are not defined by this extractor: they are
+  the solver's ENTRY definitions at the function's own line, named by the
+  DDG spec's ``params_for`` (WI-sosov), so no statement carries them.
 - **Uses**: Variables read by the node (right side of ``=``, function
   call arguments, condition expressions, return values).
 

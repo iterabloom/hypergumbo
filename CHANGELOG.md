@@ -113,6 +113,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`verify-claims` judges a merged taint row by every flow it stands for**, not only the first: a group that also reaches `document.write` is `inconclusive`, not `confirmed_with_caveats`.
 - **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures; false leaks from `build_opener().open(url)` and Go's `_, err := get()` are gone.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
+- **A function's parameters are reaching definitions at its own line** in the Python, JS/TS and Go data-dependence graphs, so a value that arrives as a parameter can be followed to its uses.
 - **A from-imported object's attribute read is matchable**: `request.data` under `from flask import request` is a `module_attr_ref` on `flask.request`, so an `attributes:` row there seeds taint.
 
 #### Run reporting and graph integrity

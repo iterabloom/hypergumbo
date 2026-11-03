@@ -235,6 +235,12 @@ class LanguageDdgSpec:
     bound_anchor_kinds: frozenset[str] = frozenset()
     module_node_types: frozenset[str] = frozenset()
     file_globs: Optional[tuple[str, ...]] = None
+    #: ``(node, source) -> [name, ...]``: the parameter names of a function
+    #: node, in declaration order, for the solver's entry definitions and
+    #: ``RepoDdg.params`` (WI-sosov). ``None`` (and a node that is not a
+    #: function: a module root, a Go ``var_spec``) means no parameters, which
+    #: is exactly what every language had before the hook existed.
+    params_for: Optional[Callable[[Any, bytes], list[str]]] = None
 
     def globs(self) -> tuple[str, ...]:
         """The ``rglob`` patterns this spec walks (see ``file_globs``)."""
@@ -292,6 +298,13 @@ class RepoDdg:
     ddg_edges: list["DdgEdge"] = field(default_factory=list)
     ddg_symbols: set[str] = field(default_factory=set)
     hints_by_caller: dict[str, dict[tuple[int, str], str]] = field(default_factory=dict)
+    #: ``symbol_id -> (name, ...)``: each walked function's parameters in
+    #: declaration order (WI-sosov), the names its entry definitions carry.
+    #: Recorded for every function the spec's ``params_for`` names, whether
+    #: or not the solve produced an edge: a handler that never reads its
+    #: request parameter is still a handler WITH that parameter, and the
+    #: taint stage decides what that means (no use, no seed).
+    params: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: ``symbol_id -> [(line, defines, uses), ...]`` for every statement the
     #: def/use pass annotated.
     #:
@@ -682,10 +695,22 @@ def _solve_one_function(
     spans = return_statement_spans(body_node, mapping, spec, source)
     if spans:
         out.return_spans.setdefault(sym_id, []).extend(spans)
+    # WI-sosov: the parameters are reaching definitions at the function's own
+    # line, handed to the solver as entry definitions (never as statements,
+    # so every statement-level reader is untouched); the names are recorded
+    # whether or not any use follows.
+    params = tuple(spec.params_for(node, source)) if spec.params_for is not None else ()
+    entry_defs: list[tuple[str, int]] = []
+    if params:
+        out.params[sym_id] = params
+        entry_defs = [(p, node.start_point[0] + 1) for p in params]
     try:
         cfg = deps["build_function_cfg"](body_node, source, mapping, sym_id)
         deps["populate_def_use_for_cfg"](cfg, body_node, source, spec.language)
-        result = deps["solve_reaching_defs"](cfg)
+        result = (
+            deps["solve_reaching_defs"](cfg, entry_defs)
+            if entry_defs else deps["solve_reaching_defs"](cfg)
+        )
     except Exception:  # pragma: no cover - defensive; skip this function
         return
     if result.bailed_out:
@@ -1027,6 +1052,33 @@ def _python_symbol_kind(node: Any) -> str:
 # ``*.py`` only: LANGUAGES also lists ``*.pyi``, and whether walking stub files
 # is wanted was not measured when the JS/TS specs moved to the shared list
 # (WI-fovus) -- a declared narrowing, not an oversight.
+def _python_params(node: Any, source: bytes) -> list[str]:
+    """The parameter names of a python ``function_definition``, in order (WI-sosov).
+
+    One name per parameter whatever its spelling -- bare, annotated
+    (``typed_parameter``), defaulted (``default_parameter``,
+    ``typed_default_parameter``, which carry a ``name`` field), ``*args`` /
+    ``**kw`` (the splat patterns wrap an identifier). ``self`` and ``cls``
+    are names like the others. A node that is not a function (the module
+    root walked for top-level code) has no ``parameters`` field and yields
+    nothing.
+    """
+    params_node = node.child_by_field_name("parameters")
+    if params_node is None:
+        return []
+    names: list[str] = []
+    for child in params_node.children:
+        if child.type == "identifier":
+            names.append(source[child.start_byte:child.end_byte].decode("utf-8"))
+            continue
+        named = child.child_by_field_name("name")
+        if named is None:
+            named = next((c for c in child.children if c.type == "identifier"), None)
+        if named is not None:
+            names.append(source[named.start_byte:named.end_byte].decode("utf-8"))
+    return names
+
+
 register_ddg_language(LanguageDdgSpec(
     language="python",
     file_globs=("*.py",),
@@ -1035,4 +1087,5 @@ register_ddg_language(LanguageDdgSpec(
     name_for=_python_function_name,
     kind_for=_python_symbol_kind,
     refine=_python_refine,
+    params_for=_python_params,
 ))

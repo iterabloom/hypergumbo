@@ -387,8 +387,11 @@ def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
     part of the outer body's CFG (as one nested in a declaration is), and
     walking it again would record its statements twice.
 
-    A literal's parameters are not definitions, exactly as a declaration's are
-    not: ``build_function_cfg`` is handed the body in both cases.
+    A literal's parameters are not statement definitions, exactly as a
+    declaration's are not: ``build_function_cfg`` is handed the body in both
+    cases. A declaration's parameters reach its body as the solver's ENTRY
+    definitions (``_go_params``, WI-sosov); a literal held by a ``var_spec``
+    gets none, since the spec's node is the binding, not the callable.
     """
     from .go import _go_package_level_var_name
 
@@ -407,6 +410,30 @@ def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
     return bodies
 
 
+def _go_params(node: Any, source: bytes) -> list[str]:
+    """The parameter names of a Go function or method, in order (WI-sosov).
+
+    The receiver first (``func (s saver) ServeHTTP(w, r)`` names ``s``), then
+    each ``parameter_declaration`` / ``variadic_parameter_declaration`` of the
+    ``parameters`` list -- every identifier of a grouped declaration (``a, b
+    int`` names both), none of its type. A node that is not a function
+    declaration (a package-level ``var_spec`` holding a literal) has neither
+    field and yields nothing.
+    """
+    names: list[str] = []
+    for field_name in ("receiver", "parameters"):
+        params_node = node.child_by_field_name(field_name)
+        if params_node is None:
+            continue
+        for decl in params_node.children:
+            if decl.type not in ("parameter_declaration", "variadic_parameter_declaration"):
+                continue
+            for child in decl.children:
+                if child.type == "identifier":
+                    names.append(_node_text(child, source))
+    return names
+
+
 register_ddg_language(LanguageDdgSpec(
     language="go",
     function_node_types=frozenset({"function_declaration", "method_declaration"}),
@@ -415,4 +442,5 @@ register_ddg_language(LanguageDdgSpec(
     bound_callable_node_types=frozenset({"var_spec"}),
     bound_bodies_for=_go_bound_literal_bodies,
     bound_anchor_kinds=frozenset({"variable"}),
+    params_for=_go_params,
 ))
