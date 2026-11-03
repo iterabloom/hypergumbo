@@ -122,7 +122,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Literal, Optional, Protocol, runtime_checkable
+from typing import Any, Iterable, Literal, Optional, Protocol, Sequence, runtime_checkable
 
 import yaml
 
@@ -2390,7 +2390,10 @@ class _Definition:
     line: int
 
 
-def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
+def solve_reaching_defs(
+    cfg: FunctionCfg,
+    entry_defs: Sequence[tuple[str, int]] = (),
+) -> ReachingDefResult:
     """Compute reaching definitions for a function CFG.
 
     Implements the classic worklist algorithm:
@@ -2405,6 +2408,15 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
     Args:
         cfg: A FunctionCfg with populated ``CfgStatement.defines`` and
             ``CfgStatement.uses`` fields.
+        entry_defs: ``(variable, line)`` pairs defined on ENTRY, before the
+            entry block's first statement -- the function's parameters at
+            its own line (WI-sosov). No def/use extractor defines a
+            parameter, so a use of ``req`` had no reaching definition and no
+            DDG edge, and a value that arrives as a parameter was invisible
+            to the taint walk. They are definitions like any other (a later
+            statement defining the name kills them) and NOTHING else: no
+            statement is added, so ``stmt_defuse``, ``unaccounted_names``
+            and the coverage gate read what they read before.
 
     Returns:
         A ReachingDefResult with DDG edges, or bailed_out=True if the
@@ -2426,6 +2438,17 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                 ))
                 var_defs.setdefault(var, []).append(idx)
 
+    # Entry definitions are numbered AFTER the statements' so that a
+    # statement defining the same name on the same line (a one-line
+    # function) still finds its own definition first below.
+    entry_indices: list[int] = []
+    for var, line in entry_defs:
+        idx = len(definitions)
+        definitions.append(_Definition(
+            index=idx, variable=var, block_id=cfg.entry_block, line=line,
+        ))
+        var_defs.setdefault(var, []).append(idx)
+        entry_indices.append(idx)
     result.definition_count = len(definitions)
 
     if len(definitions) == 0:
@@ -2450,6 +2473,15 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
         block_kill = 0
         # Track which variables are defined in this block (last wins)
         block_var_def: dict[str, int] = {}
+
+        if block.id == cfg.entry_block:
+            # The entry definitions come first: a statement below that
+            # defines the same name replaces them in the gen set exactly as
+            # it would any earlier definition in the block. They kill
+            # nothing: no definition flows into the entry block.
+            for idx in entry_indices:
+                block_gen |= (1 << idx)
+                block_var_def[definitions[idx].variable] = idx
 
         for stmt in block.statements:
             for var in stmt.defines:
@@ -2514,6 +2546,12 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
     for block in cfg.blocks.values():
         # Reaching defs at the start of this block
         reaching = in_sets[block.id]
+        if block.id == cfg.entry_block:
+            # Nothing flows INTO the entry block, so its uses see the entry
+            # definitions only if they are placed here, ahead of its first
+            # statement (the gen set carries them out, not in).
+            for idx in entry_indices:
+                reaching |= (1 << idx)
 
         # Walk statements; update reaching set as definitions are encountered
         for stmt in block.statements:

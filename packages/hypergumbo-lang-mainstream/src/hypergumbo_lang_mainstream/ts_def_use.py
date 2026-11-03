@@ -559,6 +559,64 @@ _JSTS_MODULE_NODE_TYPES = frozenset({"program"})
 # records, and its identifiers reach the def/use extractor through the generic
 # recursion. A name the extractor misses is caught by ``unaccounted_names``,
 # which withholds refutation rather than licensing it.
+_JSTS_PARAM_LEAF_TYPES = frozenset({
+    "identifier", "shorthand_property_identifier_pattern",
+})
+
+
+def _jsts_param_leaves(node: Any, source: bytes, out: list[str]) -> None:
+    """The binding names inside one parameter, in source order.
+
+    A plain ``identifier``; a TS ``required_parameter`` / ``optional_parameter``
+    (its ``pattern``, which may itself be a pattern); an ``assignment_pattern``
+    (its ``left``); a ``rest_pattern`` (its identifier); an ``object_pattern``
+    / ``array_pattern`` (every leaf it binds, so ``({ body }, [first])`` names
+    ``body`` and ``first``). A type annotation or default value is never a
+    binding and is not descended into.
+    """
+    if node.type in _JSTS_PARAM_LEAF_TYPES:
+        out.append(_node_text(node, source))
+        return
+    if node.type in ("required_parameter", "optional_parameter"):
+        pattern = node.child_by_field_name("pattern")
+        if pattern is not None:
+            _jsts_param_leaves(pattern, source, out)
+        return
+    if node.type == "assignment_pattern":
+        left = node.child_by_field_name("left")
+        if left is not None:
+            _jsts_param_leaves(left, source, out)
+        return
+    if node.type == "pair_pattern":
+        value = node.child_by_field_name("value")
+        if value is not None:
+            _jsts_param_leaves(value, source, out)
+        return
+    if node.type in ("rest_pattern", "object_pattern", "array_pattern"):
+        for child in node.children:
+            if child.is_named:
+                _jsts_param_leaves(child, source, out)
+
+
+def _jsts_params(node: Any, source: bytes) -> list[str]:
+    """The parameter names of a JS/TS callable, in order (WI-sosov).
+
+    ``formal_parameters`` for every callable shape; the single-identifier
+    arrow (``req => ...``) carries its one parameter in the ``parameter``
+    field instead. A node with neither (the ``program`` root walked for
+    top-level code) yields nothing.
+    """
+    params_node = node.child_by_field_name("parameters")
+    if params_node is None:
+        single = node.child_by_field_name("parameter")
+        return [_node_text(single, source)] if single is not None else []
+    names: list[str] = []
+    for child in params_node.children:
+        if child.is_named:
+            _jsts_param_leaves(child, source, names)
+    return names
+
+
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
@@ -566,6 +624,7 @@ register_ddg_language(LanguageDdgSpec(
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
+    params_for=_jsts_params,
 ))
 
 # Same function node types, the javascript grammar (which parses JSX itself).
@@ -576,4 +635,5 @@ register_ddg_language(LanguageDdgSpec(
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
+    params_for=_jsts_params,
 ))
