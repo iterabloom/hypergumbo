@@ -169,6 +169,7 @@ class _RegistryIndexes:
     size: int
     suffix: dict[str, list[tuple[str, str]]] | None = None
     name: dict[str, list[tuple[str, str]]] | None = None
+    top_levels: frozenset[str] | None = None
 
 
 _INDEX_CACHE: "OrderedDict[int, _RegistryIndexes]" = OrderedDict()
@@ -242,6 +243,7 @@ class SymbolResolver:
         self.registry = registry
         self._suffix_index: dict[str, list[tuple[str, str]]] | None = None
         self._name_index: dict[str, list[tuple[str, str]]] | None = None
+        self._top_level_index: frozenset[str] | None = None
 
     def lookup(
         self,
@@ -487,6 +489,43 @@ class SymbolResolver:
             entry.name = index
         self._name_index = entry.name
 
+    def module_in_tree(self, module: str) -> bool:
+        """Whether an absolute import of *module* lands in the registry's tree (WI-gabak).
+
+        True when the module's TOP-LEVEL package is the top-level package of a
+        registered module. Root-anchored on purpose, the way Python resolves an
+        absolute import from a source root: ``mlflow.protos.x_pb2`` is in the
+        tree of a registry holding ``mlflow.entities.assessment`` although the
+        generated module defines no symbol of its own, while ``tensorflow`` is
+        NOT in it although the registry holds the flavour ``mlflow.tensorflow``
+        -- a suffix or substring match would have called every integration
+        mlflow mirrors as a flavour in-tree. A package rooted below a nested
+        layout counts when its modules were registered from their source root
+        (``clint.rules.k`` for ``dev/clint/src/clint/rules/k.py``); a layout
+        registered from the repository root (``dev.clint...``) is not found
+        here and is the caller's second test, the suffix-aware :meth:`lookup`.
+
+        Asked of an import before a path is minted under it; a top-level
+        package that shares its name with an external one (a repository with
+        its own ``mock`` package importing the external ``mock``) answers
+        in-tree, the conservative side, which keeps the placeholder it had.
+        Built once per registry beside the suffix index (WI-bavuz).
+        """
+        self._ensure_top_level_index()
+        assert self._top_level_index is not None
+        return module.split(".", 1)[0] in self._top_level_index
+
+    def _ensure_top_level_index(self) -> None:
+        """Build the top-level-package index lazily (see :meth:`module_in_tree`)."""
+        if self._top_level_index is not None:
+            return
+        entry = _registry_indexes(self.registry)
+        if entry.top_levels is None:
+            entry.top_levels = frozenset(
+                module.split(".", 1)[0] for module, _name in self.registry.keys()
+            )
+        self._top_level_index = entry.top_levels
+
     def clear_indexes(self) -> None:
         """Clear cached indexes.
 
@@ -495,6 +534,7 @@ class SymbolResolver:
         """
         self._suffix_index = None
         self._name_index = None
+        self._top_level_index = None
         # The indexes are shared per registry (WI-bavuz), so clearing only this
         # resolver's attributes would leave the next resolver over the same
         # registry reading the very index the caller asked to discard.

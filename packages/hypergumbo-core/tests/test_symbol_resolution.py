@@ -1418,3 +1418,51 @@ class TestNonUniquePickNeedsCallerFile:
         assert result.symbol is not None and result.symbol.path == "/a/p_darwin.go"
         assert result.match_type == "ambiguous"
         assert abs(result.confidence - 1 / 2 ** 0.5) < 1e-9
+
+
+class TestModuleInTree:
+    """WI-gabak: does an absolute import of this module land in the registry's tree?"""
+
+    def _resolver(self) -> SymbolResolver:
+        return SymbolResolver({
+            ("mlflow.entities.assessment", "AssessmentSourceType"): make_symbol(
+                "AssessmentSourceType", "mlflow/entities/assessment.py",
+                "mlflow.entities.assessment",
+            ),
+            ("mlflow.tensorflow", "autolog"): make_symbol(
+                "autolog", "mlflow/tensorflow/__init__.py", "mlflow.tensorflow",
+            ),
+            ("clint.rules.k", "Klass"): make_symbol(
+                "Klass", "dev/clint/src/clint/rules/k.py", "clint.rules.k",
+            ),
+        })
+
+    @pytest.mark.parametrize("module", [
+        "mlflow", "mlflow.entities", "mlflow.entities.assessment",
+        "mlflow.protos.databricks_pb2",  # a generated module with no symbol of its own
+        "clint", "clint.rules",  # registered from its source root below dev/clint/src
+    ])
+    def test_a_module_under_a_registered_top_level_package_is_in_the_tree(
+        self, module: str,
+    ) -> None:
+        assert self._resolver().module_in_tree(module) is True
+
+    @pytest.mark.parametrize("module", [
+        "tensorflow", "tensorflow.keras",  # the flavour mlflow.tensorflow is not tensorflow
+        "flask", "flask.request", "unittest", "entities", "assessment", "dev",
+    ])
+    def test_an_external_module_is_not(self, module: str) -> None:
+        assert self._resolver().module_in_tree(module) is False
+
+    def test_the_index_follows_the_registry_and_clears_with_the_others(self) -> None:
+        registry = {("pkg.a", "f"): make_symbol("f", "pkg/a.py", "pkg.a")}
+        first = SymbolResolver(registry)
+        assert first.module_in_tree("pkg.b") is True
+        assert first.module_in_tree("other") is False
+        registry[("other.c", "g")] = make_symbol("g", "other/c.py", "other.c")
+        # A grown registry is re-indexed by a fresh resolver (the size check);
+        # the first resolver keeps its index until it is told to clear.
+        assert SymbolResolver(registry).module_in_tree("other") is True
+        assert first.module_in_tree("other") is False
+        first.clear_indexes()
+        assert first.module_in_tree("other") is True

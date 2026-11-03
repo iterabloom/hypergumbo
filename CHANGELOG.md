@@ -54,7 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Imports of your own code
 
 - **An import of in-tree code reaches its source**, not a third-party stand-in or `external_symbol`: npm workspace siblings, and Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate.
-- **Python**: a test or script importing the module beside it reaches it; a flat-layout workspace member is a source root; dotted-path calls (`pkg.mod.Klass().m()`) and in-tree module constants bind in the tree.
+- **Python**: a test or script importing the module beside it reaches it; a flat-layout workspace member is a source root; dotted-path calls (`pkg.mod.Klass().m()`) and in-tree module constants bind in the tree, under `from pkg import sub` too; a chain on a from-imported object (`request.args.get`) keeps its receiver path.
 - **A console script reaches its function on `src/` layouts and across packages.**
 - **JS/TS workspace siblings resolve through module objects, namespaces and default imports**; reading a member of an in-tree module is a `references` edge.
 - **JS/TS import resolution**: `require('..')` imports the directory, via its `package.json`; Node core modules (`fs`, `node:*`) are not npm dependencies; `./X.test-wrapper` reaches its own file, not `X.tsx`.
@@ -113,6 +113,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`verify-claims` judges a merged taint row by every flow it stands for**, not only the first: a group that also reaches `document.write` is `inconclusive`, not `confirmed_with_caveats`.
 - **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures; false leaks from `build_opener().open(url)` and Go's `_, err := get()` are gone.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
+- **A from-imported object's attribute read is matchable**: `request.data` under `from flask import request` is a `module_attr_ref` on `flask.request`, so an `attributes:` row there seeds taint.
 
 #### Run reporting and graph integrity
 
