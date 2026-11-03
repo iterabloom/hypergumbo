@@ -3666,6 +3666,17 @@ def _extract_file_analysis(
                     # Build rich metadata for method (ADR-3aaa)
                     method_meta: dict[str, object] = {}
 
+                    # WI-sorop: a method carries its class's bases, the same
+                    # list the class symbol holds (java/objc pass-1.5 shape),
+                    # so a ``method_name`` + ``parent_base_class`` framework
+                    # rule can fire on Python (flask-restful's ``get`` on a
+                    # ``Resource``, Graphene's ``resolve_*`` on an
+                    # ``ObjectType``). A method of a baseless class carries
+                    # no key, as in java.
+                    _class_bases = class_meta.get("base_classes")
+                    if isinstance(_class_bases, list):
+                        method_meta["parent_base_classes"] = list(_class_bases)
+
                     # Extract decorators with arguments
                     if item.decorator_list:
                         method_decorators = [
