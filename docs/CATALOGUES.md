@@ -23,7 +23,9 @@ A row makes a verdict *cleaner* when it can move it toward `confirmed`: a
 sanitizer, a summary that ends a taint branch, a `module_completeness` grant,
 an I/O row that makes a call count as examined, a library signature that
 types a receiver. A source, a sink, a framework pattern or an I/O detection
-only ever adds.
+only ever adds. A `module_completeness` grant names an owner path and vouches
+for that path and for the types defined at it, never for a child module or
+package: audit a module's classes before granting it (ADR-0016 §7).
 
 **What a community row may not do, exactly.** A community I/O row never makes
 a call count as examined, and its `module_completeness` grants and

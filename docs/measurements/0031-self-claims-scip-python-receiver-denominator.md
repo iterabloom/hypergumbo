@@ -183,3 +183,13 @@ classes. That decision is filed as its own item; this record is its measurement.
 Until it is taken, the published verdicts stay closed-world over 26% of method
 call sites, and SECURITY.md's `unknown_receiver_scope` caveat is the honest
 statement of that.
+
+**Decision taken (owner, 2026-11-04).** The grant vouches for classes: a
+`module_completeness` grant on an owner path vouches for that path and for the
+types defined at it, never for a child module or package, with "type, not
+child module" answered per language from facts the tool already holds and the
+I/O-bearing types rowed at the type key. Rule, rationale and the per-language
+order: ADR-0016 §7, "What a completeness grant vouches for". Implementation
+and the pre-registered re-run on this map: WI-zihuh. The gate stays on the
+tree-sitter map until that re-run reads every claim `confirmed_with_caveats`
+with the same evidence as side A.

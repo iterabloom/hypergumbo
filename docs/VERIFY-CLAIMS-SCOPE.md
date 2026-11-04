@@ -109,6 +109,34 @@ can write in an overlay. Every grant is disclosed **by module name** in the
 run's provenance output, not merely as the file it came in — check that list
 against what you meant to claim.
 
+**What a grant is, from the ground.** Think of the I/O catalogue as a table
+with one row per library call the checker knows about, and a column saying
+what that call does to the outside world: filesystem, network, process launch,
+environment, or nothing. A call with no row is not "no I/O". It is a missing
+cell, and one missing cell anywhere on a reachable path blocks a `confirmed`
+verdict, because a security claim that treats silence as innocence is
+worthless: a dependency can do anything. A `module_completeness` grant is the
+fill-in rule for one module, written by a person and dated: *for every call
+into this module that has no row, read the cell as "no I/O", because I looked
+and the rows are the whole list.* Nothing checks a grant. It is trusted as
+written, which is why the shipped catalogues grant only modules whose entire
+public surface is computation over values already in memory, and why the
+header of hypergumbo's own overlay records a six-line overlay whose single
+grant for `telnetlib` turned a program that writes an API key into a telnet
+session from `inconclusive` to `confirmed`.
+
+**What a grant covers.** A grant names an owner path and vouches for that path
+and for the **types defined at it**, never for a child module or package. A
+grant on `numpy` answers for `numpy.ndarray`, because the audit that read
+`numpy` read its classes, and says nothing about `numpy.linalg`, a different
+module with its own surface; a grant on Go's `os` answers for `os.File` and
+not for `os/exec`. Audit accordingly: "complete" includes the methods of the
+module's types, and a type that performs I/O needs rows at the type key. How
+the gate tells a type from a child module is decided per language from facts
+the tool already holds (the resolver's symbol kind, Go's `/`, Python's
+standard-library list); where none applies, the slot must be granted exactly
+(ADR-0016 §7, "What a completeness grant vouches for").
+
 The **shipped catalogues make the same claim** — python's `module_completeness`
 block carries over a hundred dated audits — and a clean verdict that rests on
 one says so: the provenance block's `load_bearing_grants` (and the
