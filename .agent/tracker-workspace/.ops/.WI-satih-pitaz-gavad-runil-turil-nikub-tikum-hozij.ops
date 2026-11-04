@@ -1,0 +1,21 @@
+- op: create  # 8613
+  at: '2026-11-04T04:16:44Z'  # 8613
+  by: agent  # 8613
+  actor: jgstern_agent  # 8613
+  clock: 1  # 8613
+  nonce: '8613'  # 8613
+  data:  # 8613
+    kind: work_item  # 8613
+    title: "Owner reads the 67 shipped-CLI entries of docs/hypergumbo.io-allowlist.yaml (5 network, 14 process, 35 fs_write, 13 dynamic_import) and records agreement or doubt per site"  # 8613
+    status: needs_human_review  # 8613
+    priority: 3  # 8613
+    parent:  # 8613
+    tags:  # 8613
+    - security  # 8613
+    - owner_action  # 8613
+    isbefore: []  # 8613
+    duplicate_of: []  # 8613
+    not_duplicate_of: []  # 8613
+    pr_ref:  # 8613
+    description: "**Context.** Owner's audit sentence (session 2026-11-03, ~/hypergumbo_lab_notebook/self_audit_11032026/), step 5, the human half of clause three (\"all of those scenarios are benign\"). `scripts/check-io-allowlist` proves only that no risky call site in packages/*/src exists that nobody reviewed; each entry's zone, launched program, purpose and reaching commands are REVIEWED STATEMENTS written by the agent, not something the gate verifies. The owner has read under 1% of the code. The shipped CLI's share of docs/hypergumbo.io-allowlist.yaml is the part worth the owner's own eyes: 67 sites in 15 modules (35 fs_write, 14 process, 13 dynamic_import, 5 network; the other 153 sites are hypergumbo-tracker, a separate PyPI package not pulled by `pip install hypergumbo`).\n\n**What to read, in this order.** (1) The 5 network sites: gitleaks download URL resolution and archive download (install only), and the three SentenceTransformer sites in sketch_embeddings (two load from the local HF cache, one fetches in the install path, INV-gujus). (2) The 14 process sites: git plumbing, gitleaks on stdin, version probes, pip/rustup in the install commands, and `rust-analyzer scip` which EXECUTES the analysed repo's build.rs behind a trust grant. (3) The 35 fs_write sites, 29 of which are the safety_zones wrappers; check that each wrapper's zone root matches its name and that the zone-enforced ones are the destructive ones. (4) The 13 dynamic imports: each should name a first-party constant, never a name from the analysed repo. For each entry, either agree with the recorded purpose or write a discussion note on this item naming the site and the doubt. `scripts/check-io-allowlist --list` prints every site with line numbers.\n\n**Verification.** A discussion entry on this item from the owner listing the entries read and any disagreements, which become their own items. Status needs_human_review because the point is the owner's reading, not an agent's; an agent should not close this."  # 8613
+    fields: {}  # 8613
