@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **370** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 115 core, 4 CLI, 37 tracker)
-- **58214** symbols (functions, classes, methods)
-- **233628** edges by type:
-  - calls: 132071
-  - contains: 54225
+- **58215** symbols (functions, classes, methods)
+- **233634** edges by type:
+  - calls: 132074
+  - contains: 54226
   - imports: 20048
   - instantiates: 12927
-  - references: 10358
+  - references: 10360
   - module_attr_ref: 2204
   - other: 1795
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58214 Symbols + 233628 Edges + UsageContexts           │
+│  Output: 58215 Symbols + 233634 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -552,6 +552,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
+| `score-readability` | Score the reader load of Python source files, one function at a time. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
@@ -983,8 +984,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 796c462436d5
-  commit_count: 8833
+  commit: 65c0194893e5
+  commit_count: 8837
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
