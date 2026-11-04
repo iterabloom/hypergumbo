@@ -38,3 +38,34 @@
   clock: 3  # a005
   nonce: a005  # a005
   message: "Cross-ref 2026-11-03: the guard half of this invariant's statement (check-claims-coverage reporting the same uncovered-module shape the cron withholds on) is tracked as WI-jizam-razas-sihap-budol-jinab-lopad-todoj-votip; this item's own closure is adjudicating the three modules, re-recording docs/hypergumbo.claims.expected.json and regenerating SECURITY.md. Umbrella: the audit-sentence META. Sequenced before WI-muzah-bubim-zunom-masup-mikab-dajul-bigig-lopaf because a backend switch for the gate re-records the same snapshot."  # a005
+- op: discuss  # bb24
+  at: '2026-11-04T04:18:57Z'  # bb24
+  by: agent  # bb24
+  actor: jgstern_agent  # bb24
+  clock: 4  # bb24
+  nonce: bb24  # bb24
+  message: "Umbrella for the five audit-sentence steps: META-kazuf-zabok-gabom-sidod-bapij-monav-vozus-kafop."  # bb24
+- op: update  # e5fd
+  at: '2026-11-04T04:51:16Z'  # e5fd
+  by: agent  # e5fd
+  actor: jgstern_agent  # e5fd
+  clock: 5  # e5fd
+  nonce: e5fd  # e5fd
+  set:  # e5fd
+    status: pending_validation  # e5fd
+    fields:  # e5fd
+      statement: "The committed self-claim snapshot (docs/hypergumbo.claims.expected.json) and the SECURITY.md verdict table match what verify-claims reports on dev: every module slot the shipped tree calls into is rowed or carries a dated module_completeness grant, so no self-claim verdict is withheld by the uncovered-module gate. (Re-scoped 2026-11-03 after PR #2042: the guard-parity clause is WI-jizam's own deliverable.)"  # e5fd
+- op: discuss  # 427c
+  at: '2026-11-04T04:51:16Z'  # 427c
+  by: agent  # 427c
+  actor: jgstern_agent  # 427c
+  clock: 6  # 427c
+  nonce: 427c  # 427c
+  message: "FIX DEPLOYED in PR #2042 (dev 5c85a1d0c3), pending_validation until the next full-suite cron's self-claims-gate step is green. Three dated module_completeness grants at the exact slots named: datetime.timezone (python.yaml), textual.widgets.Select and hypergumbo_core.scip._generated.scip_pb2 (docs/io-primitives-overlays/hypergumbo-self.yaml); SECURITY.md's untyped-receiver paragraph re-measured (10,395 of 14,024). BEHAVIOURAL EVIDENCE (production path, lab ~/hypergumbo_lab_notebook/self_audit_11032026/after_grants_*): verify-claims on the patched tree rc 3, 18 of 18 confirmed_with_caveats, opaque_boundary back on every claim; scripts/check-self-claims-drift against the committed snapshot: OK, 18 unchanged, so the September snapshot was NOT re-recorded; scripts/check-claims-coverage 0; smart-test 11,277 passed (the one red, test_check_mode_passes_on_committed_state, was SECURITY.md regenerated after the run started; green on re-run). BISECT: at 1443c2da57, the parent of #2036's 3e4b895996, all 18 were ALREADY inconclusive on scip_pb2 alone (ab_pregabak_1443c2da57.json, 12m27s); #2036 added the two from-imported slots. The scip_pb2 introducing commit is not bisected further. Statement re-scoped to the snapshot half; the guard-parity half is WI-jizam. NOT covered: the same cron's self-tree-validation red (id_format|warning 2 > 0) has a separate cause and keeps the cron red after this fix."  # 427c
+- op: discuss  # f4db
+  at: '2026-11-04T07:46:01Z'  # f4db
+  by: agent  # f4db
+  actor: jgstern_agent  # f4db
+  clock: 7  # f4db
+  nonce: f4db  # f4db
+  message: "Guard half closed by WI-jizam in PR #2043 (dev 94b03ded17): check-claims-coverage now exits 1 on the acf67df4cb tree naming the same modules the cron withheld on. This invariant's remaining validation is the next full-suite cron's self-claims-gate going green on dev (the grants shipped in #2042)."  # f4db

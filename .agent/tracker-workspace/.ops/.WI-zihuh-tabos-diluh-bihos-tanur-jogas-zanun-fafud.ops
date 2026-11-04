@@ -1,0 +1,23 @@
+- op: create  # 762f
+  at: '2026-11-04T08:51:03Z'  # 762f
+  by: agent  # 762f
+  actor: jgstern_agent  # 762f
+  clock: 1  # 762f
+  nonce: 762f  # 762f
+  data:  # 762f
+    kind: work_item  # 762f
+    title: "scip-python map: 86 class-qualified receiver slots withhold every self-claim — decide whether a completeness grant vouches for a module's classes or the catalogue grows class-level rows (gate stays on tree-sitter until then)"  # 762f
+    status: todo_hard  # 762f
+    priority: 3  # 762f
+    parent:  # 762f
+    tags:  # 762f
+    - security  # 762f
+    - verify_claims  # 762f
+    - analysis_quality  # 762f
+    - catalogue  # 762f
+    isbefore: []  # 762f
+    duplicate_of: []  # 762f
+    not_duplicate_of: []  # 762f
+    pr_ref:  # 762f
+    description: "**Context.** Measurement `docs/measurements/0031-self-claims-scip-python-receiver-denominator.md` (WI-muzah, 2026-11-04, dev 94b03ded17). On the scip-python map the self-claims' untyped receiver share falls from 74.1% (10,396 of 14,027 method call sites) to 7.1% (1,227 of 17,197), and every one of the 23 verdicts turns `inconclusive`: `_adjudicate_external_modules` returns 86 unknown module slots (0 on the tree-sitter map). scip resolves a receiver to its DEFINING CLASS, so the slot is `io.TextIOWrapper`, `builtins.dict`, `numpy.ndarray`, `textual.app.App`, where the tree-sitter arm produced `io`, nothing, `numpy`, `textual`. The module-level catalogue rows and the overlay's `module_completeness` grants are asked about names they do not hold, and the slot-exactness rule (INV-hotib: `datetime` does not vouch for `datetime.timezone`) makes 25 already-granted third-party modules into 25 withholding slots. Full list: `~/hypergumbo_lab_notebook/muzah_11042026/unknown_classified.md` (51 stdlib class / private-submodule slots, 35 third-party, 0 in-repo; 35 untraced dependency source).\n\n**The decision this asks for.** Either (a) a completeness grant on a module vouches for the CLASSES that module defines (a catalogue-tier rule touching INV-hotib's slot-exactness ruling, so it needs the owner), or (b) the catalogue grows class-level rows for the I/O-bearing classes scip names (`io.TextIOWrapper`, `io.BufferedIOBase`, `sqlite3.dbapi2`, `tarfile.TarInfo`, `threading.Thread`, …) and enumeration grants for the containers and protocols that do no I/O (`builtins.str`, `typing.Mapping`, `enum.Enum`, …), 86 entries on this tree and moving with it. Until one is taken, `scripts/check-self-claims` stays on the tree-sitter map and the published verdicts stay closed-world over 26% of method call sites.\n\n**Work.** (1) Owner decision between (a) and (b), or a third shape. (2) Implement; re-run the gate invocation with `HYPERGUMBO_SCIP_PYTHON=1` (11 min, 8.2 GB, scip-python 0.6.6 under `~/.local/npm-scip/bin` on this machine) until 23 verdicts qualify. (3) Then decide the gate switch (snapshot re-record + SECURITY.md regeneration; the cron image already installs scip-python for the self-tree step, and that step is sequenced after the heavy steps for memory).\n\n**Verification.** The gate invocation on the scip map reads 23 `confirmed_with_caveats` with `unknown_receiver_scope` at or near 1,227 of 17,197; the unknown set from `unknown_modules2.py` is empty. Pre-registered: no verdict may move toward violated silently — any evidence appearing on the scip map that the tree-sitter map lacks is filed before the switch."  # 762f
+    fields: {}  # 762f
