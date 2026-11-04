@@ -30,9 +30,14 @@
 # I/O-performing name either absent or written down as a row above. The
 # `retrieved:` date is mandatory and records when you looked.
 #
-# Matching is EXACT. Declaring `tree_sitter` says nothing about
-# `tree_sitter.Node`; declaring `numpy` says nothing about `numpy.linalg`.
-# List every module you actually audited.
+# Matching is exact for MODULES: declaring `numpy` says nothing about
+# `numpy.linalg`, a child module with its own surface. List every module you
+# actually audited. A grant DOES vouch for the TYPES the module defines
+# (`tree_sitter.Node` under `tree_sitter`; owner ruling 2026-11-04, ADR-0016
+# §7), so auditing a module means reading its classes' methods too, and a
+# type that performs I/O needs rows at the type key. The gate's type-aware
+# match ships with WI-zihuh; until then a type-qualified slot is still
+# matched exactly.
 
 language: python
 
