@@ -20,3 +20,18 @@
     pr_ref:  # ac09
     description: "**Context.** Owner's audit sentence (session 2026-11-03, ~/hypergumbo_lab_notebook/self_audit_11032026/), step 3. Every self-claim verdict is closed-world over the receivers the analysis could type, and on the self-claims map that is small: `unknown_receiver_scope` reports 10,395 of 14,024 method call sites untyped (26% typed; self_claims.json, dev dce94fea97; SECURITY.md's published figure is 6,541 of 9,267, 70.6%). The same full-suite pipeline builds `/tmp/self-tree.json` WITH the scip-python backend for the self-tree-validation and test-only-reachability steps, and that step's log says \"scip_python: contributed; Python method calls typed: 9570 of 9767 (98.0%)\" (cron_self_tree.log). The self-claims gate runs `python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml --json --minimal` on the tree-sitter map. Whether the two \"typed\" denominators are the same population is NOT established; measure before concluding.\n\n**Work.** (1) Run the self-claims on a scip-python map: `--backend scip-python` (needs `npm install -g @sourcegraph/scip-python`, present in the full-suite image), or `--input` the self-tree map if its build flags match the claims' analysis_scope. Compare per claim: verdict, caveat kinds, `unknown_receiver_scope` count/denominator, `untyped_receiver` site counts, credited flows. (2) If the untyped denominator shrinks materially, decide whether `scripts/check-self-claims` should run on the scip-python map (cost: the cron image already has scip-python; the snapshot must be re-recorded and SECURITY.md regenerated, which is INV-hotib's adjudication, so sequence after it). (3) Record the measurement under docs/measurements/ either way.\n\n**Verification.** A table, both backends, 18 rows, with the receiver denominators side by side. Pre-registered: unmeasured; the 98% figure may be a different population than the 14,024."  # ac09
     fields: {}  # ac09
+- op: update  # 94ba
+  at: '2026-11-04T08:51:58Z'  # 94ba
+  by: agent  # 94ba
+  actor: jgstern_agent  # 94ba
+  clock: 2  # 94ba
+  nonce: 94ba  # 94ba
+  set:  # 94ba
+    status: done  # 94ba
+- op: discuss  # db77
+  at: '2026-11-04T08:51:58Z'  # db77
+  by: agent  # db77
+  actor: jgstern_agent  # db77
+  clock: 3  # db77
+  nonce: db77  # db77
+  message: "DONE in PR #2044 (dev 2dbb650f14); record docs/measurements/0031-self-claims-scip-python-receiver-denominator.md; lab /home/jgstern_agent/hypergumbo_lab_notebook/muzah_11042026. Side A = the gate's own invocation on the tree-sitter map (reused from the WI-jizam closure run, byte-identical tree); side B = the same with HYPERGUMBO_SCIP_PYTHON=1 (scip-python 0.6.6, fresh cache). Untyped receiver sites 10,396 of 14,027 (74.1%) -> 1,227 of 17,197 (7.1%), and EVERY verdict turns inconclusive: 86 class-qualified module slots scip resolves receivers to (51 stdlib classes such as io.TextIOWrapper, 35 third-party of which 25 already have a coarser overlay grant one level up) that no module-level row or grant names; 0 evidence either side. The cron's 98% typed figure is a DIFFERENT POPULATION on the same map (typed_method_call_share: 9,772 calls-to-in-repo-method edges, whole map; unknown_receiver_scope: 17,197 method-construct call sites in the shipped scope, external callees included), as pre-registered. Cost 11 min 02 s wall, 8.2 GB max RSS. DECISION per the pre-registered rule: no gate switch (the second half of the rule blocks: every verdict changes); the class-slot grant question is WI-zihuh-tabos-diluh-bihos-tanur-jogas-zanun-fafud, sequenced before any switch and after INV-hotib's cron validation."  # db77
