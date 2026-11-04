@@ -69,3 +69,11 @@
   clock: 7  # 678a
   nonce: 678a  # 678a
   message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). podman-compose / runc: measured kanor claims_ab.yaml: podman-compose host-secret-no-subprocess violated(1); runc untrusted-input-no-subprocess violated(21) (recorded inconclusive -> violated (both)). Status stays pending_validation: WI-sitaf (the Go _, err := arity fallback) is still open; this validates only the corpus claim. Tag stripped."  # 678a
+- op: update  # 259a
+  at: '2026-11-04T20:11:28Z'  # 259a
+  by: agent  # 259a
+  actor: jgstern_agent  # 259a
+  clock: 8  # 259a
+  nonce: 259a  # 259a
+  set:  # 259a
+    status: satisfied  # 259a
