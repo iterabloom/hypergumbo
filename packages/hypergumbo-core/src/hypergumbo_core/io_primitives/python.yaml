@@ -1739,6 +1739,17 @@ module_completeness:
       Undeclared, the first call into any of them (the tracker's
       fromisoformat) made datetime.date unclassifiable and withheld every
       self-claim verdict, as date.today() had (INV-fugus).
+  - module: datetime.timezone
+    completeness: complete
+    retrieved: "2026-11-03"
+    notes: >-
+      INV-hotib. A fixed-offset tzinfo: timezone.utc and timezone(delta)
+      hold an offset in memory; utcoffset / tzname / dst return it. The
+      clock read beside it, datetime.now(timezone.utc), is datetime.datetime's
+      row, not this module's. Undeclared, the from-imported chain
+      (`from datetime import timezone; timezone.utc` in ir.py and schema.py)
+      made datetime.timezone unclassifiable and withheld every self-claim
+      verdict, the fifth instance of the WI-jabus shape after INV-konad.
   - module: hashlib
     completeness: complete
     retrieved: "2026-08-15"

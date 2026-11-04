@@ -51,6 +51,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Hypergumbo's own claims
+
+- **The 18 self-claims are qualifiable again** (INV-hotib). Three slots the shipped tree calls into had neither a row nor a completeness grant, so every verdict read `inconclusive` from the 2026-11-03 cron on while SECURITY.md still said `confirmed_with_caveats`: `datetime.timezone` (a dated grant in `python.yaml`), `textual.widgets.Select` and the first-party generated `hypergumbo_core.scip._generated.scip_pb2` (dated grants in `docs/io-primitives-overlays/hypergumbo-self.yaml`). SECURITY.md's untyped-receiver figure is re-measured: 10,395 of 14,024 method call sites on the shipped scope. The per-PR `check-claims-coverage` guard passed the same tree the cron withheld on; that gap is WI-jizam, not fixed here.
+
 #### Imports of your own code
 
 - **An import of in-tree code reaches its source**, not a third-party stand-in or `external_symbol`: npm workspace siblings, and Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate.
