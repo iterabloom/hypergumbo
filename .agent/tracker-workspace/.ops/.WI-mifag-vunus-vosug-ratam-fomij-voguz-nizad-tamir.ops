@@ -92,3 +92,12 @@
   clock: 10  # 74eb
   nonce: 74eb  # 74eb
   message: "Merged in PR #1839 (dev 1970873aa5; plus 77a096b3ff retiring the test-only _scan_file_for_jsx_components wrapper, which had the full-suite cron red at a02f461d).\n\nLive repro on merged dev. Map: `run .` with scip-python, 8m43s, 8.3 GB; scip_python typed 9,369 of 9,553 Python method calls. Then `scripts/check-test-only-reachability --map F --require-pass scip_python`:\n- rc=0, \"GATED cohort: 346 (290 functions, 56 methods)\".\n- With Pattern.matches deleted from the baseline: rc=1, \"+ .../framework_patterns.py::Pattern.matches\".\n- On an untyped map: methods are set aside (242 method_without_receiver_typing), and no method key is reported drained.\n\nAll four deliverables are done:\n1. GATED_KINDS includes method.\n2. Method demotion resolves each production attribute site through the typed producer's edges out of its innermost enclosing callable. It is per encloser, not per line, because the map keeps one edge per (src, dst, type).\n3. The baseline was written and EVERY added row was adjudicated, 56/56 true positives (not a sample).\n4. test_methods_are_counted_but_never_gated is replaced by test_methods_are_gated_only_on_a_map_with_receiver_typing.\n\nAdjudication also found four dispatch mechanisms the typed call graph cannot see. Each is now a demotion arm: override of a production-reached method (7), class on an external base (Textual, 39), structural Protocol dispatch (7), dunder (1).\n\nCohort today: 148 methods (204 at filing).\n\nNOT asserted: an untyped `.m` that shares a callable with a typed `.m` reads as typed (residual stated in the module docstring). Readings: lab notebook mifag_10242026/RESULTS.md."  # 74eb
+- op: update  # a413
+  at: '2026-11-04T19:54:48Z'  # a413
+  by: agent  # a413
+  actor: jgstern_agent  # a413
+  clock: 11  # a413
+  nonce: a413  # a413
+  set:  # a413
+    fields:  # a413
+      isbefore:  # a413

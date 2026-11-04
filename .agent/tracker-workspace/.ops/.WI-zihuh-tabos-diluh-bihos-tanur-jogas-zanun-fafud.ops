@@ -28,3 +28,17 @@
   clock: 2  # b288
   nonce: b288  # b288
   message: "Similarity warnings at add time reviewed 2026-11-04: INV-virat (opacity stamp destroyed by catalogue tagging) is unrelated; WI-losig (done) is the CONTEXT, not a duplicate: it put the scip-python backend on the cron's self-tree map for the test-only-reachability gate, and this item is what the same backend does to the CLAIMS gate's coverage adjudication (86 class-qualified slots). Sequencing: after INV-hotib's cron validation; owner decision between grant-vouches-for-classes and class-level rows before any implementation."  # b288
+- op: discuss  # c1ee
+  at: '2026-11-04T17:53:16Z'  # c1ee
+  by: agent  # c1ee
+  actor: jgstern_agent  # c1ee
+  clock: 3  # c1ee
+  nonce: c1ee  # c1ee
+  message: "OWNER RULING 2026-11-04: option (a). A module_completeness grant vouches for the CLASSES the module DEFINES and never for a submodule; the adjudication must distinguish a class-qualified slot from a submodule slot (scip reports the kind); every existing grant is re-read to state that its classes were enumerated; the I/O-bearing classes (io.TextIOWrapper, io.BufferedIOBase, sqlite3.dbapi2, tarfile.TarInfo, threading.Thread, ...) get real class-level rows under both options. Rationale recorded in the docs PR that follows (ADR + VERIFY-CLAIMS-SCOPE + measurement 0031). Implementation is this item, now unblocked."  # c1ee
+- op: discuss  # ffbb
+  at: '2026-11-04T19:13:12Z'  # ffbb
+  by: agent  # ffbb
+  actor: jgstern_agent  # ffbb
+  clock: 4  # ffbb
+  nonce: ffbb  # ffbb
+  message: "Docs PR #2047 merged (dev 4c9d5d4d2f): the ruling and its rationale are ADR-0016 s7 'What a completeness grant vouches for', with the per-language oracle order (producer kind stamp; Go slash; Python stdlib list; otherwise exact), the widened meaning of complete (functions plus the methods of the types the module defines), the one-time re-read of existing grants, type-key rows for I/O-bearing types, and the pre-registered re-run. VERIFY-CLAIMS-SCOPE, CATALOGUES (generated from catalogues_doc.py), the self overlay header and measurement 0031 carry it too. This item is now the implementation: the kind stamp on the edge, the gate's type-aware match beside module_io_is_enumerated, the grant re-read, the class rows, then the scip-python re-run (the map cache was deleted 2026-11-04 with owner approval; re-index is about 11 min and 8 GB)."  # ffbb
