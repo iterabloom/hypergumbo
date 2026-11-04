@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **370** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 115 core, 4 CLI, 37 tracker)
-- **58196** symbols (functions, classes, methods)
-- **233538** edges by type:
-  - calls: 132019
-  - contains: 54208
-  - imports: 20042
-  - instantiates: 12924
-  - references: 10346
+- **58214** symbols (functions, classes, methods)
+- **233628** edges by type:
+  - calls: 132071
+  - contains: 54225
+  - imports: 20048
+  - instantiates: 12927
+  - references: 10358
   - module_attr_ref: 2204
   - other: 1795
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58196 Symbols + 233538 Edges + UsageContexts           │
+│  Output: 58214 Symbols + 233628 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -287,11 +287,11 @@ These symbols have the highest bidirectional centrality
 | `write_text` | external_symbol | 7393.0 | <external> |
 | `Span` | class | 7141.2 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3718.0 | <external> |
+| `get` | external_symbol | 3719.0 | <external> |
 | `load_catalog` | function | 3600.1 | io_boundary.py |
 | `Edge.create` | method | 2659.7 | ir.py |
-| `Path` | external_symbol | 2530.0 | <external> |
-| `str` | external_symbol | 2517.0 | <external> |
+| `Path` | external_symbol | 2532.0 | <external> |
+| `str` | external_symbol | 2519.0 | <external> |
 | `next` | external_symbol | 2279.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2114.3 | framework_patterns.py |
@@ -983,8 +983,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 5c85a1d0c3e1
-  commit_count: 8825
+  commit: 796c462436d5
+  commit_count: 8833
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

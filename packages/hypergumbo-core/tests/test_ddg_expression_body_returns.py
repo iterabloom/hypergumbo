@@ -41,6 +41,49 @@ def _spans(lang: str, source: str, function_type: str) -> list:
     raise AssertionError("no function")  # pragma: no cover
 
 
+def _names(lang: str, source: str, function_type: str) -> list:
+    """Like :func:`_spans`, reading every NAME token per position (WI-kikar)."""
+    clear_cfg_mapping_cache()
+    src = source.encode()
+    root = tree_sitter.Parser(get_language(lang)).parse(src).root_node
+    stack: list[Any] = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == function_type:
+            spec = LanguageDdgSpec(language=lang, function_node_types=frozenset({function_type}))
+            return [
+                (s.start, s.end, sorted(sorted(r) for r in s.names))
+                for s in return_statement_spans(
+                    node.child_by_field_name("body"), load_cfg_mapping(lang), spec, src,
+                )
+            ]
+        stack.extend(reversed(node.children))
+    raise AssertionError("no function")  # pragma: no cover
+
+
+def test_a_result_position_records_every_name_it_mentions() -> None:
+    """WI-kikar: ``results`` keeps identifiers only (the walk matches a
+    VARIABLE against them), ``names`` adds the field and property names, so
+    the lift can place a source CALL -- ``os.Getenv`` -- in its position."""
+    go = (
+        "func get() (string, error) {\n"
+        '\treturn os.Getenv("TOOL"), nil\n'
+        "}\n"
+    )
+    # (the helpers sort the positions, so the empty ``nil`` position sorts first)
+    assert _spans("go", go, "function_declaration") == [(2, 2, [[], ["os"]])]
+    assert _names("go", go, "function_declaration") == [(2, 2, [[], ["Getenv", "os"]])]
+    # A tail expression and an expression body record names the same way.
+    assert _names("rust", (
+        "fn get() -> String {\n"
+        "    env::var(\"TOOL\").unwrap()\n"
+        "}\n"
+    ), "function_item") == [(2, 2, [["env", "env::var", "unwrap", "var"]])]
+    assert _names("javascript", "const get = () => process.env.TOOL;\n", "arrow_function") == [
+        (1, 1, [["TOOL", "env", "process"]]),
+    ]
+
+
 def test_a_rust_tail_expression_is_a_return() -> None:
     assert _spans("rust", (
         "fn get() -> String {\n"

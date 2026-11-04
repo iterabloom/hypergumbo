@@ -186,13 +186,14 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    cast,
 )
 
 import re
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_callback_registration, is_grpc_rpc_implementation
-from .member_names import MEMBER_NAME_SEPARATORS, member_owner
+from .member_names import MEMBER_NAME_SEPARATORS, member_owner, member_short_name
 from .symbol_kinds import type_like_kind_names
 from .io_primitive_kinds import (
     KIND_ATTRIBUTE,
@@ -4154,8 +4155,25 @@ def _name_withheld(
 
 
 #: One return statement as ``ddg_build.ReturnStatement`` records it:
-#: ``(start_line, end_line, identifiers per result position)``.
-ReturnSpan = tuple[int, int, tuple[frozenset[str], ...]]
+#: ``(start_line, end_line, identifiers per result position)``, with every
+#: name token per result position as a fourth member where recorded
+#: (:func:`_span_names`; WI-kikar).
+ReturnSpan = Union[
+    tuple[int, int, tuple[frozenset[str], ...]],
+    tuple[int, int, tuple[frozenset[str], ...], tuple[frozenset[str], ...]],
+]
+
+
+def _span_names(span: ReturnSpan) -> tuple[frozenset[str], ...]:
+    """Every name token per result position of *span*, else its identifiers.
+
+    ``ddg_build.ReturnStatement.names`` carries field and property names the
+    identifiers lack (Go's ``os.Getenv`` is ``identifier`` + ``field_identifier``);
+    a bare three-member span, as the lift's own unit tests build, has only the
+    identifiers, which place a Python or Rust callee all the same.
+    """
+    names = getattr(span, "names", None)
+    return cast(tuple[frozenset[str], ...], names) if names else span[2]
 
 #: Which of a callee's RESULT POSITIONS carry the value, as ``(arity,
 #: positions)``; ``None`` when that is not known, which seeds every variable
@@ -4223,9 +4241,13 @@ def _lift_returned_sources(
     ``err`` dropped). So the entry records the positions the value occupied in
     the return statement the walk reached (``Received``), and the caller is
     seeded on the variables its call defines at exactly those positions. A
-    tail call (``return get()``) passes the positions through; anything the
-    position rule cannot read (arity mismatch, a value nowhere in the result
-    list) falls back to every variable, as before.
+    tail call (``return get()``) passes the positions through. A call written
+    directly in a result list (``return os.Getenv("K"), nil``, ``return
+    get(), nil``) occupies the position whose name tokens include the callee's
+    short name (``ddg_build.ReturnStatement.names``; WI-kikar) -- before that
+    it recorded no position, and ``_, err := get()`` seeded ``err`` again.
+    Anything the position rule cannot read (arity mismatch, a value nowhere in
+    the result list) falls back to every variable, as before.
 
     An ``escaped`` walk (``None``) lifts nothing. That is the false-all-clear
     direction left open, and it is left open deliberately: lifting on
@@ -4289,7 +4311,7 @@ def _lift_returned_sources(
         own_sources[caller].add(_qualified_callee(callee))
 
     def returns_value(
-        fn: str, lines: list[int], label: str, received: Received,
+        fn: str, lines: list[int], label: str, received: Received, callee: str,
     ) -> tuple[bool, Received]:
         """Whether *fn* returns the value, and in which result positions."""
         barriers = sorted(set(sanitizer_lines.get((fn, label), ())))
@@ -4306,9 +4328,21 @@ def _lift_returned_sources(
         direct = [span for span in open_spans
                   if any(span[0] <= line <= span[1] for line in lines)]
         if direct:
-            # A tail call returns the callee's results as they are.
-            tail = all(len(span[2]) == 1 for span in direct)
-            return True, (received if tail else None)
+            arities = {len(span[2]) for span in direct}
+            if arities == {1}:
+                # A tail call returns the callee's results as they are.
+                return True, received
+            if len(arities) != 1:
+                return True, None
+            # WI-kikar: the call itself sits in a result list (``return
+            # os.Getenv("K"), nil``); its position is the one that names it.
+            short = member_short_name(_extract_callee_name(callee))
+            positions = frozenset(
+                i for span in direct
+                for i, names in enumerate(_span_names(span))
+                if short in names
+            )
+            return True, ((min(arities), positions) if positions else None)
         if reaches_return is None:
             return False, None
         hit = reaches_return(
@@ -4339,7 +4373,7 @@ def _lift_returned_sources(
         if not lines:
             continue
         returned, positions = returns_value(
-            fn, lines, src.taint_label, received,
+            fn, lines, src.taint_label, received, callee,
         )
         if not returned:
             continue
