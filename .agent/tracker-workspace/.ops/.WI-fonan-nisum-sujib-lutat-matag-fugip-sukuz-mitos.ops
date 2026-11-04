@@ -1,0 +1,29 @@
+- op: create  # 7b40
+  at: '2026-11-03T23:18:27Z'  # 7b40
+  by: agent  # 7b40
+  actor: jgstern_agent  # 7b40
+  clock: 1  # 7b40
+  nonce: 7b40  # 7b40
+  data:  # 7b40
+    kind: work_item  # 7b40
+    title: "python: the `import pkg.sub as s` spelling of a chain mints an in-tree slot that starves the method-call-recovery linker, and an in-tree phantom module_attr_ref for a name a generated module defines at import time"  # 7b40
+    status: todo_hard  # 7b40
+    priority: 3  # 7b40
+    parent:  # 7b40
+    tags:  # 7b40
+    - python  # 7b40
+    - analysis_quality  # 7b40
+    - taint  # 7b40
+    isbefore: []  # 7b40
+    duplicate_of: []  # 7b40
+    not_duplicate_of: []  # 7b40
+    pr_ref:  # 7b40
+    description: "PROBLEM (found by WI-gabak's mlflow A/B, 2026-11-03, dev 1443c2da57; lab ~/hypergumbo_lab_notebook/gabak_11032026/RESULT.md). WI-gabak gave the FROM-IMPORT spelling of a chain its receiver path and, measuring on mlflow, found two things a path under a module of the project does: (1) `rules.Rule.check(n)` under `from clint import rules` lost its resolved edge, because the method-call-recovery linker (WI-gigoz, `linkers/method_call_recovery.py`) recovers a method from the `external` placeholder plus the caller's class hint, and a qualified slot `clint.rules.Rule` takes the call out of its purview (27 resolved calls lost in mlflow's dev/clint before the guard); (2) `from mlflow.entities import AssessmentSourceType; AssessmentSourceType.HUMAN` minted 65 phantom `module_attr_ref` under an in-tree prefix (the INV-nuzas shape). WI-gabak refuses the path for any binding of the repository (`SymbolResolver.module_in_tree`, root-anchored top-level package, or the suffix-aware lookup), so the from-import spelling is clean. The MODULE-IMPORT spelling has had both holes all along and still has them: `import pkg.sub as s; s.Klass.check(n)` emits `python:pkg.sub.Klass:0-0:check:unresolved` from the chain arm's `module_imports` branch (py.py, WI-zigah arm) instead of the placeholder the recovery linker reads, and `import mlflow.protos.x_pb2 as pb; pb.ErrorCode` emits `python:mlflow.protos.x_pb2:0-0:...:attribute` from `_emit_module_attr_refs` (the retargets place nothing for a name a generated module defines at import time, and the emitter then mints the phantom). Base-tree probe (scratch probe2 / RESULT.md \"Pre-existing\"): both reproduce on a 3-file fixture.\n\nNOT MEASURED: how many such sites a corpus carries under the module-import spelling (the dotted spelling of a classmethod chain is rarer than the from-import one; the A/B only diffed the from-import change). SIZING IS A CLAIM: measure first with the same compare_ab.py / gone_detail.py over a before/after of the proposed change.\n\nFIX CANDIDATE: the same `_binding_in_tree` refusal applied to the `module_imports` branch of the chain arm (keep the placeholder for a root whose module is of the repository unless the WI-lovun constant check or the resolution arm answered), and `_emit_module_attr_refs` emitting nothing, rather than a phantom, when `module_imports[root]` is in the tree and no retarget placed the read. Pre-register: resolved edges lost = 0 (gone_detail.py), in-tree slots = 0, and the WI-lovun tests (test_py_dotted_module_calls.py) unchanged.\n\nRELATED: WI-gabak (done; the from-import half), WI-lovun (done; the dotted spelling binds in the tree when it resolves), INV-nuzas (satisfied; its acceptance property is the production call path of a workspace sibling, which this does not reopen: fair objection, the phantoms here are module_attr_ref and unresolved-call slots, not consumer-reached external_symbol nodes on that path -- re-check that claim before closing either way)."  # 7b40
+    fields: {}  # 7b40
+- op: discuss  # 0be2
+  at: '2026-11-03T23:19:57Z'  # 0be2
+  by: agent  # 0be2
+  actor: jgstern_agent  # 0be2
+  clock: 2  # 0be2
+  nonce: 0be2  # 0be2
+  message: "Filing similarity check (rule: the mechanism may already exist): the tracker flagged INV-pusin (module_attr_ref counted as a call site for Rust use-statements), INV-vaduk (dual-classified catalogue rows), INV-vokog (opaque launch counted as an uncatalogued module), WI-hodor (erlang -behaviour placeholder for an in-repo module) and WI-jiful (untyped_receiver caveat vs ambiguous_names). All five are different mechanisms from this item's two (a qualified in-tree slot starving linkers/method_call_recovery.py, and an in-tree phantom module_attr_ref for a name a generated module defines at import time); none is a fold candidate. Evidence and the A/B method to reuse: ~/hypergumbo_lab_notebook/gabak_11032026/ (compare_ab.py, gone_detail.py; the first mlflow pass is the measured shape of hole 1)."  # 0be2
