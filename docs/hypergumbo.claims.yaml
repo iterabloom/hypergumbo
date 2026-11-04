@@ -42,6 +42,18 @@ analysis_scope: shipped_artifact
 # 2. Extras CLI subcommands have well-defined allowances. Each install
 #    flow declares the specific subset of zones it's permitted to reach.
 #    Dev-zone code is unreachable from every CLI entry-point.
+#
+# 3. The ANALYSED REPOSITORY, as a source (hypergumbo-self-catalog/
+#    repo_content_sources.yaml, label analysed_repo_content, seeded at the
+#    callers of discovery): data the repository chose never reaches host_fs,
+#    network, subprocess, install_artifact or dev_zone. The matcher is
+#    zone-granular, so these say nothing about WHICH ARGUMENT repo content
+#    arrived in inside the permitted zones (the survey JSON is repo content
+#    written as content; a path chosen by the repository is answered by the
+#    wrappers and by measurement 0032 §5, not by a claim). On the tree these
+#    claims were added to, their sanitized flows are exactly the entry-point
+#    claims' (5 host_fs, 100 subprocess), which is the subset relation the
+#    measurement pre-registered.
 
 extra_catalogs:
   sources:
@@ -51,6 +63,7 @@ extra_catalogs:
     - hypergumbo-self-catalog/build_grammars_sources.yaml
     - hypergumbo-self-catalog/install_rust_analyzer_sources.yaml
     - hypergumbo-self-catalog/add_extras_sources.yaml
+    - hypergumbo-self-catalog/repo_content_sources.yaml
   sinks:
     - hypergumbo-self-catalog/user_cache_sinks.yaml
     - hypergumbo-self-catalog/user_out_sinks.yaml
@@ -319,4 +332,61 @@ claims:
     constraint:
       taint_flow:
         source_taint: add_extras_entry
+        prohibited_sink_zone: dev_zone
+
+  # =========================================================================
+  # The analysed repository as the source (WI-pakag; measurement 0032).
+  # Source = repo-chosen file names from discovery (and, through the DDG's
+  # return lifting, what was read from them). Prohibited: the same five
+  # zones the runtime CLI prohibits. Permitted zones are NOT claimed: the
+  # matcher cannot say whether repo content arrived as content or as a path.
+  # =========================================================================
+  - id: repo-content-no-host-fs
+    text: |
+      Data the analysed repository chose (file names from discovery, and
+      the contents read from them where the def-use chain follows) does not
+      reach a filesystem write outside the safety_zones wrappers. Inside the
+      permitted zones the wrappers resolve every path and raise on escape;
+      the three sites where a repo-chosen value does sit in a path or argv
+      position are enumerated by reading, not by this claim (0032 §5).
+    constraint:
+      taint_flow:
+        source_taint: analysed_repo_content
+        prohibited_sink_zone: host_fs
+
+  - id: repo-content-no-network
+    text: |
+      Data the analysed repository chose does not reach a network send.
+    constraint:
+      taint_flow:
+        source_taint: analysed_repo_content
+        prohibited_sink_zone: network
+
+  - id: repo-content-no-subprocess
+    text: |
+      Data the analysed repository chose does not reach a process launch
+      outside the declared repo_inspection and analyser_backend zones. The
+      one repo-chosen value that does enter an argv is a directory name
+      passed to `git ls-tree HEAD -- <dir>` after the `--` separator, in the
+      superproject, with the GIT_* environment scrubbed (discovery._ls_tree_head).
+    constraint:
+      taint_flow:
+        source_taint: analysed_repo_content
+        prohibited_sink_zone: subprocess
+
+  - id: repo-content-no-install-artifact
+    text: |
+      Data the analysed repository chose does not reach an install-artifact
+      write (no analysed repository can install or replace a tool binary).
+    constraint:
+      taint_flow:
+        source_taint: analysed_repo_content
+        prohibited_sink_zone: install_artifact
+
+  - id: repo-content-no-dev-zone
+    text: |
+      Data the analysed repository chose does not reach dev-zone code paths.
+    constraint:
+      taint_flow:
+        source_taint: analysed_repo_content
         prohibited_sink_zone: dev_zone

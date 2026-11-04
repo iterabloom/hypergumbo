@@ -50,3 +50,13 @@ transforms:
     functions:
       python:
         - hypergumbo_core.safety_zones._safety_zone_barrier
+  # The analysed repository as a source (repo_content_sources.yaml, WI-pakag).
+  # Keyed per label with no wildcard: without this transform the repo-content
+  # claims reported 5 host_fs and 100 subprocess "violations", every one a
+  # wrapper's own Path.write_text / subprocess.run (measurement 0032 §2).
+  # test_self_catalog_barrier_coverage.py pins that every declared label has one.
+  - input_taint: analysed_repo_content
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier

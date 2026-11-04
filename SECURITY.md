@@ -48,7 +48,7 @@ Both checks above read the Python. ``scripts/io-manifest`` watches the process i
 | **violated** | 0 | the tool found flows contradicting the claim |
 | **inconclusive** | 0 | the analysis could not see enough to confirm |
 | **confirmed** | 0 | checked and held |
-| **confirmed_with_caveats** | 18 | held, but on the strength of an entry this repository supplied about itself |
+| **confirmed_with_caveats** | 23 | held, but on the strength of an entry this repository supplied about itself |
 
 A ``confirmed_with_caveats`` verdict is the qualified form of confirmed: the claim held everywhere the analysis could see, and every caveat names something it could NOT see — control leaving the process at a subprocess launch, a sanitizer this repository declared about itself and the tool takes on trust, a method the sink catalogue declares reached through a receiver whose type could not be determined, or the verdict's own closed-world SCOPE over the receivers that could be typed.
 
@@ -69,6 +69,36 @@ Prohibited zones (claim: zero unsanitized reach):
 do not perform writes outside the wrapper functions themselves.
 
 **add-extras-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — add-extras / remove-extras do not transitively reach dev-zone code paths.
+
+### Entry-point category: ``analysed_repo_content``
+
+Prohibited zones (claim: zero unsanitized reach):
+
+- ``dev_zone``
+- ``host_fs``
+- ``install_artifact``
+- ``network``
+- ``subprocess``
+
+**repo-content-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose (file names from discovery, and
+the contents read from them where the def-use chain follows) does not
+reach a filesystem write outside the safety_zones wrappers. Inside the
+permitted zones the wrappers resolve every path and raise on escape;
+the three sites where a repo-chosen value does sit in a path or argv
+position are enumerated by reading, not by this claim (0032 §5).
+
+**repo-content-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach a network send.
+
+**repo-content-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach a process launch
+outside the declared repo_inspection and analyser_backend zones. The
+one repo-chosen value that does enter an argv is a directory name
+passed to `git ls-tree HEAD -- <dir>` after the `--` separator, in the
+superproject, with the GIT_* environment scrubbed (discovery._ls_tree_head).
+
+**repo-content-no-install-artifact** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach an install-artifact
+write (no analysed repository can install or replace a tool binary).
+
+**repo-content-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach dev-zone code paths.
 
 ### Entry-point category: ``build_grammars_entry``
 
