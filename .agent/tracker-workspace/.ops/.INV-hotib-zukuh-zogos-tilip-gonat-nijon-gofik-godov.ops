@@ -22,3 +22,19 @@
     fields:  # 95d9
       statement: "The committed self-claim snapshot (docs/hypergumbo.claims.expected.json) and the SECURITY.md verdict table match what verify-claims reports on dev, and any coverage shape that makes the cron self-claims gate withhold a verdict is one the per-PR check-claims-coverage guard also reports."  # 95d9
       root_cause: "Three module slots in the shipped-artifact map have neither a catalogue row nor a module_completeness grant (hypergumbo_core.scip._generated.scip_pb2 and textual.widgets.Select as untraced dependency source, datetime.timezone as stdlib), so the uncovered-module gate withholds every self-claim verdict; the drift since the 2026-09-14 snapshot was never adjudicated, and the per-PR guard's python-analyzer-only edge set does not carry these slots, so it reported qualifiable on the same tree. Introducing commit not yet bisected."  # 95d9
+- op: update  # fed0
+  at: '2026-11-04T04:17:40Z'  # fed0
+  by: agent  # fed0
+  actor: jgstern_agent  # fed0
+  clock: 2  # fed0
+  nonce: fed0  # fed0
+  set: {}  # fed0
+  add:  # fed0
+    isbefore: [WI-muzah-bubim-zunom-masup-mikab-dajul-bigig-lopaf]  # fed0
+- op: discuss  # a005
+  at: '2026-11-04T04:17:41Z'  # a005
+  by: agent  # a005
+  actor: jgstern_agent  # a005
+  clock: 3  # a005
+  nonce: a005  # a005
+  message: "Cross-ref 2026-11-03: the guard half of this invariant's statement (check-claims-coverage reporting the same uncovered-module shape the cron withholds on) is tracked as WI-jizam-razas-sihap-budol-jinab-lopad-todoj-votip; this item's own closure is adjudicating the three modules, re-recording docs/hypergumbo.claims.expected.json and regenerating SECURITY.md. Umbrella: the audit-sentence META. Sequenced before WI-muzah-bubim-zunom-masup-mikab-dajul-bigig-lopaf because a backend switch for the gate re-records the same snapshot."  # a005
