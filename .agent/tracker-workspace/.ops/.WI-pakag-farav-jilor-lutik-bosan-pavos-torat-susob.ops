@@ -1,0 +1,22 @@
+- op: create  # f782
+  at: '2026-11-04T04:15:43Z'  # f782
+  by: agent  # f782
+  actor: jgstern_agent  # f782
+  clock: 1  # f782
+  nonce: f782  # f782
+  data:  # f782
+    kind: work_item  # f782
+    title: "Self-claim with the ANALYSED REPOSITORY as the taint source: repo content never chooses a host_fs path, a subprocess argument or a network destination (today four code facts, no claim)"  # f782
+    status: todo_hard  # f782
+    priority: 2  # f782
+    parent:  # f782
+    tags:  # f782
+    - security  # f782
+    - verify_claims  # f782
+    - analysis_quality  # f782
+    isbefore: []  # f782
+    duplicate_of: []  # f782
+    not_duplicate_of: []  # f782
+    pr_ref:  # f782
+    description: "**Context.** Owner's audit sentence (session 2026-11-03, ~/hypergumbo_lab_notebook/self_audit_11032026/), step 2. The 18 self-claims in docs/hypergumbo.claims.yaml all take a CLI entry category (`runtime_cli_entry`, `install_*_entry`) as the taint SOURCE: they are reachability claims about what each subcommand can touch. No claim takes the ANALYSED REPOSITORY as the source. For a tool whose job is to read arbitrary repositories on a daily-driver machine, that is the threat that matters: a hostile repository choosing a write PATH outside the cache, a launch ARGUMENT, or a network destination. Today that property rests on four code facts, not on a claim: discovery never follows a symlink (INV-pivir); the zone-enforced wrappers (`cache_rmtree`/`cache_unlink`/`cache_rename`/`tmp_artifact_rmtree`/`tmp_artifact_extract`/`install_artifact_unlink`) resolve the path and raise SafetyZoneViolation on escape; the rust-analyzer backend and in-repo catalogues require an explicit trust grant (ADR-0045/0061); gitleaks reads no in-repo config (INV-nihab). The release manifest fails on any write under <repo>/ and any AF_INET connect, but only on the 6 corpus repos.\n\n**Work.** (1) Decide how repo content enters the taint model. Candidates: the label `AUTO_SOURCE_LABEL_MAP` gives `fs_read` for the analyzers' reads of the analysed tree (check what it is and whether the shipped python catalogue's `read_text`/`read_bytes`/`iterdir`/`os.walk` rows mint it in the shipped tree); or a self-catalogue source declared on discovery's entry (the repo path is a PARAMETER of `cmd_*`, not a call, so this is the arrival-seed question WI-sosov answered for request handlers, here for the CLI: `sosov_11032026/RESULT.md` has the mechanism). (2) Write the claim(s): source = repo content; prohibited zones = host_fs, network, subprocess, install_artifact. Repo content legitimately reaches user_cache, user_out and tmp_artifact AS CONTENT (the survey JSON is made of it), so the dangerous flow is repo-derived data in the PATH or ARGV position of a wrapper, which argument-position-blind sink matching cannot separate from content. Expect the first run to be `violated` or flooded; the deliverable is the measured verdict plus the design decision it forces (argument-position-sensitive sinks, or path-vs-content zones on the wrappers), not a green tick. (3) If a claim is expressible, add it to docs/hypergumbo.claims.yaml + the snapshot + SECURITY.md generation.\n\n**Verification.** A fixture repository whose file name or file content is used to build a path (e.g. a cache key or an --out sibling) reads `violated` through the repo-content source; the real shipped tree's verdict is recorded with its caveats, whatever it is. Pre-registered: unmeasured; no expectation of clean."  # f782
+    fields: {}  # f782

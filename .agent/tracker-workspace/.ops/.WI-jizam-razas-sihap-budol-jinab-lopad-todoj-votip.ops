@@ -1,0 +1,22 @@
+- op: create  # cd48
+  at: '2026-11-04T04:15:37Z'  # cd48
+  by: agent  # cd48
+  actor: jgstern_agent  # cd48
+  clock: 1  # cd48
+  nonce: cd48  # cd48
+  data:  # cd48
+    kind: work_item  # cd48
+    title: "check-claims-coverage passes a tree the cron self-claims gate withholds on: make the per-PR guard see the uncovered-module shape (scip_pb2, textual.widgets.Select, datetime.timezone) and pin it"  # cd48
+    status: todo_hard  # cd48
+    priority: 2  # cd48
+    parent:  # cd48
+    tags:  # cd48
+    - security  # cd48
+    - verify_claims  # cd48
+    - ci_infrastructure  # cd48
+    isbefore: []  # cd48
+    duplicate_of: []  # cd48
+    not_duplicate_of: []  # cd48
+    pr_ref:  # cd48
+    description: "**Context.** The owner's audit sentence for the shipped CLI (\"pinpoint every write, enumerate every scenario, judge each benign\"; session 2026-11-03, evidence under ~/hypergumbo_lab_notebook/self_audit_11032026/) step 1, guard half. INV-hotib records the finding: on dev dce94fea97 the full self-claims run withholds all 18 verdicts because three module slots have neither a row nor a module_completeness grant (hypergumbo_core.scip._generated.scip_pb2 and textual.widgets.Select as \"untraced dependency source\", datetime.timezone as stdlib), while `scripts/check-claims-coverage` (INV-jojog's per-PR arm) returned 0 on the SAME tree: \"shipped files: 394 edges: 71539 ... the shipped tree's self-claims are qualifiable\" (claims_coverage.log, 31.6 s). The guard exists for exactly this shape (woodpecker.yml comment: \"does the shipped code call into a module the I/O catalogue can neither row nor enumerate? -- four of the five self-claims reds since 09-03\"), so a red the cron sees up to 12 h later that the guard passes is the guard failing its one job.\n\n**Work.** (1) Establish WHY the guard's edge set lacks the three slots. Hypotheses, none verified: the guard runs the python analyzer alone over the packaging roots, so a slot produced by a linker, by discovery's generated-output exclusion (ADR-0004; `_generated/scip_pb2.py` may be analysed by the guard but excluded, hence \"untraced\", in the full run), or by the WI-gabak import-anchored module change (#2036, in the window) is not in its population; or the guard's coverage decision (`hypergumbo_core.claims_coverage_guard`) does not classify \"untraced dependency source\" the way `verify_claims._require_coverage_to_confirm` does. (2) Make the guard report what the cron reports: rc 1 on dce94fea97 naming the same three modules. (3) Pin the shape with a test in the guard's package tests (a fixture whose uncovered slot arrives by the mechanism found in (1)), so the next instance is caught per PR. Adjudicating the three modules themselves (row, dated grant, or removing the call) and re-recording docs/hypergumbo.claims.expected.json + SECURITY.md is INV-hotib's own closure, not this item.\n\n**Verification.** Before the fix: `scripts/check-claims-coverage` rc 0 and `python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml --json` rc 2 on the same tree (both logs in the lab dir). After: both agree, in both directions, on that tree and on a tree with the three modules adjudicated."  # cd48
+    fields: {}  # cd48

@@ -1,0 +1,24 @@
+- op: create  # 95d9
+  at: '2026-11-04T04:01:27Z'  # 95d9
+  by: agent  # 95d9
+  actor: jgstern_agent  # 95d9
+  clock: 1  # 95d9
+  nonce: 95d9  # 95d9
+  data:  # 95d9
+    kind: invariant  # 95d9
+    title: "Self-claims gate red: all 18 self-claims inconclusive on dev (3 unclassified modules: scip_pb2, textual.widgets.Select, datetime.timezone) while SECURITY.md says 18 confirmed_with_caveats and the per-PR claims-coverage guard passes the same tree"  # 95d9
+    status: violated  # 95d9
+    priority: 2  # 95d9
+    parent:  # 95d9
+    tags:  # 95d9
+    - security  # 95d9
+    - verify_claims  # 95d9
+    - ci  # 95d9
+    isbefore: []  # 95d9
+    duplicate_of: []  # 95d9
+    not_duplicate_of: []  # 95d9
+    pr_ref:  # 95d9
+    description: "**Observed (2026-11-03).** The self-claims gate is red and the published table is wrong in the direction WI-vanun was about. `scripts/ci-debug cron-status`: the most recent `ci/woodpecker/cron/full-suite` (2026-11-03T18:18-05:00, dev 42d20c51) fails at step `self-claims-gate (exit 1)`: all 18 claims in `docs/hypergumbo.claims.yaml` moved `confirmed_with_caveats -> inconclusive`, and `opaque_boundary` left every caveat list. Reproduced locally on dev dce94fea97 (`python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml --json`, rc 2, 2m00s on a warm cache; `check-self-claims-drift` rc 1). Every verdict gives the same reason: \"makes calls into 3 module(s) that the I/O catalog could not classify (hypergumbo_core.scip._generated.scip_pb2, textual.widgets.Select, datetime.timezone), which is what withholds the qualified verdict the launches alone would have earned; 2 of them are untraced dependency source\". The same step also fails `self-tree-validation` (id_format|warning: 2 > baseline 0), a separate ratchet.\n\n**Two things wrong.** (1) `docs/hypergumbo.claims.expected.json` (last recorded 2026-09-14, 4d0933b10c) and the SECURITY.md verdict table (\"confirmed_with_caveats 18\") no longer describe what the tool reports; nobody acknowledged the drift. Per the gate's own contract the drift must be adjudicated, not re-recorded blind: row or grant (dated module_completeness) the three modules at the exact slot named, or decide the call should not be in the shipped tree, then re-record and regenerate SECURITY.md. (2) The per-PR guard `scripts/check-claims-coverage` (INV-jojog) says \"the shipped tree's self-claims are qualifiable\" on the SAME tree (rc 0, 31.6 s, 394 files, 71,539 edges) while the cron withholds every verdict on exactly the shape the guard exists to catch (a shipped call into a module the catalogue can neither row nor enumerate). The guard runs the python analyzer alone over the packaging roots; the cron's full map evidently carries module slots the guard's edge set does not (candidates: the generated scip_pb2 being excluded as generated output under ADR-0004, so \"untraced\"; a linker-produced edge; a slot minted by the WI-gabak import-anchored module change #2036, which is in the window). Which commit introduced the drift is NOT established: cron-status shows only the latest run; bisect with `check-self-claims` against the snapshot.\n\n**Evidence.** `~/hypergumbo_lab_notebook/self_audit_11032026/`: self_claims.json (full verdict JSON with caveat entries), self_claims_drift.txt, cron_self_claims.log, cron_self_tree.log, claims_coverage.log, self_io_boundaries.json (whole-repo io-boundaries, 6m17s).\n\n**Invariant.** The committed self-claim snapshot and SECURITY.md match what `verify-claims` reports on dev, and a shape the cron gate withholds on is one the per-PR guard also reports."  # 95d9
+    fields:  # 95d9
+      statement: "The committed self-claim snapshot (docs/hypergumbo.claims.expected.json) and the SECURITY.md verdict table match what verify-claims reports on dev, and any coverage shape that makes the cron self-claims gate withhold a verdict is one the per-PR check-claims-coverage guard also reports."  # 95d9
+      root_cause: "Three module slots in the shipped-artifact map have neither a catalogue row nor a module_completeness grant (hypergumbo_core.scip._generated.scip_pb2 and textual.widgets.Select as untraced dependency source, datetime.timezone as stdlib), so the uncovered-module gate withholds every self-claim verdict; the drift since the 2026-09-14 snapshot was never adjudicated, and the per-PR guard's python-analyzer-only edge set does not carry these slots, so it reported qualifiable on the same tree. Introducing commit not yet bisected."  # 95d9

@@ -1,0 +1,22 @@
+- op: create  # ac09
+  at: '2026-11-04T04:15:48Z'  # ac09
+  by: agent  # ac09
+  actor: jgstern_agent  # ac09
+  clock: 1  # ac09
+  nonce: ac09  # ac09
+  data:  # ac09
+    kind: work_item  # ac09
+    title: "Measure the self-claims on a scip-python map: the self-tree step types 98% of Python method calls while the self-claims map leaves 10,395 of 14,024 receivers untyped"  # ac09
+    status: todo_hard  # ac09
+    priority: 3  # ac09
+    parent:  # ac09
+    tags:  # ac09
+    - security  # ac09
+    - verify_claims  # ac09
+    - analysis_quality  # ac09
+    isbefore: []  # ac09
+    duplicate_of: []  # ac09
+    not_duplicate_of: []  # ac09
+    pr_ref:  # ac09
+    description: "**Context.** Owner's audit sentence (session 2026-11-03, ~/hypergumbo_lab_notebook/self_audit_11032026/), step 3. Every self-claim verdict is closed-world over the receivers the analysis could type, and on the self-claims map that is small: `unknown_receiver_scope` reports 10,395 of 14,024 method call sites untyped (26% typed; self_claims.json, dev dce94fea97; SECURITY.md's published figure is 6,541 of 9,267, 70.6%). The same full-suite pipeline builds `/tmp/self-tree.json` WITH the scip-python backend for the self-tree-validation and test-only-reachability steps, and that step's log says \"scip_python: contributed; Python method calls typed: 9570 of 9767 (98.0%)\" (cron_self_tree.log). The self-claims gate runs `python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml --json --minimal` on the tree-sitter map. Whether the two \"typed\" denominators are the same population is NOT established; measure before concluding.\n\n**Work.** (1) Run the self-claims on a scip-python map: `--backend scip-python` (needs `npm install -g @sourcegraph/scip-python`, present in the full-suite image), or `--input` the self-tree map if its build flags match the claims' analysis_scope. Compare per claim: verdict, caveat kinds, `unknown_receiver_scope` count/denominator, `untyped_receiver` site counts, credited flows. (2) If the untyped denominator shrinks materially, decide whether `scripts/check-self-claims` should run on the scip-python map (cost: the cron image already has scip-python; the snapshot must be re-recorded and SECURITY.md regenerated, which is INV-hotib's adjudication, so sequence after it). (3) Record the measurement under docs/measurements/ either way.\n\n**Verification.** A table, both backends, 18 rows, with the receiver denominators side by side. Pre-registered: unmeasured; the 98% figure may be a different population than the 14,024."  # ac09
+    fields: {}  # ac09
