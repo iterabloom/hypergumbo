@@ -1,0 +1,72 @@
+Original commit body from 3aca2b57574211391b5e3315f30b3d72b3216006:
+
+scripts/check-claims-coverage exists to give the cron's self-claims
+coverage answer per PR, in 30 s, from the Python analyzer's edges alone.
+On dev acf67df4cb it returned 0 while the cron withheld all eighteen
+verdicts on three slots (hypergumbo_core.scip._generated.scip_pb2,
+textual.widgets.Select, datetime.timezone; INV-hotib). The guard's
+docstring said it asked "the cron's own decision function" over "the
+edge set the analyzer produces by itself". Both true, and the second was
+the defect: the cron's decision reads the edges AFTER three pipeline
+stages that change the population, and the raw analyzer edges skipped
+all three. Traced on a worktree at acf67df4cb against the full map
+(lab ~/hypergumbo_lab_notebook/self_audit_11032026/jizam_*):
+
+- The tier filter. scip/_generated/scip_pb2.py is DERIVED (tier 4, the
+  `_pb2.py` rule), so run_survey drops it with every edge touching it,
+  and the cross-package call from the rust-analyzer package stays as the
+  unresolved module slot the cron names. Over the raw edges the file
+  counted as analysed and _is_analyzed_module suppressed that call as
+  first-party. This drift predates #2036: the parent of that commit
+  already withheld on scip_pb2 alone.
+- Boundary synthesis's id remap. create_boundary_nodes normalises a
+  dangling id's kind slot to external_symbol (ADR-0036 ruling 2), and
+  _external_call_sites admits only external_symbol / unresolved. The
+  analyzer's module_attr_ref dst for `timezone.utc` ends in `:attribute`,
+  so the 55 reads the cron counted were invisible to the guard; #2036's
+  from-imported chains (datetime.timezone, textual.widgets.Select) are
+  exactly this shape.
+- The orchestrator's file-symbol synthesis (WI-ramuv / WI-dagif), which
+  runs before classification in all_analyzers: without it a dropped
+  file's import edge lands on a file id no Symbol carries, which the
+  tier filter cannot remove.
+
+analyzer_edges now runs the three, through the pipeline's own functions,
+in run_survey's order: synthesize file symbols, _classify_symbols,
+apply_tier_filter, create_boundary_nodes + apply_external_id_remap,
+then relativise. The tier filter is LIFTED out of run_survey into
+hypergumbo_core/tier_filter.py (apply_tier_filter: route promotion, the
+DERIVED drop with membership on both endpoints per INV-saruf, the limits
+record) so there is one copy for both callers; run_survey's behaviour is
+unchanged, and test_tier_filter.py pins the three behaviours at the
+function.
+
+Measured: the fixed guard on the acf67df4cb worktree with the current
+catalogue exits 1 naming hypergumbo_core.scip._generated.scip_pb2 and
+textual.widgets.Select (datetime.timezone is granted since #2042), 46,029
+edges after the stages from 71,539 raw, 31 s; on dev after #2042 it
+exits 0 (jizam_newguard_on_prefix.log, jizam_newguard_on_dev.log).
+Behaviour preservation of the lift, measured twice: verify-claims on
+the refactored pipeline reads 18 of 18 confirmed_with_caveats with no
+snapshot drift (after_jizam_*); and the refactored code surveying the
+acf67df4cb worktree reproduces the old code's map of it exactly in nodes
+(63,894, same ids), edges (255,685), per-type edge counts, tiers and
+tier_filtered_files (jizam_refactor_parity.txt). The only difference is
+two dispatches_to edges in tests/fixtures/route-parity whose route
+marker picks between same-named handlers across languages differently
+from run to run: a pre-existing bare-name pick of WI-bazat's shape, not
+the filter.
+
+Tests (test_claims_coverage_guard.py::TestThePipelinesOwnPopulation):
+an attribute read of an unclassified module withholds naming it, and its
+edges carry the final graph's external_symbol terminal; a two-package
+fixture whose generated `_pb2.py` defines its message class at IMPORT
+time, as protoc does (a static `class Index` resolves in-tree and leaves
+with the file, which both the cron and the guard rightly report as
+nothing) is analysed, dropped with every edge touching it, withholds
+naming p._generated.gen_pb2, and a grant turns it green. Four of the five
+were red on the old guard.
+
+Addresses WI-jizam
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
