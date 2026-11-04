@@ -1,0 +1,58 @@
+Original commit body from fecc859a9d873a3ef1efc43c838aa9782b99ae8b:
+
+The eighteen self-claims take a CLI handler as the source: they say what
+each subcommand can reach. For a tool whose job is to read arbitrary
+repositories, the threat the owner's audit sentence names is the
+repository itself choosing a write path, a launch argument or a network
+destination. This adds that source and five claims over it, and records
+two measurements the work produced.
+
+docs/hypergumbo-self-catalog/repo_content_sources.yaml declares
+`analysed_repo_content` as a caller-seeded source on discovery
+(`find_files`, `find_non_test_files`, the FileIndex views): the one place
+every analyzer gets the paths the repository chose. `fs_read` mints no
+label by design, so a declared source is the only way in. Five claims in
+docs/hypergumbo.claims.yaml prohibit host_fs, network, subprocess,
+install_artifact and dev_zone for it. On dev 94b03ded17 all five read
+confirmed_with_caveats, and their sanitized flows are exactly the entry
+claims' (5 host_fs, 100 subprocess): every seed sits inside a runtime
+cmd_* closure, so the claims add no reachability fact and NAME the
+threat with the same caveats. The snapshot is re-recorded (23 entries)
+and SECURITY.md regenerated.
+
+The first run read VIOLATED on 105 flows, every one a safety_zones
+wrapper's own Path.write_text / subprocess.run: zone_barrier_sanitizers
+.yaml declares the barrier once per entry label, the sanitizer schema
+has no wildcard, and nothing paired a new label with a transform. The
+transform is added, and test_self_catalog_barrier_coverage.py pins that
+every `taint_label` a *_sources.yaml declares has one (red against the
+pre-edit barrier file, green after) and that no transform names a label
+nothing declares.
+
+What the claims cannot say is recorded rather than implied. The matcher
+carries no argument identity, so a repo-content claim prohibits a ZONE
+and cannot tell a repo-chosen PATH from repo content written as CONTENT:
+a two-fixture pair (name-in-path, content-in-content) produces
+byte-identical evidence. Reading every permitted-zone flow at its sink
+finds three sites where a repo-chosen value is a path or argv component
+(`git ls-tree HEAD -- <dir>` in discovery, the sanitized route path in a
+handler-slice filename, hashed git metadata in cache directory names),
+each contained by a code fact. A `pathlib.read_text` anchor was tried and
+rejected: it labels the tracker package's own reads (7 network, 161
+subprocess flows, none the analysed repository). docs/measurements/0032
+carries the tables, the enumeration and the design decision this forces
+(argument-position attribution in the DDG arm).
+
+docs/measurements/0031 records the self-claims on a scip-python map:
+untyped receiver sites 10,396 of 14,027 (74.1%) -> 1,227 of 17,197
+(7.1%), and every verdict turns inconclusive on 86 class-qualified module
+slots scip resolves receivers to (51 stdlib classes, 35 third-party of
+which 25 already have a coarser grant one level up); the cron's 98% typed
+figure is a different population on the same map (9,772 calls to in-repo
+methods vs 17,197 method-construct call sites). 11 min, 8.2 GB. The gate
+stays on the tree-sitter map.
+
+Addresses WI-pakag
+Addresses WI-muzah
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
