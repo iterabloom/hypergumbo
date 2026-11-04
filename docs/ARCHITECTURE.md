@@ -14,14 +14,14 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
-- **58178** symbols (functions, classes, methods)
-- **233440** edges by type:
-  - calls: 131967
-  - contains: 54191
-  - imports: 20021
-  - instantiates: 12918
-  - references: 10344
+- **370** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 115 core, 4 CLI, 37 tracker)
+- **58196** symbols (functions, classes, methods)
+- **233538** edges by type:
+  - calls: 132019
+  - contains: 54208
+  - imports: 20042
+  - instantiates: 12924
+  - references: 10346
   - module_attr_ref: 2204
   - other: 1795
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58178 Symbols + 233440 Edges + UsageContexts           │
+│  Output: 58196 Symbols + 233538 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -282,14 +282,14 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10662.1 | ir.py |
+| `Symbol` | class | 10676.2 | ir.py |
 | `len` | external_symbol | 8101.0 | <external> |
-| `write_text` | external_symbol | 7392.0 | <external> |
-| `Span` | class | 7135.1 | ir.py |
+| `write_text` | external_symbol | 7393.0 | <external> |
+| `Span` | class | 7141.2 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3717.0 | <external> |
+| `get` | external_symbol | 3718.0 | <external> |
 | `load_catalog` | function | 3600.1 | io_boundary.py |
-| `Edge.create` | method | 2655.9 | ir.py |
+| `Edge.create` | method | 2659.7 | ir.py |
 | `Path` | external_symbol | 2530.0 | <external> |
 | `str` | external_symbol | 2517.0 | <external> |
 | `next` | external_symbol | 2279.0 | <external> |
@@ -704,6 +704,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 - **`hypergumbo_core.test_only_reachability`**: WI-ratuv: a production function whose only callers live in test mod...
+- **`hypergumbo_core.tier_filter`**: The supply-chain tier filter: ONE function for ``run_survey`` and t...
 - **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ...
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
@@ -982,8 +983,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3f3adf7ba299
-  commit_count: 8820
+  commit: 5c85a1d0c3e1
+  commit_count: 8825
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

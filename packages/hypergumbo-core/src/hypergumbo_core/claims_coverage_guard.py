@@ -42,6 +42,38 @@ and removing either the ``threading.Event`` or the ``datetime.date`` grant from
 the loaded catalogue flips it to ``qualifying_only=False`` naming that module,
 which is exactly the regression this exists to catch.
 
+RECALIBRATED 2026-11-04, AND THE CALIBRATION ABOVE WAS INCOMPLETE (INV-hotib /
+WI-jizam). On ``dev`` at acf67df4cb the cron withheld all eighteen verdicts on
+three slots -- ``hypergumbo_core.scip._generated.scip_pb2``,
+``textual.widgets.Select``, ``datetime.timezone`` -- and this guard returned 0
+on the same tree. "The analyzer produces that edge set by itself" was true and
+not enough: the adjudicator reads the edges AFTER three pipeline stages that
+change the population, and the raw analyzer edges skipped all three.
+``analyzer_edges`` now runs them, through the pipeline's own functions:
+
+* the orchestrator's file-symbol synthesis (``all_analyzers``: WI-ramuv,
+  WI-dagif), so a dropped file's import edge has a node to be dropped with;
+* ``_classify_symbols`` and the tier filter, lifted out of ``run_survey`` into
+  ``tier_filter.apply_tier_filter`` so there is ONE copy: a DERIVED file
+  (``_pb2.py``) leaves with every edge touching it, and the cross-package call
+  into it stays as the unresolved module slot the cron names. Over the raw
+  edges the file counted as analysed and ``_is_analyzed_module`` suppressed
+  that call as first-party;
+* boundary synthesis's id remap (``ir.create_boundary_nodes`` +
+  ``apply_external_id_remap``), which normalises a dangling id's kind slot to
+  ``external_symbol`` (ADR-0036 ruling 2). ``_external_call_sites`` admits only
+  ``external_symbol`` / ``unresolved``, so an attribute read -- the analyzer's
+  ``python:datetime.timezone:0-0:datetime.timezone.utc:attribute`` -- was
+  invisible here and counted in the cron.
+
+Measured on the acf67df4cb worktree with the current catalogue: 46,029 edges
+after the three stages (71,539 raw), ``qualifying_only=False`` naming
+``hypergumbo_core.scip._generated.scip_pb2`` and ``textual.widgets.Select``
+(``datetime.timezone`` is granted since #2042), 31 s. On dev after #2042: 0.
+Edge counts here and in the cron still differ -- linkers, taint and the
+non-Python analyzers are not run -- but the population the coverage gate
+reads is now built by the same stages.
+
 WHAT IT DOES NOT CATCH, said plainly. The drift gate compares eighteen
 verdicts, their caveat kinds and their credited-flow buckets; this compares one
 bit of coverage. A taint-flow regression, a sanitizer that stops crediting, a
@@ -65,6 +97,7 @@ from typing import Any, Iterable
 
 from .discovery import FileIndex, find_files, get_file_index, set_file_index
 from .io_boundary import IoBoundaryCatalog, load_catalog
+from .limits import Limits
 from .supply_chain import collect_first_party_package_names
 from .verify_claims import (
     BoundaryCoverage,
@@ -117,16 +150,49 @@ def shipped_python_files(repo_root: Path, roots: Iterable[str]) -> list[Path]:
 
 
 def analyzer_edges(repo_root: Path, files: list[Path]) -> list[dict[str, Any]]:
-    """The ``python`` analyzer's edges over exactly ``files``, ids repo-relative.
+    """The ``python`` analyzer's edges over exactly ``files``, as the cron's
+    adjudicator would read them: tier-filtered, boundary-normalised, ids
+    repo-relative.
 
     A :class:`FileIndex` built from the list is installed for the duration, so
     the analyzer's ``find_files`` sees only the shipped files (INV-jumim's
     mechanism, the one ``sketch --input`` uses); the previous index is restored
     whatever happens. ``KeyError`` from the registry means the analyzer package
     is not installed -- an infrastructure condition the caller reports as such.
+
+    TWO PIPELINE STAGES RUN HERE BECAUSE THE ADJUDICATOR READS THEIR OUTPUT,
+    and skipping them is how this guard passed dev acf67df4cb while the cron
+    withheld every self-claim on three slots (INV-hotib / WI-jizam). Both are
+    the pipeline's own functions, not a restatement:
+
+    * ``_classify_symbols`` + :func:`tier_filter.apply_tier_filter`: a DERIVED
+      file (``scip/_generated/scip_pb2.py``, tier 4 by the ``_pb2.py`` rule)
+      leaves with every edge touching it, so a cross-package call into it
+      stays as the unresolved ``hypergumbo_core.scip._generated.scip_pb2``
+      slot the cron names. Over the raw analyzer edges the file counted as
+      analysed and ``_is_analyzed_module`` suppressed that call as first-party.
+    * :func:`ir.create_boundary_nodes` + :func:`ir.apply_external_id_remap`:
+      boundary synthesis normalises a dangling id's kind slot to
+      ``external_symbol`` (ADR-0036 ruling 2). ``_external_call_sites`` admits
+      only ``external_symbol`` / ``unresolved`` terminals, so an attribute read
+      -- ``python:datetime.timezone:0-0:datetime.timezone.utc:attribute``
+      straight from the analyzer -- was invisible to the coverage gate here and
+      counted in the cron. The synthesised nodes themselves are discarded; only
+      the remap is wanted.
+
+    Order follows ``run_survey``: classify and filter on the analyzer's
+    absolute-path ids, synthesise, then relativise.
     """
+    from .analyze.base import (
+        synthesize_file_anchors_for_node_bearing_paths,
+        synthesize_file_symbols_for_dangling_edges,
+    )
     from .analyze.registry import ensure_discovered, run_analyzer
+    from .cli import _classify_symbols
     from .finalize import _relativize_ir_paths
+    from .ir import apply_external_id_remap, create_boundary_nodes
+    from .supply_chain import detect_package_roots
+    from .tier_filter import apply_tier_filter
 
     ensure_discovered()
     previous = get_file_index()
@@ -135,10 +201,23 @@ def analyzer_edges(repo_root: Path, files: list[Path]) -> list[dict[str, Any]]:
         result = run_analyzer(ANALYZER, repo_root)
     finally:
         set_file_index(previous)
-    _relativize_ir_paths(
-        repo_root, result.symbols, result.edges, result.usage_contexts,
-    )
-    return [edge.to_dict() for edge in result.edges]
+    symbols = list(result.symbols)
+    # The orchestrator's file-symbol synthesis (WI-ramuv, WI-dagif) runs before
+    # classification in ``all_analyzers``; without it a dropped file's import
+    # edge lands on a file id no Symbol carries, which the tier filter cannot
+    # remove, and the file counts as analysed.
+    symbols.extend(synthesize_file_symbols_for_dangling_edges(
+        symbols, result.edges, repo_root=repo_root, origin_run_id="",
+    ))
+    symbols.extend(synthesize_file_anchors_for_node_bearing_paths(
+        symbols, repo_root=repo_root, origin_run_id="",
+    ))
+    _classify_symbols(symbols, repo_root, detect_package_roots(repo_root))
+    symbols, edges = apply_tier_filter(symbols, result.edges, None, Limits())
+    _boundary_nodes, id_remap = create_boundary_nodes(symbols, edges)
+    edges = apply_external_id_remap(edges, id_remap)
+    _relativize_ir_paths(repo_root, symbols, edges, result.usage_contexts)
+    return [edge.to_dict() for edge in edges]
 
 
 def claim_catalogs(claims_path: Path) -> dict[str, IoBoundaryCatalog]:
