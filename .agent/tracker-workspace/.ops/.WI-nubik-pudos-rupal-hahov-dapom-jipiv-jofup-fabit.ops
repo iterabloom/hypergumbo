@@ -34,3 +34,20 @@
   nonce: 06c6  # 06c6
   set:  # 06c6
     title: "Transcript archive has no retention policy: 743MB / 275 session dirs (.agent/ 2.9GB total, 2026-11-01), unbounded by deliberate ADR-0018 choice"  # 06c6
+- op: update  # 9e58
+  at: '2026-11-04T19:55:34Z'  # 9e58
+  by: agent  # 9e58
+  actor: jgstern_agent  # 9e58
+  clock: 4  # 9e58
+  nonce: '9e58'  # 9e58
+  set:  # 9e58
+    description: "rotate-on-session-end.sh:49 states the intent plainly -- 'Per ADR-0018, we keep cross-session history for retrospective analysis' -- so unbounded growth is a DECISION, not an oversight. Filing it to make the number visible rather than to reverse the decision. Measured 2026-07-29: .agent/.archived-transcripts/ = 475MB across 237 session dirs (388 .gz files); live slots (.last_*, .second_to_last_*, per-session .current_*) = 89MB; .agent/.training-data.jsonl = 1.19GB; .agent/.deprecated-datasets/ = 479MB. Total ~2.2GB under .agent/, all gitignored, growing per session with nothing that prunes. Open questions a decision would need to answer: is the retrospective workflow's value actually a function of DEPTH (does anything read a 3-month-old transcript?); would a cap-by-count or cap-by-age lose anything the ledger does not already capture; and should .deprecated-datasets/ (referenced by no script) simply be deleted rather than retained. NOT proposing a cap unilaterally -- the ADR chose retention deliberately."  # 9e58
+- op: update  # 2073
+  at: '2026-11-04T19:55:34Z'  # 2073
+  by: agent  # 2073
+  actor: jgstern_agent  # 2073
+  clock: 5  # 2073
+  nonce: '2073'  # 2073
+  set:  # 2073
+    fields:  # 2073
+      description:  # 2073

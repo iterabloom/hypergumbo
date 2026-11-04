@@ -34,3 +34,20 @@
   nonce: de03  # de03
   set:  # de03
     title: "Per-session .transcript-injection-state.<sid>.lock files are never removed (131 in .agent/ on 2026-11-01); add .lock to both cleanup lists"  # de03
+- op: update  # a9bc
+  at: '2026-11-04T19:55:36Z'  # a9bc
+  by: agent  # a9bc
+  actor: jgstern_agent  # a9bc
+  clock: 4  # a9bc
+  nonce: a9bc  # a9bc
+  set:  # a9bc
+    description: "Measured 2026-07-29: 104 zero-byte .agent/.transcript-injection-state.<sid>.lock files, earliest 2026-04-24, newest today. rotate-on-session-end.sh step 4 removes the ENDING session's per-session state files (.transcript-sync.<sid>.pid, -sync-state, -poll-state, -injection-state.json) but NOT the .lock, and launch-transcript-sync.sh's orphan sweep removes the same four names for a crashed session, also excluding the .lock. So every session leaves one behind either way. Zero-byte, so this is clutter rather than a defect: cost is a noisier .agent/ listing and one inode per session. Two candidate fixes -- add the .lock to both cleanup lists, or move the locks to a subdirectory so the top level stays legible. Worth pairing with the retention item (WI-nubik) since both are .agent/ housekeeping and a single sweep could cover both."  # a9bc
+- op: update  # e256
+  at: '2026-11-04T19:55:37Z'  # e256
+  by: agent  # e256
+  actor: jgstern_agent  # e256
+  clock: 5  # e256
+  nonce: e256  # e256
+  set:  # e256
+    fields:  # e256
+      description:  # e256
