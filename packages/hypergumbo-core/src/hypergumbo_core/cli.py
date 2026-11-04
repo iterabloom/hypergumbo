@@ -336,6 +336,7 @@ from .slice import (
 )
 from .selection.filters import is_excluded_kind
 from .limits import Limits
+from .tier_filter import apply_tier_filter
 from .supply_chain import (
     DERIVED_PATH_PATTERNS,
     FileClassification,
@@ -13287,89 +13288,14 @@ def run_survey(
     # `class MyService` in tests/ was mislabeled a production service until here.
     strip_test_file_only_concepts(all_symbols)
 
-    # Promote route-bearing symbols out of derived (tier 4) so the API surface
-    # is not excluded by the default tier-4 filter — valuable regardless of
-    # whether the code is generated (e.g., go-swagger, protobuf gRPC stubs).
-    # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only, and these
-    # routes live IN the repo (distance 0), so they promote to tier 1
-    # (first_party) — NOT tier 2 (internal_dep), which is reserved for
-    # org-internal *dependency* packages. The "promoted from derived" reason
-    # records that the source was generated/derived.
-    for s in all_symbols:
-        if s.supply_chain_tier == 4:
-            is_route = (s.meta or {}).get("framework_role") == "route"
-            if not is_route:
-                for concept in (s.meta or {}).get("concepts", []):
-                    if isinstance(concept, dict) and concept.get("concept") == "route":
-                        is_route = True
-                        break
-            if is_route:
-                s.supply_chain_tier = 1
-                s.supply_chain_reason = "route promoted from derived"
-                s.supply_chain_classified = True
-
-    # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
-    # DERIVED files are minified/bundled/generated artifacts whose symbols distort
-    # centrality rankings and inflate edge counts via false-positive name collisions.
-    effective_tier = max_tier if max_tier is not None else 3
-    if effective_tier < 4:
-        # Filter symbols by tier
-        filtered_symbols = [
-            s for s in all_symbols if s.supply_chain_tier <= effective_tier
-        ]
-        filtered_symbol_ids = {s.id for s in filtered_symbols}
-
-        # Filter edges: an edge goes when EITHER endpoint is a node this filter
-        # removed. Endpoints that were never in the node set (an unresolved
-        # external reference as dst; a producer-side gap as src) are kept:
-        # they represent real dependencies, and boundary synthesis (Phase E)
-        # is what gives them a node.
-        # INV-saruf (ADR-0043 section 4, owner ruling 2026-11-03): the src rule
-        # is membership, the same as the dst rule. It used to keep a removed
-        # file's edges by the SHAPE of the src id (":file" in it, or ".py:" /
-        # ".js:" / ".ts:" anywhere in it, which is every symbol-level source
-        # in those languages), so a tier-4 file came back from synthesis as
-        # "<path>:0-0:<name>:external_symbol" stand-ins that import, extend
-        # and call first-party code (knex lib/dialects/index.js: 27 edges).
-        # Section 4 mints boundary nodes only for endpoints that SURVIVE
-        # filtering; a removed file's edges leave with it. File-level srcs
-        # always have a node here: all_analyzers synthesizes one for every
-        # dangling file id before this block (WI-ramuv).
-        # Exclude boundary nodes from "removed" set — they're synthetic
-        # endpoints for external references and should be treated as if they
-        # don't exist for tier filtering purposes (same as pre-boundary-node
-        # behavior where unresolved IDs simply weren't in the symbol set).
-        # WI-pozur (ADR-0043 C2 / D-D): boundary synthesis now runs AFTER this
-        # filter, so no boundary nodes exist here and `is_external_boundary(s)`
-        # is always False — this clause is a defensive no-op. Kept (not deleted)
-        # so the carve-out restores itself automatically if synthesis is ever
-        # moved back before filtering.
-        removed_symbol_ids = {
-            s.id for s in all_symbols
-            if s.id not in filtered_symbol_ids
-            and not is_external_boundary(s)
-        }
-
-        filtered_edges = [
-            e
-            for e in all_edges
-            if e.src not in removed_symbol_ids and e.dst not in removed_symbol_ids
-        ]
-
-        # WI-tulit: record which tier-dropped FILES vanished, so a consumer can see
-        # WHAT was excluded — symbols + edges disappear silently otherwise (neither
-        # analysis_incomplete nor limits.failed_files reflects a tier drop). Computed
-        # from the pre-filter `all_symbols` (file nodes only), before the reassignment.
-        for dropped_path in sorted({
-            s.path
-            for s in all_symbols
-            if s.supply_chain_tier > effective_tier and s.kind == "file"
-        }):
-            limits.add_tier_filtered_file(dropped_path)
-
-        all_symbols = filtered_symbols
-        all_edges = filtered_edges
-        limits.max_tier_applied = effective_tier
+    # Tier filter: route promotion, the DERIVED (tier 4) drop with every edge
+    # touching a dropped node (INV-saruf), and the limits record (WI-tulit).
+    # ONE function, shared with the per-PR claims-coverage guard so the
+    # guard's population is this pipeline's (INV-hotib / WI-jizam); the
+    # body and its history are in tier_filter.py.
+    all_symbols, all_edges = apply_tier_filter(
+        all_symbols, all_edges, max_tier, limits,
+    )
 
     # Exclude non-code node kinds by default.  Documentation/config nodes
     # (markdown sections, TOML tables, INI settings), CSS structural nodes
