@@ -379,6 +379,16 @@ module_completeness:
     retrieved: "2026-08-16"
     notes: >-
       As textual.widgets.
+  - module: textual.widgets.Select
+    completeness: complete
+    retrieved: "2026-11-03"
+    notes: >-
+      INV-hotib. As textual.widgets: the TUI constructs Select[str](...),
+      reads .value, compares against Select.BLANK and handles
+      Select.Changed; all in-memory widget state, the terminal I/O is the
+      app driver's. Exact-slot matching means the textual.widgets grant
+      above does not vouch for this name once a chain is rooted at the
+      from-imported class.
   - module: textual.widgets.option_list
     completeness: complete
     retrieved: "2026-08-16"
@@ -509,3 +519,16 @@ module_completeness:
     retrieved: "2026-08-16"
     notes: >-
       Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: hypergumbo_core.scip._generated.scip_pb2
+    completeness: complete
+    retrieved: "2026-11-03"
+    notes: >-
+      INV-hotib. First-party protobuf bindings generated from scip.proto
+      (SOURCE_COMMIT.txt beside it), excluded from analysis as generated
+      output (ADR-0004), so a call into them is "untraced dependency
+      source" and this grant is the dated vouch ADR-0016 section 7 asks
+      for. The shipped callers (scip/index.py, scip/edges.py) build
+      Index / Document / SymbolInformation / Occurrence messages and parse
+      bytes a caller already read with ParseFromString: in-memory
+      decoding, no path, no socket. The bytes come from the backend
+      wrappers' own files, which are rowed where they are read.
