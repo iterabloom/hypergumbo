@@ -134,25 +134,40 @@ def _verdicts(
     return {v["claim_id"]: v for v in json.loads(buf.getvalue())["verdicts"]}
 
 
-@pytest.mark.parametrize("app,language,module,handler", [
-    (("app.py", _FLASK_APP), "python", "flask", "save"),
-    (("server.js", _EXPRESS_APP), "javascript", "express", "_GET_save_handler"),
-    (("main.go", _GO_SERVEHTTP), "go", "net/http", "saver.ServeHTTP"),
-    (("main.go", _GO_HANDLEFUNC), "go", "net/http", "save"),
+@pytest.mark.parametrize("app,language,module,handler,parameter_seeded", [
+    # Flask's request is a framework GLOBAL: no parameter to seed (WI-gabak gave
+    # its chains a slot; the rows are WI-ritog's remaining Flask step).
+    (("app.py", _FLASK_APP), "python", "flask", "save", False),
+    # Express and Go hand the request as a PARAMETER, which WI-sosov seeds.
+    (("server.js", _EXPRESS_APP), "javascript", "express", "_GET_save_handler", True),
+    (("main.go", _GO_SERVEHTTP), "go", "net/http", "saver.ServeHTTP", True),
+    (("main.go", _GO_HANDLEFUNC), "go", "net/http", "save", True),
 ])
 @pytest.mark.parametrize("classified", [False, True])
 def test_a_request_handler_withholds_the_untrusted_input_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    app: tuple[str, str], language: str, module: str, handler: str, classified: bool,
+    app: tuple[str, str], language: str, module: str, handler: str,
+    parameter_seeded: bool, classified: bool,
 ) -> None:
     extra = (["--io-primitives", str(_overlay(tmp_path, language, module))]
              if classified else None)
     verdicts = _verdicts(tmp_path, monkeypatch, dict([app]), extra)
-    for claim_id in ("untrusted-input-no-host-fs", "never-receives-network-data"):
-        verdict = verdicts[claim_id]
-        assert verdict["verdict"] == "inconclusive", (claim_id, verdict["verdict"])
-        assert "no taint source represents" in verdict["details"], verdict["details"]
-        assert handler in verdict["details"], verdict["details"]
+    taint = verdicts["untrusted-input-no-host-fs"]
+    if parameter_seeded:
+        # The request parameter is followed to the write: a finding, and the
+        # handler is a represented arrival for the TAINT arm.
+        assert taint["verdict"] == "violated", taint["details"]
+        assert "no taint source represents" not in taint["details"], taint["details"]
+    else:
+        assert taint["verdict"] == "inconclusive", taint["details"]
+        assert "no taint source represents" in taint["details"], taint["details"]
+        assert handler in taint["details"], taint["details"]
+    # The BOUNDARY arm is withheld either way: no net_recv crossing stands
+    # behind a request that arrives as a parameter or a global, followed or not.
+    boundary = verdicts["never-receives-network-data"]
+    assert boundary["verdict"] == "inconclusive", boundary["details"]
+    assert "receive network data that no" in boundary["details"], boundary["details"]
+    assert handler in boundary["details"], boundary["details"]
 
 
 def test_a_program_with_no_request_handler_gets_no_ingress_disclosure(

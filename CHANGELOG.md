@@ -114,6 +114,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures; false leaks from `build_opener().open(url)` and Go's `_, err := get()` are gone.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
 - **A function's parameters are reaching definitions at its own line** in the Python, JS/TS and Go data-dependence graphs, so a value that arrives as a parameter can be followed to its uses.
+- **A request handler's request parameter is a taint source**: Express `req` and Go `*http.Request` seed `untrusted_input` where the handler reads them, in the data-dependence walk only; a seeded handler leaves the unseeded-ingress disclosure.
 - **A from-imported object's attribute read is matchable**: `request.data` under `from flask import request` is a `module_attr_ref` on `flask.request`, so an `attributes:` row there seeds taint.
 
 #### Run reporting and graph integrity

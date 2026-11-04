@@ -6646,6 +6646,7 @@ def _build_ddg_for_verify_claims(
     dict[str, frozenset[str]],
     dict[str, list["ReturnStatement"]],
     dict[str, list[tuple[int, tuple[Optional[str], ...]]]],
+    dict[str, tuple[str, ...]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -6703,7 +6704,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set(), {}, {}, {}
+        return [], set(), {}, {}, set(), {}, {}, {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -6725,6 +6726,7 @@ def _build_ddg_for_verify_claims(
         result.unaccounted_names,
         result.return_spans,
         result.stmt_targets,
+        result.params,
     )
 
 
@@ -7364,6 +7366,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # ingress disclosure below leaves them out. Filled per language beside
     # the propagator call, from the same edges and sources it walks.
     represented_ingress: set[str] = set()
+    parameter_represented: set[str] = set()
     credited_user_summaries: set[str] = set()
     # INV-nohob: source values the walk saw leave through a construct taint
     # does not follow; a clean verdict on their label is withheld. Function
@@ -7638,6 +7641,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
                 ddg_forfeits, ddg_unaccounted, ddg_returns, ddg_targets,
+                ddg_params,
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
@@ -7726,6 +7730,22 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # not this language's, so the OR stays correct for the walk
                 # without letting a `go:` callee be indexed against the Python
                 # catalogue.
+                # WI-sosov: a request handler's request PARAMETER is a source
+                # where the framework contract names it and the DDG saw it
+                # used; the DDG arm alone takes it (a symbol-level seed at a
+                # handler would be reachability, not dataflow).
+                from .taint import parameter_seeds
+                lang_param_seeds = parameter_seeds(
+                    behavior_map.get("request_ingress") or [],
+                    ddg_params, ddg_edges,
+                    {
+                        n["id"]: (n.get("meta") or {})
+                        for n in behavior_map.get("nodes", [])
+                        if str(n.get("id", "")).startswith(lang_prefix)
+                    },
+                    lang,
+                    edges=lang_edges,
+                )
                 if ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
@@ -7754,6 +7774,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # the helper's callers.
                         return_spans=ddg_returns,
                         stmt_targets=ddg_targets,
+                        parameter_seeds=lang_param_seeds,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
@@ -7775,6 +7796,15 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 represented_ingress.update(represented_ingress_callers(
                     lang_edges, lang_sources, lang_ambiguous, lang,
                 ))
+                # WI-sosov: a parameter seed represents the arrival for the
+                # TAINT arm only. No ``net_recv`` crossing stands behind it,
+                # so the boundary arm's disclosure keeps naming the handler
+                # (ADR-0049 ruling 3: a webserver must not confirm "never
+                # receives network data" because its request was followed).
+                if ddg_edges:
+                    parameter_represented.update(
+                        seed.handler for seed in lang_param_seeds
+                    )
                 unfollowed_escapes.extend(find_unfollowed_escapes(
                     ddg_edges or [], lang_edges, lang_sources,
                     ambiguous_names=lang_ambiguous, language=lang,
@@ -7913,6 +7943,15 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # the entrypoint rank floor and size cap), or the capped
         # ``entrypoints`` on a map written before that key existed.
         unseeded_ingress=unseeded_ingress_handlers(
+            ingress_candidates(behavior_map),
+            include_non_production=getattr(
+                args, "include_non_production_sources", False
+            ),
+            represented=represented_ingress | parameter_represented,
+        ),
+        # WI-sosov: the boundary arm's list leaves the parameter-seeded
+        # handlers IN -- their request is followed, not recorded as a crossing.
+        unseeded_ingress_boundary=unseeded_ingress_handlers(
             ingress_candidates(behavior_map),
             include_non_production=getattr(
                 args, "include_non_production_sources", False
