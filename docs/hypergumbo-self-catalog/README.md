@@ -58,6 +58,16 @@ third-party libraries, not for one project's own dependencies.
   > mechanism in `_merge_with_user_override` (taint.py) remains
   > available for finer-grained per-`(module, name, kind)` zone swaps.
 
+- `repo_content_sources.yaml` — the ANALYSED REPOSITORY as a taint source
+  (label `analysed_repo_content`, seeded at the callers of discovery). The
+  five `repo-content-no-*` claims take it; measurement
+  [0032](../measurements/0032-analysed-repository-as-taint-source.md) says
+  what such a claim can and cannot assert.
+- `zone_barrier_sanitizers.yaml` — one `_safety_zone_barrier` transform PER
+  TAINT LABEL, no wildcard. A new `*_sources.yaml` label needs its transform
+  or its claims report every wrapper's internal stdlib call;
+  `test_self_catalog_barrier_coverage.py` keeps the two files paired.
+
 ## Entry rule
 
 If hypergumbo's own source code starts using a new third-party library
