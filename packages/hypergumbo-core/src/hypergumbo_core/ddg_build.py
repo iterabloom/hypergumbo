@@ -148,7 +148,12 @@ defines is seeded, and a Go caller that propagates the helper's ``err``
 source. ``defines`` drops Go's blank, so a statement the extractor reports by
 position also lands in ``stmt_targets`` (``_, err := get()`` -> ``(None,
 "err")``, WI-sitaf), where the lift reads a value received into the blank as
-received by nothing.
+received by nothing. The identifiers place a VARIABLE; a source CALL written
+directly in a result position (``return os.Getenv("K"), nil``) is placed by
+its name instead, so each position also records every name token it mentions
+(``names``: ``Getenv`` is a ``field_identifier``, not an identifier), kept
+apart from the identifiers so a field spelled like a variable never places
+the variable (WI-kikar).
 
 Refinement Hook
 ---------------
@@ -565,11 +570,20 @@ class ReturnStatement(NamedTuple):
     mentions: ``return v, nil`` is ``(frozenset({"v"}), frozenset())`` and a
     single-valued ``return f(x)`` is ``(frozenset({"f", "x"}),)``. A bare
     ``return`` has none.
+
+    ``names`` holds, per result position, EVERY name token the expression
+    mentions -- identifiers plus field, property and scoped names -- so a
+    source CALL can be placed in its position: ``return os.Getenv("K"), nil``
+    is ``(frozenset({"os", "Getenv"}), frozenset())`` where ``results`` has
+    only ``os`` (``Getenv`` is a ``field_identifier``). The two are kept
+    apart because the walk matches a VARIABLE against ``results``, and a
+    field spelled like a variable must not place it (WI-kikar).
     """
 
     start: int
     end: int
     results: tuple[frozenset[str], ...]
+    names: tuple[frozenset[str], ...] = ()
 
 
 #: Node types that hold a return statement's results as a LIST of positions:
@@ -579,24 +593,42 @@ class ReturnStatement(NamedTuple):
 _RESULT_LIST_NODE_TYPES = frozenset({"expression_list", "tuple"})
 
 
-def _identifiers_in(node: Any, source: bytes) -> frozenset[str]:
+def _identifiers_in(
+    node: Any, source: bytes, *, every_name: bool = False,
+) -> frozenset[str]:
+    """The ``identifier`` tokens under *node*; with *every_name*, every token
+    whose node type ends in ``identifier`` (``field_identifier``,
+    ``property_identifier``, ``scoped_identifier``, ...) as well."""
     names: set[str] = set()
     stack = [node]
     while stack:
         current = stack.pop()
-        if current.type == "identifier":
+        kind = current.type
+        if kind == "identifier" or (every_name and kind.endswith("identifier")):
             names.add(source[current.start_byte:current.end_byte].decode(
                 "utf-8", errors="replace"))
         stack.extend(current.children)
     return frozenset(names)
 
 
-def _return_results(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
-    """The identifiers in each result position of return statement *node*."""
+def _return_values(node: Any) -> list[Any]:
+    """The expression node of each result position of return statement *node*."""
     values = [c for c in node.named_children if c.type != "comment"]
     if len(values) == 1 and values[0].type in _RESULT_LIST_NODE_TYPES:
         values = [c for c in values[0].named_children if c.type != "comment"]
-    return tuple(_identifiers_in(v, source) for v in values)
+    return values
+
+
+def _return_results(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
+    """The identifiers in each result position of return statement *node*."""
+    return tuple(_identifiers_in(v, source) for v in _return_values(node))
+
+
+def _return_names(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
+    """Every name token in each result position of return statement *node*."""
+    return tuple(
+        _identifiers_in(v, source, every_name=True) for v in _return_values(node)
+    )
 
 
 def return_statement_spans(
@@ -622,6 +654,7 @@ def return_statement_spans(
         return [ReturnStatement(
             body_node.start_point[0] + 1, body_node.end_point[0] + 1,
             (_identifiers_in(body_node, source),),
+            (_identifiers_in(body_node, source, every_name=True),),
         )]
     spans_from_tail = _block_tail_return(body_node, mapping, source)
     scopes = (
@@ -637,6 +670,7 @@ def return_statement_spans(
             spans.append(ReturnStatement(
                 node.start_point[0] + 1, node.end_point[0] + 1,
                 _return_results(node, source),
+                _return_names(node, source),
             ))
             continue
         if node.type in scopes:
@@ -675,6 +709,7 @@ def _block_tail_return(block: Any, mapping: Any, source: bytes) -> list[ReturnSt
     return [ReturnStatement(
         tail.start_point[0] + 1, tail.end_point[0] + 1,
         (_identifiers_in(tail, source),),
+        (_identifiers_in(tail, source, every_name=True),),
     )]
 
 

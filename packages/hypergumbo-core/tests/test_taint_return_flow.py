@@ -34,6 +34,7 @@ from typing import Any
 import pytest
 
 from hypergumbo_core.cli import main
+from hypergumbo_core.ddg_build import ReturnStatement
 from hypergumbo_core.taint import (
     TaintFlowFinding,
     TaintSource,
@@ -310,6 +311,44 @@ class TestTheValueComesBackInItsOwnResultPosition:
             "def main():\n    subprocess.run([\"ls\", str(wrap())])\n")})
         assert verdict["verdict"] != "violated", verdict["evidence"]
 
+    def test_go_a_source_call_in_the_result_list_has_a_position(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-kikar. ``return os.Getenv("TOOL"), nil`` puts the source CALL in
+        result position 0, with no variable in between. The position rule read
+        only identifiers per position -- ``Getenv`` is a field identifier --
+        so the lift recorded no position, the caller fell back to seeding
+        every variable, and ``_, err := get()`` seeded ``err`` again: the
+        WI-sitaf climb for one more spelling."""
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
+            'func get() (string, error) {\n\treturn os.Getenv("TOOL"), nil\n}\n\n'
+            "func main() {\n\t_, err := get()\n"
+            '\texec.Command("ls", err.Error()).Run()\n}\n')})
+        assert verdict["verdict"] != "violated", verdict["evidence"]
+
+    def test_go_a_source_call_in_the_result_list_keeps_the_value(
+        self, tmp_path: Path,
+    ) -> None:
+        """The control for the test above: the same helper, the value kept."""
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
+            'func get() (string, error) {\n\treturn os.Getenv("TOOL"), nil\n}\n\n'
+            "func main() {\n\tv, _ := get()\n\texec.Command(v).Run()\n}\n")})
+        assert verdict["verdict"] == "violated", verdict["details"]
+        assert _returned_by(verdict) == {"get"}
+
+    def test_go_a_helper_call_in_the_result_list_has_a_position(
+        self, tmp_path: Path,
+    ) -> None:
+        """The lifted hop, not only the source: ``return get(), nil`` puts the
+        HELPER's call in position 0, so the caller that discards it receives
+        nothing."""
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
+            'func get() string {\n\treturn os.Getenv("TOOL")\n}\n\n'
+            "func wrap() (string, error) {\n\treturn get(), nil\n}\n\n"
+            "func main() {\n\t_, err := wrap()\n"
+            '\texec.Command("ls", err.Error()).Run()\n}\n')})
+        assert verdict["verdict"] != "violated", verdict["evidence"]
+
 
 class TestControlsStayClean:
     """Each control names a reason the value does NOT come back, and must not
@@ -486,6 +525,46 @@ class TestTheLift:
         edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7)]
         lifted, _ = _lift(edges, {"f": [(4, 4)]}, reaches=None)
         assert lifted == {("f", _GETENV)}
+
+    @pytest.mark.parametrize("span, received", [
+        # WI-kikar: the source call sits in position 0 of a two-result return;
+        # its name is a field identifier, so only the span's NAMES carry it.
+        (ReturnStatement(2, 2, (frozenset({"os"}), frozenset()),
+                         (frozenset({"os", "getenv"}), frozenset())),
+         (2, frozenset({0}))),
+        # A span that records no names reads its identifiers instead.
+        ((2, 2, (frozenset({"os", "getenv"}), frozenset())), (2, frozenset({0}))),
+        # The callee's name in no position: the fallback, every variable.
+        ((2, 2, (frozenset({"os"}), frozenset())), None),
+        # A single-valued return passes the positions through (none here).
+        ((2, 2, (frozenset({"os", "getenv"}),)), None),
+    ], ids=["named", "identifiers_only", "unplaced", "single_valued"])
+    def test_a_source_call_in_a_result_list_is_received_at_its_position(
+        self, span: Any, received: Any,
+    ) -> None:
+        edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7)]
+        entries = _lift_returned_sources(
+            [("f", _GETENV, _ENV)], edges, {"f": [span]},
+            io_names=frozenset({"os.getenv"}), sanitizer_lines={},
+            reaches_return=None,
+        )
+        assert [e[4] for e in entries if e[0] == "g"] == [received]
+
+    def test_direct_returns_of_different_arity_record_no_position(self) -> None:
+        # The source is read on two return lines, one single-valued and one
+        # two-valued: no one position holds across both, so the caller falls
+        # back to every variable rather than to a position that is only
+        # sometimes right.
+        edges = [_call("f", _GETENV, 2, resolved=False),
+                 _call("f", _GETENV, 5, resolved=False), _call("g", "f", 7)]
+        entries = _lift_returned_sources(
+            [("f", _GETENV, _ENV)], edges,
+            {"f": [(2, 2, (frozenset({"os", "getenv"}),)),
+                   (5, 5, (frozenset({"os", "getenv"}), frozenset()))]},
+            io_names=frozenset({"os.getenv"}), sanitizer_lines={},
+            reaches_return=None,
+        )
+        assert [e[4] for e in entries if e[0] == "g"] == [None]
 
     def test_a_return_through_another_io_primitive_is_blocked(self) -> None:
         edges = [_call("f", _GETENV, 2, resolved=False),
@@ -711,8 +790,8 @@ class TestReturnSpansAreTheFunctionsOwn:
             "    return (\n        2\n    )\n\n\n"
             "def no_return():\n    x = 1\n    print(x)\n")
         spans = self._spans(tmp_path, "python")
-        assert spans["outer"] == [(4, 6, (frozenset(),))]
-        assert [(3, 3, (frozenset(),))] in [
+        assert spans["outer"] == [(4, 6, (frozenset(),), (frozenset(),))]
+        assert [(3, 3, (frozenset(),), (frozenset(),))] in [
             v for k, v in spans.items() if k.endswith("inner")]
         assert not any(k.endswith("no_return") for k in spans)
 
@@ -721,7 +800,8 @@ class TestReturnSpansAreTheFunctionsOwn:
         (tmp_path / "main.go").write_text(
             "package main\n\nfunc get() string {\n\tf := func() string {\n"
             "\t\treturn \"x\"\n\t}\n\t_ = f\n\treturn \"ls\"\n}\n")
-        assert self._spans(tmp_path, "go")["get"] == [(8, 8, (frozenset(),))]
+        assert self._spans(tmp_path, "go")["get"] == [
+            (8, 8, (frozenset(),), (frozenset(),))]
 
     def test_result_positions_name_their_identifiers(
         self, tmp_path: Path,
@@ -730,9 +810,11 @@ class TestReturnSpansAreTheFunctionsOwn:
             "def get(v):\n    return v, 1\n\n\n"
             "def get2(v):\n    return (v.strip(), v)\n")
         spans = self._spans(tmp_path, "python")
-        assert spans["get"] == [(2, 2, (frozenset({"v"}), frozenset()))]
+        assert spans["get"] == [(2, 2, (frozenset({"v"}), frozenset()),
+                                 (frozenset({"v"}), frozenset()))]
         assert spans["get2"] == [
-            (6, 6, (frozenset({"v", "strip"}), frozenset({"v"})))]
+            (6, 6, (frozenset({"v", "strip"}), frozenset({"v"})),
+             (frozenset({"v", "strip"}), frozenset({"v"})))]
         go = tmp_path / "go"
         go.mkdir()
         (go / "go.mod").write_text(_GO_MOD)
@@ -740,4 +822,4 @@ class TestReturnSpansAreTheFunctionsOwn:
             "package main\n\nfunc get(v string) (string, error) {\n"
             "\treturn v, nil\n}\n")
         assert self._spans(go, "go")["get"] == [
-            (4, 4, (frozenset({"v"}), frozenset()))]
+            (4, 4, (frozenset({"v"}), frozenset()), (frozenset({"v"}), frozenset()))]

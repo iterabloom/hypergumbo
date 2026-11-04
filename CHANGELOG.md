@@ -106,6 +106,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### I/O boundaries and taint
 
+- **A source call written straight into a multi-value return keeps its result position** (`return os.Getenv("K"), nil`): a Go caller that discards the value into `_` no longer taints the `err` beside it.
 - **A request handler withholds "untrusted input never reaches X"** (ADR-0049 ruling 3): a route's request (Flask `request.args`, Express `req.query`) is not yet a taint source, so a clean `untrusted_input` or `net_recv` verdict is inconclusive and names each handler. One overlay entry marking `flask` complete had turned a path-traversal write into `confirmed_with_caveats`.
 - **Go `http.Handler` types (`ServeHTTP`) are request-handler entrypoints**: caddy gains 28; a lone handler's verdict had been confirmed. Go callables now write `meta.parameters`; interface method specs are `abstract`.
 - **Unix-domain sockets are IPC, not network**: a server is `ipc_listen` (ADR-0050 §1; io-boundaries schema 2.4 → 2.5), and a Go connection's `Write` / `Read` are `ipc_send` / `ipc_recv`.
