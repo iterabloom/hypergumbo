@@ -21,3 +21,17 @@
     description: "**The sentence.** The owner wants to be able to say of the shipped CLI: \"I can audit the whole codebase, pinpoint every place where there is a write to the filesystem or to a network connection, and I have a way of enumerating every scenario in which such a write would happen, and all of those scenarios are benign.\" Assessed 2026-11-03 against ~/hypergumbo_lab_notebook/meta_analysis_integrated_nov2026.md; evidence under ~/hypergumbo_lab_notebook/self_audit_11032026/. State then: clause one holds via scripts/check-io-allowlist (259 sites, 67 in the shipped CLI, gate green); clause two is the weak one (all 18 self-claims inconclusive on dev dce94fea97, 10,395 of 14,024 receivers untyped, no claim with the analysed repo as the source, manifest Linux-only on 6 repos); clause three is a human review over the enumeration and can only be as complete as clause two.\n\n**The five steps and their items.**\n\n1. Adjudicate the three unclassified modules (hypergumbo_core.scip._generated.scip_pb2, textual.widgets.Select, datetime.timezone), re-record docs/hypergumbo.claims.expected.json, regenerate SECURITY.md: **INV-hotib-zukuh-zogos-tilip-gonat-nijon-gofik-godov** (violated). Its guard half, making scripts/check-claims-coverage report the shape the cron reports: **WI-jizam-razas-sihap-budol-jinab-lopad-todoj-votip**.\n2. A self-claim whose taint source is the analysed repository (repo content never chooses a host_fs path, a subprocess argument or a network destination): **WI-pakag-farav-jilor-lutik-bosan-pavos-torat-susob**.\n3. Measure the self-claims on a scip-python map to shrink the untyped-receiver denominator; decide whether the gate moves to it: **WI-muzah-bubim-zunom-masup-mikab-dajul-bigig-lopaf** (sequenced after INV-hotib-zukuh-zogos-tilip-gonat-nijon-gofik-godov, since a backend switch re-records the snapshot).\n4. Produce the observed I/O manifest on macOS from the PyPI wheels: **WI-bujom-nijag-varal-pinof-tuzuj-falup-vivab-potij**.\n5. The owner reads the 67 shipped-CLI allowlist entries and records agreement or doubt per site: **WI-satih-pitaz-gavad-runil-turil-nikub-tikum-hozij** (needs_human_review; owner action).\n\n**Outside every step, by design.** hypergumbo-tracker as a product (WI-sunan, P2); native tree-sitter grammars and other dependencies beyond what the manifest exercises; scripts/, hooks and tests, which are not shipped.\n\n**Closure.** This item closes when each of the six pointed-to items is resolved, or the owner rules a step out; it is a plan umbrella, not a root-cause family."  # b7e5
     fields:  # b7e5
       statement: "The owner can say of the shipped CLI, with evidence a reader can check: every filesystem-write and network site is pinpointed, every scenario reaching one is enumerable statically and observed dynamically on the machine class it runs on, and each scenario has been judged benign by a human."  # b7e5
+- op: discuss  # b1d7
+  at: '2026-11-04T04:51:17Z'  # b1d7
+  by: agent  # b1d7
+  actor: jgstern_agent  # b1d7
+  clock: 2  # b1d7
+  nonce: b1d7  # b1d7
+  message: "Step 1a shipped: PR #2042 (INV-hotib pending_validation until the next cron; statement re-scoped to the snapshot half). Step 1b (WI-jizam, the guard gap) open with a bisect lead. Steps 2-5 unchanged."  # b1d7
+- op: discuss  # b89c
+  at: '2026-11-04T07:46:01Z'  # b89c
+  by: agent  # b89c
+  actor: jgstern_agent  # b89c
+  clock: 3  # b89c
+  nonce: b89c  # b89c
+  message: "Step 1b shipped: WI-jizam done in PR #2043. Step 1a (INV-hotib) awaits the cron. Steps 2-5 unchanged."  # b89c
