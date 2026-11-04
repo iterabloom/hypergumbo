@@ -1,0 +1,60 @@
+Original commit body from 7f795c9c3bbbe50a18107473aa9f078d11b92834:
+
+The twice-daily full-suite cron went red at self-claims-gate on 2026-11-03
+(dev 42d20c51): all 18 claims in docs/hypergumbo.claims.yaml moved
+confirmed_with_caveats -> inconclusive and opaque_boundary left every
+caveat list. Reproduced on dev acf67df4cb: every verdict names the same
+cause, "calls into 3 module(s) that the I/O catalog could not classify
+(hypergumbo_core.scip._generated.scip_pb2, textual.widgets.Select,
+datetime.timezone) ... 2 of them are untraced dependency source". The
+uncovered-module gate did its job; nobody had adjudicated the three slots,
+and SECURITY.md kept publishing the September table.
+
+Each is a dated module_completeness grant at the exact slot named, the
+fifth instance of the WI-jabus shape (INV-bofab, INV-fugus, INV-jojog,
+INV-konad before it):
+
+- datetime.timezone (python.yaml): a fixed-offset tzinfo; the clock read
+  beside it, datetime.now(timezone.utc), is datetime.datetime's row.
+- textual.widgets.Select (hypergumbo-self.yaml): the tracker TUI builds
+  Select[str], reads .value, compares Select.BLANK; the textual.widgets
+  grant above it does not vouch for this name because matching is exact.
+- hypergumbo_core.scip._generated.scip_pb2 (hypergumbo-self.yaml):
+  first-party protobuf bindings excluded from analysis as generated
+  output (ADR-0004), hence "untraced"; the callers build messages and
+  ParseFromString bytes a caller already read. This is the dated vouch
+  ADR-0016 section 7 asks for, and the verdict discloses it as such.
+
+All three slots are chains rooted at a from-imported name
+(`from datetime import timezone; timezone.utc`, `from textual.widgets
+import Select`, `from ._generated import scip_pb2`), the spelling #2036
+(WI-gabak) taught the Python external-ref emitter to keep. Whether #2036
+is the introducing commit is measured in the lab, not asserted here:
+at 1443c2da57, the parent of #2036's 3e4b895996, every verdict was
+already inconclusive on ONE slot, hypergumbo_core.scip._generated.scip_pb2
+(ab_pregabak_1443c2da57.json, 12m27s cold); #2036 added the other two.
+So the gate had been red before 2026-11-03 on scip_pb2 alone; the
+introducing commit for that slot is not bisected further here.
+
+Measured after the grants (lab ~/hypergumbo_lab_notebook/self_audit_11032026/,
+after_grants_*): 18 of 18 confirmed_with_caveats, rc 3; scripts/check-self-claims-drift against
+docs/hypergumbo.claims.expected.json: "OK -- 18 claims unchanged", so the
+September snapshot is NOT re-recorded (same verdicts, same caveat kinds, same
+credited-flow buckets; opaque_boundary is back on every claim). Each
+verdict now says it rests on the overlay's grant for untraced source,
+scip_pb2 among the modules named. scripts/check-claims-coverage: 0.
+
+SECURITY.md: the untyped-receiver figure in the generated limitations
+paragraph is re-measured from this run's unknown_receiver_scope caveat,
+10,395 of 14,024 method call sites on the shipped scope (was 6,541 of
+9,267 from August). The verdict table it generates is unchanged because the snapshot is
+unchanged; only that paragraph moves.
+
+Not in this change: scripts/check-claims-coverage returned 0 on the tree
+the cron withheld on, so the per-PR guard did not catch the shape it
+exists for. That is WI-jizam. The same cron run's self-tree-validation
+red (id_format|warning 2 > 0) has a separate cause and stays red.
+
+Addresses INV-hotib
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
