@@ -194,7 +194,12 @@ from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_callback_registration, is_grpc_rpc_implementation
 from .member_names import MEMBER_NAME_SEPARATORS, member_owner
 from .symbol_kinds import type_like_kind_names
-from .io_primitive_kinds import KIND_FUNCTION, KIND_METHOD, read_not_called
+from .io_primitive_kinds import (
+    KIND_ATTRIBUTE,
+    KIND_FUNCTION,
+    KIND_METHOD,
+    read_not_called,
+)
 from .io_boundary import (
     suppresses_resource_naming_finding,
     _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
@@ -4463,11 +4468,190 @@ def _io_primitive_names(language: str, include_community: bool) -> frozenset[str
     )
 
 
+#: WI-sosov. Which parameter of a request handler IS its request, per
+#: ``request_ingress`` kind. ``("positional", i)`` names the i-th parameter
+#: (Express hands ``(req, res)`` to every route handler); ``("typed", T)``
+#: names the parameter whose recorded ``meta.parameters`` type is ``T`` (a Go
+#: ``http.Handler`` takes ``r *http.Request`` in either position). A kind
+#: absent here has NO parameter seed: Flask's ``request`` is a framework
+#: global, not a parameter, and a servlet's accessors are call-seeded by rows
+#: (WI-ritog step 2). SHIPPED, so a seed from it has the standing of a builtin
+#: row: it may represent an arrival (ADR-0049 ruling 3). Re-evaluation
+#: trigger: a new ``REQUEST_INGRESS_KINDS`` member whose framework hands the
+#: request as a parameter, or a user overlay schema for contracts.
+REQUEST_PARAMETER_CONTRACTS: Mapping[str, tuple[str, Any]] = {
+    "express_route": ("positional", 0),
+    "go_handler": ("typed", "*http.Request"),
+}
+
+#: The GENERIC ``http_route`` kind, by LANGUAGE. The analyzers file most
+#: handlers under it (measured on the probes: Express's ``_GET_save_handler``
+#: and Go's ``http.HandleFunc`` target are both ``http_route``, labelled
+#: "HTTP GET /save" / "HTTP ANY /save"), so the generic kind carries the
+#: language's framework contract: every Express-style framework (Express,
+#: Koa, Fastify, Hapi) hands the request carrier first; a Go handler takes
+#: ``r *http.Request`` in either position; a python ``http_route`` is a Flask
+#: view whose request is a global, so python is absent and seeds nothing.
+GENERIC_ROUTE_CONTRACTS: Mapping[str, tuple[str, Any]] = {
+    "javascript": ("positional", 0),
+    "typescript": ("positional", 0),
+    "go": ("typed", "*http.Request"),
+}
+
+#: The module slot a parameter seed's source names: what the finding reports
+#: the value as arriving from, by kind, or by language for the generic kind.
+_PARAMETER_SEED_MODULE: Mapping[str, str] = {
+    "express_route": "express",
+    "go_handler": "net/http",
+    "javascript": "express",
+    "typescript": "express",
+    "go": "net/http",
+}
+
+
+@dataclass(frozen=True)
+class ParameterSeed:
+    """A request handler's request parameter, seeded as a source (WI-sosov).
+
+    ``handler`` is the symbol id of the function whose parameter is seeded,
+    ``parameter`` the name the contract picked, ``line`` the function's own
+    line -- where the DDG defines the parameter (``cfg.solve_reaching_defs``
+    entry definitions) -- and ``source`` the ``untrusted_input`` record the
+    finding carries. ``represents`` is the ``request_ingress`` entry the seed
+    stands for: the handler itself (Express mints the handler as the entry)
+    or the route MARKER that ``dispatches_to`` it (Go's ``http.HandleFunc``
+    registers ``save`` under an ``ANY /save`` marker at the registration
+    line, and the disclosure names the marker).
+    """
+
+    handler: str
+    parameter: str
+    line: int
+    source: TaintSource
+    represents: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.represents:
+            object.__setattr__(self, "represents", self.handler)
+
+
+def _symbol_start_line(symbol_id: str) -> int:
+    """The first line of ``lang:path:start-end:name:kind``."""
+    return int(symbol_id.split(":")[2].split("-")[0])
+
+
+def parameter_seeds(
+    request_ingress: Sequence[Mapping[str, Any]],
+    ddg_params: Mapping[str, Sequence[str]],
+    ddg_edges: Sequence[Any],
+    node_meta: Mapping[str, Mapping[str, Any]],
+    language: str,
+    edges: Sequence[Mapping[str, Any]] = (),
+) -> list[ParameterSeed]:
+    """The parameter seeds of *language*'s request handlers (WI-sosov).
+
+    One per ``request_ingress`` entry whose kind has a contract
+    (:data:`REQUEST_PARAMETER_CONTRACTS`, or :data:`GENERIC_ROUTE_CONTRACTS`
+    by language for the generic ``http_route``), whose handler the DDG walked
+    (``ddg_params``, recorded for every walked function), whose contract picks
+    a parameter the handler has, and whose parameter has a USE reached from
+    its entry definition -- a ``DdgEdge`` for ``(handler, parameter)`` whose
+    ``def_line`` is the handler's own line. No use, no seed: a handler that
+    never touches ``req`` stays clean AND listed in the disclosure. A
+    parameter reassigned before any read has no such edge either, which is
+    right: the request value is gone.
+
+    The handler is the entry itself when the entry is a function the DDG
+    walked (Express mints ``_GET_save_handler`` as the entry); when it is a
+    route MARKER with no parameters (Go's ``http.HandleFunc("/save", save)``
+    files an ``ANY /save`` marker at the registration line), the handler is
+    what the marker ``dispatches_to`` in *edges*, one hop, and the seed
+    ``represents`` the marker, which is the name the disclosure carries.
+
+    The seed carries no call edge. ``propagate_taint_ddg`` walks it from the
+    handler's line with the parameter as the seeded variable, in the DDG arm
+    only; the structural arm takes none, because a symbol-level seed at a
+    handler would taint everything the handler reaches (the item's own
+    warning). ``represented_ingress_callers`` counts the handler as a
+    represented arrival.
+    """
+    defined_params = {
+        (edge.symbol_id, edge.variable, edge.def_line) for edge in ddg_edges
+    }
+    dispatch_targets: dict[str, list[str]] = defaultdict(list)
+    for edge in edges:
+        if edge.get("type") == "dispatches_to":
+            dispatch_targets[str(edge.get("src") or "")].append(str(edge.get("dst") or ""))
+    prefix = f"{language}:"
+    seeds: list[ParameterSeed] = []
+    for entry in request_ingress:
+        entry_sym = str(entry.get("symbol_id") or "")
+        kind = str(entry.get("kind") or "")
+        if kind == "http_route":
+            contract = GENERIC_ROUTE_CONTRACTS.get(language)
+            module_slot = _PARAMETER_SEED_MODULE.get(language, "")
+        else:
+            contract = REQUEST_PARAMETER_CONTRACTS.get(kind)
+            module_slot = _PARAMETER_SEED_MODULE.get(kind, "")
+        if contract is None or not entry_sym.startswith(prefix):
+            continue
+        # The entry itself when the DDG walked it as a function; else what a
+        # marker dispatches to, one hop, IN THE MARKER'S OWN FILE. Measured on
+        # the curriculum express repo: ``GET /users`` dispatches_to another
+        # example's same-named ``list(ids)``, a bare-name pick across files
+        # (filed), and positional 0 would have seeded ``ids`` as the request
+        # and represented a handler whose real flows were never followed.
+        entry_path = entry_sym.split(":")[1]
+        candidates = [entry_sym] if ddg_params.get(entry_sym) else [
+            target for target in dispatch_targets.get(entry_sym, ())
+            if ddg_params.get(target) and target.split(":")[1] == entry_path
+        ]
+        for handler in candidates:
+            params = ddg_params[handler]
+            how, what = contract
+            if how == "positional":
+                index = int(what)
+                if language in ("javascript", "typescript") and len(params) == 4:
+                    # Express error middleware is ``(err, req, res, next)``,
+                    # by arity: the request is second (the test router's
+                    # ``fn3`` in the express repo).
+                    index = 1
+                if index >= len(params):
+                    continue  # pragma: no cover - a contract naming a parameter the handler lacks
+                parameter = params[index]
+            else:
+                typed = [
+                    str(p.get("name"))
+                    for p in ((node_meta.get(handler) or {}).get("parameters") or [])
+                    if p.get("type") == what
+                ]
+                if not typed or typed[0] not in params:
+                    continue
+                parameter = typed[0]
+            line = _symbol_start_line(handler)
+            if (handler, parameter, line) not in defined_params:
+                continue
+            seeds.append(ParameterSeed(
+                handler=handler, parameter=parameter, line=line,
+                source=TaintSource(
+                    taint_label=AUTO_SOURCE_LABEL_MAP["net_recv"],
+                    module=module_slot,
+                    name=parameter,
+                    kind=KIND_ATTRIBUTE,
+                    source_boundary="net_recv",
+                ),
+                represents=entry_sym,
+            ))
+            break
+    return seeds
+
+
 def represented_ingress_callers(
     edges: Sequence[dict[str, Any]],
     sources: Sequence[TaintSource],
     ambiguous_names: frozenset[str],
     language: str,
+    parameter_seeds: Sequence[ParameterSeed] = (),
 ) -> set[str]:
     """The handlers whose request ARRIVAL a vouched source represents (WI-ritog).
 
@@ -4485,6 +4669,10 @@ def represented_ingress_callers(
     shipped servlet overlay stays named until a builtin or user-vouched row
     matches it. Per handler, never per framework: a servlet reading an
     accessor no row lists stays named.
+
+    WI-sosov: a handler whose request PARAMETER was seeded
+    (:func:`parameter_seeds`, a shipped contract, so builtin) is represented
+    the same way -- the seed exists only where the parameter is used.
     """
     ingress_label = AUTO_SOURCE_LABEL_MAP["net_recv"]
     return {
@@ -4493,7 +4681,7 @@ def represented_ingress_callers(
             edges, sources, ambiguous_names, language,
         )
         if source.taint_label == ingress_label and not source.community
-    }
+    } | {seed.represents for seed in parameter_seeds}
 
 
 def propagate_taint_structural(
@@ -5965,6 +6153,7 @@ def propagate_taint_ddg(
     stmt_targets: Mapping[
         str, Sequence[tuple[int, tuple[Optional[str], ...]]]
     ] | None = None,
+    parameter_seeds: Sequence[ParameterSeed] = (),
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -6157,6 +6346,20 @@ def propagate_taint_ddg(
         io_names=_io_names, sanitizer_lines=sanitizer_lines,
         reaches_return=_walk_reaches_return,
     )
+    # WI-sosov: a request handler's request PARAMETER, seeded without a call
+    # edge. Each seed enters the loop as an entry whose "callee" is a pseudo
+    # id no edge carries, so every per-call index answers empty for it; the
+    # walk takes its line and its variable from the seed instead. Only a
+    # handler the DDG walked can be seeded: the structural fallback below is
+    # reachability from the handler, which is the item's own warning.
+    param_seed_by_callee: dict[str, ParameterSeed] = {}
+    source_entries = list(source_entries)
+    for seed in parameter_seeds:
+        if seed.handler not in analyzed:
+            continue
+        pseudo = f"{seed.handler}#parameter:{seed.parameter}"
+        param_seed_by_callee[pseudo] = seed
+        source_entries.append((seed.handler, pseudo, seed.source, (), None))
 
     findings: list[TaintFlowFinding] = []
 
@@ -6176,12 +6379,21 @@ def propagate_taint_ddg(
         # physically occurs.
         source_fn = caller_id
         source_call_lines = call_lines.get((caller_id, source_callee_id), [])
+        param_seed = param_seed_by_callee.get(source_callee_id)
+        if param_seed is not None:
+            # The parameter is defined at the handler's own line; that is the
+            # "source call line" the walk seeds from.
+            source_call_lines = [param_seed.line]
         fn_has_ddg = source_fn in analyzed
         # INV-komoj: a lifted entry seeds only the variables its call defines
         # at the positions the callee returned the value in; ``None`` (every
         # direct read) leaves the walk's seeding as it was.
-        entry_seeds = _received_seeds(
-            source_fn, source_call_lines, received, defines_at, positions_at,
+        entry_seeds = (
+            frozenset({param_seed.parameter})
+            if param_seed is not None
+            else _received_seeds(
+                source_fn, source_call_lines, received, defines_at, positions_at,
+            )
         )
 
         # Structural BFS for reachability (used for mixed-coverage), through
@@ -6208,7 +6420,9 @@ def propagate_taint_ddg(
             # is NOT the §3a walk refuting -- that walk removes only on its own
             # `refuted` verdict, and its `sink_before_source` blocker stays
             # recorded, never acted on.
-            if _source_and_sink_are_one_call(
+            # A parameter is not a call: it cannot be the sink's own call,
+            # even on a one-line handler whose sink sits on the same line.
+            if param_seed is None and _source_and_sink_are_one_call(
                 caller_id, sink_node, source_callee_id, sink_callee_id,
                 call_lines,
             ):
@@ -6302,8 +6516,11 @@ def propagate_taint_ddg(
                 source_tracked = any(
                     defs_at.get((source_fn, line)) for line in source_call_lines
                 )
+                # A parameter precedes every statement of its function, the
+                # one on its own line included (a one-line arrow handler).
                 sink_after_source = any(
                     sink_line > source_line
+                    or (param_seed is not None and sink_line == source_line)
                     for sink_line in sink_call_lines
                     for source_line in source_call_lines
                 )

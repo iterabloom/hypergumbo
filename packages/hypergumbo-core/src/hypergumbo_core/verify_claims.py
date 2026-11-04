@@ -1115,13 +1115,25 @@ def _withhold_for_unseeded_ingress(
         REQUEST_INGRESS_BOUNDARY, AUTO_SOURCE_LABEL_MAP.get(REQUEST_INGRESS_BOUNDARY),
     ):
         return verdict
-    reason = (
-        f"{len(handlers)} request handler(s) receive network data that no "
-        f"taint source represents ({_render_capped_names(list(handlers))}): "
-        f"the framework hands each its request as a parameter or a framework "
-        f"global, which this analysis does not seed as a source (ADR-0049 "
-        f"ruling 3), so what the handler does with that data was never examined"
-    )
+    if scope == REQUEST_INGRESS_BOUNDARY:
+        # The boundary arm (WI-sosov): a request that arrives as a parameter
+        # or a framework global is a crossing the I/O boundary map records
+        # nothing for, whether or not the taint walk follows the value.
+        reason = (
+            f"{len(handlers)} request handler(s) receive network data that no "
+            f"net_recv crossing represents ({_render_capped_names(list(handlers))}): "
+            f"the framework hands each its request as a parameter or a framework "
+            f"global, which the I/O boundary map records no crossing for (ADR-0049 "
+            f"ruling 3), so the arrival is disclosed here rather than counted"
+        )
+    else:
+        reason = (
+            f"{len(handlers)} request handler(s) receive network data that no "
+            f"taint source represents ({_render_capped_names(list(handlers))}): "
+            f"the framework hands each its request as a parameter or a framework "
+            f"global, which this analysis does not seed as a source (ADR-0049 "
+            f"ruling 3), so what the handler does with that data was never examined"
+        )
     if verdict.verdict in CONFIRMING_VERDICTS:
         return _require_coverage_to_confirm(verdict, reason)
     if verdict.verdict == "inconclusive":
@@ -7208,6 +7220,7 @@ def verify_claims(
     sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
     unfollowed_escapes: Sequence[Any] = (),
     unseeded_ingress: Sequence[str] = (),
+    unseeded_ingress_boundary: Sequence[str] | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -7244,6 +7257,11 @@ def verify_claims(
             entrypoints; a ``net_recv`` boundary verdict and an
             ``untrusted_input`` taint verdict state it, and a clean one is
             withheld (WI-fuzik, :func:`_withhold_for_unseeded_ingress`).
+        unseeded_ingress_boundary: the boundary arm's own list (WI-sosov):
+            a handler whose request PARAMETER the taint walk seeds is
+            represented for the taint arm and still unrepresented for the
+            boundary arm, since no ``net_recv`` crossing stands behind it.
+            ``None`` means the one list serves both arms, as before.
 
     Returns:
         List of ClaimVerdict objects, one per claim.
@@ -7288,13 +7306,22 @@ def verify_claims(
             verdict = _withhold_for_unfollowed_escapes(
                 verdict, tf.source_taint, unfollowed_escapes, include_non_production,
             )
-        if unseeded_ingress:
-            # BOTH ARMS (the INV-fogum lesson): the taint arm by its label, the
-            # boundary arm by its boundary.
+        # BOTH ARMS (the INV-fogum lesson): the taint arm by its label, the
+        # boundary arm by its boundary -- each with ITS list (WI-sosov): a
+        # handler whose request parameter the taint walk seeds is represented
+        # for the taint arm and still unrepresented for the boundary arm.
+        arm_handlers = (
+            unseeded_ingress if tf is not None
+            else (
+                unseeded_ingress_boundary
+                if unseeded_ingress_boundary is not None else unseeded_ingress
+            )
+        )
+        if arm_handlers:
             verdict = _withhold_for_unseeded_ingress(
                 verdict,
                 tf.source_taint if tf is not None else claim.constraint_boundary or "",
-                unseeded_ingress,
+                arm_handlers,
             )
         if scoped is not None and claim.constraint_taint_flow is not None:
             verdict = _disclose_scoped_blindness(
