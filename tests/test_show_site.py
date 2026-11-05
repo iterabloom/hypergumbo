@@ -59,6 +59,16 @@ class Box:
 
 def install() -> str:
     return get_url() + Box.write("p", "t")
+
+
+def shadow(platform_name):
+    import json
+    global LIMIT
+    LIMIT = json.loads(platform_name)
+    return LIMIT
+
+
+HANDLERS = {"url": get_url}
 '''
 
 ALLOWLIST = """version: 1
@@ -84,6 +94,11 @@ modules:
       - <analysis>
       purpose: write at a user path
       finding: WI-abcde
+    - function: shadow
+      primitive: json.load
+      family: fs_write
+      count: 1
+      purpose: a tail that is a prefix of another word
   hypergumbo_core.cli:
     zone: in_process
     sites: []
@@ -186,12 +201,22 @@ reads from this module:
   11  LIMIT = 3
   14  def platform_name() -> str:  3 lines
 
-called from (packages/*/src and scripts/, by name):
-  hypergumbo_core.fetch:38  in Box.write  return get_url()
-  hypergumbo_core.fetch:42  in install  return get_url() + Box.write("p", "t")
-  scripts/tool:3  in main  print(get_url())
+called or referenced from (packages/*/src and scripts/, by name):
+  hypergumbo_core.fetch:38  call in Box.write  return get_url()
+  hypergumbo_core.fetch:42  call in install  return get_url() + Box.write("p", "t")
+  hypergumbo_core.fetch:52  ref in <module>  HANDLERS = {"url": get_url}
+  scripts/tool:3  call in main  print(get_url())
   note: hypergumbo_tracker.serve does not parse; not searched
 """
+
+
+def test_reads_skip_local_rebinding_but_keep_globals_and_stale_check_is_a_word(mod, root, capsys):
+    rc, out, _ = run(mod, root, "fetch:48", capsys=capsys)
+    assert rc == 0
+    assert "in shadow, lines 45-49\n" in out
+    assert "  fs_write  json.load x1  zone install\n" in out
+    assert "  note: line 48 does not mention load; the line number may be stale\n" in out
+    assert "reads from this module:\n  11  LIMIT = 3\n\ncalled or referenced from" in out
 
 
 def test_method_site_with_overrides_finding_and_several_lines(mod, root, capsys):
@@ -209,7 +234,7 @@ allowlist says (docs/hypergumbo.io-allowlist.yaml):
 """ in out
     assert "> 36              p.write_text(text)\n> 37          inner(path)\n" in out
     assert "reads from this module:\n  19  def get_url() -> str:  9 lines\n" in out
-    assert "  hypergumbo_core.fetch:42  in install  return get_url() + Box.write(\"p\", \"t\")\n" in out
+    assert "  hypergumbo_core.fetch:42  call in install  return get_url() + Box.write(\"p\", \"t\")\n" in out
 
 
 def test_function_by_name_without_claim_or_callers(mod, root, capsys):
@@ -219,7 +244,7 @@ def test_function_by_name_without_claim_or_callers(mod, root, capsys):
     assert "allowlist: no entry for install in hypergumbo_core.fetch\n" in out
     assert "  41  def install() -> str:\n  42      return get_url() + Box.write(\"p\", \"t\")\n" in out
     assert "reads from this module:\n  19  def get_url() -> str:  9 lines\n  30  class Box:  9 lines\n" in out
-    assert "called from (packages/*/src and scripts/, by name):\n  none found\n" in out
+    assert "called or referenced from (packages/*/src and scripts/, by name):\n  none found\n" in out
 
 
 def test_module_outside_the_allowlist_says_so(mod, root, capsys):
