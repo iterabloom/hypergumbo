@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 from urllib.request import urlopen
-
+from typing import Optional
 RELEASES = (
     "https://example.invalid/"
     "latest"
@@ -57,7 +57,7 @@ class Box:
         return get_url()
 
 
-def install() -> str:
+def install() -> Optional[str]:
     return get_url() + Box.write("p", "t")
 
 
@@ -85,6 +85,11 @@ modules:
       family: network
       count: 1
       purpose: resolve the asset URL
+    - function: get_url
+      primitive: json.loads
+      family: network
+      count: 1
+      purpose: resolve the asset URL
     - function: Box.write
       primitive: '*.write_text'
       family: fs_write
@@ -107,6 +112,13 @@ modules:
 TOOL = """#!/usr/bin/env python3
 def main():
     print(get_url())
+
+
+def more():
+    return Box.write(
+        "p",
+        "t",
+    )
 """
 
 
@@ -128,7 +140,7 @@ def root(tmp_path_factory) -> Path:
     for d in (core, tracker, root / "docs", root / "scripts"):
         d.mkdir(parents=True)
     (core / "fetch.py").write_text(FETCH)
-    (core / "cli.py").write_text("def run():\n    return 1\n")
+    (core / "cli.py").write_text("def run():\n    return 1\n\n\ndef other(get_url):\n    return get_url + 1\n")
     (tracker / "cli.py").write_text("def run():\n    return 2\n")
     (tracker / "serve.py").write_text("x = get_url(\n")  # not Python that parses
     (root / "docs" / "hypergumbo.io-allowlist.yaml").write_text(ALLOWLIST)
@@ -176,7 +188,7 @@ fetch:25  packages/hypergumbo-core/src/hypergumbo_core/fetch.py
 in get_url, lines 19-27
 
 allowlist says (docs/hypergumbo.io-allowlist.yaml):
-  network  urllib.request.urlopen x1  zone install
+  network  urllib.request.urlopen x1, json.loads x1  zone install
     target    example.invalid (latest)
     commands  install-thing; add-extras
     purpose   resolve the asset URL
@@ -235,6 +247,7 @@ allowlist says (docs/hypergumbo.io-allowlist.yaml):
     assert "> 36              p.write_text(text)\n> 37          inner(path)\n" in out
     assert "reads from this module:\n  19  def get_url() -> str:  9 lines\n" in out
     assert "  hypergumbo_core.fetch:42  call in install  return get_url() + Box.write(\"p\", \"t\")\n" in out
+    assert "  scripts/tool:7  call in more  Box.write( \"p\", \"t\", )\n" in out
 
 
 def test_function_by_name_without_claim_or_callers(mod, root, capsys):
@@ -242,7 +255,7 @@ def test_function_by_name_without_claim_or_callers(mod, root, capsys):
     assert rc == 0
     assert "in install, lines 41-42\n" in out
     assert "allowlist: no entry for install in hypergumbo_core.fetch\n" in out
-    assert "  41  def install() -> str:\n  42      return get_url() + Box.write(\"p\", \"t\")\n" in out
+    assert "  41  def install() -> Optional[str]:\n  42      return get_url() + Box.write(\"p\", \"t\")\n" in out
     assert "reads from this module:\n  19  def get_url() -> str:  9 lines\n  30  class Box:  9 lines\n" in out
     assert "called or referenced from (packages/*/src and scripts/, by name):\n  none found\n" in out
 
