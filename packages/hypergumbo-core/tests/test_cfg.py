@@ -3044,3 +3044,156 @@ class TestIfElifChain:
         cfg = build_function_cfg(get_body(tree), src, mapping, f"{language}:t:1-11:f:function")
         assert _branch_lines(cfg) == [2, 4, 6]
         assert {3, 5, 7, 9} <= _recorded_lines(cfg)
+
+
+def _block_with_line(cfg: FunctionCfg, line: int) -> BasicBlock:
+    """The block that records a statement at ``line`` (exactly one expected)."""
+    found = [b for b in cfg.blocks.values() if any(s.line == line for s in b.statements)]
+    assert len(found) == 1, (line, [b.id for b in found])
+    return found[0]
+
+
+def _edges_from(block: BasicBlock) -> set[tuple[str, str]]:
+    return {(e.target_block, e.edge_type) for e in block.successors}
+
+
+class TestElseClause:
+    """INV-rotol: the ``else`` clause of a Python try/for/while is a CFG branch.
+
+    Python alone among the shipped grammars hangs an ``else_clause`` off
+    ``try``, ``for`` and ``while``. No mapping named it and no handler had a
+    slot for it, so the clause was skipped whole: its statements were in no
+    block, ``uncovered_semantic_lines`` listed them, and the function
+    forfeited taint refutation. The try-else body runs on the no-exception
+    path, between the try body and ``finally``; the loop-else body runs on
+    the loop's normal exit and never after a ``break``. A ``break`` INSIDE a
+    loop's else clause belongs to the enclosing loop.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    def _build(self, source: str) -> tuple[FunctionCfg, Any, bytes, CfgNodeMapping]:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        tree, src = _parse_python(source)
+        body = _get_function_body(tree, "python")
+        return build_function_cfg(body, src, mapping, _sym_id()), body, src, mapping
+
+    TRY_ELSE = (
+        "def f(g, out):\n"
+        "    try:\n"
+        "        v = g()\n"
+        "    except ValueError:\n"
+        "        v = None\n"
+        "    else:\n"
+        "        out.append(v)\n"
+        "    finally:\n"
+        "        out.append(0)\n"
+        "    return out\n"
+    )
+
+    FOR_ELSE = (
+        "def f(items, out):\n"
+        "    for x in items:\n"
+        "        if x:\n"
+        "            break\n"
+        "    else:\n"
+        "        out.append(0)\n"
+        "    return out\n"
+    )
+
+    WHILE_ELSE = (
+        "def f(out):\n"
+        "    n = 0\n"
+        "    while n < 3:\n"
+        "        n += 1\n"
+        "    else:\n"
+        "        out.append(n)\n"
+        "    return out\n"
+    )
+
+    NESTED_BREAK = (
+        "def f(rows, out):\n"
+        "    while True:\n"
+        "        for x in rows:\n"
+        "            out.append(x)\n"
+        "        else:\n"
+        "            break\n"
+        "    return out\n"
+    )
+
+    def test_python_names_the_else_clause(self) -> None:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        for node_type in ("for_statement", "while_statement"):
+            loop = mapping.get_loop(node_type)
+            assert loop is not None and loop.else_child == "type:else_clause"
+        try_catch = mapping.get_try_catch("try_statement")
+        assert try_catch is not None and try_catch.else_child == "type:else_clause"
+
+    @pytest.mark.parametrize("language", ["c", "go", "java", "rust", "typescript"])
+    def test_other_grammars_name_no_else_clause(self, language: str) -> None:
+        """No other shipped grammar has the clause; their mappings take today's path."""
+        mapping = load_cfg_mapping(language)
+        assert mapping is not None
+        assert all(lo.else_child is None for lo in mapping.loops)
+        assert all(tc.else_child is None for tc in mapping.try_catch)
+
+    def test_try_else_runs_after_the_try_body_and_before_finally(self) -> None:
+        cfg, body, src, mapping = self._build(self.TRY_ELSE)
+        assert {3, 5, 7, 9, 10} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        try_body = _block_with_line(cfg, 3)
+        except_body = _block_with_line(cfg, 5)
+        else_body = _block_with_line(cfg, 7)
+        finally_body = _block_with_line(cfg, 9)
+        assert _edges_from(try_body) == {(else_body.id, "always")}
+        assert _edges_from(else_body) == {(finally_body.id, "always")}
+        # The handler skips the else clause: straight to finally.
+        assert _edges_from(except_body) == {(finally_body.id, "always")}
+
+    def test_try_else_sees_only_the_try_body_definition(self) -> None:
+        from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+
+        assert ensure_def_use_extractors_registered()
+        cfg, body, src, _ = self._build(self.TRY_ELSE)
+        populate_def_use_for_cfg(cfg, body, src, "python")
+        result = solve_reaching_defs(cfg)
+        reaching = sorted(
+            e.def_line for e in result.ddg_edges if e.variable == "v" and e.use_line == 7
+        )
+        # Before the fix: [] (line 7 was not in the CFG). The handler's
+        # ``v = None`` at line 5 must not reach the else body.
+        assert reaching == [3]
+
+    def test_for_else_runs_on_exhaustion_and_not_after_break(self) -> None:
+        cfg, body, src, mapping = self._build(self.FOR_ELSE)
+        assert {4, 6, 7} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        header = _block_with_line(cfg, 2)
+        break_block = _block_with_line(cfg, 4)
+        else_body = _block_with_line(cfg, 6)
+        after = _block_with_line(cfg, 7)
+        assert (else_body.id, "false") in _edges_from(header)
+        assert _edges_from(else_body) == {(after.id, "always")}
+        assert _edges_from(break_block) == {(after.id, "always")}
+
+    def test_while_else_runs_when_the_condition_fails(self) -> None:
+        cfg, body, src, mapping = self._build(self.WHILE_ELSE)
+        assert {2, 4, 6, 7} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        header = _block_with_line(cfg, 3)
+        else_body = _block_with_line(cfg, 6)
+        assert (else_body.id, "false") in _edges_from(header)
+        assert _edges_from(else_body) == {(_block_with_line(cfg, 7).id, "always")}
+
+    def test_a_break_in_a_loop_else_leaves_the_enclosing_loop(self) -> None:
+        cfg, body, src, mapping = self._build(self.NESTED_BREAK)
+        assert {4, 6, 7} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        break_block = _block_with_line(cfg, 6)
+        # The ``for``'s else clause is outside the ``for``: its ``break`` exits
+        # the ``while`` to the return, not back to the ``while`` header.
+        assert _edges_from(break_block) == {(_block_with_line(cfg, 7).id, "always")}
