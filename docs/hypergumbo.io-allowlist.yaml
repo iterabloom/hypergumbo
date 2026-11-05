@@ -25,6 +25,19 @@
 #   scripts/X    repository development tooling, not the installed CLI
 version: 1
 modules:
+  hypergumbo_core._hf_noise:
+    zone: in_process
+    commands:
+    - sketch
+    - install-embeddings
+    - add-extras
+    sites:
+    - function: suppress_hf_noise
+      primitive: os.environ.setdefault
+      family: env_write
+      count: 1
+      purpose: at import of sketch_embeddings (lazy, not at package import), set four Hugging Face
+        progress-bar and warning-suppression variables where unset; a value the user set is kept
   hypergumbo_core.analyze.base:
     zone: in_process
     commands:
@@ -105,6 +118,16 @@ modules:
   hypergumbo_core.cli:
     zone: install
     sites:
+    - function: _apply_backend_choice
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 4
+      zone: in_process
+      commands:
+      - <any> (--backend; main's pre-scan)
+      purpose: carry the --backend decision to the analyzer registry through HYPERGUMBO_RUST_ANALYZER
+        and HYPERGUMBO_SCIP_PYTHON (1 or 0); written only from the flag, which outranks the
+        variable, never from config
     - function: _fetch_embedding_models
       primitive: subprocess.run
       family: process
@@ -597,6 +620,15 @@ modules:
       purpose: import an analyzer module by name from the first-party package list (hypergumbo_lang_mainstream/common/extended1)
   hypergumbo_core.sketch_embeddings:
     sites:
+    - function: _ensure_hf_offline_for_cached_models
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 1
+      zone: in_process
+      commands:
+      - sketch
+      purpose: set HF_HUB_OFFLINE=1 when unset before any runtime model load, so the loader can never
+        download during analysis (INV-gujus); an already-set value is honored
     - function: _load_embedding_model
       primitive: sentence_transformers.SentenceTransformer
       family: network
@@ -617,6 +649,70 @@ modules:
       purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
         loads from the local HF cache only (local_files_only=True, HF_HUB_OFFLINE=1) and degrades
         when the model is absent; it never downloads (INV-gujus)'
+    - function: _load_st_model_offline_first
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 2
+      zone: in_process
+      commands:
+      - sketch
+      purpose: 'set HF_HUB_OFFLINE=1 for the cache-only load; on a miss, put the caller''s prior value
+        back before raising (the second write)'
+    - function: _load_st_model_offline_first
+      primitive: os.environ.pop
+      family: env_write
+      count: 1
+      zone: in_process
+      commands:
+      - sketch
+      purpose: 'on a miss with no prior value, remove HF_HUB_OFFLINE again: the other half of the
+        restore'
+    - function: _restore_no_proxy
+      primitive: os.environ.__delitem__
+      family: env_write
+      count: 2
+      zone: in_process
+      commands:
+      - sketch
+      purpose: restore NO_PROXY and no_proxy to the values _sanitize_no_proxy_for_httpx saved, deleting
+        them where they were unset
+    - function: _restore_no_proxy
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 2
+      zone: in_process
+      commands:
+      - sketch
+      purpose: restore NO_PROXY and no_proxy to the values _sanitize_no_proxy_for_httpx saved, deleting
+        them where they were unset
+    - function: _sanitize_no_proxy_for_httpx
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 1
+      zone: in_process
+      commands:
+      - sketch
+      purpose: drop IPv6 CIDR entries from NO_PROXY / no_proxy for the duration of a model load (httpx
+        cannot parse them); the originals go to _restore_no_proxy
+    - function: fetch_embedding_models
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 1
+      zone: install
+      commands:
+      - install-embeddings
+      - add-extras
+      purpose: 'put HF_HUB_OFFLINE back to the caller''s value after the install-path download'
+    - function: fetch_embedding_models
+      primitive: os.environ.pop
+      family: env_write
+      count: 1
+      zone: install
+      commands:
+      - install-embeddings
+      - add-extras
+      purpose: 'lift HF_HUB_OFFLINE before importing the library so the install-path download may
+        proceed (INV-gujus: the one place)'
     - function: fetch_embedding_models
       primitive: sentence_transformers.SentenceTransformer
       family: network
@@ -852,17 +948,47 @@ modules:
       family: fs_write
       count: 1
     - function: _locked_union_restore
+      primitive: os.fsync
+      family: fs_write
+      count: 1
+      purpose: flush the union-restored .ops file to disk before the lock is released
+    - function: _locked_union_restore
       primitive: os.open
       family: fs_write
       count: 1
+    - function: _locked_union_restore
+      primitive: os.umask
+      family: env_write
+      count: 2
+      zone: in_process
+      purpose: clear the umask around os.open so a recreated worktree .ops file keeps mode 0664 for
+        two-user sharing, then restore it
+    - function: _pid_is_alive
+      primitive: os.kill
+      family: process
+      count: 1
+      zone: in_process
+      target: 'the pid recorded in the recover-suppression marker (signal 0: existence probe, nothing
+        delivered)'
+      purpose: 'decide whether the marker''s holder still runs (EPERM counts as alive)'
     - function: mirror_op
       primitive: '*.mkdir'
       family: fs_write
       count: 1
     - function: mirror_op
+      primitive: os.fsync
+      family: fs_write
+      count: 1
+      purpose: 'flush the journal append to disk inside the store''s flock'
+    - function: mirror_op
       primitive: os.open
       family: fs_write
       count: 1
+    - function: mirror_op
+      primitive: os.write
+      family: fs_write
+      count: 1
+      purpose: append one serialized op to the out-of-repo journal through the O_APPEND descriptor
   hypergumbo_tracker.migration:
     zone: dev_zone
     commands:
@@ -956,6 +1082,13 @@ modules:
     commands:
     - tracker:serve
     sites:
+    - function: is_pid_alive
+      primitive: os.kill
+      family: process
+      count: 1
+      zone: in_process
+      target: 'the pid in the htrac serve pid file (signal 0: existence probe, nothing delivered)'
+      purpose: report whether the recorded server process still runs
     - function: remove_pid_file
       primitive: '*.unlink'
       family: fs_write
@@ -966,6 +1099,13 @@ modules:
       family: server
       count: 1
       purpose: uvicorn serves the htrac Starlette app, default bind 127.0.0.1:7380
+    - function: stop_server
+      primitive: os.kill
+      family: process
+      count: 1
+      target: the htrac serve process named by its pid file (SIGTERM)
+      purpose: 'stop the running server from the serve command''s stop path, then wait up to 1 s and
+        remove the pid file'
     - function: write_pid_file
       primitive: '*.write_text'
       family: fs_write
@@ -1226,9 +1366,19 @@ modules:
       (os.open + fdopen), freeze copies, mode/ownership repair, tmp-file + rename rewrites'
     sites:
     - function: Store._append_global_op
+      primitive: os.fsync
+      family: fs_write
+      count: 1
+      purpose: flush the appended global op to disk inside the flock
+    - function: Store._append_global_op
       primitive: os.open
       family: fs_write
       count: 1
+    - function: Store._append_global_op
+      primitive: os.write
+      family: fs_write
+      count: 1
+      purpose: append the op text through the O_APPEND descriptor
     - function: Store._append_op
       primitive: '*.unlink'
       family: fs_write
@@ -1246,9 +1396,21 @@ modules:
       family: fs_write
       count: 1
     - function: Store._append_op
+      primitive: os.fsync
+      family: fs_write
+      count: 1
+      purpose: flush the appended op to disk before mirroring it to the journal
+    - function: Store._append_op
       primitive: os.open
       family: fs_write
       count: 2
+    - function: Store._append_op
+      primitive: os.umask
+      family: env_write
+      count: 2
+      zone: in_process
+      purpose: clear the umask around os.open so the .ops file is created 0664 for two-user sharing,
+        then restore it
     - function: Store._append_op
       primitive: shutil.copyfile
       family: fs_write
@@ -1280,6 +1442,11 @@ modules:
       family: fs_write
       count: 1
     - function: Store._take_ownership_via_tmp
+      primitive: os.write
+      family: fs_write
+      count: 1
+      purpose: 'copy the .ops file''s bytes into the mkstemp replacement before the rename'
+    - function: Store._take_ownership_via_tmp
       primitive: tempfile.mkstemp
       family: fs_write
       count: 1
@@ -1292,9 +1459,21 @@ modules:
       family: fs_write
       count: 1
     - function: Store.add
+      primitive: os.fsync
+      family: fs_write
+      count: 1
+      purpose: 'flush the new item''s .ops file to disk before mirroring it to the journal'
+    - function: Store.add
       primitive: os.open
       family: fs_write
       count: 1
+    - function: Store.add
+      primitive: os.umask
+      family: env_write
+      count: 4
+      zone: in_process
+      purpose: clear the umask around mkdir (2775) and os.open (0664) so the ops directory and file
+        stay group-writable, restoring it each time
     - function: Store.freeze
       primitive: os.chmod
       family: fs_write
@@ -1315,6 +1494,11 @@ modules:
       primitive: os.rename
       family: fs_write
       count: 1
+    - function: Store.repair_drift
+      primitive: os.write
+      family: fs_write
+      count: 1
+      purpose: copy the canonical bytes into the mkstemp replacement before the rename
     - function: Store.repair_drift
       primitive: tempfile.mkstemp
       family: fs_write
@@ -1357,6 +1541,13 @@ modules:
       count: 1
       target: the forge REST API (GitHub / Forgejo) with HG_GITHUB_TOKEN / FORGEJO_TOKEN
       purpose: create/poll/merge the tracker-sync PR
+    - function: _format_gate_holder_message
+      primitive: os.kill
+      family: process
+      count: 1
+      zone: in_process
+      target: 'the pid= line of the sync gate file (signal 0: existence probe, nothing delivered)'
+      purpose: say in the gate-held message whether the holder is alive or DEAD
     - function: _git
       primitive: subprocess.run
       family: process
@@ -1553,6 +1744,11 @@ modules:
       family: fs_write
       count: 1
       purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)
+    - function: _save_tui_preferences
+      primitive: os.fsync
+      family: fs_write
+      count: 1
+      purpose: flush the preferences temp file to disk before os.replace
     - function: _save_tui_preferences
       primitive: os.replace
       family: fs_write

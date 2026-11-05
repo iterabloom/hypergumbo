@@ -58,6 +58,9 @@ For each ``packages/<pkg>/src/**/*.py`` file:
    method NAME against :data:`METHOD_NAMES` regardless of receiver (spelled
    ``*.write_text``), and :data:`PATH_ONLY_METHODS` only when the receiver is
    syntactically a ``Path(...)`` result (spelled ``pathlib.Path().replace``).
+7. A store or delete through ``os.environ[...]`` is a site under the method
+   Python calls for it (``os.environ.__setitem__`` / ``__delitem__``): the one
+   counted shape that is neither a call nor a reference. A read is not.
 
 Each site is keyed by ``(module, enclosing qualified function, primitive)``
 with a COUNT. That key survives line moves and unrelated edits; it changes
@@ -96,6 +99,19 @@ WHAT IT CANNOT SEE (stated, not implied)
   behind an innocuous call (``tree_sitter_language_pack.get_language``) is
   invisible unless listed. The inventory below names every third-party
   module the tree imports that is known to do I/O at a call.
+* **Through a handle its creation already covers.** ``proc.terminate()`` /
+  ``.kill()`` / ``.communicate()`` on a ``Popen``, ``conn.execute`` /
+  ``.commit`` on an ``sqlite3.connect`` result, ``fh.write`` on an
+  ``open(.., "w")`` result: counted at the constructor, as above, so the
+  function driving a handle another function made is listed under the
+  maker. A bare descriptor is different: ``os.write(fd, ..)`` IS counted,
+  because the function name resolves and an int has no type to miss.
+* **File locks and descriptor flags.** ``fcntl.flock`` / ``lockf`` /
+  ``fcntl`` / ``ioctl`` change no file content and are not inventoried; the
+  descriptor they act on was counted at its ``os.open``.
+* **Probes that launch internally.** ``platform.architecture()`` /
+  ``platform.platform()`` may run ``file`` or ``uname``: a library's internal
+  I/O, invisible as above, and not inventoried.
 * **Non-Python.** Only ``*.py`` under ``packages/*/src``. Shell scripts,
   ``scripts/``, tests, hooks and CI are out of scope -- SECURITY.md's
   execution-context table says the same about the claims.
@@ -157,6 +173,13 @@ _FAMILY_ROWS: dict[str, Iterable[str]] = {
         "os.utime",
         # os.open takes flags, not a mode string; always counted.
         "os.open",
+        # Writes through a bare descriptor. The os.open that made it is
+        # counted where it is made; the write is counted where it happens, so
+        # a function handed a descriptor is listed too (an int has no
+        # receiver type to miss).
+        "os.write", "os.writev", "os.pwrite", "os.pwritev", "os.fsync",
+        "os.fdatasync", "os.ftruncate", "os.copy_file_range", "os.sendfile",
+        "os.splice", "os.posix_fallocate", "os.setxattr", "os.removexattr",
         "shutil.copy", "shutil.copy2", "shutil.copyfile", "shutil.copytree",
         "shutil.copymode", "shutil.copystat", "shutil.move", "shutil.rmtree",
         "shutil.chown", "shutil.make_archive", "shutil.unpack_archive",
@@ -185,6 +208,10 @@ _FAMILY_ROWS: dict[str, Iterable[str]] = {
         "pty.spawn", "pty.fork",
         "asyncio.create_subprocess_exec", "asyncio.create_subprocess_shell",
         "webbrowser.open", "webbrowser.open_new", "webbrowser.open_new_tab",
+        # Signals by pid: SIGTERM ends a process, signal 0 only probes it; the
+        # review says which. (A signal through a Popen handle is counted at
+        # the Popen; see WHAT IT CANNOT SEE.)
+        "os.kill", "os.killpg",
         # Worker pools launch python processes running THIS package's code,
         # not a foreign program -- listed so they are visible and reviewed.
         "multiprocessing.Process", "multiprocessing.Pool",
@@ -247,6 +274,19 @@ _FAMILY_ROWS: dict[str, Iterable[str]] = {
         "importlib.util.module_from_spec",
         "importlib.machinery.SourceFileLoader",
         "importlib.reload", "pkgutil.iter_modules", "pkgutil.walk_packages",
+    ),
+    "env_write": (
+        # The interpreter's own environment, working directory, umask and
+        # identity. Nothing leaves the process, but every child inherits
+        # them and libraries read them: HF_HUB_OFFLINE decides whether a
+        # model loader may download. The subscript forms are spelled as the
+        # method Python calls (HOW IT WORKS, 7).
+        "os.environ.__setitem__", "os.environ.__delitem__",
+        "os.environ.pop", "os.environ.popitem", "os.environ.setdefault",
+        "os.environ.update", "os.environ.clear", "os.putenv", "os.unsetenv",
+        "os.chdir", "os.fchdir", "contextlib.chdir", "os.chroot", "os.umask",
+        "os.setuid", "os.seteuid", "os.setgid", "os.setegid", "os.setsid",
+        "os.setpgid", "os.nice", "os.setpriority", "socket.sethostname",
     ),
 }
 
@@ -487,6 +527,17 @@ class _Scanner(ast.NodeVisitor):
         self.visit(node.target)
         if node.value is not None:
             self.visit(node.value)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        # ``os.environ[k] = v`` / ``del os.environ[k]``: the one counted shape
+        # that is neither a call nor a reference, under the method Python
+        # calls for it.
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and (
+                "os.environ" in self._resolve(node.value)):
+            dunder = "__setitem__" if isinstance(node.ctx, ast.Store) else "__delitem__"
+            self._emit(node, f"os.environ.{dunder}", "env_write")
+            self._consumed.add(id(node.value))
+        self.generic_visit(node)
 
     # -- resolution -----------------------------------------------------------
 
