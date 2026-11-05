@@ -2884,3 +2884,163 @@ class TestUnaccountedNames:
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-6:f:function")
         # DELIBERATELY NOT populated.
         assert unaccounted_names(cfg, body, src) == frozenset()
+
+
+def _branch_lines(cfg: FunctionCfg) -> list[int]:
+    """The line of every condition block: a block with both a true and a false edge."""
+    return sorted(
+        block.statements[0].line
+        for block in cfg.blocks.values()
+        if {"true", "false"} <= {e.edge_type for e in block.successors}
+    )
+
+
+def _recorded_lines(cfg: FunctionCfg) -> set[int]:
+    return {s.line for block in cfg.blocks.values() for s in block.statements}
+
+
+class TestIfElifChain:
+    """INV-kakav: every arm of a Python if/elif/else chain is a CFG branch.
+
+    tree-sitter-python lays the chain flat: every ``elif_clause`` and the
+    ``else_clause`` sit under the ``if_statement``'s REPEATED ``alternative``
+    field. Reading that field once kept the ``if`` arm and the first ``elif``
+    (as straight-line code, no branch) and dropped every later arm from the
+    CFG, so their definitions and uses never reached the DDG and the taint
+    walk forfeited the function. The other five grammars nest ``else if`` as
+    an ``if`` inside a single alternative, which the last test pins.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    CHAIN = (
+        "def f(ch, out):\n"
+        "    if ch == 'a':\n"
+        "        out.append('A')\n"
+        "    elif ch == 'b':\n"
+        "        out.append('B')\n"
+        "    elif ch == 'c':\n"
+        "        out.append('C')\n"
+        "    else:\n"
+        "        out.append('Z')\n"
+        "    return out\n"
+    )
+
+    def _build(self, source: str) -> tuple[FunctionCfg, Any, bytes, CfgNodeMapping]:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        tree, src = _parse_python(source)
+        body = _get_function_body(tree, "python")
+        return build_function_cfg(body, src, mapping, _sym_id()), body, src, mapping
+
+    def test_an_elif_clause_is_a_conditional(self) -> None:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        assert mapping.classify("elif_clause") == "conditional"
+        elif_mapping = mapping.get_conditional("elif_clause")
+        assert elif_mapping is not None and elif_mapping.false_child is None
+
+    def test_every_arm_is_a_branch(self) -> None:
+        cfg, _, _, _ = self._build(self.CHAIN)
+        # One condition block per ``if`` / ``elif``, at the condition's line.
+        assert _branch_lines(cfg) == [2, 4, 6]
+        # Every arm's body and the statement after the chain are recorded.
+        assert {3, 5, 7, 9, 10} <= _recorded_lines(cfg)
+
+    def test_every_arm_is_covered(self) -> None:
+        cfg, body, src, mapping = self._build(self.CHAIN)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_a_chain_without_else_falls_through_and_every_arm_reaches(self) -> None:
+        """A definition before the chain, and one in each arm, all reach the use after it."""
+        from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+
+        assert ensure_def_use_extractors_registered()
+        cfg, body, src, _ = self._build(
+            "def f(c):\n"
+            "    x = 0\n"
+            "    if c == 1:\n"
+            "        x = 1\n"
+            "    elif c == 2:\n"
+            "        x = 2\n"
+            "    elif c == 3:\n"
+            "        x = 3\n"
+            "    return x\n"
+        )
+        populate_def_use_for_cfg(cfg, body, src, "python")
+        result = solve_reaching_defs(cfg)
+        reaching = sorted(
+            e.def_line for e in result.ddg_edges if e.variable == "x" and e.use_line == 9
+        )
+        # Before the fix: [4, 6]. Line 2 was killed on the false path because the
+        # first elif's body ran unconditionally there, and line 8 was not in the CFG.
+        assert reaching == [2, 4, 6, 8]
+
+    @pytest.mark.parametrize(
+        ("language", "source", "get_body"),
+        [
+            (
+                "go",
+                "func f(a, b, c bool) {\n"
+                "\tif a {\n"
+                "\t\tx(1)\n"
+                "\t} else if b {\n"
+                "\t\tx(2)\n"
+                "\t} else if c {\n"
+                "\t\tx(3)\n"
+                "\t} else {\n"
+                "\t\tx(4)\n"
+                "\t}\n"
+                "}\n",
+                lambda tree: _get_go_function_body(tree),
+            ),
+            (
+                "typescript",
+                "function f(a: boolean, b: boolean, c: boolean): void {\n"
+                "  if (a) {\n"
+                "    x(1);\n"
+                "  } else if (b) {\n"
+                "    x(2);\n"
+                "  } else if (c) {\n"
+                "    x(3);\n"
+                "  } else {\n"
+                "    x(4);\n"
+                "  }\n"
+                "}\n",
+                lambda tree: next(
+                    c.child_by_field_name("body")
+                    for c in tree.root_node.children if c.type == "function_declaration"
+                ),
+            ),
+            (
+                "rust",
+                "fn f(a: bool, b: bool, c: bool) {\n"
+                "    if a {\n"
+                "        x(1);\n"
+                "    } else if b {\n"
+                "        x(2);\n"
+                "    } else if c {\n"
+                "        x(3);\n"
+                "    } else {\n"
+                "        x(4);\n"
+                "    }\n"
+                "}\n",
+                lambda tree: _get_function_body(tree, "rust"),
+            ),
+        ],
+    )
+    def test_a_nesting_grammar_keeps_its_chain(
+        self, language: str, source: str, get_body: Any,
+    ) -> None:
+        """One alternative per ``if``: the nested ``else if`` is processed as before."""
+        mapping = load_cfg_mapping(language)
+        assert mapping is not None
+        tree_src = {
+            "go": _parse_go, "typescript": _parse_ts, "rust": _parse_rust,
+        }[language](source)
+        tree, src = tree_src
+        cfg = build_function_cfg(get_body(tree), src, mapping, f"{language}:t:1-11:f:function")
+        assert _branch_lines(cfg) == [2, 4, 6]
+        assert {3, 5, 7, 9} <= _recorded_lines(cfg)

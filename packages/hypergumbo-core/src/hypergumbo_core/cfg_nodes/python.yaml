@@ -15,7 +15,16 @@ conditional:
   - node_type: if_statement
     condition_child: "field:condition"
     true_child: "field:consequence"
+    # REPEATED: every `elif_clause` and the `else_clause` of one chain sit
+    # under this field, in order. The builder chains them (INV-kakav); read
+    # once, only the first survived.
     false_child: "field:alternative"
+  # An `elif` arm is a conditional of its own. Its false branch is not a
+  # child of its own node but the NEXT alternative of the enclosing
+  # `if_statement`, which the builder hands it; hence no false_child here.
+  - node_type: elif_clause
+    condition_child: "field:condition"
+    true_child: "field:consequence"
 
 loop:
   - node_type: while_statement
