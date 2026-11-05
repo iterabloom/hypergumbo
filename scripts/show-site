@@ -40,11 +40,13 @@ def resolve(root: Path, ref: str) -> tuple[Path, str, str]:
         if not (root / ref).is_file():
             raise ValueError(f"no file {ref}")
         return root / ref, ref, ""
-    found = {n: p for p in sorted(root.glob("packages/*/src/**/*.py")) if (n := dotted(p, root)) == ref or n.endswith("." + ref)}
+    found = {n: p for p in sorted(root.glob("packages/*/src/**/*.py")) if re.fullmatch(r"(.*\.)?" + re.escape(ref), (n := dotted(p, root)))}
     core = [n for n in found if n.startswith("hypergumbo_core.")]
-    if not found or (len(found) > 1 and len(core) != 1):
-        raise ValueError(f"no module named {ref}" if not found else f"{ref} is ambiguous: " + ", ".join(found))
-    name = core[0] if len(found) > 1 else next(iter(found))
+    if not found:
+        raise ValueError(f"no module named {ref}")
+    if len(found) > 1 and len(core) != 1:
+        raise ValueError(f"{ref} is ambiguous: " + ", ".join(found))
+    name = (core + list(found))[0]
     others = ", ".join(n for n in found if n != name)
     return found[name], name, f"also matches {others}" if others else ""
 
@@ -70,16 +72,22 @@ def local_names(nodes: list, imports: bool = True) -> set:
     return local - {g for n in nodes if isinstance(n, ast.Global) for g in n.names}
 
 
+def bound_names(node: ast.stmt) -> list:  # what one module-level statement binds
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return [(a.asname or a.name).split(".")[0] for a in node.names]
+    if isinstance(node, (*DEFS, ast.ClassDef)):
+        return [node.name]
+    if isinstance(node, (ast.Assign, ast.AnnAssign)):
+        return [t.id for t in ast.walk(node) if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store)]
+    return []
+
+
 def bindings(tree: ast.Module) -> dict:
     """name -> the module-level statement that binds it (the first one)."""
     out = {}
     for node in tree.body:
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            out.update({(a.asname or a.name).split(".")[0]: node for a in node.names if (a.asname or a.name).split(".")[0] not in out})
-        elif isinstance(node, (*DEFS, ast.ClassDef)):
-            out.setdefault(node.name, node)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            out.update({t.id: node for t in ast.walk(node) if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store) and t.id not in out})
+        for name in bound_names(node):
+            out.setdefault(name, node)
     return out
 
 
@@ -123,25 +131,42 @@ def reads(fn: Fn, tree: ast.Module, lines: list) -> list:
     return out if len(out) > 1 else out + ["  nothing"]
 
 
+def python_files(root: Path) -> list:
+    scripts = (p for p in root.glob("scripts/*") if p.is_file() and b"python" in p.read_bytes().split(b"\n", 1)[0])
+    return sorted(root.glob("packages/*/src/**/*.py")) + sorted(scripts)
+
+
+def is_load_of(node: ast.AST, name: str) -> bool:
+    return isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and getattr(node, "id", getattr(node, "attr", None)) == name
+
+
+def rendered(call: ast.Call | None, text: str, lineno: int) -> str:  # a call spanning lines prints whole
+    if call and call.end_lineno > call.lineno:
+        return ast.unparse(call)
+    return text.splitlines()[lineno - 1].strip()
+
+
+def uses_in(tree: ast.Module, text: str, name: str) -> list:  # (line, call|ref, enclosing def, rendered line) per load of `name`
+    calls = {id(n.func): n for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    out = []
+    for node in ast.walk(tree):
+        if not is_load_of(node, name):
+            continue
+        fn, call = enclosing(tree, node.lineno), calls.get(id(node))
+        if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node)), imports=False):
+            continue
+        out.append((node.lineno, "call" if call else "ref", fn.name if fn else "<module>", rendered(call, text, node.lineno)))
+    return out
+
+
 def callers(root: Path, name: str) -> list:
-    files = sorted(root.glob("packages/*/src/**/*.py")) + sorted(p for p in root.glob("scripts/*") if p.is_file() and b"python" in p.read_bytes().split(b"\n", 1)[0])
     out, notes, hits = ["called or referenced from (packages/*/src and scripts/, by name):"], [], []
-    for path in files:
+    for path in python_files(root):
         text = path.read_text(encoding="utf-8")
         try:
-            tree = ast.parse(text)
+            hits += [(dotted(path, root), *use) for use in uses_in(ast.parse(text), text, name)]
         except SyntaxError:
             notes.append(f"  note: {dotted(path, root)} does not parse; not searched")
-            continue
-        calls = {id(n.func): n for n in ast.walk(tree) if isinstance(n, ast.Call)}
-        for node in ast.walk(tree):
-            if not (isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and getattr(node, "id", getattr(node, "attr", None)) == name):
-                continue
-            fn, call = enclosing(tree, node.lineno), calls.get(id(node))
-            if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node)), imports=False):
-                continue
-            line = ast.unparse(call) if call and call.end_lineno > call.lineno else text.splitlines()[node.lineno - 1].strip()
-            hits.append((dotted(path, root), node.lineno, "call" if call else "ref", fn.name if fn else "<module>", line))
     out += [f"  {where}:{n}  {tag} in {fn}  {line}" for where, n, tag, fn, line in sorted(hits)]
     return out + notes if hits else out + ["  none found"] + notes
 
