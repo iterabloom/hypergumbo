@@ -146,49 +146,83 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
     disabling the gate, and the failure would be invisible: no error, no
     changed verdict, just a guard that never fires.
 
-    The fixture uses a shape that forfeits in Python: a ``for`` loop's
-    ``else:`` clause, which the loop hook does not process, so no statement
-    covers it. The shapes this fixture first used no longer forfeit, and each
-    was closed by recording it: a ``with`` statement's context-manager
-    expression (WI-simiv) and a ``for`` loop's iterable, now part of the header
-    statement (WI-losod).
+    The fixture is a Go package-level ``var`` binding TWO function literals
+    (cobra's ``Pre``/``Run`` shape). The walk may not refute over a binding
+    whose code it cannot see as one function (WI-rovun): that is a rule, not
+    a gap, so it does not close. A one-literal binding beside it is the
+    control: the set is populated, not everything. The analyzer's nodes are
+    passed because a binding is walked only under the analyzer's own id.
+
+    Every shape this fixture used before was a Python construct the CFG did
+    not record, and each was closed by recording it: a ``with`` statement's
+    context-manager expression (WI-simiv), a ``for`` loop's iterable
+    (WI-losod) and a ``for`` loop's ``else:`` clause (INV-rotol). After the
+    last, no Python shape probed forfeits (sixteen, syntax errors included:
+    ``rotol_fix_11042026/forfeit_candidates*.txt`` in the lab notebook), so
+    the floor now stands on the rule.
 
     An earlier draft of this test used a call inside an ``if`` test, reasoning
     by analogy from Go's ``if err := do(); err != nil``. That fixture forfeits
     NOTHING in Python — the ``if`` condition contains its calls, so they are
-    covered, and the analogy was wrong. Which is also why Python measures 12.8%
+    covered, and the analogy was wrong. Which is also why Python measured 12.8%
     forfeiting against Go's 33.5%: the languages fail in different places.
     """
-    from hypergumbo_core.cfg import (
-        get_def_use_extractor, register_def_use_extractor,
-    )
     from hypergumbo_core.cli import _build_ddg_for_verify_claims
+    from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+    from hypergumbo_lang_mainstream.go import analyze_go
 
-    if get_def_use_extractor("python") is None:
-        from hypergumbo_lang_mainstream.py_def_use import PythonDefUseExtractor
-        register_def_use_extractor("python")(PythonDefUseExtractor)
-
-    (tmp_path / "m.py").write_text(
-        "import os\n"
-        "def handler(p):\n"
-        "    v = os.getenv('X')\n"
-        "    for item in os.listdir(p):\n"
-        "        v = v + item\n"
-        "    else:\n"
-        "        v = v + os.sep\n"
-        "    return v\n"
+    # Registration is an import side effect; an empty registry would make
+    # every assertion below vacuously true.
+    assert ensure_def_use_extractors_registered()
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "main.go").write_text(
+        "package main\n\n"
+        "import \"os\"\n\n"
+        "type Command struct {\n"
+        "\tPre func()\n"
+        "\tRun func(args []string)\n"
+        "}\n\n"
+        "func send(s string) {}\n\n"
+        "var twoCmd = &Command{\n"
+        "\tPre: func() {\n"
+        "\t\tv := os.Getenv(\"A\")\n"
+        "\t\tsend(v)\n"
+        "\t},\n"
+        "\tRun: func(args []string) {\n"
+        "\t\tw := os.Getenv(\"B\")\n"
+        "\t\tsend(w)\n"
+        "\t},\n"
+        "}\n\n"
+        "var rootCmd = &Command{\n"
+        "\tRun: func(args []string) {\n"
+        "\t\tv := os.Getenv(\"C\")\n"
+        "\t\tsend(v)\n"
+        "\t},\n"
+        "}\n"
     )
+    # ``analyze_go`` on an absolute root reports absolute paths; the index
+    # reads repo-relative ones, as the survey hands them over.
+    prefix = f"{root}/"
+    nodes = []
+    for symbol in analyze_go(root).symbols:
+        raw = symbol.to_dict()
+        nodes.append({
+            **raw,
+            "id": raw["id"].replace(prefix, "", 1),
+            "path": raw["path"].replace(prefix, "", 1),
+        })
+    ids = {n["name"]: n["id"] for n in nodes}
     _edges, symbols, _hints, _stmts, forfeits, _unacc, _rets, _tgts, _params = (
-        _build_ddg_for_verify_claims(tmp_path)
+        _build_ddg_for_verify_claims(root, analyzer_nodes=nodes)
     )
     assert symbols, "fixture produced no DDG symbols — nothing to forfeit"
-    assert forfeits, (
-        "forfeit set is empty for code with calls inside an if-test; the gate "
-        "would never fire in production"
+    assert ids["twoCmd"] in forfeits, (
+        "forfeit set is empty for a binding of two literals; the gate would "
+        "never fire in production"
     )
-    assert forfeits <= symbols, (
-        "forfeit set must be a subset of walkable symbols"
-    )
+    assert ids["rootCmd"] in symbols and ids["rootCmd"] not in forfeits
+    assert forfeits <= symbols, "forfeit set must be a subset of walkable symbols"
 
 
 def test_unaccounted_names_reaches_the_walk_through_the_repo_ddg(
