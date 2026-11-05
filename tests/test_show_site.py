@@ -286,5 +286,7 @@ def test_errors_exit_2(mod, root, capsys):
 
 
 def test_size_band_the_owner_set():
+    # 175 +/- 5% for the first build; 209 +/- 5% once the owner lifted it so that
+    # every function reads ok under scripts/score-readability (11-05).
     lines = (SCRIPTS / "show-site").read_text().count("\n")
-    assert 166 <= lines <= 184, lines
+    assert 199 <= lines <= 219, lines
