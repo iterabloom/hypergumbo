@@ -11,10 +11,12 @@ Read the flags, then the function.
 
 THE MEASURES, and where each comes from.
 
-* ``loc``        Non-blank, non-comment lines in the function's span (the
-                 docstring counts). The strongest single predictor of reading
-                 time and defect density; most of McCabe's apparent power is
-                 this measure in a costume. Threshold 50 (``--max-loc``).
+* ``loc``        Code lines in the function's span: non-blank, non-comment,
+                 and NOT the docstring, which is reported beside it as
+                 ``doc``. The strongest single predictor of reading time and
+                 defect density; most of McCabe's apparent power is this
+                 measure in a costume. A docstring helps the reader, so it is
+                 shown and never charged. Threshold 50 (``--max-loc``).
 * ``mccabe``     McCabe cyclomatic complexity as hypergumbo's Python analyzer
                  stamps it on the symbol (``Symbol.cyclomatic_complexity``):
                  1 + if/elif, loops, except handlers, ``and``/``or`` operands
@@ -38,23 +40,46 @@ THE MEASURES, and where each comes from.
                  ``match`` and each ``case``, nested ``def`` and ``class``.
                  The thing McCabe cannot see. Threshold 4 (``--max-nesting``),
                  the common linter default.
-* ``dataflow``   The number of definition-to-use edges in the function's data
-                 dependence graph, built with hypergumbo's own CFG and
-                 reaching-definitions solver (``cfg.build_function_cfg``,
-                 ``populate_def_use_for_cfg``, ``solve_reaching_defs``, the
-                 parameters as entry definitions exactly as ``ddg_build`` hands
-                 them in). This is the dependency-degree measure with the best
-                 comprehension evidence: it tracked measured cognitive load in
-                 the 2021 brain-imaging study where McCabe did not. There is no
-                 widely recognised threshold, so none is applied by default
-                 (``--max-dataflow`` sets one); sort on it with
+* ``dataflow``   The number of DISTINCT definition-to-use edges, as
+                 (variable, definition line, use line) triples, in the
+                 function's data dependence graph, built with hypergumbo's
+                 own CFG and reaching-definitions solver
+                 (``cfg.build_function_cfg``, ``populate_def_use_for_cfg``,
+                 ``solve_reaching_defs``, ``late_capture_edges``, the
+                 parameters as entry definitions exactly as ``ddg_build``
+                 hands them in). This is the dependency-degree measure with
+                 the best comprehension evidence: it tracked measured
+                 cognitive load in the 2021 brain-imaging study where McCabe
+                 did not. The raw edge list can repeat a triple where a nested
+                 function reads a captured variable (each read is keyed to the
+                 nested ``def`` line as well), so triples are counted once.
+                 There is no widely recognised threshold, so none is applied
+                 by default (``--max-dataflow`` sets one); sort on it with
                  ``--sort dataflow``. ``vars`` is the distinct variables those
-                 edges carry and ``reach`` the longest definition-to-use
-                 distance in lines, the "how far back do I have to look" cost.
-                 A function the solver bails out of (too many definitions)
-                 shows ``-``; a walk over a construct the def/use extractor
-                 does not model (INV-lupav) simply has fewer edges, so this
-                 measure UNDER-counts, never over.
+                 edges carry.
+                 A trailing ``?`` on the cell (``dataflow_uncovered`` in the
+                 JSON) means hypergumbo's own coverage gate
+                 (``cfg.uncovered_semantic_lines``) found call sites the
+                 CFG's recorded statements do not reach: the def/use pass
+                 never saw part of the body, so the count is a FLOOR, and the
+                 taint walk forfeits refutation over the same function. The
+                 measure under-counts where the def/use extractor does not
+                 model a construct (INV-lupav); it does not over-count. A
+                 function the solver bails out of shows ``-``.
+* ``reach``      The farthest a reader has to look back: the most code lines
+                 (as ``loc`` counts them) lying strictly between a definition
+                 made IN THE BODY and a use that reads it. Parameters are left
+                 out, because the signature shows them and nobody scrolls
+                 back for one; counting them made this column the function's
+                 length plus its docstring. A same-line or adjacent-line
+                 dependency reads 0.
+* ``globals``    Same-file module-level names the function reads: names bound
+                 at module level by assignment, ``def`` or ``class`` (imports
+                 are not counted) that appear in the body and are not rebound
+                 there. A cheap proxy for the non-local reasoning no
+                 intra-function measure sees: a function that decodes three
+                 module-level regexes reads 3. The names are in the JSON
+                 (``global_names``). No threshold.
 * ``params``     Parameters, from the analyzer's ``meta["parameters"]``.
 * ``calls``      Call expressions in the body (fan-out by spelling, not by
                  resolution: the single-file analysis cannot resolve what is
@@ -62,19 +87,25 @@ THE MEASURES, and where each comes from.
 
 THE BAND. ``ok`` = no threshold exceeded, ``watch`` = one, ``split`` = two or
 more. ``--strict`` exits 1 when any function is not ``ok``, so the script can
-gate.
+gate. A suspect ``dataflow`` never changes a band; it is a warning that the
+cell is a floor.
 
-WHAT IT DOES NOT SEE. Naming, comments, non-local reasoning (what a callee
-does), polymorphic dispatch, exceptions thrown from elsewhere, async
-continuations: every measure here is intra-function. Module-level code is not
-scored; the file summary counts it as lines only.
+THE FILE SUMMARY also reports ``module_lines``, the code lines outside every
+function and class, and ``module_bindings``, the module-level names, because
+a file's difficulty may live there (dense regexes, lookup tables) and no
+function row shows it.
+
+WHAT IT DOES NOT SEE. Naming, comments, non-local reasoning beyond the
+``globals`` count (what a callee does), polymorphic dispatch, exceptions
+thrown from elsewhere, async continuations: every other measure here is
+intra-function. Module-level code is counted as lines only.
 
 USAGE::
 
     scripts/score-readability FILE.py [FILE.py ...] [--sort cognitive|mccabe|
-        nesting|loc|dataflow|reach|line|name] [--top N] [--json] [--strict]
-        [--max-loc 50 --max-mccabe 10 --max-cognitive 15 --max-nesting 4
-         --max-dataflow N] [--no-dataflow]
+        nesting|loc|dataflow|reach|globals|line|name] [--top N] [--json]
+        [--strict] [--max-loc 50 --max-mccabe 10 --max-cognitive 15
+         --max-nesting 4 --max-dataflow N] [--no-dataflow]
 
 Runs on the installed hypergumbo (the editable checkout in this repo).
 """
@@ -106,7 +137,12 @@ _NESTING_STATEMENTS = frozenset({
     "with_statement", "match_statement", "case_clause", "function_definition",
     "class_definition",
 })
-_SORT_KEYS = ("cognitive", "mccabe", "nesting", "loc", "dataflow", "reach", "line", "name")
+_DEFINITIONS = frozenset({"function_definition", "class_definition"})
+_IMPORTS = frozenset({"import_statement", "import_from_statement", "future_import_statement"})
+_ASSIGNMENTS = frozenset({"assignment", "augmented_assignment"})
+_SORT_KEYS = (
+    "cognitive", "mccabe", "nesting", "loc", "dataflow", "reach", "globals", "line", "name",
+)
 
 
 @dataclass
@@ -117,16 +153,27 @@ class FunctionScore:
     start_line: int
     end_line: int
     loc: int
+    doc: int
     mccabe: Optional[int]
     cognitive: int
     nesting: int
     dataflow: Optional[int]
+    dataflow_uncovered: Optional[int]
     vars: Optional[int]
     reach: Optional[int]
+    globals: int
+    global_names: list[str]
     params: Optional[int]
     calls: int
     flags: list[str] = field(default_factory=list)
     band: str = "ok"
+
+    @property
+    def dataflow_suspect(self) -> bool:
+        """Measured, and the coverage gate found unreached call sites (or could not say)."""
+        return self.dataflow is not None and (
+            self.dataflow_uncovered is None or self.dataflow_uncovered > 0
+        )
 
 
 @dataclass
@@ -164,7 +211,7 @@ def _qualified_name(node: Any, source: bytes) -> str:
     parts: list[str] = []
     current = node
     while current is not None:
-        if current.type in ("function_definition", "class_definition"):
+        if current.type in _DEFINITIONS:
             name = current.child_by_field_name("name")
             parts.append(_text(name, source) if name is not None else "<anonymous>")
         current = current.parent
@@ -183,16 +230,35 @@ def _function_nodes(root: Any) -> list[Any]:
     return found
 
 
+def _docstring_span(fn_node: Any) -> Optional[tuple[int, int]]:
+    """1-based inclusive line span of the body's leading docstring, if any."""
+    body = fn_node.child_by_field_name("body")
+    if body is None or body.named_child_count == 0:
+        return None
+    # tree-sitter-python puts a block's leading docstring ``string`` directly
+    # under the block; an ``expression_statement`` wrapper is accepted too.
+    first = body.named_children[0]
+    if first.type == "expression_statement" and first.named_child_count == 1:
+        first = first.named_children[0]
+    if first.type != "string":
+        return None
+    return first.start_point[0] + 1, first.end_point[0] + 1
+
+
 # ---------------------------------------------------------------- measures
 
-def count_loc(lines: list[str], start_line: int, end_line: int) -> int:
-    """Non-blank, non-comment lines in the 1-based inclusive span."""
-    total = 0
-    for raw in lines[start_line - 1:end_line]:
-        stripped = raw.strip()
+def code_lines(
+    lines: list[str], start_line: int, end_line: int, doc_span: Optional[tuple[int, int]] = None,
+) -> set[int]:
+    """The 1-based line numbers in the span that hold code: non-blank, non-comment, not docstring."""
+    out: set[int] = set()
+    for number in range(start_line, end_line + 1):
+        if doc_span is not None and doc_span[0] <= number <= doc_span[1]:
+            continue
+        stripped = lines[number - 1].strip() if number - 1 < len(lines) else ""
         if stripped and not stripped.startswith("#"):
-            total += 1
-    return total
+            out.add(number)
+    return out
 
 
 def _is_recursive_call(call: Any, simple_name: str, source: bytes) -> bool:
@@ -282,6 +348,108 @@ def count_calls(fn_node: Any) -> int:
     return total
 
 
+def _target_names(node: Any, source: bytes) -> set[str]:
+    """Every identifier inside an assignment target (a name, a tuple, a list, a star)."""
+    names: set[str] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == "identifier":
+            names.add(_text(current, source))
+        elif current.type in ("attribute", "subscript"):
+            continue  # ``x.y = v`` / ``x[i] = v`` bind nothing
+        else:
+            stack.extend(current.children)
+    return names
+
+
+def module_bindings(root: Any, source: bytes) -> set[str]:
+    """Names bound at module level by assignment, ``def`` or ``class``; imports excluded.
+
+    Descends through module-level ``if``/``try``/``with``/loops, never into a
+    function or class body.
+    """
+    names: set[str] = set()
+    stack = list(root.children)
+    while stack:
+        node = stack.pop()
+        if node.type in _DEFINITIONS:
+            name = node.child_by_field_name("name")
+            if name is not None:
+                names.add(_text(name, source))
+            continue
+        if node.type in _IMPORTS:
+            continue
+        if node.type in _ASSIGNMENTS:
+            left = node.child_by_field_name("left")
+            if left is not None:
+                names |= _target_names(left, source)
+            continue
+        stack.extend(node.children)
+    return names
+
+
+def _bound_in_body(fn_node: Any, source: bytes) -> set[str]:
+    """Names the function binds: parameters, assignment targets, loop and ``as`` targets,
+    walrus names, comprehension variables, nested ``def``/``class`` names, and its own name."""
+    bound: set[str] = set()
+    name = fn_node.child_by_field_name("name")
+    if name is not None:
+        bound.add(_text(name, source))
+    params = fn_node.child_by_field_name("parameters")
+    if params is not None:
+        bound |= _target_names(params, source)
+    body = fn_node.child_by_field_name("body")
+    stack = [body] if body is not None else []
+    while stack:
+        node = stack.pop()
+        if node.type in _ASSIGNMENTS:
+            left = node.child_by_field_name("left")
+            if left is not None:
+                bound |= _target_names(left, source)
+        elif node.type in ("for_statement", "for_in_clause"):
+            left = node.child_by_field_name("left")
+            if left is not None:
+                bound |= _target_names(left, source)
+        elif node.type == "named_expression":
+            left = node.child_by_field_name("name")
+            if left is not None:
+                bound |= _target_names(left, source)
+        elif node.type == "as_pattern":
+            alias = node.child_by_field_name("alias")
+            if alias is not None:
+                bound |= _target_names(alias, source)
+        elif node.type in _DEFINITIONS:
+            inner = node.child_by_field_name("name")
+            if inner is not None:
+                bound.add(_text(inner, source))
+        stack.extend(node.children)
+    return bound
+
+
+def global_reads(fn_node: Any, source: bytes, module_names: set[str]) -> list[str]:
+    """Module-level names (see :func:`module_bindings`) the body reads and does not rebind."""
+    body = fn_node.child_by_field_name("body")
+    if body is None or not module_names:
+        return []
+    bound = _bound_in_body(fn_node, source)
+    reads: set[str] = set()
+    stack = [body]
+    while stack:
+        node = stack.pop()
+        if node.type == "identifier":
+            parent = node.parent
+            if parent is not None and (
+                (parent.type == "attribute" and parent.child_by_field_name("attribute") == node)
+                or (parent.type == "keyword_argument" and parent.child_by_field_name("name") == node)
+                or (parent.type in _DEFINITIONS and parent.child_by_field_name("name") == node)
+            ):
+                continue
+            reads.add(_text(node, source))
+        stack.extend(node.children)
+    return sorted((reads & module_names) - bound)
+
+
 class DataflowMeasurer:
     """hypergumbo's per-function CFG + reaching definitions, as ``ddg_build`` runs them."""
 
@@ -297,26 +465,44 @@ class DataflowMeasurer:
         if self._mapping is None or self._spec is None:  # pragma: no cover - shipped
             raise RuntimeError("hypergumbo has no Python cfg mapping or DDG spec")
 
-    def measure(self, fn_node: Any, source: bytes, sym_id: str) -> tuple[Optional[int], Optional[int], Optional[int]]:
-        """``(edges, distinct variables, longest def-to-use distance)``; ``None``s on bail-out."""
+    def measure(
+        self, fn_node: Any, source: bytes, sym_id: str, lines_of_code: set[int],
+    ) -> tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:
+        """``(distinct edges, distinct variables, reach, uncovered lines)``; ``None``s on bail-out.
+
+        ``uncovered lines`` is ``None`` when the language's coverage gate cannot
+        say (no ``call_node_types``), which the caller treats as suspect too.
+        """
         body = fn_node.child_by_field_name("body")
         if body is None:
-            return 0, 0, 0
+            return 0, 0, 0, 0
         params = self._spec.params_for(fn_node, source) if self._spec.params_for else []
-        entry_defs = [(p, fn_node.start_point[0] + 1) for p in params]
+        start_line = fn_node.start_point[0] + 1
+        entry_defs = [(p, start_line) for p in params]
         try:
             cfg = self._cfg.build_function_cfg(body, source, self._mapping, sym_id)
             self._cfg.populate_def_use_for_cfg(cfg, body, source, "python")
             result = self._cfg.solve_reaching_defs(cfg, entry_defs)
             if result.bailed_out:
-                return None, None, None
+                return None, None, None, None
             edges = list(result.ddg_edges)
             edges.extend(self._cfg.late_capture_edges(cfg, body, self._mapping, edges))
+            uncovered = self._cfg.uncovered_semantic_lines(cfg, body, source, self._mapping)
         except Exception:  # pragma: no cover - defensive, mirrors ddg_build
-            return None, None, None
-        variables = {e.variable for e in edges}
-        reach = max((abs(e.use_line - e.def_line) for e in edges), default=0)
-        return len(edges), len(variables), reach
+            return None, None, None, None
+        triples = {(e.variable, e.def_line, e.use_line) for e in edges}
+        variables = {variable for variable, _, _ in triples}
+        reach = 0
+        for _, def_line, use_line in triples:
+            if def_line == start_line:
+                continue  # a parameter: the signature shows it
+            low, high = sorted((def_line, use_line))
+            between = sum(1 for line in lines_of_code if low < line < high)
+            reach = max(reach, between)
+        return (
+            len(triples), len(variables), reach,
+            None if uncovered is None else len(uncovered),
+        )
 
 
 # ---------------------------------------------------------------- scoring
@@ -356,36 +542,56 @@ def score_file(path: Path, thresholds: Thresholds, *, dataflow: bool = True) -> 
     root = _parse(source)
     symbols = _analyzer_symbols(path)
     measurer = DataflowMeasurer() if dataflow else None
+    module_names = module_bindings(root, source)
 
     scores: list[FunctionScore] = []
+    definition_spans: list[tuple[int, int]] = []
     for node in _function_nodes(root):
         start = node.start_point[0] + 1
         end = node.end_point[0] + 1
+        definition_spans.append((start, end))
         name = _qualified_name(node, source)
         symbol = symbols.get(start)
         sym_id = symbol.id if symbol is not None else f"python:{path}:{start}-{end}:{name}:function"
         params: Optional[int] = None
         if symbol is not None and symbol.meta and "parameters" in symbol.meta:
             params = len(symbol.meta["parameters"])
-        edges = variables = reach = None
+        doc_span = _docstring_span(node)
+        own_lines = code_lines(lines, start, end, doc_span)
+        edges = variables = reach = uncovered = None
         if measurer is not None:
-            edges, variables, reach = measurer.measure(node, source, sym_id)
+            edges, variables, reach, uncovered = measurer.measure(node, source, sym_id, own_lines)
+        names = global_reads(node, source, module_names)
         score = FunctionScore(
             name=name, start_line=start, end_line=end,
-            loc=count_loc(lines, start, end),
+            loc=len(own_lines),
+            doc=0 if doc_span is None else doc_span[1] - doc_span[0] + 1,
             mccabe=symbol.cyclomatic_complexity if symbol is not None else None,
             cognitive=cognitive_complexity(node, source),
             nesting=max_nesting(node),
-            dataflow=edges, vars=variables, reach=reach,
+            dataflow=edges, dataflow_uncovered=uncovered, vars=variables, reach=reach,
+            globals=len(names), global_names=names,
             params=params, calls=count_calls(node),
         )
         flag(score, thresholds)
         scores.append(score)
 
-    return FileScore(
-        path=str(path), lines=len(lines), functions=scores,
-        summary=_summary(scores),
+    # Class bodies are not functions, but their lines are not module code either.
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == "class_definition":
+            definition_spans.append((node.start_point[0] + 1, node.end_point[0] + 1))
+        stack.extend(node.children)
+    all_code = code_lines(lines, 1, len(lines))
+    module_lines = sum(
+        1 for line in all_code
+        if not any(start <= line <= end for start, end in definition_spans)
     )
+    summary = _summary(scores)
+    summary["module_lines"] = module_lines
+    summary["module_bindings"] = len(module_names)
+    return FileScore(path=str(path), lines=len(lines), functions=scores, summary=summary)
 
 
 def _summary(scores: list[FunctionScore]) -> dict[str, Any]:
@@ -396,12 +602,13 @@ def _summary(scores: list[FunctionScore]) -> dict[str, Any]:
         "functions": len(scores),
         "bands": {b: sum(1 for s in scores if s.band == b) for b in ("ok", "watch", "split")},
         "flag_counts": {},
+        "dataflow_suspect": sum(1 for s in scores if s.dataflow_suspect),
     }
     for s in scores:
         for f in s.flags:
             key = f.split(">")[0]
             out["flag_counts"][key] = out["flag_counts"].get(key, 0) + 1
-    for attr in ("loc", "mccabe", "cognitive", "nesting", "dataflow", "reach"):
+    for attr in ("loc", "mccabe", "cognitive", "nesting", "dataflow", "reach", "globals"):
         values = column(attr)
         out[attr] = {
             "max": max(values) if values else None,
@@ -427,27 +634,36 @@ def _cell(value: Optional[int]) -> str:
     return "-" if value is None else str(value)
 
 
+def _dataflow_cell(score: FunctionScore) -> str:
+    if score.dataflow is None:
+        return "-"
+    return f"{score.dataflow}?" if score.dataflow_suspect else str(score.dataflow)
+
+
 def render_text(report: FileScore, sort: str, top: Optional[int]) -> str:
     rows = _sorted(report.functions, sort)
     if top is not None:
         rows = rows[:top]
     width = max((len(s.name) for s in rows), default=4)
-    header = (f"{'band':5} {'function':{width}} {'lines':>11} {'loc':>4} {'mcc':>4} {'cog':>4} "
-              f"{'nest':>4} {'dflow':>5} {'vars':>4} {'reach':>5} {'par':>3} {'calls':>5}  flags")
+    header = (f"{'band':5} {'function':{width}} {'lines':>11} {'loc':>4} {'doc':>3} {'mcc':>4} "
+              f"{'cog':>4} {'nest':>4} {'dflow':>6} {'vars':>4} {'reach':>5} {'glob':>4} "
+              f"{'par':>3} {'calls':>5}  flags")
     out = [f"{report.path}: {report.lines} lines, {len(report.functions)} functions", header]
     for s in rows:
         out.append(
-            f"{s.band:5} {s.name:{width}} {s.start_line:>5}-{s.end_line:<5} {s.loc:>4} "
-            f"{_cell(s.mccabe):>4} {s.cognitive:>4} {s.nesting:>4} {_cell(s.dataflow):>5} "
-            f"{_cell(s.vars):>4} {_cell(s.reach):>5} {_cell(s.params):>3} {s.calls:>5}  "
-            f"{', '.join(s.flags)}"
+            f"{s.band:5} {s.name:{width}} {s.start_line:>5}-{s.end_line:<5} {s.loc:>4} {s.doc:>3} "
+            f"{_cell(s.mccabe):>4} {s.cognitive:>4} {s.nesting:>4} {_dataflow_cell(s):>6} "
+            f"{_cell(s.vars):>4} {_cell(s.reach):>5} {s.globals:>4} {_cell(s.params):>3} "
+            f"{s.calls:>5}  {', '.join(s.flags)}"
         )
     sm = report.summary
+    suspect = f"; dataflow suspect {sm['dataflow_suspect']}" if sm["dataflow_suspect"] else ""
     out.append(
-        f"summary: ok {sm['bands']['ok']}, watch {sm['bands']['watch']}, split {sm['bands']['split']}; "
+        f"summary: ok {sm['bands']['ok']}, watch {sm['bands']['watch']}, split {sm['bands']['split']}"
+        f"{suspect}; module lines {sm['module_lines']}, module bindings {sm['module_bindings']}; "
         + "; ".join(
             f"{k} max {sm[k]['max']} median {sm[k]['median']}"
-            for k in ("loc", "mccabe", "cognitive", "nesting", "dataflow")
+            for k in ("loc", "mccabe", "cognitive", "nesting", "dataflow", "globals")
             if sm[k]["max"] is not None
         )
     )
