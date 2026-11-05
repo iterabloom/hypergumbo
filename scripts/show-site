@@ -11,14 +11,14 @@ packages/*/src whose dotted name ends in the name given, hypergumbo_core first w
    in, sites with the same fields grouped; a marked line without the primitive's last name gets a note.
 2. The whole ENCLOSING FUNCTION (the outermost def, as the allowlist names it), decorators and
    docstring included, never truncated, the given lines marked ">".
-3. What it READS from its own module: constants in full (where a target lives), same-file defs as
-   one line with their length, imports as the name and its line. Module-level bindings only, less
-   what the function binds itself (parameter, assignment, local import; `global` exempts) and a
-   name used only in an annotation.
+3. What it READS from its own module: constants in full (where a target lives), same-file defs as one
+   line with their length, imports as the name and its line. Module-level bindings only, less what the
+   function binds itself (parameter, assignment, local import; `global` exempts) and annotation-only names.
 4. Who CALLS OR REFERENCES it, one hop, by name: every load of the name in packages/*/src and the
    scripts/ files whose first line names python, tagged "call" or "ref" (handed around as a value),
    with the user's enclosing function, in file and line order; a load the user binds by parameter or
-   assignment is its own local (a local import is a use). A call spanning lines prints whole, on one line.
+   assignment is its own local (a local import is a use). A call spanning lines prints whole on one
+   line, regenerated from its syntax tree (no comments, canonical quoting).
 """
 import argparse
 import ast
@@ -144,7 +144,7 @@ def callers(root: Path, name: str) -> list:
             fn, call = enclosing(tree, node.lineno), calls.get(id(node))
             if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node)), imports=False):
                 continue
-            line = " ".join(ast.get_source_segment(text, call).split()) if call and call.end_lineno > call.lineno else text.splitlines()[node.lineno - 1].strip()
+            line = ast.unparse(call) if call and call.end_lineno > call.lineno else text.splitlines()[node.lineno - 1].strip()
             hits.append((dotted(path, root), node.lineno, "call" if call else "ref", fn.name if fn else "<module>", line))
     out += [f"  {where}:{n}  {tag} in {fn}  {line}" for where, n, tag, fn, line in sorted(hits)]
     return out + notes if hits else out + ["  none found"] + notes

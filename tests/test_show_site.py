@@ -116,7 +116,7 @@ def main():
 
 def more():
     return Box.write(
-        "p",
+        "p",  # a comment inside the call
         "t",
     )
 
@@ -253,7 +253,7 @@ allowlist says (docs/hypergumbo.io-allowlist.yaml):
     assert "> 36              p.write_text(text)\n> 37          inner(path)\n" in out
     assert "reads from this module:\n  19  def get_url() -> str:  9 lines\n" in out
     assert "  hypergumbo_core.fetch:42  call in install  return get_url() + Box.write(\"p\", \"t\")\n" in out
-    assert "  scripts/tool:7  call in more  Box.write( \"p\", \"t\", )\n" in out
+    assert "  scripts/tool:7  call in more  Box.write('p', 't')\n" in out
 
 
 def test_function_by_name_without_claim_or_callers(mod, root, capsys):
