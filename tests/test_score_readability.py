@@ -54,6 +54,41 @@ def rec(n):
     return 1 if n <= 1 else n * rec(n - 1)
 '''
 
+GLOBALS_FIXTURE = '''import re
+
+PATTERN = re.compile("x")
+LIMIT = 3
+UNUSED = 0
+
+
+def helper(v):
+    return v
+
+
+def uses_globals(s):
+    """Read two module names and call a helper.
+
+    Two more docstring lines, then a comment.
+    """
+    # a comment line
+    found = PATTERN.match(s)
+
+    LIMIT = 1
+    return helper(found) if found else LIMIT
+
+
+def no_globals(s):
+    return s
+'''
+
+CAPTURE_FIXTURE = '''def outer(regex, flags):
+    def inner():
+        if isinstance(regex, str):
+            return (regex, flags)
+        return regex
+    return inner
+'''
+
 
 @pytest.fixture(scope="module")
 def mod():
@@ -118,25 +153,92 @@ def test_nesting_counts_statement_depth(panel) -> None:
     assert scores["plain"].nesting == 0
 
 
-def test_dataflow_uses_hypergumbos_reaching_definitions(panel) -> None:
+def test_dataflow_counts_distinct_def_use_triples(panel) -> None:
     scores, _ = panel
     # ``a`` and ``b`` are entry definitions used once each at the return.
     plain = scores["plain"]
-    assert (plain.dataflow, plain.vars, plain.reach) == (2, 2, 2)
+    assert (plain.dataflow, plain.vars) == (2, 2)
+    # x (entry, line 12) is read at lines 13, 14, 15 and 18: the three reads
+    # on line 13 are one triple.
+    assert (scores["Widget.deco"].dataflow, scores["Widget.deco"].vars) == (4, 1)
+    # total: 21->25, 21->31, 25->25, 25->31; i: 22 and 26 each -> 23, 24, 25, 26;
+    # items: 20->22.
     loop = scores["Widget.loop"]
-    assert loop.vars == 3  # total, items, i
-    assert loop.dataflow >= 8
-    assert loop.reach == 10  # total defined at 21, returned at 31
-    assert scores["Widget.deco"].vars == 1  # x
+    assert (loop.dataflow, loop.vars) == (13, 3)
+    # n read three times on one line is one triple.
+    assert (scores["rec"].dataflow, scores["rec"].vars) == (1, 1)
+    for s in scores.values():
+        assert s.dataflow_uncovered == 0 and not s.dataflow_suspect
 
 
-def test_loc_params_and_calls(panel) -> None:
+def test_reach_counts_code_lines_between_a_body_definition_and_its_use(panel) -> None:
     scores, _ = panel
-    assert scores["plain"].loc == 3  # def, docstring, return
+    # Parameters are the only definitions in plain, deco and rec: reach 0.
+    assert scores["plain"].reach == 0
+    assert scores["Widget.deco"].reach == 0
+    assert scores["rec"].reach == 0
+    # total defined at 21, returned at 31: nine code lines lie between.
+    assert scores["Widget.loop"].reach == 9
+
+
+def test_loc_excludes_the_docstring_and_reports_it(panel) -> None:
+    scores, _ = panel
+    assert (scores["plain"].loc, scores["plain"].doc) == (2, 1)  # def, return
+    assert (scores["Widget.loop"].loc, scores["Widget.loop"].doc) == (12, 0)
     assert scores["plain"].params == 4  # a, b, *args, **kw
-    assert scores["Widget.loop"].loc == 12
     assert scores["Widget.loop"].calls == 1  # os.getcwd()
     assert scores["rec"].calls == 1
+
+
+def test_globals_docstring_and_reach_on_a_module_with_bindings(mod, tmp_path) -> None:
+    path = tmp_path / "globals.py"
+    path.write_text(GLOBALS_FIXTURE)
+    report = mod.score_file(path, mod.Thresholds())
+    by_name = {s.name: s for s in report.functions}
+    uses = by_name["uses_globals"]
+    # PATTERN and helper are module names read; LIMIT is rebound in the body,
+    # re is an import, found is local.
+    assert (uses.globals, uses.global_names) == (2, ["PATTERN", "helper"])
+    assert by_name["no_globals"].globals == 0
+    assert by_name["helper"].globals == 0
+    # def, found =, LIMIT =, return: the four-line docstring and the comment
+    # and the blank line are not code.
+    assert (uses.loc, uses.doc) == (4, 4)
+    # found defined at 18 and read at 21: one code line (LIMIT = 1) between
+    # them; the blank line 19 does not count.
+    assert uses.reach == 1
+    # Module-level: the import and three assignments are code outside defs;
+    # the six bindings exclude the import.
+    assert report.summary["module_lines"] == 4
+    assert report.summary["module_bindings"] == 6
+
+
+def test_a_nested_function_reading_a_captured_variable_is_counted_once(mod, tmp_path) -> None:
+    path = tmp_path / "capture.py"
+    path.write_text(CAPTURE_FIXTURE)
+    report = mod.score_file(path, mod.Thresholds())
+    by_name = {s.name: s for s in report.functions}
+    # regex: 1->2 (the nested def), 1->3, 1->4, 1->5; flags: 1->2, 1->4. The raw
+    # list repeats the 1->2 triples once per read inside inner.
+    assert (by_name["outer"].dataflow, by_name["outer"].vars) == (6, 2)
+    assert by_name["outer.inner"].dataflow == 0
+
+
+def test_a_coverage_gap_marks_dataflow_suspect(mod, sample, monkeypatch, capsys) -> None:
+    import hypergumbo_core.cfg as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "uncovered_semantic_lines", lambda *a, **k: frozenset({3}))
+    report = mod.score_file(sample, mod.Thresholds())
+    assert all(s.dataflow_uncovered == 1 and s.dataflow_suspect for s in report.functions)
+    assert report.summary["dataflow_suspect"] == 4
+    assert all(s.band == "ok" for s in report.functions)  # a floor never flags
+    assert mod.main([str(sample), "--sort", "line"]) == 0
+    out = capsys.readouterr().out
+    assert " 2? " in out and "dataflow suspect 4" in out
+    # A language whose gate cannot say is suspect too.
+    monkeypatch.setattr(cfg_mod, "uncovered_semantic_lines", lambda *a, **k: None)
+    report = mod.score_file(sample, mod.Thresholds())
+    assert all(s.dataflow_uncovered is None and s.dataflow_suspect for s in report.functions)
 
 
 def test_flags_and_bands_follow_the_thresholds(mod, sample) -> None:
@@ -146,11 +248,11 @@ def test_flags_and_bands_follow_the_thresholds(mod, sample) -> None:
     assert by_name["Widget.loop"].band == "split"
     assert by_name["Widget.deco"].flags == []
     assert by_name["Widget.deco"].band == "ok"
-    report = mod.score_file(sample, mod.Thresholds(dataflow=4))
+    report = mod.score_file(sample, mod.Thresholds(dataflow=3))
     by_name = {s.name: s for s in report.functions}
     assert by_name["plain"].band == "ok"
     assert by_name["Widget.deco"].band == "watch"
-    assert by_name["Widget.deco"].flags == ["dataflow>4"]
+    assert by_name["Widget.deco"].flags == ["dataflow>3"]
 
 
 def test_cli_text_sorts_by_cognitive_and_strict_gates(mod, sample, capsys) -> None:
@@ -158,13 +260,15 @@ def test_cli_text_sorts_by_cognitive_and_strict_gates(mod, sample, capsys) -> No
     out = capsys.readouterr().out.splitlines()
     rows = [line.split()[1] for line in out[2:6]]
     assert rows == ["Widget.loop", "Widget.deco", "rec", "plain"]
-    assert out[-1].startswith("summary: ok 4, watch 0, split 0;")
+    # Module lines: the module docstring and the import. Bindings: plain, Widget, rec.
+    assert out[-1].startswith("summary: ok 4, watch 0, split 0; module lines 2, module bindings 3;")
     assert mod.main([str(sample), "--strict"]) == 0
     assert mod.main([str(sample), "--strict", "--max-cognitive", "6"]) == 1
     capsys.readouterr()
     assert mod.main([str(sample), "--top", "1", "--sort", "loc"]) == 0
     out = capsys.readouterr().out.splitlines()
     assert len(out) == 4 and out[2].split()[1] == "Widget.loop"
+    assert mod.main([str(sample), "--top", "1", "--sort", "globals"]) == 0
 
 
 def test_cli_json_carries_the_whole_panel(mod, sample, capsys) -> None:
@@ -177,23 +281,29 @@ def test_cli_json_carries_the_whole_panel(mod, sample, capsys) -> None:
     assert file["path"] == str(sample)
     names = [f["name"] for f in file["functions"]]
     assert names == ["plain", "Widget.deco", "Widget.loop", "rec"]
-    # plain 2 and rec 3 edges sit under the threshold; deco 5 and loop 13 do not.
-    assert file["summary"]["bands"] == {"ok": 2, "watch": 2, "split": 0}
-    assert file["summary"]["flag_counts"] == {"dataflow": 2}
+    # Only loop's 13 edges exceed 4; deco sits exactly on the threshold.
+    assert file["summary"]["bands"] == {"ok": 3, "watch": 1, "split": 0}
+    assert file["summary"]["flag_counts"] == {"dataflow": 1}
     assert file["summary"]["cognitive"] == {"max": 7, "median": 3.5}
+    assert file["summary"]["dataflow_suspect"] == 0
+    assert file["functions"][0]["global_names"] == []
+    assert file["functions"][0]["dataflow_uncovered"] == 0
 
 
 def test_no_dataflow_skips_the_ddg_and_a_syntax_error_still_scores(mod, tmp_path, capsys) -> None:
     broken = tmp_path / "broken.py"
     broken.write_text("def good(n):\n    if n:\n        return 1\n\nthis is not python\n")
     assert mod.main([str(broken), "--no-dataflow", "--json"]) == 0
-    (file,) = json.loads(capsys.readouterr().out)["files"]
+    data = json.loads(capsys.readouterr().out)
+    (file,) = data["files"]
     (fn,) = file["functions"]
     assert fn["name"] == "good"
     # The analyzer's error recovery still names the intact function.
     assert fn["mccabe"] == 2 and fn["params"] == 1
     assert fn["cognitive"] == 1 and fn["nesting"] == 1
     assert fn["dataflow"] is None and fn["vars"] is None and fn["reach"] is None
+    assert fn["dataflow_uncovered"] is None
+    assert file["summary"]["dataflow_suspect"] == 0  # not measured is not suspect
 
 
 def test_cli_refuses_a_missing_file(mod, tmp_path, capsys) -> None:

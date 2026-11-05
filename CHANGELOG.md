@@ -32,7 +32,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-- **`scripts/score-readability`**: per-function reader-load panel for Python files.
+- **`scripts/score-readability`**: per-function reader-load panel for Python files: code lines with the docstring beside them, McCabe, cognitive complexity, nesting, distinct data-flow edges with a coverage marker, look-back reach, same-file globals.
 - **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, Dockerfile per-stage variables, and Pony `actor` / `primitive` kinds.
 - **`hypergumbo catalog` names the grammar package each pass loads.**
 - **CI checks**: the test-only-reachability ratchet judges methods by receiver type; `depends_on` clauses are never empty and name earlier passes.
