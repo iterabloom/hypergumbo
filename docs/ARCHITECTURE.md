@@ -554,6 +554,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
 | `score-readability` | Score the reader load of Python source files, one function at a time. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
+| `show-site` | Print the code around one I/O allowlist site, for a human reviewing the sheet. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
 | `yaml-catalog-index` | Index hypergumbo's YAML catalogs (canonical-registry view). |
@@ -984,8 +985,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 30da210500be
-  commit_count: 8856
+  commit: 3b76e9dd8c29
+  commit_count: 8859
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
