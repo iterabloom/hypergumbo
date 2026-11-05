@@ -4,7 +4,7 @@
 
     scripts/show-site gitleaks:173 | safety_zones:535,551 | safety_zones:cache_rmtree | hypergumbo_tracker.cli:40 | scripts/smart-test:120
 
-(a line, lines, a function name, a full module name, a path). The module is the file under
+(a line, lines, a name, a module, a path; every reference printed feeds back in). The module is the file under
 packages/*/src whose dotted name ends in the name given, hypergumbo_core first when several match
 (the header says so). Exit 2, reason on stderr, when nothing matches. Four blocks:
 1. What docs/hypergumbo.io-allowlist.yaml CLAIMS about the enclosing function, module defaults filled
@@ -17,8 +17,8 @@ packages/*/src whose dotted name ends in the name given, hypergumbo_core first w
    name used only in an annotation.
 4. Who CALLS OR REFERENCES it, one hop, by name: every load of the name in packages/*/src and the
    scripts/ files whose first line names python, tagged "call" or "ref" (handed around as a value),
-   with the user's enclosing function, in file and line order; a load the user binds itself is its own
-   local. A call spanning lines prints whole, on one line. Every reference printed feeds back in.
+   with the user's enclosing function, in file and line order; a load the user binds by parameter or
+   assignment is its own local (a local import is a use). A call spanning lines prints whole, on one line.
 """
 import argparse
 import ast
@@ -68,9 +68,9 @@ def enclosing(tree: ast.Module, where) -> Fn | None:  # the def containing line 
     return None
 
 
-def local_names(nodes: list) -> set:
+def local_names(nodes: list, imports: bool = True) -> set:
     local = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)} | {a.arg for a in nodes if isinstance(a, ast.arg)}
-    local |= {(al.asname or al.name).split(".")[0] for n in nodes if isinstance(n, (ast.Import, ast.ImportFrom)) for al in n.names}
+    local |= {(al.asname or al.name).split(".")[0] for n in nodes if imports and isinstance(n, (ast.Import, ast.ImportFrom)) for al in n.names}
     return local - {g for n in nodes if isinstance(n, ast.Global) for g in n.names}
 
 
@@ -142,7 +142,7 @@ def callers(root: Path, name: str) -> list:
             if not (isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and getattr(node, "id", getattr(node, "attr", None)) == name):
                 continue
             fn, call = enclosing(tree, node.lineno), calls.get(id(node))
-            if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node))):
+            if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node)), imports=False):
                 continue
             line = " ".join(ast.get_source_segment(text, call).split()) if call and call.end_lineno > call.lineno else text.splitlines()[node.lineno - 1].strip()
             hits.append((dotted(path, root), node.lineno, "call" if call else "ref", fn.name if fn else "<module>", line))
