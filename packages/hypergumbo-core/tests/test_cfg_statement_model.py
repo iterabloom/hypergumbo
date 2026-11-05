@@ -313,9 +313,11 @@ class TestHeaderRecordedAtTheLoopNode:
         assert cfg.blocks[cfg.entry_block].statements == [header]
 
     def test_the_cut_keeps_unrecorded_code_after_the_header_uncovered(self) -> None:
-        """Python's ``for ... else:`` is not processed by the loop hook. With the
-        header covering its whole node the else clause would read as covered,
-        and the gate that forfeits refutation would be silent."""
+        """The header's extent ends at the body, so code after the header that
+        no statement records stays uncovered and the gate that forfeits
+        refutation is not silenced. Python's ``for ... else:`` WAS that code
+        until INV-rotol recorded the clause; it now covers itself, and
+        un-recording it exposes line 5 again rather than the header."""
         cfg, body, src = _build("python", (
             "def f(xs, t):\n"
             "    for v in xs:\n"
@@ -325,7 +327,11 @@ class TestHeaderRecordedAtTheLoopNode:
         ))
         mapping = load_cfg_mapping("python")
         assert mapping is not None
-        # Line 4 (``else:``) holds no named leaf; line 5 is the clause's body.
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        # Drop the clause's own statement: with the header cut at the body,
+        # line 5 reads uncovered (line 4, ``else:``, holds no named leaf).
+        for block in cfg.blocks.values():
+            block.statements = [s for s in block.statements if s.line != 5]
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({5})
 
     def test_the_cut_keeps_the_header_from_accounting_for_the_body(self) -> None:
