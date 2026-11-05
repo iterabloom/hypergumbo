@@ -28,12 +28,16 @@ How It Works
      a nested ``else if`` is one alternative, while tree-sitter-python's flat
      ``elif``/``else`` list is walked arm by arm, each ``elif`` a condition
      block whose false edge is the next alternative (INV-kakav).
-   - Loops (while/for): back-edge from body's fringe to condition entry.
+   - Loops (while/for): back-edge from body's fringe to condition entry. A
+     mapped ``else_child`` (Python's ``for``/``while ... else``) takes the
+     header's normal-exit edge; ``break`` edges bypass it (INV-rotol).
    - break/continue: collect with nesting level; resolve at enclosing loop.
    - return/throw: wire to function exit block; produce empty fringe.
    - try/catch/finally: exception edges run from a synthetic try-entry
      block to every catch entry; the try and catch fringes connect to the
-     finally entry, or merge when there is no finally.
+     finally entry, or merge when there is no finally. A mapped
+     ``else_child`` (Python's ``try ... else``) sits on the no-exception
+     path between the try body and finally; the handlers bypass it.
    - switch/match: ``case`` edges from scrutinee to each case entry, plus an
      ``always`` fall-through fringe edge from the scrutinee for "no case
      matched" (WI-sozob), added even when a default arm exists.
@@ -379,6 +383,10 @@ class LoopMapping:
       node, with :attr:`CfgStatement.extent_end_byte` cut at the body so it
       does not claim to cover the body. The language's def/use extractor
       must read only the header when handed the loop node.
+    - ``else_child``: a clause that runs on the loop's NORMAL exit (the
+      condition false, the iterator exhausted) and never after a ``break``
+      (Python's ``for``/``while ... else``). It is outside the loop: a
+      ``break`` inside it leaves the enclosing loop (INV-rotol).
     """
 
     node_type: str
@@ -389,17 +397,24 @@ class LoopMapping:
     update_child: Optional[str] = None
     header_child: Optional[str] = None
     header_is_node: bool = False
+    else_child: Optional[str] = None
 
 
 @dataclass
 class TryCatchMapping:
-    """Maps a tree-sitter node type to a try/catch/finally construct."""
+    """Maps a tree-sitter node type to a try/catch/finally construct.
+
+    ``else_child`` names a clause that runs when the try body completes
+    without an exception, before ``finally`` (Python's ``try ... else``);
+    the handlers skip it (INV-rotol).
+    """
 
     node_type: str
     body_child: str
     catch_child: Optional[str] = None
     finally_child: Optional[str] = None
     catch_clause_type: Optional[str] = None
+    else_child: Optional[str] = None
 
 
 @dataclass
@@ -718,6 +733,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             update_child=lo.get("update_child"),
             header_child=lo.get("header_child"),
             header_is_node=lo.get("header_is_node", False),
+            else_child=lo.get("else_child"),
         )
         for lo in data.get("loop", [])
     ]
@@ -729,6 +745,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             catch_child=tc.get("catch_child"),
             finally_child=tc.get("finally_child"),
             catch_clause_type=tc.get("catch_clause_type"),
+            else_child=tc.get("else_child"),
         )
         for tc in data.get("try_catch", [])
     ]
@@ -1458,6 +1475,13 @@ class CfgBuilder:
         Until WI-losod the header held the condition alone, so ``for v in
         os.environ:``, Go's ``for _, e := range os.Environ()`` and every
         classic ``for`` initializer defined nothing.
+
+        A mapped ``else_child`` (Python) takes the header's normal-exit edge
+        and its fringe becomes the loop's; ``break`` edges still join the
+        fringe directly, so the clause never runs after a ``break``. It is
+        processed AFTER the loop context is popped: a ``break`` inside it
+        belongs to the enclosing loop. Until INV-rotol the clause was
+        skipped whole.
         """
         mapping = self._mapping.get_loop(node.type)
         if mapping is None:
@@ -1516,6 +1540,10 @@ class CfgBuilder:
 
         self._loop_stack.pop()
 
+        # Outside the loop: processed after the pop so a ``break`` in it
+        # resolves against the enclosing loop.
+        else_partial = self._process_else_clause(node, mapping.else_child, source)
+
         fringe: list[_FringeEdge] = []
 
         if body_partial and body_partial.entry_block:
@@ -1526,18 +1554,18 @@ class CfgBuilder:
                     edge_type="always",
                 ))
             else:
-                # Conditional loop: header → body (true), header → fringe (false)
+                # Conditional loop: header → body (true), header → else or fringe (false)
                 header_block.successors.append(CfgEdge(
                     target_block=body_partial.entry_block,
                     edge_type="true",
                 ))
-                fringe.append(_FringeEdge(source_block=header_block.id, edge_type="false"))
+                fringe.extend(self._loop_exit(header_block, else_partial))
 
             # Back-edge: body's fringe → update (or header)
             self._connect_fringe(body_partial.fringe, back_target)
         else:
             if not mapping.infinite:
-                fringe.append(_FringeEdge(source_block=header_block.id, edge_type="false"))
+                fringe.extend(self._loop_exit(header_block, else_partial))
             if update_block is not None:
                 # An empty body still runs the update every iteration.
                 header_block.successors.append(CfgEdge(
@@ -1566,6 +1594,37 @@ class CfgBuilder:
             fringe=fringe,
             blocks=blocks,
         )
+
+    def _process_else_clause(
+        self, node: Any, ref: Optional[str], source: bytes,
+    ) -> Optional[_PartialCfg]:
+        """The ``else`` clause a loop or try statement may carry, or None.
+
+        None when the mapping names no such clause (every grammar but
+        Python) or the statement has none (INV-rotol).
+        """
+        if ref is None:
+            return None
+        else_node = self._find_child(node, ref)
+        if else_node is None:
+            return None
+        return self._process_children(else_node, source)
+
+    def _loop_exit(
+        self, header_block: BasicBlock, else_partial: Optional[_PartialCfg],
+    ) -> list[_FringeEdge]:
+        """The loop's normal-exit edge: into the else clause, or left pending.
+
+        With an else clause the header's ``false`` edge enters it and the
+        clause's fringe is what the loop hands on. A ``break`` never comes
+        this way: its edge joins the loop's fringe directly.
+        """
+        if else_partial is None or not else_partial.entry_block:
+            return [_FringeEdge(source_block=header_block.id, edge_type="false")]
+        header_block.successors.append(CfgEdge(
+            target_block=else_partial.entry_block, edge_type="false",
+        ))
+        return list(else_partial.fringe)
 
     def _process_break(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process a break statement.
@@ -1648,6 +1707,10 @@ class CfgBuilder:
         Try body's fringe connects to finally entry (if present) or to the
         merge point. Each catch clause gets an exception edge from the try
         body. Finally block (if present) executes after both try and catch.
+        A mapped ``else_child`` (Python) sits between the try body and
+        finally on the no-exception path only: the try body's fringe enters
+        it and its fringe takes the try body's place; the handlers' fringes
+        bypass it (INV-rotol).
         """
         mapping = self._mapping.get_try_catch(node.type)
         if mapping is None:
@@ -1703,6 +1766,14 @@ class CfgBuilder:
                     edge_type="exception",
                 ))
 
+        # The no-exception path: the try body's fringe, routed through the
+        # else clause when there is one.
+        normal_fringe: list[_FringeEdge] = list(try_partial.fringe) if try_partial else []
+        else_partial = self._process_else_clause(node, mapping.else_child, source)
+        if else_partial and else_partial.entry_block:
+            self._connect_fringe(normal_fringe, else_partial.entry_block)
+            normal_fringe = list(else_partial.fringe)
+
         # Process finally
         finally_partial: Optional[_PartialCfg] = None
         if mapping.finally_child:
@@ -1711,17 +1782,15 @@ class CfgBuilder:
                 finally_partial = self._process_children(finally_node, source)
 
         if finally_partial and finally_partial.entry_block:
-            # try fringe → finally entry
-            if try_partial:
-                self._connect_fringe(try_partial.fringe, finally_partial.entry_block)
+            # no-exception path → finally entry
+            self._connect_fringe(normal_fringe, finally_partial.entry_block)
             # catch fringes → finally entry
             for cp in catch_partials:
                 self._connect_fringe(cp.fringe, finally_partial.entry_block)
             fringe.extend(finally_partial.fringe)
         else:
-            # No finally: merge try and catch fringes
-            if try_partial:
-                fringe.extend(try_partial.fringe)
+            # No finally: merge the no-exception path and the catch fringes
+            fringe.extend(normal_fringe)
             for cp in catch_partials:
                 fringe.extend(cp.fringe)
 
