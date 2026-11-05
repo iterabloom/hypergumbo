@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **370** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 115 core, 4 CLI, 37 tracker)
-- **58228** symbols (functions, classes, methods)
-- **233684** edges by type:
-  - calls: 132107
-  - contains: 54239
+- **58248** symbols (functions, classes, methods)
+- **233757** edges by type:
+  - calls: 132158
+  - contains: 54259
   - imports: 20048
-  - instantiates: 12927
+  - instantiates: 12928
   - references: 10363
   - module_attr_ref: 2204
-  - other: 1796
+  - other: 1797
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58228 Symbols + 233684 Edges + UsageContexts           │
+│  Output: 58248 Symbols + 233757 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -283,7 +283,7 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 10676.2 | ir.py |
-| `len` | external_symbol | 8101.0 | <external> |
+| `len` | external_symbol | 8102.0 | <external> |
 | `write_text` | external_symbol | 7393.0 | <external> |
 | `Span` | class | 7141.2 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
@@ -295,7 +295,7 @@ These symbols have the highest bidirectional centrality
 | `next` | external_symbol | 2279.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2114.3 | framework_patterns.py |
-| `append` | external_symbol | 1963.0 | <external> |
+| `append` | external_symbol | 1964.0 | <external> |
 | `main` | function | 1792.0 | cli.py |
 
 ## Pattern System
@@ -984,8 +984,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d60abf49ea7b
-  commit_count: 8844
+  commit: 87a5c0f6de15
+  commit_count: 8847
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
