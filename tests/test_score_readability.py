@@ -87,6 +87,42 @@ def no_globals(s):
 
 def uses_table(k):
     return TABLE[k]
+
+
+class Box:
+    size = 3
+
+
+def uses_box():
+    return Box.size
+'''
+
+RECURSION_FIXTURE = '''def rules():
+    return (*first.rules(), *second.rules())
+
+
+class Node:
+    def walk(self, other):
+        if other:
+            return self.walk(other.child)
+        return other.walk(None)
+
+    @classmethod
+    def build(cls, n):
+        return cls.build(n - 1) if n else helper.build(n)
+'''
+
+LITERAL_FIXTURE = '''def message(n):
+    text = (
+        "first line "
+        "second line "
+        f"{n} third"
+    )
+    table = {
+        "a": 1,
+        "b": 2,
+    }
+    return text, table
 '''
 
 CAPTURE_FIXTURE = '''def outer(regex, flags):
@@ -208,10 +244,13 @@ def test_globals_docstring_and_reach_on_a_module_with_bindings(mod, tmp_path) ->
     # re is an import, found is local.
     assert (uses.globals, uses.global_names) == (2, ["PATTERN", "helper"])
     # What a reader of uses_globals has to look at elsewhere in the file:
-    # PATTERN is one code line, helper is two (def, return).
-    assert uses.global_lines == 3
+    # PATTERN is one code line; helper is a def, which weighs its signature
+    # (one line), not its body: a caller reads a name, not an implementation.
+    assert uses.global_lines == 2
     table = by_name["uses_table"]
+    # A data binding keeps its code lines, string-keyed dict lines included.
     assert (table.globals, table.global_names, table.global_lines) == (1, ["TABLE"], 4)
+    assert (by_name["uses_box"].global_names, by_name["uses_box"].global_lines) == (["Box"], 1)
     assert (by_name["no_globals"].globals, by_name["no_globals"].global_lines) == (0, 0)
     assert by_name["helper"].globals == 0
     # def, found =, LIMIT =, return: the four-line docstring and the comment
@@ -221,10 +260,36 @@ def test_globals_docstring_and_reach_on_a_module_with_bindings(mod, tmp_path) ->
     # them; the blank line 23 does not count.
     assert uses.reach == 1
     # Module-level: the import, three one-line assignments and the four-line
-    # TABLE literal are code outside defs; the eight bindings exclude the import.
+    # TABLE literal are code outside defs and classes; the ten bindings exclude
+    # the import.
     assert report.summary["module_lines"] == 8
-    assert report.summary["module_bindings"] == 8
-    assert report.summary["global_lines"] == {"max": 4, "median": 1.5}
+    assert report.summary["module_bindings"] == 10
+    # helper 0, uses_globals 2, no_globals 0, uses_table 4, uses_box 1
+    assert report.summary["global_lines"] == {"max": 4, "median": 1}
+
+
+def test_recursion_is_a_bare_name_call_or_self_cls_on_a_method(mod, tmp_path) -> None:
+    path = tmp_path / "recursion.py"
+    path.write_text(RECURSION_FIXTURE)
+    report = mod.score_file(path, mod.Thresholds(), dataflow=False)
+    by_name = {s.name: s for s in report.functions}
+    # first.rules() and second.rules() are other modules' functions, not recursion.
+    assert by_name["rules"].cognitive == 0
+    # if (+1) and self.walk (+1); other.walk is not recursion.
+    assert by_name["Node.walk"].cognitive == 2
+    # ternary (+1) and cls.build (+1); helper.build is not recursion.
+    assert by_name["Node.build"].cognitive == 2
+
+
+def test_loc_counts_logical_lines_and_the_json_keeps_the_physical_count(mod, tmp_path) -> None:
+    path = tmp_path / "literal.py"
+    path.write_text(LITERAL_FIXTURE)
+    report = mod.score_file(path, mod.Thresholds(), dataflow=False)
+    (fn,) = report.functions
+    # def, text = (, table = {, return: the three string continuations, the
+    # two string-keyed dict lines and the two closing brackets are read, not
+    # reasoned about.
+    assert (fn.loc, fn.loc_physical) == (4, 11)
 
 
 def test_sort_globals_orders_by_global_lines_and_the_table_drops_params_and_calls(
@@ -240,7 +305,7 @@ def test_sort_globals_orders_by_global_lines_and_the_table_drops_params_and_call
         "band", "function", "lines", "loc", "doc", "mcc", "cog", "nest", "dflow", "vars",
         "reach", "gloc", "flags",
     ]
-    assert out[-1].endswith("global lines max 4 median 1.5")
+    assert out[-1].endswith("global lines max 4 median 1")
 
 
 def test_a_nested_function_reading_a_captured_variable_is_counted_once(mod, tmp_path) -> None:
@@ -321,6 +386,7 @@ def test_cli_json_carries_the_whole_panel(mod, sample, capsys) -> None:
     assert file["summary"]["dataflow_suspect"] == 0
     assert file["functions"][0]["global_names"] == []
     assert file["functions"][0]["global_lines"] == 0
+    assert file["functions"][0]["loc"] == 2 and file["functions"][0]["loc_physical"] == 2
     assert file["functions"][0]["dataflow_uncovered"] == 0
     # params and calls left the text table; the JSON still carries them.
     assert file["functions"][0]["params"] == 4 and file["functions"][0]["calls"] == 0
@@ -337,6 +403,10 @@ def test_no_dataflow_skips_the_ddg_and_a_syntax_error_still_scores(mod, tmp_path
     assert fn["name"] == "good"
     # The analyzer's error recovery still names the intact function.
     assert fn["mccabe"] == 2 and fn["params"] == 1
+    assert fn["loc"] == 3 and fn["loc_physical"] == 3
+    # An unclosed bracket makes the tokenizer give up at the end of the file;
+    # the logical-line pass keeps the lines it had classified by then.
+    assert mod.non_logical_lines(b'y = (\n    "a"\n    "b"\n)\nx = (\n') == {2, 3, 4}
     assert fn["cognitive"] == 1 and fn["nesting"] == 1
     assert fn["dataflow"] is None and fn["vars"] is None and fn["reach"] is None
     assert fn["dataflow_uncovered"] is None
