@@ -281,6 +281,8 @@ def test_errors_exit_2(mod, root, capsys):
     assert run(mod, root, "nothing:1", capsys=capsys)[0] == 2
     _, _, err = run(mod, root, "fetch:11", capsys=capsys)
     assert err == "fetch:11 is not inside a function\n"
+    rc, _, err = run(mod, root, "scripts/notes.txt:1", capsys=capsys)
+    assert (rc, err) == (2, "scripts/notes.txt does not parse as Python\n")
 
 
 def test_size_band_the_owner_set():
