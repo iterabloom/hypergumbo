@@ -119,6 +119,11 @@ def more():
         "p",
         "t",
     )
+
+
+def late():
+    from fetch import get_url
+    return get_url()
 """
 
 
@@ -218,6 +223,7 @@ called or referenced from (packages/*/src and scripts/, by name):
   hypergumbo_core.fetch:42  call in install  return get_url() + Box.write("p", "t")
   hypergumbo_core.fetch:52  ref in <module>  HANDLERS = {"url": get_url}
   scripts/tool:3  call in main  print(get_url())
+  scripts/tool:15  call in late  return get_url()
   note: hypergumbo_tracker.serve does not parse; not searched
 """
 
