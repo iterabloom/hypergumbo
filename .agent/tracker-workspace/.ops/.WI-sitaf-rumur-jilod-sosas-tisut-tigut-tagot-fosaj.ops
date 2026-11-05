@@ -80,3 +80,10 @@
   clock: 9  # a029
   nonce: a029  # a029
   message: "Fixed in PR #1805 (dev 1f1e22d3f2), replacing the reverted #1797. Positions travel apart from defines: DefUseResult/CfgStatement.targets (None for a blank), RepoDdg.stmt_targets -> propagate_taint_ddg; stmt_defuse defines stay the variables bound; _received_seeds returns an EMPTY set only when every call line was read and every received slot is a blank, and the walk reads that as 'carries nothing'. Repro on merged dev through the production CLI, fresh cache, claim host_secret -> subprocess: the filed shape (get returns os.Getenv; wrap: '_, err := get(); return \"ls\", err'; main: 'name, err := wrap(); exec.Command(name, err.Error()).Run()') exit 3, confirmed_with_caveats, 0 evidence (was exit 1 violated on e3ea9db6c9). The two concept-audit regression shapes ('_, err := get(); fmt.Println(err); exec.Command(\"ls\")' and 's, _ := tok.(string); fmt.Println(s); exec.Command(\"ls\")') stay exit 3, confirmed_with_caveats, 0 evidence. Control (value, _ := get(); return value, nil) stays violated with returned_by {get, wrap} (test_go_a_blank_elsewhere_keeps_the_value_s_position). Corpus A/B (runc, gin, coredns, buildah): 0 verdicts moved; buildah walks False 1 -> 21, each a value received into a blank. NOT COVERED: 'var _, err = f()' declarations; a target naming no variable (*p) keeps the seed-everything fallback."  # a029
+- op: discuss  # d4a3
+  at: '2026-11-04T20:12:14Z'  # d4a3
+  by: agent  # d4a3
+  actor: jgstern_agent  # d4a3
+  clock: 10  # d4a3
+  nonce: d4a3  # d4a3
+  message: "SIBLING FILED 2026-11-04 while draining INV-komoj: WI-kikar-favir-sugiz-nazib-kanij-rujam-tadil-donul. Your fixture spelling (v := os.Getenv; return v, nil) still reads confirmed_with_caveats on dev 4c9d5d4d2f, so this fix holds; the direct-call spelling (return os.Getenv(x), nil) has no recorded result position and takes the seed-everything fallback (record ~/hypergumbo_lab_notebook/komoj_drain_11042026/). Not a reopen: this item's NOT COVERED list did not name it and its own repro passes."  # d4a3

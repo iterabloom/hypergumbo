@@ -81,3 +81,18 @@
   clock: 9  # fb27
   nonce: fb27  # fb27
   message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). Bears on this item's pending_validation: the 2026-09-11 claim that all 11 core-name copies were cleaned is contradicted by the live census -- 6 items still carry a core attribute name as a custom field key: WI-dupok (fields.priority/status/tags), WI-nubik / WI-kanor / WI-furim (fields.description holding the whole text while the core description is EMPTY), WI-joruz (fields.description='') and WI-mifag (fields.isbefore=''). All six were created 2026-07-30..09-02, before the 09-06 write-path gate, so this is un-migrated legacy data, not a gate bypass (the gate's tier 1 refuses a new core-name key, verified on a throwaway Store). Validation therefore needs the migration of these six, not just the gate. Full census on INV-linan."  # fb27
+- op: update  # be5f
+  at: '2026-11-04T20:12:13Z'  # be5f
+  by: agent  # be5f
+  actor: jgstern_agent  # be5f
+  clock: 10  # be5f
+  nonce: be5f  # be5f
+  set:  # be5f
+    status: satisfied  # be5f
+- op: discuss  # 29f0
+  at: '2026-11-04T20:12:13Z'  # 29f0
+  by: agent  # 29f0
+  actor: jgstern_agent  # 29f0
+  clock: 11  # 29f0
+  nonce: 29f0  # 29f0
+  message: "VALIDATED AND SATISFIED 2026-11-04 (dev 4c9d5d4d2f; record ~/hypergumbo_lab_notebook/varil_drain_11042026/migrate.log, migrate.sh, list_after.json). Both halves of the statement now hold on positive evidence, re-run today rather than restated.\n\nGATE, live on the production CLI, not a throwaway Store: scripts/tracker update WI-dupok-tubas-... --add-field status=todo_hard exits 1, writes nothing (the item's fields and ops were identical before and after), stderr: \"error: 'status' is a core attribute, not a custom field: storing it under --field would give one fact two homes and the second would never be updated. Use --status instead.\" That is the statement's \"must reject such keys and name the dedicated flag\", observed.\n\nMIGRATION of the six legacy shadows the 2026-10-25 premise check found (all created 2026-07-30..09-02, before the 09-06 gate), one decision each, not a batch delete: WI-dupok: the shadow tags carried bucket_a (a catalogue tag the core lacked) -> added to the core tags FIRST, then fields.priority/status/tags removed. WI-joruz: fields.description was the empty string under a 2448-char core description -> removed. WI-mifag: fields.isbefore was the empty string -> removed. WI-nubik (1019 bytes), WI-kanor (3943), WI-furim (836): the core description was EMPTY and the whole text lived in fields.description -> moved into the core slot with --description-file, verified byte-equal with cmp, THEN the shadow removed. Nothing was deleted before its content had a home.\n\nCENSUS re-run after the migration over scripts/tracker --json list: 3079 items, 0 carry a core-name custom key (0 key instances), against 6 items / 8 instances before. The description's \"assert 0 of N, with N stated\": 0 of 3079.\n\nNOT ASSERTED: the validator's unit is still the OP, so tracker validate --strict still reports the immutable create ops of June (the 2026-09-11 note's layer 2/3; INV-linan). This item's statement is the write path and the compiled state, and both hold."  # 29f0
