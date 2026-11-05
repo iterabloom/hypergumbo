@@ -24,6 +24,10 @@ How It Works
      yet known).
    - Sequential composition: connect A's fringe to B's entry.
    - Conditional (if/else): split fringe into true/false edges; merge branches.
+     Every alternative the mapping's ``false_child`` resolves to is chained:
+     a nested ``else if`` is one alternative, while tree-sitter-python's flat
+     ``elif``/``else`` list is walked arm by arm, each ``elif`` a condition
+     block whose false edge is the next alternative (INV-kakav).
    - Loops (while/for): back-edge from body's fringe to condition entry.
    - break/continue: collect with nesting level; resolve at enclosing loop.
    - return/throw: wire to function exit block; produce empty fringe.
@@ -1319,12 +1323,58 @@ class CfgBuilder:
         """Process an if/else-style conditional.
 
         Creates a condition block, then true/false branches. The fringe
-        is the union of both branches' fringes (merge point).
+        is the union of both branches' fringes (merge point). The false
+        branch is EVERY node the mapping's ``false_child`` resolves to,
+        chained by :meth:`_process_alternatives`: one node for a grammar
+        that nests ``else if``, the whole ``elif``/``else`` list for
+        tree-sitter-python (INV-kakav).
         """
         mapping = self._mapping.get_conditional(node.type)
         if mapping is None:
             return self._process_sequential(node, source)  # pragma: no cover
+        alternatives = (
+            self._find_children(node, mapping.false_child) if mapping.false_child else []
+        )
+        return self._conditional(node, mapping, alternatives, source)
 
+    def _process_alternatives(
+        self, alternatives: list[Any], source: bytes,
+    ) -> Optional[_PartialCfg]:
+        """The false branch of a conditional: its alternatives, chained.
+
+        One alternative is the common case: a nested ``else if`` or an
+        ``else`` block, processed as any node. tree-sitter-python lays a
+        chain FLAT: every ``elif_clause`` and the ``else_clause`` sit under
+        the ``if_statement``'s repeated ``alternative`` field. So an
+        alternative the mapping classifies as a conditional becomes a
+        condition block of its own, whose ``false`` edge is the REST of the
+        list (plus any alternatives of its own, for a nesting grammar), and
+        an alternative with no conditional mapping (an ``else``) ends the
+        chain (INV-kakav). Reading the field once kept the first ``elif``
+        as straight-line code on the ``false`` edge and dropped every later
+        arm from the CFG, so their definitions and uses never reached the
+        DDG and the taint walk forfeited the function.
+        """
+        if not alternatives:
+            return None
+        head, rest = alternatives[0], alternatives[1:]
+        head_mapping = self._mapping.get_conditional(head.type)
+        if head_mapping is None:
+            return self._process_node(head, source)
+        own = (
+            self._find_children(head, head_mapping.false_child)
+            if head_mapping.false_child else []
+        )
+        return self._conditional(head, head_mapping, own + rest, source)
+
+    def _conditional(
+        self,
+        node: Any,
+        mapping: ConditionalMapping,
+        alternatives: list[Any],
+        source: bytes,
+    ) -> _PartialCfg:
+        """One condition block: ``true`` to its consequence, ``false`` to ``alternatives``."""
         # Create condition block. A header initializer runs first, in the same
         # block, so the binding it makes reaches the condition and both
         # branches (WI-losod).
@@ -1356,20 +1406,17 @@ class CfgBuilder:
         else:
             fringe.append(_FringeEdge(source_block=cond_block.id, edge_type="true"))  # pragma: no cover
 
-        # False branch (else)
-        false_node = self._find_child(node, mapping.false_child) if mapping.false_child else None
-        if false_node:
-            false_partial = self._process_node(false_node, source)
-            if false_partial and false_partial.entry_block:
-                cond_block.successors.append(CfgEdge(
-                    target_block=false_partial.entry_block,
-                    edge_type="false",
-                ))
-                fringe.extend(false_partial.fringe)
-            else:
-                fringe.append(_FringeEdge(source_block=cond_block.id, edge_type="false"))  # pragma: no cover
+        # False branch: the alternatives, chained (see _process_alternatives).
+        false_partial = self._process_alternatives(alternatives, source)
+        if false_partial is not None and false_partial.entry_block:
+            cond_block.successors.append(CfgEdge(
+                target_block=false_partial.entry_block,
+                edge_type="false",
+            ))
+            fringe.extend(false_partial.fringe)
         else:
-            # No else branch — false edge goes to fringe (fall through)
+            # No else branch (or one that produced no block): the false edge
+            # falls through to whatever follows the chain.
             fringe.append(_FringeEdge(source_block=cond_block.id, edge_type="false"))
 
         return _PartialCfg(
