@@ -39,7 +39,7 @@ END_MARKER = "<!-- END generated -->"
 IO_ALLOWLIST_PATH = REPO_ROOT / "docs" / "hypergumbo.io-allowlist.yaml"
 #: Primitive families scripts/check-io-allowlist inventories, in its order.
 IO_FAMILIES = ("fs_write", "process", "network", "server", "code_exec",
-               "deserialize", "native", "dynamic_import")
+               "deserialize", "native", "dynamic_import", "env_write")
 EXPECTED_VERDICTS_PATH = REPO_ROOT / "docs" / "hypergumbo.claims.expected.json"
 
 # How the measured verdicts reach this document. The snapshot is the SAME file
@@ -271,10 +271,12 @@ def _render_independent_gate_section() -> list[str]:
         "that machinery: a stdlib-only AST walk of ``packages/*/src`` that "
         "finds every call site — and every non-call reference, such as a "
         "primitive handed to a callback — of a risky primitive family "
-        "(filesystem writes and deletes, process launch, network clients and "
-        "model downloads, servers, ``eval``/``exec``/``compile``, unsafe "
-        "deserialization, native-library loading, dynamic import of a "
-        "non-literal name) and requires each one to be listed in "
+        "(filesystem writes and deletes, raw-descriptor writes included; "
+        "process launch and signals by pid; network clients and model "
+        "downloads; servers; ``eval``/``exec``/``compile``; unsafe "
+        "deserialization; native-library loading; dynamic import of a "
+        "non-literal name; writes to the process environment, working "
+        "directory, umask or identity) and requires each one to be listed in "
         "``docs/hypergumbo.io-allowlist.yaml`` with its zone, the program it "
         "launches, its purpose and the commands that reach it. An unlisted "
         "site or a stale entry fails CI. It proves nothing about a site — an "
