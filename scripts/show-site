@@ -2,25 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Print the code around one I/O allowlist site, for a human reviewing the sheet.
 
-    scripts/show-site gitleaks:173 | safety_zones:535,551 | safety_zones:cache_rmtree
-    scripts/show-site hypergumbo_tracker.cli:40 | scripts/smart-test:120     (a line, lines, a name, a module, a path)
+    scripts/show-site gitleaks:173 | safety_zones:535,551 | safety_zones:cache_rmtree | hypergumbo_tracker.cli:40 | scripts/smart-test:120
 
-The module is the file under packages/*/src whose dotted name ends in the name given; a short
-name found in several packages takes the hypergumbo_core one and says so. Four blocks:
-
-1. What docs/hypergumbo.io-allowlist.yaml CLAIMS about the enclosing function, module defaults
-   filled in. A marked line without the claimed primitive's last name as a word gets a note.
-2. The whole ENCLOSING FUNCTION, decorators and docstring included, never truncated, the given
-   lines marked ">". The outermost def (a method, not a nested local), as the allowlist names it.
+(a line, lines, a function name, a full module name, a path). The module is the file under
+packages/*/src whose dotted name ends in the name given, hypergumbo_core first when several match
+(the header says so). Exit 2, reason on stderr, when nothing matches. Four blocks:
+1. What docs/hypergumbo.io-allowlist.yaml CLAIMS about the enclosing function, module defaults filled
+   in, sites with the same fields grouped; a marked line without the primitive's last name gets a note.
+2. The whole ENCLOSING FUNCTION (the outermost def, as the allowlist names it), decorators and
+   docstring included, never truncated, the given lines marked ">".
 3. What it READS from its own module: constants in full (where a target lives), same-file defs as
-   one line with their length, imports as the name and its line. Module-level bindings only; a name
-   the function rebinds (parameter, assignment, local import) is not a read unless declared global.
-   Known noise: a name used only in an annotation is listed like any other.
+   one line with their length, imports as the name and its line. Module-level bindings only, less
+   what the function binds itself (parameter, assignment, local import; `global` exempts) and a
+   name used only in an annotation.
 4. Who CALLS OR REFERENCES it, one hop, by name: every load of the name in packages/*/src and the
-   scripts/ files whose first line names python, tagged "call" or "ref" (handed around as a value:
-   a handler, a table entry, an injectable default), with the user's enclosing function, in file
-   and line order. Matched by name, not resolved. Every reference printed can be fed back in.
-   Exit 2, reason on stderr, when nothing matches.
+   scripts/ files whose first line names python, tagged "call" or "ref" (handed around as a value),
+   with the user's enclosing function, in file and line order; a load the user binds itself is its own
+   local. A call spanning lines prints whole, on one line. Every reference printed feeds back in.
 """
 import argparse
 import ast
@@ -37,30 +35,25 @@ Fn = namedtuple("Fn", "name start end node")
 
 
 def dotted(path: Path, root: Path) -> str:
-    """packages/<pkg>/src/a/b.py -> a.b; anything else -> its path under root."""
     parts = path.relative_to(root).parts
     return "/".join(parts) if parts[0] != "packages" else ".".join(parts[3:])[:-3].removesuffix(".__init__")
 
 
 def resolve(root: Path, ref: str) -> tuple[Path, str, str]:
-    """-> (file, display name, note)."""
     if "/" in ref:
         if not (root / ref).is_file():
             raise ValueError(f"no file {ref}")
         return root / ref, ref, ""
     found = {n: p for p in sorted(root.glob("packages/*/src/**/*.py")) if (n := dotted(p, root)) == ref or n.endswith("." + ref)}
     core = [n for n in found if n.startswith("hypergumbo_core.")]
-    if not found:
-        raise ValueError(f"no module named {ref}")
-    if len(found) > 1 and len(core) != 1:
-        raise ValueError(f"{ref} is ambiguous: " + ", ".join(found))
+    if not found or (len(found) > 1 and len(core) != 1):
+        raise ValueError(f"no module named {ref}" if not found else f"{ref} is ambiguous: " + ", ".join(found))
     name = core[0] if len(found) > 1 else next(iter(found))
     others = ", ".join(n for n in found if n != name)
     return found[name], name, f"also matches {others}" if others else ""
 
 
 def defs(body: list, prefix: str = ""):
-    """The outermost defs in order: functions, and methods inside classes."""
     for node in body:
         if isinstance(node, DEFS):
             yield Fn(prefix + node.name, min([node.lineno] + [d.lineno for d in node.decorator_list]), node.end_lineno, node)
@@ -68,12 +61,17 @@ def defs(body: list, prefix: str = ""):
             yield from defs(node.body, prefix + node.name + ".")
 
 
-def enclosing(tree: ast.Module, where) -> Fn | None:
-    """The def containing line `where` (an int), or the first def named `where` (a str)."""
+def enclosing(tree: ast.Module, where) -> Fn | None:  # the def containing line `where`, or the first def named `where`
     for fn in defs(tree.body):
         if (where in (fn.name, fn.name.rsplit(".", 1)[-1])) if isinstance(where, str) else (fn.start <= where <= fn.end):
             return fn
     return None
+
+
+def local_names(nodes: list) -> set:
+    local = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)} | {a.arg for a in nodes if isinstance(a, ast.arg)}
+    local |= {(al.asname or al.name).split(".")[0] for n in nodes if isinstance(n, (ast.Import, ast.ImportFrom)) for al in n.names}
+    return local - {g for n in nodes if isinstance(n, ast.Global) for g in n.names}
 
 
 def bindings(tree: ast.Module) -> dict:
@@ -81,14 +79,11 @@ def bindings(tree: ast.Module) -> dict:
     out = {}
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                out.setdefault((alias.asname or alias.name).split(".")[0], node)
+            out.update({(a.asname or a.name).split(".")[0]: node for a in node.names if (a.asname or a.name).split(".")[0] not in out})
         elif isinstance(node, (*DEFS, ast.ClassDef)):
             out.setdefault(node.name, node)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            for t in ast.walk(node):
-                if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store):
-                    out.setdefault(t.id, node)
+            out.update({t.id: node for t in ast.walk(node) if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store) and t.id not in out})
     return out
 
 
@@ -101,10 +96,14 @@ def claims(root: Path, module: str, fn: str, marked: list, lines: list) -> list:
     sites = [{**block, **s} for s in block.get("sites", []) if s["function"] == fn]
     if not sites:
         return [f"allowlist: no entry for {fn} in {module}"]
-    out = [f"allowlist says ({ALLOWLIST}):"]
+    groups: dict = {}
     for s in sites:
-        out.append(f"  {s['family']}  {s['primitive']} x{s.get('count', 1)}  zone {s.get('zone')}")
-        fields = (("target", s.get("target") or "(none)"), ("commands", "; ".join(s.get("commands") or []) or "(none)"), ("purpose", s.get("purpose")), ("FINDING", s.get("finding")))
+        key = (s["family"], s.get("zone"), s.get("target"), "; ".join(s.get("commands") or []), s.get("purpose"), s.get("finding"))
+        groups.setdefault(key, []).append(f"{s['primitive']} x{s.get('count', 1)}")
+    out = [f"allowlist says ({ALLOWLIST}):"]
+    for (family, zone, target, commands, purpose, finding), prims in groups.items():
+        out.append(f"  {family}  {', '.join(prims)}  zone {zone}")
+        fields = (("target", target or "(none)"), ("commands", commands or "(none)"), ("purpose", purpose), ("FINDING", finding))
         out += [f"    {label:<8}  {value}" for label, value in fields if value]
     tails = sorted({s["primitive"].split("[")[0].rsplit(".", 1)[-1] for s in sites})
     stale = [n for n in marked if not any(re.search(rf"\b{re.escape(t)}\b", lines[n - 1]) for t in tails)]
@@ -113,10 +112,8 @@ def claims(root: Path, module: str, fn: str, marked: list, lines: list) -> list:
 
 def reads(fn: Fn, tree: ast.Module, lines: list) -> list:
     nodes = list(ast.walk(fn.node))
-    local = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)} | {a.arg for a in nodes if isinstance(a, ast.arg)}
-    local |= {(al.asname or al.name).split(".")[0] for n in nodes if isinstance(n, (ast.Import, ast.ImportFrom)) for al in n.names}
-    local -= {g for n in nodes if isinstance(n, ast.Global) for g in n.names}
-    used = {n.id for n in nodes if isinstance(n, ast.Name)} - {fn.name} - local
+    in_annotation = {id(x) for a in [getattr(n, "annotation", None) for n in nodes] + [n.returns for n in nodes if isinstance(n, DEFS)] if a for x in ast.walk(a)}
+    used = {n.id for n in nodes if isinstance(n, ast.Name) and id(n) not in in_annotation} - {fn.name} - local_names(nodes)
     bound = sorted(((node, name) for name, node in bindings(tree).items() if name in used), key=lambda b: b[0].lineno)
     width, out = len(str(len(lines))), ["reads from this module:"]
     for node, name in bound:
@@ -131,8 +128,7 @@ def reads(fn: Fn, tree: ast.Module, lines: list) -> list:
 
 
 def callers(root: Path, name: str) -> list:
-    files = sorted(root.glob("packages/*/src/**/*.py"))
-    files += sorted(p for p in root.glob("scripts/*") if p.is_file() and b"python" in p.read_bytes().split(b"\n", 1)[0])
+    files = sorted(root.glob("packages/*/src/**/*.py")) + sorted(p for p in root.glob("scripts/*") if p.is_file() and b"python" in p.read_bytes().split(b"\n", 1)[0])
     out, notes, hits = ["called or referenced from (packages/*/src and scripts/, by name):"], [], []
     for path in files:
         text = path.read_text(encoding="utf-8")
@@ -141,11 +137,15 @@ def callers(root: Path, name: str) -> list:
         except SyntaxError:
             notes.append(f"  note: {dotted(path, root)} does not parse; not searched")
             continue
-        calls = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+        calls = {id(n.func): n for n in ast.walk(tree) if isinstance(n, ast.Call)}
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and getattr(node, "id", getattr(node, "attr", None)) == name:
-                fn = enclosing(tree, node.lineno)
-                hits.append((dotted(path, root), node.lineno, "call" if id(node) in calls else "ref", fn.name if fn else "<module>", text.splitlines()[node.lineno - 1].strip()))
+            if not (isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and getattr(node, "id", getattr(node, "attr", None)) == name):
+                continue
+            fn, call = enclosing(tree, node.lineno), calls.get(id(node))
+            if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node))):
+                continue
+            line = " ".join(ast.get_source_segment(text, call).split()) if call and call.end_lineno > call.lineno else text.splitlines()[node.lineno - 1].strip()
+            hits.append((dotted(path, root), node.lineno, "call" if call else "ref", fn.name if fn else "<module>", line))
     out += [f"  {where}:{n}  {tag} in {fn}  {line}" for where, n, tag, fn, line in sorted(hits)]
     return out + notes if hits else out + ["  none found"] + notes
 
