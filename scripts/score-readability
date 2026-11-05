@@ -73,22 +73,32 @@ THE MEASURES, and where each comes from.
                  back for one; counting them made this column the function's
                  length plus its docstring. A same-line or adjacent-line
                  dependency reads 0.
-* ``globals``    Same-file module-level names the function reads: names bound
-                 at module level by assignment, ``def`` or ``class`` (imports
-                 are not counted) that appear in the body and are not rebound
-                 there. A cheap proxy for the non-local reasoning no
-                 intra-function measure sees: a function that decodes three
-                 module-level regexes reads 3. The names are in the JSON
-                 (``global_names``). No threshold.
-* ``params``     Parameters, from the analyzer's ``meta["parameters"]``.
-* ``calls``      Call expressions in the body (fan-out by spelling, not by
-                 resolution: the single-file analysis cannot resolve what is
-                 defined elsewhere).
+* ``gloc``       Code lines of the same-file module-level bindings the
+                 function reads: names bound at module level by assignment,
+                 ``def`` or ``class`` (imports are not counted) that appear in
+                 the body and are not rebound there, each weighed by the code
+                 lines of its binding (as ``loc`` counts them, a definition's
+                 docstring excluded). A cheap proxy for the non-local reasoning
+                 no intra-function measure sees: a function that decodes three
+                 module-level regexes spanning thirty lines reads 30, where a
+                 count of names reads 3 and puts a one-line regex level with a
+                 twelve-line one. The JSON carries the count (``globals``),
+                 the names (``global_names``) and the lines
+                 (``global_lines``). No threshold; ``--sort globals`` orders
+                 by the lines.
+* ``params``     JSON only: parameters, from the analyzer's
+                 ``meta["parameters"]``; ``null`` when it stamped none.
+* ``calls``      JSON only: call expressions in the body (fan-out by
+                 spelling, not by resolution: the single-file analysis cannot
+                 resolve what is defined elsewhere). Neither of these two
+                 separated easy functions from hard ones on any panel sample,
+                 so the text table leaves them out.
 
 THE BAND. ``ok`` = no threshold exceeded, ``watch`` = one, ``split`` = two or
-more. ``--strict`` exits 1 when any function is not ``ok``, so the script can
-gate. A suspect ``dataflow`` never changes a band; it is a warning that the
-cell is a floor.
+more. A flag names the measure, its value and the threshold it crossed
+(``cognitive 16>15``), so a one-point margin is visible. ``--strict`` exits 1
+when any function is not ``ok``, so the script can gate. A suspect
+``dataflow`` never changes a band; it is a warning that the cell is a floor.
 
 THE FILE SUMMARY also reports ``module_lines``, the code lines outside every
 function and class, and ``module_bindings``, the module-level names, because
@@ -96,7 +106,7 @@ a file's difficulty may live there (dense regexes, lookup tables) and no
 function row shows it.
 
 WHAT IT DOES NOT SEE. Naming, comments, non-local reasoning beyond the
-``globals`` count (what a callee does), polymorphic dispatch, exceptions
+``gloc`` lines (what a callee does), polymorphic dispatch, exceptions
 thrown from elsewhere, async continuations: every other measure here is
 intra-function. Module-level code is counted as lines only.
 
@@ -163,6 +173,7 @@ class FunctionScore:
     reach: Optional[int]
     globals: int
     global_names: list[str]
+    global_lines: int
     params: Optional[int]
     calls: int
     flags: list[str] = field(default_factory=list)
@@ -363,30 +374,43 @@ def _target_names(node: Any, source: bytes) -> set[str]:
     return names
 
 
-def module_bindings(root: Any, source: bytes) -> set[str]:
-    """Names bound at module level by assignment, ``def`` or ``class``; imports excluded.
+def module_binding_lines(root: Any, source: bytes, lines: list[str]) -> dict[str, int]:
+    """Names bound at module level by assignment, ``def`` or ``class``, each with the
+    code lines of its binding; imports excluded.
 
-    Descends through module-level ``if``/``try``/``with``/loops, never into a
-    function or class body.
+    A definition's docstring is not code (as for ``loc``); a name bound more than
+    once (say in both arms of a module-level ``if``) sums its bindings. Descends
+    through module-level ``if``/``try``/``with``/loops, never into a function or
+    class body.
     """
-    names: set[str] = set()
+    bound: dict[str, int] = {}
     stack = list(root.children)
     while stack:
         node = stack.pop()
-        if node.type in _DEFINITIONS:
-            name = node.child_by_field_name("name")
-            if name is not None:
-                names.add(_text(name, source))
-            continue
         if node.type in _IMPORTS:
             continue
-        if node.type in _ASSIGNMENTS:
-            left = node.child_by_field_name("left")
-            if left is not None:
-                names |= _target_names(left, source)
+        if node.type in _DEFINITIONS or node.type in _ASSIGNMENTS:
+            size = _binding_size(node, lines)
+            for target in _binding_targets(node, source):
+                bound[target] = bound.get(target, 0) + size
             continue
         stack.extend(node.children)
-    return names
+    return bound
+
+
+def _binding_targets(node: Any, source: bytes) -> set[str]:
+    """The names a ``def``, ``class`` or assignment binds."""
+    if node.type in _DEFINITIONS:
+        name = node.child_by_field_name("name")
+        return set() if name is None else {_text(name, source)}
+    left = node.child_by_field_name("left")
+    return set() if left is None else _target_names(left, source)
+
+
+def _binding_size(node: Any, lines: list[str]) -> int:
+    """Code lines of one binding; a definition's docstring is not code (as for ``loc``)."""
+    doc_span = _docstring_span(node) if node.type in _DEFINITIONS else None
+    return len(code_lines(lines, node.start_point[0] + 1, node.end_point[0] + 1, doc_span))
 
 
 def _bound_in_body(fn_node: Any, source: bytes) -> set[str]:
@@ -428,7 +452,7 @@ def _bound_in_body(fn_node: Any, source: bytes) -> set[str]:
 
 
 def global_reads(fn_node: Any, source: bytes, module_names: set[str]) -> list[str]:
-    """Module-level names (see :func:`module_bindings`) the body reads and does not rebind."""
+    """Module-level names (see :func:`module_binding_lines`) the body reads and does not rebind."""
     body = fn_node.child_by_field_name("body")
     if body is None or not module_names:
         return []
@@ -520,18 +544,19 @@ def _analyzer_symbols(path: Path) -> dict[int, Any]:
 
 
 def flag(score: FunctionScore, thresholds: Thresholds) -> None:
+    """Set ``flags`` (each ``measure value>threshold``) and the band."""
     flags: list[str] = []
     if score.loc > thresholds.loc:
-        flags.append(f"loc>{thresholds.loc}")
+        flags.append(f"loc {score.loc}>{thresholds.loc}")
     if score.mccabe is not None and score.mccabe > thresholds.mccabe:
-        flags.append(f"mccabe>{thresholds.mccabe}")
+        flags.append(f"mccabe {score.mccabe}>{thresholds.mccabe}")
     if score.cognitive > thresholds.cognitive:
-        flags.append(f"cognitive>{thresholds.cognitive}")
+        flags.append(f"cognitive {score.cognitive}>{thresholds.cognitive}")
     if score.nesting > thresholds.nesting:
-        flags.append(f"nesting>{thresholds.nesting}")
+        flags.append(f"nesting {score.nesting}>{thresholds.nesting}")
     if (thresholds.dataflow is not None and score.dataflow is not None
             and score.dataflow > thresholds.dataflow):
-        flags.append(f"dataflow>{thresholds.dataflow}")
+        flags.append(f"dataflow {score.dataflow}>{thresholds.dataflow}")
     score.flags = flags
     score.band = "ok" if not flags else ("watch" if len(flags) == 1 else "split")
 
@@ -542,7 +567,8 @@ def score_file(path: Path, thresholds: Thresholds, *, dataflow: bool = True) -> 
     root = _parse(source)
     symbols = _analyzer_symbols(path)
     measurer = DataflowMeasurer() if dataflow else None
-    module_names = module_bindings(root, source)
+    binding_lines = module_binding_lines(root, source, lines)
+    module_names = set(binding_lines)
 
     scores: list[FunctionScore] = []
     definition_spans: list[tuple[int, int]] = []
@@ -571,6 +597,7 @@ def score_file(path: Path, thresholds: Thresholds, *, dataflow: bool = True) -> 
             nesting=max_nesting(node),
             dataflow=edges, dataflow_uncovered=uncovered, vars=variables, reach=reach,
             globals=len(names), global_names=names,
+            global_lines=sum(binding_lines[n] for n in names),
             params=params, calls=count_calls(node),
         )
         flag(score, thresholds)
@@ -606,9 +633,11 @@ def _summary(scores: list[FunctionScore]) -> dict[str, Any]:
     }
     for s in scores:
         for f in s.flags:
-            key = f.split(">")[0]
+            key = f.split(" ")[0]
             out["flag_counts"][key] = out["flag_counts"].get(key, 0) + 1
-    for attr in ("loc", "mccabe", "cognitive", "nesting", "dataflow", "reach", "globals"):
+    for attr in (
+        "loc", "mccabe", "cognitive", "nesting", "dataflow", "reach", "globals", "global_lines",
+    ):
         values = column(attr)
         out[attr] = {
             "max": max(values) if values else None,
@@ -624,9 +653,10 @@ def _sorted(scores: list[FunctionScore], key: str) -> list[FunctionScore]:
         return sorted(scores, key=lambda s: s.name)
     if key == "line":
         return sorted(scores, key=lambda s: s.start_line)
+    attr = "global_lines" if key == "globals" else key  # the text column, not the count
     return sorted(
         scores,
-        key=lambda s: (-(getattr(s, key) or 0), -s.cognitive, -s.loc, s.start_line),
+        key=lambda s: (-(getattr(s, attr) or 0), -s.cognitive, -s.loc, s.start_line),
     )
 
 
@@ -646,15 +676,13 @@ def render_text(report: FileScore, sort: str, top: Optional[int]) -> str:
         rows = rows[:top]
     width = max((len(s.name) for s in rows), default=4)
     header = (f"{'band':5} {'function':{width}} {'lines':>11} {'loc':>4} {'doc':>3} {'mcc':>4} "
-              f"{'cog':>4} {'nest':>4} {'dflow':>6} {'vars':>4} {'reach':>5} {'glob':>4} "
-              f"{'par':>3} {'calls':>5}  flags")
+              f"{'cog':>4} {'nest':>4} {'dflow':>6} {'vars':>4} {'reach':>5} {'gloc':>4}  flags")
     out = [f"{report.path}: {report.lines} lines, {len(report.functions)} functions", header]
     for s in rows:
         out.append(
             f"{s.band:5} {s.name:{width}} {s.start_line:>5}-{s.end_line:<5} {s.loc:>4} {s.doc:>3} "
             f"{_cell(s.mccabe):>4} {s.cognitive:>4} {s.nesting:>4} {_dataflow_cell(s):>6} "
-            f"{_cell(s.vars):>4} {_cell(s.reach):>5} {s.globals:>4} {_cell(s.params):>3} "
-            f"{s.calls:>5}  {', '.join(s.flags)}"
+            f"{_cell(s.vars):>4} {_cell(s.reach):>5} {s.global_lines:>4}  {', '.join(s.flags)}"
         )
     sm = report.summary
     suspect = f"; dataflow suspect {sm['dataflow_suspect']}" if sm["dataflow_suspect"] else ""
@@ -662,8 +690,11 @@ def render_text(report: FileScore, sort: str, top: Optional[int]) -> str:
         f"summary: ok {sm['bands']['ok']}, watch {sm['bands']['watch']}, split {sm['bands']['split']}"
         f"{suspect}; module lines {sm['module_lines']}, module bindings {sm['module_bindings']}; "
         + "; ".join(
-            f"{k} max {sm[k]['max']} median {sm[k]['median']}"
-            for k in ("loc", "mccabe", "cognitive", "nesting", "dataflow", "globals")
+            f"{label} max {sm[k]['max']} median {sm[k]['median']}"
+            for k, label in (
+                ("loc", "loc"), ("mccabe", "mccabe"), ("cognitive", "cognitive"),
+                ("nesting", "nesting"), ("dataflow", "dataflow"), ("global_lines", "global lines"),
+            )
             if sm[k]["max"] is not None
         )
     )

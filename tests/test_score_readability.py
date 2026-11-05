@@ -59,6 +59,10 @@ GLOBALS_FIXTURE = '''import re
 PATTERN = re.compile("x")
 LIMIT = 3
 UNUSED = 0
+TABLE = {
+    "a": 1,
+    "b": 2,
+}
 
 
 def helper(v):
@@ -79,6 +83,10 @@ def uses_globals(s):
 
 def no_globals(s):
     return s
+
+
+def uses_table(k):
+    return TABLE[k]
 '''
 
 CAPTURE_FIXTURE = '''def outer(regex, flags):
@@ -199,18 +207,40 @@ def test_globals_docstring_and_reach_on_a_module_with_bindings(mod, tmp_path) ->
     # PATTERN and helper are module names read; LIMIT is rebound in the body,
     # re is an import, found is local.
     assert (uses.globals, uses.global_names) == (2, ["PATTERN", "helper"])
-    assert by_name["no_globals"].globals == 0
+    # What a reader of uses_globals has to look at elsewhere in the file:
+    # PATTERN is one code line, helper is two (def, return).
+    assert uses.global_lines == 3
+    table = by_name["uses_table"]
+    assert (table.globals, table.global_names, table.global_lines) == (1, ["TABLE"], 4)
+    assert (by_name["no_globals"].globals, by_name["no_globals"].global_lines) == (0, 0)
     assert by_name["helper"].globals == 0
     # def, found =, LIMIT =, return: the four-line docstring and the comment
     # and the blank line are not code.
     assert (uses.loc, uses.doc) == (4, 4)
-    # found defined at 18 and read at 21: one code line (LIMIT = 1) between
-    # them; the blank line 19 does not count.
+    # found defined at 22 and read at 25: one code line (LIMIT = 1) between
+    # them; the blank line 23 does not count.
     assert uses.reach == 1
-    # Module-level: the import and three assignments are code outside defs;
-    # the six bindings exclude the import.
-    assert report.summary["module_lines"] == 4
-    assert report.summary["module_bindings"] == 6
+    # Module-level: the import, three one-line assignments and the four-line
+    # TABLE literal are code outside defs; the eight bindings exclude the import.
+    assert report.summary["module_lines"] == 8
+    assert report.summary["module_bindings"] == 8
+    assert report.summary["global_lines"] == {"max": 4, "median": 1.5}
+
+
+def test_sort_globals_orders_by_global_lines_and_the_table_drops_params_and_calls(
+    mod, tmp_path, capsys,
+) -> None:
+    path = tmp_path / "globals.py"
+    path.write_text(GLOBALS_FIXTURE)
+    assert mod.main([str(path), "--sort", "globals", "--top", "2"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    # uses_table reads four module lines, uses_globals three.
+    assert [line.split()[1] for line in out[2:4]] == ["uses_table", "uses_globals"]
+    assert out[1].split() == [
+        "band", "function", "lines", "loc", "doc", "mcc", "cog", "nest", "dflow", "vars",
+        "reach", "gloc", "flags",
+    ]
+    assert out[-1].endswith("global lines max 4 median 1.5")
 
 
 def test_a_nested_function_reading_a_captured_variable_is_counted_once(mod, tmp_path) -> None:
@@ -244,7 +274,8 @@ def test_a_coverage_gap_marks_dataflow_suspect(mod, sample, monkeypatch, capsys)
 def test_flags_and_bands_follow_the_thresholds(mod, sample) -> None:
     report = mod.score_file(sample, mod.Thresholds(cognitive=6, nesting=2, loc=10))
     by_name = {s.name: s for s in report.functions}
-    assert by_name["Widget.loop"].flags == ["loc>10", "cognitive>6", "nesting>2"]
+    # A flag carries the measured value beside the threshold it crossed.
+    assert by_name["Widget.loop"].flags == ["loc 12>10", "cognitive 7>6", "nesting 3>2"]
     assert by_name["Widget.loop"].band == "split"
     assert by_name["Widget.deco"].flags == []
     assert by_name["Widget.deco"].band == "ok"
@@ -252,7 +283,9 @@ def test_flags_and_bands_follow_the_thresholds(mod, sample) -> None:
     by_name = {s.name: s for s in report.functions}
     assert by_name["plain"].band == "ok"
     assert by_name["Widget.deco"].band == "watch"
-    assert by_name["Widget.deco"].flags == ["dataflow>3"]
+    assert by_name["Widget.deco"].flags == ["dataflow 4>3"]
+    # deco's 4 and loop's 13 both exceed 3; the count keys on the measure name.
+    assert report.summary["flag_counts"] == {"dataflow": 2}
 
 
 def test_cli_text_sorts_by_cognitive_and_strict_gates(mod, sample, capsys) -> None:
@@ -287,7 +320,11 @@ def test_cli_json_carries_the_whole_panel(mod, sample, capsys) -> None:
     assert file["summary"]["cognitive"] == {"max": 7, "median": 3.5}
     assert file["summary"]["dataflow_suspect"] == 0
     assert file["functions"][0]["global_names"] == []
+    assert file["functions"][0]["global_lines"] == 0
     assert file["functions"][0]["dataflow_uncovered"] == 0
+    # params and calls left the text table; the JSON still carries them.
+    assert file["functions"][0]["params"] == 4 and file["functions"][0]["calls"] == 0
+    assert file["functions"][2]["flags"] == ["dataflow 13>4"]  # Widget.loop
 
 
 def test_no_dataflow_skips_the_ddg_and_a_syntax_error_still_scores(mod, tmp_path, capsys) -> None:
