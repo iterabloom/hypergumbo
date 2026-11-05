@@ -11,12 +11,18 @@ Read the flags, then the function.
 
 THE MEASURES, and where each comes from.
 
-* ``loc``        Code lines in the function's span: non-blank, non-comment,
-                 and NOT the docstring, which is reported beside it as
-                 ``doc``. The strongest single predictor of reading time and
-                 defect density; most of McCabe's apparent power is this
-                 measure in a costume. A docstring helps the reader, so it is
-                 shown and never charged. Threshold 50 (``--max-loc``).
+* ``loc``        Logical code lines in the function's span: non-blank,
+                 non-comment, NOT the docstring, which is reported beside it
+                 as ``doc``, and NOT a line whose first token only continues
+                 a string or closes a bracket (the lines of a wrapped message,
+                 a string-keyed literal or a wrapped call). Those are read,
+                 not reasoned about: every loc flag on the middle-heavy
+                 panel sample rested on them. The physical count is in the
+                 JSON (``loc_physical``). The strongest single predictor of
+                 reading time and defect density; most of McCabe's apparent
+                 power is this measure in a costume. A docstring helps the
+                 reader, so it is shown and never charged. Threshold 50
+                 (``--max-loc``).
 * ``mccabe``     McCabe cyclomatic complexity as hypergumbo's Python analyzer
                  stamps it on the symbol (``Symbol.cyclomatic_complexity``):
                  1 + if/elif, loops, except handlers, ``and``/``or`` operands
@@ -30,9 +36,11 @@ THE MEASURES, and where each comes from.
                  and ``else`` (including a loop's or a ``try``'s ``else``);
                  +1 for each run of one boolean operator (``a and b and c`` is
                  one, ``a and b or c`` is two; parentheses start a new run);
-                 +1 for each direct recursive call. Nesting rises inside the
-                 bodies of those constructs and inside nested ``def``s and
-                 lambdas. Comprehensions, ``with``, ``try``/``finally`` and
+                 +1 for each direct recursive call: a call by bare name for
+                 a function, ``self.``/``cls.`` plus the name for a method
+                 (``other.rules()`` inside ``rules`` is somebody else's
+                 function). Nesting rises inside the bodies of those
+                 constructs and inside nested ``def``s and lambdas. Comprehensions, ``with``, ``try``/``finally`` and
                  ``assert`` count nothing, as in the specification. Threshold
                  15 (``--max-cognitive``), Sonar's default.
 * ``nesting``    Deepest statement nesting in the body: ``if`` (one level for
@@ -76,12 +84,16 @@ THE MEASURES, and where each comes from.
 * ``gloc``       Code lines of the same-file module-level bindings the
                  function reads: names bound at module level by assignment,
                  ``def`` or ``class`` (imports are not counted) that appear in
-                 the body and are not rebound there, each weighed by the code
-                 lines of its binding (as ``loc`` counts them, a definition's
-                 docstring excluded). A cheap proxy for the non-local reasoning
-                 no intra-function measure sees: a function that decodes three
-                 module-level regexes spanning thirty lines reads 30, where a
-                 count of names reads 3 and puts a one-line regex level with a
+                 the body and are not rebound there. A data binding (a regex,
+                 a table, a constant) weighs its code lines, string lines
+                 included, because its text is what the reader decodes; a
+                 ``def`` or ``class`` weighs one line, because a caller reads
+                 a name and a signature, not a body (charging bodies made the
+                 two easiest functions of a file the highest on this column).
+                 A cheap proxy for the non-local reasoning no intra-function
+                 measure sees: a function that decodes three module-level
+                 regexes spanning thirty lines reads 30, where a count of
+                 names reads 3 and puts a one-line regex level with a
                  twelve-line one. The JSON carries the count (``globals``),
                  the names (``global_names``) and the lines
                  (``global_lines``). No threshold; ``--sort globals`` orders
@@ -106,9 +118,16 @@ a file's difficulty may live there (dense regexes, lookup tables) and no
 function row shows it.
 
 WHAT IT DOES NOT SEE. Naming, comments, non-local reasoning beyond the
-``gloc`` lines (what a callee does), polymorphic dispatch, exceptions
-thrown from elsewhere, async continuations: every other measure here is
-intra-function. Module-level code is counted as lines only.
+``gloc`` lines (what a callee does, what an imported collaborator means),
+polymorphic dispatch, exceptions thrown from elsewhere, async continuations:
+every other measure here is intra-function. Module-level code is counted as
+lines only. KNOWN MEASURE GAP: cursor and offset arithmetic. A short loop that
+rewrites a few index variables (``j += w; i = j + 1; j += 1``) scores 0 on
+every thresholded measure, and the middle-heavy panel's one miss, rated 4 by
+all three judges, was exactly that shape at cognitive 14 and mccabe 9. Only
+``dataflow`` relative to ``loc`` hints at it (52 edges on 22 lines), and it
+carries no threshold. No threshold change catches it without false alarms
+elsewhere; it waits for a measure, not a recalibration.
 
 USAGE::
 
@@ -122,9 +141,11 @@ Runs on the installed hypergumbo (the editable checkout in this repo).
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import statistics
 import sys
+import tokenize
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -150,6 +171,13 @@ _NESTING_STATEMENTS = frozenset({
 _DEFINITIONS = frozenset({"function_definition", "class_definition"})
 _IMPORTS = frozenset({"import_statement", "import_from_statement", "future_import_statement"})
 _ASSIGNMENTS = frozenset({"assignment", "augmented_assignment"})
+# A line whose FIRST token is one of these is read, not reasoned about.
+_CLOSERS = frozenset({")", "]", "}"})
+_STRING_TOKENS = frozenset({tokenize.STRING, getattr(tokenize, "FSTRING_START", -1)})
+_SKIPPED_TOKENS = frozenset({
+    tokenize.ENCODING, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT,
+    tokenize.COMMENT,
+})
 _SORT_KEYS = (
     "cognitive", "mccabe", "nesting", "loc", "dataflow", "reach", "globals", "line", "name",
 )
@@ -163,6 +191,7 @@ class FunctionScore:
     start_line: int
     end_line: int
     loc: int
+    loc_physical: int
     doc: int
     mccabe: Optional[int]
     cognitive: int
@@ -272,22 +301,59 @@ def code_lines(
     return out
 
 
-def _is_recursive_call(call: Any, simple_name: str, source: bytes) -> bool:
+def non_logical_lines(source: bytes) -> set[int]:
+    """Lines whose first token only continues a string or closes a bracket.
+
+    Tokenised once per file. A file the tokenizer gives up on part-way (an
+    unclosed bracket at the end) keeps the lines classified before that point.
+    """
+    first: dict[int, tuple[int, str]] = {}
+    try:
+        for tok in tokenize.tokenize(io.BytesIO(source).readline):
+            if tok.type not in _SKIPPED_TOKENS:
+                first.setdefault(tok.start[0], (tok.type, tok.string))
+    except (tokenize.TokenError, SyntaxError):
+        pass
+    return {
+        line for line, (ttype, text) in first.items()
+        if ttype in _STRING_TOKENS or (ttype == tokenize.OP and text in _CLOSERS)
+    }
+
+
+def _is_method(fn_node: Any) -> bool:
+    """True when the function's enclosing block is a class body (decorators looked through)."""
+    parent = fn_node.parent
+    if parent is not None and parent.type == "decorated_definition":
+        parent = parent.parent
+    return (
+        parent is not None and parent.type == "block"
+        and parent.parent is not None and parent.parent.type == "class_definition"
+    )
+
+
+def _is_recursive_call(call: Any, simple_name: str, source: bytes, is_method: bool) -> bool:
+    """A bare-name call for a function; ``self.``/``cls.`` plus the name for a method."""
     fn = call.child_by_field_name("function")
     if fn is None:
         return False
-    if fn.type == "identifier":
-        return _text(fn, source) == simple_name
-    if fn.type == "attribute":
-        attr = fn.child_by_field_name("attribute")
-        return attr is not None and _text(attr, source) == simple_name
-    return False
+    if not is_method:
+        return fn.type == "identifier" and _text(fn, source) == simple_name
+    if fn.type != "attribute":
+        return False
+    receiver = fn.child_by_field_name("object")
+    attr = fn.child_by_field_name("attribute")
+    return (
+        receiver is not None and receiver.type == "identifier"
+        and _text(receiver, source) in ("self", "cls")
+        and attr is not None and _text(attr, source) == simple_name
+    )
 
 
 def cognitive_complexity(fn_node: Any, source: bytes) -> int:
     """SonarSource cognitive complexity of one function body; see the module docstring."""
     name_node = fn_node.child_by_field_name("name")
     simple_name = _text(name_node, source) if name_node is not None else ""
+    is_method = _is_method(fn_node)
     body = fn_node.child_by_field_name("body")
     if body is None:
         return 0
@@ -310,7 +376,7 @@ def cognitive_complexity(fn_node: Any, source: bytes) -> int:
             )
             if not same_run:
                 total += 1
-        elif kind == "call" and _is_recursive_call(node, simple_name, source):
+        elif kind == "call" and _is_recursive_call(node, simple_name, source, is_method):
             total += 1
         for child in node.children:
             child_nesting = nesting
@@ -376,10 +442,12 @@ def _target_names(node: Any, source: bytes) -> set[str]:
 
 def module_binding_lines(root: Any, source: bytes, lines: list[str]) -> dict[str, int]:
     """Names bound at module level by assignment, ``def`` or ``class``, each with the
-    code lines of its binding; imports excluded.
+    weight of its binding; imports excluded.
 
-    A definition's docstring is not code (as for ``loc``); a name bound more than
-    once (say in both arms of a module-level ``if``) sums its bindings. Descends
+    A data binding weighs its code lines (string lines included: a regex's text is
+    what a reader decodes); a ``def`` or ``class`` weighs one line, because a
+    caller reads a name and a signature, not a body. A name bound more than once
+    (say in both arms of a module-level ``if``) sums its bindings. Descends
     through module-level ``if``/``try``/``with``/loops, never into a function or
     class body.
     """
@@ -408,9 +476,10 @@ def _binding_targets(node: Any, source: bytes) -> set[str]:
 
 
 def _binding_size(node: Any, lines: list[str]) -> int:
-    """Code lines of one binding; a definition's docstring is not code (as for ``loc``)."""
-    doc_span = _docstring_span(node) if node.type in _DEFINITIONS else None
-    return len(code_lines(lines, node.start_point[0] + 1, node.end_point[0] + 1, doc_span))
+    """Code lines of a data binding, string lines included; a ``def``/``class`` weighs one line."""
+    if node.type in _DEFINITIONS:
+        return 1
+    return len(code_lines(lines, node.start_point[0] + 1, node.end_point[0] + 1))
 
 
 def _bound_in_body(fn_node: Any, source: bytes) -> set[str]:
@@ -569,6 +638,7 @@ def score_file(path: Path, thresholds: Thresholds, *, dataflow: bool = True) -> 
     measurer = DataflowMeasurer() if dataflow else None
     binding_lines = module_binding_lines(root, source, lines)
     module_names = set(binding_lines)
+    skipped = non_logical_lines(source)
 
     scores: list[FunctionScore] = []
     definition_spans: list[tuple[int, int]] = []
@@ -590,7 +660,7 @@ def score_file(path: Path, thresholds: Thresholds, *, dataflow: bool = True) -> 
         names = global_reads(node, source, module_names)
         score = FunctionScore(
             name=name, start_line=start, end_line=end,
-            loc=len(own_lines),
+            loc=len(own_lines - skipped), loc_physical=len(own_lines),
             doc=0 if doc_span is None else doc_span[1] - doc_span[0] + 1,
             mccabe=symbol.cyclomatic_complexity if symbol is not None else None,
             cognitive=cognitive_complexity(node, source),
