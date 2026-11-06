@@ -58,6 +58,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Hypergumbo's own claims
 
+- **The I/O allowlist says cache eviction runs after `survey`**, not under `cache-clear`.
 - **The downloaded gitleaks archive is written through a tmp-zone wrapper**, not an install-zone one.
 - **`add-extras` installs embeddings as `install-embeddings` does**: pinned, upgrading outdated copies, keeping onnxruntime.
 - **The 18 self-claims are qualifiable again** (INV-hotib). Three slots the shipped tree calls into had neither a row nor a completeness grant, so every verdict read `inconclusive` from the 2026-11-03 cron on while SECURITY.md still said `confirmed_with_caveats`: `datetime.timezone` (a dated grant in `python.yaml`), `textual.widgets.Select` and the first-party generated `hypergumbo_core.scip._generated.scip_pb2` (dated grants in `docs/io-primitives-overlays/hypergumbo-self.yaml`). SECURITY.md's untyped-receiver figure is re-measured: 10,395 of 14,024 method call sites on the shipped scope.
