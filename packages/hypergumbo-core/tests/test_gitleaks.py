@@ -328,6 +328,65 @@ class TestInstallGitleaks:
 
         assert result is False
 
+    def test_each_install_write_lands_in_the_zone_its_wrapper_names(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """verify-claims reads a write's zone from the wrapper's NAME, never its path.
+
+        So every wrapper the install calls must name the zone its path lands
+        in: tmp_artifact_* inside the extraction dir, install_artifact_*
+        inside the install dir. The downloaded archive was written into the
+        extraction dir through an install_artifact wrapper.
+        """
+        import io
+        import tarfile
+        from contextlib import contextmanager
+
+        payload = b"#!/bin/sh\n"
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            info = tarfile.TarInfo(gitleaks.GITLEAKS_BINARY_NAME)
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
+        install_dir = tmp_path / "bin"
+        monkeypatch.setattr(gitleaks, "GITLEAKS_INSTALL_DIR", install_dir)
+        monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", install_dir / gitleaks.GITLEAKS_BINARY_NAME)
+
+        calls: list[tuple[str, Path]] = []
+        scratch: list[Path] = []
+        real_dir = gitleaks.tmp_artifact_dir
+
+        @contextmanager
+        def recording_dir(**kwargs):
+            with real_dir(**kwargs) as d:
+                scratch.append(Path(d))
+                yield d
+
+        def recording(name, real):
+            def wrapper(*args, **kwargs):
+                calls.append((name, Path(args[1] if name == "install_artifact_copy" else args[0])))
+                return real(*args, **kwargs)
+            return wrapper
+
+        monkeypatch.setattr(gitleaks, "tmp_artifact_dir", recording_dir)
+        for name in dir(gitleaks):
+            if name.startswith(("install_artifact_", "tmp_artifact_")) and name != "tmp_artifact_dir":
+                monkeypatch.setattr(gitleaks, name, recording(name, getattr(gitleaks, name)))
+
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = buf.getvalue()
+        with patch.object(gitleaks, "_get_download_url",
+                          return_value=("https://example.invalid/g.tar.gz", "gitleaks_8.30.0_linux_x64.tar.gz")), \
+                patch.object(gitleaks, "urlopen", return_value=response):
+            assert install_gitleaks(quiet=True) is True
+
+        assert (install_dir / gitleaks.GITLEAKS_BINARY_NAME).read_bytes() == payload
+        assert len(scratch) == 1 and calls, "the install never reached the wrappers"
+        for name, target in calls:
+            root = scratch[0] if name.startswith("tmp_artifact_") else install_dir
+            assert target == root or target.is_relative_to(root), (name, target, root)
+        assert ("tmp_artifact_write_bytes", scratch[0] / "gitleaks_8.30.0_linux_x64.tar.gz") in calls
+
 
 class TestPlatformArchEdgeCases:
     """Tests for platform/architecture edge cases."""

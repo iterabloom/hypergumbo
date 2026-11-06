@@ -15,7 +15,8 @@ Most wrappers are otherwise transparent — they delegate to
 ``np.save`` etc. with no behavior change relative to a direct call.
 The ZONE-ENFORCED ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
 :func:`cache_write_zip`, :func:`cache_rename` (both endpoints),
-:func:`tmp_artifact_rmtree`, :func:`tmp_artifact_extract` (``dest`` and
+:func:`tmp_artifact_write_bytes`, :func:`tmp_artifact_rmtree`,
+:func:`tmp_artifact_extract` (``dest`` and
 every archive member; non-regular tar members refused) and
 :func:`install_artifact_unlink` first resolve the path and raise
 :class:`SafetyZoneViolation` if it escapes its zone root (symlinks
@@ -32,14 +33,15 @@ How to use — the full wrapper inventory, by zone:
   :func:`user_out_open_json_dump` (the ``with open(...) as f:
   json.dump(...)`` pattern), :func:`user_out_open_json_dump_gzip`,
   :func:`user_out_mkdir`.
-- **tmp_artifact** (ephemeral ``/tmp/`` — sketch comparisons, grammar
-  build dirs): :func:`tmp_artifact_write`, :func:`tmp_artifact_mkdir`,
-  :func:`tmp_artifact_dir` (a context-managed scratch directory), and the
-  zone-enforced :func:`tmp_artifact_rmtree` and :func:`tmp_artifact_extract`.
-- **install_artifact** (downloaded binaries, archive contents):
-  :func:`install_artifact_write_bytes`, :func:`install_artifact_copy`,
-  :func:`install_artifact_mkdir`, :func:`install_artifact_chmod`, and the
-  zone-enforced :func:`install_artifact_unlink`.
+- **tmp_artifact** (ephemeral ``/tmp/`` — grammar build dirs, the gitleaks
+  download and its extraction): :func:`tmp_artifact_write`,
+  :func:`tmp_artifact_mkdir`, :func:`tmp_artifact_dir` (a context-managed
+  scratch directory), and the zone-enforced :func:`tmp_artifact_write_bytes`,
+  :func:`tmp_artifact_rmtree` and :func:`tmp_artifact_extract`.
+- **install_artifact** (the installed gitleaks binary under ``~/.local/bin``):
+  :func:`install_artifact_copy`, :func:`install_artifact_mkdir`,
+  :func:`install_artifact_chmod`, and the zone-enforced
+  :func:`install_artifact_unlink`.
 
 - **repo_inspection** — not writes at all. This family wraps SUBPROCESS
   launches against the analysed repository so the taint pass can bin them
@@ -363,10 +365,11 @@ def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no c
 def user_out_write(path: Path, content: str) -> None:
     """Write content to a user-supplied ``--out`` / ``--output`` path.
 
-    SAFETY ZONE: ``user_out``. Used by ``cmd_slice`` / ``cmd_search`` /
-    ``cmd_io_boundaries`` and similar runtime CLI subcommands that
-    accept a user-specified destination. The user typed the path; they
-    own it.
+    SAFETY ZONE: ``user_out``. Used by ``slice --files --output``,
+    ``backend-agreement --out`` and the handler-slice index that ``run``
+    writes beside its ``--out``. The user typed the path; they own it.
+    (``run_survey`` also reaches this wrapper when no ``--out`` was given and
+    the path is the results cache: a mislabel, INV-supod.)
     """
     _safety_zone_barrier()
     path.write_text(content)
@@ -446,13 +449,31 @@ def cache_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) ->
 def tmp_artifact_write(path: Path, content: str) -> None:
     """Write content to an ephemeral path under ``/tmp/`` or a tempdir.
 
-    SAFETY ZONE: ``tmp_artifact``. Used by sketch budget-comparison
-    output and tree-sitter grammar build scaffolding. These writes are
-    intentionally ephemeral — the OS clears them on reboot — and not
-    audit-load-bearing the way cache writes are.
+    SAFETY ZONE: ``tmp_artifact``. Used by ``build_grammar`` for the
+    tree-sitter package scaffolding (``__init__.py``, ``binding.c``,
+    ``setup.py``). These writes are intentionally ephemeral — the OS clears
+    them on reboot — and not audit-load-bearing the way cache writes are.
     """
     _safety_zone_barrier()
     path.write_text(content)
+
+
+def tmp_artifact_write_bytes(path: Path, data: bytes) -> None:
+    """Write downloaded bytes into the tmp zone.
+
+    SAFETY ZONE: ``tmp_artifact``. Used by ``install-gitleaks`` to land the
+    release archive inside a :func:`tmp_artifact_dir` before
+    :func:`tmp_artifact_extract` unpacks it; only the extracted binary
+    reaches the install zone (:func:`install_artifact_copy`). The archive
+    used to go through an ``install_artifact`` wrapper, so verify-claims
+    counted a scratch write as an install.
+
+    ENFORCED, though its one caller's path is inside the zone by
+    construction: the check makes the name true of every future caller too.
+    """
+    _safety_zone_barrier()
+    _require_within_zone(path, _tmp_zone_root(), "tmp_artifact")
+    path.write_bytes(data)
 
 
 def tmp_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
@@ -590,24 +611,12 @@ def install_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool 
     an extras install dir).
 
     SAFETY ZONE: ``install_artifact``. INV-zudak: pairs with
-    :func:`install_artifact_write_bytes` /
     :func:`install_artifact_copy` so the install zone has a complete
     sink surface for verify-claims. Used by ``install-gitleaks`` to
     scaffold ``GITLEAKS_INSTALL_DIR`` before landing the binary.
     """
     _safety_zone_barrier()
     path.mkdir(parents=parents, exist_ok=exist_ok)
-
-
-def install_artifact_write_bytes(path: Path, data: bytes) -> None:
-    """Write a downloaded archive's bytes to disk during install flow.
-
-    SAFETY ZONE: ``install_artifact``. Used during ``install-gitleaks``
-    to land the downloaded release archive before extraction. The path
-    is typically under ``/tmp/`` or the install dir.
-    """
-    _safety_zone_barrier()
-    path.write_bytes(data)
 
 
 def install_artifact_copy(src: Path, dst: Path) -> None:

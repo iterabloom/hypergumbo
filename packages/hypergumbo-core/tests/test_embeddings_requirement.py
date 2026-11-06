@@ -101,3 +101,49 @@ def test_an_outdated_install_says_it_is_upgrading(capsys: pytest.CaptureFixture[
             patch.object(subprocess, "run", return_value=ok):
         assert cmd_install_embeddings(_args(quiet=False)) == 0
     assert "5.2.2 is older than the required" in capsys.readouterr().out
+
+
+# --- add-extras / remove-extras: the same install as install-embeddings ------
+# The umbrella's embeddings row installed "sentence-transformers onnxruntime"
+# unpinned and skipped any importable version, so it neither reached the
+# PYSEC-2026-4164 fix nor moved an installed 5.2.2 off it; remove-extras then
+# uninstalled onnxruntime, which hypergumbo never imports and the tracker's
+# dedup extra needs.
+
+
+def _embeddings_row():
+    (row,) = [r for r in cli._extras_components() if r[0] == "embeddings"]
+    return row
+
+
+@pytest.mark.parametrize(("available", "version", "cached"), [
+    (True, "5.7.0", True), (True, "5.2.2", True), (True, "5.7.0", False),
+    (False, "unknown", True), (False, "unknown", False),
+])
+def test_the_umbrella_row_answers_what_install_embeddings_check_answers(
+    available: bool, version: str, cached: bool,
+) -> None:
+    with patch.object(cli, "_is_embeddings_available", return_value=available), \
+            patch.object(cli, "_get_embeddings_version", return_value=version), \
+            patch.object(cli, "_embedding_models_cached", return_value=cached):
+        installed = _embeddings_row()[1]()
+        check_passes = cmd_install_embeddings(_args(check=True)) == 0
+    assert installed is check_passes
+
+
+def test_add_extras_upgrades_an_outdated_install_to_the_one_requirement() -> None:
+    ok = MagicMock(returncode=0, stderr=b"")
+    args = argparse.Namespace(check=False, skip="grammars,gitleaks,rust-analyzer", quiet=True)
+    with patch.object(cli, "_is_embeddings_available", return_value=True), \
+            patch.object(cli, "_get_embeddings_version", return_value="5.2.2"), \
+            patch.object(cli, "_embedding_models_cached", return_value=True), \
+            patch.object(subprocess, "run", return_value=ok) as run:
+        assert cli.cmd_add_extras(args) == 0
+    assert run.call_args.args[0][1:] == ["-m", "pip", "install", EMBEDDINGS_REQUIREMENT]
+
+
+def test_remove_extras_removes_what_install_embeddings_installs() -> None:
+    ok = MagicMock(returncode=0)
+    with patch.object(subprocess, "run", return_value=ok) as run:
+        assert _embeddings_row()[3](quiet=True) is True
+    assert run.call_args.args[0][1:] == ["-m", "pip", "uninstall", "-y", "sentence-transformers"]

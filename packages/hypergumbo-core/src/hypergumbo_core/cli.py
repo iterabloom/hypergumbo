@@ -3949,7 +3949,7 @@ def _extras_components() -> list[tuple[str, Callable[..., Any], Callable[..., An
         ),
         (
             "embeddings",
-            cli_mod._is_embeddings_available,
+            cli_mod._embeddings_ready,
             cli_mod._install_embeddings_impl,
             cli_mod._uninstall_embeddings_impl,
         ),
@@ -4123,14 +4123,14 @@ def _install_embeddings_impl(quiet: bool = False) -> bool:
     """
     # The real install_embeddings function is defined in this file;
     # this adapter is here so _extras_components can reference it via
-    # module lookup and keep the table declarative.
+    # module lookup and keep the table declarative. It installs what
+    # install-embeddings installs: EMBEDDINGS_REQUIREMENT and nothing else.
     import subprocess  # nosec B404 — pip install
     import sys
 
     if not quiet:
         print("Installing embedding dependencies...")
-    cmd = [sys.executable, "-m", "pip", "install",
-           "sentence-transformers", "onnxruntime"]
+    cmd = [sys.executable, "-m", "pip", "install", EMBEDDINGS_REQUIREMENT]
     try:
         result = subprocess.run(  # nosec B603  # noqa: S603
             cmd, capture_output=True, timeout=600.0,
@@ -4162,8 +4162,10 @@ def _uninstall_embeddings_impl(quiet: bool = False) -> bool:
 
     if not quiet:
         print("Removing embedding dependencies...")
-    cmd = [sys.executable, "-m", "pip", "uninstall", "-y",
-           "sentence-transformers", "onnxruntime"]
+    # sentence-transformers only, as uninstall-embeddings: onnxruntime is
+    # not this row's to remove (hypergumbo-core never imports it;
+    # hypergumbo-tracker's dedup extra does).
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
     try:
         result = subprocess.run(  # nosec B603  # noqa: S603
             cmd, capture_output=True, timeout=300.0,
@@ -5052,6 +5054,20 @@ def _get_embeddings_version() -> str:
         return sentence_transformers.__version__  # pragma: no cover
     except (ImportError, AttributeError):  # pragma: no cover
         return "unknown"  # pragma: no cover
+
+
+def _embeddings_ready() -> bool:
+    """The add-extras row's "installed": what ``install-embeddings --check`` passes on.
+
+    Importable, at ``EMBEDDINGS_REQUIREMENT``, and the model weights fetched.
+    Importable alone let add-extras skip a 5.2.2 install the requirement
+    exists to move off (PYSEC-2026-4164). Like the rust-analyzer row's
+    predicate, this asks for readiness, so ``remove-extras`` skips an install
+    this says is not ready.
+    """
+    return (_is_embeddings_available()
+            and _embeddings_version_ok(_get_embeddings_version())
+            and _embedding_models_cached())
 
 
 def cmd_install_embeddings(args: argparse.Namespace) -> int:

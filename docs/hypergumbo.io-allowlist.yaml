@@ -143,7 +143,7 @@ modules:
       primitive: subprocess.run
       family: process
       count: 1
-      target: python -m pip install sentence-transformers onnxruntime
+      target: python -m pip install sentence-transformers~=5.7
       commands:
       - add-extras
       purpose: install the embedding extras (pip; downloads from PyPI)
@@ -160,7 +160,7 @@ modules:
       primitive: subprocess.run
       family: process
       count: 1
-      target: python -m pip uninstall -y sentence-transformers onnxruntime
+      target: python -m pip uninstall -y sentence-transformers
       commands:
       - remove-extras
       purpose: remove the embedding extras
@@ -410,15 +410,6 @@ modules:
       - uninstall-gitleaks
       - remove-extras
       purpose: zone-enforced unlink inside ~/.local/bin
-    - function: install_artifact_write_bytes
-      primitive: '*.write_bytes'
-      family: fs_write
-      count: 1
-      zone: install_artifact
-      commands:
-      - install-gitleaks
-      - add-extras
-      purpose: 'install_artifact wrapper: write the gitleaks binary'
     - function: repo_inspect_git
       primitive: subprocess.run
       family: process
@@ -499,6 +490,16 @@ modules:
       - build-grammars
       - add-extras
       purpose: 'tmp_artifact wrapper: write grammar build scaffolding under the temp dir'
+    - function: tmp_artifact_write_bytes
+      primitive: '*.write_bytes'
+      family: fs_write
+      count: 1
+      zone: tmp_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      purpose: zone-enforced write of the downloaded gitleaks archive into the extraction temp
+        dir
     - function: user_config_mkdir
       primitive: '*.mkdir'
       family: fs_write
