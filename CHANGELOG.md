@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Sketch no longer downloads embedding models on first use**: run `hypergumbo install-embeddings`, which now fetches the weights.
 - **The I/O allowlist gate also sees descriptor writes, signals by pid and environment writes** (new `env_write` family); the 27 sites are reviewed.
+- **`show-site` lists a caller that imported the function under an alias.**
 - **`show-site`'s stale note reads an environment write by the name subscripted**; the allowlist gate is described as standard library plus PyYAML.
 - **Every third-party library the shipped tree imports is classified somewhere** (a test diffs import names against the allowlist gate's inventory and the self overlay); six dated grants cover google.protobuf.
 - **Every catalogue loader rejects a key nothing reads**, naming it.
@@ -58,6 +59,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Hypergumbo's own claims
 
+- **Trust grants are 0600 before their content is written**, never umask-readable.
+- **The I/O allowlist corrects three command lists**: rust-analyzer probe, sketch cache, gzip output.
 - **The I/O allowlist names every command that loads the embedding model**, not only `sketch`.
 - **The I/O allowlist says cache eviction runs after `survey`**, not under `cache-clear`.
 - **The downloaded gitleaks archive is written through a tmp-zone wrapper**, not an install-zone one.

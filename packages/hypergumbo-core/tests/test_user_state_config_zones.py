@@ -71,6 +71,38 @@ def test_user_state_write_creates_parents_and_honours_private(tmp_path: Path) ->
     assert stat.S_IMODE(plain.stat().st_mode) == 0o644
 
 
+@pytest.mark.parametrize("existing_mode", [None, 0o644])
+def test_a_private_write_never_lands_in_a_wider_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing_mode: int | None,
+) -> None:
+    """The content is written into a file that is ALREADY 0o600 (rows 43-45).
+
+    Writing first and narrowing after left a grant readable at the umask's
+    mode (0o644 under 0o022) until the chmod ran. Both shapes: a new file and
+    one an older version left wider.
+    """
+    grant = tmp_path / "grant.json"
+    if existing_mode is not None:
+        grant.write_text("old")
+        grant.chmod(existing_mode)
+    modes: list[int | None] = []
+    real_write_text = Path.write_text
+
+    def observing(self: Path, *args: Any, **kwargs: Any) -> int:
+        modes.append(stat.S_IMODE(self.stat().st_mode) if self.exists() else None)
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", observing)
+    old_umask = os.umask(0o022)
+    try:
+        safety_zones.user_state_write(grant, "{}", private=True)
+    finally:
+        os.umask(old_umask)
+    assert modes == [0o600]
+    assert grant.read_text() == "{}"
+    assert stat.S_IMODE(grant.stat().st_mode) == 0o600
+
+
 def test_the_config_and_checkout_wrappers_write(tmp_path: Path) -> None:
     safety_zones.user_config_mkdir(tmp_path / "cfg" / "d")
     assert (tmp_path / "cfg" / "d").is_dir()

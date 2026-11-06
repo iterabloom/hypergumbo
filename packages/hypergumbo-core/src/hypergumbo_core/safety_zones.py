@@ -220,8 +220,9 @@ def cache_rmtree(
 ) -> None:
     """Recursively delete a cache directory under ``~/.cache/hypergumbo/``.
 
-    SAFETY ZONE: ``user_cache``. Used by ``cmd_cache_clear`` to evict
-    stale cache entries. Wrapping ``shutil.rmtree`` here gives the
+    SAFETY ZONE: ``user_cache``. Used by ``cache-clear`` to remove entries, and
+    by the end-of-run eviction after ``survey`` (``_maybe_evict_cache`` and
+    ``_archive_entry``) to drop what it reclaims. Wrapping ``shutil.rmtree`` here gives the
     structural-taint pass a distinct callee — verify-claims previously
     flagged generic ``.rmtree`` reachability from runtime CLI as a
     documented overapproximation because the bare callee match couldn't
@@ -493,7 +494,8 @@ def tmp_artifact_rmtree(path: Path) -> None:
     """Recursively delete an ephemeral build directory under ``/tmp/``.
 
     SAFETY ZONE: ``tmp_artifact``. Used by ``build_grammars.py`` to
-    refresh the per-grammar scaffold directory before regenerating it.
+    refresh the per-grammar scaffold directory before regenerating it, and by
+    ``sketch`` to remove the legacy sketch-compare directory.
     Distinct wrapper from :func:`cache_rmtree` so verify-claims can
     distinguish cache eviction from grammar-build scaffold reset.
 
@@ -580,7 +582,8 @@ def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
     :func:`tmp_artifact_write` / :func:`tmp_artifact_mkdir` /
     :func:`tmp_artifact_rmtree`, for callers that need a whole throwaway
     directory rather than a named path — ``gitleaks.install_gitleaks`` (archive
-    extraction) and the rust-analyzer probe in ``graceful_degrade``.
+    extraction), ``gitleaks.scan_content`` (the scan's working directory), the
+    rust-analyzer run in ``graceful_degrade`` and scip-python's index scratch.
 
     WHY THIS ARRIVED LATE (INV-lalad). INV-zudak established that every
     fs-write primitive on a claimed entry point must route through a wrapper,
@@ -779,12 +782,17 @@ def user_state_write(path: Path, content: str, *, private: bool) -> None:
     caller's statement, not a default: a trust grant is ``0o600`` because which
     repositories someone agreed to execute is theirs, while the offer's answer
     is a display preference and deliberately is not.
+
+    A private file is ``0o600`` BEFORE its content lands: ``touch`` creates a new
+    one at that mode and ``chmod`` narrows one an older version left wider, so
+    the grant is never readable at the umask's mode, not even between two lines.
     """
     _safety_zone_barrier()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
     if private:
+        path.touch(mode=0o600)
         path.chmod(0o600)
+    path.write_text(content, encoding="utf-8")
 
 
 def user_config_mkdir(path: Path) -> None:

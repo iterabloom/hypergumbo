@@ -142,6 +142,11 @@ def more():
 def late():
     from fetch import get_url
     return get_url()
+
+
+def aliased():
+    from fetch import get_url as fetch_url
+    return fetch_url(), other.fetch_url
 """
 
 
@@ -242,6 +247,7 @@ called or referenced from (packages/*/src and scripts/, by name):
   hypergumbo_core.fetch:52  ref in <module>  HANDLERS = {"url": get_url}
   scripts/tool:3  call in main  print(get_url())
   scripts/tool:15  call in late  return get_url()
+  scripts/tool:20  call in aliased  return fetch_url(), other.fetch_url
   note: hypergumbo_tracker.serve does not parse; not searched
 """
 

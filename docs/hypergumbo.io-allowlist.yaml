@@ -186,7 +186,8 @@ modules:
       target: python -m pip install sentence-transformers~=5.7
       commands:
       - install-embeddings
-      purpose: install sentence-transformers; does NOT fetch the models (see INV-gujus)
+      purpose: install sentence-transformers; this call does not fetch the models, the command
+        then does (_fetch_embedding_models, INV-gujus)
     - function: cmd_uninstall_embeddings
       primitive: subprocess.run
       family: process
@@ -340,9 +341,9 @@ modules:
       count: 1
       zone: user_cache
       commands:
-      - <analysis>
-      purpose: 'user_cache wrapper: write a text file under $XDG_CACHE_HOME/hypergumbo (analysis
-        results, gitleaks scan cache)'
+      - sketch
+      purpose: 'user_cache wrapper: write a text file under $XDG_CACHE_HOME/hypergumbo (the sketch,
+        its 4x/16x comparison stats, the gitleaks scan cache)'
     - function: cache_write_bytes
       primitive: '*.write_bytes'
       family: fs_write
@@ -441,7 +442,10 @@ modules:
       commands:
       - <analysis>
       - install-rust-analyzer
-      purpose: 'repo_inspection wrapper: installed-and-version probe that reads nothing'
+      - add-extras
+      - remove-extras
+      purpose: 'repo_inspection wrapper: installed-and-version probe that reads nothing (add-extras
+        and remove-extras ask it whether rust-analyzer is installed)'
     - function: repo_inspect_scan
       primitive: subprocess.run
       family: process
@@ -549,7 +553,7 @@ modules:
       count: 1
       zone: user_out
       commands:
-      - <analysis>
+      - survey --gzip
       purpose: 'user_out wrapper: gzip.open(path, ''wt'') + json.dump at a user-named path'
     - function: user_out_write
       primitive: '*.write_text'
@@ -568,7 +572,7 @@ modules:
       - trust-backend
       - trust-catalogues
       - '<any> (the repo-tier offer answer)'
-      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600 before the content is written) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
     - function: user_state_write
       primitive: '*.mkdir'
       family: fs_write
@@ -578,7 +582,17 @@ modules:
       - trust-backend
       - trust-catalogues
       - '<any> (the repo-tier offer answer)'
-      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600 before the content is written) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
+    - function: user_state_write
+      primitive: '*.touch'
+      family: fs_write
+      count: 1
+      zone: user_state
+      commands:
+      - trust-backend
+      - trust-catalogues
+      - '<any> (the repo-tier offer answer)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600 before the content is written) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
     - function: user_state_write
       primitive: '*.write_text'
       family: fs_write
@@ -588,7 +602,7 @@ modules:
       - trust-backend
       - trust-catalogues
       - '<any> (the repo-tier offer answer)'
-      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600 before the content is written) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
   hypergumbo_core.selection_index:
     zone: dev_zone
     commands:
