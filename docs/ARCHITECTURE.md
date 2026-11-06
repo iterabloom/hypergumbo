@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **370** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 115 core, 4 CLI, 37 tracker)
-- **58258** symbols (functions, classes, methods)
-- **233828** edges by type:
-  - calls: 132201
-  - contains: 54269
+- **58260** symbols (functions, classes, methods)
+- **233845** edges by type:
+  - calls: 132212
+  - contains: 54271
   - imports: 20053
-  - instantiates: 12936
-  - references: 10367
-  - module_attr_ref: 2204
+  - instantiates: 12938
+  - references: 10368
+  - module_attr_ref: 2205
   - other: 1798
 
 ## Package Architecture
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58258 Symbols + 233828 Edges + UsageContexts           │
+│  Output: 58260 Symbols + 233845 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -284,7 +284,7 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 10676.2 | ir.py |
 | `len` | external_symbol | 8103.0 | <external> |
-| `write_text` | external_symbol | 7393.0 | <external> |
+| `write_text` | external_symbol | 7394.0 | <external> |
 | `Span` | class | 7141.2 | ir.py |
 | `LinkerContext` | class | 3797.0 | registry.py |
 | `get` | external_symbol | 3719.0 | <external> |
@@ -295,7 +295,7 @@ These symbols have the highest bidirectional centrality
 | `next` | external_symbol | 2279.0 | <external> |
 | `TrackerApp` | class | 2134.3 | tui.py |
 | `load_framework_patterns` | function | 2114.3 | framework_patterns.py |
-| `append` | external_symbol | 1967.0 | <external> |
+| `append` | external_symbol | 1968.0 | <external> |
 | `main` | function | 1792.0 | cli.py |
 
 ## Pattern System
@@ -985,8 +985,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 770e60d8c69d
-  commit_count: 8896
+  commit: b9d73ccc3881
+  commit_count: 8899
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
