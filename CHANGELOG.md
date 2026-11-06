@@ -58,6 +58,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Hypergumbo's own claims
 
+- **The I/O allowlist names every command that loads the embedding model**, not only `sketch`.
 - **The I/O allowlist says cache eviction runs after `survey`**, not under `cache-clear`.
 - **The downloaded gitleaks archive is written through a tmp-zone wrapper**, not an install-zone one.
 - **`add-extras` installs embeddings as `install-embeddings` does**: pinned, upgrading outdated copies, keeping onnxruntime.
