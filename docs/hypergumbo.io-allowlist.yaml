@@ -29,8 +29,15 @@ modules:
     zone: in_process
     commands:
     - sketch
+    - survey
+    - 'slice, search, routes, explain, symbols, test-coverage, dead-code-maybe, repeat-finder,
+      io-boundaries, verify-claims (the results-cache lookup imports the module, --minimal included)'
+    - cache-status
+    - cache-clear
     - install-embeddings
     - add-extras
+    - remove-extras
+    - python -m hypergumbo_core.test_masking
     sites:
     - function: suppress_hf_noise
       primitive: os.environ.setdefault
@@ -193,6 +200,7 @@ modules:
     zone: in_process
     commands:
     - <analysis>
+    - scripts/score-readability
     purpose: import / reload the def-use extractor modules (first-party names) so their registrations
       are present; reload recovers a registry a test cleared
     sites:
@@ -416,12 +424,14 @@ modules:
       family: process
       count: 1
       zone: repo_inspection
-      target: git (rev-parse HEAD, rev-list --max-parents=0 HEAD, config --get remote.origin.url)
+      target: git (rev-parse HEAD, rev-list --max-parents=0 HEAD, config --get remote.origin.url;
+        ls-tree HEAD for discovery's submodule and HEAD-tree checks; ls-files --error-unmatch and
+        status --porcelain for an in-repo catalogue's committed / modified state)
       commands:
       - <analysis>
       - trust-catalogues
-      purpose: 'repo_inspection wrapper: local read-only git plumbing for cache keys and repo
-        identity'
+      purpose: 'repo_inspection wrapper: local read-only git plumbing for cache keys, repo identity,
+        file discovery and in-repo catalogue state'
     - function: repo_inspect_probe
       primitive: subprocess.run
       family: process
@@ -450,8 +460,8 @@ modules:
       - install-gitleaks
       - add-extras
       - <analysis>
-      purpose: tmp_artifact wrapper around TemporaryDirectory (gitleaks install; rust-analyzer
-        graceful-degrade probe)
+      purpose: tmp_artifact wrapper around TemporaryDirectory (gitleaks install; gitleaks scan
+        working directory; rust-analyzer graceful-degrade probe; scip-python index scratch)
     - function: tmp_artifact_extract
       primitive: '*.extractall'
       family: fs_write
@@ -584,6 +594,7 @@ modules:
     commands:
     - scripts/smart-test
     - scripts/coverage-select
+    - scripts/measure-narrowing-headroom.py
     purpose: coverage-directed test-selection index (sqlite) for this repository's own test
       runs; dev tooling shipped inside hypergumbo-core, imported by no hypergumbo subcommand
     sites:
@@ -599,6 +610,7 @@ modules:
     zone: dev_zone
     commands:
     - scripts/smart-test
+    - scripts/coverage-select
     purpose: append-only JSONL log of test-selection shadow observations; dev tooling, no
       hypergumbo subcommand imports it
     sites:
@@ -629,6 +641,9 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: set HF_HUB_OFFLINE=1 when unset before any runtime model load, so the loader can never
         download during analysis (INV-gujus); an already-set value is honored
     - function: _load_embedding_model
@@ -638,6 +653,9 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
         loads from the local HF cache only (local_files_only=True, HF_HUB_OFFLINE=1) and degrades
         when the model is absent; it never downloads (INV-gujus)'
@@ -658,8 +676,12 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: 'set HF_HUB_OFFLINE=1 for the cache-only load; on a miss, put the caller''s prior value
-        back before raising (the second write)'
+        back before raising (the second write); on success leave it set for the rest of the process,
+        replacing any value the caller had (INV-dasig)'
     - function: _load_st_model_offline_first
       primitive: os.environ.pop
       family: env_write
@@ -667,6 +689,9 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: 'on a miss with no prior value, remove HF_HUB_OFFLINE again: the other half of the
         restore'
     - function: _restore_no_proxy
@@ -676,6 +701,9 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: restore NO_PROXY and no_proxy to the values _sanitize_no_proxy_for_httpx saved, deleting
         them where they were unset
     - function: _restore_no_proxy
@@ -685,6 +713,9 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: restore NO_PROXY and no_proxy to the values _sanitize_no_proxy_for_httpx saved, deleting
         them where they were unset
     - function: _sanitize_no_proxy_for_httpx
@@ -694,6 +725,9 @@ modules:
       zone: in_process
       commands:
       - sketch
+      - survey
+      - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
+        test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
       purpose: drop IPv6 CIDR entries from NO_PROXY / no_proxy for the duration of a model load (httpx
         cannot parse them); the originals go to _restore_no_proxy
     - function: fetch_embedding_models
