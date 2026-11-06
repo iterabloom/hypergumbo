@@ -11,7 +11,7 @@ whose dotted name ends in the name given, hypergumbo_core first when several mat
 3. What it READS from its own module: constants in full (where a target lives), same-file defs as one
    line with their length, imports as the name and its line. Module-level bindings only, less what the
    function binds itself (parameter, assignment, local import; `global` exempts) and annotation-only names.
-4. Who CALLS OR REFERENCES it, one hop, by name: every load of the name in packages/*/src and the scripts/ files
+4. Who CALLS OR REFERENCES it, one hop, by name (or a `from ... import name as alias` in that file): every load in packages/*/src and the scripts/ files
    whose first line names python, tagged "call" or "ref" (handed around as a value), with the user's enclosing
    function, in file and line order; a load the user binds by parameter or assignment is its own local (a local
    import is a use). A call spanning lines prints whole on one line, regenerated from its syntax tree (no comments).
@@ -153,12 +153,14 @@ def rendered(call: ast.Call | None, text: str, lineno: int) -> str:  # a call sp
 
 def uses_in(tree: ast.Module, text: str, name: str) -> list:  # (line, call|ref, enclosing def, rendered line) per load of `name`
     calls = {id(n.func): n for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    aliases = {a.asname for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names if a.name == name and a.asname}
     out = []
     for node in ast.walk(tree):
-        if not is_load_of(node, name):
+        used = node.id if isinstance(node, ast.Name) and node.id in aliases else name  # `from X import name as alias`
+        if not is_load_of(node, used):
             continue
         fn, call = enclosing(tree, node.lineno), calls.get(id(node))
-        if isinstance(node, ast.Name) and fn and name in local_names(list(ast.walk(fn.node)), imports=False):
+        if isinstance(node, ast.Name) and fn and used in local_names(list(ast.walk(fn.node)), imports=False):
             continue
         out.append((node.lineno, "call" if call else "ref", fn.name if fn else "<module>", rendered(call, text, node.lineno)))
     return out
