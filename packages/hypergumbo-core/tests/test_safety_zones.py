@@ -36,10 +36,10 @@ from hypergumbo_core.safety_zones import (
     install_artifact_copy,
     install_artifact_mkdir,
     install_artifact_unlink,
-    install_artifact_write_bytes,
     tmp_artifact_mkdir,
     tmp_artifact_rmtree,
     tmp_artifact_write,
+    tmp_artifact_write_bytes,
     user_out_open_json_dump,
     user_out_write,
 )
@@ -102,10 +102,23 @@ def test_tmp_artifact_write(tmp_path: Path) -> None:
     assert p.read_text() == "ephemeral"
 
 
-def test_install_artifact_write_bytes(tmp_path: Path) -> None:
-    p = tmp_path / "downloaded.bin"
-    install_artifact_write_bytes(p, b"binary blob")
-    assert p.read_bytes() == b"binary blob"
+def test_tmp_artifact_write_bytes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    p = tmp_path / "downloaded.tar.gz"
+    tmp_artifact_write_bytes(p, b"archive bytes")
+    assert p.read_bytes() == b"archive bytes"
+
+
+def test_tmp_artifact_write_bytes_refuses_a_path_outside_tmp(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """The one caller passes a path inside ``tmp_artifact_dir()``, so the check
+    never fires there; it makes the wrapper's name true of every caller."""
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path / "fake_tmp"))
+    (tmp_path / "fake_tmp").mkdir()
+    with pytest.raises(SafetyZoneViolation):
+        tmp_artifact_write_bytes(tmp_path / "NOT_TMP.bin", b"x")
+    assert not (tmp_path / "NOT_TMP.bin").exists()
 
 
 def test_install_artifact_copy(tmp_path: Path) -> None:

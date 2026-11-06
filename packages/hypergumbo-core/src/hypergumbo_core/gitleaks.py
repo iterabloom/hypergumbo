@@ -37,10 +37,11 @@ Public surface
 Filesystem discipline
 ---------------------
 All fs-write operations route through ``hypergumbo_core.safety_zones``
-wrappers (``install_artifact_write_bytes`` / ``install_artifact_chmod``
-/ ``install_artifact_unlink`` / ``install_artifact_copy`` /
-``install_artifact_mkdir`` / ``cache_write`` / ``cache_mkdir`` /
-``tmp_artifact_dir`` / ``tmp_artifact_extract``). The wrappers tag each write with its trust zone
+wrappers (``install_artifact_chmod`` / ``install_artifact_unlink`` /
+``install_artifact_copy`` / ``install_artifact_mkdir`` / ``cache_write`` /
+``cache_mkdir`` / ``tmp_artifact_dir`` / ``tmp_artifact_write_bytes`` /
+``tmp_artifact_extract``): the downloaded archive and its extraction stay in
+the tmp zone, and only the binary copied out of it is an install write. The wrappers tag each write with its trust zone
 (``install_artifact`` / ``user_cache`` / ``tmp_artifact``) so the
 per-entry-point taint catalog can verify zone reachability claims without
 short-name sink overapproximation (Unreleased CHANGELOG / safety-claims work).
@@ -73,13 +74,13 @@ from .safety_zones import (
     SafetyZoneViolation,
     tmp_artifact_dir,
     tmp_artifact_extract,
+    tmp_artifact_write_bytes,
     cache_mkdir,
     cache_write,
     install_artifact_chmod,
     install_artifact_copy,
     install_artifact_mkdir,
     install_artifact_unlink,
-    install_artifact_write_bytes,
     repo_inspect_scan,
 )
 from dataclasses import dataclass
@@ -230,7 +231,7 @@ def install_gitleaks(quiet: bool = False) -> bool:
             archive_path = tmppath / filename
 
             # Write archive
-            install_artifact_write_bytes(archive_path, data)
+            tmp_artifact_write_bytes(archive_path, data)
 
             # Extract through the zone wrapper, which validates EVERY member
             # path against the tmp_artifact root. The suppressions this
