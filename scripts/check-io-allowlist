@@ -858,10 +858,11 @@ HEADER = """\
 # `finding: <tracker id>` marks a site that is a known problem, not a blessing.
 #
 # Command shorthands used below:
-#   <analysis>   any `hypergumbo` subcommand that builds or loads an analysis:
-#                sketch survey slice search routes explain symbols compact
+#   <analysis>   any `hypergumbo` subcommand that builds an analysis:
+#                sketch survey slice search routes explain symbols
 #                test-coverage dead-code-maybe repeat-finder io-boundaries
-#                verify-claims backend-agreement
+#                verify-claims (compact and backend-agreement only read one,
+#                and are named on the entries they reach)
 #   <any>        after ANY `hypergumbo` subcommand (cli.main)
 #   tracker:X    `hypergumbo-tracker X` (alias htrac / scripts/tracker)
 #   library      no caller anywhere in packages/*/src; reachable only by

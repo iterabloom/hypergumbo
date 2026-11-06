@@ -703,9 +703,11 @@ def repo_inspect_git(argv: list[str], **kwargs: Any) -> "subprocess.CompletedPro
     """Run a local ``git`` command against the analysed repository.
 
     SAFETY ZONE: ``repo_inspection``. Used for cache-key fingerprinting
-    (``rev-parse HEAD``, ``rev-list --max-parents=0 HEAD``) and repo identity
-    (``config --get remote.origin.url``). Read-only and local: no fetch, no
-    push, no network. Callers resolve the binary via ``shutil.which`` rather
+    (``rev-parse HEAD``, ``rev-list --max-parents=0 HEAD``), repo identity
+    (``config --get remote.origin.url``), discovery's submodule and HEAD-tree
+    checks (``ls-tree HEAD``) and an in-repo catalogue's committed / modified
+    state (``ls-files --error-unmatch``, ``status --porcelain``). Read-only and
+    local: no fetch, no push, no network. Callers resolve the binary via ``shutil.which`` rather
     than letting the shell search ``PATH`` (Bandit S607).
     """
     _safety_zone_barrier()

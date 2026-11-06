@@ -4119,7 +4119,7 @@ def _install_embeddings_impl(quiet: bool = False) -> bool:
 
     The embeddings installer is inline in cmd_install_embeddings; this
     wrapper exposes the same (quiet=...) -> bool surface so the
-    extras table can treat all three components uniformly.
+    extras table can treat every component uniformly.
     """
     # The real install_embeddings function is defined in this file;
     # this adapter is here so _extras_components can reference it via
