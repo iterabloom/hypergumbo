@@ -298,7 +298,7 @@ modules:
       count: 1
       zone: user_cache
       commands:
-      - cache-clear
+      - survey
       purpose: zone-enforced rename; both ends must be inside the cache root
     - function: cache_rmtree
       primitive: shutil.rmtree
@@ -307,6 +307,7 @@ modules:
       zone: user_cache
       commands:
       - cache-clear
+      - survey
       purpose: zone-enforced recursive delete inside the cache root (refuses paths outside
         it)
     - function: cache_save_npy
@@ -323,7 +324,7 @@ modules:
       count: 1
       zone: user_cache
       commands:
-      - cache-clear
+      - survey
       purpose: zone-enforced unlink inside the cache root
     - function: cache_write
       primitive: '*.write_text'
@@ -348,7 +349,7 @@ modules:
       count: 1
       zone: user_cache
       commands:
-      - cache-clear
+      - survey
       purpose: zone-enforced soft-delete archive written inside the cache root
     - function: cache_write_zip
       primitive: zipfile.ZipFile[w]
@@ -356,7 +357,7 @@ modules:
       count: 1
       zone: user_cache
       commands:
-      - cache-clear
+      - survey
       purpose: zone-enforced soft-delete archive written inside the cache root
     - function: developer_checkout_write
       primitive: '*.mkdir'
