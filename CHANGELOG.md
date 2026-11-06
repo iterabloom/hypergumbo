@@ -43,6 +43,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch no longer downloads embedding models on first use**: run `hypergumbo install-embeddings`, which now fetches the weights.
 - **The I/O allowlist gate also sees descriptor writes, signals by pid and environment writes** (new `env_write` family); the 27 sites are reviewed.
 - **`show-site`'s stale note reads an environment write by the name subscripted**; the allowlist gate is described as standard library plus PyYAML.
+- **Every third-party library the shipped tree imports is classified somewhere** (a test diffs import names against the allowlist gate's inventory and the self overlay); six dated grants cover google.protobuf.
 - **Every catalogue loader rejects a key nothing reads**, naming it.
 - **Community catalogue overlays are restricted** (ADR-0061 rulings 1–2): they cannot mark a call not I/O and their `trusted` sinks are withheld; a catalogue named on the command line is `yours`.
 - **Internal renames**: the taint-side gates are `requires_target_boundary` / `requires_mode_boundary`, and pass-silence states are declared in `pass_silence.SILENCE_REASON_SPECS`.

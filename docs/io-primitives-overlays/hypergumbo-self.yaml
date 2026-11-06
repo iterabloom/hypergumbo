@@ -537,3 +537,85 @@ module_completeness:
       bytes a caller already read with ParseFromString: in-memory
       decoding, no path, no socket. The bytes come from the backend
       wrappers' own files, which are rowed where they are read.
+
+  # ---------------------------------------------------------------
+  # google.protobuf (protobuf 6.33.6 read): the runtime behind the generated
+  # scip_pb2 entry above. The shipped tree reaches it as the five imports of
+  # the generated module (excluded from analysis as generated output,
+  # ADR-0004) and as DecodeError in two except clauses, so no analysed call
+  # edge names these modules and the cron gate never had to classify them;
+  # tests/test_third_party_import_heads.py asks about every imported library
+  # regardless, and these entries are its answer. Each surface read
+  # 2026-11-05. Import-time behaviour, not a call surface, stated rather
+  # than implied away: importing any of them runs
+  # google.protobuf.internal.api_implementation, which reads
+  # PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION from the environment and loads the
+  # upb C extension (google._upb._message). google.protobuf itself exports
+  # only __version__.
+  # ---------------------------------------------------------------
+  - module: google.protobuf.message
+    completeness: complete
+    retrieved: "2026-11-05"
+    notes: >-
+      The abstract Message base and its exceptions (Error, DecodeError,
+      EncodeError). Every method works on bytes or messages already in
+      memory: MergeFromString / ParseFromString / FromString decode a bytes
+      argument, SerializeToString / SerializePartialToString / ByteSize
+      encode to bytes, the rest (MergeFrom, CopyFrom, Clear, HasField,
+      ListFields, WhichOneof, the extension and unknown-field accessors)
+      walk fields. No path, no socket, no process. The shipped tree names
+      DecodeError in two except clauses and parses through the generated
+      classes vouched above.
+
+  - module: google.protobuf.descriptor
+    completeness: complete
+    retrieved: "2026-11-05"
+    notes: >-
+      Descriptor, FieldDescriptor, EnumDescriptor, EnumValueDescriptor,
+      OneofDescriptor, ServiceDescriptor, MethodDescriptor, FileDescriptor
+      and DescriptorBase are in-memory views over a parsed .proto;
+      GetOptions and CopyToProto build protos in memory. MakeDescriptor
+      draws sixteen bytes from os.urandom for a synthetic file name:
+      entropy, which the built-in catalogue deliberately keeps out of its
+      rows (its os note), and the shipped tree never calls it. The
+      generated module reads the _USE_C_DESCRIPTORS flag and nothing else.
+
+  - module: google.protobuf.descriptor_pool
+    completeness: complete
+    retrieved: "2026-11-05"
+    notes: >-
+      DescriptorPool and Default(): a registry fed by Add / AddSerializedFile
+      from protos or bytes already in memory and queried by the Find*
+      methods; the backing descriptor_database is a dict. Nothing opens a
+      path or a socket. The generated module calls Default().AddSerializedFile
+      on the bytes literal it embeds.
+
+  - module: google.protobuf.symbol_database
+    completeness: complete
+    retrieved: "2026-11-05"
+    notes: >-
+      SymbolDatabase and Default(): an in-memory registry of message classes
+      (Register*, GetSymbol, GetMessages) over the default descriptor pool.
+      No I/O surface.
+
+  - module: google.protobuf.runtime_version
+    completeness: complete
+    retrieved: "2026-11-05"
+    notes: >-
+      Domain, VersionError and ValidateProtobufRuntimeVersion, which compares
+      the gencode version the generated module declares with the runtime's
+      and raises or warns. It reads TEMPORARILY_DISABLE_PROTOBUF_VERSION_CHECK
+      through os.getenv to decide whether to check at all and returns
+      nothing, so the value never reaches a caller: not rowed as env_read,
+      which would mint a taint source at a result that does not exist (the
+      platformdirs entry takes the same line). Stated here so the read is
+      on record.
+
+  - module: google.protobuf.internal.builder
+    completeness: complete
+    retrieved: "2026-11-05"
+    notes: >-
+      BuildMessageAndEnumDescriptors, BuildTopDescriptorsAndMessages,
+      AddHelpersToExtensions and BuildServices turn a FileDescriptor into
+      classes in the generated module's globals: pure construction. The
+      generated module calls the first two.
