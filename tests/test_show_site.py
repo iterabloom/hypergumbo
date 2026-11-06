@@ -69,6 +69,12 @@ def shadow(platform_name):
 
 
 HANDLERS = {"url": get_url}
+
+
+def set_env():
+    import os
+    os.environ["FETCH_X"] = "1"
+    del os.environ["FETCH_Y"]
 '''
 
 ALLOWLIST = """version: 1
@@ -104,6 +110,18 @@ modules:
       family: fs_write
       count: 1
       purpose: a tail that is a prefix of another word
+    - function: set_env
+      primitive: os.environ.__setitem__
+      family: env_write
+      count: 1
+      zone: in_process
+      purpose: a subscript write, spelled by the gate as the method Python calls
+    - function: set_env
+      primitive: os.environ.__delitem__
+      family: env_write
+      count: 1
+      zone: in_process
+      purpose: a subscript write, spelled by the gate as the method Python calls
   hypergumbo_core.cli:
     zone: in_process
     sites: []
@@ -235,6 +253,24 @@ def test_reads_skip_local_rebinding_but_keep_globals_and_stale_check_is_a_word(m
     assert "  fs_write  json.load x1  zone install\n" in out
     assert "  note: line 48 does not mention load; the line number may be stale\n" in out
     assert "reads from this module:\n  11  LIMIT = 3\n\ncalled or referenced from" in out
+
+
+def test_stale_check_reads_a_subscript_write_by_the_name_subscripted(mod, root, capsys):
+    # The gate spells `os.environ[k] = v` as os.environ.__setitem__ and `del os.environ[k]`
+    # as os.environ.__delitem__; neither dunder appears in the source line, `environ` does.
+    assert mod.tail("os.environ.__setitem__") == "environ"
+    assert mod.tail("os.environ.__delitem__") == "environ"
+    assert mod.tail("os.environ.pop") == "pop"
+    assert mod.tail("builtins.__import__[dynamic]") == "__import__"  # called by that name
+    assert mod.tail("zipfile.ZipFile[w]") == "ZipFile"
+    assert mod.tail("*.write_text") == "write_text"
+    rc, out, _ = run(mod, root, "fetch:56,57,58", capsys=capsys)
+    assert rc == 0
+    assert "in set_env, lines 55-58\n" in out
+    assert "  env_write  os.environ.__setitem__ x1, os.environ.__delitem__ x1  zone in_process\n" in out
+    assert "  note: line 56 does not mention environ; the line number may be stale\n" in out
+    assert "line 57 does not mention" not in out
+    assert "line 58 does not mention" not in out
 
 
 def test_method_site_with_overrides_finding_and_several_lines(mod, root, capsys):
