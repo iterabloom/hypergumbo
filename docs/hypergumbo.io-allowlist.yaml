@@ -14,10 +14,11 @@
 # `finding: <tracker id>` marks a site that is a known problem, not a blessing.
 #
 # Command shorthands used below:
-#   <analysis>   any `hypergumbo` subcommand that builds or loads an analysis:
-#                sketch survey slice search routes explain symbols compact
+#   <analysis>   any `hypergumbo` subcommand that builds an analysis:
+#                sketch survey slice search routes explain symbols
 #                test-coverage dead-code-maybe repeat-finder io-boundaries
-#                verify-claims backend-agreement
+#                verify-claims (compact and backend-agreement only read one,
+#                and are named on the entries they reach)
 #   <any>        after ANY `hypergumbo` subcommand (cli.main)
 #   tracker:X    `hypergumbo-tracker X` (alias htrac / scripts/tracker)
 #   library      no caller anywhere in packages/*/src; reachable only by
@@ -60,11 +61,18 @@ modules:
     zone: in_process
     commands:
     - <analysis>
+    - backend-agreement
+    - catalog
+    - config
+    - trust-backend (a grant or a revoke)
     sites:
     - function: RegisteredAnalyzer.get_func
       primitive: importlib.import_module[dynamic]
       family: dynamic_import
       count: 1
+      commands:
+      - <analysis>
+      - catalog
       purpose: lazy-load an analyzer function from the module path its registration recorded
     - function: _import_module_list
       primitive: importlib.import_module[dynamic]
@@ -200,7 +208,7 @@ modules:
   hypergumbo_core.dataflow_scope:
     zone: in_process
     commands:
-    - <analysis>
+    - verify-claims
     - scripts/score-readability
     purpose: import / reload the def-use extractor modules (first-party names) so their registrations
       are present; reload recovers a registry a test cleared
@@ -431,6 +439,7 @@ modules:
       commands:
       - <analysis>
       - trust-catalogues
+      - catalog (it profiles the current directory; ls-tree when that holds a submodule)
       purpose: 'repo_inspection wrapper: local read-only git plumbing for cache keys, repo identity,
         file discovery and in-repo catalogue state'
     - function: repo_inspect_probe
@@ -444,8 +453,10 @@ modules:
       - install-rust-analyzer
       - add-extras
       - remove-extras
+      - <any> with --backend rust-analyzer or scip-python (main's pre-scan)
       purpose: 'repo_inspection wrapper: installed-and-version probe that reads nothing (add-extras
-        and remove-extras ask it whether rust-analyzer is installed)'
+        and remove-extras ask it whether rust-analyzer is installed; main''s --backend pre-scan asks
+        whether the chosen backend''s binary runs)'
     - function: repo_inspect_scan
       primitive: subprocess.run
       family: process
@@ -538,6 +549,7 @@ modules:
       zone: user_out
       commands:
       - <analysis>
+      - compact
       purpose: 'user_out wrapper: create the parent of a user-named output path'
     - function: user_out_open_json_dump
       primitive: builtins.open[w]
@@ -546,6 +558,7 @@ modules:
       zone: user_out
       commands:
       - <analysis>
+      - compact
       purpose: 'user_out wrapper: open(path, ''w'') + json.dump at a user-named path'
     - function: user_out_open_json_dump_gzip
       primitive: gzip.open[w]
@@ -562,6 +575,7 @@ modules:
       zone: user_out
       commands:
       - <analysis>
+      - backend-agreement
       purpose: 'user_out wrapper: write a file at a path the user named (-o/--out)'
     - function: user_state_write
       primitive: '*.chmod'
@@ -639,7 +653,7 @@ modules:
   hypergumbo_core.sketch:
     zone: in_process
     commands:
-    - <analysis>
+    - sketch (its fallback when no cached or auto-run analysis is available)
     sites:
     - function: _run_analysis
       primitive: importlib.import_module[dynamic]

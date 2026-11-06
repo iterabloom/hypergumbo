@@ -60,6 +60,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Hypergumbo's own claims
 
 - **Trust grants are 0600 before their content is written**, never umask-readable.
+- **The I/O allowlist's command lists match a traced run of every subcommand**; `<analysis>` no longer includes `compact` or `backend-agreement`.
 - **The I/O allowlist corrects three command lists**: rust-analyzer probe, sketch cache, gzip output.
 - **The I/O allowlist names every command that loads the embedding model**, not only `sketch`.
 - **The I/O allowlist says cache eviction runs after `survey`**, not under `cache-clear`.

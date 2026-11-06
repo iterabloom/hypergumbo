@@ -348,7 +348,8 @@ def _ensure_hf_offline_for_cached_models() -> bool:
     the cached load still reaches the network (the original INV-dasig leak,
     plus the encode()-time safetensors auto-conversion background thread). This
     helper therefore runs at the top of every function that imports
-    sentence_transformers, BEFORE the import.
+    sentence_transformers to load a model, BEFORE the import. (cli's
+    install-path availability checks import the library and load nothing.)
 
     UNCONDITIONAL since INV-gujus. It used to force offline only when every
     model was cached, leaving it off while one was missing so that model's
