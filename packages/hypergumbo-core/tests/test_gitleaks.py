@@ -348,7 +348,8 @@ class TestInstallGitleaks:
             info = tarfile.TarInfo(gitleaks.GITLEAKS_BINARY_NAME)
             info.size = len(payload)
             tf.addfile(info, io.BytesIO(payload))
-        install_dir = tmp_path / "bin"
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        install_dir = tmp_path / ".local" / "bin"
         monkeypatch.setattr(gitleaks, "GITLEAKS_INSTALL_DIR", install_dir)
         monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", install_dir / gitleaks.GITLEAKS_BINARY_NAME)
 
@@ -558,6 +559,46 @@ class TestScanRunsInADirectoryOfItsOwn:
 
 class TestScanContentCached:
     """Tests for content-hash-keyed scan caching (WI-julir)."""
+
+    @pytest.mark.parametrize("failure", [
+        OSError(13, "Permission denied"),
+        subprocess.TimeoutExpired("gitleaks", 30),
+        "not json",
+    ])
+    def test_a_scan_that_did_not_run_is_not_cached_as_clean(
+        self, tmp_path: Path, failure,
+    ) -> None:
+        """No result is not a clean result.
+
+        A gitleaks that cannot run (a partial install), a scan that times out,
+        or output that is not JSON used to return ``[]``, which was then cached
+        as "no secrets" for that content: sketch said "Secret scan complete"
+        and kept saying it after gitleaks was fixed. Now the scan reports that
+        it did not run (``None``) and nothing is cached.
+        """
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        found = MagicMock()
+        found.stdout = json.dumps([{"RuleID": "github-pat", "StartLine": 1}]).encode()
+        broken = MagicMock()
+        broken.stdout = b"not json"
+        first = {"side_effect": failure} if not isinstance(failure, str) else {"return_value": broken}
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", **first):
+                assert scan_content_cached("ghp_secret", tmp_path) is None
+            with patch("subprocess.run", return_value=found) as mock_run:
+                again = scan_content_cached("ghp_secret", tmp_path)
+
+        assert mock_run.call_count == 1, "the failed scan was served from the cache"
+        assert [f.rule_id for f in again] == ["github-pat"]
+
+    def test_no_gitleaks_is_not_a_clean_result(self, tmp_path: Path) -> None:
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=None):
+            assert scan_content_cached("ghp_secret", tmp_path) is None
+        assert not (tmp_path / "secret_scan_cache.json").exists()
 
     def test_cached_first_call_invokes_gitleaks(self, tmp_path: Path) -> None:
         """First call with a given content hash actually scans."""
@@ -771,6 +812,29 @@ class TestSketchSecretScanning:
         captured = capsys.readouterr()
         assert "best-effort" in captured.err
 
+    def test_sketch_says_so_when_the_scan_did_not_run(self, tmp_path: Path, capsys) -> None:
+        """A scan that did not run must not be reported as complete."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_sketch
+
+        (tmp_path / "main.py").write_text("print('hello')")
+        args = Namespace(
+            path=str(tmp_path), tokens=100, exclude_tests=True,
+            first_party_priority=True, extra_excludes=[],
+            config_extraction_mode="heuristic", verbose=False, progress=False,
+            readme_debug=False, max_config_files=5, fleximax_lines=50,
+            max_chunk_chars=400, language_proportional=False, with_source=False,
+            input=None, no_secret_scan=False,
+        )
+
+        with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+            with patch("hypergumbo_core.cli.scan_content_cached", return_value=None):
+                cmd_sketch(args)
+
+        err = capsys.readouterr().err
+        assert "Secret scan complete" not in err
+        assert "NOT checked for secrets" in err
+
     def test_sketch_shows_warning_when_secrets_found(self, tmp_path: Path, capsys) -> None:
         """Sketch shows warning when gitleaks finds secrets."""
         from argparse import Namespace
@@ -949,6 +1013,29 @@ class TestUninstallGitleaks:
 
         captured = capsys.readouterr()
         assert "Removed" in captured.out
+
+    def test_uninstall_refuses_a_symlink_out_of_the_zone_without_crashing(
+        self, tmp_path: Path, monkeypatch, capsys,
+    ) -> None:
+        """A ``~/.local/bin/gitleaks`` that links elsewhere is not ours to remove.
+
+        The wrapper refuses it with ``SafetyZoneViolation``, which is not an
+        ``OSError``: uninstall-gitleaks used to exit 1 with "internal error".
+        """
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        bindir = tmp_path / ".local" / "bin"
+        bindir.mkdir(parents=True)
+        theirs = tmp_path / "go" / "bin" / "gitleaks"
+        theirs.parent.mkdir(parents=True)
+        theirs.write_bytes(b"theirs")
+        link = bindir / "gitleaks"
+        link.symlink_to(theirs)
+        monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", link)
+
+        assert uninstall_gitleaks(quiet=True) is False
+
+        assert link.is_symlink() and theirs.read_bytes() == b"theirs"
+        assert "install_artifact" in capsys.readouterr().err
 
     def test_uninstall_gitleaks_failure(self) -> None:
         """Returns False when removal fails."""

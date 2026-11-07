@@ -18,9 +18,19 @@ The ZONE-ENFORCED ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
 :func:`tmp_artifact_write_bytes`, :func:`tmp_artifact_rmtree`,
 :func:`tmp_artifact_extract` (``dest`` and
 every archive member; non-regular tar members refused) and
+:func:`install_artifact_copy`, :func:`install_artifact_chmod` and
 :func:`install_artifact_unlink` first resolve the path and raise
 :class:`SafetyZoneViolation` if it escapes its zone root (symlinks
 included). That check is a real runtime guard, not a label.
+
+Three wrappers PUBLISH rather than write in place: :func:`user_out_open_json_dump`,
+:func:`user_out_open_json_dump_gzip` and :func:`install_artifact_copy` write a
+hidden sibling and rename it over the target only once it is complete
+(:func:`_publish_when_complete` for the two ``user_out`` ones; the install copy
+does the same in its own zone). Each target is one a reader trusts by its
+existence alone -- the results-cache ``survey.json``, the installed gitleaks --
+so a write that dies part-way must leave the old file whole, never a truncated
+one under the trusted name.
 
 How to use — the full wrapper inventory, by zone:
 
@@ -39,8 +49,8 @@ How to use — the full wrapper inventory, by zone:
   scratch directory), and the zone-enforced :func:`tmp_artifact_write_bytes`,
   :func:`tmp_artifact_rmtree` and :func:`tmp_artifact_extract`.
 - **install_artifact** (the installed gitleaks binary under ``~/.local/bin``):
-  :func:`install_artifact_copy`, :func:`install_artifact_mkdir`,
-  :func:`install_artifact_chmod`, and the zone-enforced
+  :func:`install_artifact_mkdir`, and the zone-enforced
+  :func:`install_artifact_copy`, :func:`install_artifact_chmod` and
   :func:`install_artifact_unlink`.
 
 - **repo_inspection** — not writes at all. This family wraps SUBPROCESS
@@ -90,7 +100,9 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
+import stat
 # The repo_inspection zone below is built on this; see its section header.
 import subprocess  # nosec B404
 from contextlib import contextmanager
@@ -376,6 +388,55 @@ def user_out_write(path: Path, content: str) -> None:
     path.write_text(content)
 
 
+def _scratch_sibling(target: Path) -> Path:
+    """The hidden name a publishing write uses before renaming onto ``target``.
+
+    Unique per process and call, so two runs never share one; no reader looks
+    for a ``.writing`` name, so a scratch file left by a SIGKILL is inert.
+    """
+    return target.with_name(
+        f".{target.name}.{os.getpid()}.{secrets.token_hex(4)}.writing",
+    )
+
+
+@contextmanager
+def _publish_when_complete(path: Path, *, keep_mode: bool) -> Iterator[Path]:
+    """Yield a hidden sibling of ``path`` to write; rename it over ``path`` after.
+
+    Not a wrapper: the ``user_out`` JSON wrappers call it after their barrier
+    (``install_artifact_copy`` publishes the same way, in its own zone).
+    The caller creates the yielded file. When its block finishes, the file is
+    renamed over ``path`` (``os.replace``, atomic on one filesystem); when the
+    block raises -- or the process is interrupted -- the sibling is removed and
+    ``path`` is exactly what it was before.
+
+    WHY. ``survey.json`` in the results cache is found by existence alone, so a
+    survey killed while writing it (Ctrl-C, the OOM killer on a big map, a full
+    disk) used to leave a truncated file that every read command then served as
+    a cache hit and failed on, "not valid JSON", until the user re-surveyed. A
+    gitleaks install that died mid-copy left a partial binary that shadowed a
+    working one on PATH. The fix is the one eviction already uses: publish
+    whole files only.
+
+    A symlinked ``path`` is resolved first, so the link keeps pointing at the
+    file it named and that file is what is replaced. ``keep_mode`` carries an
+    existing target's permission bits over, so a user who narrowed their output
+    file does not see it widened by the rename. A SIGKILL can still leave the
+    sibling (:func:`_scratch_sibling`).
+    """
+    target = Path(os.path.realpath(path))
+    scratch = _scratch_sibling(target)
+    try:
+        yield scratch
+        if keep_mode and target.exists():
+            os.chmod(scratch, stat.S_IMODE(target.stat().st_mode))
+        os.replace(scratch, target)
+    except BaseException:
+        if os.path.lexists(scratch):
+            os.unlink(scratch)
+        raise
+
+
 def user_out_open_json_dump(path: Path, obj: Any) -> None:
     """``with open(path, "w") as f: json.dump(obj, f, ...)`` in one call.
 
@@ -385,10 +446,15 @@ def user_out_open_json_dump(path: Path, obj: Any) -> None:
     keep output deterministic — required so the safety claim's
     re-verification can run on a freshly-generated artifact and produce
     byte-identical output.
+
+    PUBLISHED WHOLE (:func:`_publish_when_complete`): a dump that dies part-way
+    leaves the previous file intact, because ``survey.json`` in the results
+    cache is trusted by its existence alone.
     """
     _safety_zone_barrier()
-    with open(path, "w") as f:
-        json.dump(obj, f, indent=2, sort_keys=True)
+    with _publish_when_complete(path, keep_mode=True) as scratch:
+        with open(scratch, "x") as f:
+            json.dump(obj, f, indent=2, sort_keys=True)
 
 
 def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
@@ -399,12 +465,14 @@ def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
     set, on both the main output and the budget-tier outputs. The
     inner JSON encoding is identical to the uncompressed path
     (``indent=2, sort_keys=True``) so ``gunzip <out>.json.gz`` produces
-    byte-identical content to the uncompressed path's output.
+    byte-identical content to the uncompressed path's output. Published whole,
+    as :func:`user_out_open_json_dump` is.
     """
     _safety_zone_barrier()
     import gzip
-    with gzip.open(path, "wt") as f:
-        json.dump(obj, f, indent=2, sort_keys=True)
+    with _publish_when_complete(path, keep_mode=True) as scratch:
+        with gzip.open(scratch, "xt") as f:
+            json.dump(obj, f, indent=2, sort_keys=True)
 
 
 def user_out_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
@@ -582,7 +650,9 @@ def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
     :func:`tmp_artifact_write` / :func:`tmp_artifact_mkdir` /
     :func:`tmp_artifact_rmtree`, for callers that need a whole throwaway
     directory rather than a named path — ``gitleaks.install_gitleaks`` (archive
-    extraction), ``gitleaks.scan_content`` (the scan's working directory), the
+    extraction), ``gitleaks.scan_content`` (the scan's working directory),
+    ``build_grammars.build_all_grammars`` (the default grammar build directory,
+    which must be private: pip runs the ``setup.py`` written into it), the
     rust-analyzer run in ``graceful_degrade`` and scip-python's index scratch.
 
     WHY THIS ARRIVED LATE (INV-lalad). INV-zudak established that every
@@ -629,9 +699,29 @@ def install_artifact_copy(src: Path, dst: Path) -> None:
     place the gitleaks binary under ``~/.local/bin/``. Wraps
     ``shutil.copy2`` so the install-artifact zone has a distinct sink
     callee, separate from the general filesystem zone.
+
+    ENFORCED: ``dst`` is resolved, so a ``~/.local/bin/gitleaks`` that is a
+    symlink to a binary elsewhere (a dotfile manager's, ``~/go/bin``'s) raises
+    :class:`SafetyZoneViolation` instead of being overwritten through the link
+    -- the file :func:`install_artifact_unlink` already refused to remove.
+
+    PUBLISHED WHOLE, as :func:`_publish_when_complete` does for ``user_out``:
+    a copy that dies part-way leaves the previous binary intact. A partial one
+    was preferred over a good gitleaks on PATH, could not run, and turned every
+    later secret scan off. Inline rather than through that helper so each
+    zone's writes stay in a function of that zone.
     """
     _safety_zone_barrier()
-    shutil.copy2(src, dst)
+    _require_within_zone(dst, _install_zone_root(), "install_artifact")
+    target = Path(os.path.realpath(dst))
+    scratch = _scratch_sibling(target)
+    try:
+        shutil.copy2(src, scratch)
+        os.replace(scratch, target)
+    except BaseException:
+        if os.path.lexists(scratch):
+            os.unlink(scratch)
+        raise
 
 
 def install_artifact_chmod(path: Path, mode: int) -> None:
@@ -642,8 +732,12 @@ def install_artifact_chmod(path: Path, mode: int) -> None:
     Distinct wrapper so verify-claims can distinguish hypergumbo's own
     post-install ``chmod`` from arbitrary mode-bit mutation on the
     user's filesystem.
+
+    ENFORCED, as :func:`install_artifact_copy` is: ``chmod`` follows a
+    symlink, so an unchecked one re-moded a file outside the zone.
     """
     _safety_zone_barrier()
+    _require_within_zone(path, _install_zone_root(), "install_artifact")
     path.chmod(mode)
 
 

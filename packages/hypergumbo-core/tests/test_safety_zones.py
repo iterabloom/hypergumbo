@@ -121,12 +121,14 @@ def test_tmp_artifact_write_bytes_refuses_a_path_outside_tmp(
     assert not (tmp_path / "NOT_TMP.bin").exists()
 
 
-def test_install_artifact_copy(tmp_path: Path) -> None:
+def test_install_artifact_copy(tmp_path: Path, monkeypatch) -> None:
+    bindir = _install_home(tmp_path, monkeypatch)
     src = tmp_path / "src-bin"
     src.write_bytes(b"executable")
-    dst = tmp_path / "dst-bin"
+    dst = bindir / "dst-bin"
     install_artifact_copy(src, dst)
     assert dst.read_bytes() == b"executable"
+    assert _no_scratch_left(bindir) == []
 
 
 def test_cache_rmtree(tmp_path: Path, monkeypatch) -> None:
@@ -269,10 +271,10 @@ def test_every_destructive_wrapper_enforces_a_zone() -> None:
         )
 
 
-def test_install_artifact_chmod(tmp_path: Path) -> None:
+def test_install_artifact_chmod(tmp_path: Path, monkeypatch) -> None:
     """``install_artifact_chmod`` sets the mode bits on an installed file."""
     import stat
-    p = tmp_path / "binary"
+    p = _install_home(tmp_path, monkeypatch) / "binary"
     p.write_bytes(b"binary")
     # Start with a non-executable mode then chmod to executable
     p.chmod(0o644)
@@ -688,3 +690,124 @@ class TestTmpArtifactExtract:
         dest.mkdir()
         with pytest.raises(SafetyZoneViolation, match="tmp_artifact"):
             tmp_artifact_extract(archive, dest)
+
+
+class _Unserialisable:
+    """A value ``json.dump`` reaches only after writing everything before it."""
+
+
+def _no_scratch_left(directory: Path) -> list[str]:
+    return sorted(p.name for p in directory.iterdir() if p.name.startswith("."))
+
+
+@pytest.mark.parametrize("gzip_output", [False, True])
+def test_user_out_json_dump_never_leaves_a_truncated_file(
+    tmp_path: Path, gzip_output: bool,
+) -> None:
+    """A dump that dies part-way leaves the previous file whole.
+
+    The results-cache ``survey.json`` is found by existence alone, so a
+    truncated one is served as a cache hit and every read command on that repo
+    state fails "not valid JSON" until the user re-surveys. ``json.dump``
+    writes keys in sorted order, so ``"z"`` is reached after ``"a"`` is already
+    on disk: the old in-place write had truncated the file by then.
+    """
+    from hypergumbo_core.safety_zones import user_out_open_json_dump_gzip
+
+    dump = user_out_open_json_dump_gzip if gzip_output else user_out_open_json_dump
+    p = tmp_path / ("survey.json.gz" if gzip_output else "survey.json")
+    dump(p, {"good": True})
+    before = p.read_bytes()
+
+    with pytest.raises(TypeError):
+        dump(p, {"a": "x" * 100_000, "z": _Unserialisable()})
+
+    assert p.read_bytes() == before
+    assert _no_scratch_left(tmp_path) == []
+
+
+def test_user_out_json_dump_keeps_an_existing_files_mode(tmp_path: Path) -> None:
+    """Publishing by rename must not widen a file the user narrowed."""
+    p = tmp_path / "survey.json"
+    p.write_text("{}")
+    p.chmod(0o600)
+    user_out_open_json_dump(p, {"a": 1})
+    assert p.stat().st_mode & 0o777 == 0o600
+    assert json.loads(p.read_text()) == {"a": 1}
+
+
+def test_user_out_json_dump_writes_through_a_symlink(tmp_path: Path) -> None:
+    """An ``--out`` that is a symlink still names the file the link points at."""
+    target = tmp_path / "real.json"
+    target.write_text("{}")
+    link = tmp_path / "link.json"
+    link.symlink_to(target)
+    user_out_open_json_dump(link, {"a": 1})
+    assert link.is_symlink()
+    assert json.loads(target.read_text()) == {"a": 1}
+
+
+def _install_home(tmp_path: Path, monkeypatch) -> Path:
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    bindir = tmp_path / ".local" / "bin"
+    bindir.mkdir(parents=True)
+    return bindir
+
+
+def test_install_artifact_copy_never_leaves_a_partial_binary(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """A copy that dies part-way leaves the installed binary whole.
+
+    A partial ``~/.local/bin/gitleaks`` is preferred over a good gitleaks on
+    PATH, cannot run, and so turned every later secret scan off.
+    """
+    import shutil
+
+    from hypergumbo_core import safety_zones as sz
+
+    bindir = _install_home(tmp_path, monkeypatch)
+    dst = bindir / "gitleaks"
+    dst.write_bytes(b"old working binary")
+    src = tmp_path / "new"
+    src.write_bytes(b"new binary")
+
+    def dies_half_way(s, d, *args, **kwargs):
+        Path(d).write_bytes(b"new bin")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(sz.shutil, "copy2", dies_half_way)
+    with pytest.raises(OSError):
+        install_artifact_copy(src, dst)
+    monkeypatch.setattr(sz.shutil, "copy2", shutil.copy2)
+
+    assert dst.read_bytes() == b"old working binary"
+    assert _no_scratch_left(bindir) == []
+
+
+@pytest.mark.parametrize("wrapper", ["copy", "chmod"])
+def test_install_artifact_write_refuses_a_symlink_out_of_the_zone(
+    tmp_path: Path, monkeypatch, wrapper: str,
+) -> None:
+    """``~/.local/bin/gitleaks -> ~/go/bin/gitleaks`` is someone else's binary.
+
+    Following the link overwrote (or re-moded) a file outside the install
+    zone, which ``install_artifact_unlink`` already refused to touch.
+    """
+    bindir = _install_home(tmp_path, monkeypatch)
+    outside = tmp_path / "go" / "bin" / "gitleaks"
+    outside.parent.mkdir(parents=True)
+    outside.write_bytes(b"theirs")
+    outside.chmod(0o755)
+    (bindir / "gitleaks").symlink_to(outside)
+    src = tmp_path / "new"
+    src.write_bytes(b"ours")
+
+    with pytest.raises(SafetyZoneViolation, match="install_artifact"):
+        if wrapper == "copy":
+            install_artifact_copy(src, bindir / "gitleaks")
+        else:
+            install_artifact_chmod(bindir / "gitleaks", 0o777)
+
+    assert outside.read_bytes() == b"theirs"
+    assert outside.stat().st_mode & 0o777 == 0o755

@@ -232,6 +232,7 @@ from .pass_metadata import build_pass_metadata
 from .pass_clock import PassClock
 from .pass_silence import silence_reason_for_candidates
 from .safety_zones import (
+    SafetyZoneViolation,
     cache_mkdir,
     cache_rename,
     cache_rmtree,
@@ -1208,7 +1209,15 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     if not no_secret_scan:
         if is_gitleaks_available():
             findings = scan_content_cached(sketch, cache_dir)
-            if findings:
+            if findings is None:
+                # gitleaks is there but did not run, timed out, or wrote
+                # nothing readable. Saying "complete" here would be the lie.
+                print(
+                    "\u26a0\ufe0f  Secret scan did not run (gitleaks failed or "
+                    "timed out): this sketch was NOT checked for secrets.",
+                    file=sys.stderr,
+                )
+            elif findings:
                 print(format_secret_warning(findings), file=sys.stderr)
             else:
                 # Always remind that this is best-effort
@@ -1230,18 +1239,21 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     _legacy_compare_dir = (
         Path(_tempfile.gettempdir()) / "hypergumbo_sketch_compare"
     )
-    if _legacy_compare_dir.exists():
-        # INV-zudak: routed through the wrapper so the write is attributed to
-        # the tmp_artifact zone instead of surfacing as a raw host_fs flow.
-        # The bare call carried ``ignore_errors=True``; the wrapper takes no
-        # such argument, so the fail-open intent is preserved explicitly here
-        # rather than silently dropped. This is an opportunistic one-shot
-        # drain of a previous release's leftovers — a stale directory owned by
-        # another user, or a permission error, must not abort ``sketch``.
-        try:
+    # INV-zudak: routed through the wrapper so the write is attributed to
+    # the tmp_artifact zone instead of surfacing as a raw host_fs flow.
+    # The bare call carried ``ignore_errors=True``; the wrapper takes no
+    # such argument, so the fail-open intent is preserved explicitly here
+    # rather than silently dropped. This is an opportunistic one-shot
+    # drain of a previous release's leftovers — a stale directory owned by
+    # another user, a permission error, or a path the zone guard refuses
+    # (a symlink out of the temp dir: SafetyZoneViolation, not an OSError)
+    # must not abort ``sketch``. The ``exists()`` is inside the guard too:
+    # before Python 3.12 it raises on another user's protected symlink.
+    try:
+        if _legacy_compare_dir.exists():
             tmp_artifact_rmtree(_legacy_compare_dir)
-        except OSError:  # pragma: no cover - defensive; needs a hostile /tmp
-            pass
+    except (OSError, SafetyZoneViolation):
+        pass
 
     # Generate 4x and 16x budget sketches for comparison table
     # Using 4x/16x (instead of 2x) reveals when large files start fitting.
@@ -4894,12 +4906,14 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     # Delete entries
     deleted_count = 0
     for entry in entries:
+        # A refusal (an entry that is a symlink out of the cache) is skipped
+        # like an OSError; it is a RuntimeError, so it needs naming.
         try:
             cache_rmtree(entry, zone_root=cache_dir)
             deleted_count += 1
-        except (OSError, PermissionError) as e:  # pragma: no cover
-            if not args.quiet:  # pragma: no cover
-                print(f"Warning: Could not delete {entry}: {e}")  # pragma: no cover
+        except (OSError, SafetyZoneViolation) as e:
+            if not args.quiet:
+                print(f"Warning: Could not delete {entry}: {e}")
 
     if not args.quiet:
         print(f"Deleted {deleted_count} entries ({_format_size(total_size)})")
@@ -4997,9 +5011,9 @@ def _cache_clear_repo(
         try:
             cache_rmtree(d, zone_root=cache_dir)
             deleted += 1
-        except (OSError, PermissionError) as e:  # pragma: no cover
-            if not args.quiet:  # pragma: no cover
-                print(  # pragma: no cover
+        except (OSError, SafetyZoneViolation) as e:
+            if not args.quiet:
+                print(
                     f"Warning: Could not delete {d}: {e}", file=sys.stderr
                 )
 

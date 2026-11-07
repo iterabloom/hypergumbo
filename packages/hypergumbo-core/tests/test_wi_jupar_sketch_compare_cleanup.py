@@ -157,3 +157,29 @@ def test_legacy_tmp_dir_is_cleaned_up_if_present(
     assert not legacy_dir.exists(), (
         f"Stale legacy dir {legacy_dir} should be cleaned up on first run."
     )
+
+
+def test_a_legacy_dir_the_zone_refuses_does_not_fail_sketch(
+    tmp_path: Path,
+    isolated_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The drain is opportunistic: a refusal must not turn sketch into rc 1.
+
+    A legacy path that is a symlink out of the temp dir is refused by
+    ``tmp_artifact_rmtree`` with ``SafetyZoneViolation``, which the drain's
+    ``except OSError`` did not catch: the sketch printed, then the command
+    failed with "internal error".
+    """
+    monkeypatch.setenv("HYPERGUMBO_CACHE_HONK_GB", "0")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("mine")
+    (isolated_tmpdir / "hypergumbo_sketch_compare").symlink_to(outside)
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("x = 1\n")
+
+    assert main(["sketch", str(repo), "-t", "100"]) == 0
+    assert (outside / "keep.txt").read_text() == "mine"

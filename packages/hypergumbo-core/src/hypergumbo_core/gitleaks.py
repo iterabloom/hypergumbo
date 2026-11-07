@@ -276,10 +276,11 @@ def install_gitleaks(quiet: bool = False) -> bool:
     ) as e:  # pragma: no cover
         # SafetyZoneViolation is caught here rather than allowed to escape: a
         # refused member means a release archive tried to write outside the
-        # tmp zone, which is a REFUSAL TO INSTALL, not a crash. It returns
-        # False like every other extraction failure, and the message names
-        # the member.
-        print(f"Error extracting gitleaks: {e}", file=sys.stderr)  # pragma: no cover
+        # tmp zone, and a refused target means ~/.local/bin/gitleaks is a
+        # symlink to a binary hypergumbo does not own. Either is a REFUSAL TO
+        # INSTALL, not a crash. It returns False like every other failure, and
+        # the message names the path.
+        print(f"Error installing gitleaks: {e}", file=sys.stderr)  # pragma: no cover
         return False  # pragma: no cover
 
     if not quiet:  # pragma: no cover
@@ -296,11 +297,25 @@ def scan_content(content: str) -> list[SecretFinding]:
         content: The text content to scan (e.g., sketch output)
 
     Returns:
-        List of findings. Empty list if gitleaks unavailable or no secrets found.
+        List of findings. Empty list if gitleaks unavailable, the scan could
+        not run or be read, or no secrets were found. A caller that must tell
+        "clean" from "not scanned" uses :func:`scan_content_cached`.
+    """
+    findings = _scan(content)
+    return [] if findings is None else findings
+
+
+def _scan(content: str) -> list[SecretFinding] | None:
+    """The scan itself: findings, or ``None`` when it did not happen.
+
+    ``None`` covers no gitleaks, a gitleaks that cannot run (a partial
+    install), the 30 s timeout, and output that is not a JSON list. None of
+    those is a clean result, and :func:`scan_content_cached` must not record
+    one as clean.
     """
     gitleaks = get_gitleaks_path()
     if not gitleaks:
-        return []
+        return None
 
     try:
         # Run gitleaks against stdin, JSON output (nosec B603 - known binary).
@@ -340,11 +355,11 @@ def scan_content(content: str) -> list[SecretFinding]:
                 cwd=scan_cwd,
             )
     except subprocess.TimeoutExpired:
-        # Scan took too long, skip
-        return []
+        # Scan took too long: not scanned
+        return None
     except (subprocess.SubprocessError, OSError):
-        # gitleaks failed to run, skip
-        return []
+        # gitleaks failed to run: not scanned
+        return None
 
     # Parse JSON output
     try:
@@ -355,7 +370,7 @@ def scan_content(content: str) -> list[SecretFinding]:
 
         findings_data = json.loads(stdout)
         if not isinstance(findings_data, list):
-            return []
+            return None
 
         findings = []
         for item in findings_data:
@@ -371,15 +386,15 @@ def scan_content(content: str) -> list[SecretFinding]:
         return findings
 
     except json.JSONDecodeError:
-        return []
+        return None
 
 
 def scan_content_cached(
     content: str,
     cache_dir: "Optional[Path]",
     max_entries: int = 8,
-) -> list[SecretFinding]:
-    """Cached wrapper around ``scan_content``.
+) -> list[SecretFinding] | None:
+    """Cached wrapper around ``scan_content``; ``None`` when no scan happened.
 
     Why this exists: gitleaks invocation costs ~8s on a small repo and
     dominates wall-clock for warm sketch runs that reuse cached analysis
@@ -396,9 +411,14 @@ def scan_content_cached(
     Failure modes are silent — a missing/unwritable cache_dir, a
     corrupt cache file, or an OSError on write all degrade to the
     uncached path without surfacing an error to the user.
+
+    A SCAN THAT DID NOT HAPPEN IS RETURNED AS ``None`` AND NEVER CACHED. It
+    was returned as ``[]`` and cached as "no secrets" for that content, so a
+    gitleaks that could not run, or one timeout, made sketch report "Secret
+    scan complete" for that sketch from then on.
     """
     if cache_dir is None:
-        return scan_content(content)
+        return _scan(content)
 
     import hashlib
     import time
@@ -423,7 +443,9 @@ def scan_content_cached(
         except TypeError:  # pragma: no cover - defensive against schema drift
             pass
 
-    findings = scan_content(content)
+    findings = _scan(content)
+    if findings is None:
+        return None
 
     cache[content_hash] = {
         "findings": [asdict(f) for f in findings],
@@ -503,6 +525,9 @@ def uninstall_gitleaks(quiet: bool = False) -> bool:
         if not quiet:
             print(f"Removed gitleaks from {GITLEAKS_PATH}")
         return True
-    except OSError as e:
+    except (OSError, SafetyZoneViolation) as e:
+        # A refusal is a SafetyZoneViolation (a RuntimeError): the path is a
+        # symlink to a gitleaks outside ~/.local/bin, which hypergumbo did not
+        # install. Report it like any other failure, not as an internal error.
         print(f"Error removing gitleaks: {e}", file=sys.stderr)
         return False

@@ -378,12 +378,42 @@ class TestBuildAllGrammars:
         assert results["lean"] is True
         assert results["wolfram"] is False
 
-    def test_build_all_grammars_uses_temp_dir(self) -> None:
-        """Test that build_all_grammars uses temp dir by default."""
-        with patch("hypergumbo_core.build_grammars.build_grammar", return_value=True):
+    def test_build_all_grammars_uses_a_fresh_private_temp_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The default build directory is new, private and removed afterwards.
+
+        It used to be the fixed ``<tmp>/ts-grammar-build``, created with
+        ``exist_ok=True``. On a shared host, whoever made that directory first
+        owned it: another user's leftover crashed the build, and a hostile one
+        could swap the generated ``setup.py`` before pip ran it as the victim.
+        """
+        import os
+        import stat
+        import tempfile
+
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+        squatted = tmp_path / "ts-grammar-build"
+        squatted.mkdir()
+        squatted.chmod(0o777)
+        seen: list[tuple[Path, int, int]] = []
+
+        def record(spec, build_dir, quiet=False):
+            st = build_dir.stat()
+            seen.append((build_dir, stat.S_IMODE(st.st_mode), st.st_uid))
+            return True
+
+        with patch("hypergumbo_core.build_grammars.build_grammar", side_effect=record):
             results = build_all_grammars(quiet=True)
 
         assert len(results) == len(SOURCE_GRAMMARS)
+        dirs = {d for d, _, _ in seen}
+        assert len(dirs) == 1, dirs
+        build_dir = dirs.pop()
+        assert build_dir != squatted and build_dir.parent == tmp_path
+        assert all(mode == 0o700 and uid == os.getuid() for _, mode, uid in seen)
+        assert not build_dir.exists(), "the private build dir was left behind"
+        assert list(squatted.iterdir()) == []
 
 
 class TestCheckGrammarAvailability:
