@@ -12,7 +12,7 @@ pip install hypergumbo
 
 > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing.
 
-> Installing on a personal machine? Read [Security and trust](https://github.com/iterabloom/hypergumbo/blob/dev/README.md#security-and-trust-as-of-2026-11) first: what hypergumbo reads, writes and downloads, which commands run other code, and how its claims are checked.
+> Installing on a personal machine? Read the [Security](https://github.com/iterabloom/hypergumbo/blob/dev/README.md#security-as-of-2026-11) section first: what hypergumbo reads, writes and downloads, which commands run other code, and how its claims are checked.
 
 > Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
 
@@ -26,76 +26,71 @@ Output:
 ```bash
 # hypergumbo
 
-hypergumbo is a local-first CLI that generates surveys and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
-
-> **Audited IO surface.** hypergumbo's own filesystem / network / subprocess activity is enumerated per CLI subcommand category in [SECURITY.md](SECURITY.md), with machine-verifiable claims authored at `docs/hypergumbo.claims.yaml`. Re-run the audit locally via `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml`. The wrapper-function discipline used to make path-bounded claims structurally verifiable is documented as the recommended pattern for any hypergumbo user (any language) wanting the same precision.
+hypergumbo is a local-first CLI that generates surveys and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+.
 
 ## Overview
-Python (91%), Markdown (4%), Yaml (3%)
-728 files    (383 non-test + 345 test)
-~320,798 LOC (~129,172 non-test + ~191,626 test)
+Python (89%), Markdown (5%), Yaml (3%), Bash (2%)
+2,379 files    (  944 non-test + 1,435 test)
+~928,098 LOC (~379,495 non-test + ~548,603 test)
+
+Vendored third-party code analysed as tier 3, not counted in the language breakdown: packages/hypergumbo-core/src/hypergumbo_core/vendor/ (c, cpp, json; 13 files). To skip: --exclude <dir>.
 
 ## Structure
 
 ` ` `
-hypergumbo/
-├── .agent
-│   └── [and 6 other items]
-├── .gitea
-│   ├── SQUASH_TEMPLATE.md
-│   └── [and 1 other items]
-├── .githooks
-│   ├── commit-msg
-│   └── [and 9 other items]
-├── docs
-│   ├── CACHE.md
-│   └── [and 22 other items]
-├── packages
-│   ├── hypergumbo-core
-│   │   ├── src
-│   │   │   └── hypergumbo_core
-│   │   │       ├── analyze
-│   │   │       │   ├── base.py
-│   │   │       │   └── [and 3 other items]
-│   │   │       ├── __main__.py
-│   │   │       ├── cli.py
-│   │   │       ├── ir.py
-│   │   │       └── [and 26 other items]
-│   │   ├── tests
-│   │   │   ├── test_framework_patterns.py
-│   │   │   └── [and 94 other items]
-│   │   └── [and 2 other items]
-│   ├── hypergumbo-tracker
-│   │   ├── src
-│   │   │   └── hypergumbo_tracker
-│   │   │       ├── cli.py
-│   │   │       └── [and 13 other items]
-│   │   └── [and 5 other items]
-│   └── [and 4 other items]
-├── scripts
-│   ├── lib
-│   │   └── forgejo-api.sh
-│   └── [and 33 other items]
-├── tests
-│   ├── test_bakeoff_deep_reflect.py
-│   └── [and 2 other items]
-├── conftest.py
-├── pyproject.toml
-├── setup.py
-└── [and 21 other items]
+     hypergumbo/
+  8  ├── .ci
+  8  │   └── .gitignore
+  3k ├── .githooks
+304  │   ├── brand-scrub.sh
+  2k │   └── [and 9 other items]
+813k ├── packages
+433k │   ├── hypergumbo-core
+168k │   │   ├── src
+168k │   │   │   └── hypergumbo_core
+  4  │   │   │       ├── __main__.py
+ 13k │   │   │       ├── cli.py
+  2k │   │   │       ├── ir.py
+153k │   │   │       └── [and 126 other items]
+265k │   │   ├── tests
+ 18k │   │   │   ├── test_framework_patterns.py
+247k │   │   │   └── [and 562 other items]
+131  │   │   └── [and 2 other items]
+ 71k │   ├── hypergumbo-tracker
+ 23k │   │   ├── src
+ 23k │   │   │   └── hypergumbo_tracker
+  4k │   │   │       ├── cli.py
+ 20k │   │   │       └── [and 37 other items]
+ 48k │   │   └── [and 4 other items]
+309k │   └── [and 6 other items]
+ 26k ├── scripts
+  3k │   ├── lib
+  2k │   │   ├── forgejo-api.sh
+994  │   │   └── [and 4 other items]
+ 23k │   └── [and 69 other items]
+ 38k ├── tests
+894  │   ├── test_agent_supervisor.py
+ 37k │   └── [and 142 other items]
+107  ├── .gitignore
+ 75  ├── .gitleaks.toml
+116  ├── conftest.py
+147  ├── pyproject.toml
+ 12  ├── setup.py
+ 51k └── [and 12 other items]
 ` ` `
+Counts and LOC cover only files with at least one detected symbol; files with none, such as JSON data or extensionless scripts, are left out.
 
 ## Frameworks
 
+- protobuf
 - pytest
-- pytorch
-- transformers
+- starlette
 
 ## Tests
 
-345 test files · cargo test, pytest, unittest
+1435 test files · cargo test, pytest, unittest
 
-*~95% estimated coverage (2693/2847 functions called by tests)*
+*~63% estimated coverage (4700/7446 functions called by tests)*
 
 ## Configuration
 [...]
@@ -110,7 +105,7 @@ hypergumbo . -t 4000   # good balance for most LLMs
 hypergumbo . -t 8000   # detailed with many symbols
 ```
 
-## Security and trust (as of 2026-11)
+## Security (as of 2026-11)
 
 Please report vulnerabilities as described in [SECURITY.md](https://github.com/iterabloom/hypergumbo/blob/dev/SECURITY.md#reporting-a-vulnerability).
 
