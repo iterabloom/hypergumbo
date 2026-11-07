@@ -1,0 +1,21 @@
+- op: create  # fc6e
+  at: '2026-11-07T02:12:27Z'  # fc6e
+  by: agent  # fc6e
+  actor: jgstern_agent  # fc6e
+  clock: 1  # fc6e
+  nonce: fc6e  # fc6e
+  data:  # fc6e
+    kind: work_item  # fc6e
+    title: "user_state_write(private=True): the record file is 0600 but its directory is 0755, so a local user can confirm a guessed repo has a decision"  # fc6e
+    status: todo_hard  # fc6e
+    priority: 4  # fc6e
+    parent:  # fc6e
+    tags:  # fc6e
+    - safety_zones  # fc6e
+    - security  # fc6e
+    isbefore: []  # fc6e
+    duplicate_of: []  # fc6e
+    not_duplicate_of: []  # fc6e
+    pr_ref:  # fc6e
+    description: "Found by the 11-06 adversarial review of the safety_zones wrappers (lab: wrapper_review_11062026/REVIEW.md #8, probe b/p8/).\n\nDefect: user_state_write(private=True) makes the FILE 0600 before writing (the #2072 fix holds), but creates its parent directories with the default mode (0755 under umask 022). Record names are sha256(resolved repo path)[:16].\n\nTrigger: a local user who can traverse the victim's home into ~/.local/state/hypergumbo.\n\nConsequence: that user can list the directory and confirm whether a guessed repo path has a recorded trust-backend / trust-catalogues / offer decision (not whether it was a grant or a decline). This partly defeats the privacy rationale in the docstring. Low: most homes are not traversable by others.\n\nFix direction: create the private record's directories 0700 (and tighten an existing one the wrapper created), with a test that pins the directory mode as well as the file mode."  # fc6e
+    fields: {}  # fc6e
