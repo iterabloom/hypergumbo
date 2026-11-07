@@ -9,17 +9,17 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
-- **Multi-select in the TUI item list, with batch Mark Read / Mark Unread.** Shift+click (or Space, for terminals that keep Shift+click for text selection) adds or removes a row; selected rows show a check, and Mark Read / Mark Unread apply to all of them in one save. Esc or a plain click clears the selection.
+- **Select several items in the TUI list and mark them read or unread at once.** Shift+click or Space toggles a row; Esc or a plain click clears the selection.
 
 ### Fixed
 
-- **The TUI list keeps its place when it rebuilds**: Mark Read / Mark Unread, the status, tag and full-ID toggles, reorder (`<`/`>`) and the edit-mode toggle no longer jump a scrolled list back to the top. If the cursor's row disappears, the cursor stays at the same row number.
-- **TUI preferences are per user**: they live in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`, not in the shared checkout, where `git clean` removed them and two accounts overwrote each other's on every save. An existing in-repo file is read once and carried over.
-- **TUI tests click only once the target is under the pointer**, and fail if the click did not land; on a slow run a stale button region had sent clicks to the dialog behind it.
+- **The TUI list keeps its scroll position** when you mark items, toggle a column, reorder or switch edit mode, instead of jumping back to the top.
+- **TUI preferences are per user**, in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`: in the checkout, `git clean` deleted them and two accounts overwrote each other's. An existing file is carried over once.
+- **TUI tests no longer click a stale button region on a slow run**; a click that misses fails the test.
 
 ### Documentation
 
-- The web server's module docstrings describe its deny-by-default auth gate (401 for any request no authenticator accepts) and say the login modules are not wired in.
+- The web server's docstrings describe its deny-by-default auth gate and say the login modules are not wired in.
 
 ## [0.11.0] - 2026-10-20
 
