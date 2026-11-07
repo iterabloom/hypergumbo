@@ -27,7 +27,7 @@ Successfully installed hypergumbo-X.Y.Z hypergumbo-core-X.Y.Z hypergumbo-lang-co
 
 ```
 Building tree-sitter grammars from source...
-Build directory: /tmp/ts-grammar-build
+Build directory: /tmp/ts-grammar-build-k2x9q4ab
 ```
 
 [...takes 1~5 minutes; bunch of log messages omitted for brevity...]

@@ -962,3 +962,66 @@ class TestCacheCommandWiring:
             )
 
         assert result == 0
+
+
+class TestCacheClearSkipsARefusedEntry:
+    """A cache entry the zone guard refuses is skipped with a warning.
+
+    ``cache_rmtree`` refuses a symlink that leads out of the cache with
+    ``SafetyZoneViolation``, a ``RuntimeError``. These loops caught only
+    ``OSError``, so one such entry stopped ``cache-clear`` part-way with an
+    "internal error" and no summary.
+    """
+
+    def _outside(self, tmp_path: Path) -> Path:
+        outside = tmp_path / "not_the_cache"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("mine")
+        return outside
+
+    def test_clear_all(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        (cache_dir / "aaa").mkdir()
+        (cache_dir / "mmm").symlink_to(self._outside(tmp_path))
+        (cache_dir / "zzz").mkdir()
+        args = FakeArgs()
+        args.quiet = False
+        args.older_than = None
+        args.dry_run = False
+
+        with patch("hypergumbo_core.cli._get_cache_base", return_value=cache_dir):
+            result = cmd_cache_clear(args)
+
+        assert result == 0
+        assert sorted(p.name for p in cache_dir.iterdir()) == ["mmm"]
+        assert (tmp_path / "not_the_cache" / "keep.txt").read_text() == "mine"
+        captured = capsys.readouterr()
+        assert "Could not delete" in captured.out and "Deleted 2 entries" in captured.out
+
+    def test_keep_latest(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        import time
+        cache_dir = tmp_path / "cache"
+        results = cache_dir / "abc" / "results"
+        results.mkdir(parents=True)
+        base = time.time() - 1000
+        outside = self._outside(tmp_path)
+        os.utime(outside, (base, base))
+        (results / "state0").symlink_to(outside)
+        for i in (1, 2, 3):
+            (results / f"state{i}").mkdir()
+            os.utime(results / f"state{i}", (base + i, base + i))
+        args = FakeArgs()
+        args.quiet = False
+        args.older_than = None
+        args.dry_run = False
+        args.repo = "abc"
+        args.keep_latest = 1
+
+        with patch("hypergumbo_core.cli._get_cache_base", return_value=cache_dir):
+            result = cmd_cache_clear(args)
+
+        assert result == 0
+        assert sorted(d.name for d in results.iterdir()) == ["state0", "state3"]
+        assert (outside / "keep.txt").read_text() == "mine"
+        assert "Could not delete" in capsys.readouterr().err

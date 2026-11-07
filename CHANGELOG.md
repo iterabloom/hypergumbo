@@ -59,6 +59,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Hypergumbo's own claims
 
+- **`build-grammars` builds in a fresh private temp directory**, not shared `/tmp/ts-grammar-build`.
+- **An interrupted survey never leaves a truncated `survey.json`**: outputs are published whole.
+- **gitleaks installs whole and never through a symlink out of `~/.local/bin`.**
+- **A secret scan that did not run says so** and is never cached clean.
+- **`cache-clear`, `sketch` and `uninstall-gitleaks` skip a refused path** instead of crashing.
 - **Trust grants are 0600 before their content is written**, never umask-readable.
 - **A gate checks every allowlist entry's command list**: call graph per PR, traced runs on the cron.
 - **The I/O allowlist's command lists match a traced run of every subcommand**; `<analysis>` no longer includes `compact` or `backend-agreement`.
