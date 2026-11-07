@@ -288,6 +288,74 @@ Hypergumbo's own mutating callsites (``shutil.rmtree`` for cache eviction and gr
 
 <!-- END generated -->
 
+## Using hypergumbo safely
+
+Each statement below was checked against the code on 2026-11-06.
+
+### What a default run does
+
+`hypergumbo .` is the same as `hypergumbo sketch .`.
+
+- Reads the files of the repository you point it at.
+- Writes only under `~/.cache/hypergumbo/` (`$XDG_CACHE_HOME/hypergumbo/` if set) and short-lived files in the system temp directory. It never writes into the repository it analyses unless you name an `-o` path inside it ([ADR-0047](docs/adr/0047-catalogue-scope-and-user-visible-homes.md) ruling 9). The one write outside the cache and temp is the offer in the last bullet of this list. One command writes more than the file you name: `survey --out X.json` also writes `X.4k.json`, `X.16k.json` and `X.64k.json` (the same map compacted to those token budgets) and a directory `X.slices/` holding one slice per detected route handler, all beside `X.json`. `--no-sketch-fan-out --no-handler-slices` suppresses them, so exactly one file is written.
+- Runs `git` read-only: `rev-parse HEAD`, `rev-list --max-parents=0 HEAD` and `config --get remote.origin.url` for cache keys and repository identity, and `ls-tree HEAD` when file discovery checks for submodules. With in-repo catalogues opted in, it also runs `ls-files --error-unmatch` and `status --porcelain` on the catalogue files. If they are installed, it also runs `gitleaks` to scan for secrets and `rust-analyzer --version`; the version check does not index anything.
+- Makes no network connection. With embeddings support installed, the sketch loads its two models (`microsoft/unixcoder-base` and `nomic-ai/modernbert-embed-base`) from `~/.cache/huggingface/` (or `$HF_HOME`) only. If they are not there, it runs without embeddings and says to run `hypergumbo install-embeddings`, which downloads them. `pip install 'hypergumbo[embeddings]'` installs the library but not the models. This relies on Hugging Face's offline mode, which hypergumbo turns on only when `HF_HUB_OFFLINE` is unset: if you have set it yourself to a value that turns offline mode off (such as `0`), your setting wins and the model library may contact huggingface.co.
+- If a directory `~/hypergumbo` exists (for example, a clone of this repository), an interactive run asks once whether to write example config files into `~/hypergumbo/.hypergumbo-examples/`. It records your answer in `~/.local/state/hypergumbo/offers.json` (`$XDG_STATE_HOME/hypergumbo/` if set). It does not ask while the path you analysed is `~/hypergumbo`, lies inside it, or contains it.
+
+### Commands that download, compile or run other programs
+
+None of these run unless you invoke them, with one exception: the analysed repository itself can switch on the scip-python backend (last row).
+
+| Command | What it does |
+|---|---|
+| `install-gitleaks` | Downloads the latest gitleaks release from github.com into `~/.local/bin/`. It checks no checksum or signature. |
+| `install-embeddings` | Runs `pip install sentence-transformers`, which pulls in PyTorch (about 2 GB), then downloads the two embedding models from huggingface.co. Analysis never downloads them. |
+| `install-rust-analyzer` | Runs `rustup component add rust-analyzer`. |
+| `build-grammars` | Compiles three tree-sitter grammars (Lean, Wolfram, Circom) with your compiler, from C source that ships inside `hypergumbo-core`, through `pip install`, which can download build tools from PyPI. |
+| `add-extras` | Runs all four of the above; the rust-analyzer step runs only when the `hypergumbo[rust-analyzer]` extra is installed. Skip any of them with `--skip`. |
+| `--backend rust-analyzer` | Runs `rust-analyzer scip`, which **executes the analysed repository's `build.rs` and proc macros as you**. It is off unless you pass the flag, set `HYPERGUMBO_RUST_ANALYZER=1`, or record a per-repository grant with `hypergumbo trust-backend rust_analyzer`. No config file can switch it on, including one inside the analysed repository ([ADR-0045](docs/adr/0045-user-config-and-backend-trust.md)). Do not use it on code you don't trust. Do not export the variable from your shell profile, because that turns it on for every Rust repository. |
+| `--backend scip-python` | Runs `scip-python index`, a static analyser that does not execute the project. Besides the flag, `HYPERGUMBO_SCIP_PYTHON`, your `config.toml`, **or the analysed repository's own `.hypergumbo.toml`** can switch it on, provided the `hypergumbo[scip-python]` extra and the `scip-python` npm tool are installed. |
+
+### The tracker (`htrac`) is a separate package
+
+`pip install hypergumbo` does not install it. It was built for this repository's agent workflow. If you install `hypergumbo-tracker`, note the following:
+
+- `htrac sync` commits and pushes with `git` and calls the GitHub or Forgejo API with a token. So does any tracker command that changes data, once enough unsynced changes have piled up (auto-sync).
+- `htrac serve` starts a web server on 127.0.0.1:7380. Every route except `/health` refuses a request unless an authenticator accepts it, and no login flow is wired up yet, so today the API refuses everything. Still, do not expose the port.
+- `htrac guidance` sends tracker item titles to openrouter.ai when `OPENROUTER_API_KEY` is set and an unread message starts with a `[[tag]]` (WI-puban).
+- `htrac setup` adds the repository to your global git `safe.directory` list when git reports "dubious ownership".
+- The self-claims check described below does not cover the tracker yet (WI-sunan); the I/O allowlist does. The tracker was designed to stop an agent from accidentally undermining it, not to resist a determined attacker ([ADR-0013](docs/adr/0013-structured-tracker.md), Security Model).
+
+### How these statements are checked
+
+1. **Self-claims.** The "Audited IO Surface" section above lists the claims about what each group of commands may touch, and about what the analysed repository itself can reach. hypergumbo checks them by analysing its own source (`scripts/check-self-claims`, on the twice-daily CI run). Every claim currently reads `confirmed_with_caveats`. That means the analysis found no contradiction where it could see, and it names what it could not see: programs it launches, statements the repository made about itself, and the method calls whose receiver type it could not work out (the share is measured above). In auditing terms, this is a qualified opinion, not proof ([ADR-0016](docs/adr/0016-io-boundary-analysis.md)). It covers the `hypergumbo` command only.
+2. **I/O allowlist.** `scripts/check-io-allowlist` is a separate scan built on the standard library and PyYAML; it imports nothing from hypergumbo. It finds every place in `packages/*/src`, tracker included, that writes or deletes a file, starts or signals a process, opens a connection or a server, imports code dynamically, deserializes data, or changes the process environment or working directory, and prints how many there are. Each one must be listed in [`docs/hypergumbo.io-allowlist.yaml`](docs/hypergumbo.io-allowlist.yaml) with its purpose and the commands that reach it, and an unlisted one fails CI on every pull request. A second gate, `scripts/check-allowlist-commands`, checks each listed set of commands against the commands a call graph finds reaching that place (on every pull request) and against traced runs of every subcommand (on the twice-daily run). Together they show that every such place is listed with a stated purpose, and that its listed commands agree with what a call graph and those traced runs find. A call graph misses calls it cannot resolve, and a trace sees only the paths it ran, so this is not proof that no other command reaches a place. Nor does it show that any place is safe.
+3. **Observed I/O manifest.** At every release, `scripts/io-manifest` runs the installed `hypergumbo` over six pinned open-source repositories under `strace`. It records every file write, delete and rename, every program started and every connection attempted, reduced to a short list of expected entries ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)). An entry not seen at the previous release fails the build, and a write into the analysed repository or a network connection fails it regardless. This is the only one of the three checks that sees what dependencies and compiled extensions do, because it watches the process rather than reading the Python. It covers a default run with no extras installed, on those six repositories. It supports "every scenario we exercised", not "every scenario".
+
+The allowlist currently records one open finding:
+
+- **WI-puban:** the tracker's OpenRouter call, described above.
+
+### Analysing a repository you don't trust
+
+- Unless you turn on the rust-analyzer backend, hypergumbo parses the repository's code and never runs it.
+- Catalogue data inside the repository (the catalogue keys in `.hypergumbo.toml` and the files in `.hypergumbo/<family>.d/`) is ignored until you opt in with `--in-repo-catalogues` or `hypergumbo trust-catalogues` ([ADR-0061](docs/adr/0061-catalogue-tiers-for-every-family.md)). Its preferences do load by default, and that is how it can switch on scip-python.
+- It cannot turn on the rust-analyzer backend, and it cannot make hypergumbo write into it.
+- If gitleaks is installed, it runs in an empty directory of its own, so the repository's `.gitleaks.toml` and `.gitleaksignore` cannot hide secret-scan findings. Your own `GITLEAKS_CONFIG` still applies. gitleaks is handed the sketch's text, which quotes your source; hypergumbo runs `~/.local/bin/gitleaks` if present, otherwise the first `gitleaks` on your `PATH`, and `install-gitleaks` puts it in `~/.local/bin/` without checking a checksum or signature.
+- It does control everything the parsers read. hypergumbo has no sandbox of its own, so a file crafted to exploit a parser bug would run with your permissions.
+
+### Running it confined
+
+- **Container:** install hypergumbo in an image, then run it with networking off and the repository mounted read-only (`docker run --network none -v "$PWD":/repo:ro …`). hypergumbo runs without `git` and writes only its cache and temp files.
+- **Watch it once on Linux:** the commands below log every file opened for writing, created, renamed or deleted, every network connection and every program started.
+
+  ```bash
+  strace -f -e trace=%file,%network,execve -o /tmp/hg.trace hypergumbo .
+  grep -E 'O_CREAT|O_WRONLY|O_RDWR|mkdir|rename|unlink|connect\(|execve\(' /tmp/hg.trace | grep -v ENOENT
+  ```
+
+- **macOS:** block network access for the Python that runs hypergumbo with LuLu or Little Snitch, and watch file activity once with `sudo fs_usage`. We have not tested exact commands for these on macOS.
+
 ## Supported Versions
 
 | Version | Supported          |
