@@ -358,12 +358,12 @@ The allowlist currently records one open finding:
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.x     | :white_check_mark: |
-| < 2.0   | :x:                |
+| Version                                  | Supported          |
+| ---------------------------------------- | ------------------ |
+| The latest minor release                 | :white_check_mark: |
+| Anything older                           | :x:                |
 
-Only the latest minor version receives security updates. We recommend always running the latest release.
+Only the latest minor version receives security updates (the newest release is listed on [PyPI](https://pypi.org/project/hypergumbo/) and in [CHANGELOG.md](CHANGELOG.md)). We recommend always running the latest release.
 
 ## Reporting a Vulnerability
 
