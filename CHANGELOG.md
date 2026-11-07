@@ -188,6 +188,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Module docstrings: 66 corrected, 23 extended (two staleness audits).
 - **SECURITY.md "Using hypergumbo safely"**: default-run behaviour, launches, untrusted repos, confinement.
 - **README "Security and trust"** rewritten; its details moved to SECURITY.md.
+- SECURITY.md "Supported Versions" names the latest minor release, not 2.x.
 - The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org.
 
 ## [9.2.0] - 2026-10-20
