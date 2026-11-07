@@ -187,6 +187,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Consumer agreement** ([`docs/audits/0026-consumer-agreement.md`](docs/audits/0026-consumer-agreement.md)): facts two views derive separately, and where they disagree.
 - Module docstrings: 66 corrected, 23 extended (two staleness audits).
 - **SECURITY.md "Using hypergumbo safely"**: default-run behaviour, launches, untrusted repos, confinement.
+- **README "Security and trust"** rewritten; its details moved to SECURITY.md.
 - The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org.
 
 ## [9.2.0] - 2026-10-20
