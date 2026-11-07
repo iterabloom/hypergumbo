@@ -191,6 +191,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - SECURITY.md "Supported Versions" names the latest minor release, not 2.x.
 - `docs/example-output.md` recaptured from 9.2.0 on hypergumbo itself.
 - README example sketch recaptured; its security section is now "Security".
+- `docs/ARCHITECTURE.md` corrected: analyzer and pattern counts, pipeline order, tiers, how-tos.
+- README architecture lists the SCIP backends; pipeline order matches the code.
+- `generate-architecture --check` recomputes source-tree counts instead of trusting commit distance.
 - The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org.
 
 ## [9.2.0] - 2026-10-20

@@ -107,18 +107,28 @@ Usage
 -----
 In a linker module:
 
-    from .registry import register_linker, LinkerContext, LinkerResult
+    from .registry import (
+        LinkerActivation,
+        LinkerContext,
+        LinkerRequirement,
+        LinkerResult,
+        register_linker,
+    )
 
     @register_linker(
         "ipc",
         priority=50,
-        activation=LinkerActivation(frameworks={"tauri"}),
-        requirements=LinkerRequirement(...),
+        activation=LinkerActivation(frameworks=["tauri"]),
+        requirements=[LinkerRequirement(...)],
+        depends_on=[["javascript"], ["rust"]],
     )
     def link_ipc(ctx: LinkerContext) -> LinkerResult:
         repo_root = ctx.repo_root
         # ... do linking ...
         return LinkerResult(symbols=symbols, edges=edges, run=run)
+
+The decorator runs only when the module is imported: add it to
+``cli.py``'s block of side-effect linker imports.
 
 In cli.py:
 
