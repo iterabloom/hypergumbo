@@ -438,7 +438,6 @@ modules:
         status --porcelain for an in-repo catalogue's committed / modified state)
       commands:
       - <analysis>
-      - trust-catalogues
       - catalog (it profiles the current directory; ls-tree when that holds a submodule)
       purpose: 'repo_inspection wrapper: local read-only git plumbing for cache keys, repo identity,
         file discovery and in-repo catalogue state'

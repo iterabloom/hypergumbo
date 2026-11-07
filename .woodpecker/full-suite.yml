@@ -225,6 +225,28 @@ steps:
       - pip install --upgrade pip && pip install "pyyaml>=6"
       - scripts/check-io-allowlist
 
+  # ── allowlist COMMANDS, traced — cron arm (check-allowlist-commands) ───────
+  # Every subcommand, in the variants that change a path (cold / warm /
+  # evicting cache, --backend, --gzip, --minimal, the install commands with
+  # HOME in scratch and launches stubbed), runs under a sys.monitoring line
+  # tracer; a command seen executing an entry's line that the entry does not
+  # list fails. 3.12 for sys.monitoring. This runner has no rust-analyzer,
+  # gitleaks or sentence-transformers: the script supplies stand-ins (the
+  # question is whether hypergumbo's own line runs, not what the tool says)
+  # and names them; numpy is what hypergumbo's embedding code does with a
+  # loaded model. A variant that cannot run fails the step BY NAME. ~10 min.
+  - name: allowlist-commands-trace
+    image: python:3.12-bookworm
+    depends_on: []
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=4000"
+    commands:
+      - apt-get update && apt-get install -y --no-install-recommends nodejs npm
+      - npm install -g @sourcegraph/scip-python@0.6.6
+      - pip install --upgrade pip && pip install "pyyaml>=6" numpy
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python
+      - scripts/check-allowlist-commands --trace
+
   # ── top-level forge/governance + agent-infra suite (no package coverage) ───
   - name: test-agent-infra
     image: python:3.11-bookworm

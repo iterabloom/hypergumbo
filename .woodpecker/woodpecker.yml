@@ -314,6 +314,27 @@ steps:
       - pip install "pyyaml>=6"
       - scripts/check-io-allowlist
 
+  # ── allowlist COMMANDS, static (check-allowlist-commands) ──────────────────
+  # check-io-allowlist proves every site is listed; this proves each entry's
+  # `commands` names exactly the subcommands whose call graph reaches it (four
+  # hand rereads of the sheet kept finding wrong lists). Stdlib AST + PyYAML,
+  # ~5 s, imports nothing from hypergumbo -- same reasoning as the step above.
+  # Its traced half (runtime paths the graph cannot resolve) is the cron's
+  # `allowlist-commands-trace`.
+  - name: allowlist-commands
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path:
+          include:
+            - "packages/*/src/**"
+            - "docs/hypergumbo.io-allowlist.yaml"
+            - "scripts/check-allowlist-commands"
+    commands:
+      - pip install --upgrade pip
+      - pip install "pyyaml>=6"
+      - scripts/check-allowlist-commands --static
+
   # ── self-claims COVERAGE guard, per PR (INV-jojog) ─────────────────────────
   # NOT the drift gate (see the tombstone above `pytest`): that compares all
   # eighteen verdicts and needs the full map. This answers one question the
