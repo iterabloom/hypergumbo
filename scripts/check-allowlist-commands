@@ -1,0 +1,1042 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Gate: every I/O allowlist entry's ``commands`` names the subcommands that reach it.
+
+WHY THIS EXISTS. ``scripts/check-io-allowlist`` proves every risky call site is
+on ``docs/hypergumbo.io-allowlist.yaml``; it never checks an entry's
+``commands``, which is a human statement of which ``hypergumbo`` subcommands
+can reach the site. Four rounds of reading the sheet built from those entries
+each found new wrong lists, because a list is a claim about whole-program
+reachability and a reader sees one call deep. A default keyword argument
+(``run = runner or repo_inspect_probe``), a lazy import, a status-table
+predicate and ``main``'s ``--backend`` pre-scan each hid a chain. This gate
+answers the question mechanically, in two halves with opposite blind spots.
+
+``--static`` (per PR, ~5 s; stdlib + PyYAML, imports nothing from hypergumbo,
+like the allowlist gate): an AST call graph over ``packages/*/src`` (the
+tracker package excluded: its entries name tracker commands). For each entry,
+the subcommands whose graph reaches the entry's function must equal the ones
+the entry lists. It sees branches no run takes; it cannot see a runtime
+condition (a flag value, ``dry_run=True``), so where the graph over-reaches a
+JUDGED cut (:data:`CUTS`) removes one edge for named commands, with its reason.
+A cut that removes nothing is reported, so a judgement cannot outlive its code.
+
+``--trace`` (twice-daily cron, ~10 min; Python 3.12+): every subcommand runs
+in a scratch fixture under a ``sys.monitoring`` line tracer (``scripts/
+allowlist_trace``), carried into child processes by ``sitecustomize``, in the
+variants that change a path: cold and warm results cache, an evicting cache,
+``--backend``, ``--gzip``, ``--minimal``, ``--out``, and the install /
+uninstall commands with HOME in scratch and subprocess + urlopen stubbed. A
+command observed executing an entry's line that the entry does not list fails.
+It sees what the graph cannot resolve (dynamic dispatch, common method names);
+it cannot see a branch no variant takes. Tools the runner lacks
+(rust-analyzer, gitleaks, sentence-transformers) get STAND-INS: the question is
+whether hypergumbo's own line runs, not what the tool answers. Every variant
+that could not run is printed by name -- a skipped variant is "not checked",
+never "clean".
+
+RESOLUTION (static), each rule pinned by a test in
+``tests/test_check_allowlist_commands.py``:
+
+* Units are top-level functions, methods (``Class.method``), ``<module>`` (code
+  that runs at import: module-level calls and decorators) and ``<modrefs>``
+  (module-level REFERENCES -- a table of functions, a rule object -- reached by
+  any of that module's own functions, never by importing it).
+* Every Load of a name is an edge, not only a call: a function handed on is
+  called by whoever receives it. Imports resolve through module-level and
+  function-local bindings and re-exports; ``x = sys.modules[__name__]`` binds
+  the module itself. Naming a module object is not an import.
+* ``self.m`` resolves on the class, then through its bases by name. ``x.m`` on
+  an unknown receiver resolves to every method ``m`` only when at most
+  :data:`DISTINCT` classes define one (``analyze`` always, the analyzer
+  dispatch); commoner names are dropped and counted in the report.
+* Registration decorators hang their function off a ``<registry>`` node that
+  the registry RUNNERS reach (``run_all_analyzers``, ``run_linker`` ...), not
+  ``get_func``, which only hands the function back.
+* Command C reaches ``reach(cmd_C) | reach(main)``, where ``main``'s edges into
+  any ``cmd_*`` are cut: ``main`` stands for what runs around dispatch.
+
+``<analysis>`` in an entry means the twelve subcommands that BUILD an analysis
+(:data:`ANALYSIS`); ``compact`` and ``backend-agreement`` only read one and are
+named where they reach. A command string is a subcommand list with optional
+conditions: text in parentheses and after `` with `` is a condition, and a
+``...: a, b`` prefix is one too; ``scripts/X``, ``library`` and ``python -m``
+forms name no subcommand and are set aside.
+
+Exit codes: 0 consistent, 1 findings, 2 cannot run (bad arguments, Python too
+old for ``--trace``).
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import importlib.util
+import collections
+import json
+import os
+import re
+import shutil
+import subprocess  # nosec B404 - git and the traced hypergumbo runs, fixed argv
+import sys
+import tempfile
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_ALLOWLIST = REPO_ROOT / "docs" / "hypergumbo.io-allowlist.yaml"
+TRACE_SUPPORT = REPO_ROOT / "scripts" / "allowlist_trace"
+CLI_MODULE = "hypergumbo_core.cli"
+EXCLUDED_PACKAGES = ("hypergumbo-tracker",)
+
+ANALYSIS = frozenset(
+    "sketch survey slice search routes explain symbols test-coverage "
+    "dead-code-maybe repeat-finder io-boundaries verify-claims".split())
+DISTINCT = 3
+ALWAYS_RESOLVE = frozenset({"analyze"})
+# A method name a builtin type has (``d.get``, ``s.add``, ``p.read_text``) says
+# nothing about which project class the receiver is: never guessed, only counted.
+BUILTIN_METHODS = frozenset(
+    name for t in (dict, list, set, frozenset, str, bytes, tuple, object, Path) for name in dir(t))
+CLASS_DUNDERS = ("__init__", "__post_init__", "__new__", "__enter__", "__exit__",
+                 "__call__", "__iter__", "__next__")
+REGISTRY_RUNNERS = re.compile(r"^(run_all_analyzers|run_analyzer|run_all_linkers|"
+                              r"run_linker|get_all_linkers)$")
+# Entry-point discovery IMPORTS every analyzer module, running its import-time
+# code; it runs no analyzer.
+DISCOVERY_IMPORTERS = ("_load_entry_point_modules", "_import_module_list",
+                       "_register_from_specs")
+REGISTRY_MODULE = "hypergumbo_core.analyze.registry"
+
+
+@dataclass(frozen=True)
+class Cut:
+    """A judged over-reach of the graph: drop edge ``src -> dst`` for ``scope``.
+
+    ``scope`` is a tuple of subcommands, ``("<main>",)`` for the pre-dispatch
+    root, or ``("*",)``; ``except_`` exempts commands from a ``*`` scope.
+    """
+
+    scope: tuple[str, ...]
+    src: str
+    dst: str
+    reason: str
+    except_: tuple[str, ...] = ()
+
+    def applies(self, root: str) -> bool:
+        if root in self.except_:
+            return False
+        return "*" in self.scope or root in self.scope
+
+
+_EXTRAS_INSTALL = ("hypergumbo_core.cli:_install_grammars", "hypergumbo_core.gitleaks:install_gitleaks",
+                   "hypergumbo_core.cli:_install_embeddings_impl",
+                   "hypergumbo_core.cli:_install_rust_analyzer_with_bug06_gate")
+_EXTRAS_UNINSTALL = ("hypergumbo_core.cli:_uninstall_grammars", "hypergumbo_core.gitleaks:uninstall_gitleaks",
+                     "hypergumbo_core.cli:_uninstall_embeddings_impl",
+                     "hypergumbo_core.rust_analyzer_install:uninstall_rust_analyzer")
+
+#: Judged over-reaches. Each was contradicted by a traced run (the cron re-checks
+#: that) and is a runtime condition the graph cannot read.
+CUTS: tuple[Cut, ...] = (
+    *(Cut(("remove-extras",), "hypergumbo_core.cli:_extras_components", dst,
+          "remove-extras calls each table row's UNINSTALL column, never its install")
+      for dst in _EXTRAS_INSTALL),
+    *(Cut(("add-extras",), "hypergumbo_core.cli:_extras_components", dst,
+          "add-extras calls each table row's INSTALL column, never its uninstall")
+      for dst in _EXTRAS_UNINSTALL),
+    Cut(("<main>",), "hypergumbo_core.backend_selection:resolve_scip_python_optin",
+        "hypergumbo_core.backend_selection:_config_tier",
+        "the config tiers are read only with a repo_root, and main's --backend pre-scan passes none"),
+    Cut(("cache-status",), "hypergumbo_core.cli:_maybe_evict_cache", "hypergumbo_core.cli:_archive_entry",
+        "cache-status calls _maybe_evict_cache(dry_run=True), which writes nothing"),
+    Cut(("cache-status",), "hypergumbo_core.cli:_maybe_evict_cache", "hypergumbo_core.safety_zones:cache_rmtree",
+        "cache-status calls _maybe_evict_cache(dry_run=True), which writes nothing"),
+    Cut(("cache-status",), "hypergumbo_core.cli:_prune_soft_deleted", "hypergumbo_core.safety_zones:cache_unlink",
+        "cache-status calls _maybe_evict_cache(dry_run=True), which writes nothing"),
+    Cut(("catalog-inventory",), "hypergumbo_core.io_boundary:_is_known_overlay_language",
+        "hypergumbo_core.catalog:all_known_languages",
+        "catalog-inventory loads the shipped catalogue languages only, and every shipped overlay names a "
+        "language with a shipped catalogue, so the check returns before the analyzer set is asked"),
+    Cut(("*",), "hypergumbo_core.cli:run_survey", "hypergumbo_core.safety_zones:user_out_open_json_dump_gzip",
+        "gzip_output is set only by survey's --gzip; every other caller of run_survey leaves it False",
+        except_=("survey",)),
+)
+
+
+# --- the static call graph -----------------------------------------------------
+
+
+@dataclass
+class Graph:
+    edges: dict[str, set[str]]
+    dropped: collections.Counter
+    units: set[str]
+
+
+class _Mod:
+    def __init__(self, name: str, path: Path, is_pkg: bool):
+        self.name, self.path = name, path
+        self.tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        self.package = name if is_pkg else name.rpartition(".")[0]
+        self.defs: dict[str, str] = {}
+        self.methods: dict[str, set[str]] = collections.defaultdict(set)
+        self.bases: dict[str, list[str]] = {}
+        for node in self.tree.body:
+            for target in _assigned_names(node):
+                self.defs.setdefault(target, "var")
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.defs[node.name] = "func"
+            elif isinstance(node, ast.ClassDef):
+                self.defs[node.name] = "class"
+                self.bases[node.name] = [ast.unparse(b) for b in node.bases]
+                for b in node.body:
+                    if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        self.methods[node.name].add(b.name)
+        self.imports: dict[str, str] = {}
+        for node in self._module_level(self.tree.body):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                self.imports.update(self.bindings(node))
+
+    @staticmethod
+    def _module_level(body):
+        for n in body:
+            yield n
+            if isinstance(n, (ast.If, ast.Try)):
+                for fld in ("body", "orelse", "finalbody"):
+                    yield from _Mod._module_level(getattr(n, fld, []) or [])
+                for h in getattr(n, "handlers", []) or []:
+                    yield from _Mod._module_level(h.body)
+
+    def absolute(self, node: ast.ImportFrom) -> str:
+        if not node.level:
+            return node.module or ""
+        base = self.package.split(".")
+        if node.level > 1:
+            base = base[: len(base) - (node.level - 1)]
+        return ".".join(base + ([node.module] if node.module else []))
+
+    def bindings(self, node) -> dict[str, str]:
+        out = {}
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                out[a.asname or a.name.split(".")[0]] = a.name if a.asname else a.name.split(".")[0]
+        else:
+            src = self.absolute(node)
+            for a in node.names:
+                if a.name != "*":
+                    out[a.asname or a.name] = f"{src}.{a.name}"
+        return out
+
+    def imported_modules(self, node) -> list[str]:
+        if isinstance(node, ast.Import):
+            return [a.name for a in node.names]
+        src = self.absolute(node)
+        return [src] + [f"{src}.{a.name}" for a in node.names]
+
+
+def _assigned_names(node) -> list[str]:
+    """Names a module-level statement binds (``X = ...``, ``X: T = ...``)."""
+    if isinstance(node, ast.Assign):
+        return [t.id for t in node.targets if isinstance(t, ast.Name)]
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+        return [node.target.id]
+    if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+        return [node.target.id]
+    return []
+
+
+def _filled_vars(node, m) -> set[str]:
+    """Module variables a statement stores INTO (``X[k] = v``, ``X.a = v``, ``X.add(v)``)."""
+    out = set()
+    for n in ast.walk(node):
+        base = None
+        if isinstance(n, (ast.Subscript, ast.Attribute)) and isinstance(n.ctx, ast.Store):
+            base = n.value
+        elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+            base = n.func.value
+        while isinstance(base, (ast.Subscript, ast.Attribute)):
+            base = base.value
+        if isinstance(base, ast.Name) and m.defs.get(base.id) == "var":
+            out.add(base.id)
+    return out
+
+
+def _walk_eager(node):
+    """``ast.walk`` minus lambda bodies: what a statement runs when it runs, not
+    what it defines to run later (``check=lambda ctx: _find_files(ctx)``)."""
+    todo = [node]
+    while todo:
+        n = todo.pop()
+        yield n
+        if not isinstance(n, ast.Lambda):
+            todo.extend(ast.iter_child_nodes(n))
+
+
+def _data_method(func, m) -> bool:
+    """``TABLE.get(k)`` at import touches data; it runs none of the functions TABLE holds."""
+    base = func.value if isinstance(func, ast.Attribute) else None
+    while isinstance(base, (ast.Subscript, ast.Attribute)):
+        base = base.value
+    return isinstance(base, ast.Name) and m.defs.get(base.id) == "var"
+
+
+def _decorator_callees(node) -> list:
+    """What a decorator RUNS at import: its callee. Its arguments (a requirements
+    table, a pass id) are data handed to the registry, walked with the decorated
+    function's own body (``ast.walk`` over the def includes them)."""
+    return [d.func if isinstance(d, ast.Call) else d for d in node.decorator_list]
+
+
+def _module_files(root: Path):
+    for pkg in sorted((root / "packages").iterdir()):
+        if pkg.name in EXCLUDED_PACKAGES or not (pkg / "src").is_dir():
+            continue
+        for f in sorted((pkg / "src").rglob("*.py")):
+            parts = list(f.relative_to(pkg / "src").with_suffix("").parts)
+            is_pkg = parts[-1] == "__init__"
+            yield ".".join(parts[:-1] if is_pkg else parts), f, is_pkg
+
+
+def build_graph(root: Path) -> Graph:
+    """The call/reference graph of ``root/packages/*/src`` (see the module docstring)."""
+    mods: dict[str, _Mod] = {}
+    for name, path, is_pkg in _module_files(root):
+        try:
+            mods[name] = _Mod(name, path, is_pkg)
+        except SyntaxError:  # pragma: no cover - the tree compiles
+            continue
+    owners: dict[str, set[str]] = collections.defaultdict(set)
+    for m in mods.values():
+        for cls, ms in m.methods.items():
+            for meth in ms:
+                owners[meth].add(f"{m.name}:{cls}")
+
+    def resolve_symbol(dotted: str, depth: int = 0) -> str | None:
+        if depth > 8:
+            return None
+        parts = dotted.split(".")
+        for i in range(len(parts), 0, -1):
+            modname = ".".join(parts[:i])
+            if modname in mods:
+                rest, m = parts[i:], mods[modname]
+                if not rest:
+                    return f"{modname}:<module>"
+                head = rest[0]
+                if head in m.defs:
+                    if m.defs[head] == "class" and len(rest) > 1 and rest[1] in m.methods[head]:
+                        return f"{modname}:{head}.{rest[1]}"
+                    return f"{modname}:{head}"
+                if head in m.imports:
+                    return resolve_symbol(".".join([m.imports[head]] + rest[1:]), depth + 1)
+                return None
+        return None
+
+    def resolve_method(modname: str, cls: str, meth: str, depth: int = 0) -> str | None:
+        if depth > 10 or modname not in mods:
+            return None
+        m = mods[modname]
+        if meth in m.methods.get(cls, ()):
+            return f"{modname}:{cls}.{meth}"
+        for b in m.bases.get(cls, ()):
+            head, _, rest = b.partition(".")
+            if head in m.imports:
+                dotted = m.imports[head] + ("." + rest if rest else "")
+            elif head in m.defs:
+                dotted = f"{modname}.{b}"
+            else:
+                continue
+            t = resolve_symbol(dotted)
+            if t and not t.endswith(">"):
+                bm, _, bc = t.partition(":")
+                found = resolve_method(bm, bc, meth, depth + 1)
+                if found:
+                    return found
+        return None
+
+    edges: dict[str, set[str]] = collections.defaultdict(set)
+    dropped: collections.Counter = collections.Counter()
+    registered: set[str] = set()
+    units: set[str] = set()
+
+    for m in mods.values():
+        # (unit id, root nodes, class, kind); kind: "body" | "import" | "refs"
+        plan: list[tuple[str, list, str | None, str]] = []
+        import_time: list = []
+        refs: list = []
+        for node in m.tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                plan.append((f"{m.name}:{node.name}", [node], None, "body"))
+                import_time += _decorator_callees(node)
+                refs += node.args.defaults + [d for d in node.args.kw_defaults if d]
+            elif isinstance(node, ast.ClassDef):
+                class_refs = list(node.bases)
+                for b in node.body:
+                    if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        plan.append((f"{m.name}:{node.name}.{b.name}", [b], node.name, "body"))
+                        import_time += _decorator_callees(b)
+                        class_refs += b.args.defaults + [d for d in b.args.kw_defaults if d]
+                    else:
+                        class_refs.append(b)
+                        import_time += [n.func for n in _walk_eager(b)
+                                        if isinstance(n, ast.Call) and not _data_method(n.func, m)]
+                # A class attribute (a table, a default) is reached with the class.
+                plan.append((f"{m.name}:{node.name}", class_refs, None, "refs"))
+                import_time += _decorator_callees(node)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                import_time.append(node)
+            else:
+                # A module-level statement: the CALLEES of its calls run at import
+                # (a function passed as an argument is stored, not run: discovery's
+                # ``SUBMODULE_RULE = ContentRule(..., _submodule_marker)``), and its
+                # imports run too; the rest is a reference -- held by the variable
+                # it binds (reached by whoever reads it), else by the module's own
+                # functions.
+                import_time += [n.func for n in _walk_eager(node)
+                                if isinstance(n, ast.Call) and not _data_method(n.func, m)]
+                import_time += [n for n in ast.walk(node) if isinstance(n, (ast.Import, ast.ImportFrom))]
+                names = _assigned_names(node)
+                if names:
+                    for name in names:
+                        plan.append((f"{m.name}:{name}", [node.value], None, "refs"))
+                elif (filled := _filled_vars(node, m)):
+                    # ``for r in RULES: TABLE[r.name] = r`` fills TABLE: its readers reach RULES.
+                    for name in filled:
+                        plan.append((f"{m.name}:{name}", [node], None, "refs"))
+                else:
+                    refs.append(node)
+        plan.append((f"{m.name}:<module>", import_time, None, "import"))
+        plan.append((f"{m.name}:<modrefs>", refs, None, "refs"))
+
+        for uid, nodes, cls, kind in plan:
+            units.add(uid)
+            if kind == "body":
+                edges[uid].add(f"{m.name}:<modrefs>")
+            local: dict[str, str] = {}
+            for root_node in nodes:
+                for n in ast.walk(root_node):
+                    if isinstance(n, (ast.Import, ast.ImportFrom)):
+                        local.update(m.bindings(n))
+                        if kind == "refs":
+                            continue  # the import itself runs at import time (``<module>``)
+                        for im in m.imported_modules(n):
+                            parts = im.split(".")
+                            for i in range(1, len(parts) + 1):
+                                if ".".join(parts[:i]) in mods:
+                                    edges[uid].add(f"{'.'.join(parts[:i])}:<module>")
+                    elif (isinstance(n, ast.Assign)
+                          and ast.unparse(n.value) == "sys.modules[__name__]"):
+                        for t in n.targets:
+                            if isinstance(t, ast.Name):
+                                local[t.id] = m.name
+            if kind == "body":
+                for d in nodes[0].decorator_list:
+                    if "register" in ast.unparse(d):
+                        registered.add(uid)
+            bindings = {**m.imports, **local}
+            for root_node in nodes:
+                for n in ast.walk(root_node):
+                    for t in _targets(n, m, cls, bindings, mods, owners, resolve_symbol,
+                                      resolve_method, dropped):
+                        if t.endswith(":<module>"):
+                            continue  # naming a module object is not importing it
+                        edges[uid].add(t)
+                        modn, _, sym = t.partition(":")
+                        if modn in mods and mods[modn].defs.get(sym) == "class":
+                            for d in CLASS_DUNDERS:
+                                if d in mods[modn].methods[sym]:
+                                    edges[t].add(f"{modn}:{sym}.{d}")
+            short = uid.split(":")[1].split(".")[-1]
+            if REGISTRY_RUNNERS.match(short):
+                edges[uid].add("<registry>")
+            if m.name == REGISTRY_MODULE and short in DISCOVERY_IMPORTERS:
+                for other in mods:
+                    if other.startswith("hypergumbo_lang_"):
+                        edges[uid].add(f"{other}:<module>")
+    for uid in registered:
+        edges["<registry>"].add(uid)
+    return Graph(edges=edges, dropped=dropped, units=units)
+
+
+def _targets(n, m, cls, bindings, mods, owners, resolve_symbol, resolve_method, dropped):
+    if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+        if n.id in bindings:
+            t = resolve_symbol(bindings[n.id])
+            return [t] if t else []
+        return [f"{m.name}:{n.id}"] if n.id in m.defs else []
+    if not (isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Load)):
+        return []
+    chain, base = [], n
+    while isinstance(base, ast.Attribute):
+        chain.append(base.attr)
+        base = base.value
+    chain.reverse()
+    out: list[str] = []
+    resolved = False
+    if isinstance(base, ast.Name):
+        if base.id in ("self", "cls") and cls:
+            found = resolve_method(m.name, cls, chain[0])
+            if found:
+                out.append(found)
+            else:
+                out += _guess(chain[0], owners, dropped)
+            resolved = len(chain) == 1   # self.x.m: m is an unknown-receiver guess
+        else:
+            dotted = None
+            if base.id in bindings:
+                dotted = bindings[base.id] + "." + ".".join(chain)
+            elif base.id in m.defs:
+                dotted = f"{m.name}.{base.id}." + ".".join(chain)
+            if dotted:
+                t = resolve_symbol(dotted)
+                if t:
+                    out.append(t)
+                # an external module, or a chain that resolved to its last attribute
+                resolved = t is None or t.endswith(chain[-1])
+    if not resolved:
+        out += _guess(n.attr, owners, dropped)
+    return out
+
+
+def _guess(meth, owners, dropped):
+    found = owners.get(meth, ())
+    if found and meth in BUILTIN_METHODS and meth not in ALWAYS_RESOLVE:
+        dropped[meth] += 1
+        return []
+    if found and (len(found) <= DISTINCT or meth in ALWAYS_RESOLVE):
+        return [f"{o}.{meth}" for o in found]
+    if found:
+        dropped[meth] += 1
+    return []
+
+
+def reach(edges, roots, cut=lambda src, dst: False) -> dict[str, str | None]:
+    """Breadth-first reach; returns ``{unit: parent}`` so a path can be rebuilt."""
+    parent: dict[str, str | None] = dict.fromkeys(roots)
+    queue = collections.deque(roots)
+    while queue:
+        u = queue.popleft()
+        for v in edges.get(u, ()):
+            if v in parent or cut(u, v):
+                continue
+            parent[v] = u
+            queue.append(v)
+    return parent
+
+
+def _path(parent, node) -> list[str]:
+    out = []
+    while node is not None:
+        out.append(node)
+        node = parent[node]
+    return list(reversed(out))
+
+
+# --- subcommands, entries, command strings ---------------------------------------
+
+
+def subcommands(cli_path: Path) -> dict[str, str]:
+    """``{subcommand: cmd function}`` from ``add_parser`` + ``set_defaults(func=)``."""
+    tree = ast.parse(cli_path.read_text(encoding="utf-8"))
+    names: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "add_parser"
+                and node.value.args and isinstance(node.value.args[0], ast.Constant)
+                and isinstance(node.targets[0], ast.Name)):
+            names[node.targets[0].id] = node.value.args[0].value
+    out: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "set_defaults" and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in names):
+            for kw in node.keywords:
+                if kw.arg == "func" and isinstance(kw.value, ast.Name):
+                    out[names[node.func.value.id]] = kw.value.id
+    return out
+
+
+@dataclass(frozen=True)
+class Entry:
+    module: str
+    function: str
+    primitive: str
+    commands: tuple[str, ...] | list[str]
+
+    @property
+    def unit(self) -> str:
+        return f"{self.module}:{self.function}"
+
+
+def load_entries(path: Path) -> list[Entry]:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    out = []
+    for module, block in doc["modules"].items():
+        if not module.startswith("hypergumbo") or module.startswith("hypergumbo_tracker"):
+            continue
+        for site in block.get("sites", []):
+            out.append(Entry(module=module, function=site["function"], primitive=site["primitive"],
+                             commands=tuple(site.get("commands", block.get("commands")) or ())))
+    return out
+
+
+_NON_CLI = ("scripts/", "library", "python -m", "tracker:")
+
+
+def parse_commands(items, all_commands) -> tuple[set[str], list[str]]:
+    """The subcommands an entry's command strings name; non-CLI forms set aside."""
+    names = sorted(all_commands, key=len, reverse=True)
+    got: set[str] = set()
+    non_cli: list[str] = []
+    for item in items:
+        text = re.sub(r"\([^)]*\)", " ", item)
+        if text.strip().startswith(_NON_CLI):
+            non_cli.append(item)
+            continue
+        if ":" in text:
+            text = text.rsplit(":", 1)[1]
+        text = text.split(" with ", 1)[0]
+        if "<any>" in text:
+            got |= set(all_commands)
+        if "<analysis>" in text:
+            got |= ANALYSIS & set(all_commands)
+        for n in names:
+            pat = rf"(?<![\w/<-]){re.escape(n)}(?![\w>-])"
+            if re.search(pat, text):
+                got.add(n)
+                text = re.sub(pat, " ", text)
+    return got, non_cli
+
+
+# --- the comparisons -------------------------------------------------------------
+
+
+@dataclass
+class Finding:
+    kind: str        # unlisted | unreachable | stale-cut | observed-unlisted
+    unit: str
+    command: str
+    detail: str
+
+
+@dataclass
+class Report:
+    findings: list[Finding] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.findings
+
+    def render(self) -> str:
+        lines = []
+        for f in self.findings:
+            lines.append(f"{f.kind:18s} {f.unit}  [{f.command}]\n    {f.detail}")
+        lines += self.notes
+        verdict = ("OK -- every entry's commands match" if self.ok
+                   else f"{len(self.findings)} finding(s)")
+        return "\n".join(lines + [f"check-allowlist-commands: {verdict}"])
+
+
+def _short(path: list[str]) -> str:
+    return " > ".join(u.split(":")[-1] for u in path)
+
+
+def compare_static(entries, graph: Graph, commands: dict[str, str], *, cli_module: str,
+                   cuts) -> Report:
+    used: set[Cut] = set()
+
+    def cutter(root):
+        active = [c for c in cuts if c.applies(root)]
+        def cut(src, dst):
+            for c in active:
+                if c.src == src and c.dst == dst:
+                    used.add(c)
+                    return True
+            return False
+        return cut
+
+    def is_cmd(v):
+        return v.startswith(f"{cli_module}:cmd_")
+
+    main_cut = cutter("<main>")
+    main_reach = reach(graph.edges, [f"{cli_module}:main", f"{cli_module}:<module>"],
+                       cut=lambda u, v: is_cmd(v) or main_cut(u, v))
+    per_cmd = {c: reach(graph.edges, [f"{cli_module}:{fn}"], cut=cutter(c))
+               for c, fn in commands.items()}
+    report = Report()
+    for e in entries:
+        listed, _non_cli = parse_commands(e.commands, commands)
+        reached: dict[str, list[str]] = {}
+        for c, r in per_cmd.items():
+            if e.unit in r:
+                reached[c] = _path(r, e.unit)
+            elif e.unit in main_reach:
+                reached[c] = _path(main_reach, e.unit)
+        for c in sorted(set(reached) - listed):
+            report.findings.append(Finding("unlisted", e.unit, c, f"reached: {_short(reached[c])}"))
+        for c in sorted(listed - set(reached)):
+            report.findings.append(Finding("unreachable", e.unit, c,
+                                           "listed, but no path from its cmd_* or main reaches it"))
+    for c in cuts:
+        if c not in used:
+            report.findings.append(Finding("stale-cut", c.dst, ",".join(c.scope),
+                                           f"cut {c.src} -> {c.dst} removes no edge: {c.reason}"))
+    if graph.dropped:
+        top = ", ".join(f"{k} x{v}" for k, v in graph.dropped.most_common(8))
+        report.notes.append(f"note: {len(graph.dropped)} common method names on unknown receivers "
+                            f"not resolved (the static blind spot the trace covers): {top}")
+    return report
+
+
+def check_static(root: Path, *, graph: Graph | None = None,
+                 allowlist: Path | None = None) -> Report:
+    cli_path = root / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "cli.py"
+    return compare_static(load_entries(allowlist or root / "docs" / "hypergumbo.io-allowlist.yaml"),
+                          graph or build_graph(root), subcommands(cli_path),
+                          cli_module=CLI_MODULE, cuts=CUTS)
+
+
+def compare_trace(entries, observed: dict[str, dict[str, list[str]]], all_commands) -> Report:
+    """``observed``: ``{unit: {command: [variant labels]}}`` from the traced runs."""
+    report = Report()
+    for e in entries:
+        listed, _ = parse_commands(e.commands, all_commands)
+        for c, labels in sorted(observed.get(e.unit, {}).items()):
+            if c not in listed:
+                report.findings.append(Finding("observed-unlisted", e.unit, c,
+                                               f"executed in: {', '.join(sorted(labels))}"))
+    return report
+
+
+# --- the trace half ----------------------------------------------------------------
+
+
+def trace_env(trace_dir: Path, sites_json: Path, base: dict | None = None) -> dict:
+    env = dict(os.environ if base is None else base)
+    env.update({"PYTHONPATH": os.pathsep.join(filter(None, [str(TRACE_SUPPORT), env.get("PYTHONPATH")])),
+                "HG_TRACE_DIR": str(trace_dir), "HG_TRACE_SITES": str(sites_json)})
+    return env
+
+
+_STAND_IN_ST = '''"""Stand-in sentence_transformers: hypergumbo's line runs, nothing loads.
+
+HG_STAND_IN_MODEL_MISSING=1: a cache-only load raises as the real library does
+when the weights are absent, so the loader's miss branch runs too.
+"""
+import os
+
+
+class SentenceTransformer:
+    def __init__(self, name, *a, **k):
+        if k.get("local_files_only") and os.environ.get("HG_STAND_IN_MODEL_MISSING") == "1":
+            raise OSError(f"stand-in: {name} is not in the local cache")
+        self.name = name
+    def encode(self, texts, *a, **k):
+        n = 1 if isinstance(texts, str) else len(texts)
+        try:
+            import numpy as np
+            out = np.zeros((n, 8), dtype="float32")
+        except ImportError:  # the contract test's container may have no numpy
+            out = [[0.0] * 8 for _ in range(n)]
+        return out[0] if isinstance(texts, str) else out
+    def get_sentence_embedding_dimension(self):
+        return 8
+__version__ = "5.7.0"
+'''
+
+
+def make_stand_ins(where: Path, missing) -> dict[str, Path]:
+    """Stand-ins for the tools a runner lacks; ``{"bin": dir, "py": dir}``."""
+    bin_dir, py_dir = where / "bin", where / "py"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    py_dir.mkdir(parents=True, exist_ok=True)
+    scripts = {
+        "rust-analyzer": '#!/bin/sh\necho "rust-analyzer 0.0.0 (stand-in)"\n',
+        "gitleaks": '#!/bin/sh\ncat > /dev/null\necho "[]"\n',
+    }
+    for name, body in scripts.items():
+        if name in missing:
+            p = bin_dir / name
+            p.write_text(body)
+            p.chmod(0o755)
+    if "sentence_transformers" in missing:
+        pkg = py_dir / "sentence_transformers"
+        pkg.mkdir(exist_ok=True)
+        (pkg / "__init__.py").write_text(_STAND_IN_ST)
+    return {"bin": bin_dir, "py": py_dir}
+
+
+def _sites_map(root: Path) -> tuple[dict, dict]:
+    """``{abs file: {line: "module:line"}}`` and ``{"module:line": unit}`` from the allowlist gate."""
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("check_io_allowlist", str(root / "scripts" / "check-io-allowlist"))
+    spec = importlib.util.spec_from_loader("check_io_allowlist", loader)
+    gate = importlib.util.module_from_spec(spec)
+    sys.modules["check_io_allowlist"] = gate
+    loader.exec_module(gate)
+    files: dict[str, dict[str, str]] = collections.defaultdict(dict)
+    unit_of: dict[str, str] = {}
+    for s in gate.scan_tree(root):
+        if s.package in EXCLUDED_PACKAGES:
+            continue
+        key = f"{s.module}:{s.line}"
+        base = root / "packages" / s.package / "src" / Path(*s.module.split("."))
+        path = base.with_suffix(".py") if base.with_suffix(".py").exists() else base / "__init__.py"
+        files[str(path.resolve())][str(s.line)] = key
+        unit_of[key] = f"{s.module}:{s.function}"
+    return files, unit_of
+
+
+#: (label, argv, group, extra env, predicate patches). Groups: cold (fresh XDG),
+#: warm (results cache prepared), evict (a second, two-hour-old entry and tiny
+#: caps), mutate (HOME in scratch, subprocess + urlopen stubbed).
+#: verify-claims exits 2 when a claim is not confirmed, and ``--check`` exits 1
+#: for "not installed": answers, not failures to run.
+EXPECTED_RC = {"verify-claims": ("0", "2")}
+CHECK_RC = ("0", "1")
+
+
+def _variants(scratch: str) -> list[tuple]:
+    S = scratch
+    claims = str(REPO_ROOT / "docs" / "example-claims" / "generic-taint-claims.yaml")
+    tiny = {"HYPERGUMBO_CACHE_MAX_GB": "0.0000001", "HYPERGUMBO_SOFT_DELETE_SURVEYS_GB": "0.0000001",
+            "HYPERGUMBO_SOFT_DELETE_SKETCHES_GB": "0.0000001"}
+    not_ready = ("hypergumbo_core.cli:_is_grammars_available=False;hypergumbo_core.cli:_embeddings_ready=False;"
+                 "hypergumbo_core.cli:is_gitleaks_available=False;"
+                 "hypergumbo_core.cli:_is_rust_analyzer_fully_available=False")
+    ready = not_ready.replace("=False", "=True")
+    v = [
+        ("sketch", ["sketch", "."], "cold", {}, ""),
+        ("sketch-embedding", ["sketch", ".", "--config-extraction", "embedding"], "cold", {}, ""),
+        ("sketch-input", ["sketch", ".", "--input", f"{S}/in.json"], "warm", {}, ""),
+        ("survey-cache", ["survey", "."], "cold", {}, ""),
+        ("survey-out", ["survey", ".", "--out", f"{S}/o/survey.json"], "cold", {}, ""),
+        ("survey-gzip", ["survey", ".", "--gzip", "--out", f"{S}/o/survey.json.gz"], "cold", {}, ""),
+        ("survey-compact", ["survey", ".", "--compact", "--out", f"{S}/o/c.json"], "cold", {}, ""),
+        ("survey-ra", ["survey", ".", "--backend", "rust-analyzer", "--out", f"{S}/o/ra.json"], "cold", {}, ""),
+        ("survey-scip", ["survey", ".", "--backend", "scip-python", "--out", f"{S}/o/sp.json"], "cold", {}, ""),
+        ("survey-evict", ["survey", "."], "evict", tiny, ""),
+        ("search-evict", ["search", "foo", "."], "evict", tiny, ""),
+        ("slice-files", ["slice", "--files", f"{S}/changed.txt", "--output", f"{S}/o/files.txt", "."], "cold", {}, ""),
+        ("search-minimal", ["search", "foo", ".", "--minimal"], "cold", {}, ""),
+        # The model-missing branch of the cache-only loader (with the real
+        # library, whichever of the two branches the runner's HF cache allows).
+        ("sketch-model-missing", ["sketch", "."], "cold", {"HG_STAND_IN_MODEL_MISSING": "1"}, ""),
+        ("search-model-missing", ["search", "foo", "."], "cold", {"HG_STAND_IN_MODEL_MISSING": "1"}, ""),
+        ("compact", ["compact", "--input", f"{S}/in.json", "--out", f"{S}/o/compact.json"], "warm", {}, ""),
+        ("backend-agreement", ["backend-agreement", f"{S}/in.json", "--out", f"{S}/o/agree.md"], "warm", {}, ""),
+        ("catalog", ["catalog"], "cold", {}, ""),
+        ("catalog-submodule", ["catalog"], "cold-sub", {}, ""),
+        ("catalog-inventory", ["catalog-inventory"], "cold", {}, ""),
+        ("config", ["config", "python"], "cold", {}, ""),
+        ("init-catalogs", ["init-catalogs", "--home", f"{S}/home_catalogs"], "cold", {}, ""),
+        ("cache-status", ["cache-status"], "evict", tiny, ""),
+        ("cache-clear", ["cache-clear"], "warm", {}, ""),
+        ("cache-clear-repo", ["cache-clear", "--repo", "{FP}", "--keep-latest", "0"], "warm", {}, ""),
+        ("trust-backend", ["trust-backend", "rust_analyzer", "."], "cold", {}, ""),
+        ("trust-backend-show", ["trust-backend", "--show", "rust_analyzer", "."], "cold", {}, ""),
+        ("trust-catalogues", ["trust-catalogues", "."], "cold", {}, ""),
+        ("any-backend-scip", ["cache-status", "--backend", "scip-python"], "cold", {}, ""),
+        ("any-backend-ra", ["config", "python", "--backend", "rust-analyzer"], "cold", {}, ""),
+        ("install-gitleaks", ["install-gitleaks"], "mutate", {}, "hypergumbo_core.cli:is_gitleaks_available=False"),
+        ("uninstall-gitleaks", ["uninstall-gitleaks"], "mutate", {"_FAKE_GITLEAKS": "1"}, ""),
+        ("install-rust-analyzer", ["install-rust-analyzer"], "mutate", {},
+         "hypergumbo_core.cli:is_rust_analyzer_available=False"),
+        ("install-rust-analyzer-check", ["install-rust-analyzer", "--check"], "mutate", {}, ""),
+        ("uninstall-rust-analyzer", ["uninstall-rust-analyzer"], "mutate", {}, ""),
+        ("install-embeddings", ["install-embeddings"], "mutate", {},
+         "hypergumbo_core.cli:_is_embeddings_available=False;hypergumbo_core.cli:_embedding_models_cached=False"),
+        ("install-embeddings-check", ["install-embeddings", "--check"], "mutate", {}, ""),
+        ("uninstall-embeddings", ["uninstall-embeddings", "--all"], "mutate", {},
+         "hypergumbo_core.cli:_is_embeddings_available=True"),
+        ("build-grammars", ["build-grammars"], "mutate", {}, ""),
+        ("add-extras", ["add-extras"], "mutate", {}, not_ready),
+        ("add-extras-check", ["add-extras", "--check"], "mutate", {}, ""),
+        ("remove-extras", ["remove-extras"], "mutate", {"_FAKE_GITLEAKS": "1"}, ready),
+    ]
+    for cmd, argv in (("slice", ["slice", "--entry", "foo", "."]), ("search", ["search", "foo", "."]),
+                      ("routes", ["routes", "."]), ("explain", ["explain", "foo", "."]),
+                      ("symbols", ["symbols", "."]), ("test-coverage", ["test-coverage", "."]),
+                      ("dead-code-maybe", ["dead-code-maybe", "."]), ("repeat-finder", ["repeat-finder", "."]),
+                      ("io-boundaries", ["io-boundaries", "."]),
+                      ("verify-claims", ["verify-claims", "--claims", claims, "."])):
+        v.append((cmd, argv, "cold", {}, ""))
+        v.append((f"{cmd}-warm", argv, "warm", {}, ""))
+    return v
+
+
+_FIXTURE = {
+    "app.py": ("import os\nimport subprocess\nfrom flask import Flask, request\n\napp = Flask(__name__)\n\n\n"
+               "@app.route(\"/run\")\ndef run_cmd():\n    return subprocess.run(request.args[\"c\"], shell=True).returncode\n\n\n"
+               "def foo():\n    return bar(os.environ.get(\"HOME\"))\n\n\ndef bar(x):\n    return x\n"),
+    "test_app.py": "from app import foo\n\n\ndef test_foo():\n    assert foo()\n",
+    "Cargo.toml": '[package]\nname = "fx"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\npath = "src/lib.rs"\n',
+    "src/lib.rs": "pub fn add(a: i32, b: i32) -> i32 { helper(a) + b }\nfn helper(a: i32) -> i32 { a }\n",
+    "pyproject.toml": '[project]\nname = "fx"\nversion = "0.1"\ndependencies = ["flask"]\n',
+    "README.md": "# fx\n\nA tiny fixture service that runs commands over HTTP and adds numbers in Rust.\n",
+}
+_GIT = ["git", "-c", "user.name=fx", "-c", "user.email=fx@example.invalid", "-c", "protocol.file.allow=always"]
+
+
+def _make_fixtures(scratch: Path) -> tuple[Path, Path]:
+    fix = scratch / "fixture"
+    for rel, text in _FIXTURE.items():
+        (fix / rel).parent.mkdir(parents=True, exist_ok=True)
+        (fix / rel).write_text(text)
+    for args in (["init", "-q", "."], ["add", "-A"], ["commit", "-qm", "init"],
+                 ["remote", "add", "origin", "https://example.invalid/fx.git"]):
+        subprocess.run(_GIT + args, cwd=fix, check=True, capture_output=True)  # noqa: S603  # nosec B603 - git, fixed argv
+    sub = scratch / "fixture_sub"
+    shutil.copytree(fix, sub)
+    subprocess.run(_GIT + ["submodule", "add", "-q", str(fix), "vendor/sub"], cwd=sub, check=True,  # noqa: S603  # nosec B603
+                   capture_output=True)
+    subprocess.run(_GIT + ["commit", "-qm", "sub"], cwd=sub, check=True, capture_output=True)  # noqa: S603  # nosec B603
+    return fix, sub
+
+
+def run_trace(root: Path, jobs: int = 4, *, force_stand_ins: bool = False,
+              record: Path | None = None) -> tuple[Report, list[str]]:
+    """Run every variant; returns the comparison and the variants that could not run.
+
+    ``force_stand_ins`` uses every stand-in even where the real tool exists (what
+    the cron runner sees, reproduced locally); ``record`` saves each variant's
+    observed site lines as JSON.
+    """
+    import concurrent.futures as cf
+    scratch = Path(tempfile.mkdtemp(prefix="hg-commands-trace-"))
+    try:
+        files, unit_of = _sites_map(root)
+        sites_json = scratch / "sites.json"
+        sites_json.write_text(json.dumps(files))
+        fix, sub = _make_fixtures(scratch)
+        (scratch / "changed.txt").write_text("app.py\n")
+        (scratch / "o").mkdir()
+        missing = {t for t in ("rust-analyzer", "gitleaks") if force_stand_ins or shutil.which(t) is None}
+        if force_stand_ins or importlib.util.find_spec("sentence_transformers") is None:
+            missing.add("sentence_transformers")
+        stand = make_stand_ins(scratch / "stand_ins", missing)
+        notes = [f"stand-ins used for: {', '.join(sorted(missing))}"] if missing else []
+        base = dict(os.environ)
+        base["PATH"] = f"{stand['bin']}{os.pathsep}{base.get('PATH', '')}"
+        base["PYTHONPATH"] = os.pathsep.join(filter(None, [str(stand["py"]), base.get("PYTHONPATH")]))
+        for k in ("HYPERGUMBO_RUST_ANALYZER", "HYPERGUMBO_SCIP_PYTHON"):
+            base.pop(k, None)
+
+        def xdg(dirpath: Path) -> dict:
+            for d in ("cache", "state", "config"):
+                (dirpath / d).mkdir(parents=True, exist_ok=True)
+            return {"XDG_CACHE_HOME": str(dirpath / "cache"), "XDG_STATE_HOME": str(dirpath / "state"),
+                    "XDG_CONFIG_HOME": str(dirpath / "config")}
+
+        warm = scratch / "warm"
+        wenv = {**base, **xdg(warm)}
+        for argv in (["survey", "."], ["survey", ".", "--out", f"{scratch}/in.json", "--budgets", "none",
+                                       "--no-handler-slices"]):
+            subprocess.run([sys.executable, "-m", "hypergumbo_core", *argv], cwd=fix, env=wenv,  # noqa: S603  # nosec B603
+                           capture_output=True, timeout=1800)
+
+        def one(var):
+            label, argv, group, extra, patch = var
+            run_root = scratch / "runs" / label
+            tdir = scratch / "traces" / label
+            tdir.mkdir(parents=True)
+            if group in ("warm", "evict"):
+                shutil.copytree(warm, run_root)
+            env = {**base, **xdg(run_root)}
+            if group == "evict":
+                for res in (run_root / "cache" / "hypergumbo").glob("*/results"):
+                    live = next(d for d in res.iterdir() if d.is_dir())
+                    old = res / ("0" * 16)
+                    shutil.copytree(live, old)
+                    stamp = time.time() - 7200
+                    for f in [old, *old.rglob("*")]:
+                        os.utime(f, (stamp, stamp))
+            if group == "mutate":
+                home = run_root / "home"
+                (home / ".local" / "bin").mkdir(parents=True)
+                if extra.get("_FAKE_GITLEAKS"):
+                    g = home / ".local" / "bin" / "gitleaks"
+                    g.write_text("#!/bin/sh\n")
+                    g.chmod(0o755)
+                env["HOME"] = str(home)
+                env["HG_TRACE_STUB"] = "1"
+            env.update({k: val for k, val in extra.items() if not k.startswith("_")})
+            fp_dir = run_root / "cache" / "hypergumbo"
+            fp = next((d.name for d in fp_dir.iterdir() if re.fullmatch(r"[0-9a-f]{12,}", d.name)),
+                      "NOFP") if fp_dir.is_dir() else "NOFP"
+            env = trace_env(tdir, sites_json, env)
+            env["HG_TRACE_ARGV"] = json.dumps([a.replace("{FP}", fp) for a in argv])
+            if patch:
+                env["HG_TRACE_PATCH"] = patch
+            cwd = sub if group == "cold-sub" else fix
+            try:
+                p = subprocess.run([sys.executable, str(TRACE_SUPPORT / "runner.py")], cwd=cwd, env=env,  # noqa: S603  # nosec B603
+                                   capture_output=True, text=True, timeout=1800, stdin=subprocess.DEVNULL)
+                rc = next((line.split("=", 1)[1] for line in p.stderr.splitlines()
+                           if line.startswith("HG_TRACE_RC=")), None)
+            except subprocess.TimeoutExpired:
+                rc = None
+            # A variant that stopped early (missing input, bad argument) observed
+            # less than it should: only its expected exit code counts as run.
+            ok = rc in (CHECK_RC if "--check" in argv else EXPECTED_RC.get(argv[0], ("0",)))
+            hits = set()
+            for f in tdir.glob("*.jsonl"):
+                for line in f.read_text().splitlines():
+                    rec = json.loads(line)
+                    if "site" in rec and "argv" not in rec:
+                        hits.add(rec["site"])
+            return label, argv[0], hits, ok
+
+        observed: dict[str, dict[str, list[str]]] = collections.defaultdict(lambda: collections.defaultdict(list))
+        not_run: list[str] = []
+        per_variant: dict[str, list[str]] = {}
+        with cf.ThreadPoolExecutor(jobs) as ex:
+            for label, cmd, hits, ok in ex.map(one, _variants(str(scratch))):
+                if not ok:
+                    not_run.append(label)
+                per_variant[label] = sorted(hits)
+                for site in hits:
+                    observed[unit_of[site]][cmd].append(label)
+        if record:
+            record.write_text(json.dumps({"variants": per_variant, "not_run": not_run}, indent=1))
+        cli_path = root / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "cli.py"
+        report = compare_trace(load_entries(root / "docs" / "hypergumbo.io-allowlist.yaml"),
+                               observed, set(subcommands(cli_path)))
+        report.notes += notes
+        return report, not_run
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--static", action="store_true", help="the call-graph comparison (default)")
+    mode.add_argument("--trace", action="store_true", help="run every subcommand variant under the tracer")
+    ap.add_argument("--root", type=Path, default=REPO_ROOT)
+    ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--stand-ins", action="store_true",
+                    help="--trace: use every stand-in even where the real tool exists (the cron's view)")
+    ap.add_argument("--record", type=Path, help="--trace: save each variant's observed site lines (JSON)")
+    args = ap.parse_args(argv)
+    if args.trace:
+        if sys.version_info < (3, 12):
+            print("check-allowlist-commands: --trace needs Python 3.12+ (sys.monitoring)", file=sys.stderr)
+            return 2
+        report, not_run = run_trace(args.root.resolve(), args.jobs, force_stand_ins=args.stand_ins,
+                                    record=args.record)
+        for label in not_run:
+            report.notes.append(f"NOT CHECKED: variant {label} did not run to completion")
+        print(report.render())
+        return 0 if report.ok and not not_run else 1
+    report = check_static(args.root.resolve())
+    print(report.render())
+    return 0 if report.ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
