@@ -206,13 +206,15 @@ See `hypergumbo --help` for all options.
 
 ## How It Works
 
-1. **Profile**: Scan the repo for languages, file counts, LOC
+1. **Profile**: Scan the repo for languages, file counts, LOC, and frameworks
 2. **Analyze**: Run language-specific analyzers to extract symbols and edges
-3. **Link**: Connect symbols across language boundaries (JS fetch → Python route)
-4. **Enrich**: Detect frameworks via YAML pattern matching
+3. **Enrich**: Tag symbols with framework concepts (routes, models, tests) via YAML patterns
+4. **Link**: Connect symbols across files and language boundaries (JS fetch → Python route)
 5. **Classify**: Assign supply chain tiers (first-party, internal, external, derived)
-6. **Trace I/O**: Map call chains to I/O boundaries; run taint-flow analysis
+6. **Rank**: Score symbols by centrality
 7. **Output**: Generate Markdown sketch or JSON survey
+
+Taint-flow analysis is separate: `hypergumbo verify-claims` runs it against a claims file.
 
 ### The Internal Representation
 
@@ -220,7 +222,7 @@ All analyzers produce the same IR types:
 
 - **Symbol**: A code element (function, class, method) with name, location, and stable ID
 - **Edge**: A relationship between symbols (calls, imports, extends, implements)
-- **Span**: Source location (file, line, column)
+- **Span**: Source location within a file (start/end line and column)
 
 This uniform IR is what allows all language analyzers and linkers (Protocol / Bridge / Framework / Infrastructure — see [ADR-3bbb](https://github.com/iterabloom/hypergumbo/blob/dev/docs/adr/3bbb-linker-subcategory-restoration.md)) to work together coherently.
 
@@ -239,8 +241,10 @@ packages/
 ├── hypergumbo-lang-mainstream/  # Python, JS, Java, Go, Rust, etc.
 ├── hypergumbo-lang-common/      # Haskell, Elixir, GraphQL, etc.
 ├── hypergumbo-lang-extended1/   # Zig, Solidity, Agda, etc.
+├── hypergumbo-lang-rust-analyzer/ # SCIP-backed Rust backend (extra: hypergumbo[rust-analyzer])
+├── hypergumbo-lang-scip-python/   # SCIP-backed Python backend (extra: hypergumbo[scip-python])
 ├── hypergumbo-tracker/           # Structured work tracker for agent governance (MPL-2.0)
-└── hypergumbo/                  # Meta-package (installs core + the three language packs; not the tracker)
+└── hypergumbo/                  # Meta-package (installs core + the three language packs; not the tracker or the SCIP backends)
 ```
 
 Key design choices:
