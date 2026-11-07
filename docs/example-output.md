@@ -5,7 +5,7 @@
 
 > **For JSON-level details**, the markdown sketch below does NOT surface them — they appear in `hypergumbo survey` JSON output.
 
-## Install flow (illustrative)
+## Install flow
 
 ```
 /content# pip install hypergumbo
