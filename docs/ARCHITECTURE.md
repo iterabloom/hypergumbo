@@ -479,6 +479,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `build-scip-proto` | Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py |
 | `build_combined_trend.py` | Build the cross-tranche combined trend report covering ALL completed dogfooding tranches. |
 | `catalogue_gate_terms.py` | Grep terms for ``scripts/smart-test``'s catalogue gate, derived per family. |
+| `check-allowlist-commands` | Gate: every I/O allowlist entry's ``commands`` names the subcommands that reach it. |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
 | `check-claims-coverage` | INV-jojog per-PR guard: can the shipped tree's self-claims still be qualified? |
 | `check-confidence-sites` | Static audit of explicit Edge.create(confidence=...) sites (WI-vosif). |
@@ -985,8 +986,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: faa213346206
-  commit_count: 8902
+  commit: bf043728be71
+  commit_count: 8905
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
