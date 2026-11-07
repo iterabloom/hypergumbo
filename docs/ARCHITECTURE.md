@@ -13,10 +13,11 @@ for focused LLM context.
 
 ## Self-Analysis Summary (auto)
 
-hypergumbo analyzed its own source code and found:
-- **370** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 115 core, 4 CLI, 37 tracker)
-- **58285** symbols (functions, classes, methods)
-- **234026** edges by type:
+Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
+
+- **369** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 114 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **58285** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13049, of which 7483 are functions, methods or classes
+- **234026** edges, test code included, by type:
   - calls: 132346
   - contains: 54294
   - imports: 20060
@@ -27,145 +28,120 @@ hypergumbo analyzed its own source code and found:
 
 ## Package Architecture
 
-The codebase is a Python monorepo with eight packages arranged in a strict
-dependency hierarchy. The separation enforces layering: language analyzers
-depend on core but not on each other, and the tracker is fully independent.
+The codebase is a Python monorepo with eight packages. Every language
+package depends on `hypergumbo-core`; the two SCIP backends also depend
+on `hypergumbo-lang-mainstream` (rust-analyzer imports its `rust_scip`
+module). `hypergumbo-tracker` depends on no other hypergumbo package.
 
 ```
-                       hypergumbo (meta-package)
-                /       |       |        \
-               v        v       v         v
-  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python
-  (53 analyzers)  (39 analyzers)  (41 analyzers)   (6 SCIP backend)   (4 SCIP backend)
-                   \      |      |       /
-                    v     v      v      v
-                       hypergumbo-core
-           (IR, CLI, linkers, patterns,
-            ranking, discovery, sketch)
+hypergumbo (meta-package: `pip install hypergumbo`)
+ ├── hypergumbo-core
+ ├── hypergumbo-lang-mainstream    38 analyzers   -> core
+ ├── hypergumbo-lang-common        38 analyzers   -> core
+ └── hypergumbo-lang-extended1     41 analyzers   -> core
 
-  hypergumbo-tracker  (independent)
-  (governance TUI, op-log store,
-   CRDT-like merge, SQLite cache)
+extras: `pip install 'hypergumbo[rust-analyzer]'` / `'hypergumbo[scip-python]'`
+ hypergumbo-lang-rust-analyzer     1 SCIP backend  -> core, lang-mainstream
+ hypergumbo-lang-scip-python       1 SCIP backend  -> core, lang-mainstream
+
+separate install:
+ hypergumbo-tracker                governance tool, no hypergumbo dependency
 ```
 
 | Package | Role |
 |---------|------|
 | **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 110 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 53 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
-| **hypergumbo-lang-common** | 39 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
+| **hypergumbo-lang-mainstream** | 38 analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer (alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |
 | **hypergumbo-lang-scip-python** | SCIP-backed Python analyzer (pyright via scip-python, beside the ast Python analyzer in `lang-mainstream`; executes nothing; activates with `--backend scip-python` or `[backends] scip_python = true`) |
-| **hypergumbo** | Meta-package that installs core + all language packages |
+| **hypergumbo** | Meta-package: installs core and the mainstream, common and extended1 language packages; the two SCIP backends are extras |
 | **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, Lamport-clock ordering, and optional embedding-based dedup |
 
 ## Analysis Pipeline
 
-The CLI's `run_behavior_map()` function orchestrates the full pipeline:
+`cli.run_survey()` runs the pipeline; `sketch` and `slice` build on its result.
+The stages below are its `run_status` phases, in order:
 
 ```
-Source Files
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        1. DISCOVERY                             │
-│  Find files, classify into supply chain tiers (1-4),            │
-│  apply .gitignore + exclude patterns                            │
-└─────────────────────────────────────────────────────────────────┘
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         2. PROFILE                              │
-│  Detect languages (by file extension)                           │
-│  Detect frameworks (by manifest markers, scoped to languages)   │
-└─────────────────────────────────────────────────────────────────┘
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        3. ANALYZERS                             │
-│  Per-language tree-sitter parsing (two-pass architecture):      │
-│    Pass 1: Extract symbols from AST nodes                       │
-│    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 58285 Symbols + 234026 Edges + UsageContexts           │
-└─────────────────────────────────────────────────────────────────┘
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     4. PATTERN ENRICHMENT                       │
-│  YAML-driven pattern matching (ADR-3aaa):                       │
-│  - 8 convention patterns (always loaded)                        │
-│  - 102 framework patterns (loaded when framework detected)      │
-│  Output: Symbols enriched with meta.concepts                    │
-└─────────────────────────────────────────────────────────────────┘
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        5. LINKERS                               │
-│  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
-│  Framework / Infrastructure). Match via meta.concepts and       │
-│  symbol metadata across files and language boundaries.          │
-│  63 linkers: P11 / B11 / F32 / I9 (HTTP, JNI, gRPC, React, ...) │
-└─────────────────────────────────────────────────────────────────┘
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     6. RANKING & OUTPUT                         │
-│  Centrality scoring, supply chain tier filtering,               │
-│  token-budget-aware truncation (compact mode)                   │
-└─────────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-    ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │  sketch  │   │   run    │   │  slice   │
-    │ Markdown │   │   JSON   │   │ subgraph │
-    └──────────┘   └──────────┘   └──────────┘
+Source files
+  │
+  1. INDEX     find files; apply .gitignore, default excludes and --exclude;
+  │            prune generated output and installed dependency source
+  2. PROFILE   languages and LOC; frameworks from manifest markers
+  │
+  3. ANALYZE   every registered analyzer (tree-sitter, Python ast, regex,
+  │            or a SCIP backend) emits symbols, edges and usage contexts;
+  │            deferred symbol references resolved; records two producers
+  │            emitted for one declaration merged (ADR-0057)
+  4. ENRICH    YAML patterns add meta.concepts (ADR-3aaa):
+  │            11 files always loaded, 99 more when their framework
+  │            is detected; route symbols materialized
+  5. LINK      63 linkers (P11 / B11 / F32 / I9) recover cross-file and
+  │            cross-language edges; synthetic identities reconciled;
+  │            edges deduplicated
+  6. CLASSIFY  fingerprints stamped; supply chain tier assigned per file;
+  │            tier filter (--max-tier / --first-party-only); finalize
+  7. RANK      centrality ranking, metrics, entrypoints
+  │
+  ├── sketch   Markdown, token-budgeted
+  ├── survey   JSON behavior map (`run` is a deprecated alias)
+  └── slice    JSON subgraph from an entry point
 ```
+
+Taint-flow analysis is not a pipeline stage: it runs only under `hypergumbo verify-claims`.
 
 ## Output Modes
 
 | Mode | Format | Purpose |
 |------|--------|---------|
 | **`sketch`** | Markdown | Token-budgeted overview of repo structure and key symbols. Designed for human reading and LLM context windows. Default output mode. |
-| **`run`** | JSON | Full behavior map with all symbols, edges, and metadata. Used by downstream tools, CI checks, and the tracker. |
+| **`survey`** | JSON | Full behavior map with all symbols, edges, and metadata, for downstream tools and CI checks. `run` is a deprecated alias. |
 | **`slice`** | JSON | Subgraph extraction from an entry point (forward or reverse). Produces focused dependency/dependents view for a specific symbol. |
 
 ## Supply Chain Tiers
 
-Files are classified into tiers at discovery time (before analysis)
-to prioritize first-party code and filter noise:
+Every symbol gets a tier after analysis: `_classify_symbols` classifies
+each file path and stamps the tier on the symbols in that file.
 
-| Tier | Name | Examples |
+| Tier | Name | What lands there |
 |------|------|----------|
-| **1** | First-party | Project source code (`src/`, `lib/`, `app/`) |
-| **2** | Internal dep | Monorepo packages, examples, tests |
+| **1** | First-party | The project's code, including its tests, examples, docs and workspace packages (their role is a flag: `is_test_file`, `is_example_file`) |
+| **2** | Internal dep | Org-internal code from `SupplyChainConfig.internal_package_roots`, plus dependency manifests (`is_config_file`); no CLI flag sets internal roots |
 | **3** | External dep | `node_modules/`, `vendor/`, vendored SDKs |
-| **4** | Derived | Build artifacts, transpiled output (`dist/`, `build/`, `*.min.js`) |
+| **4** | Derived | Build output that discovery's build-output rules recognise; minified files (`*.min.js`) |
 
-Classification uses first-match-wins: derived artifacts (tier 4) are checked first,
-then external deps (tier 3), then internal (tier 2), and remaining files default to
-first-party (tier 1). The `--first-party-only` flag restricts analysis to tier 1.
+The first matching rule wins, in the order given in `supply_chain.py`'s
+module docstring (derived and external first). `--max-tier N` drops nodes
+above tier N after analysis; `--first-party-only` is `--max-tier 1`. Neither
+drops tests: they are tier 1.
 
-## Tree-sitter Infrastructure
+## Analyzer Implementations
 
-All language analyzers inherit from `TreeSitterAnalyzer` (`analyze/base.py`),
-which provides a universal two-pass architecture:
+Most analyzers subclass `TreeSitterAnalyzer` (`analyze/base.py`), which
+provides a two-pass architecture:
 
 1. **Pass 1 (symbol extraction):** Parse each file with tree-sitter, walk the AST,
    extract symbols (functions, classes, methods, etc.) with metadata
 2. **Pass 2 (edge resolution):** Re-walk ASTs, resolve calls and imports against
    the global symbol registry built in pass 1
 
-Grammars come from two sources:
-- **PyPI packages** (most languages): installed via `pip` as `tree-sitter-<lang>` dependencies
+Some do not: the Python analyzer uses the standard-library `ast`; a few
+(handlebars, just, qml, blade, gnuplot, mermaid, …) use regular expressions;
+and the two SCIP backends translate an index that an external indexer wrote.
+
+Tree-sitter grammars come from three sources:
+- **Per-language PyPI packages**: `tree-sitter-<lang>` dependencies
+- **`tree-sitter-language-pack`**: one PyPI package bundling many grammars
 - **Build-from-source** (Lean, Wolfram, etc.): compiled by `scripts/build-source-grammars`
-  when the PyPI grammar is unavailable or incompatible
+  when no usable PyPI grammar exists
 
 ## Symbol Resolution
 
-Linkers match symbols across files and languages using `NameResolver`
-(`symbol_resolution.py`), which provides tiered matching with confidence levels:
+Analyzers (and `framework_patterns.py`) resolve a referenced name to a
+symbol with `NameResolver` (`symbol_resolution.py`), which provides tiered
+matching with confidence levels:
 
 | Strategy | Confidence | When used |
 |----------|-----------|-----------|
@@ -182,9 +158,32 @@ filter by reliability.
 
 ### Span (`ir.py`)
 Source code location with line and column info.
+- `start_line`
+- `end_line`
+- `start_col`
+- `end_col`
 
 ### AnalysisRun (`ir.py`)
 Provenance tracking for an analysis pass execution.
+- `execution_id`
+- `pass_id`
+- `version`
+- `run_signature`
+- `repo_fingerprint`
+- `toolchain`
+- `config_fingerprint`
+- `files_analyzed`
+- `files_skipped`
+- `skipped_passes`
+- `failed_files`
+- `warnings`
+- `started_at`
+- `duration_ms`
+- `cpu_ms`
+- `pass_version`
+- `nodes_emitted`
+- `edges_emitted`
+- `silence_reason`
 
 ### Symbol (`ir.py`)
 A code symbol (function, class, etc.) detected by analysis.
@@ -196,23 +195,18 @@ A code symbol (function, class, etc.) detected by analysis.
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat. The declared type is ``str | List[str]`` so this accepted-input contract holds at the type level; do NOT narrow it to ``List[str]`` — most producers pass a single scalar pass ID, and narrowing reintroduces hundreds of arg-type errors under mypy strict (INV-zogud). The stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014 amended by Phase 6 PR3 / INV-bazij). Survives BODY edits; does NOT survive rename or move — those are now identity-changing operations. Pre-Phase-6 the field was documented as "survives renames/moves", but on the dogfood corpus that promise produced a 60% collision rate (155 zero-param bash functions in one file shared one ID), so name + qualified_name are now part of the hash inputs. Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix, and their value-spaces are disjoint (0 overlap on
-- `the dogfood corpus). This is by design (WI-tisar)`: unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified. Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
+- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014 amended by Phase 6 PR3 / INV-bazij). Survives BODY edits; does NOT survive rename or move — those are now identity-changing operations. Pre-Phase-6 the field was documented as "survives renames/moves", but on the dogfood corpus that promise produced a 60% collision rate (155 zero-param bash functions in one file shared one ID), so name + qualified_name are now part of the hash inputs. Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix, and their value-spaces are disjoint (0 overlap on the dogfood corpus). This is by design (WI-tisar): unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified. Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
 - `shape_id`: Structural *skeleton* hash — the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 §1 compute_shape_id), so two symbols with the same code shape but different names/values collide. Compared within-language only (Python uses an ast-based variant). Contrast ``fingerprint``, which KEEPS identifiers/literals — ``shape_id`` is a strict coarsening of it. Serialized as ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that field's note on cross-axis bare-hash joins; WI-tisar).
-- `fingerprint`: Structural *content* hash of the symbol's parse subtree — shape PLUS identifiers and literals, whitespace/ comment-invariant, tagged with the scheme in ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw source-byte hash — that was the ADR-0032-demolished Format-1 scheme. ``None`` for grammarless languages / parse errors /
-- `synthetic spans. Producer`: fingerprint.py.
+- `fingerprint`: Structural *content* hash of the symbol's parse subtree — shape PLUS identifiers and literals, whitespace/ comment-invariant, tagged with the scheme in ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw source-byte hash — that was the ADR-0032-demolished Format-1 scheme. ``None`` for grammarless languages / parse errors / synthetic spans. Producer: fingerprint.py.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
 - `supply_chain_tier`: Supply-chain distance, from the project, of the code this node stands for (1=first_party, 2=internal_dep, 3=external_dep, 4=derived); a dependency declaration stands for the package it names, a boundary stub for the code it replaces. ADR-0041 §1, spec §14.
 - `supply_chain_reason`: Why this tier was assigned (e.g., "matches ^src/")
-- `supply_chain_classified`: Whether a producer or the annotator has assigned the tier (WI-lidig). The annotator classifies every node for which this is False; it used to infer "unclassified" from the default tier 1 with an empty reason, which made a free-text field's emptiness a branch and left a deliberate "tier 1, no reason" stamp indistinguishable from none. Set by ``__post_init__`` when a constructor passes a tier or a reason, by ``from_dict`` (a serialized map is classified), and by every producer that assigns a
-- `tier afterwards. Internal`: not serialized.
 - `is_test_file`: True if the file holds test *code* — the NARROW supply-chain role flag (spec §14), where examples/benches/fuzz carry their own role rather than this flag. Independent of tier — co-located test files can be tier 1. Deliberately distinct from the broader ``paths.is_test_file`` ranking/scan heuristic (which also covers mocks/fixtures/testdata/benches for entrypoint deprioritization); do not swap consumers of one for the other without re-running the WI-popok concept audit.
 - `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
 - `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
 - `is_generated_file`: True if the file is generated code. Independent of the role flags above.
-- `is_exported`: True if the symbol is part of the package's public API, False if a producer measured that it is not, and ``None`` when nobody looked (INV-kubup). Seventeen analyzer modules compute exportedness and ninety-odd do not; while this was ``bool = False`` the artifact could not tell a measured negative from a missing rule, and said "not public API" for both. Only a
-- `positive input fills it`: an analyzer's own rule, an export modifier (``pub`` / ``public`` / ``exported``), or a language signal that the symbol is not public at all.
+- `is_exported`: True if the symbol is part of the package's public API, False if a producer measured that it is not, and ``None`` when nobody looked (INV-kubup). Seventeen analyzer modules compute exportedness and ninety-odd do not; while this was ``bool = False`` the artifact could not tell a measured negative from a missing rule, and said "not public API" for both. Only a positive input fills it: an analyzer's own rule, an export modifier (``pub`` / ``public`` / ``exported``), or a language signal that the symbol is not public at all.
 - `cyclomatic_complexity`: McCabe cyclomatic complexity (decision points + 1). Counts if/elif/else, for, while, except, with, and/or, match/case.
 - `line_span`: Physical line span of the symbol body — ``end_line - start_line + 1``, INCLUDING blank and comment lines. This is NOT source-lines-of-code (SLOC); the spec's "lines of code" / file-level SLOC convention lives in ``profile.languages[*].loc``. Renamed from ``lines_of_code`` (WI-bozid) so one term no longer names two different counting conventions.
 - `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
@@ -220,24 +214,22 @@ A code symbol (function, class, etc.) detected by analysis.
 - `modifiers`: List of semantic modifiers (e.g., ["native", "public", "static"]). Used by linkers for cross-language matching (e.g., JNI needs 'native').
 - `discovery_language`: ADR-0031 typed sibling field. Names the host source language where the linker discovered the pattern that produced this Symbol. Populated by Class-B linker emits (synthetic stand-ins discovered in real source files). ``None`` for real-source declarations emitted by analyzers (``language`` already names that information). Shares the ``language`` axis catalog with ``Symbol.language``; the cross-language-detection consumer sites in ``event_sourcing.py`` / ``database_query.py`` / ``message_queue.py`` / ``graphql_resolver.py`` read this rather than ``language``.
 - `protocol_origin`: ADR-0031 typed sibling field. Names the protocol or framework family (kafka, websocket, ipc, wasm, openapi, grpc, graphql, etc.) for synthetic stand-ins emitted by linkers fabricating protocol identity from source patterns. Catalog at :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source declarations and for synthetic stand-ins that don't belong to a recognized protocol family.
-- `display_label`: ADR-0032 typed sibling field. Human-readable expression- form string for UI display in commands like ``cmd_explain``. Populated by linkers fabricating synthetic stand-ins (e.g., ``"invoke('save_data')"``, ``"@hg:publishes channel"``, ``"yjs.write(doc)"``); real-source-declaration Symbols leave this
-- ```None``. ``# axis`: free-text`` — consumers display the value; no consumer mechanically branches on it.
-- `qualified_name`: ADR-0032 typed sibling field. Fully-qualified name including ancestor containers (e.g. ``module.OuterClass.InnerClass.method``). Replaces the prior ``meta["qualified_name"]`` shape. Per-language separator policy lives in :mod:`hypergumbo_core.qualified_name_axis`; the
-- ```# axis`: qualified-name`` classification keys into that catalog. ``None`` for analyzers whose ``name`` already encodes the fully-qualified form, or for languages that haven't declared a separator policy yet.
-- `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass on
-- `a record folded from two producers`: ``{field: [pass_id, ...]}`` — the producers whose value the scalar slot carries (agreement lists both; a contested field lists the arbitration winner; a field only one producer observed lists that producer). ``None`` on every single-producer record, and then omitted from the dict form, so a one-backend artifact is byte-identical.
-- `alternatives`: ADR-0057 §6, the candidate set: ``{field: [{"value",
-- `"origin"`: [pass_id, ...]}]}`` for the values the scalar slot does NOT carry — present only for contested fields on a merged record. Nothing a producer emitted is discarded (§1); the scalar is the one stamped default (§4) and this is what an opt-in policy reads instead.
+- `display_label`: ADR-0032 typed sibling field. Human-readable expression- form string for UI display in commands like ``cmd_explain``. Populated by linkers fabricating synthetic stand-ins (e.g., ``"invoke('save_data')"``, ``"@hg:publishes channel"``, ``"yjs.write(doc)"``); real-source-declaration Symbols leave this ``None``. ``# axis: free-text`` — consumers display the value; no consumer mechanically branches on it.
+- `qualified_name`: ADR-0032 typed sibling field. Fully-qualified name including ancestor containers (e.g. ``module.OuterClass.InnerClass.method``). Replaces the prior ``meta["qualified_name"]`` shape. Per-language separator policy lives in :mod:`hypergumbo_core.qualified_name_axis`; the ``# axis: qualified-name`` classification keys into that catalog. ``None`` for analyzers whose ``name`` already encodes the fully-qualified form, or for languages that haven't declared a separator policy yet.
+- `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass on a record folded from two producers: ``{field: [pass_id, ...]}`` — the producers whose value the scalar slot carries (agreement lists both; a contested field lists the arbitration winner; a field only one producer observed lists that producer). ``None`` on every single-producer record, and then omitted from the dict form, so a one-backend artifact is byte-identical.
+- `alternatives`: ADR-0057 §6, the candidate set: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar slot does NOT carry — present only for contested fields on a merged record. Nothing a producer emitted is discarded (§1); the scalar is the one stamped default (§4) and this is what an opt-in policy reads instead.
+- `supply_chain_classified`: Whether a producer or the annotator has assigned the tier (WI-lidig). The annotator classifies every node for which this is False; it used to infer "unclassified" from the default tier 1 with an empty reason, which made a free-text field's emptiness a branch and left a deliberate "tier 1, no reason" stamp indistinguishable from none. Set by ``__post_init__`` when a constructor passes a tier or a reason, by ``from_dict`` (a serialized map is classified), and by every producer that assigns a tier afterwards. Internal: not serialized.
+- `visibility`
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
 - `id`: Unique identifier for this edge instance (per-instance identity, line-inclusive; the Edge counterpart of ``Symbol.id``). Surfaced as ``edge:sha256:<16hex>``.
-- `edge_key`: Canonical identity for deduplication across passes — structural identity computed line-insensitively from (src, dst, edge_type), so it is stable across regenerations. This is the Edge counterpart of ``Symbol.stable_id`` (structural identity that survives regeneration); ``edge.id`` is the per-instance counterpart of ``Symbol.id``. Named ``edge_key`` rather than ``stable_id`` for historical reasons — the rename would be a breaking schema change and is not worth the churn (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the ``edgekey:`` namespace distinguishes it from ``edge:``-prefixed edge ids in a shared lookup space.
 - `src`: ID of the source symbol (e.g., the caller)
 - `dst`: ID of the target symbol (e.g., the callee)
 - `edge_type`: Type of relationship (calls, imports, inherits, etc.)
 - `line`: Line number where the relationship occurs
-- `confidence`: Confidence score (0.0-1.0)
+- `edge_key`: Canonical identity for deduplication across passes — structural identity computed line-insensitively from (src, dst, edge_type), so it is stable across regenerations. This is the Edge counterpart of ``Symbol.stable_id`` (structural identity that survives regeneration); ``edge.id`` is the per-instance counterpart of ``Symbol.id``. Named ``edge_key`` rather than ``stable_id`` for historical reasons — the rename would be a breaking schema change and is not worth the churn (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the ``edgekey:`` namespace distinguishes it from ``edge:``-prefixed edge ids in a shared lookup space.
+- `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `origin`: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str. Declared ``str | List[str]`` (both the field and ``Edge.create``'s param) so the scalar-or-list input contract holds at the type level; do NOT narrow to ``List[str]`` (most producers pass a scalar pass ID — narrowing reintroduces arg-type errors under mypy strict, INV-zogud). Stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
@@ -245,7 +237,6 @@ A relationship between two symbols (e.g., function calls).
 - `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
-- `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
 - `alternatives`: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
@@ -256,7 +247,10 @@ A relationship between two symbols (e.g., function calls).
 
 ## Canonical Vocabularies
 
-Three IR fields are typed by canonical registries with declared axes:
+Three IR fields are typed by the heavyweight canonical registries below.
+Every other string field on the core dataclasses declares its axis in a
+`# axis:` comment (io-boundary, module-key, language, pass-id, …), checked
+by `check-multi-value-field-axis-declaration`.
 
 | Field | Registry | Axis | ADR |
 |---|---|---|---|
@@ -266,9 +260,9 @@ Three IR fields are typed by canonical registries with declared axes:
 
 Each axis is declared per [ADR-0024](adr/0024-axis-declaration-template.md)'s four-part template (axis name, axiom, consumer pattern, enforcement). Properties not intrinsic to the axis live elsewhere: endpoint kind on `dst.kind`, framework participation in `Symbol.meta` / `Edge.meta` (key vocabulary in `axis_meta_keys.py`), resolution status in the sibling `Edge.is_resolved` bool.
 
-Four drift linters enforce the discipline statically:
+Drift linters enforce the discipline statically:
 
-- **L1 axis-drift** (`check-edge-type-drift`, `check-symbol-kind-drift`, `check-evidence-type-drift`) — every literal `*EDGE_TYPE* / *KIND* / *EVIDENCE_TYPE*` set in `packages/` must be a subset of the canonical registry. Runs in pre-commit.
+- **L1 axis-drift** (`check-edge-type-drift`, `check-symbol-kind-drift`, `check-evidence-type-drift`, `check-io-boundary-drift`) — every literal value set for the axis in `packages/` must be a subset of the canonical registry. Runs in pre-commit.
 - **L3 producer-coherence** (`check-producer-axis-coherence`) — literal-string keyword arguments at `Edge.create` / `Symbol(...)` construction sites must match the registry; handles inline ternaries, f-strings, and locally-bound names.
 - **L4 fallback-coherence** (`check-fallback-coherence`) — any `Edge.create` site declaring `meta["disambiguation_fallback"]=True` must also bind `confidence ≤ 0.5` on the same call.
 - **Runtime coherence** (`check-edge-type-runtime-coherence`) — partitions emitted edges by `(src.kind, src.language, dst.kind, dst.language)` to surface producer-side endpoint-shape leakage.
@@ -277,33 +271,32 @@ Live by-axis view: [`docs/concept-axes.md`](concept-axes.md). Downstream consume
 
 ## Most-Connected Symbols (auto)
 
-These symbols have the highest bidirectional centrality
-(`score = in_degree * (1 + ln(1 + out_degree))`):
+The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_degree))`, counting only edges from non-test code. Test symbols and library placeholders are not ranked. This is not the ranking `hypergumbo symbols` uses.
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10676.2 | ir.py |
-| `len` | external_symbol | 8103.0 | <external> |
-| `write_text` | external_symbol | 7399.0 | <external> |
-| `Span` | class | 7141.2 | ir.py |
-| `LinkerContext` | class | 3797.0 | registry.py |
-| `get` | external_symbol | 3719.0 | <external> |
-| `load_catalog` | function | 3600.1 | io_boundary.py |
-| `Edge.create` | method | 2659.7 | ir.py |
-| `Path` | external_symbol | 2538.0 | <external> |
-| `str` | external_symbol | 2524.0 | <external> |
-| `next` | external_symbol | 2279.0 | <external> |
-| `TrackerApp` | class | 2134.3 | tui.py |
-| `load_framework_patterns` | function | 2114.3 | framework_patterns.py |
-| `append` | external_symbol | 1969.0 | <external> |
-| `main` | function | 1792.0 | cli.py |
+| `Symbol` | class | 2149.4 | hypergumbo_core/ir.py |
+| `node_text` | function | 1349.4 | hypergumbo_core/analyze/base.py |
+| `Span` | class | 1247.2 | hypergumbo_core/ir.py |
+| `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
+| `Edge.create` | method | 962.0 | hypergumbo_core/ir.py |
+| `Edge` | class | 846.3 | hypergumbo_core/ir.py |
+| `AnalysisRun` | class | 814.2 | hypergumbo_core/ir.py |
+| `iter_tree` | function | 773.2 | hypergumbo_core/analyze/base.py |
+| `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
+| `AnalysisResult` | class | 568.0 | hypergumbo_core/analyze/base.py |
+| `find_files` | function | 558.1 | hypergumbo_core/discovery.py |
+| `FileAnalysis` | class | 530.1 | hypergumbo_core/analyze/base.py |
+| `compute_cyclomatic_complexity` | function | 482.5 | hypergumbo_core/analyze/cyclomatic.py |
+| `make_symbol_id` | function | 455.5 | hypergumbo_core/analyze/base.py |
+| `find_child_by_type` | function | 428.0 | hypergumbo_core/analyze/base.py |
 
 ## Pattern System
 
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 110 pattern files (8 convention + 102 framework)
+- **`frameworks/*.yaml`**: 110 pattern files (11 always loaded, 99 loaded when their framework is detected)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
@@ -322,7 +315,8 @@ Enriched symbols have a `meta.concepts` list:
 }
 ```
 
-Linkers and entrypoint detection use `meta.concepts` exclusively.
+Pattern-driven linkers and entrypoint detection read `meta.concepts`; some
+linkers also read raw `decorators` / `annotations` / `base_classes` metadata.
 
 ### Adding a New Pattern
 
@@ -332,9 +326,9 @@ Linkers and entrypoint detection use `meta.concepts` exclusively.
 3. Add tests in `packages/hypergumbo-core/tests/test_framework_patterns.py`
 
 **Convention pattern** (always loaded):
-1. Edit existing convention file or create new one
+1. Edit an existing convention file or create a new one
 2. Use `language: multi` for cross-language patterns
-3. Add to `enrich_symbols()` load list in `framework_patterns.py`
+3. Add its `id` to `_CONVENTION_PATTERN_IDS` in `framework_patterns.py`
 
 Example patterns:
 
@@ -391,7 +385,8 @@ managing work items, invariants, and project state. Key design choices:
 
 - **Op-log store:** Items are append-only YAML op logs, not mutable records.
   `compile()` folds the log into current state (LWW for scalars, accumulation for sets).
-- **Lamport clock:** Cross-branch causal ordering via git object timestamps.
+- **Lamport clock:** Cross-branch causal ordering: a new op's clock is one
+  more than the highest stored clock read from other branches' op logs.
 - **Multi-tier views:** `TrackerSet` provides a unified view over canonical,
   workspace, and stealth stores.
 - **SQLite cache:** Read-hot path uses a SQLite cache (`Cache`) that rebuilds
@@ -517,7 +512,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
-| `generate_schema_lib.py` | (no description) |
+| `generate_schema_lib.py` | Introspection-driven $def builder for docs/schema.json (WI-kutas). |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
 | `io-manifest` | Release gate: the I/O the installed CLI was OBSERVED to perform. |
 | `measure-analyzer-scaling.py` | Split the analyzer phase into FIXED cost and PER-FILE cost. |
@@ -549,7 +544,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
 | `measure-taint-arm-census.py` | Census of PRODUCTION ``_ddg_taint_reaches`` calls, by arm, gate and verdict. |
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
-| `measure_code_tree.py` | (no description) |
+| `measure_code_tree.py` | Which tree's hypergumbo does a measurement script measure? Chosen, never inherited. |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
@@ -566,34 +561,44 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
    - Mainstream: `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/<language>.py`
    - Common: `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/<language>.py`
    - Extended1: `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/<language>.py`
-2. Implement `analyze(root: Path) -> AnalysisResult`
-3. Return symbols and edges following IR conventions
+2. Write `analyze_<language>(repo_root: Path) -> AnalysisResult` and decorate it
+   with `@register_analyzer("<language>")` (`analyze/registry.py`); the decorator
+   raises `LanguageDeclarationError` if the language is not in the taxonomy
+3. Add the module to `ANALYZER_MODULES` in the package's `__init__.py`
+   (the package exposes it through the `hypergumbo.analyzers` entry point)
 4. Add tests in the package's `tests/` directory
-5. Register in the package's `__init__.py` ANALYZER_SPECS
 
 ## Adding a New Linker
 
 Per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md), the first line of every linker module's docstring must declare its subcategory in the form `"""<Protocol|Bridge|Framework|Infrastructure> linker: <one-line purpose>.`
 
 1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`
-2. Register using the decorator pattern:
+2. Register it with the decorator:
 
 ```python
-from .registry import register_linker, LinkerContext, LinkerResult
+from .registry import (
+    LinkerActivation,
+    LinkerContext,
+    LinkerRequirement,
+    LinkerResult,
+    register_linker,
+)
 
 @register_linker(
-"ipc",
-priority=50,
-activation=LinkerActivation(frameworks={"tauri"}),
-requirements=LinkerRequirement(...),
+    "ipc",
+    priority=50,
+    activation=LinkerActivation(frameworks=["tauri"]),
+    requirements=[LinkerRequirement(...)],
+    depends_on=[["javascript"], ["rust"]],
 )
 def link_ipc(ctx: LinkerContext) -> LinkerResult:
-repo_root = ctx.repo_root
-# ... do linking ...
-return LinkerResult(symbols=symbols, edges=edges, run=run)
+    repo_root = ctx.repo_root
+    # ... do linking ...
+    return LinkerResult(symbols=symbols, edges=edges, run=run)
 ```
 
-3. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`
+3. Import the module in `cli.py`'s block of side-effect imports (`import hypergumbo_core.linkers.<name> as _<name>_linker  # noqa: F401`); the decorator runs only when something imports the module
+4. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`
 
 ## Module Reference (auto)
 
@@ -680,7 +685,6 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
-- **`hypergumbo_core.scip._generated.scip_pb2`**: Generated protocol buffer code.
 - **`hypergumbo_core.scip.calls`**: SCIP ``Occurrence`` → hypergumbo call-edge translation shim (WI-maf...
 - **`hypergumbo_core.scip.descriptor`**: Parser for Sourcegraph SCIP symbol strings.
 - **`hypergumbo_core.scip.edges`**: SCIP ``Index`` → hypergumbo ``Edge`` translation shim (WI-mafut Pha...
@@ -986,8 +990,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7ce1de26b588
-  commit_count: 8924
+  commit: 2af1713315d0
+  commit_count: 8926
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
