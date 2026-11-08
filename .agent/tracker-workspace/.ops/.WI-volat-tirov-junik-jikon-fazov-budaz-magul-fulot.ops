@@ -26,3 +26,10 @@
   clock: 2  # 3cfb
   nonce: 3cfb  # 3cfb
   message: "2026-10-31 docstring audit re-reproduced this twice (a reviewer and the blind re-review): component c = A(); gives two calls edges with one id. No new item filed."  # 3cfb
+- op: discuss  # 22df
+  at: '2026-11-08T04:24:06Z'  # 22df
+  by: agent  # 22df
+  actor: jgstern_agent  # 22df
+  clock: 3  # 22df
+  nonce: 22df  # 22df
+  message: "2026-11-07 docstring audit (dev 4f2feb451b): still reproduces, and the two copies can disagree in confidence: an ambiguous template gives one edge at 0.6227 (component branch) and one at 0.85 (call_expression branch, the flat-0.85 defect filed separately), and which survives deduplicate_edges depends on encounter order. r20, v08."  # 22df

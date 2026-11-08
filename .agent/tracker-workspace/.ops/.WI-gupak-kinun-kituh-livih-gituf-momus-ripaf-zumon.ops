@@ -1,0 +1,21 @@
+- op: create  # a889
+  at: '2026-11-08T04:23:55Z'  # a889
+  by: agent  # a889
+  actor: jgstern_agent  # a889
+  clock: 1  # a889
+  nonce: a889  # a889
+  data:  # a889
+    kind: work_item  # a889
+    title: "inherited_calls: the Site-2 type-use edge lists its call stub in derived_from, so finalize halves the still-unresolved call's rank and marks it superseded by a uses edge"  # a889
+    status: todo_hard  # a889
+    priority: 2  # a889
+    parent:  # a889
+    tags:  # a889
+    - docstring_audit  # a889
+    - analysis_quality  # a889
+    isbefore: []  # a889
+    duplicate_of: []  # a889
+    not_duplicate_of: []  # a889
+    pr_ref:  # a889
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. Step 3 emits uses with is_resolved=True, derived_from=[edge.id, type_class_id] (inherited_calls.py:1396-1406); the linker has supersedes_consumed_stub=True (:954); finalize._demote_stubs_named_as_consumed (:492-532) never checks edge type. Java OwnerRepository extends JpaRepository, repo.save(o): the stub to java:external:...:save comes out rank_score 0.25 with superseded_by the uses edge. WI-jomik measured 620 such edges on jedis. r18, v07."  # a889
+    fields: {}  # a889

@@ -20,3 +20,10 @@
     pr_ref:  # 128f
     description: "FOUND while fixing WI-sodoj (PR #1744). ddg_build.return_statement_spans now treats a lambda's body as its return span (test_ddg_expression_body_returns.py::test_a_python_lambda_body_is_a_return), but the Python lift still never fires:\n\n    get = lambda: os.environ[\"TOOL\"]\n    def run():\n        subprocess.run(get(), shell=True)\n\nverify-claims (host_secret -> subprocess) reads confirmed_with_caveats on dev dbeef1ab2a; the same helper written as `def get(): return os.environ[\"TOOL\"]` reads violated. Repro: /tmp/claude-1002/tn/sd/py_lambda + /tmp/claude-1002/tn/sd/c.yaml (ephemeral; the four lines above are the whole fixture).\n\nWHY (two halves, both unverified beyond reading the code):\n1. The py analyzer emits `get = lambda: ...` as a VARIABLE symbol, not a function, so `get()` resolves to no function and has no summary to lift.\n2. The python LanguageDdgSpec lists no `lambda` in function_node_types, so no DDG is built for the lambda body and the source inside it has no symbol to belong to.\n\nWHAT TO DO. Decide whether a name-bound lambda is a function symbol (kind function, span = the lambda), so the call resolves and the lift's existing return span applies; add lambda to the python DDG spec. JS `const f = () => ...` already works (js_arrow violated), so compare with how the JS analyzer names an arrow bound to a const."  # 128f
     fields: {}  # 128f
+- op: discuss  # e656
+  at: '2026-11-08T04:24:06Z'  # e656
+  by: agent  # e656
+  actor: jgstern_agent  # e656
+  clock: 2  # e656
+  nonce: e656  # e656
+  message: "2026-11-07 docstring audit (dev 4f2feb451b): still holds. The python DDG spec has function_node_types={function_definition} and no bound_callable_node_types (ddg_build.py:1117-1126); f = lambda: os.environ['K'] gets no return_spans entry. The ddg_build module docstring's lambda example is being corrected to say so. r19, v07."  # e656

@@ -1,0 +1,21 @@
+- op: create  # e964
+  at: '2026-11-08T04:22:44Z'  # e964
+  by: agent  # e964
+  actor: jgstern_agent  # e964
+  clock: 1  # e964
+  nonce: e964  # e964
+  data:  # e964
+    kind: work_item  # e964
+    title: "taint scope text still says Go if-statement initializers are not modelled"  # e964
+    status: todo_hard  # e964
+    priority: 3  # e964
+    parent:  # e964
+    tags:  # e964
+    - docstring_audit  # e964
+    - analysis_quality  # e964
+    isbefore: []  # e964
+    duplicate_of: []  # e964
+    not_duplicate_of: []  # e964
+    pr_ref:  # e964
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. dataflow_scope.py:557-560 prints 'modelled (Go if-statement initializers, for one, are not)'. WI-losod is done; a Go DDG build gives an err edge from the initializer (line 6) to its use (line 7). User-visible output is stale. r22, v09."  # e964
+    fields: {}  # e964

@@ -18,3 +18,10 @@
     pr_ref:  # d038
     description: "FOUND 2026-11-01 by the tracker-hygiene sweep (the investigator for WI-hohul; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z). Re-reproduced at dev e362b4ba4f.\n\nstr.lstrip(\"./\") strips a CHARACTER SET, not the \"./\" prefix: './.bin/cli' becomes 'bin/cli' and '../dist/x.js' becomes 'dist/x.js'. WI-hohul files this idiom at build_target.py:94 (the build-target linker). The same idiom sits at six PRODUCER sites with no item:\n- packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py:689 (make_manifest_target_dst)\n- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/json_config.py:359, 415 (npm bin), 482 (main), 600, 661 (exports)\n\nREPRO (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/unfiled_repros/fixtures/npm/package.json: \"bin\": {\"cli\": \"./.bin/cli.js\"}, \"main\": \"../dist/index.js\"). analyze_json emits json:package.json:1-1:cli:bin -> javascript:bin/cli.js:1-1:file:file (the real file is .bin/cli.js) and json:package.json:1-1:x:file -> javascript:dist/index.js:1-1:file:file (the spec points outside the package, at ../dist).\n\nFIX: str.removeprefix(\"./\"), or drop the strip and let posixpath.normpath handle a leading \"./\". Do all seven sites in one PR with WI-hohul, with a test in each package (core and lang-mainstream). NOT MEASURED: how often corpus manifests use paths starting with './.' or '../'."  # d038
     fields: {}  # d038
+- op: discuss  # 2c07
+  at: '2026-11-08T04:24:06Z'  # 2c07
+  by: agent  # 2c07
+  actor: jgstern_agent  # 2c07
+  clock: 2  # 2c07
+  nonce: 2c07  # 2c07
+  message: "2026-11-07 docstring audit (dev 4f2feb451b): the json_config sites are still at json_config.py:359, 415, 482, 600, 661. r15, v05."  # 2c07

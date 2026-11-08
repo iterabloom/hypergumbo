@@ -1,0 +1,21 @@
+- op: create  # f018
+  at: '2026-11-08T04:23:33Z'  # f018
+  by: agent  # f018
+  actor: jgstern_agent  # f018
+  clock: 1  # f018
+  nonce: f018  # f018
+  data:  # f018
+    kind: work_item  # f018
+    title: "ansible: in a play with both tasks: and handlers:, every task is emitted as kind handler"  # f018
+    status: todo_hard  # f018
+    priority: 2  # f018
+    parent:  # f018
+    tags:  # f018
+    - docstring_audit  # f018
+    - analysis_quality  # f018
+    isbefore: []  # f018
+    duplicate_of: []  # f018
+    not_duplicate_of: []  # f018
+    pr_ref:  # f018
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. The play's keys are all processed before its nested items are visited, so in_handlers is already True when the tasks are walked (yaml_ansible.py:365-370, 395-396, 429-445). A play with Install nginx under tasks: and restart nginx under handlers: gives both as handler. b01; re-run by the orchestrator on its own fixture."  # f018
+    fields: {}  # f018

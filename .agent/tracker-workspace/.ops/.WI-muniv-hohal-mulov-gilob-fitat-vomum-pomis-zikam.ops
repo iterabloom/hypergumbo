@@ -1,0 +1,21 @@
+- op: create  # 76b7
+  at: '2026-11-08T04:23:00Z'  # 76b7
+  by: agent  # 76b7
+  actor: jgstern_agent  # 76b7
+  clock: 1  # 76b7
+  nonce: 76b7  # 76b7
+  data:  # 76b7
+    kind: work_item  # 76b7
+    title: "method_call_recovery: a caller with two instantiates edges to the same class gets its recovered call marked disambiguation_fallback and capped at 0.5"  # 76b7
+    status: todo_hard  # 76b7
+    priority: 3  # 76b7
+    parent:  # 76b7
+    tags:  # 76b7
+    - docstring_audit  # 76b7
+    - analysis_quality  # 76b7
+    isbefore: []  # 76b7
+    duplicate_of: []  # 76b7
+    not_duplicate_of: []  # 76b7
+    pr_ref:  # 76b7
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. is_fallback = len(candidates) > 1 counts (hint, method) pairs, not classes (method_call_recovery.py:410). main instantiating Runner twice with one Runner.run gives Runner.run at 0.5 with disambiguation_fallback; one instantiates edge gives 0.9 and no flag. r23, v09."  # 76b7
+    fields: {}  # 76b7

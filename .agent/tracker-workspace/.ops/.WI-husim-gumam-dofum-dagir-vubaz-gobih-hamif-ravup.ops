@@ -1,0 +1,21 @@
+- op: create  # 6c88
+  at: '2026-11-08T04:23:50Z'  # 6c88
+  by: agent  # 6c88
+  actor: jgstern_agent  # 6c88
+  clock: 1  # 6c88
+  nonce: 6c88  # 6c88
+  data:  # 6c88
+    kind: work_item  # 6c88
+    title: "json_config: a tsconfig references edge points at a dst no symbol carries (legacy :tsconfig kind, fake 1-1 span, unresolved path)"  # 6c88
+    status: todo_hard  # 6c88
+    priority: 3  # 6c88
+    parent:  # 6c88
+    tags:  # 6c88
+    - docstring_audit  # 6c88
+    - analysis_quality  # 6c88
+    isbefore: []  # 6c88
+    duplicate_of: []  # 6c88
+    not_duplicate_of: []  # 6c88
+    pr_ref:  # 6c88
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. ref_dst = f\"json:{ref_path}:1-1:{Path(ref_path).name}:tsconfig\" (json_config.py:834). Root tsconfig referencing ./pkg/tsconfig.json and ./pkg: the symbol is json:pkg/tsconfig.json:1-3:pkg/tsconfig.json:file, the edge dst json:./pkg/tsconfig.json:1-1:tsconfig.json:tsconfig. r15, v05."  # 6c88
+    fields: {}  # 6c88

@@ -1,0 +1,21 @@
+- op: create  # bd9e
+  at: '2026-11-08T04:22:55Z'  # bd9e
+  by: agent  # bd9e
+  actor: jgstern_agent  # bd9e
+  clock: 1  # bd9e
+  nonce: bd9e  # bd9e
+  data:  # bd9e
+    kind: work_item  # bd9e
+    title: "dockerfile: COPY --from=<index> finds no stage when that stage has an AS name"  # bd9e
+    status: todo_hard  # bd9e
+    priority: 3  # bd9e
+    parent:  # bd9e
+    tags:  # bd9e
+    - docstring_audit  # bd9e
+    - analysis_quality  # bd9e
+    isbefore: []  # bd9e
+    duplicate_of: []  # bd9e
+    not_duplicate_of: []  # bd9e
+    pr_ref:  # bd9e
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. Named stages are stored only under their alias (dockerfile.py:182, :213), lookup at :339. FROM golang AS builder / FROM alpine / COPY --from=0 ... / COPY --from=builder ... gives only the builder edge. r23, v09."  # bd9e
+    fields: {}  # bd9e

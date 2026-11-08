@@ -1,0 +1,22 @@
+- op: create  # a24d
+  at: '2026-11-08T04:22:49Z'  # a24d
+  by: agent  # a24d
+  actor: jgstern_agent  # a24d
+  clock: 1  # a24d
+  nonce: a24d  # a24d
+  data:  # a24d
+    kind: work_item  # a24d
+    title: "gitleaks: a gitleaks that exits non-zero with empty stdout is treated as a clean scan and cached as no secrets"  # a24d
+    status: todo_hard  # a24d
+    priority: 2  # a24d
+    parent:  # a24d
+    tags:  # a24d
+    - docstring_audit  # a24d
+    - analysis_quality  # a24d
+    - security  # a24d
+    isbefore: []  # a24d
+    duplicate_of: []  # a24d
+    not_duplicate_of: []  # a24d
+    pr_ref:  # a24d
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _scan never checks result.returncode; empty stdout hits `if not stdout or stdout == \"null\": return []` (gitleaks.py:368-369), so sketch prints 'Secret scan complete' and the cache stores findings: []. Reproduced with a fake gitleaks (echo error >&2; exit 1) via GITLEAKS_PATH: scan_content_cached('aws_secret=AKIA...') gives []. Same failure the recent secret-scan fix targeted, by another route; contradicts the Unreleased changelog line 'A secret scan that did not run says so and is never cached as clean'. r22, v09."  # a24d
+    fields: {}  # a24d

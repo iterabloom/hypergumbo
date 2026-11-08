@@ -1,0 +1,21 @@
+- op: create  # 552a
+  at: '2026-11-08T04:22:05Z'  # 552a
+  by: agent  # 552a
+  actor: jgstern_agent  # 552a
+  clock: 1  # 552a
+  nonce: 552a  # 552a
+  data:  # 552a
+    kind: work_item  # 552a
+    title: "circom: an ambiguous function call (or c[i] = B()) gets a flat 0.85 instead of the resolver's ambiguity confidence"  # 552a
+    status: todo_hard  # 552a
+    priority: 3  # 552a
+    parent:  # 552a
+    tags:  # 552a
+    - docstring_audit  # 552a
+    - analysis_quality  # 552a
+    isbefore: []  # 552a
+    duplicate_of: []  # 552a
+    not_duplicate_of: []  # 552a
+    pr_ref:  # 552a
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. The call_expression branch (circom.py:626-655) uses only resolved[0] and emits confidence=0.85 (:651); only the component and main paths pass resolution_score=resolved[1] (:597). p/g.circom and q/g.circom both define function g; W's g(1) comes out at 0.85 in survey output while the equally ambiguous component edge is 0.6227. r20, v08."  # 552a
+    fields: {}  # 552a
