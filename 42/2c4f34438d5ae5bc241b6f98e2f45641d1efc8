@@ -1,0 +1,8 @@
+Original commit body from 1093eada4116bae4c6fd1d11d1e23f69fc943259:
+
+CI checks each package in isolation, and the only in-package test that
+reached `meta["base_class_imports"]` (test_import_bound_external_bases)
+was not in the manifest for this change; locally a core test covered
+the line. A direct analyze_php test now covers it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
