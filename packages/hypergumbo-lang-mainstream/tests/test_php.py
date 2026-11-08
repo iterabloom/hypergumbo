@@ -2376,3 +2376,18 @@ enum E2 {
             dst for src, dst, kind in pairs if kind == "calls" and src == "a.php"
         }
         assert "helper" not in file_callers
+
+
+def test_a_bare_base_records_the_use_it_came_through(tmp_path: Path) -> None:
+    """WI-pivap: ``class User extends Model`` under ``use ...\\Model`` records
+    the qualified import, so the inheritance linker can check it."""
+    from hypergumbo_lang_mainstream.php import analyze_php
+
+    (tmp_path / "User.php").write_text(
+        "<?php\nnamespace App;\nuse Illuminate\\Database\\Eloquent\\Model;\n"
+        "class User extends Model {}\n"
+    )
+    user = next(s for s in analyze_php(tmp_path).symbols if s.name == "User")
+    assert user.meta["base_class_imports"] == {
+        "Model": "Illuminate\\Database\\Eloquent\\Model",
+    }
