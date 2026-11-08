@@ -114,6 +114,10 @@ def test_a_nested_records_methods_are_not_the_outer_classs(tmp_path: Path) -> No
 
 def test_the_ddg_covers_a_compact_constructor(tmp_path: Path) -> None:
     from hypergumbo_core.ddg_build import build_repo_ddg
+    # Importing the extractor registers the java DDG spec, as verify-claims'
+    # force-import does; without it this test passed only when another test in
+    # the same worker had imported the module first.
+    import hypergumbo_lang_mainstream.java_def_use
 
     (tmp_path / "R.java").write_text(
         "record R(int a) {\n  R { int b = a; int c = b; }\n}\n"
