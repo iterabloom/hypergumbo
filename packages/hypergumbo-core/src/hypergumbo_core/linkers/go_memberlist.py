@@ -156,8 +156,12 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(run=run)
 
-    # Build a set of paths that import memberlist, for cheap lookups.
-    memberlist_paths: set[str] = {str(p) for p in memberlist_files}
+    # WI-tupam: discovery yields absolute paths, but survey relativizes
+    # Symbol.path before the linkers run, so a symbol's path is resolved
+    # against the repo root before it is looked up in memberlist_files.
+    def _discovered_path(sym_path: str) -> Path:
+        path = Path(sym_path)
+        return path if path.is_absolute() else ctx.repo_root / path
 
     # Find delegate method symbols defined in any memberlist-importing
     # file. A delegate method is: kind in {method, function} AND
@@ -167,7 +171,7 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
         for sym in ctx.symbols
         if sym.kind in ("method", "function")
         and _short_name(sym.name) in _DELEGATE_METHOD_NAMES
-        and sym.path in memberlist_paths
+        and _discovered_path(sym.path) in memberlist_files
     ]
 
     if not delegate_symbols:
@@ -184,7 +188,7 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
     files_analyzed = 0
 
     for path_str, delegates in by_path.items():
-        source = memberlist_files.get(Path(path_str))
+        source = memberlist_files.get(_discovered_path(path_str))
         if source is None:  # pragma: no cover
             continue
         files_analyzed += 1

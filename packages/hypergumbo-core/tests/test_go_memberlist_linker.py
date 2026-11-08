@@ -372,3 +372,46 @@ class TestGoMemberlistLinkerIntegration:
         assert len(result.edges) == 1
         assert result.edges[0].src == start_sym.id
         assert result.edges[0].dst == join_sym.id
+
+
+class TestRepoRelativeSymbolPaths:
+    """WI-tupam: survey relativizes ``Symbol.path`` before the linkers run.
+
+    Discovery hands the linker absolute paths, so a membership test of the
+    repo-relative ``sym.path`` against them never matched and a real survey
+    emitted no edges. The integration tests above built absolute symbol
+    paths, which is why they passed.
+    """
+
+    def test_links_with_repo_relative_symbol_paths(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "cluster" / "node.go"
+        file_path.parent.mkdir(parents=True)
+        file_path.write_text(
+            'package cluster\n\n'
+            'import "github.com/hashicorp/memberlist"\n\n'
+            'type Delegate struct{}\n\n'
+            'func (d *Delegate) NotifyMsg(buf []byte) {}\n\n'
+            'func Start(cfg *memberlist.Config) error {\n'
+            '    _, err := memberlist.Create(cfg)\n'
+            '    return err\n'
+            '}\n',
+        )
+        rel = "cluster/node.go"
+        start_sym = Symbol(
+            id=f"go:{rel}:9-12:Start:function", name="Start", kind="function",
+            language="go", path=rel,
+            span=Span(start_line=9, end_line=12, start_col=0, end_col=0),
+        )
+        notify_msg = Symbol(
+            id=f"go:{rel}:7-7:NotifyMsg:method", name="Delegate.NotifyMsg",
+            kind="method", language="go", path=rel,
+            span=Span(start_line=7, end_line=7, start_col=0, end_col=0),
+        )
+
+        result = go_memberlist_linker(LinkerContext(
+            repo_root=tmp_path, symbols=[start_sym, notify_msg],
+            detected_languages={"go"},
+        ))
+
+        assert [(e.src, e.dst) for e in result.edges] == [(start_sym.id, notify_msg.id)]
+        assert result.run.files_analyzed == 1
