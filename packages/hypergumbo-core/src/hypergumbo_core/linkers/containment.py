@@ -3,8 +3,8 @@
 
 This linker connects container symbols (classes, interfaces, protocols, structs,
 traits, enums, modules, messages, records, files and the rest of
-``CONTAINER_KINDS``) to their member symbols (methods, getters, setters,
-fields, subscripts, top-level functions and variables, RPCs, nested messages,
+``CONTAINER_KINDS``) to their member symbols (methods, constructors, getters,
+setters, fields, subscripts, top-level functions and variables, RPCs, nested messages,
 and nested containers) based on naming conventions and span nesting, creating
 `contains` edges. Without these edges, members are
 orphaned in the graph — disconnected from their parent types — which inflates
@@ -142,7 +142,16 @@ CONTAINABLE_KINDS = frozenset(
     # so it does not move the dead-code-maybe FP rate. (The separate gap where a
     # ``json["key"]`` subscript-CALL site does not resolve to the subscript node
     # is a Swift-analyzer resolution facet, out of scope here.)
-    {"method", "getter", "setter", "message", "function", "variable", "field", "subscript"}
+    #
+    # WI-lozop: ``constructor`` (java, dart, csharp, swift, pony, apex, pascal
+    # and solidity emit their initializers with this kind) roots at its class
+    # like ``method``. Without it a class held no ``contains`` edge to its
+    # constructor, so a construction landing on the class (java/dart
+    # ``instantiates``) reached no initializer in construction.py's hop.
+    {
+        "method", "getter", "setter", "message", "function", "variable", "field",
+        "subscript", "constructor",
+    }
 )
 
 # Symbol kinds that can "contain" other symbols.

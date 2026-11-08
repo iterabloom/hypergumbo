@@ -1837,3 +1837,59 @@ class TestWiSakugFieldContainment:
 
     def test_roots_d_union_field(self) -> None:
         assert self._root("union", "d", "Value", "Value.i")
+
+
+class TestConstructorsAreContained:
+    """WI-lozop: a ``constructor``-kind symbol is rooted at its class.
+
+    java, dart (and csharp, swift, pony, apex, pascal, solidity) emit their
+    initializers as kind ``constructor``. The kind was not containable, so a
+    class held no ``contains`` edge to its constructor and a construction that
+    lands on the class (java ``instantiates``) reached no initializer.
+    """
+
+    @staticmethod
+    def _hops(analysis, tmp_path: Path) -> list[tuple[str, str]]:
+        from hypergumbo_core.construction import initializer_hops
+
+        contained = link_containment(LinkerContext(
+            repo_root=tmp_path, symbols=analysis.symbols, edges=analysis.edges,
+        ))
+        names = {s.id: s.name for s in analysis.symbols}
+        return [
+            (names[owner], names[init])
+            for owner, init in initializer_hops(
+                analysis.symbols, analysis.edges + contained.edges,
+            )
+        ]
+
+    def test_java_construction_reaches_the_constructor(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Main.java").write_text(
+            "class Runner {\n"
+            "  Runner(String cmd) {}\n"
+            "}\n"
+            "class Main {\n"
+            "  void go() { new Runner(\"x\"); }\n"
+            "}\n"
+        )
+        assert self._hops(analyze_java(tmp_path), tmp_path) == [
+            ("Runner", "Runner.Runner"),
+        ]
+
+    def test_dart_construction_reaches_the_constructor(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        (tmp_path / "main.dart").write_text(
+            "class Runner {\n"
+            "  Runner(String cmd) {}\n"
+            "}\n"
+            "void go() {\n"
+            "  new Runner('x');\n"
+            "}\n"
+        )
+        # `new`: a bare `Runner('x')` emits no instantiates edge (WI-sujon).
+        assert self._hops(analyze_dart(tmp_path), tmp_path) == [
+            ("Runner", "Runner.Runner"),
+        ]
