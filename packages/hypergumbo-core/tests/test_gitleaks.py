@@ -133,6 +133,7 @@ class TestScanContent:
 
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -147,6 +148,7 @@ class TestScanContent:
         """Returns empty list when no secrets found."""
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -158,6 +160,7 @@ class TestScanContent:
         """Returns empty list when gitleaks outputs nothing."""
         mock_result = MagicMock()
         mock_result.stdout = b""
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -185,6 +188,7 @@ class TestScanContent:
         """Returns empty list on invalid JSON output."""
         mock_result = MagicMock()
         mock_result.stdout = b"not valid json"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -429,6 +433,7 @@ class TestScanContentEdgeCases:
         """Returns empty list when JSON is not a list."""
         mock_result = MagicMock()
         mock_result.stdout = json.dumps({"not": "a list"}).encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -508,6 +513,22 @@ class TestScanContentRealBinary:
         findings = scan_content(f"aws_access_key_id = {self._AWS_VECTOR}\n")
         assert findings, "the working directory's .gitleaks.toml hid the finding"
 
+    @pytest.mark.skipif(
+        not is_gitleaks_available(),
+        reason="gitleaks binary not installed (opt-in extra)",
+    )
+    def test_real_gitleaks_that_fails_is_not_a_clean_result(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """WI-rapuh: a gitleaks that cannot load its config exits 1 with empty
+        stdout. That is a scan that did not run, not a clean one."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        monkeypatch.setenv("GITLEAKS_CONFIG", str(tmp_path / "no-such-config.toml"))
+        content = f"aws_access_key_id = {self._AWS_VECTOR}\n"
+        assert scan_content_cached(content, tmp_path) is None
+        assert not (tmp_path / "secret_scan_cache.json").exists()
+
 
 class TestScanRunsInADirectoryOfItsOwn:
     """INV-nihab: gitleaks auto-discovers ``.gitleaks.toml`` / ``.gitleaksignore``
@@ -532,6 +553,7 @@ class TestScanRunsInADirectoryOfItsOwn:
             )
             result = MagicMock()
             result.stdout = b"[]"
+            result.returncode = 0
             return result
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
@@ -580,8 +602,10 @@ class TestScanContentCached:
 
         found = MagicMock()
         found.stdout = json.dumps([{"RuleID": "github-pat", "StartLine": 1}]).encode()
+        found.returncode = 0
         broken = MagicMock()
         broken.stdout = b"not json"
+        broken.returncode = 0
         first = {"side_effect": failure} if not isinstance(failure, str) else {"return_value": broken}
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
@@ -592,6 +616,28 @@ class TestScanContentCached:
 
         assert mock_run.call_count == 1, "the failed scan was served from the cache"
         assert [f.rule_id for f in again] == ["github-pat"]
+
+    @pytest.mark.parametrize("stdout", [b"", b"null", b"[]"])
+    def test_a_gitleaks_that_exits_non_zero_is_not_a_clean_result(
+        self, tmp_path: Path, stdout: bytes,
+    ) -> None:
+        """A non-zero exit is a failed scan, whatever stdout says.
+
+        The scan passes ``--exit-code 0``, so findings never make gitleaks
+        exit non-zero; any other exit means it failed. Gitleaks 8.30 given a
+        config it cannot load exits 1 with empty stdout, which was read as
+        "no secrets" and cached as clean (WI-rapuh).
+        """
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        failed = MagicMock()
+        failed.stdout = stdout
+        failed.returncode = 1
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=failed):
+                assert scan_content_cached("content", tmp_path) is None
+        assert not (tmp_path / "secret_scan_cache.json").exists()
 
     def test_no_gitleaks_is_not_a_clean_result(self, tmp_path: Path) -> None:
         from hypergumbo_core.gitleaks import scan_content_cached
@@ -615,6 +661,7 @@ class TestScanContentCached:
         ])
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -639,6 +686,7 @@ class TestScanContentCached:
         ])
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -655,6 +703,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -669,6 +718,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -683,6 +733,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -703,6 +754,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -726,6 +778,7 @@ class TestScanContentCached:
         ])
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
