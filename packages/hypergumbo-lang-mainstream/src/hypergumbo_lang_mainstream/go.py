@@ -271,9 +271,12 @@ Now an import operand resolves in that package only, a typed operand to its
 type's method, a type or pointer-type operand to its method (a method
 expression, ``(*T).m``), a composite-literal operand (``(&T{}).M``) to its
 type's method, anything else to nothing. A package hint is also checked on the call arm's resolved
-emit (``_go_in_hinted_package``): among two or more same-named candidates the
-resolver falls back to the path-sorted first when the hint matches none, and
-``http.Get(u)`` bound a repo ``Get``. A typed local's or method value's
+emit (``_go_in_hinted_package``), a guard from when the resolver fell back to
+the path-sorted first of two or more same-named candidates that the hint
+matched none of (``http.Get(u)`` bound a repo ``Get``). The repo-wide
+resolver now withholds such a tie as ``ambiguous``; only the own-package
+resolver binds a tie, whose candidates are build-constraint variants.
+A typed local's or method value's
 ``Type.Method`` is taken from the TYPE's package (``_go_method_of_type``):
 symbols are keyed with an unqualified type, so every package's
 ``SDConfig.UnmarshalYAML`` shared one key and the first was bound whatever the
@@ -3638,14 +3641,16 @@ def _go_in_hinted_package(symbol: Symbol, path_hint: Optional[str]) -> bool:
     """Whether ``symbol`` sits in the package an import-path hint names.
 
     ``ListNameResolver.lookup`` treats a hint as a FILTER when one candidate
-    shares the name (no match, no symbol) but, among two or more, falls back
-    to the path-sorted first of ALL candidates when the hint matches none of
-    them. So ``http.Get(u)`` with two repo functions named ``Get`` bound one of
-    them at 0.57 although the import says ``net/http``. The resolver's own
-    weakest test is a match on the hint's last component against the
-    candidate's directory; a symbol it returns that fails even that test was
-    not chosen by the hint at all. An empty hint (the module's root package)
-    carries no directory to test, and the resolver's answer stands.
+    shares the name (no match, no symbol). Among two or more it used to fall
+    back to the path-sorted first of ALL candidates when the hint matched none
+    of them, so ``http.Get(u)`` with two repo functions named ``Get`` bound one
+    of them at 0.57 although the import says ``net/http``; a resolver built
+    without ``variants`` now withholds that tie as ``ambiguous``. The
+    resolver's own weakest test is a match on the hint's last component
+    against the candidate's directory; a symbol it returns that fails even
+    that test was not chosen by the hint at all. An empty hint (the module's
+    root package) carries no directory to test, and the resolver's answer
+    stands.
     """
     leaf = (path_hint or "").rstrip("/").rsplit("/", 1)[-1]
     if not leaf:
@@ -5238,10 +5243,11 @@ def _extract_edges_from_file(
                             # recover; on dev the stamp let it bind a bare
                             # ``Process()`` to an embedded type's method.
                             # WI-kibah: a hint is package EVIDENCE. A symbol the
-                            # resolver returns from outside the hinted package
-                            # (its fallback among 2+ candidates that the hint
-                            # matched none of) is not the callee: the call is to
-                            # the hinted package and stays unresolved below.
+                            # resolver returns from outside the hinted package is
+                            # not the callee: the call is to the hinted package
+                            # and stays unresolved below. (The resolver used to
+                            # return one as its fallback among 2+ candidates the
+                            # hint matched none of; it now withholds that tie.)
                             if (
                                 lookup_result.symbol is not None
                                 and _go_in_hinted_package(

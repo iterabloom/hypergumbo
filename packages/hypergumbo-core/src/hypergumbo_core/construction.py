@@ -2,8 +2,8 @@
 """A construction reaches the code that runs on construction (INV-rolok, WI-satal).
 
 THE GRAPH SHAPE. ruby resolves ``Klass.new`` to ``Klass#initialize``, and
-csharp / java land a construction on a ``constructor`` symbol, so a walk over
-their ``instantiates`` edges enters the initializer. py / js_ts / dart land the
+csharp lands a construction on a ``constructor`` symbol, so a walk over their
+``instantiates`` edges enters the initializer. py / js_ts / java / dart land the
 edge on the CLASS node, and every edge leaving a class node (``contains``,
 ``extends``, ``decorated_by``) is correctly non-traversable, so a walk arrives
 at the class and stops. Whatever the initializer does -- open a file, launch a
@@ -33,8 +33,10 @@ after the graph is built, and no emitted edge changes:
 THE LICENCE IS THE CONJUNCTION. ``contains`` alone confers nothing -- making it
 traversable would make every method of every class reachable. A pair is minted
 only where the class is the dst of a construction edge AND the member is its
-initializer (:func:`symbol_kinds.is_initializer`). That predicate has no rule
-for a dart constructor (named after its class), so dart gets no pairs yet.
+initializer (:func:`symbol_kinds.is_initializer`), read off a ``contains`` edge
+from the class. java and dart emit their initializers as ``constructor``
+symbols, which the predicate accepts, but the containment linker does not root
+a ``constructor`` at its class, so java and dart get no pairs yet.
 
 Edges and nodes arrive in three shapes across the consumers (behavior-map
 dicts, ``Edge`` objects, ``Symbol`` objects), read through one accessor each so

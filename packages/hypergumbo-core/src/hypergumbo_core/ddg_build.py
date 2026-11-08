@@ -134,8 +134,9 @@ records ``(start line, end line)``. It runs for EVERY walked function, with or
 without DDG edges: ``def get(): return os.getenv("K")`` defines nothing, has
 no edges, and is the filed instance. Two bodies with no return statement still
 return a value and are recorded as one (WI-sodoj): an expression body (a JS /
-TS arrow ``() => process.env.K``, a Python ``lambda``) spans as a single
-return, and where the cfg mapping sets ``block_tail_returns`` (Rust), a
+TS arrow ``() => process.env.K``) spans as a single return. A Python
+``lambda`` body would too, but the Python spec does not walk lambdas, so none
+is recorded. And where the cfg mapping sets ``block_tail_returns`` (Rust), a
 block's tail expression -- its last named child that is not a statement,
 declaration or item -- does too.
 
@@ -1084,9 +1085,6 @@ def _python_symbol_kind(node: Any) -> str:
     return "method" if scope is not None and scope.type == "class_definition" else "function"
 
 
-# ``*.py`` only: LANGUAGES also lists ``*.pyi``, and whether walking stub files
-# is wanted was not measured when the JS/TS specs moved to the shared list
-# (WI-fovus) -- a declared narrowing, not an oversight.
 def _python_params(node: Any, source: bytes) -> list[str]:
     """The parameter names of a python ``function_definition``, in order (WI-sosov).
 
@@ -1114,6 +1112,9 @@ def _python_params(node: Any, source: bytes) -> list[str]:
     return names
 
 
+# ``*.py`` only: LANGUAGES also lists ``*.pyi``, and whether walking stub files
+# is wanted was not measured when the JS/TS specs moved to the shared list
+# (WI-fovus) -- a declared narrowing, not an oversight.
 register_ddg_language(LanguageDdgSpec(
     language="python",
     file_globs=("*.py",),

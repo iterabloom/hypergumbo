@@ -112,8 +112,9 @@ def iter_axis_set_assignments(
     name_filter: str,
 ) -> Iterator[tuple[int, str, frozenset[str]]]:
     """Yield ``(lineno, target_name, frozenset_of_string_elements)`` for every
-    module-level assignment in *path* whose target name contains *name_filter*
-    and whose value enumerates string constants.
+    assignment in *path* (``ast.walk``, so function and class bodies too, not
+    only module level) whose target name contains *name_filter* and whose
+    value enumerates string constants.
 
     COLLECTED SHAPES (WI-jinuj). Originally only a ``{...}`` set literal or a
     ``frozenset({...})`` wrapper, which meant a hardcoded copy of a vocabulary
@@ -230,9 +231,9 @@ def find_drift(
 
     AST-walks every ``.py`` file under each *search_roots* directory
     (skipping any path containing one of *excluded_path_substrings*),
-    looking for module-level assignments whose target name contains
-    *name_filter*. Each set's values are checked against
-    *registry_names*; any value not in the registry is reported as
+    looking for assignments at any depth (``iter_axis_set_assignments``)
+    whose target name contains *name_filter*. Each set's values are checked
+    against *registry_names*; any value not in the registry is reported as
     drift.
 
     *excluded_target_names* is the set of target-name strings that

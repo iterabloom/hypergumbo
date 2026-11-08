@@ -93,13 +93,16 @@ PASS_ID = make_pass_id("containment-linker")
 # ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
 # predicate needed. The post-fold canonical for Cluster D ``rpc`` is
 # ``method`` + ``meta["framework_role"]="rpc"`` — and ``method`` is
-# already in this set, so post-fold producers (when proto.py /
-# thrift.py / capnp.py eventually migrate, currently legacy-shape)
-# continue to match unchanged. Cluster H pending ``message`` resolves
-# in Wave 6 and similarly cannot fold without changing this set.
-# Live producers today (proto.py, thrift.py, capnp.py) emit the
-# legacy kinds directly through positional helpers that the L3
-# producer-coherence linter cannot statically gate; the Wave-5
+# already in this set, so post-fold producers match unchanged.
+# Cluster H pending ``message`` resolves in Wave 6 and similarly
+# cannot fold without changing this set. None of the live schema
+# producers emits the legacy ``rpc`` / ``service`` kinds: proto.py
+# emits ``method`` with ``framework_role="rpc"`` under an ``interface``
+# with ``framework_role="service"``, thrift.py emits ``function``
+# members of such an ``interface``, and capnp.py emits plain
+# ``interface`` / ``method`` with no role. They pass the kind through
+# positional helpers that the L3 producer-coherence linter cannot
+# statically gate; the Wave-5
 # framework-linker producers don't reach this filter (their
 # synthetic-node names lack class-qualifier separators, so the
 # parent-extraction step in :func:`link_containment` skips them

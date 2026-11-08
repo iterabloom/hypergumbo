@@ -141,7 +141,9 @@ class ids next to the names: ``enclosing_class_id`` (an exact lexical
 method-to-class map) and ``receiver_type_id`` (stamped only when the type's
 short name is unique within the file) on the edge meta, and
 ``meta["field_type_ids"]`` (``{field: class_id}``) on the parent class
-symbol for Site-3. The Python analyzer is the only producer today. An id
+symbol for Site-3. The Python analyzer stamps all three. The Java analyzer
+stamps ``enclosing_class_id`` only, found by the call's position, so a Java
+typed receiver still goes by name. An id
 that is a known class symbol in the call's language replaces the name lookup
 and skips that guard; a missing, stale or foreign-language id falls back to
 the name path and its guard.

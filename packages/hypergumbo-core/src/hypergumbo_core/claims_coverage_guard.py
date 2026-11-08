@@ -160,11 +160,16 @@ def analyzer_edges(repo_root: Path, files: list[Path]) -> list[dict[str, Any]]:
     whatever happens. ``KeyError`` from the registry means the analyzer package
     is not installed -- an infrastructure condition the caller reports as such.
 
-    TWO PIPELINE STAGES RUN HERE BECAUSE THE ADJUDICATOR READS THEIR OUTPUT,
+    THREE PIPELINE STAGES RUN HERE BECAUSE THE ADJUDICATOR READS THEIR OUTPUT,
     and skipping them is how this guard passed dev acf67df4cb while the cron
-    withheld every self-claim on three slots (INV-hotib / WI-jizam). Both are
-    the pipeline's own functions, not a restatement:
+    withheld every self-claim on three slots (INV-hotib / WI-jizam). All three
+    are the pipeline's own functions, not a restatement:
 
+    * the orchestrator's file-symbol synthesis
+      (``synthesize_file_symbols_for_dangling_edges`` and
+      ``synthesize_file_anchors_for_node_bearing_paths``, as
+      ``all_analyzers`` runs them), so a dropped file's import edge has a
+      node to be dropped with.
     * ``_classify_symbols`` + :func:`tier_filter.apply_tier_filter`: a DERIVED
       file (``scip/_generated/scip_pb2.py``, tier 4 by the ``_pb2.py`` rule)
       leaves with every edge touching it, so a cross-package call into it
@@ -180,8 +185,10 @@ def analyzer_edges(repo_root: Path, files: list[Path]) -> list[dict[str, Any]]:
       counted in the cron. The synthesised nodes themselves are discarded; only
       the remap is wanted.
 
-    Order follows ``run_survey``: classify and filter on the analyzer's
-    absolute-path ids, synthesise, then relativise.
+    Order follows ``run_survey`` except for relativisation: ``run_survey``
+    relativises right after ``run_all_analyzers``, before classifying; this
+    guard classifies, filters and synthesises boundary nodes on the
+    analyzer's absolute-path ids, then relativises last.
     """
     from .analyze.base import (
         synthesize_file_anchors_for_node_bearing_paths,

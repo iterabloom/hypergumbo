@@ -64,8 +64,9 @@ Electron IPC wrappers (WI-pumit):
   wrapper's same-named parameter on the identifier (``variable_match``).
 - Scope: names match repo-wide, but a call must show it can reach a wrapper
   of that name -- a bare ``f('ch')`` in the wrapper's file or a file that
-  imports ``f``; ``this.f('ch')`` inside the wrapper's class or in a class that
-  declares an ``f`` member (dependency injection, podman's ``IPCHandle``);
+  imports ``f``; ``this.f('ch')`` inside the wrapper's class or in a file where
+  some class declares an ``f`` member (dependency injection, podman's
+  ``IPCHandle``);
   ``x.f('ch')`` where ``x`` is bound to ``new C()`` of the wrapper's class
   (vscode's ``validatedIpcMain``). A non-literal channel, a call in a comment
   or string, and a wrapper of a wrapper (not followed: one level) give no
