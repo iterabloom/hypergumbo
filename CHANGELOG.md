@@ -70,6 +70,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **JS/TS: a call through an external module stays external** (`path.join`, `expect` from `chai`): 2,595 wrong call sites go on express, knex and jotai.
 - **Java: a method an external base class supplies** (`err.getMessage()`, `repo.save()`) is a use of the type, not a call: jedis loses 958 wrong call sites.
 - **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
+- **Java interface methods without `public` count as exported**, as the language makes them.
 - **A Scala class keeps its methods when its companion object comes first.**
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
