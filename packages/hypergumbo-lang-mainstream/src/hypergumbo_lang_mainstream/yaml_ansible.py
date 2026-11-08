@@ -7,8 +7,12 @@ falling back gracefully when the grammar is not installed.
 
 Constructs detected:
 - Playbooks (- name: X, hosts: Y)
-- Tasks (- name: X, module: params)
-- Handlers (handlers: section)
+- Tasks (- name: X, module: params) under a play's tasks:, pre_tasks: or
+  post_tasks: (blocks included), and in a bare-list file under tasks/
+- Handlers, under handlers: or in a bare-list file under handlers/
+
+A list item's kind is read off the key whose list holds it, never off a
+per-file "current section" flag.
 - Variables (vars: section)
 - Include/import references (include_tasks, import_tasks, include_role,
   import_role)
@@ -321,6 +325,40 @@ def _extract_vars_from_pair(
                             ))
 
 
+# The play keys whose list holds tasks or handlers, and the kind each holds.
+_TASK_SECTIONS = {
+    "tasks": "task",
+    "pre_tasks": "task",
+    "post_tasks": "task",
+    "handlers": "handler",
+}
+# A block groups tasks; its lists hold whatever its own section holds.
+_BLOCK_KEYS = frozenset({"block", "rescue", "always"})
+
+
+def _section_of(
+    seq_item: "tree_sitter.Node", source: bytes, top_level: Optional[str],
+) -> Optional[str]:
+    """The kind (task / handler) of a list item, from the key whose list holds it.
+
+    ``top_level`` is the kind of an item at the top of the file: a role's task
+    or handler file is a bare list with no section key (WI-lubah). ``None``
+    when the item is no task or handler: a play, or a ``loop:`` / ``with_*``
+    entry that happens to carry a ``name``.
+    """
+    holder = seq_item.parent.parent.parent if seq_item.parent and seq_item.parent.parent else None
+    if holder is None or holder.type != "block_mapping_pair":
+        return top_level
+    key = _extract_mapping_key_value(holder, source)[0]
+    if key in _TASK_SECTIONS:
+        return _TASK_SECTIONS[key]
+    if key in _BLOCK_KEYS:
+        owner = holder.parent.parent.parent if holder.parent and holder.parent.parent else None
+        if owner is not None and owner.type == "block_sequence_item":
+            return _section_of(owner, source, top_level)
+    return None
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -343,15 +381,18 @@ def _extract_symbols_from_file(
     tree = parser.parse(source)
     root = tree.root_node
 
-    # Track context
-    in_tasks = False
-    in_handlers = False
     current_play_name: str | None = None
 
     def process_mapping_pairs(
-        pairs: list["tree_sitter.Node"], context: str
+        pairs: list["tree_sitter.Node"], context: str, section: Optional[str],
     ) -> None:
-        nonlocal in_tasks, in_handlers, current_play_name
+        """One list item's keys. ``section`` is the item's kind (task / handler),
+        or None when it is neither. It is read off the item's own position
+        (:func:`_section_of`): a per-file flag set while a play's keys were read
+        was already ``handlers`` by the time that play's tasks were visited, so
+        every task of a play with a ``handlers:`` key came out a handler
+        (WI-nobaj)."""
+        nonlocal current_play_name
 
         for pair in pairs:
             key, value = _extract_mapping_key_value(pair, source)
@@ -361,14 +402,7 @@ def _extract_symbols_from_file(
             line = pair.start_point[0] + 1
             end_line = pair.end_point[0] + 1
 
-            # Detect sections and process nested content
-            if key == "tasks":
-                in_tasks = True
-                in_handlers = False
-            elif key == "handlers":
-                in_handlers = True
-                in_tasks = False
-            elif key == "vars":
+            if key == "vars":
                 # Process nested vars block inline
                 _extract_vars_from_pair(pair, source, symbols, rel_path, run)
 
@@ -392,8 +426,8 @@ def _extract_symbols_from_file(
                     ))
 
             # Extract task/handler name
-            elif key == "name" and (in_tasks or in_handlers):
-                kind = "handler" if in_handlers else "task"
+            elif key == "name" and section is not None:
+                kind = section
                 if value:
                     symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, kind)
                     symbols.append(Symbol(
@@ -425,24 +459,34 @@ def _extract_symbols_from_file(
                         origin_run_id=run.execution_id,
                     ))
 
-    # Find all block_sequence_items (plays or tasks)
-    seq_items = _find_all_children_by_type(root, "block_sequence_item")
-
-    for seq_item in seq_items:
-        # Get mapping pairs from this item
+    # Every list item that is a mapping: plays, tasks, handlers, and others.
+    items: list[tuple["tree_sitter.Node", list["tree_sitter.Node"], bool]] = []
+    for seq_item in _find_all_children_by_type(root, "block_sequence_item"):
         mapping = find_child_by_type(seq_item, "block_node")
         if mapping:
             nested_mapping = find_child_by_type(mapping, "block_mapping")
             if nested_mapping:
                 pairs = [c for c in nested_mapping.children if c.type == "block_mapping_pair"]
-
-                # Determine context (play level or task level)
                 is_play = any(
                     _extract_mapping_key_value(p, source)[0] == "hosts"
                     for p in pairs
                 )
-                context = "play" if is_play else "task"
-                process_mapping_pairs(pairs, context)
+                items.append((seq_item, pairs, is_play))
+
+    # A top-level item is a task only in a file of tasks: one under a tasks/ or
+    # handlers/ directory (a role's, or a playbook's own). In a playbook the top
+    # level holds plays and import_playbook entries, and other bare lists
+    # (roles/requirements.yml: `- src: x` / `name: y`) are not tasks.
+    top_level: Optional[str] = None
+    if not any(is_play for _, _, is_play in items):
+        if "handlers" in file_path.parts:
+            top_level = "handler"
+        elif "tasks" in file_path.parts:
+            top_level = "task"
+
+    for seq_item, pairs, is_play in items:
+        section = None if is_play else _section_of(seq_item, source, top_level)
+        process_mapping_pairs(pairs, "play" if is_play else "task", section)
 
     return symbols, edges
 
