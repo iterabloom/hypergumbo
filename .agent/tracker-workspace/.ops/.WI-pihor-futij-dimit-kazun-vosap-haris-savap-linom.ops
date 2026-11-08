@@ -1,0 +1,21 @@
+- op: create  # a715
+  at: '2026-11-08T04:23:17Z'  # a715
+  by: agent  # a715
+  actor: jgstern_agent  # a715
+  clock: 1  # a715
+  nonce: a715  # a715
+  data:  # a715
+    kind: work_item  # a715
+    title: "blade: @yield/@component/@extends with a second argument are dropped, and the dropped @component's @endcomponent closes the enclosing component"  # a715
+    status: todo_hard  # a715
+    priority: 3  # a715
+    parent:  # a715
+    tags:  # a715
+    - docstring_audit  # a715
+    - analysis_quality  # a715
+    isbefore: []  # a715
+    duplicate_of: []  # a715
+    not_duplicate_of: []  # a715
+    pr_ref:  # a715
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _DIRECTIVE_RE (blade.py:66) requires \\s*\\) right after the first quoted argument, so @yield('title', 'Default'), @component('alert', [...]) and @extends('layouts.app', [...]) emit nothing (no extends edge). The unrecorded component's @endcomponent then pops the outer component (blade.py:108-113), so later blocks get the wrong stable_id scope. The docstring means to exclude only the inline two-argument @section. r26, v10, b01."  # a715
+    fields: {}  # a715

@@ -1,0 +1,21 @@
+- op: create  # 5fff
+  at: '2026-11-08T04:22:33Z'  # 5fff
+  by: agent  # 5fff
+  actor: jgstern_agent  # 5fff
+  clock: 1  # 5fff
+  nonce: 5fff  # 5fff
+  data:  # 5fff
+    kind: work_item  # 5fff
+    title: "verify-claims: a parameter-seeded Go HandleFunc route marker stays named in the taint-arm unseeded-ingress disclosure (cli unions seed.handler, not seed.represents)"  # 5fff
+    status: todo_hard  # 5fff
+    priority: 3  # 5fff
+    parent:  # 5fff
+    tags:  # 5fff
+    - docstring_audit  # 5fff
+    - analysis_quality  # 5fff
+    isbefore: []  # 5fff
+    duplicate_of: []  # 5fff
+    not_duplicate_of: []  # 5fff
+    pr_ref:  # 5fff
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. cli.py:7836-7838 adds seed.handler to parameter_represented; for a marker entry the request_ingress symbol is the marker (seed.represents), and unseeded_ingress_handlers filters on the entry's own id (verify_claims.py:1080). represented_ingress_callers adds seed.represents (taint.py:4718) but production does not pass parameter_seeds= to it (cli.py:7827). One main.go with save(w, r) writing r.URL.Query().Get(\"p\") plus http.HandleFunc(\"/save\", save): untrusted-input-no-host-fs is VIOLATED through net/http.r, yet untrusted-input-no-subprocess says 'ALSO: 1 request handler(s) receive network data that no taint source represents (ANY /save ...)'. Contradicts the WI-sosov closure note. Cautious-side only. v03 (new)."  # 5fff
+    fields: {}  # 5fff

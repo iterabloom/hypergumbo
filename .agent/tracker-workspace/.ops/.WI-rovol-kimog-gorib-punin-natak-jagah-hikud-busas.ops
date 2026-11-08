@@ -1,0 +1,21 @@
+- op: create  # 03c1
+  at: '2026-11-08T04:22:00Z'  # 03c1
+  by: agent  # 03c1
+  actor: jgstern_agent  # 03c1
+  clock: 1  # 03c1
+  nonce: 03c1  # 03c1
+  data:  # 03c1
+    kind: work_item  # 03c1
+    title: "symbol_resolution: NameResolver (and SymbolResolver's name-only and path-hint lookups) returns the first of several candidates that all match a path hint instead of leaving the tie unresolved"  # 03c1
+    status: todo_hard  # 03c1
+    priority: 3  # 03c1
+    parent:  # 03c1
+    tags:  # 03c1
+    - docstring_audit  # 03c1
+    - analysis_quality  # 03c1
+    isbefore: []  # 03c1
+    duplicate_of: []  # 03c1
+    not_duplicate_of: []  # 03c1
+    pr_ref:  # 03c1
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. symbol_resolution.py:740-750 returns the first match when neither hint stage narrows to one; the same first-substring pattern is at :329-337 and :428-435. ListNameResolver accepts a hint only when it narrows to one (:1002-1003). NameResolver({'A.run':a,'B.run':b}).lookup('run', path_hint='util') with both under lib/util/ returns a (path_hint, 0.9); without the hint it is suffix_ambiguous. path_hint callers include haskell, ocaml, julia, dart, fsharp, elm, zig, csharp. r16, v06."  # 03c1
+    fields: {}  # 03c1

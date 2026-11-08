@@ -41,3 +41,10 @@
   clock: 4  # 04c2
   nonce: 04c2  # 04c2
   message: "MERGED IN from WI-latin-vofuv-sutoz-padug-fihaf-zijum-sanas-kukot (owner-approved 2026-11-01, P3 review). WI-latin reported 'no calls edge from Kid.go to Base.go'; the cause is this item: analyze_java emits Kid.go -> Kid.go (Case 1, java.py ~L3021, super handled like this) and deduplicate_edges(remove_self_loops=True) drops it. Same for an external base (K extends OutputStream; super.write(b) -> K.write self-loop, dropped). Fix shape carried over: resolve super.m() via the extends base; for an external base emit an unresolved edge carrying the base-class hint."  # 04c2
+- op: discuss  # c041
+  at: '2026-11-08T04:24:06Z'  # c041
+  by: agent  # c041
+  actor: jgstern_agent  # c041
+  clock: 5  # c041
+  nonce: c041  # c041
+  message: "2026-11-07 docstring audit (dev 4f2feb451b): still reproduces. class Child extends Base { @Override public void m() { super.m(); } } emits calls Child.m -> Child.m ast_call_direct; java.py:3013/3021 treats super like this. r02, v02."  # c041

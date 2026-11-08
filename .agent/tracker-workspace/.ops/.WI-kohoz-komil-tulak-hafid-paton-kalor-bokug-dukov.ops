@@ -1,0 +1,21 @@
+- op: create  # c2fc
+  at: '2026-11-08T04:22:38Z'  # c2fc
+  by: agent  # c2fc
+  actor: jgstern_agent  # c2fc
+  clock: 1  # c2fc
+  nonce: c2fc  # c2fc
+  data:  # c2fc
+    kind: work_item  # c2fc
+    title: "verify-claims: the unseeded-ingress disclosure parses a handler's line with a right-anchored rsplit, so a colon in the name slot renders an empty line"  # c2fc
+    status: todo_hard  # c2fc
+    priority: 4  # c2fc
+    parent:  # c2fc
+    tags:  # c2fc
+    - docstring_audit  # c2fc
+    - analysis_quality  # c2fc
+    isbefore: []  # c2fc
+    duplicate_of: []  # c2fc
+    not_duplicate_of: []  # c2fc
+    pr_ref:  # c2fc
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. verify_claims.py:1087-1088 symbol_id.rsplit(':', 3)[1] instead of the span-anchored parse (ir.py:1805). Synthetic id ruby:app/controllers/users_controller.rb:10-20:UsersController::index:method renders 'at ...users_controller.rb: (GET /users)'. Latent: ADR-0036 forbids a colon in the name slot. r08, v03."  # c2fc
+    fields: {}  # c2fc

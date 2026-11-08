@@ -20,3 +20,10 @@
     pr_ref:  # 07dd
     description: "From WI-borib (docs/audits/0026). Verdict SINGLE-SOURCE. Code-confirmed contradictions in the ranking stack; magnitudes on real repos NOT measured (agent B's probes, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/B_scripts/).\n\n1. ranking.rank_files (sketch's Source Files order) hand-copies five of the seven canonical dampeners -- no apply_generated_code_weights, no apply_file_kind_weights -- under a comment \"same as rank_symbols\" (ranking.py ~1328). In one sketch a generated file can lead Source Files and trail Key Symbols. Route it through _apply_canonical_dampeners.\n2. The tiered hg.Nk.json views rank over ALL edges (no production_edges), so calls from tests credit their targets; sketch, compact and symbols drop them.\n3. compact (compact.py ~1410) and the tiered view (~1917-1922) order and gate entrypoints on detection confidence; sketch, slice, dead-code and detect_entrypoints use rank_score (ADR-0039). The test penalty lowers only rank_score, so test and vendored mains pass the tiered 0.7 confidence gate.\n4. symbols: In/Out columns filter on confidence, the order on rank_score; --help says \"sorted by file connectivity\", which is not what it does. compute_centrality weights in-degree by edge type, out-degree unweighted.\n5. compact's cross-cutting seed count (compact.py ~1418) reads unfiltered edges.\n6. scripts/generate-architecture's docstring says \"same formula as hypergumbo symbols\"; it is not.\n\nACCEPTANCE: each item routed through the shared helper or its difference stated where it is output; one end-to-end test per fixed pair."  # 07dd
     fields: {}  # 07dd
+- op: discuss  # 144f
+  at: '2026-11-08T04:24:06Z'  # 144f
+  by: agent  # 144f
+  actor: jgstern_agent  # 144f
+  clock: 2  # 144f
+  nonce: 144f  # 144f
+  message: "2026-11-07 docstring audit (dev 4f2feb451b): rank_files still skips the generated and file_kind dampeners (ranking.py:1328-1337); 100 importers of a.py's file pseudo-symbol give rank_files [('a.py', 0.2), ...] while rank_symbols gives that symbol 0. sketch.py:6826 orders source files with rank_files. r15 (reproduced), v05 (read)."  # 144f

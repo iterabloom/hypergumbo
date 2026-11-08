@@ -1,0 +1,22 @@
+- op: create  # dc79
+  at: '2026-11-08T04:23:11Z'  # dc79
+  by: agent  # dc79
+  actor: jgstern_agent  # dc79
+  clock: 1  # dc79
+  nonce: dc79  # dc79
+  data:  # dc79
+    kind: work_item  # dc79
+    title: "go-memberlist linker omits NodeMeta from the core Delegate method names, so a NodeMeta delegate stays dead"  # dc79
+    status: todo_hard  # dc79
+    priority: 3  # dc79
+    parent:  # dc79
+    tags:  # dc79
+    - docstring_audit  # dc79
+    - analysis_quality  # dc79
+    - linker_framework  # dc79
+    isbefore: []  # dc79
+    duplicate_of: []  # dc79
+    not_duplicate_of: []  # dc79
+    pr_ref:  # dc79
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _DELEGATE_METHOD_NAMES (go_memberlist.py:66-82) has 12 names without NodeMeta; the module docstring list and 'twelve' and a len()==12 test pin it. NodeMeta's membership in memberlist.Delegate is from the reviewer's memory of the upstream API, not checked over the network. Linker run directly on a fixture: start -> d.NotifyMsg only. r25, v10."  # dc79
+    fields: {}  # dc79

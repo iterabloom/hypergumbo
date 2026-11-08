@@ -1,0 +1,21 @@
+- op: create  # d2c0
+  at: '2026-11-08T04:21:54Z'  # d2c0
+  by: agent  # d2c0
+  actor: jgstern_agent  # d2c0
+  clock: 1  # d2c0
+  nonce: d2c0  # d2c0
+  data:  # d2c0
+    kind: work_item  # d2c0
+    title: "php: trait and enum methods are never found as callers, so their $this/static/new calls emit no edge and bare calls are credited to the file"  # d2c0
+    status: todo_hard  # d2c0
+    priority: 2  # d2c0
+    parent:  # d2c0
+    tags:  # d2c0
+    - docstring_audit  # d2c0
+    - analysis_quality  # d2c0
+    isbefore: []  # d2c0
+    duplicate_of: []  # d2c0
+    not_duplicate_of: []  # d2c0
+    pr_ref:  # d2c0
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _get_enclosing_function_php (php.py:476) finds the owner with _get_enclosing_class, which matches class_declaration only (php.py:280). Fixture: trait T::a and enum E2::m each give `calls a.php -> helper` and no T.a -> T.b or E2.m -> E2.n; a class method in the same file gets its edges. r16, v06."  # d2c0
+    fields: {}  # d2c0

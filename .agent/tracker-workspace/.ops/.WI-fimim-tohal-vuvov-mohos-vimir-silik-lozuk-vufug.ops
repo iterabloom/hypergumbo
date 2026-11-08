@@ -1,0 +1,21 @@
+- op: create  # a9ac
+  at: '2026-11-08T04:21:49Z'  # a9ac
+  by: agent  # a9ac
+  actor: jgstern_agent  # a9ac
+  clock: 1  # a9ac
+  nonce: a9ac  # a9ac
+  data:  # a9ac
+    kind: work_item  # a9ac
+    title: "java: an interface method with no access modifier (implicitly public, JLS 9.4) gets is_exported=False"  # a9ac
+    status: todo_hard  # a9ac
+    priority: 2  # a9ac
+    parent:  # a9ac
+    tags:  # a9ac
+    - docstring_audit  # a9ac
+    - analysis_quality  # a9ac
+    isbefore: []  # a9ac
+    duplicate_of: []  # a9ac
+    not_duplicate_of: []  # a9ac
+    pr_ref:  # a9ac
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. Methods use `\"public\" in modifiers` (java.py:2100). public interface I { void run(); int K = 1; } gives method I.run is_exported False, field I.K True. dead-code-maybe reads is_exported (cli.py:9696-9702). r02, v02."  # a9ac
+    fields: {}  # a9ac
