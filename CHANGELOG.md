@@ -73,6 +73,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Scala class keeps its methods when its companion object comes first.**
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
+- **The Go memberlist linker emits its delegate edges in a real survey**, not only in unit tests.
 - **Electron IPC connects renderer → preload → main**, through `contextBridge` or a project's own wrapper: on podman-desktop, 66 of 66 bridge calls reach main, up from 1.
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 
