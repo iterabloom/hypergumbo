@@ -30,7 +30,7 @@ Matching strategy
    first non-delegate function or method symbol in the file is used as
    the anchor instead (``fallback_candidates`` in
    ``go_memberlist_linker``), so the delegates stay reachable.
-3. Find any method symbol whose bare name matches one of the
+3. Find any method or function symbol whose bare name matches one of the
    canonical delegate names AND whose defining file imports
    memberlist. Treat those as dispatch targets.
 4. Emit ``dispatches_to`` edges from each anchor function to each

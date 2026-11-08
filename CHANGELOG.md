@@ -149,7 +149,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **ADRs**: ADR-0050 §1 (what a primary boundary names), ADR-0041 §1 (what a tier measures), ADR-0016 (completeness grants), ADR-0062 (the tracker's live document).
 - **Audits**: [reader census](docs/audits/0023-reader-census.md), supersession precision ([0024](docs/audits/0024-build-target-supersession-precision.md), [0025](docs/audits/0025-js-module-supersession-precision.md)), [consumer agreement](docs/audits/0026-consumer-agreement.md).
 - **Measurements**: [self-claims on scip-python](docs/measurements/0031-self-claims-scip-python-receiver-denominator.md), [the analysed repository as a taint source](docs/measurements/0032-analysed-repository-as-taint-source.md).
-- **Module docstrings**: 66 corrected, 23 extended.
+- **Module docstrings**: 83 corrected, 23 extended.
 - **The spec documents 63 `symbol_meta` keys.**
 
 ## [9.2.0] - 2026-10-20

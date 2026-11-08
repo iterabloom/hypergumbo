@@ -22,7 +22,8 @@ the walk silently inert — Rust shipped an extractor in March and produced zero
 DDG edges for months while failing three of the four at once. Reporting a
 single "supported?" boolean would have said "no" for Rust the whole time
 without ever saying which of the four to fix, and reporting only the CFG
-mapping would say "yes" for Java, which has one and can adjudicate nothing.
+mapping would have said "yes" for Java, which shipped one with no def/use
+extractor behind it and could adjudicate nothing until WI-gotun wired it.
 
 REGISTRATION IS THE TRAP THIS MODULE MUST NOT FALL INTO. Both registries are
 populated as an *import side effect* of the language modules. A scope table
@@ -30,7 +31,7 @@ computed before that import reports every language incapable — a clean,
 plausible, entirely wrong answer of exactly the shape L53 is about. So
 :func:`compute_dataflow_scope` forces registration itself rather than trusting
 its caller to have done it, and ``test_dataflow_scope`` carries a non-vacuity
-floor asserting the four registered languages read capable.
+floor asserting that the registered languages read capable.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — I. Capability is reported per
 LANGUAGE, and that is not a per-function completeness claim. Until WI-losod,
@@ -205,8 +206,10 @@ class LanguageDataflowScope:
 
     The catalog counts are here rather than in a sibling structure because the
     number that matters to a reader is not "is this language covered" but "how
-    many sinks does the uncovered language have" — Java's 69 and JavaScript's
-    83 are the scope disclosure, and a bare capability boolean hides them.
+    many sinks does the uncovered language have" — an incapable language's
+    sink count is the scope disclosure, and a bare capability boolean hides it.
+    (Java and JavaScript were the uncovered languages when this was written;
+    both are wired now.)
     """
 
     language: str  # axis: language

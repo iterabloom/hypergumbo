@@ -128,15 +128,18 @@ How It Works
    imports a different class of that simple name, or when a bare name would
    reach a nested type from another file (``_is_import_class_mismatch``;
    INV-finak, WI-bunul). Colliding base-class names resolve same-file, then
-   import, then first by id (``_resolve_base_class_java``).
+   import, then same-package (Java needs no import for a class of its own
+   package), then first by id (``_resolve_base_class_java``).
    A class's OWN facts are found by its declaration's POSITION
    (``_java_symbol_declared_by`` over the run-wide ``(path, line, col)``
    index), never by its dotted name, which carries no package: the source of
    its ``extends`` / ``implements`` edges, its ``meta["fields"]``, the start
-   of the inherited-field walk (parents and field tables keyed by symbol id)
-   and the member a ``this.m()`` binds. Before, ``a.Foo`` and ``b.Foo`` shared
-   one entry and both files' facts went to whichever registered last
-   (WI-gikuk, the WI-kosar family).
+   of the inherited-field walk (parents and field tables keyed by symbol id),
+   the member a ``this.m()`` binds, and the ``enclosing_class_id`` stamped
+   beside the ``enclosing_class`` hint on an unresolved call, so the
+   ``inherited_calls`` linker starts its walk at exactly this class.
+   Before, ``a.Foo`` and ``b.Foo`` shared one entry and both files' facts
+   went to whichever registered last (WI-gikuk, the WI-kosar family).
    A call, ``new`` or method reference (``Type::m``, ``Type::new``) in no
    method or constructor (a field initialiser, an initialiser block) is
    anchored on the enclosing class / interface / enum / record, else the file

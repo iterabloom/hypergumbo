@@ -198,10 +198,6 @@ How It Works
    ``_withhold_for_tainted_evaluation`` withdraws the opaque qualification
    for a taint claim whose own label reaches such an evaluation site, so
    that verdict stays ``inconclusive``. ``violated`` is never touched.
-   After the gate, :func:`_withhold_for_unseeded_ingress` states the request
-   handlers no taint source represents (WI-fuzik, ADR-0049 ruling 3) on a
-   ``net_recv`` boundary verdict and an ``untrusted_input`` taint verdict:
-   a clean one is withheld, an inconclusive one gets the reason appended.
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in (WI-rusil).
@@ -213,7 +209,18 @@ How It Works
    was seen leaving through an ``unfollowed_construct`` call site
    (``taint.find_unfollowed_escapes``) is withheld by
    ``_withhold_for_unfollowed_escapes`` (INV-nohob), so when both fire the
-   withheld reason is the sink-zone gap's. Then ``_disclose_scoped_blindness``
+   withheld reason is the sink-zone gap's. After those,
+   :func:`_withhold_for_unseeded_ingress` states the request handlers whose
+   arrival nothing represents (WI-fuzik, ADR-0049 ruling 3): a clean verdict
+   is withheld, and an already-inconclusive one (such as one the sink-zone
+   gap or an escape withheld) gets the reason appended. Each arm reads its
+   own list, both built by :func:`unseeded_ingress_handlers` over
+   :func:`ingress_candidates`. An ``untrusted_input`` taint verdict reads
+   ``unseeded_ingress``: the handlers no builtin or user-vouched source and
+   no request-parameter seed represents. A ``net_recv`` boundary verdict
+   reads ``unseeded_ingress_boundary``, which keeps the parameter-seeded
+   handlers in, because a followed parameter is not a recorded ``net_recv``
+   crossing (WI-sosov). Then ``_disclose_scoped_blindness``
    names the set-aside
    languages in ``details``. Last, ``_disclose_untraced_vouch`` appends to a confirming
    verdict's ``details`` the modules that only an overlay's
@@ -1047,9 +1054,13 @@ def unseeded_ingress_handlers(
 
     A web framework hands each route handler its request as a PARAMETER
     (Express ``req.query.p``) or a framework GLOBAL (Flask ``request.args``).
-    Taint sources are minted only from catalogue rows matched on call edges,
-    so that request is never a source (WI-ritog) and what the handler does
-    with it is never examined. ADR-0049 ruling 3 licenses such an ingress
+    A catalogue row matched on a call edge seeds the request only through an
+    accessor call it names (a servlet's ``req.getParameter``), and
+    :func:`taint.parameter_seeds` seeds the request parameter itself only
+    where the handler's kind has a framework contract (Express's first
+    argument, Go's ``*http.Request``) and the handler uses it (WI-sosov).
+    Otherwise the request is never a source (WI-ritog) and what the handler
+    does with it is never examined. ADR-0049 ruling 3 licenses such an ingress
     only when its arrival scope is represented as a source OR a disclosure is
     in place; this is the disclosure, read off the graph's own request-handler
     entrypoints (:data:`entrypoints.REQUEST_INGRESS_KINDS`) so it does not
@@ -1063,7 +1074,9 @@ def unseeded_ingress_handlers(
     :func:`taint.represented_ingress_callers` found to be the CALLER of a
     matched ``untrusted_input`` source from a builtin or user-vouched row
     (WI-ritog; ADR-0049 ruling 3 removes a handler only against a represented
-    crossing, and ADR-0061 ruling 2 keeps a community row from cleaning). A
+    crossing, and ADR-0061 ruling 2 keeps a community row from cleaning),
+    plus, in the taint arm's list only, the handlers a parameter seed was
+    minted for; the boundary arm's list keeps those in (WI-sosov). A
     narrowing keyed to a seed marker nothing emits would be a consumer of a
     shape nothing produces; this one keys on the walk's own source matches. WI-ritog narrows this list framework by framework
     as it lands seeds. Scoped like flows: a handler in test code counts only

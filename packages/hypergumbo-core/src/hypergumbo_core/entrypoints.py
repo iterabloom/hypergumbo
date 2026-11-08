@@ -42,8 +42,9 @@ concepts to entrypoint types.
 Two public shapes come out of one detection (WI-vumig).
 ``detect_entrypoint_candidates`` is every candidate, deduplicated and ranked;
 ``apply_rank_floor_and_cap`` drops entries under ``MIN_ENTRYPOINT_CONFIDENCE``
-and caps the rest by repo size (``compute_entrypoint_cap``, at most 40% per
-kind); ``detect_entrypoints`` is the two composed, the ranked overview every
+and caps the rest by repo size (``compute_entrypoint_cap``; each kind first
+gets up to 40% of the cap, and the overflow fills any slots left empty);
+``detect_entrypoints`` is the two composed, the ranked overview every
 reader uses. The survey writer calls the halves so it can also write
 ``request_ingress_entries(candidates)``: every request handler
 (``REQUEST_INGRESS_KINDS``) before the floor and the cap, the completeness
@@ -52,10 +53,12 @@ split, mlflow's capped list held 200 of 302 route handlers.
 
 Confidence Scores
 -----------------
-Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 framework-pattern
-concepts; 0.90 generic/route-marker pass; 0.85 structural (shell script, HTML
-entry, main guard); 0.80 language conventions (main, test functions,
-serialization callbacks, script modules); 0.75 library exports; 0.70 naming
+Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 most
+framework-pattern concepts (route_handler, go_http_handler, form, serializer,
+servlet, ipc_handler and application take 0.90); 0.90 generic/route-marker
+pass; 0.85 structural (shell script, HTML entry, main guard); 0.80 language
+conventions (main, test functions, serialization callbacks, script modules)
+and C ``cmd_<name>`` commands; 0.75 library exports; 0.70 other naming
 heuristics; 0.50 connectivity fallback; 0.05 route-looking handlers in
 frontend files.
 
@@ -72,8 +75,9 @@ Connectivity Boost (concept-based only):
   penalties and the boost live on `rank_score`, which is what ordering uses.
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
   double-counting; TEST_FUNCTION entries, symbols in test files and
-  ``boost_suppressed_ids`` (build wrappers, vendored or infrastructure-path
-  library exports) skip it too, so the boost cannot undo their demotion
+  ``boost_suppressed_ids`` (build wrappers, and demoted library exports that
+  are vendored or on an infrastructure path) skip it too, so the boost cannot
+  undo their demotion
 
 Connectivity-Based Fallback:
 - When no concept-based entrypoints are found, the system falls back to
@@ -84,7 +88,8 @@ Connectivity-Based Fallback:
   matching YAML patterns (e.g., Rust libraries without pub tracking)
 
 Ranking Penalties (``rank_score`` only, applied before the boost):
-- Test files (broad ``paths.is_test_file`` heuristic): x 0.1
+- Test code (``paths.is_test_node``: the broad ``is_test_file`` path
+  heuristic plus test annotations such as ``#[test]`` or ``@Test``): x 0.1
 - Utility / example / docs files (``is_utility_file``): x 0.5
 - Vendored or derived code (``supply_chain_tier >= 3``): x 0.3
 - Maven/Gradle build wrappers (``mvnw`` / ``gradlew`` shell scripts): x 0.1,
@@ -95,8 +100,10 @@ Ranking Penalties (``rank_score`` only, applied before the boost):
   a semantic entrypoint (route, command, main, controller, task, ...; ones in
   utility/example files do not count), so a few Python helper scripts do not
   bury a Lean library's exports. A vendored (tier >= 3) export is demoted in
-  every language. Vendored and infrastructure-path exports also skip the
-  boost.
+  every language. A demoted export also skips the boost when it is vendored
+  or sits on an infrastructure path (``paths.is_infrastructure_path``:
+  telemetry/, metrics/, logging/, ...); an infrastructure-path export that
+  was not demoted keeps the boost.
 
 One Entrypoint Per Symbol (INV-liraj):
 - When several detectors classify the same symbol (e.g. a function that is

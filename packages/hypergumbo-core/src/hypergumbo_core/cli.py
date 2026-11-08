@@ -83,7 +83,9 @@ this order:
    (``rank_symbols``), which fixes the output node order.
 8. ``finalize()`` is the single pre-serialization reconcile point
    (ADR-0043 §6): it runs once the node and edge set is final. Metrics,
-   entrypoints and ``supply_chain_summary`` are added to the map after it.
+   entrypoints, ``request_ingress`` (every request handler, taken before the
+   entrypoint rank floor and cap; read by verify-claims' unseeded-ingress
+   disclosure) and ``supply_chain_summary`` are added to the map after it.
 9. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
    slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``,
    which also indexes each slice in the map's ``features`` array),

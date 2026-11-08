@@ -54,7 +54,10 @@ class-MESSAGE arm (``[Svc alloc]``, ``[DDLog log:...]``) did not, and 583 of
 3,300 typed slots on the four-repository objc corpus named a first-party
 class. Both arms now put a project class in ``receiver_type_hint`` only, which
 is also what lets ``inherited_calls`` Site 2 look the selector up on that
-class instead of walking the CALLER's class for it (Site 1). A non-class type
+class instead of walking the CALLER's class for it (Site 1). The exception is
+a class message to the caller's own class (``[RACSignal empty]`` inside
+RACSignal): it gets no hint and stays on Site 1, which makes the same lookup.
+A non-class type
 KEYWORD (``__auto_type``, ``instancetype``; :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`)
 is not a declared class at all: the declaration is read the way ``id x = ...``
 is, so the initialiser's registered return class types it or nothing does. A

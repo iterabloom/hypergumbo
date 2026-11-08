@@ -3,8 +3,8 @@
 
 This module provides reusable ranking functions that determine which symbols
 and files are most important in a codebase. These utilities power the
-thoughtful ordering in sketch output and can be used by slice, run, and
-other modes.
+thoughtful ordering in sketch output and are also used by compact, slice,
+survey, symbols and other modes.
 
 How It Works
 ------------
@@ -16,7 +16,8 @@ Ranking uses multiple signals combined:
    that are both depended-on and depend-on-others (e.g., QuerySet, Model)
    — over pure *sinks* (e.g., exception classes, utility decorators) that
    have high in-degree but near-zero out-degree.  Pure sinks (out=0) get
-   a 0.5x multiplier instead of 1.0x, penalizing popular leaf utilities
+   a 0.5x multiplier instead of the (1 + ln(1 + out_degree)) boost, which
+   is at least 1.69x, penalizing popular leaf utilities
    (e.g., Elm ``map`` with in=71, out=0) that are plumbing.  Extreme
    in-degree is
    saturated via ``hub_threshold`` to prevent infrastructure utilities
@@ -39,9 +40,10 @@ Ranking uses multiple signals combined:
    (Logger, Clock, Metrics, empty, size, toString, __repr__) get 90%
    centrality reduction. This supplements hub saturation (which only caps
    in-degree) with name-based detection of symbols that are plumbing, not
-   architecture. Addresses INV-mahap: DefaultClock.Now with in-degree 474
+   architecture. Motivated by INV-mahap (DefaultClock.Now with in-degree 474
    dominated rankings because hub saturation at 100 only reduced effective_in
-   to ~106.
+   to ~106). The name rule matches the Clock type, not its Now method; a
+   short Now body is caught by trivial-sink dampening (5) instead.
 
 5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
    line_span <= 5 get 90% centrality reduction.  These are trivial
@@ -74,12 +76,15 @@ Ranking uses multiple signals combined:
    WI-ramuv).  Their in-degree equals each file's import count, which would
    otherwise displace real functions/classes.
 
-10. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
-    method calls with confidence <0.5) are excluded from centrality
-    computation. This prevents method name collisions from inflating
-    in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
-    .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
-    Filtering at confidence 0.5 eliminates these artifacts.
+10. **Edge Confidence Filtering** (opt-in): ``filter_edges_for_ranking``
+    drops edges whose ``rank_score`` is below ``min_edge_confidence``
+    (ADR-0039 ruling 3 keys this ranking filter on ``rank_score``, not on
+    detection ``confidence``). The default 0.0 turns it off; ``symbols`` and
+    the survey's output order pass 0.5, which removes method-name-collision
+    in-degree such as DirLocker.Lock's 255 edges from unrelated .Lock()
+    calls and MemoryCache.get's 228 from unrelated .get() calls.
+    ``compute_dampened_centrality`` (sketch, compact) does no confidence
+    filtering.
 
 Why These Heuristics
 --------------------
@@ -383,8 +388,8 @@ def compute_centrality(
             orchestration_floor = math.sqrt(outd) * 0.8
             effective_in = max(effective_in, orchestration_floor)
 
-        # Pure sinks (out_degree=0) get a dampened multiplier (0.5) vs
-        # the normal floor of 1.0.  This penalizes popular leaf utilities
+        # Pure sinks (out_degree=0) get a dampened multiplier (0.5); the
+        # smallest boost otherwise is 1 + ln 2.  This penalizes popular leaf utilities
         # (e.g., Elm map with in=71, out=0) that accumulate high in-degree
         # through ubiquitous use but have no outgoing dependencies — they're
         # plumbing, not connectors.  Symbols with out_degree >= 1 get the

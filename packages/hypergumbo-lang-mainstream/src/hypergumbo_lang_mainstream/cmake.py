@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """CMake analysis pass using tree-sitter-cmake.
 
-This analyzer uses tree-sitter to parse CMakeLists.txt files and extract:
+This analyzer uses tree-sitter to parse CMakeLists.txt and ``*.cmake`` files
+and extract:
 - Project definitions
 - Library targets (add_library)
 - Executable targets (add_executable)
