@@ -106,7 +106,11 @@ Detected Patterns
   ``urllib.request.build_opener``; ``_library_producer_type``, WI-kozaj), and a
   dotted field path is a receiver of its own: ``self.conn`` typed in
   ``__init__``, and ``svc.conn`` / ``self.svc.conn`` one hop through a
-  project-class field (INV-mumov)
+  project-class field (INV-mumov). A chain rooted at a from-imported object
+  (``from flask import request; request.args.get()``) is named by its
+  import-anchored path (``flask.request.args``), as it is under ``import
+  flask``; a binding of the project gets no path and keeps the ``external``
+  placeholder (``_from_import_receiver_path``)
 - Scope of an import: ``imports`` / ``module_imports`` are file-scoped maps, so
   each call site reads them narrowed by ``ScopeStack.value_shadowed()`` -- a
   parameter or local named like an import (``def f(socket): socket.socket(h)``)
@@ -118,7 +122,11 @@ Detected Patterns
   and ``call_arg_shape="literal_only"`` marks calls passing only constants whose
   receiver cannot carry taint (no receiver, or an imported module)
 - Module attribute reads: os.environ, sys.argv, sys.path — bare
-  (non-called) ``imported_module.attribute`` accesses. Emits
+  (non-called) ``imported_module.attribute`` accesses, and the same read on an
+  object bound by a from-import (``from flask import request; request.data``
+  reads ``flask.request.data``). A from-import binding of the project itself
+  emits no phantom: it takes the in-tree ``references`` retargets or nothing.
+  Emits
   ``module_attr_ref`` edges so IO-primitive catalog ``attributes:``
   entries become reachable by ``io-boundaries`` (WI-guhok).
 - Imports: from X import Y, import X
@@ -185,6 +193,11 @@ Symbols include structured metadata in `meta` dict:
   Example: `[{"name": "app.get", "args": ["/users"], "kwargs": {"tags": ["api"]}}]`
 - **base_classes**: List of base class names for classes.
   Example: `["BaseModel", "Generic[T]"]`
+- **parent_base_classes**: on a method, its class's ``base_classes`` list
+  (absent for a baseless class), so a framework rule keyed on a method name
+  plus a parent base class can fire (flask-restful's ``get`` on a
+  ``Resource``, Graphene's ``resolve_*`` on an ``ObjectType``), as in the
+  Java and Objective-C analyzers.
 - **parameters**: List of parameter info for functions/methods.
   Example: `[{"name": "x", "type": "int", "default": False}]`
 - **return_type**: the unparsed return annotation, when present.

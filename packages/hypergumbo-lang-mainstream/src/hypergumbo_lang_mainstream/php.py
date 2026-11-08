@@ -6,6 +6,11 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Class declarations (symbols)
 - Interface, trait and enum declarations (container symbols, so in-file
   interfaces take part in dispatch instead of surfacing as placeholders)
+- Inheritance on class, interface and enum symbols (traits have none):
+  ``meta.base_classes`` lists the ``extends`` / ``implements`` names as
+  written, and ``meta.base_class_imports`` maps each bare base to the
+  qualified name of the ``use`` it came through, so the inheritance linker
+  checks that name rather than any in-repo type with the same short name
 - Method declarations (symbols)
 - Properties and class constants (``field``, whose stable_id is the ADR-0035
   producer formula, ``make_typed_stable_id`` over the namespace/type chain;

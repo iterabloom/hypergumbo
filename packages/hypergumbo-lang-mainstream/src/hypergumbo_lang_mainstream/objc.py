@@ -35,6 +35,12 @@ Three-pass analysis:
 - Pass 1: Extract all symbols from all files and collect methods into a global registry
 - Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
 - Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers that the repo does not declare.
+  The cross-file registry is keyed by bare selector, which is weak evidence,
+  so a cross-file hit binds only when it is a method of the caller's own
+  class (INV-fahub, via ``defer_bare_method_call``). A different class's
+  method, or a tie the resolver leaves unresolved (``defer_unresolved_tie``),
+  is withheld and emitted as an unresolved edge carrying ``enclosing_class``,
+  for the ``inherited_calls`` Site-1 walker.
 
 Receiver typing (WI-higob, WI-garar): an unresolved send whose receiver is
 lowercase still gets a class. It comes from the receiver's declaration in
