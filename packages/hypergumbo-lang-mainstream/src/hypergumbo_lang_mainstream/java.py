@@ -172,9 +172,11 @@ Why This Design
 Population of ``is_exported`` follows Java's access-modifier rule: a type
 or member is considered exported only when its declaration carries the
 ``public`` keyword (package-private / protected / private items are not).
-Two exceptions: interface constants are implicitly public and are
-exported without the keyword, and an enum constant (which has no access
-modifier of its own) is exported when its enum is.
+Two exceptions: a direct member of an interface or annotation type (method,
+constant or nested type) is implicitly public and is exported without the
+keyword unless it is declared ``private`` (JLS 9.4-9.6), and an enum
+constant (which has no access modifier of its own) is exported when its enum
+is.
 """
 from __future__ import annotations
 
@@ -657,6 +659,29 @@ JAVA_METHOD_MODIFIERS = {
     "static", "final", "abstract",
     "native", "synchronized", "strictfp",
 }
+
+
+# JLS 9.4 / 9.5 / 9.6: a member of an interface or annotation type is
+# implicitly public unless it is declared ``private`` (Java 9 interface helpers).
+_JAVA_IMPLICITLY_PUBLIC_BODIES = ("interface_body", "annotation_type_body")
+
+
+def _java_is_exported(node: "tree_sitter.Node", modifiers: list[str]) -> bool:
+    """Whether a declaration is exported: ``public``, or an interface member.
+
+    Reading ``"public" in modifiers`` alone marked every keyword-less interface
+    method package-private, so dead-code-maybe treated an interface's whole API
+    as unexported (WI-fimim). Only a DIRECT member counts: a method of a class
+    nested in an interface keeps the class rule.
+    """
+    if "public" in modifiers:
+        return True
+    parent = node.parent
+    return (
+        parent is not None
+        and parent.type in _JAVA_IMPLICITLY_PUBLIC_BODIES
+        and "private" not in modifiers
+    )
 
 
 def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -1887,7 +1912,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
@@ -1943,7 +1968,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
@@ -2007,7 +2032,7 @@ def _extract_symbols(
                         # A constant is implicitly `public static final` and is
                         # as reachable as its enum; Java has no per-constant
                         # access modifier.
-                        is_exported="public" in modifiers,
+                        is_exported=_java_is_exported(node, modifiers),
                         qualified_name=const_qualified,
                         line_span=const_span.end_line - const_span.start_line + 1,
                     ))
@@ -2100,7 +2125,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
                 )
@@ -2159,7 +2184,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
                 )
@@ -2191,7 +2216,7 @@ def _extract_symbols(
                         field_type, modifiers, decorators,
                         # interface constants are implicitly public static final;
                         # class/enum fields export only with an explicit `public`.
-                        ("public" in modifiers) or node.type == "constant_declaration",
+                        _java_is_exported(node, modifiers),
                         package_name, file_stable_id, file_path, run,
                         hash_scope=_java_hash_scope(node, source),
                     ))

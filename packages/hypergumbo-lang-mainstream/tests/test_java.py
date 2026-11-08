@@ -1843,6 +1843,52 @@ class PackagePrivateClass {
             "PackagePrivateClass.packagePrivateMethod"
         ].is_exported is False
 
+    def test_interface_members_are_implicitly_public(self, tmp_path: Path) -> None:
+        """WI-fimim: an interface member without ``private`` is public (JLS 9.4,
+        9.5), so it is exported with no keyword, like an interface constant.
+
+        The rule is the member's, not the interface's: a package-private
+        interface's members are still public, and a method of a class nested
+        in an interface keeps the class rule.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Api.java").write_text("""
+public interface Api {
+    void run();
+    default int size() { return 0; }
+    static Api of() { return null; }
+    private void helper() {}
+    class Impl {
+        void work() {}
+    }
+    enum Mode { A }
+}
+
+class Holder {
+    interface Inner {
+        void call();
+    }
+}
+
+@interface Tag {
+    class Nested {}
+}
+""")
+
+        symbols = analyze_java(tmp_path).symbols
+        by_name = {s.name: s for s in symbols}
+        for exported in ("Api.run", "Api.size", "Api.of", "Api.Impl", "Api.Mode",
+                         "Holder.Inner.call"):
+            assert by_name[exported].is_exported is True, exported
+        for hidden in ("Api.helper", "Api.Impl.work", "Holder.Inner"):
+            assert by_name[hidden].is_exported is False, hidden
+        # An annotation type's members are implicitly public too (JLS 9.6). The
+        # analyzer emits no @interface symbol, so the nested class is found by
+        # its own name rather than a qualified one.
+        nested = [s for s in symbols if s.name.endswith("Nested")]
+        assert [s.is_exported for s in nested] == [True]
+
 
 class TestJavaClassInterfaceModifiers:
     """Tests for visibility modifier extraction on classes and interfaces.
