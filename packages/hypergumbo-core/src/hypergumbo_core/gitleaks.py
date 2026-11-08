@@ -309,7 +309,8 @@ def _scan(content: str) -> list[SecretFinding] | None:
     """The scan itself: findings, or ``None`` when it did not happen.
 
     ``None`` covers no gitleaks, a gitleaks that cannot run (a partial
-    install), the 30 s timeout, and output that is not a JSON list. None of
+    install), the 30 s timeout, a non-zero exit, and output that is not a
+    JSON list. None of
     those is a clean result, and :func:`scan_content_cached` must not record
     one as clean.
     """
@@ -359,6 +360,12 @@ def _scan(content: str) -> list[SecretFinding] | None:
         return None
     except (subprocess.SubprocessError, OSError):
         # gitleaks failed to run: not scanned
+        return None
+
+    # `--exit-code 0` means findings never exit non-zero, so any non-zero
+    # exit is a failure: an unloadable GITLEAKS_CONFIG exits 1 with empty
+    # stdout, which read as "no secrets" and was cached clean (WI-rapuh).
+    if result.returncode != 0:
         return None
 
     # Parse JSON output

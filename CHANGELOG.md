@@ -118,7 +118,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`build-grammars` uses a private temp directory**, not shared `/tmp`.
 - **An interrupted survey never leaves a truncated `survey.json`.**
 - **gitleaks installs never follow a symlink** out of `~/.local/bin`.
-- **A secret scan that did not run says so** and is never cached as clean; it ignores the analysed repository's gitleaks config.
+- **A secret scan that did not run says so** and is never cached as clean, including when gitleaks exits with an error; it ignores the analysed repository's gitleaks config.
 - **INI and `.properties` secrets print as `***`**, with no length or characters.
 - **Trust grants are private (0600) before they are written.**
 - **Commands skip paths outside their zone** instead of crashing.
