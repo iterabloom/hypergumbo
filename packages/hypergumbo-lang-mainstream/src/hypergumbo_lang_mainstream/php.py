@@ -278,18 +278,6 @@ def _extract_base_classes_php(node: "tree_sitter.Node", source: bytes) -> list[s
     return base_classes
 
 
-def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class name."""
-    current = node.parent
-    while current is not None:
-        if current.type == "class_declaration":
-            name = _find_name_in_children(current, source)
-            if name:
-                return name
-        current = current.parent
-    return None  # pragma: no cover - defensive
-
-
 # WI-fosuh (WI-jusus): PHP type-declaration containers whose bodies hold the
 # ``field``-kind members (properties, constants) emitted below. Constants are
 # also legal at file scope (a global constant → a ``variable``).
@@ -474,7 +462,7 @@ def _get_enclosing_function_php(
             name = _find_name_in_children(current, source)
             if name:
                 # Find enclosing class by walking up further
-                class_name = _get_enclosing_class(current, source)
+                class_name = _enclosing_type_name(current, source)
                 if class_name:
                     full_name = f"{class_name}.{name}"
                     if full_name in global_symbols:
@@ -1226,10 +1214,9 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                # _enclosing_type_name walks EVERY container; _get_enclosing_class
-                # recognised `class_declaration` alone, so interface and trait
-                # members were emitted BARE and no consumer could tell which
-                # type declared them.
+                # _enclosing_type_name walks EVERY container. A class-only walk
+                # emitted interface and trait members BARE, and as the caller
+                # lookup it made no trait or enum method a caller (WI-fonaz).
                 enclosing_class = _enclosing_type_name(node, source)
                 full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
@@ -1409,7 +1396,7 @@ def _extract_edges(
                     # Site-1 walker can recover a genuine inherited implicit-
                     # ``this`` call and a true cross-class magnet stays external.
                     # Free functions and same-enclosing-class methods bind.
-                    _enclosing_type = _get_enclosing_class(node, source)
+                    _enclosing_type = _enclosing_type_name(node, source)
                     _sym = lookup_result.symbol
                     _defer = (_sym is not None and defer_bare_method_call(
                         _sym.kind, _sym.name,
@@ -1452,7 +1439,7 @@ def _extract_edges(
                     # Check if it's $this->method()
                     is_this_call = obj_node and obj_node.type == "variable_name" and node_text(obj_node, source) == "$this"
 
-                    current_class_name = _get_enclosing_class(node, source)
+                    current_class_name = _enclosing_type_name(node, source)
                     if is_this_call and current_class_name:
                         # Try to resolve to a method in the same class
                         full_name = f"{current_class_name}.{method_name}"
@@ -1515,7 +1502,7 @@ def _extract_edges(
                     method_name = node_text(name_node, source)
 
                     # Handle self:: and static::
-                    current_class_name = _get_enclosing_class(node, source)
+                    current_class_name = _enclosing_type_name(node, source)
                     if class_name in ("self", "static") and current_class_name:
                         class_name = current_class_name
 

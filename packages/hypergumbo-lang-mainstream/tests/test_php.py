@@ -2329,3 +2329,50 @@ class TestPhpTypeContainerEmission:
         assert by_name["Base"].kind == "class"
         assert "abstract" in by_name["Base"].modifiers
         assert by_name["Base.area"].kind == "method"
+
+
+class TestPhpTraitAndEnumCallers:
+    """WI-fonaz: a trait or enum method is the caller of the calls in its body.
+
+    The caller lookup found a method's owner with a walk that recognised
+    ``class_declaration`` only, so in a trait or enum no method was ever the
+    caller: ``$this->`` / ``static::`` / ``self::`` calls and ``new`` emitted
+    nothing, and a bare call was credited to the file.
+    """
+
+    def test_trait_and_enum_methods_own_their_calls(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "a.php").write_text("""<?php
+function helper() {}
+class Widget {}
+trait T {
+    public function a() { $this->b(); static::c(); helper(); }
+    public function b() {}
+    public static function c() {}
+    public function d() { return new Widget(); }
+}
+enum E2 {
+    case X;
+    public function m() { $this->n(); self::k(); }
+    public function n() {}
+    public static function k() {}
+}
+""")
+
+        result = analyze_php(tmp_path)
+        names = {s.id: s.name for s in result.symbols}
+        pairs = {
+            (names.get(e.src), names.get(e.dst), e.edge_type) for e in result.edges
+        }
+
+        for expected in (
+            ("T.a", "T.b", "calls"), ("T.a", "T.c", "calls"),
+            ("T.a", "helper", "calls"), ("T.d", "Widget", "instantiates"),
+            ("E2.m", "E2.n", "calls"), ("E2.m", "E2.k", "calls"),
+        ):
+            assert expected in pairs, expected
+        file_callers = {
+            dst for src, dst, kind in pairs if kind == "calls" and src == "a.php"
+        }
+        assert "helper" not in file_callers

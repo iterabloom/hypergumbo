@@ -71,6 +71,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Java: a method an external base class supplies** (`err.getMessage()`, `repo.save()`) is a use of the type, not a call: jedis loses 958 wrong call sites.
 - **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
 - **Java interface methods without `public` count as exported**, as the language makes them.
+- **PHP trait and enum methods own the calls in their bodies.**
 - **A Scala class keeps its methods when its companion object comes first.**
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
