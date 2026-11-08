@@ -6,8 +6,9 @@ knows how to turn *one* function body into a control-flow graph and solve
 reaching definitions; this module knows how to find every function in a
 repository, do that to each of them, and aggregate the result into the
 :class:`RepoDdg` that taint propagation consumes: ``ddg_edges``,
-``ddg_symbols`` and ``hints_by_caller``, plus the per-function statement
-def/use, forfeit-refutation, unaccounted-name and return-span indexes.
+``ddg_symbols`` and ``hints_by_caller``, plus the per-function parameter,
+statement def/use, forfeit-refutation, unaccounted-name and return-span
+indexes.
 
 Why This Module Exists
 ----------------------
@@ -38,6 +39,14 @@ language packages register into it; the caller force-imports them.
 ``build_repo_ddg()`` then does the same thing for every requested
 language: glob the files, parse, walk for function nodes, build the CFG,
 populate def/use **with that language's extractor**, and solve.
+
+A spec may also name a function's parameters (``params_for``; the Python,
+Go, JavaScript and TypeScript specs do, WI-sosov). The solver gets them as
+entry definitions at the function's own line, never as statements, so a
+parameter reaches its uses in the body while no statement-level reader sees
+it. They are recorded in ``RepoDdg.params`` whether or not any use follows;
+``taint.parameter_seeds`` seeds only a parameter a use reads. A node that is
+not a callable -- a module root, a Go ``var_spec`` binding -- has none.
 
 Symbol Identity
 ---------------

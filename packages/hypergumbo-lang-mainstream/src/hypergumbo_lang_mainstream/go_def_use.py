@@ -40,6 +40,14 @@ for methods, via the analyzer's receiver-type helper) so the DDG ids match
 the Go analyzer's ids. The spec also walks the outermost function-literal
 bodies bound under a package-level ``var`` (cobra's ``Run: func(...)``,
 ``var h = func(...)``), anchored on that variable's symbol (WI-rovun).
+It names a declaration's parameters through ``params_for`` (``_go_params``):
+the receiver first, then every identifier of each parameter declaration.
+ddg_build gives them to the solver as entry definitions at the function's own
+line, so a parameter reaches its uses in the body, and records them in
+``RepoDdg.params``, from which taint seeds a request handler's
+``*http.Request`` parameter (WI-sosov). A literal bound under a ``var`` gets
+no parameter definitions: the spec's node there is the binding, not the
+callable.
 
 Why a Node Type Must Also Be Declared Atomic
 --------------------------------------------

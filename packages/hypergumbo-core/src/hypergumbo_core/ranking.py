@@ -25,7 +25,15 @@ Ranking uses multiple signals combined:
    count as 1.0 while within-file edges are dampened (default 0.3x) to
    prevent local variables referenced many times within a single file
    (e.g., ``pSpec`` with 96 in-degree) from outranking architecturally
-   important symbols referenced across many files.
+   important symbols referenced across many files.  The ranking entry
+   points (``rank_symbols``, ``rank_files``, ``compute_dampened_centrality``)
+   also weight each edge by its type (``DEFAULT_EDGE_TYPE_WEIGHTS``: e.g.
+   calls 1.0, dispatches_to 0.6, extends/implements 0.5, imports 0.3,
+   contains 0.1; unlisted types 0.5), let one source file contribute at
+   most ``max_per_file_in`` (5) edges to any target, and give an
+   orchestration hub with out-degree >= 20 an effective in-degree of at
+   least sqrt(out_degree) x 0.8, so same-file dampening and the per-file
+   cap cannot bury ``main``/``run``-style functions.
 
 2. **Supply Chain Tier Weighting**: First-party code (tier 1) gets a 2x
    boost, internal dependencies (tier 2) get 1.5x, external dependencies
@@ -37,21 +45,28 @@ Ranking uses multiple signals combined:
    important symbols rather than one outlier.
 
 4. **Utility Symbol Dampening**: Symbols with infrastructure-utility names
-   (Logger, Clock, Metrics, empty, size, toString, __repr__) get 90%
-   centrality reduction. This supplements hub saturation (which only caps
-   in-degree) with name-based detection of symbols that are plumbing, not
-   architecture. Motivated by INV-mahap (DefaultClock.Now with in-degree 474
+   (Logger, Clock, Metrics, empty, size, toString, __repr__), symbols
+   carrying a ``logging``/``logger`` framework concept, and symbols in
+   helper files (``utils/`` or ``helpers/`` directories; basenames
+   ``utils``/``util``/``helpers`` or ending ``_utils``/``_util``/``_helpers``;
+   test fixture files ``conftest``, ``fixtures``, ``factories``,
+   ``test_helper*``) get 90% centrality reduction. This supplements hub
+   saturation (which only caps in-degree) with name-, concept- and
+   path-based detection of symbols that are plumbing, not architecture.
+   Motivated by INV-mahap (DefaultClock.Now with in-degree 474
    dominated rankings because hub saturation at 100 only reduced effective_in
    to ~106). The name rule matches the Clock type, not its Now method; a
    short Now body is caught by trivial-sink dampening (5) instead.
 
 5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
-   line_span <= 5 get 90% centrality reduction.  These are trivial
-   accessors/stubs that accumulate high in-degree through ubiquitous use
-   but have no architectural significance.  Addresses bakeoff cohorts 16-17
-   findings: Timer.Duration (in=98, LoC=3), noopMetric.Inc (in=109, LoC=1),
-   CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
-   rankings despite being plumbing.
+   line_span <= 5, or with out_degree 0 AND line_span <= 20 (pure sinks
+   whose span includes a docstring), get 90% centrality reduction.  These
+   are trivial accessors/stubs that accumulate high in-degree through
+   ubiquitous use but have no architectural significance.  Addresses
+   bakeoff cohorts 16-17 findings: Timer.Duration (in=98, LoC=3),
+   noopMetric.Inc (in=109, LoC=1), CheckError (in=195, LoC=3),
+   syncTask.name (in=109, LoC=2) all dominated rankings despite being
+   plumbing.
 
 6. **Noise Path Dampening**: Symbols in database-migration / noise paths
    (e.g. ``db/migrate/``, ``migrations/``) get a 0.1x multiplier
@@ -112,6 +127,18 @@ For file ranking:
 
 For combined ranking with all heuristics:
     ranked = rank_symbols(symbols, edges, first_party_priority=True)
+
+For the shared sketch/compact pipeline (centrality plus the seven canonical
+dampeners, in order tier, noise, utility, common_method, trivial_sink,
+generated, file_kind):
+    centrality = compute_dampened_centrality(symbols, edges)
+
+The module also holds helpers its consumers share:
+``compute_transitive_test_coverage`` (which tests reach each symbol, for
+sketch and ``test-coverage``), ``compute_symbol_mention_centrality`` and its
+batch form (rank docs/config files by the symbol names they mention, for
+sketch and survey), and ``compute_harmonic_shares`` (sketch's per-file
+source token budget).
 """
 from __future__ import annotations
 

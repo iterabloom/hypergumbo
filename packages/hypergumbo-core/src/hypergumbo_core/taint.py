@@ -54,6 +54,24 @@ collapse below then decide it exactly as they decide a direct read. The
 finding's ``source_returned_by`` names the functions the value came back
 through.
 
+A request handler's request PARAMETER is a source with no call edge at all
+(WI-sosov). :func:`parameter_seeds` mints a :class:`ParameterSeed` for each
+``request_ingress`` entry whose kind has a framework contract
+(:data:`REQUEST_PARAMETER_CONTRACTS`, or :data:`GENERIC_ROUTE_CONTRACTS` by
+language for the generic ``http_route``). The contract picks the parameter
+from the names ``ddg_build`` recorded in ``RepoDdg.params``: Express's first
+(second for four-argument error middleware), Go's ``*http.Request``-typed
+one. A seed is minted only when the DDG walked the handler and a use is
+reached from the parameter's entry definition at the handler's own line; a
+route marker (Go's ``http.HandleFunc``) seeds the function it
+``dispatches_to`` in its own file. Only :func:`propagate_taint_ddg` takes the
+seeds, walking from the handler's line with the parameter as the seeded
+variable; the structural arm takes none, because a symbol-level seed at a
+handler would taint everything the handler reaches. Given the seeds,
+:func:`represented_ingress_callers` counts each seed's entry (``represents``)
+as a represented arrival, beside the handlers that call a builtin or
+user-vouched ``untrusted_input`` source.
+
 Both propagators return through :func:`collapse_unadjudicated_flows`
 (INV-karud): every ``structural`` / ``ddg_mixed`` finding is grouped one per
 situation — ``(taint_label, source_symbol, sink_zone, sanitized,
@@ -104,7 +122,7 @@ also refuse when evidence is absent.
   ``_source_call_can_mint_taint`` refuses a source site whose target-kind stamp
   proves it crosses no minting boundary (WI-lipis).
 - ``_source_and_sink_are_one_call`` refuses a pair that is one invocation (one
-  recorded call line), and ``_source_names_can_reach_sink`` a pair whose source
+  recorded call line; a parameter seed is not a call, so it is exempt), and ``_source_names_can_reach_sink`` a pair whose source
   names and sink-reaching names are provably disjoint (INV-fumod).
 
 One write is one finding: ``_subsume_sink_sites`` drops a slot-family parent

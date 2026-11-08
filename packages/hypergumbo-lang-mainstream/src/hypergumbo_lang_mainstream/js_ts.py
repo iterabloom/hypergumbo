@@ -104,13 +104,22 @@ Call-Site Resolution
   grade, ``resolution_score`` 1.0, which is the ast_call_direct ceiling); a
   parameter or local value is a callee nothing can name and emits nothing;
   only a name bound by an import, or by nothing in the file, reaches the
-  import, same-package and repo-wide name lookups (WI-sofuh). A called module binding
+  import, same-package and repo-wide name lookups (WI-sofuh). A name
+  imported from a module shown external (a Node core module, or a declared
+  registry dependency the repo does not define;
+  ``_bare_specifier_is_external``) skips all three and takes the named-import unresolved edge, so an in-repo
+  namesake never claims it. A called module binding
   (``import m from 'x'; m()``) emits ``x``'s ``default``; a name nothing binds
   and nothing in the repo carries emits the ``external`` placeholder
   (WI-fahod).
 - **Member-call cascade** (``obj.m()``): ``this.m()`` against the enclosing
   class; a typed ``this.prop`` receiver; a
-  namespace-import alias; a variable typed by ``var_types``; a bare
+  namespace-import alias (an external module's alias makes no name lookup
+  and goes straight to its module's unresolved edge); a variable whose
+  ``var_types`` type is a named import from an external module, which gets an
+  unresolved edge to that module with ``receiver_type_hint`` and
+  ``call_construct="method"`` unless a catalogued constructor types it; a
+  variable typed by ``var_types``; a bare
   ``JS_KNOWN_GLOBALS`` receiver (``console``, ``process``, ...); a receiver
   whose catalogue module is in ``var_ctor_modules`` (filled from
   ``new X()`` or a TypeScript-declared type when ``X`` is in
@@ -124,7 +133,11 @@ Call-Site Resolution
 - **INV-fahub deferral** (``defer_bare_method_call``): a bare ``foo()`` or
   untyped ``obj.m()`` whose only match is a weak short-name hit on a
   DIFFERENT class's method is not bound; an unresolved edge stamped with the
-  enclosing class is emitted instead for inherited-call recovery.
+  enclosing class is emitted instead for inherited-call recovery. A lookup
+  that ties between two or more same-named candidates, at least one of them
+  a method, binds nothing and is deferred the same way
+  (``defer_unresolved_tie``); unlike the weak-hit rule, this has no
+  same-class exemption.
 - **Enclosing function**: ``_get_enclosing_function`` finds the caller by
   ``symbol_by_position`` (path, line, column), so duplicate names across
   files do not collide. The function-declaration and method branches still

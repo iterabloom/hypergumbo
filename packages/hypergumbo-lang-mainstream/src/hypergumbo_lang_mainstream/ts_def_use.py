@@ -16,7 +16,13 @@ binding-named ``arrow_function`` / ``function_expression`` / ``function`` /
 names ``program`` in ``module_node_types``, so a file's top-level code is
 walked as module code under the file pseudo-symbol (WI-nilir; ddg_build's
 "Module Code"). Together these node types decide how much of a file the
-data-dependence graph can see.
+data-dependence graph can see. Each spec also passes ``params_for``
+(``_jsts_params``): a callable's parameter names in order -- every leaf of a
+destructured, defaulted or rest parameter, plus the lone parameter of
+``req => ...``. ddg_build gives them to the solver as entry definitions at the
+function's own line, so a parameter reaches its uses in the body, and records
+them in ``RepoDdg.params``, from which taint seeds a request handler's request
+parameter (WI-sosov).
 
 Handles core patterns:
 

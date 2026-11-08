@@ -91,6 +91,13 @@ How It Works
    - A qualified type whose package declares no such method takes one promoted
      through ONE level of embedding, when exactly one embedded type declares
      it (``_go_promoted_method``, the last step of ``_go_method_of_type``).
+   - A selector call's repo-wide lookup filters its candidates by the call's
+     SHAPE (``admit``) before choosing: a package-qualified ``pkg.F()`` admits
+     no method (``_go_package_member``, which also filters the dot-import and
+     selector-reference lookups), and a call on a value admits only a method
+     or a field whose declared type is a ``func`` (``_go_value_member``, read
+     from ``field_type_registry``, which records function-typed fields for
+     this). A same-file hit for a call on a value passes the same filter.
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
