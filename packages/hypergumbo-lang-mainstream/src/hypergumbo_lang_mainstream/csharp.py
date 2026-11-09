@@ -2,7 +2,10 @@
 """C# analysis pass using tree-sitter-c-sharp.
 
 This analyzer uses tree-sitter to parse C# files and extract:
-- Class declarations
+- Class declarations, and record declarations (``record``, ``record class``,
+  ``record struct``) as kind ``record`` through the same branch: bases,
+  attributes and members like a class's (WI-zukat: they emitted no symbol,
+  so their members were bare names)
 - Interface declarations
 - Struct declarations
 - Enum declarations
@@ -18,7 +21,7 @@ This analyzer uses tree-sitter to parse C# files and extract:
   (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
   shared one bare-name table key, so deleting the first moved the second's
   ids). A file-scoped namespace is single per file and not in the chain.
-- A class, struct or interface records its base list in
+- A class, record, struct or interface records its base list in
   ``meta["base_classes"]``; the inheritance linker turns it into ``extends``
   / ``implements`` edges (WI-ruzid: interfaces recorded none, so
   ``interface IChild : IBase`` produced no edge at all).
@@ -117,7 +120,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     symbols_at,
 )
-from hypergumbo_core.overload_arity import scoped_table_stable_id
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -614,7 +617,8 @@ FileAnalysis: TypeAlias = _BaseFileAnalysis
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class/interface/struct name.
+    """Walk up the tree to find the nearest enclosing type's name (class,
+    interface, struct, enum or record: ``_CSHARP_TYPE_DECLS``).
 
     Args:
         node: The current node.
@@ -625,7 +629,7 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     """
     current = node.parent
     while current is not None:
-        if current.type in ("class_declaration", "interface_declaration", "struct_declaration"):
+        if current.type in _CSHARP_TYPE_DECLS:
             name_node = find_child_by_type(current, "identifier")
             if name_node:
                 return node_text(name_node, source)
@@ -813,6 +817,10 @@ def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
     for child in node.children:
         if child.type == "base_list":
             for base_child in child.children:
+                # A record's ``: Base(X)`` passes its primary constructor's
+                # arguments on: the type is the node's first child.
+                if base_child.type == "primary_constructor_base_type":
+                    base_child = base_child.children[0]
                 if base_child.type in ("identifier", "generic_name", "qualified_name"):
                     base_name = node_text(base_child, source)
                     # Strip generic parameters: List<int> -> List
@@ -934,8 +942,12 @@ def _extract_symbols_from_file(
         return None  # pragma: no cover - defensive
 
     for node in iter_tree(tree.root_node):
-        # Class declaration
-        if node.type == "class_declaration":
+        # Class or record declaration. A record (``record``, ``record class``,
+        # ``record struct``) is a type with a class's bases, attributes and
+        # members, emitted as kind "record" (WI-zukat: it had no symbol, so its
+        # members were bare and their calls bound to other classes).
+        if node.type in ("class_declaration", "record_declaration"):
+            type_kind = "record" if node.type == "record_declaration" else "class"
             name = extract_name_from_declaration(node)
             if name:
                 start_line = node.start_point[0] + 1
@@ -962,9 +974,9 @@ def _extract_symbols_from_file(
                     ))
                 cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
-                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "class"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, type_kind),
                     name=name,
-                    kind="class",
+                    kind=type_kind,
                     language="csharp",
                     path=str(file_path),
                     span=Span(
@@ -978,8 +990,10 @@ def _extract_symbols_from_file(
                     meta=meta,
                     # INV-fabih: the table formula over the enclosing block
                     # namespaces and types (the backstop's value at top level).
-                    stable_id=scoped_table_stable_id(
-                        kind="class", lang="csharp", path=rel_path, name=name,
+                    # A record is no table kind, so it mints the ADR-0035
+                    # producer formula over the same chain, as Java's does.
+                    stable_id=(scoped_stable_id if type_kind == "record" else scoped_table_stable_id)(
+                        kind=type_kind, lang="csharp", path=rel_path, name=name,
                         scope=_csharp_scope(node, source),
                     ),
                     modifiers=class_modifiers,
@@ -1913,12 +1927,28 @@ def _extract_edges_from_file(
                                 ),
                             ))
                             continue
-                    # Check local symbols first
-                    if callee_name in local_symbols:
-                        callee = local_symbols[callee_name]
+                    # Check local symbols first. ``local_symbols`` holds every
+                    # method under its bare name too, last one in the file
+                    # winning, so prefer the scope's own ``Type.callee``; a bare
+                    # call's short-name hit on another type's method is the
+                    # INV-fahub magnet and goes to the guarded resolver path
+                    # below (WI-zukat: ``Helper()`` in a record bound to
+                    # ``Other.Helper`` declared after it).
+                    _local_scope = receiver_name or _get_enclosing_class(node, source)
+                    local_callee: Optional[Symbol] = (
+                        local_symbols.get(f"{_local_scope}.{callee_name}")
+                        if _local_scope else None
+                    )
+                    if local_callee is None and callee_name in local_symbols:
+                        _short = local_symbols[callee_name]
+                        if receiver_name or not defer_bare_method_call(
+                            _short.kind, _short.name, "suffix", _local_scope,
+                        ):
+                            local_callee = _short
+                    if local_callee is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=callee.id,
+                            dst=local_callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
@@ -1927,7 +1957,7 @@ def _extract_edges_from_file(
                             meta={"call_construct": "method"},
                         ))
                         _track_csharp_return_type(
-                            callee, node, source, var_types, local_symbols
+                            local_callee, node, source, var_types, local_symbols
                         )
                     # Check global symbols via resolver
                     else:

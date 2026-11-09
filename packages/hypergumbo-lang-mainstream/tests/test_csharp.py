@@ -953,13 +953,14 @@ public class ServiceClient {
     public void Fetch() { }
 }
 
-public static class Helpers {
-    public static ServiceClient GetClient() {
+public class App {
+    // On App itself: a bare call reaches only the enclosing type's methods
+    // (another class's would need `using static`), so the same-file lookup
+    // withholds a cross-class bare hit (WI-zukat).
+    static ServiceClient GetClient() {
         return new ServiceClient();
     }
-}
 
-public class App {
     public void Run() {
         var client = GetClient();
         client.Fetch();
@@ -2848,3 +2849,83 @@ class TestCSharpInterfaceInheritance:
         # WI-pivap: plus the namespaces a bare base may come from (global here).
         assert by_name["IChild"].meta["visible_namespaces"] == [""]
         assert by_name["ILeaf"].meta is None
+
+
+class TestCSharpRecords:
+    """WI-zukat: a record is a type, and its members are its own.
+
+    ``record_declaration`` (``record``, ``record class``, ``record struct``)
+    had no symbol branch, and the enclosing-type walk skipped it, so a record's
+    methods were emitted bare (``M``) and a bare call inside one bound to
+    whichever other class had a same-named method.
+    """
+
+    def _analyze(self, tmp_path: Path, code: str):
+        (tmp_path / "A.cs").write_text(code)
+        result = analyze_csharp(tmp_path)
+        names = {s.id: s.name for s in result.symbols}
+        return result, names
+
+    def test_each_record_form_is_a_record_symbol(self, tmp_path: Path) -> None:
+        result, _ = self._analyze(tmp_path, (
+            "public record Point(int X, int Y);\n"
+            "record class Box(int W);\n"
+            "public readonly record struct Pair(int A, int B);\n"
+        ))
+        records = {s.name: s for s in result.symbols if s.kind == "record"}
+        assert set(records) == {"Point", "Box", "Pair"}
+        assert records["Point"].is_exported
+        assert not records["Box"].is_exported
+
+    def test_members_are_qualified_and_calls_stay_inside(self, tmp_path: Path) -> None:
+        result, names = self._analyze(tmp_path, (
+            "public record Point(int X, int Y) {\n"
+            "    public int M() { return Helper(); }\n"
+            "    int Helper() { return 1; }\n"
+            "}\n"
+            "public class Other {\n"
+            "    public int Helper() { return 2; }\n"
+            "}\n"
+        ))
+        methods = {s.name for s in result.symbols if s.kind == "method"}
+        assert {"Point.M", "Point.Helper", "Other.Helper"} <= methods
+        calls = {(names.get(e.src), names.get(e.dst))
+                 for e in result.edges if e.edge_type == "calls"}
+        assert ("Point.M", "Point.Helper") in calls
+        assert ("Point.M", "Other.Helper") not in calls
+
+    def test_bases_include_the_primary_constructor_base(self, tmp_path: Path) -> None:
+        result, _ = self._analyze(tmp_path, (
+            "public record Base(int X);\n"
+            "public interface IShape { }\n"
+            "public record Point(int X) : Base(X), IShape;\n"
+        ))
+        point = next(s for s in result.symbols if s.name == "Point")
+        assert point.meta["base_classes"] == ["Base", "IShape"]
+
+    def test_a_nested_record_is_qualified_by_its_class(self, tmp_path: Path) -> None:
+        result, _ = self._analyze(tmp_path, (
+            "namespace N {\n"
+            "  public class Outer {\n"
+            "    public record Inner(int A) { public void Go() { } }\n"
+            "  }\n"
+            "}\n"
+        ))
+        inner = next(s for s in result.symbols if s.kind == "record")
+        assert inner.qualified_name == "N.Outer.Inner"
+        assert any(s.name == "Inner.Go" for s in result.symbols if s.kind == "method")
+
+    def test_a_type_qualified_call_reaches_that_type(self, tmp_path: Path) -> None:
+        result, names = self._analyze(tmp_path, (
+            "public static class Other {\n"
+            "    public static int Helper() { return 2; }\n"
+            "}\n"
+            "public record Point(int X) {\n"
+            "    public int M() { return Other.Helper(); }\n"
+            "    int Helper() { return 1; }\n"
+            "}\n"
+        ))
+        calls = {(names.get(e.src), names.get(e.dst))
+                 for e in result.edges if e.edge_type == "calls"}
+        assert ("Point.M", "Other.Helper") in calls
+        assert ("Point.M", "Point.Helper") not in calls
