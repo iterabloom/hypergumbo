@@ -19,3 +19,18 @@
     pr_ref:  # 25ab
     description: "Repro (dev 77cca016e9): record Point(int X,int Y) { public int M() { return Helper(); } int Helper() {...} } plus class Other { public int Helper() {...} } -> symbols M, Helper (no Point, no Point. qualifier), and calls M -> Other.Helper. Consequence: record methods are unfindable by qualified name, and their calls are attributed to an unrelated class, so Point.Helper looks dead and Other.Helper gains a false caller. Likely cause: the C# analyzer's enclosing-class walk (_get_enclosing_class) omits record_declaration; the type-emission path probably omits it too. Analogue of WI-fonaz (PHP traits/enums) fixed in PR #2092; check record struct as well."  # 25ab
     fields: {}  # 25ab
+- op: update  # 2249
+  at: '2026-11-09T05:46:21Z'  # 2249
+  by: agent  # 2249
+  actor: jgstern_agent  # 2249
+  clock: 2  # 2249
+  nonce: '2249'  # 2249
+  set:  # 2249
+    status: done  # 2249
+- op: discuss  # b214
+  at: '2026-11-09T05:46:22Z'  # b214
+  by: agent  # b214
+  actor: jgstern_agent  # b214
+  clock: 3  # b214
+  nonce: b214  # b214
+  message: "Fixed in PR #2097. csharp.py: record_declaration (record, record class, record struct) goes through the class branch as kind record (bases incl. the primary-constructor base, attributes, modifiers; stable_id via scoped_stable_id as Java records); _get_enclosing_class walks _CSHARP_TYPE_DECLS. The misbinding had a second cause shared by plain classes: local_symbols keeps every method under its bare name, last in file wins; the same-file branch now prefers Scope.callee and sends a bare cross-type short-name hit through defer_bare_method_call('suffix'). Live repro, same file on dev and branch (record Point(int X,int Y){ M() calls Helper(); Helper() } + class Other{ Helper() }): dev -> symbols M, Helper (no Point), calls M -> Other.Helper; branch -> record Point, Point.M, Point.Helper, calls Point.M -> Point.Helper. Survey on branch: contains Point -> Point.M and Point.Helper, dead-code-maybe finds nothing. A plain class misbound the same way on dev (Point.M -> Other.Helper). CI round 1 failed coverage (csharp.py using-scope lines covered only by an unselected cross-package test); TestCSharpUsingScopeHints fixed it."  # b214
