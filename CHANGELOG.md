@@ -74,6 +74,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **PHP trait and enum methods own the calls in their bodies.**
 - **Java and Dart constructions reach the constructor**, which now belongs to its class.
 - **Ansible: role task files yield tasks, and tasks stop being emitted as handlers.**
+- **A Java call left unresolved keeps its rank** beside its type-use edge.
 - **A Scala class keeps its methods when its companion object comes first.**
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.

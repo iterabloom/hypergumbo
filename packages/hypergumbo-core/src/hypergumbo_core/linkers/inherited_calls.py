@@ -1298,7 +1298,8 @@ def _resolve_site2(
     3. **Type use** — method on neither: the call stays unresolved, and a
        language in ``_SITE2_TYPE_USE_LANGS`` (Java) gets a ``uses`` edge to
        the type symbol at 0.70, never a ``calls`` edge (module docstring,
-       Site 2).
+       Site 2). It names the caller, not the call stub, in
+       ``derived_from``, so the still-unresolved stub is not demoted.
 
     Step 2 requires the language to have an MRO walker; step 1 works
     without one.
@@ -1398,13 +1399,16 @@ def _resolve_site2(
     type_sym = class_symbols.get(type_class_id)
     if type_sym is None:  # pragma: no cover
         return None
+    # derived_from names the caller, not the call stub: ADR-0057 §14.1 reads
+    # a stub id there as "this resolution consumed it", and this edge leaves
+    # the call unresolved, so naming it demoted a live stub (WI-gupak).
     return Edge.create(
         src=edge.src, dst=type_sym.id, edge_type="uses",
         line=edge.line, confidence=_SITE_2_INHERITED_CONFIDENCE,
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_method",
         is_resolved=True,
-        derived_from=[edge.id, type_class_id],
+        derived_from=[edge.src, type_class_id],
     )
 
 
