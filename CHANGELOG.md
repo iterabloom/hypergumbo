@@ -153,6 +153,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`generate-architecture --check` recomputes source-tree counts.**
 - **Fixtures may not commit lockfiles or `==` pins.**
 - **The mypy strict surface shrinks 492 → 477.**
+- **The cron runs the readability tests where hypergumbo is installed.**
 
 ### Documentation
 
