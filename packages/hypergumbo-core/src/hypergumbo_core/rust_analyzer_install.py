@@ -136,8 +136,8 @@ def install_rust_analyzer(
 ) -> bool:
     """Install ``rust-analyzer`` via rustup, returning success.
 
-    When ``rustup`` is not on ``PATH`` the function prints a pointer to
-    the upstream install instructions and returns False — explicitly
+    When ``rustup`` is not on ``PATH`` the function prints the copy-paste
+    steps from :mod:`install_steps` and returns False — explicitly
     not attempting the static-binary-download fallback in this first
     cut (see module docstring).
 
@@ -149,11 +149,10 @@ def install_rust_analyzer(
 
     rustup = resolve("rustup")
     if rustup is None:
+        from .install_steps import rust_analyzer_install_steps
+
         print(
-            "Error: rustup is not on PATH. Install rustup from "
-            "https://rustup.rs/ first, or install rust-analyzer from "
-            "https://rust-lang.github.io/rust-analyzer/ manually and "
-            "ensure it is on PATH.",
+            f"Error: rustup is not on PATH.\n\n{rust_analyzer_install_steps(which=resolve)}",
             file=sys.stderr,
         )
         return False

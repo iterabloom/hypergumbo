@@ -82,6 +82,20 @@ class TestInvokeFailureModes:
         assert "RustAnalyzerNotInstalled" in log_msgs[0]
         assert "falling through to rust.py" in log_msgs[0]
 
+    def test_not_installed_prints_the_install_steps_once_per_process(self, tmp_path: Path) -> None:
+        """Steps name the machine, not the workspace: one copy however many crates fall through."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerNotInstalled("missing")
+
+        log_msgs: list[str] = []
+        for name in ("a", "b"):
+            (tmp_path / name).mkdir()
+            try_analyze_with_rust_analyzer(tmp_path / name, _fake_source_reader,
+                                           invoke=_invoke, log=log_msgs.append)
+        assert len(log_msgs) == 2
+        assert "rustup component add rust-analyzer" in log_msgs[0]
+        assert "rustup component add rust-analyzer" not in log_msgs[1]
+
     def test_invocation_failed_returns_none(self, tmp_path: Path) -> None:
         def _invoke(workspace, *, cwd):
             raise RustAnalyzerInvocationFailed("exit 2", b"err")
@@ -93,6 +107,7 @@ class TestInvokeFailureModes:
         )
         assert result.failed is True  # WI-luvud: was `is None`
         assert "RustAnalyzerInvocationFailed" in log_msgs[0]
+        assert "rustup component add" not in log_msgs[0]
 
     def test_no_output_returns_none(self, tmp_path: Path) -> None:
         def _invoke(workspace, *, cwd):

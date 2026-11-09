@@ -29,7 +29,7 @@ def _found(name: str) -> Optional[str]:
 
 
 def test_missing_binary_raises_not_installed(tmp_path: Path) -> None:
-    with pytest.raises(ScipPythonNotInstalled, match="npm install -g @sourcegraph/scip-python"):
+    with pytest.raises(ScipPythonNotInstalled, match=r"'scip-python' is not on PATH$"):
         run_scip_python_index(tmp_path, cwd=tmp_path, which=lambda n: None)
 
 

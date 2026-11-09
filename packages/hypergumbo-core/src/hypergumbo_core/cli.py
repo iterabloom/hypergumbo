@@ -3632,21 +3632,19 @@ def _ensure_scip_python_integration_or_exit() -> None:
 
 def _ensure_scip_python_binary_or_exit() -> None:
     """Exit 2 when the ``scip-python`` binary is missing or does not answer ``--version``."""
-    from .scip_python_install import (
-        SCIP_PYTHON_NPM_PACKAGE,
-        SCIP_PYTHON_PINNED_VERSION,
-        is_scip_python_available,
-    )
+    from .install_steps import scip_python_install_steps
+    from .scip_python_install import is_scip_python_available
 
     if is_scip_python_available():
         return
     print(
-        "hypergumbo: error: --backend scip-python requested but the "
-        "'scip-python' binary is not on PATH or does not run.\n"
+        "hypergumbo: error: --backend scip-python needs the 'scip-python' "
+        "binary.\n"
         "\n"
-        f"Install it with: npm install -g {SCIP_PYTHON_NPM_PACKAGE}@{SCIP_PYTHON_PINNED_VERSION}\n"
-        "(node and npm are required; scip-python bundles pyright and "
-        "executes nothing from the analysed repository).",
+        f"{scip_python_install_steps()}\n"
+        "\n"
+        "(scip-python bundles pyright and executes nothing from the "
+        "analysed repository.)",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -3699,18 +3697,16 @@ def _ensure_rust_analyzer_binary_or_exit() -> None:
     silently degraded to tree-sitter and the user thought they got
     SCIP analysis when they didn't.
     """
+    from .install_steps import rust_analyzer_install_steps
     from .rust_analyzer_install import is_rust_analyzer_available
 
     if is_rust_analyzer_available():
         return
     print(
-        "hypergumbo: error: --backend rust-analyzer requested but the "
-        "rust-analyzer binary is not functional on PATH.\n"
+        "hypergumbo: error: --backend rust-analyzer needs the "
+        "'rust-analyzer' binary.\n"
         "\n"
-        "A binary path resolves but invoking it with --version fails. "
-        "The most common cause is a rustup proxy whose component is "
-        "not installed: run 'rustup component add rust-analyzer', or "
-        "'hypergumbo install-rust-analyzer'.",
+        f"{rust_analyzer_install_steps()}",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -3888,7 +3884,9 @@ def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
             f"{'installed' if integration_installed else 'not installed'}",
         )
         if not available:
-            print("\nRun 'hypergumbo install-rust-analyzer' to install.")
+            from .install_steps import rust_analyzer_install_steps
+
+            print(f"\n{rust_analyzer_install_steps()}")
         if not integration_installed:
             print(
                 "\nThe SCIP backend also requires the "
@@ -10317,8 +10315,8 @@ For help on ALL commands:   hypergumbo --help --all"""
             "activates the SCIP-backed Rust analyzer (requires 'hypergumbo "
             "install-rust-analyzer'; executes the crate's build.rs). "
             "'scip-python' activates the SCIP-backed Python analyzer (pyright "
-            "via scip-python; executes nothing; needs `npm install -g "
-            "@sourcegraph/scip-python`). 'tree-sitter' turns every opt-in "
+            "via scip-python; executes nothing; needs the scip-python npm "
+            "package, and prints its install steps when it is missing). 'tree-sitter' turns every opt-in "
             "backend off for this run. Default: the environment "
             "(HYPERGUMBO_RUST_ANALYZER / HYPERGUMBO_SCIP_PYTHON), then the "
             "per-repository trust grant or the config tiers."

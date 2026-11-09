@@ -18,10 +18,11 @@ Two probes, mirroring :mod:`rust_analyzer_install`:
   imports, so ``--backend scip-python`` cannot silently no-op the way the
   Rust backend once did (BUG-06).
 
-No installer command ships yet. Installing is one line —
-``npm install -g @sourcegraph/scip-python@0.6.6`` — and a global npm
-prefix is a machine-level choice this tool should not make for a user;
-the CLI's error message names the line instead. The pinned version is the
+No installer command ships yet: a global npm prefix is a machine-level
+choice this tool should not make for a user. A run that cannot find the
+binary prints copy-paste steps instead, worked out for the machine by
+:mod:`install_steps` (Node.js when npm is absent, a no-root ``--prefix``
+install, the ``PATH`` lines when ``~/.local/bin`` is not on it). The pinned version is the
 one every recorded fixture was produced with (ADR-0057 §12).
 """
 from __future__ import annotations

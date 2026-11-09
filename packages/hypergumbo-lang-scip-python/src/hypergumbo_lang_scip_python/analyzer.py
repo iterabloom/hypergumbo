@@ -40,6 +40,7 @@ from hypergumbo_core.analyze.registry import (
     as_emitted,
     register_analyzer,
 )
+from hypergumbo_core.install_steps import scip_python_install_steps
 from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Edge, Symbol
 from hypergumbo_core.pass_silence import (
     BACKEND_DISABLED,
@@ -114,7 +115,10 @@ def analyze_python_with_scip_impl(
             scip_bytes, run_id=run.execution_id, log=run_recording_log(run, emit),
         )
     except (ScipPythonError, DecodeError) as exc:
-        emit(f"scip-python backend did not run on {repo_root}: {exc}")
+        # A backend switched on by config never meets the CLI's exit-2 gate,
+        # so this warning is where that user learns how to install it.
+        steps = f"\n\n{scip_python_install_steps()}" if isinstance(exc, ScipPythonNotInstalled) else ""
+        emit(f"scip-python backend did not run on {repo_root}: {exc}{steps}")
         return AnalysisResult(
             skipped=True,
             skip_reason=f"scip-python backend: {exc}",

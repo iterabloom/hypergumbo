@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`request_ingress`**: a top-level list of every request handler, which `verify-claims` reads instead of the capped entrypoint list.
 - **`hypergumbo catalog` names each pass's grammar package.**
 - **Go functions and methods record `meta.parameters`.**
+- **Missing scip-python or rust-analyzer prints copy-paste install steps.**
 
 ### Changed
 
