@@ -650,7 +650,7 @@ def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
     :func:`tmp_artifact_write` / :func:`tmp_artifact_mkdir` /
     :func:`tmp_artifact_rmtree`, for callers that need a whole throwaway
     directory rather than a named path — ``gitleaks.install_gitleaks`` (archive
-    extraction), ``gitleaks.scan_content`` (the scan's working directory),
+    extraction), ``gitleaks._scan`` (the scan's working directory),
     ``build_grammars.build_all_grammars`` (the default grammar build directory,
     which must be private: pip runs the ``setup.py`` written into it), the
     rust-analyzer run in ``graceful_degrade`` and scip-python's index scratch.

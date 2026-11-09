@@ -31,8 +31,13 @@ Public surface
   the binary is missing.
 - ``get_gitleaks_path``: resolve the binary, ours first then ``PATH``.
 - ``format_secret_warning``: render findings for the user.
-- ``SecretFinding``: the per-finding record returned by ``scan_content*``
-  and consumed by ``format_secret_warning``.
+- ``scan_content_cached``: the scan, cached by content hash; ``None`` when
+  no scan happened, which is never cached and never reads as clean. It is
+  the only entry point: ``scan_content``, which returned ``[]`` for both
+  "clean" and "not scanned", lost its last production caller in a473cd2bba
+  and was retired (WI-jovuf).
+- ``SecretFinding``: the per-finding record the scan returns, consumed by
+  ``format_secret_warning``.
 
 Filesystem discipline
 ---------------------
@@ -290,21 +295,6 @@ def install_gitleaks(quiet: bool = False) -> bool:
     return True  # pragma: no cover
 
 
-def scan_content(content: str) -> list[SecretFinding]:
-    """Scan content for potential secrets using gitleaks.
-
-    Args:
-        content: The text content to scan (e.g., sketch output)
-
-    Returns:
-        List of findings. Empty list if gitleaks unavailable, the scan could
-        not run or be read, or no secrets were found. A caller that must tell
-        "clean" from "not scanned" uses :func:`scan_content_cached`.
-    """
-    findings = _scan(content)
-    return [] if findings is None else findings
-
-
 def _scan(content: str) -> list[SecretFinding] | None:
     """The scan itself: findings, or ``None`` when it did not happen.
 
@@ -401,7 +391,7 @@ def scan_content_cached(
     cache_dir: "Optional[Path]",
     max_entries: int = 8,
 ) -> list[SecretFinding] | None:
-    """Cached wrapper around ``scan_content``; ``None`` when no scan happened.
+    """Cached wrapper around ``_scan``; ``None`` when no scan happened.
 
     Why this exists: gitleaks invocation costs ~8s on a small repo and
     dominates wall-clock for warm sketch runs that reuse cached analysis

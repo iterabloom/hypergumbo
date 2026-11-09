@@ -29,7 +29,7 @@ from hypergumbo_core.gitleaks import (
     is_gitleaks_available,
     install_gitleaks,
     uninstall_gitleaks,
-    scan_content,
+    _scan,
     _get_platform_arch,
     _get_download_url,
 )
@@ -114,10 +114,10 @@ class TestScanContent:
     """Tests for scanning content for secrets."""
 
     def test_scan_content_returns_empty_when_gitleaks_unavailable(self) -> None:
-        """Returns empty list when gitleaks not installed."""
+        """Not scanned (None) when gitleaks is not installed."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=None):
-            result = scan_content("some content with API_KEY=secret123")
-            assert result == []
+            result = _scan("some content with API_KEY=secret123")
+            assert result is None
 
     def test_scan_content_parses_findings(self) -> None:
         """Parses gitleaks JSON output into findings."""
@@ -137,7 +137,7 @@ class TestScanContent:
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("API_KEY=secret123")
+                findings = _scan("API_KEY=secret123")
 
         assert len(findings) == 1
         assert findings[0].file == "config.py"
@@ -152,7 +152,7 @@ class TestScanContent:
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("safe content")
+                findings = _scan("safe content")
 
         assert findings == []
 
@@ -164,37 +164,37 @@ class TestScanContent:
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("safe content")
+                findings = _scan("safe content")
 
         assert findings == []
 
     def test_scan_content_handles_timeout(self) -> None:
-        """Returns empty list on timeout."""
+        """Not scanned (None) on timeout."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("gitleaks", 30)):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
     def test_scan_content_handles_subprocess_error(self) -> None:
-        """Returns empty list on subprocess error."""
+        """Not scanned (None) on a subprocess error."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=subprocess.SubprocessError("failed")):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
     def test_scan_content_handles_invalid_json(self) -> None:
-        """Returns empty list on invalid JSON output."""
+        """Not scanned (None) on output that is not JSON."""
         mock_result = MagicMock()
         mock_result.stdout = b"not valid json"
         mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
 
 class TestFormatting:
@@ -422,36 +422,36 @@ class TestScanContentEdgeCases:
     """Additional edge cases for content scanning."""
 
     def test_scan_content_handles_os_error(self) -> None:
-        """Returns empty list on OSError."""
+        """Not scanned (None) on OSError."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=OSError("permission denied")):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
     def test_scan_content_handles_non_list_json(self) -> None:
-        """Returns empty list when JSON is not a list."""
+        """Not scanned (None) when the JSON is not a list."""
         mock_result = MagicMock()
         mock_result.stdout = json.dumps({"not": "a list"}).encode()
         mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
 
 class TestScanContentRealBinary:
     """Real-binary integration guard for the gitleaks invocation (INV-pirad).
 
-    Line coverage of ``scan_content`` is carried by the mocked
+    Line coverage of ``_scan`` is carried by the mocked
     ``TestScanContent`` suite. This class additionally runs the ACTUAL
     gitleaks binary to catch external-CLI *contract* drift that mocked
     ``subprocess.run`` tests structurally cannot — specifically the
     gitleaks 8.30+ regression where ``detect --pipe`` silently ignores
     stdin and scans the current working directory instead, turning
-    ``scan_content`` into a no-op that always returns ``[]`` (INV-pirad).
+    the scan into a no-op that always returns ``[]`` (INV-pirad).
 
     A mocked-args assertion would pass even against the broken invocation;
     only feeding a known secret through the real binary proves the scan
@@ -472,12 +472,12 @@ class TestScanContentRealBinary:
         reason="gitleaks binary not installed (opt-in extra)",
     )
     def test_real_gitleaks_detects_known_secret(self) -> None:
-        """The real binary must detect a known secret fed via scan_content.
+        """The real binary must detect a known secret fed via _scan.
 
         An empty result here means the stdin contract broke again
         (the INV-pirad regression).
         """
-        findings = scan_content(f"aws_access_key_id = {self._AWS_VECTOR}\n")
+        findings = _scan(f"aws_access_key_id = {self._AWS_VECTOR}\n")
         assert findings, (
             "real gitleaks returned no findings for a known AWS test "
             "vector — the secret scan is a no-op (INV-pirad regression: "
@@ -493,7 +493,7 @@ class TestScanContentRealBinary:
         """Secret-free content yields no findings — proves the scan ran and
         discriminated, rather than returning ``[]`` because it never read
         stdin."""
-        findings = scan_content("def hello():\n    return 'world'\n")
+        findings = _scan("def hello():\n    return 'world'\n")
         assert findings == []
 
 
@@ -510,7 +510,7 @@ class TestScanContentRealBinary:
             '[extend]\nuseDefault = true\n[allowlist]\nregexes = ["AKIA[A-Z0-9]+"]\n'
         )
         monkeypatch.chdir(tmp_path)
-        findings = scan_content(f"aws_access_key_id = {self._AWS_VECTOR}\n")
+        findings = _scan(f"aws_access_key_id = {self._AWS_VECTOR}\n")
         assert findings, "the working directory's .gitleaks.toml hid the finding"
 
     @pytest.mark.skipif(
@@ -558,7 +558,7 @@ class TestScanRunsInADirectoryOfItsOwn:
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=fake_run):
-                assert scan_content("API_KEY=secret123") == []
+                assert _scan("API_KEY=secret123") == []
         assert "argv" in seen, "gitleaks was never invoked"  # reach
         return seen
 
