@@ -27,6 +27,16 @@ Edges Extracted
 - **constrains**: References to constraints files (-c)
 - **depends_on**: Package dependency edges
 
+Every edge starts at the file's own id (``make_file_id``). A ``depends_on``
+ends at the requirement symbol the same line declares, as package.json's
+project depends on its dependency symbols; an ``includes`` / ``constrains``
+ends at the named file's id, its path resolved against the including file's
+directory as pip resolves it (``meta.include_file`` keeps the path as
+written). WI-tikon: the endpoints were hand-built strings
+(``requirements:<path>``, ``pypi:package:<name>``, ``vcs:package:<name>``,
+``requirements:file:<path>``), not ids, so finalize minted them as
+``<unknown>``-path external stand-ins, an in-tree manifest among them.
+
 Why This Design
 ---------------
 - requirements.txt is ubiquitous in Python projects
@@ -37,6 +47,7 @@ Why This Design
 
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -48,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_doc_symbol_ids,
+    make_file_id,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -227,8 +239,8 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         analysis.symbols.append(symbol)
 
         edge = Edge.create(
-            src=f"requirements:{rel_path}",
-            dst=f"pypi:package:{package_name}",
+            src=make_file_id("requirements", str(rel_path)),
+            dst=symbol_id,
             edge_type="depends_on",
             line=node.start_point[0] + 1,
             origin=PASS_ID,
@@ -312,8 +324,8 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         if package_name:
             edge = Edge.create(
-                src=f"requirements:{rel_path}",
-                dst=f"vcs:package:{package_name}",
+                src=make_file_id("requirements", str(rel_path)),
+                dst=symbol_id,
                 edge_type="depends_on",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
@@ -347,10 +359,15 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         # Handle -r (requirements) and -c (constraints)
         if option in ("-r", "--requirement", "-c", "--constraint") and option_path:
             edge_type = "includes" if option in ("-r", "--requirement") else "constrains"
+            # pip reads the path relative to the file naming it.
+            target = posixpath.normpath(
+                posixpath.join(posixpath.dirname(str(rel_path)), option_path)
+            )
             edge = Edge.create(
-                src=f"requirements:{rel_path}",
-                dst=f"requirements:file:{option_path}",
+                src=make_file_id("requirements", str(rel_path)),
+                dst=make_file_id("requirements", target),
                 edge_type=edge_type,
+                meta={"include_file": option_path},
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
