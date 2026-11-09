@@ -5,9 +5,11 @@
 --output FILE`` writes a SCIP index for a Python project; pyright resolves the project's own
 modules and whatever is importable from the invoking interpreter's
 environment (so a project analysed inside its own virtualenv gets its
-dependencies typed too). It executes NOTHING from the project — static
+dependencies typed too). It runs none of the project's code — static
 inference only — which is why this backend's opt-in is a preference and
-not a trust grant.
+not a trust grant. It does launch pip and python from ``PATH`` to list the
+installed packages; ``hypergumbo_core.safety_zones.backend_index_scip_python``
+says which, and from where.
 
 The project goes in ``--cwd``. scip-python 0.6.6 takes no positional
 project: handed one, it ignores it, indexes its own working directory and

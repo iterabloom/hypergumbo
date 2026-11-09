@@ -72,7 +72,8 @@ How to use — the full wrapper inventory, by zone:
 - **analyser_backend** — the opt-in SCIP indexers, which READ the analysed
   repository and act on it, so they sit outside ``repo_inspection`` (whose
   split trigger is exactly that): :func:`backend_index_scip_python` (static
-  inference, executes nothing from the project) and
+  inference: runs none of the project's code, though it launches pip and
+  python from ``PATH``) and
   :func:`backend_index_rust_analyzer`, which EXECUTES the project's
   ``build.rs`` and proc macros. One wrapper each, so a claim can permit one
   and prohibit the other (INV-tusos).
@@ -846,9 +847,16 @@ def backend_index_scip_python(argv: list[str], **kwargs: Any) -> "subprocess.Com
     is enabled -- ``--backend scip-python``, ``HYPERGUMBO_SCIP_PYTHON``, or
     ``[backends] scip_python`` in the user's config.toml OR the analysed repo's
     own ``.hypergumbo.toml``, so a repository can turn this launch on for
-    itself. Static inference: it reads every Python file and executes nothing
-    from the project, which is why a preference opt-in is ADR-0045-consistent.
-    Writes only its index into a ``tmp_artifact`` scratch directory.
+    itself. Static inference: it reads every Python file and runs none of the
+    project's code, which is why a preference opt-in is ADR-0045-consistent.
+    It does launch programs of its own. Run without ``--environment``, which
+    hypergumbo does not pass, scip-python 0.6.6 changes into the project
+    directory and runs ``pip3`` (else ``pip``) ``list --format=json``, then
+    ``python3`` (else ``python``) on a package-metadata script it writes under
+    the system temp directory and removes, falling back to ``pip show -f``.
+    Each is resolved on ``PATH``, so a relative ``PATH`` entry would resolve
+    inside the analysed repository. It writes its index into a
+    ``tmp_artifact`` scratch directory.
     """
     _safety_zone_barrier()
     return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603

@@ -329,7 +329,9 @@ modules:
       count: 1
       zone: analyser_backend
       target: scip-python index --cwd <project> ... --output <tmp>/index.scip (static inference;
-        executes nothing from the project)
+        runs none of the project's code; from the project directory it launches pip3/pip list and
+        show, and python3/python on a package-metadata script it writes to the system temp dir,
+        each found on PATH)
       commands:
       - <analysis> with --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or [backends] scip_python
         in config.toml / the analysed repo's .hypergumbo.toml
