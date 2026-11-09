@@ -1,0 +1,36 @@
+- op: create  # 0bdc
+  at: '2026-11-09T05:46:39Z'  # 0bdc
+  by: agent  # 0bdc
+  actor: jgstern_agent  # 0bdc
+  clock: 1  # 0bdc
+  nonce: 0bdc  # 0bdc
+  data:  # 0bdc
+    kind: work_item  # 0bdc
+    title: "gitleaks.scan_content has had no production caller since a473cd2bba, and the full-suite test-only-reachability ratchet fails on it"  # 0bdc
+    status: todo_hard  # 0bdc
+    priority: 2  # 0bdc
+    parent:  # 0bdc
+    tags:  # 0bdc
+    - ci  # 0bdc
+    - testing  # 0bdc
+    isbefore: []  # 0bdc
+    duplicate_of: []  # 0bdc
+    not_duplicate_of: []  # 0bdc
+    pr_ref:  # 0bdc
+    description: "Full-suite runs 6118, 6131, 6149: 'FAIL: 1 callable(s) are newly reachable only from their own tests: + gitleaks.py::scan_content'. a473cd2bba (11-06) switched scan_content_cached to the new _scan, leaving scan_content called only by test_gitleaks.py (grep of packages/*/src and scripts: no caller). Its contract returns [] both for clean and for not-scanned, the ambiguity that a473cd2bba and WI-rapuh removed elsewhere. The ratchet says to wire it to production or retire it and forbids raising the baseline. Likely fix: retire it and move its tests to _scan / scan_content_cached. Consequence: the full-suite cron is red on self-tree-validation every run (together with WI-tikon's id_format pair)."  # 0bdc
+    fields: {}  # 0bdc
+- op: update  # f5e8
+  at: '2026-11-09T11:13:27Z'  # f5e8
+  by: agent  # f5e8
+  actor: jgstern_agent  # f5e8
+  clock: 2  # f5e8
+  nonce: f5e8  # f5e8
+  set:  # f5e8
+    status: done  # f5e8
+- op: discuss  # 7c46
+  at: '2026-11-09T11:13:27Z'  # 7c46
+  by: agent  # 7c46
+  actor: jgstern_agent  # 7c46
+  clock: 3  # 7c46
+  nonce: 7c46  # 7c46
+  message: "Fixed in PR #2100: gitleaks.scan_content retired (its [] meant both clean and not scanned; scan_content_cached on _scan is the only entry). Its tests now call _scan, and the six failure cases assert None instead of []. Live repro with the cron's own checker: scripts/check-test-only-reachability on a local self-tree map of dev 48eacd0229 -> rc=1, 'FAIL: 1 callable(s) are newly reachable only from their own tests: + gitleaks.py::scan_content'; on a map of the branch -> rc=0, no FAIL line. Coverage checked as CI measures it: the manifest's core tests alone leave gitleaks.py and safety_zones.py at 100%. The cron itself has not run on it yet."  # 7c46
