@@ -1,0 +1,21 @@
+- op: create  # 6074
+  at: '2026-11-09T01:44:17Z'  # 6074
+  by: agent  # 6074
+  actor: jgstern_agent  # 6074
+  clock: 1  # 6074
+  nonce: '6074'  # 6074
+  data:  # 6074
+    kind: work_item  # 6074
+    title: "groovy: enum methods come out as unqualified functions and bind calls to another class's same-named method"  # 6074
+    status: todo_hard  # 6074
+    priority: 2  # 6074
+    parent:  # 6074
+    tags:  # 6074
+    - analyzer  # 6074
+    - analysis_quality  # 6074
+    isbefore: []  # 6074
+    duplicate_of: []  # 6074
+    not_duplicate_of: []  # 6074
+    pr_ref:  # 6074
+    description: "Repro (dev 77cca016e9): enum Color { RED, GREEN; String label() { return helper() }; String helper() {...} } plus class Other { String helper() {...} } -> label and helper emitted as kind function with no Color. qualifier, and calls label -> Other.helper. Consequence: enum methods look like free functions, and their calls land on an unrelated class, so Color.helper looks dead and Other.helper gains a false caller. Likely cause: _get_enclosing_class omits enum_declaration. Analogue of WI-fonaz (PHP) and the C# record item."  # 6074
+    fields: {}  # 6074

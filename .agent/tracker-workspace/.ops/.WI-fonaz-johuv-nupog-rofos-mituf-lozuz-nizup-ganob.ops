@@ -19,3 +19,18 @@
     pr_ref:  # d2c0
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _get_enclosing_function_php (php.py:476) finds the owner with _get_enclosing_class, which matches class_declaration only (php.py:280). Fixture: trait T::a and enum E2::m each give `calls a.php -> helper` and no T.a -> T.b or E2.m -> E2.n; a class method in the same file gets its edges. r16, v06."  # d2c0
     fields: {}  # d2c0
+- op: update  # 4869
+  at: '2026-11-09T01:44:11Z'  # 4869
+  by: agent  # 4869
+  actor: jgstern_agent  # 4869
+  clock: 2  # 4869
+  nonce: '4869'  # 4869
+  set:  # 4869
+    status: done  # 4869
+- op: discuss  # 04bc
+  at: '2026-11-09T01:44:11Z'  # 04bc
+  by: agent  # 04bc
+  actor: jgstern_agent  # 04bc
+  clock: 3  # 04bc
+  nonce: 04bc  # 04bc
+  message: "Fixed in PR #2092. php.py: the class-only _get_enclosing_class is gone; all four call sites use _enclosing_type_name, which covers traits and enums. Live repro on dev: trait Greets { greet() calls $this->name() } and enum Suit { label() calls $this->color() } -> calls edges Greets.greet -> Greets.name and Suit.label -> Suit.color (no edges before). Tests: TestPhpTraitAndEnumCallers. The PR's first CI round failed per-package coverage (php.py:1179 covered only cross-package); a direct test in test_php.py fixed it."  # 04bc

@@ -19,3 +19,18 @@
     pr_ref:  # a889
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. Step 3 emits uses with is_resolved=True, derived_from=[edge.id, type_class_id] (inherited_calls.py:1396-1406); the linker has supersedes_consumed_stub=True (:954); finalize._demote_stubs_named_as_consumed (:492-532) never checks edge type. Java OwnerRepository extends JpaRepository, repo.save(o): the stub to java:external:...:save comes out rank_score 0.25 with superseded_by the uses edge. WI-jomik measured 620 such edges on jedis. r18, v07."  # a889
     fields: {}  # a889
+- op: update  # 5084
+  at: '2026-11-09T01:44:11Z'  # 5084
+  by: agent  # 5084
+  actor: jgstern_agent  # 5084
+  clock: 2  # 5084
+  nonce: '5084'  # 5084
+  set:  # 5084
+    status: done  # 5084
+- op: discuss  # ffbf
+  at: '2026-11-09T01:44:11Z'  # ffbf
+  by: agent  # ffbf
+  actor: jgstern_agent  # ffbf
+  clock: 3  # ffbf
+  nonce: ffbf  # ffbf
+  message: "Fixed in PR #2095. inherited_calls.py Site-2 step 3 (type use, call left unresolved) names the caller, not the call stub, in derived_from; steps 1 and 2, which resolve the call, still name the stub. Live repro, same Java repo on dev and branch (OwnerRepository extends CrudRepository; OwnerController calls owners.save(...) and repo.save(...)): dev -> both save stubs rank_score 0.25 with meta.superseded_by the uses edge (origin inherited-calls-linker); branch -> both stubs rank_score 0.5, no superseded_by, uses edges derived_from [caller, OwnerRepository]. Test: TestSite2TypeUseDoesNotSupersedeTheCall runs finalize.demote_superseded_stubs."  # ffbf

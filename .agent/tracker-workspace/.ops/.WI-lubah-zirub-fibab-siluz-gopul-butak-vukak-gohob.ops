@@ -19,3 +19,18 @@
     pr_ref:  # 9e4d
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. in_tasks / in_handlers are set only from a play's tasks:/handlers: key (yaml_ansible.py:365-370) and names are read only under them (:395). roles/web/tasks/main.yml with two named tasks gives only a file symbol; most real Ansible tasks live in role files. r14, v05, b01."  # 9e4d
     fields: {}  # 9e4d
+- op: update  # b1f6
+  at: '2026-11-09T01:44:11Z'  # b1f6
+  by: agent  # b1f6
+  actor: jgstern_agent  # b1f6
+  clock: 2  # b1f6
+  nonce: b1f6  # b1f6
+  set:  # b1f6
+    status: done  # b1f6
+- op: discuss  # 4e3c
+  at: '2026-11-09T01:44:11Z'  # 4e3c
+  by: agent  # 4e3c
+  actor: jgstern_agent  # 4e3c
+  clock: 3  # 4e3c
+  nonce: 4e3c  # 4e3c
+  message: "Fixed in PR #2094. yaml_ansible.py: a task's kind comes from the section key that holds its list (_section_of: tasks/pre_tasks/post_tasks -> task, handlers -> handler, block/rescue/always inherit from their owner); a file with no play takes its kind from a tasks/ or handlers/ path component. Live repro, same input on dev and branch: site.yml with pre_tasks, tasks, block/rescue and handlers, plus roles/web/tasks/main.yml and roles/web/handlers/main.yml. Dev: all five play entries emitted as handler, role files emit nothing. Branch: Update cache, Install nginx, Try deploy, Roll back -> task; Restart nginx -> handler; Copy config -> task; Reload web -> handler; a loop item named 'not a task' is not emitted. Tests: TestAnsibleTaskSections."  # 4e3c

@@ -1,0 +1,21 @@
+- op: create  # 25ab
+  at: '2026-11-09T01:44:12Z'  # 25ab
+  by: agent  # 25ab
+  actor: jgstern_agent  # 25ab
+  clock: 1  # 25ab
+  nonce: 25ab  # 25ab
+  data:  # 25ab
+    kind: work_item  # 25ab
+    title: "csharp: a record emits no type symbol, and its methods come out unqualified and bind calls to another class's same-named method"  # 25ab
+    status: todo_hard  # 25ab
+    priority: 2  # 25ab
+    parent:  # 25ab
+    tags:  # 25ab
+    - analyzer  # 25ab
+    - analysis_quality  # 25ab
+    isbefore: []  # 25ab
+    duplicate_of: []  # 25ab
+    not_duplicate_of: []  # 25ab
+    pr_ref:  # 25ab
+    description: "Repro (dev 77cca016e9): record Point(int X,int Y) { public int M() { return Helper(); } int Helper() {...} } plus class Other { public int Helper() {...} } -> symbols M, Helper (no Point, no Point. qualifier), and calls M -> Other.Helper. Consequence: record methods are unfindable by qualified name, and their calls are attributed to an unrelated class, so Point.Helper looks dead and Other.Helper gains a false caller. Likely cause: the C# analyzer's enclosing-class walk (_get_enclosing_class) omits record_declaration; the type-emission path probably omits it too. Analogue of WI-fonaz (PHP traits/enums) fixed in PR #2092; check record struct as well."  # 25ab
+    fields: {}  # 25ab

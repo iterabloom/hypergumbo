@@ -20,3 +20,18 @@
     pr_ref:  # a24d
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _scan never checks result.returncode; empty stdout hits `if not stdout or stdout == \"null\": return []` (gitleaks.py:368-369), so sketch prints 'Secret scan complete' and the cache stores findings: []. Reproduced with a fake gitleaks (echo error >&2; exit 1) via GITLEAKS_PATH: scan_content_cached('aws_secret=AKIA...') gives []. Same failure the recent secret-scan fix targeted, by another route; contradicts the Unreleased changelog line 'A secret scan that did not run says so and is never cached as clean'. r22, v09."  # a24d
     fields: {}  # a24d
+- op: update  # b663
+  at: '2026-11-09T01:44:10Z'  # b663
+  by: agent  # b663
+  actor: jgstern_agent  # b663
+  clock: 2  # b663
+  nonce: b663  # b663
+  set:  # b663
+    status: done  # b663
+- op: discuss  # 98c0
+  at: '2026-11-09T01:44:10Z'  # 98c0
+  by: agent  # 98c0
+  actor: jgstern_agent  # 98c0
+  clock: 3  # 98c0
+  nonce: 98c0  # 98c0
+  message: "Fixed in PR #2089. gitleaks.py _scan returns None on any non-zero exit (with --exit-code 0, findings never exit non-zero), so an unloadable config is a failed scan, never cached clean. Live repro against the real binary: GITLEAKS_CONFIG pointing at a missing file -> scan returned None and no cache file was written; with a valid config the same input reported aws-access-token. Production-path test: test_gitleaks.py real-binary test with a missing GITLEAKS_CONFIG."  # 98c0
