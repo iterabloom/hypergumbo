@@ -2589,3 +2589,63 @@ class TestKotlinCyclomaticComplexity:
         assert simple.cyclomatic_complexity == 1
         assert branchy.cyclomatic_complexity is not None
         assert branchy.cyclomatic_complexity >= 4
+
+
+class TestBareCallsStayInTheirType:
+    """WI-fajib: a bare call reaches its own type's method, never another's.
+
+    The simple-call path bound ``helper()`` to whatever the bare name found:
+    in one file ``local_symbols`` keeps every method under its short name, the
+    last declaration winning, and across files the resolver returned the only
+    candidate. Either way ``Point.m`` called ``Other.helper``, a class it has
+    no relation to. A cross-type hit is now withheld (INV-fahub), with the
+    enclosing class stamped for the inherited-calls linker.
+    """
+
+    def _calls(self, tmp_path: Path, files: dict[str, str]):
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        for name, code in files.items():
+            (tmp_path / name).write_text(code)
+        result = analyze_kotlin(tmp_path)
+        names = {s.id: s.name for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        return {(names.get(e.src), names.get(e.dst)) for e in calls}, calls
+
+    def test_same_file_prefers_the_enclosing_type(self, tmp_path: Path) -> None:
+        pairs, _ = self._calls(tmp_path, {"A.kt": (
+            "class Point {\n"
+            "    fun m(): Int { return helper() }\n"
+            "    fun helper(): Int = 1\n"
+            "}\n"
+            "class Other {\n"
+            "    fun helper(): Int = 2\n"
+            "}\n"
+        )})
+        assert ("Point.m", "Point.helper") in pairs
+        assert ("Point.m", "Other.helper") not in pairs
+
+    @pytest.mark.parametrize("layout", ["one_file", "two_files"])
+    def test_another_types_method_is_withheld(self, tmp_path: Path, layout: str) -> None:
+        point = "class Point {\n    fun m(): Int { return helper() }\n}\n"
+        other = "class Other {\n    fun helper(): Int = 2\n}\n"
+        files = ({"A.kt": point + other} if layout == "one_file"
+                 else {"P.kt": point, "O.kt": other})
+        pairs, calls = self._calls(tmp_path, files)
+        assert ("Point.m", "Other.helper") not in pairs
+        (call,) = [e for e in calls if e.meta and e.meta.get("enclosing_class")]
+        assert call.meta["enclosing_class"] == "Point"
+
+    def test_free_functions_and_companions_still_bind(self, tmp_path: Path) -> None:
+        pairs, _ = self._calls(tmp_path, {"A.kt": (
+            "class Outer {\n"
+            "    companion object { fun c() = 2 }\n"
+            "    fun useC() = c()\n"
+            "}\n"
+            "fun top() = 3\n"
+            "fun caller() = top()\n"
+            "class K {\n"
+            "    fun k() = top()\n"
+            "}\n"
+        )})
+        assert {("Outer.useC", "Outer.c"), ("caller", "top"), ("K.k", "top")} <= pairs
