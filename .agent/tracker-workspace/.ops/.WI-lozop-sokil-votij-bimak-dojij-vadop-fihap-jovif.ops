@@ -19,3 +19,18 @@
     pr_ref:  # f1f5
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. CONTAINABLE_KINDS (linkers/containment.py:122) omits constructor, so _may_be_contained rejects it; Java lands instantiates on the class (java.py:3747, :3759); construction.initializer_hops and construction_calls return [] on java and dart fixtures, [__init__ pair] on python. is_initializer already accepts kind constructor (symbol_kinds.py:912-913). Related to, not a duplicate of, WI-sujon. r26, v10."  # f1f5
     fields: {}  # f1f5
+- op: update  # e212
+  at: '2026-11-09T01:44:11Z'  # e212
+  by: agent  # e212
+  actor: jgstern_agent  # e212
+  clock: 2  # e212
+  nonce: e212  # e212
+  set:  # e212
+    status: done  # e212
+- op: discuss  # 3d22
+  at: '2026-11-09T01:44:11Z'  # 3d22
+  by: agent  # 3d22
+  actor: jgstern_agent  # 3d22
+  clock: 3  # 3d22
+  nonce: 3d22  # 3d22
+  message: "Fixed in PR #2093. containment.py: constructor added to CONTAINABLE_KINDS, so a constructor is contained by its class. Live repro: survey of a Java Main that runs new Runner(...) -> containment hop Runner -> Runner.Runner, and calls Main.go -> Runner.Runner at line 5. Test: TestConstructorsAreContained (Java, and Dart with new). Dart construction without new emits no edge at all; that is WI-sujon, still open."  # 3d22

@@ -1,0 +1,21 @@
+- op: create  # 25d5
+  at: '2026-11-09T01:44:23Z'  # 25d5
+  by: agent  # 25d5
+  actor: jgstern_agent  # 25d5
+  clock: 1  # 25d5
+  nonce: 25d5  # 25d5
+  data:  # 25d5
+    kind: work_item  # 25d5
+    title: "java: an @interface annotation type emits no symbol, and a type nested in it loses its qualifier"  # 25d5
+    status: todo_hard  # 25d5
+    priority: 3  # 25d5
+    parent:  # 25d5
+    tags:  # 25d5
+    - analyzer  # 25d5
+    - analysis_quality  # 25d5
+    isbefore: []  # 25d5
+    duplicate_of: []  # 25d5
+    not_duplicate_of: []  # 25d5
+    pr_ref:  # 25d5
+    description: "Repro (dev 77cca016e9): public @interface Tag { String value(); class Nested { void run() {} } } -> symbols Nested and Nested.run only: no Tag symbol, no Tag.value element, and Nested is not Tag.Nested. Consequence: annotation types are invisible to search/explain/dead-code, and a nested type's id can collide with a same-named top-level type. Found while fixing WI-fimim (PR #2091), whose export rule already treats annotation_type_body members as public."  # 25d5
+    fields: {}  # 25d5

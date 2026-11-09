@@ -19,3 +19,18 @@
     pr_ref:  # a9ac
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. Methods use `\"public\" in modifiers` (java.py:2100). public interface I { void run(); int K = 1; } gives method I.run is_exported False, field I.K True. dead-code-maybe reads is_exported (cli.py:9696-9702). r02, v02."  # a9ac
     fields: {}  # a9ac
+- op: update  # bf5b
+  at: '2026-11-09T01:44:10Z'  # bf5b
+  by: agent  # bf5b
+  actor: jgstern_agent  # bf5b
+  clock: 2  # bf5b
+  nonce: bf5b  # bf5b
+  set:  # bf5b
+    status: done  # bf5b
+- op: discuss  # 618e
+  at: '2026-11-09T01:44:10Z'  # 618e
+  by: agent  # 618e
+  actor: jgstern_agent  # 618e
+  clock: 3  # 618e
+  nonce: 618e  # 618e
+  message: "Fixed in PR #2091. java.py _java_is_exported: public, or a direct member of an interface/annotation body that is not private. Live repro on dev: interface Shape { double area(); private double helper() {...} } -> Shape.area is_exported True, Shape.helper False (area was False before). Test: test_java.py::test_interface_members_are_implicitly_public. The same PR fixed an order-dependent test_java_records DDG test that failed on dev in isolation."  # 618e

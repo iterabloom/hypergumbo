@@ -1,0 +1,21 @@
+- op: create  # bb7a
+  at: '2026-11-09T01:44:28Z'  # bb7a
+  by: agent  # bb7a
+  actor: jgstern_agent  # bb7a
+  clock: 1  # bb7a
+  nonce: bb7a  # bb7a
+  data:  # bb7a
+    kind: work_item  # bb7a
+    title: "core: three source lines are uncovered when hypergumbo-core's tests run in isolation"  # bb7a
+    status: todo_hard  # bb7a
+    priority: 3  # bb7a
+    parent:  # bb7a
+    tags:  # bb7a
+    - ci  # bb7a
+    - testing  # bb7a
+    isbefore: []  # bb7a
+    duplicate_of: []  # bb7a
+    not_duplicate_of: []  # bb7a
+    pr_ref:  # bb7a
+    description: "Observed once, 2026-11-08, ./scripts/check-package-coverage core on branch jgstern-agent/fix/inherited-calls-site2-provenance (dev 77cca016e9 + one inherited_calls.py change): [core] FAILED with analyze/c_family.py:256, sketch.py:6657 and verify_claims.py:7319 uncovered. None of these files changed in that branch or in PRs #2089-#2094; I did not run the check on dev itself, so whether the gap predates them or is order-dependent is not established. Consequence: CI checks only changed files, so the gap stays invisible until someone edits one of these files, and that unrelated PR then fails coverage. Next step: rerun on clean dev, then add core-local tests (or find which other-package test covers each line)."  # bb7a
+    fields: {}  # bb7a

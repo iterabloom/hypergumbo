@@ -20,3 +20,18 @@
     pr_ref:  # 8ebd
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _relativize_ir_paths (cli.py:13105) runs before run_all_linkers (cli.py:13237); memberlist_paths (go_memberlist.py:160) holds absolute paths, so `sym.path in memberlist_paths` (:170) never matches and the linker returns early; :210 has the same mismatch. hypergumbo survey on a memberlist fixture: no dispatches_to, run record edges_emitted 0. Unit tests use absolute symbol paths. go_cobra.py:206 relativizes correctly. Same shape as WI-fukaf and WI-gimis. v10 (new)."  # 8ebd
     fields: {}  # 8ebd
+- op: update  # 65bd
+  at: '2026-11-09T01:44:10Z'  # 65bd
+  by: agent  # 65bd
+  actor: jgstern_agent  # 65bd
+  clock: 2  # 65bd
+  nonce: 65bd  # 65bd
+  set:  # 65bd
+    status: done  # 65bd
+- op: discuss  # b5e7
+  at: '2026-11-09T01:44:10Z'  # b5e7
+  by: agent  # b5e7
+  actor: jgstern_agent  # b5e7
+  clock: 3  # b5e7
+  nonce: b5e7  # b5e7
+  message: "Fixed in PR #2090. go_memberlist.py resolves a repo-relative Symbol.path against ctx.repo_root (_discovered_path) in both the delegate filter and the memberlist_files lookup. Live repro: hypergumbo survey on a memberlist repo emits Start -> Delegate.NotifyMsg, and the linker's run record shows edges_emitted 1 (was 0 in surveys; only unit tests with absolute paths saw edges). Test: TestRepoRelativeSymbolPaths."  # b5e7
