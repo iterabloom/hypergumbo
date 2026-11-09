@@ -224,7 +224,8 @@ its indexer through the declared analyser_backend zone (INV-tusos):
   - scip-python index. Static inference; runs none of the
     project's code. It launches its own pip and python, found on
     PATH and run in the project directory, to list installed
-    packages. Enabled by --backend scip-python, by
+    packages, with pip's upgrade check turned off so it makes no
+    network request. Enabled by --backend scip-python, by
     HYPERGUMBO_SCIP_PYTHON, or by [backends] scip_python in the
     user's config.toml or the analysed repository's own
     .hypergumbo.toml, so a repository can turn it on for itself.

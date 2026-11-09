@@ -128,6 +128,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **INI and `.properties` secrets print as `***`**, with no length or characters.
 - **Trust grants are private (0600) before they are written.**
 - **Commands skip paths outside their zone** instead of crashing.
+- **scip-python's own `pip list` never checks the package index for upgrades.**
 - **`add-extras` installs embeddings exactly as `install-embeddings` does.**
 
 #### hypergumbo's checks on itself
