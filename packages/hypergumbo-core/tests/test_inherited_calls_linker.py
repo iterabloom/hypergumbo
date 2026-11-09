@@ -3508,3 +3508,36 @@ class TestC3MergeDegradesOnAnInconsistentHierarchy:
 
         assert _c3_merge([["A", "B"], ["B", "A"]]) == ["A", "B"]
         assert _c3_merge([["X"], ["Y", "X"]]) == ["Y", "X"]  # consistent input is untouched
+
+
+class TestSite2TypeUseDoesNotSupersedeTheCall:
+    """WI-gupak: the Step-3 ``uses`` edge does not consume the call stub.
+
+    When the method is nowhere on the type's chain the call stays unresolved,
+    and the type-use edge only records that the caller uses the type. It named
+    the call stub in ``derived_from``, which ADR-0057 §14.1 reads as "this
+    resolution consumed that stub", so finalize halved the still-unresolved
+    call's rank and stamped it ``superseded_by`` a ``uses`` edge.
+    """
+
+    def test_the_stub_keeps_its_rank_and_is_not_superseded(self) -> None:
+        from hypergumbo_core.finalize import demote_superseded_stubs
+
+        repo = _java_cls("sym:java.OwnerRepository", "OwnerRepository")
+        caller = _java_caller()
+        stub = _unresolved_site2(
+            src_id=caller.id, callee_name="repo.save",
+            receiver_type_hint="OwnerRepository",
+        )
+        result = link_inherited_calls(LinkerContext(
+            repo_root=Path("/"), symbols=[repo, caller], edges=[stub],
+        ))
+        uses = [e for e in result.edges if e.edge_type == "uses"]
+        assert [e.dst for e in uses] == [repo.id]
+        assert stub.id not in uses[0].derived_from
+        rank_before = stub.rank_score
+
+        demote_superseded_stubs([repo, caller], [stub, *result.edges])
+
+        assert "superseded_by" not in (stub.meta or {})
+        assert stub.rank_score == rank_before
