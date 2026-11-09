@@ -2480,9 +2480,13 @@ def _extract_edges_from_file(
                         # The registry also holds each method under its bare
                         # name, so ``helper`` comes back an "exact" match for
                         # ``Other.helper``: by name it is short-name evidence.
+                        # An import naming the callee is not (``import
+                        # okhttp3.Headers.Companion.headersOf`` binds a bare
+                        # ``headersOf`` to ``Headers.headersOf``).
                         _match = (
                             "suffix"
                             if lookup_result.match_type == "exact"
+                            and import_hint is None
                             and _target is not None and _target.name != callee_name
                             else lookup_result.match_type
                         )
