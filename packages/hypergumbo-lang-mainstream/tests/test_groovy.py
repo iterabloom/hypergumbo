@@ -1494,3 +1494,30 @@ class TestGroovyEnumMembersAndBareCalls:
         ))
         assert ("K.a", "util") in calls
         assert ("K.b", "Other.helper") in calls
+
+
+class TestGroovyImportBoundBaseHints:
+    """The package and import facts the inheritance linker reads, from the
+    Groovy package's own tests: CI measures a changed file with the selected
+    tests of its package only, and the test that covered these lines
+    (``test_import_bound_external_bases``) is not selected for a groovy.py
+    change."""
+
+    def test_package_imports_alias_and_wildcard(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "T.groovy").write_text(
+            "package org.acme.app\n"
+            "import groovy.lang.Script\n"
+            "import org.acme.util.*\n"
+            "import org.acme.Base as B\n"
+            "class T extends Script {}\n"
+            "class V extends B {}\n"
+            "class W extends Local {}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        classes = {s.name: s for s in result.symbols if s.kind == "class"}
+        assert classes["T"].qualified_name == "org.acme.app.T"
+        assert classes["T"].meta["base_class_imports"] == {"Script": "groovy.lang.Script"}
+        assert classes["V"].meta["base_class_imports"] == {"B": "org.acme.Base"}
+        assert "base_class_imports" not in classes["W"].meta
