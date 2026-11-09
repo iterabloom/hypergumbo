@@ -27,3 +27,10 @@
   clock: 2  # 3871
   nonce: '3871'  # 3871
   message: "Cross-ref 2026-11-04: the full-suite cron is red on self-tree-validation (id_format|warning 2 over baseline 0, pipeline 6005 on dev 7a53fa053f) and the two violating ids are THIS defect: pypi:<unknown>:0-0:package:external_symbol and requirements:<unknown>:0-0:requirements:external_symbol, the finalize fallback for the hand-built depends_on endpoints. Reproduced on a local scip-python self map with check-self-tree-validation; evidence ~/hypergumbo_lab_notebook/muzah_11042026/id_format_violations.txt. Fixing this item turns the cron step green; the baseline must not be raised."  # 3871
+- op: discuss  # 90da
+  at: '2026-11-09T05:46:45Z'  # 90da
+  by: agent  # 90da
+  actor: jgstern_agent  # 90da
+  clock: 3  # 90da
+  nonce: 90da  # 90da
+  message: "This item's two ids are why the full-suite cron's self-tree-validation step fails: 'id_format|warning: 2 > baseline 0' with record_ids pypi:<unknown>:0-0:package:external_symbol and requirements:<unknown>:0-0:requirements:external_symbol (local self-tree map on dev 48eacd0229 reproduces both). First seen in full-suite run 6021 (603af289, 11-04); run 5962 (3b6463d5) had an empty violation matrix; the INV-saruf fix 1d567a5674 is in 603af289 and not in 3b6463d5. Red every run since (6021, 6086, 6118, 6131, 6149)."  # 90da

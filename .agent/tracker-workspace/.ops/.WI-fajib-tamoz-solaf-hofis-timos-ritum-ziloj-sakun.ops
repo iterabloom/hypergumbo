@@ -1,0 +1,21 @@
+- op: create  # a03a
+  at: '2026-11-09T05:46:22Z'  # a03a
+  by: agent  # a03a
+  actor: jgstern_agent  # a03a
+  clock: 1  # a03a
+  nonce: a03a  # a03a
+  data:  # a03a
+    kind: work_item  # a03a
+    title: "kotlin: a bare call binds to the last same-named method in the file, another class's included (same-file local_symbols has no INV-fahub guard)"  # a03a
+    status: todo_hard  # a03a
+    priority: 2  # a03a
+    parent:  # a03a
+    tags:  # a03a
+    - analyzer  # a03a
+    - analysis_quality  # a03a
+    isbefore: []  # a03a
+    duplicate_of: []  # a03a
+    not_duplicate_of: []  # a03a
+    pr_ref:  # a03a
+    description: "Repro (dev, 2026-11-08): class Point { fun m(): Int { return helper() }; fun helper(): Int = 1 } + class Other { fun helper(): Int = 2 } in one file -> calls Point.m -> Other.helper. Consequence: Point.helper looks dead and Other.helper gains a false caller whenever a same-file class declared later shares the method name. Cause, same as the C# and Groovy fixes (PRs #2097, #2098): the same-file branch 'if callee_name in local_symbols: callee = local_symbols[callee_name]' binds the bare short name, which the last declaration owns, without defer_bare_method_call. Fix shape: prefer local_symbols[f'{scope}.{callee}'] (receiver, else enclosing type), and send a bare cross-type short-name hit through defer_bare_method_call('suffix'). Same branch exists in ruby.py (checked: binds correctly, Point#m -> Point#helper) and julia.py (not checked)."  # a03a
+    fields: {}  # a03a

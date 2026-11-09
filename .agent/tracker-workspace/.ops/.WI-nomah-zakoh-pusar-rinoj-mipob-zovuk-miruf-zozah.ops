@@ -19,3 +19,18 @@
     pr_ref:  # 6074
     description: "Repro (dev 77cca016e9): enum Color { RED, GREEN; String label() { return helper() }; String helper() {...} } plus class Other { String helper() {...} } -> label and helper emitted as kind function with no Color. qualifier, and calls label -> Other.helper. Consequence: enum methods look like free functions, and their calls land on an unrelated class, so Color.helper looks dead and Other.helper gains a false caller. Likely cause: _get_enclosing_class omits enum_declaration. Analogue of WI-fonaz (PHP) and the C# record item."  # 6074
     fields: {}  # 6074
+- op: update  # cbb5
+  at: '2026-11-09T05:46:22Z'  # cbb5
+  by: agent  # cbb5
+  actor: jgstern_agent  # cbb5
+  clock: 2  # cbb5
+  nonce: cbb5  # cbb5
+  set:  # cbb5
+    status: done  # cbb5
+- op: discuss  # a897
+  at: '2026-11-09T05:46:22Z'  # a897
+  by: agent  # a897
+  actor: jgstern_agent  # a897
+  clock: 3  # a897
+  nonce: a897  # a897
+  message: "Fixed in PR #2098. groovy.py: _get_enclosing_class walks _GROOVY_TYPE_DECLS (enum was missing), and the same-file local_symbols branch gets the WI-zukat treatment (prefer Scope.callee; bare cross-type short-name hit through defer_bare_method_call). Live repro, dev vs branch: enum Color { RED, GREEN; label() calls helper(); helper() } + class Other { helper() } -> dev methods label, helper and calls label -> Other.helper; branch Color.label, Color.helper and Color.label -> Color.helper. Plain class K { a() calls helper(); helper() } + Other.helper: dev K.a -> Other.helper, branch K.a -> K.helper. Other.helper() from K with K.helper declared last: dev K.a -> K.helper, branch K.a -> Other.helper. Tests: TestGroovyEnumMembersAndBareCalls. CI round 1 failed coverage the same way as #2097 (groovy.py package/import hint lines covered only cross-package); TestGroovyImportBoundBaseHints fixed it. NOT fixed (grammar, tree-sitter-groovy 0.1.2): an enum with no ';' after its constants closes early and its methods parse as top-level function_definition, emitted as unqualified functions; filed separately."  # a897

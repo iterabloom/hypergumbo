@@ -1,0 +1,21 @@
+- op: create  # 509b
+  at: '2026-11-09T05:46:33Z'  # 509b
+  by: agent  # 509b
+  actor: jgstern_agent  # 509b
+  clock: 1  # 509b
+  nonce: 509b  # 509b
+  data:  # 509b
+    kind: work_item  # 509b
+    title: "allowlist-commands-trace has never passed in the full-suite cron: install-rust-analyzer and add-extras exit 1 because CI has no rustup and the trace has no rustup stand-in"  # 509b
+    status: todo_hard  # 509b
+    priority: 2  # 509b
+    parent:  # 509b
+    tags:  # 509b
+    - ci  # 509b
+    - testing  # 509b
+    isbefore: []  # 509b
+    duplicate_of: []  # 509b
+    not_duplicate_of: []  # 509b
+    pr_ref:  # 509b
+    description: "Full-suite runs 6118, 6131, 6149 (first cron after the gate landed in aab55e9178 on 11-06): 'NOT CHECKED: variant install-rust-analyzer did not run to completion' and the same for add-extras, so check-allowlist-commands --trace exits 1 although every entry's commands match. Cause: rust_analyzer_install.install_rust_analyzer returns False before its (stubbed) subprocess call when shutil.which('rustup') is None; run_trace stands in rust-analyzer, gitleaks and sentence_transformers but not rustup. Live repro: the two variants exit 0 locally with ~/.cargo/bin on PATH and exit 1 (HG_TRACE_RC=1, 'Error: rustup is not on PATH') with it removed. Also means --stand-ins, which claims to reproduce the cron's view, passes on any machine with rustup. Fix shape: add rustup to the stand-in set (HG_TRACE_STUB already fakes subprocess.run), or patch the which in the variant. Consequence: the full-suite cron is red on this step every run."  # 509b
+    fields: {}  # 509b
