@@ -1480,3 +1480,17 @@ class TestGroovyEnumMembersAndBareCalls:
         ))
         assert ("K.a", "Other.helper") in calls
         assert ("K.a", "K.helper") not in calls
+
+    def test_a_free_function_and_a_variable_receiver_still_bind(self, tmp_path: Path) -> None:
+        _, calls = self._calls(tmp_path, (
+            "def util() { return 1 }\n"
+            "class Other {\n"
+            "    String helper() { return \"y\" }\n"
+            "}\n"
+            "class K {\n"
+            "    def a() { return util() }\n"
+            "    String b(Other o) { return o.helper() }\n"
+            "}\n"
+        ))
+        assert ("K.a", "util") in calls
+        assert ("K.b", "Other.helper") in calls
