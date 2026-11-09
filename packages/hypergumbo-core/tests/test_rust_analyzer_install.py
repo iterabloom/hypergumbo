@@ -137,6 +137,7 @@ class TestInstall:
         assert ok is False
         err = capsys.readouterr().err
         assert "rustup is not on PATH" in err
+        assert "rustup component add rust-analyzer" in err and "Reference: https://" in err
 
     def test_successful_install(
         self, capsys: pytest.CaptureFixture[str],
@@ -358,6 +359,7 @@ class TestCmdInstallRustAnalyzer:
         out = capsys.readouterr().out
         assert "not installed" in out
         assert "hypergumbo install-rust-analyzer" in out
+        assert "rust-analyzer --version" in out and "Reference: https://" in out
 
     def test_install_success_returns_zero(self) -> None:
         from argparse import Namespace

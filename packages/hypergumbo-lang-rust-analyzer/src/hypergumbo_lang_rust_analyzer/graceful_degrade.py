@@ -62,6 +62,7 @@ from typing import Callable, List, Optional, Protocol, Tuple
 
 from google.protobuf.message import DecodeError
 
+from hypergumbo_core.install_steps import rust_analyzer_install_steps
 from hypergumbo_core.ir import Edge, Symbol
 from hypergumbo_core.safety_zones import tmp_artifact_dir
 
@@ -305,9 +306,15 @@ def try_analyze_with_rust_analyzer(
                     detail = _format_no_output(exc)
                 else:
                     detail = str(exc)
+                # The steps describe the machine, not the workspace: print
+                # them with the first workspace that finds the binary missing.
+                steps = ""
+                if isinstance(exc, RustAnalyzerNotInstalled) and "install-steps" not in _LOGGED_FALLBACK:
+                    _LOGGED_FALLBACK.add("install-steps")
+                    steps = f"\n\n{rust_analyzer_install_steps()}"
                 emit(
                     f"rust-analyzer backend unavailable for {workspace}: "
-                    f"{type(exc).__name__}: {detail} — falling through to rust.py",
+                    f"{type(exc).__name__}: {detail} — falling through to rust.py{steps}",
                 )
             # WI-luvud: the taxonomy already knows which state this is; before
             # this the information died here and all four became one ``None``.

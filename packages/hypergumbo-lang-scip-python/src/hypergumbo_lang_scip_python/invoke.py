@@ -90,10 +90,9 @@ def run_scip_python_index(
     resolve = which if which is not None else shutil.which
     resolved = resolve(scip_python_bin)
     if resolved is None:
-        raise ScipPythonNotInstalled(
-            f"'{scip_python_bin}' is not on PATH; install it with "
-            "npm install -g @sourcegraph/scip-python"
-        )
+        # The install steps live in the analyzer's warning, not here: this
+        # message becomes the pass's skip_reason in the emitted map.
+        raise ScipPythonNotInstalled(f"'{scip_python_bin}' is not on PATH")
     output = cwd / "index.scip"
     argv = [
         resolved, "index", "--cwd", str(project),
