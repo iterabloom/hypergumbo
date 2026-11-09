@@ -45,11 +45,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch no longer downloads embedding models**: run `hypergumbo install-embeddings` first.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
-- **Internal renames** of taint-side gates and pass-silence states.
+- **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.
 
 ### Removed
 
-- **Unused code**: `catalog.validate_pass_dependencies` (ADR-0056, ADR-0030), `DataModel.kind`, `DataModelKind`, `DataModel.to_dict()`.
+- **Unused code**: `catalog.validate_pass_dependencies` (ADR-0056, ADR-0030), `DataModel.kind`, `DataModelKind`, `DataModel.to_dict()`, and `gitleaks.scan_content`, which reported a scan that did not run as clean.
 - **Unread catalogue keys and fields**, and three framework rules that matched nothing.
 
 ### Fixed
@@ -62,7 +62,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **JS/TS**: workspace siblings resolve through module objects, namespaces and default imports; `require('..')` follows `package.json`; Node core modules aren't npm dependencies.
 - **Rust**: brace-list, top-level and aliased `use` declarations emit import edges, and calls through them reach the named function.
 - **Puppet `include`, `require` and `inherits` reach their class**; namespaced resources get new `stable_id`s.
-- **A placeholder a linker resolves is demoted, not deleted** (ADR-0057 §14.1).
+- **A stand-in node a linker resolves stays in the graph, demoted**, rather than being deleted (ADR-0057 §14.1).
 
 #### Calls, types and references
 
@@ -70,23 +70,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Calls bind only to the right kind of target**: a Go call on a value never binds a package function (cert-manager: 321 wrong binds go), nor a Rust method call a free function.
 - **JS/TS: a call through an external module stays external** (`path.join`, `expect` from `chai`): 2,595 wrong call sites go on express, knex and jotai.
 - **Java: a method an external base class supplies** (`err.getMessage()`, `repo.save()`) is a use of the type, not a call: jedis loses 958 wrong call sites.
-- **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
-- **Java interface methods without `public` count as exported**, as the language makes them.
-- **PHP trait and enum methods own the calls in their bodies.**
-- **Java and Dart constructions reach the constructor**, which now belongs to its class.
-- **Ansible: role task files yield tasks, and tasks stop being emitted as handlers.**
-- **A Java call left unresolved keeps its rank** beside its type-use edge.
-- **C# records are types**, and a bare call stays in its own type.
-- **Groovy enum methods belong to the enum**; bare calls stay in-type.
-- **`gitleaks.scan_content` is retired**; it read "not scanned" as clean.
-- **The cron's allowlist trace checks install-rust-analyzer and add-extras.**
-- **requirements.txt edges run between real file and requirement nodes.**
-- **A Kotlin bare call no longer binds to another class's method.**
-- **A Scala class keeps its methods when its companion object comes first.**
+- **A Java call to a method its receiver's type lacks stays a full-weight unresolved call**; recording that the caller uses the type no longer demotes it.
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
+- **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
+- **A method is attributed to its own type, as are the calls in its body, and a bare call inside it resolves within that type**: C# records, Groovy enums, PHP traits and enums, Kotlin classes, Scala classes declared after their companion object.
+- **Java and Dart constructions reach the constructor**, which now belongs to its class.
+- **Java interface methods without `public` count as exported**, as the language makes them.
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
-- **The Go memberlist linker emits its delegate edges in a real survey**, not only in unit tests.
 - **Electron IPC connects renderer → preload → main**, through `contextBridge` or a project's own wrapper: on podman-desktop, 66 of 66 bridge calls reach main, up from 1.
+- **The Go memberlist linker emits its delegate edges in a real survey**, not only in unit tests.
+- **Ansible: tasks in role task files are found, and play tasks are no longer reported as handlers.**
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 
 #### Request handlers and taint (`verify-claims`)
@@ -118,7 +111,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`analysis_runs` lists every pass that ran**, now including framework patterns, post-passes and 13 more linkers; one that found nothing says `prerequisite_absent`.
 - **A missing grammar's warning names the package to install.**
-- **Edges start and end on real nodes** for a dozen kinds of import (Starlark, Cargo, CSS, JSX, WebAssembly and more), and every linker stand-in is attached to its enclosing function.
+- **Edges start and end on real nodes** for a dozen kinds of import (Starlark, Cargo, requirements.txt, CSS, JSX, WebAssembly and more), and every linker stand-in is attached to its enclosing function.
 - **A node id disagreeing with its node is a validator error** (ADR-0036 Ruling 3).
 - **Svelte and Vue files have one file symbol** and parse each `<script>` in its `lang` language.
 - **Wolfram `.m`-only packages are analysed.**
@@ -149,11 +142,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`scripts/score-readability`**: per-function reader-load scores for Python files, flagging values over threshold.
 - **`scripts/show-site`**: shows a reviewer the code around one I/O allowlist site, with its callers.
 - **New CI checks**: declared axioms against real output, io-boundaries and taint classifying each call alike, a test run where every test skipped fails.
-- **The test-only reachability gate is green again**; `depends_on` must name earlier passes.
+- **Fixes for the twice-daily run's failing steps**: the test-only reachability and self-tree id checks; the I/O allowlist trace, which now checks `install-rust-analyzer` and `add-extras`; the readability tests, which run where hypergumbo is installed.
+- **`depends_on` must name earlier passes.**
 - **`generate-architecture --check` recomputes source-tree counts.**
 - **Fixtures may not commit lockfiles or `==` pins.**
 - **The mypy strict surface shrinks 492 → 477.**
-- **The cron runs the readability tests where hypergumbo is installed.**
 
 ### Documentation
 
