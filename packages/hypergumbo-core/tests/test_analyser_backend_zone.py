@@ -52,6 +52,39 @@ def test_the_wrapper_runs_and_passes_kwargs_through(wrapper: str) -> None:
     assert result.stdout.strip() == "marker"
 
 
+_PRINT_PIP_CHECK = [sys.executable, "-c",
+                    "import os; print(os.environ.get('PIP_DISABLE_PIP_VERSION_CHECK'),"
+                    " os.environ.get('MARKER'))"]
+
+
+def test_the_scip_python_launch_turns_off_pips_upgrade_check() -> None:
+    """scip-python runs ``pip3 list``, and pip before ``list`` was exempted from
+    its weekly upgrade check (upstream 24.0 has no exemption) connects to the
+    package index for it, which ``runtime-cli-no-network`` forbids."""
+    result = safety_zones.backend_index_scip_python(
+        _PRINT_PIP_CHECK, capture_output=True, text=True, timeout=30,
+    )
+    assert result.stdout.split()[0] == "1"
+
+
+def test_the_user_cannot_turn_the_upgrade_check_back_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PIP_DISABLE_PIP_VERSION_CHECK", "0")
+    result = safety_zones.backend_index_scip_python(
+        _PRINT_PIP_CHECK, capture_output=True, text=True, timeout=30,
+    )
+    assert result.stdout.split()[0] == "1"
+
+
+def test_an_explicit_environment_keeps_its_entries() -> None:
+    result = safety_zones.backend_index_scip_python(
+        _PRINT_PIP_CHECK, capture_output=True, text=True, timeout=30,
+        env={"MARKER": "kept"},
+    )
+    assert result.stdout.split() == ["1", "kept"]
+
+
 def test_the_self_catalogue_declares_the_zone() -> None:
     doc = yaml.safe_load((_DOCS / "hypergumbo-self-catalog"
                           / "analyser_backend_sinks.yaml").read_text())

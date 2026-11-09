@@ -857,9 +857,18 @@ def backend_index_scip_python(argv: list[str], **kwargs: Any) -> "subprocess.Com
     Each is resolved on ``PATH``, so a relative ``PATH`` entry would resolve
     inside the analysed repository. It writes its index into a
     ``tmp_artifact`` scratch directory.
+
+    The launch always carries ``PIP_DISABLE_PIP_VERSION_CHECK=1``, over any
+    value the user set. pip without the exemption that spares ``list`` its
+    weekly upgrade check (upstream 24.0; 26.2.2 has it) connects to the
+    package index during ``pip3 list``, and ``runtime-cli-no-network`` says
+    analysis makes no network request.
     """
     _safety_zone_barrier()
-    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+    env = kwargs.pop("env", None)
+    env = dict(os.environ if env is None else env)
+    env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    return subprocess.run(argv, env=env, **kwargs)  # noqa: S603  # nosec B603
 
 
 def backend_index_rust_analyzer(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
