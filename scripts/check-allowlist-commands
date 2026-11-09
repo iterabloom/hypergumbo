@@ -30,8 +30,12 @@ uninstall commands with HOME in scratch and subprocess + urlopen stubbed. A
 command observed executing an entry's line that the entry does not list fails.
 It sees what the graph cannot resolve (dynamic dispatch, common method names);
 it cannot see a branch no variant takes. Tools the runner lacks
-(rust-analyzer, gitleaks, sentence-transformers) get STAND-INS: the question is
-whether hypergumbo's own line runs, not what the tool answers. Every variant
+(rust-analyzer, gitleaks, rustup, sentence-transformers: ``STAND_IN_TOOLS``) get
+STAND-INS: the question is whether hypergumbo's own line runs, not what the tool
+answers. A tool the CLI looks up on PATH with no stand-in stops its variant
+early on a runner without it, which is how install-rust-analyzer and add-extras
+went unchecked on every cron run until rustup got one (WI-fakil); a test holds
+the stand-in set to every tool the core probes for. Every variant
 that could not run is printed by name -- a skipped variant is "not checked",
 never "clean".
 
@@ -748,15 +752,33 @@ __version__ = "5.7.0"
 '''
 
 
+#: Executables the CLI looks up on PATH before acting, and a stand-in for each.
+#: ``rustup`` (WI-fakil): install-rust-analyzer asks for it before its stubbed
+#: subprocess call, so without one the cron runner, which has no rustup, ran
+#: that variant and add-extras to exit 1 and reported both NOT CHECKED.
+_STAND_IN_SCRIPTS = {
+    "rust-analyzer": '#!/bin/sh\necho "rust-analyzer 0.0.0 (stand-in)"\n',
+    "gitleaks": '#!/bin/sh\ncat > /dev/null\necho "[]"\n',
+    "rustup": '#!/bin/sh\nexit 0\n',
+}
+#: Every tool a stand-in exists for, the Python module included.
+STAND_IN_TOOLS = (*_STAND_IN_SCRIPTS, "sentence_transformers")
+
+
+def _missing_tools(force_stand_ins: bool) -> set[str]:
+    """The stand-in tools this runner lacks (all of them with ``force_stand_ins``)."""
+    missing = {t for t in _STAND_IN_SCRIPTS if force_stand_ins or shutil.which(t) is None}
+    if force_stand_ins or importlib.util.find_spec("sentence_transformers") is None:
+        missing.add("sentence_transformers")
+    return missing
+
+
 def make_stand_ins(where: Path, missing) -> dict[str, Path]:
     """Stand-ins for the tools a runner lacks; ``{"bin": dir, "py": dir}``."""
     bin_dir, py_dir = where / "bin", where / "py"
     bin_dir.mkdir(parents=True, exist_ok=True)
     py_dir.mkdir(parents=True, exist_ok=True)
-    scripts = {
-        "rust-analyzer": '#!/bin/sh\necho "rust-analyzer 0.0.0 (stand-in)"\n',
-        "gitleaks": '#!/bin/sh\ncat > /dev/null\necho "[]"\n',
-    }
+    scripts = _STAND_IN_SCRIPTS
     for name, body in scripts.items():
         if name in missing:
             p = bin_dir / name
@@ -915,9 +937,7 @@ def run_trace(root: Path, jobs: int = 4, *, force_stand_ins: bool = False,
         fix, sub = _make_fixtures(scratch)
         (scratch / "changed.txt").write_text("app.py\n")
         (scratch / "o").mkdir()
-        missing = {t for t in ("rust-analyzer", "gitleaks") if force_stand_ins or shutil.which(t) is None}
-        if force_stand_ins or importlib.util.find_spec("sentence_transformers") is None:
-            missing.add("sentence_transformers")
+        missing = _missing_tools(force_stand_ins)
         stand = make_stand_ins(scratch / "stand_ins", missing)
         notes = [f"stand-ins used for: {', '.join(sorted(missing))}"] if missing else []
         base = dict(os.environ)

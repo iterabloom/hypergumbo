@@ -353,3 +353,33 @@ def test_cron_pipeline_runs_the_trace_on_312_unconditionally():
     assert step["image"].startswith("python:3.12")
     assert any("scripts/check-allowlist-commands --trace" in c for c in step["commands"])
     assert "when" not in step and not step.get("failure")
+
+
+def test_rustup_has_a_stand_in_and_is_stood_in_when_absent(tmp_path, monkeypatch):
+    """WI-fakil: install-rust-analyzer (and add-extras, which runs it) asks
+    ``shutil.which("rustup")`` before its stubbed subprocess call, so on the
+    cron runner, which has no rustup, both variants exited 1 and the trace
+    reported them NOT CHECKED on every run."""
+    stand = gate.make_stand_ins(tmp_path, missing={"rustup"})
+    out = subprocess.run(["rustup", "component", "add", "rust-analyzer"],
+                         env={"PATH": str(stand["bin"])}, capture_output=True, text=True)
+    assert out.returncode == 0
+    monkeypatch.setattr(gate.shutil, "which", lambda name: None)
+    assert "rustup" in gate._missing_tools(force_stand_ins=False)
+    monkeypatch.setattr(gate.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert "rustup" not in gate._missing_tools(force_stand_ins=False)
+    assert "rustup" in gate._missing_tools(force_stand_ins=True)
+
+
+def test_every_tool_the_core_probes_for_has_a_stand_in():
+    """The structural guard: a tool the CLI looks up on PATH before acting is a
+    tool the cron runner may lack, and a variant that reaches the lookup then
+    stops early. ``git`` ships in the runner image."""
+    import re
+    probed = set()
+    for path in (REPO_ROOT / "packages" / "hypergumbo-core" / "src").rglob("*.py"):
+        text = path.read_text()
+        probed |= set(re.findall(r'(?:shutil\.which|\bresolve)\("([A-Za-z0-9_.-]+)"\)', text))
+    assert probed, "the probe pattern matched nothing: it is stale"
+    assert probed - {"git"} <= set(gate.STAND_IN_TOOLS), (
+        f"probed without a stand-in: {sorted(probed - {'git'} - set(gate.STAND_IN_TOOLS))}")
