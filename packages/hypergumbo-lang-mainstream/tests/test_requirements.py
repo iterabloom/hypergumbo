@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_lang_mainstream import requirements as requirements_module
 from hypergumbo_lang_mainstream.requirements import (
     _analyzer,
@@ -138,9 +138,11 @@ requests
         result = analyze_requirements(tmp_path)
         dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) >= 2
-        dsts = {e.dst for e in dep_edges}
-        assert "pypi:package:flask" in dsts
-        assert "pypi:package:requests" in dsts
+        # WI-tikon: the file's own id depends on each requirement it declares,
+        # as package.json's project depends on its dependency symbols.
+        by_name = {s.name: s.id for s in result.symbols if s.kind == "requirement"}
+        assert {e.dst for e in dep_edges} == {by_name["flask"], by_name["requests"]}
+        assert {e.src for e in dep_edges} == {make_file_id("requirements", "requirements.txt")}
 
     def test_extracts_git_url_requirement(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", """
@@ -177,7 +179,8 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         include_edges = [e for e in result.edges if e.edge_type == "includes"]
         assert len(include_edges) == 1
-        assert "base-requirements.txt" in include_edges[0].dst
+        assert include_edges[0].dst == make_file_id("requirements", "base-requirements.txt")
+        assert include_edges[0].meta == {"include_file": "base-requirements.txt"}
 
     def test_extracts_constraint_option(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", """
@@ -186,7 +189,7 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         constraint_edges = [e for e in result.edges if e.edge_type == "constrains"]
         assert len(constraint_edges) == 1
-        assert "constraints.txt" in constraint_edges[0].dst
+        assert constraint_edges[0].dst == make_file_id("requirements", "constraints.txt")
 
     def test_extracts_editable_option(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", """
@@ -328,7 +331,8 @@ git+https://github.com/user/repo.git#egg=mypackage
         result = analyze_requirements(tmp_path)
         dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) == 1
-        assert "vcs:package:mypackage" in dep_edges[0].dst
+        url_req = next(s for s in result.symbols if s.name == "mypackage")
+        assert dep_edges[0].dst == url_req.id
         assert dep_edges[0].confidence == 0.95
 
     def test_mercurial_url_requirement(self, tmp_path: Path) -> None:
@@ -348,3 +352,36 @@ svn+https://svn.example.com/repo/trunk#egg=mypackage
         url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert url_req.meta.get("source_type") == "svn"
+
+
+class TestEdgeEndpointsAreIds:
+    """WI-tikon: every endpoint is an id a node can stand behind.
+
+    The edges were built from hand-made strings (``requirements:<path>``,
+    ``pypi:package:<name>``, ``requirements:file:<path>``) that are not the
+    ``lang:path:span:name:kind`` shape, so finalize minted them as
+    ``<unknown>``-path external stand-ins: the two id_format warnings the
+    full-suite cron's self-tree ratchet failed on from 2026-11-04.
+    """
+
+    def test_an_include_resolves_against_the_including_file(self, tmp_path: Path) -> None:
+        make_requirements_file(tmp_path / "reqs", "dev.txt", "-r ../requirements.txt\n-c ./pins.txt\n")
+        result = analyze_requirements(tmp_path)
+        (inc,) = [e for e in result.edges if e.edge_type == "includes"]
+        (con,) = [e for e in result.edges if e.edge_type == "constrains"]
+        assert inc.src == make_file_id("requirements", "reqs/dev.txt")
+        assert inc.dst == make_file_id("requirements", "requirements.txt")
+        assert con.dst == make_file_id("requirements", "reqs/pins.txt")
+
+    def test_every_endpoint_has_the_five_slot_shape(self, tmp_path: Path) -> None:
+        make_requirements_file(tmp_path, "requirements.txt", (
+            "-r base.txt\n-c pins.txt\nflask>=2.0\n"
+            "git+https://github.com/user/repo.git#egg=mypackage\n"
+        ))
+        result = analyze_requirements(tmp_path)
+        ids = {s.id for s in result.symbols}
+        for e in result.edges:
+            for end in (e.src, e.dst):
+                assert len(end.split(":")) == 5 and "<unknown>" not in end, end
+            if e.edge_type == "depends_on":
+                assert e.dst in ids
