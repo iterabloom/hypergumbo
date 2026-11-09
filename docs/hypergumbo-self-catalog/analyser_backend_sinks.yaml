@@ -19,7 +19,9 @@
 #   scip-python index ...             --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or
 #                                     [backends] scip_python in config.toml or in the
 #                                     analysed repo's own .hypergumbo.toml. Static
-#                                     inference; executes nothing from the project.
+#                                     inference; runs none of the project's code, but
+#                                     launches pip and python from PATH, in the
+#                                     project directory, to list installed packages.
 #
 # One sink per backend, as repo_inspection keeps one per activity, so a future
 # claim can permit the static indexer while prohibiting the one that executes code.

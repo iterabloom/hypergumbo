@@ -153,8 +153,10 @@ claims:
           build.rs and proc macros. Enabled by --backend rust-analyzer, by
           HYPERGUMBO_RUST_ANALYZER=1, or by a trust-backend grant for the
           repository; any one of the three suffices.
-        - scip-python index. Static inference; executes nothing from the
-          project. Enabled by --backend scip-python, by
+        - scip-python index. Static inference; runs none of the
+          project's code. It launches its own pip and python, found on
+          PATH and run in the project directory, to list installed
+          packages. Enabled by --backend scip-python, by
           HYPERGUMBO_SCIP_PYTHON, or by [backends] scip_python in the
           user's config.toml or the analysed repository's own
           .hypergumbo.toml, so a repository can turn it on for itself.

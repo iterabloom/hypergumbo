@@ -158,6 +158,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Measurements**: [self-claims on scip-python](docs/measurements/0031-self-claims-scip-python-receiver-denominator.md), [the analysed repository as a taint source](docs/measurements/0032-analysed-repository-as-taint-source.md).
 - **Module docstrings**: 83 corrected, 34 extended.
 - **The spec documents 63 `symbol_meta` keys.**
+- **The pip and python that scip-python launches itself are documented.**
 
 ## [9.2.0] - 2026-10-20
 
