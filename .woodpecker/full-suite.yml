@@ -115,6 +115,10 @@ steps:
           --cov-report=term-missing --cov-fail-under=100 \
           --cov-config=.coveragerc.no-embeddings \
           packages/*/tests/
+        # Top-level tests that need the installed packages, which
+        # test-agent-infra ignores (see there). A separate run, so they add
+        # no coverage to the package gate above.
+        pytest -o addopts="" --tb=short tests/test_score_readability.py
 
   # ── self-map ratchets: WI-jigup self-tree-validation + WI-ratuv ───────────
   # Builds ONE behaviour map of hypergumbo's OWN tree and runs both ratchets
@@ -294,4 +298,11 @@ steps:
         else
           WORKERS=$(nproc)
         fi
-        pytest tests/ -o addopts="" -n "$WORKERS" --tb=short
+        # A top-level test whose subject needs the installed packages cannot
+        # pass in this step, and installing them would retire the premise
+        # above; it is ignored here and run by test-all-packages instead.
+        # tests/test_full_suite_agent_infra_ignores.py pins that pairing.
+        #   test_score_readability — scripts/score-readability imports
+        #           tree_sitter, tree_sitter_language_pack and hypergumbo_core.
+        pytest tests/ -o addopts="" -n "$WORKERS" --tb=short \
+          --ignore=tests/test_score_readability.py
