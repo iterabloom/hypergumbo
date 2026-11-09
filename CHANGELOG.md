@@ -80,6 +80,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`gitleaks.scan_content` is retired**; it read "not scanned" as clean.
 - **The cron's allowlist trace checks install-rust-analyzer and add-extras.**
 - **requirements.txt edges run between real file and requirement nodes.**
+- **A Kotlin bare call no longer binds to another class's method.**
 - **A Scala class keeps its methods when its companion object comes first.**
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.

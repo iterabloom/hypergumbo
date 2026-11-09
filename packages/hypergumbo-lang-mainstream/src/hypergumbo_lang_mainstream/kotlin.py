@@ -180,6 +180,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     ancestor_labels,
+    defer_bare_method_call,
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
@@ -2429,12 +2430,33 @@ def _extract_edges_from_file(
                     if method_resolver is not None:
                         if method_resolver.too_ambiguous(callee_name):
                             continue  # 3+ method candidates, suppress
-                    # Check local symbols first
-                    if callee_name in local_symbols:
-                        callee = local_symbols[callee_name]
+                    # INV-fahub (WI-fajib): a bare call reaches a free function
+                    # or its OWN type's method. ``local_symbols`` keeps every
+                    # method under its short name too, last declaration winning,
+                    # and the resolver returns the only candidate, so either
+                    # bound ``helper()`` in ``Point`` to an unrelated
+                    # ``Other.helper``. Prefer ``Enclosing.callee``; withhold a
+                    # hit on another type's method, stamping the enclosing class
+                    # so the inherited-calls linker can recover a genuinely
+                    # inherited one. The cost: a bare call inside a scope
+                    # function (``other.apply { helper() }``) that really is
+                    # ``Other.helper`` stays unresolved, since its receiver is
+                    # not typed here.
+                    _enclosing_type = _get_enclosing_class(node, source)
+                    local_callee: Optional[Symbol] = (
+                        local_symbols.get(f"{_enclosing_type}.{callee_name}")
+                        if _enclosing_type else None
+                    )
+                    if local_callee is None and callee_name in local_symbols:
+                        _short = local_symbols[callee_name]
+                        if not defer_bare_method_call(
+                            _short.kind, _short.name, "suffix", _enclosing_type,
+                        ):
+                            local_callee = _short
+                    if local_callee is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=callee.id,
+                            dst=local_callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
@@ -2442,7 +2464,7 @@ def _extract_edges_from_file(
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "function"},
                         ))
-                        resolved_simple_sym = callee
+                        resolved_simple_sym = local_callee
                     # Check global symbols via resolver
                     else:
                         import_hint = imports.get(callee_name)
@@ -2455,7 +2477,19 @@ def _extract_edges_from_file(
                             if lookup_result.found and lookup_result.symbol is not None
                             else None
                         )
-                        if _target is not None:
+                        # The registry also holds each method under its bare
+                        # name, so ``helper`` comes back an "exact" match for
+                        # ``Other.helper``: by name it is short-name evidence.
+                        _match = (
+                            "suffix"
+                            if lookup_result.match_type == "exact"
+                            and _target is not None and _target.name != callee_name
+                            else lookup_result.match_type
+                        )
+                        _withheld = _target is not None and defer_bare_method_call(
+                            _target.kind, _target.name, _match, _enclosing_type,
+                        )
+                        if _target is not None and not _withheld:
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=_target.id,
@@ -2477,6 +2511,7 @@ def _extract_edges_from_file(
                                     ExternalRef(lang="kotlin", module_path=import_hint, name=callee_name)
                                     if import_hint else None
                                 ),
+                                enclosing_class=_enclosing_type if _withheld else None,
                             ))
 
                     # Return type tracking for simple function calls
