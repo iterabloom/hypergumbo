@@ -2929,3 +2929,25 @@ class TestCSharpRecords:
                  for e in result.edges if e.edge_type == "calls"}
         assert ("Point.M", "Other.Helper") in calls
         assert ("Point.M", "Point.Helper") not in calls
+
+
+class TestCSharpUsingScopeHints:
+    """The base hints ``_csharp_using_scope`` feeds the inheritance linker, from
+    the C# package's own tests: CI measures a changed file with the selected
+    tests only, and the cross-package test that covered these lines
+    (``test_import_bound_external_bases``) is not selected for a csharp.py
+    change."""
+
+    def test_namespaces_aliases_and_using_static(self, tmp_path: Path) -> None:
+        (tmp_path / "A.cs").write_text(
+            "using System;\n"
+            "using static System.Math;\n"
+            "using Ex = MyApp.Errors.Exception;\n"
+            "namespace Other { class H : Ex {} class J : Base {} }\n"
+        )
+        result = analyze_csharp(tmp_path)
+        meta = {s.name: s.meta for s in result.symbols if s.kind == "class"}
+        assert meta["H"]["base_class_imports"] == {"Ex": "MyApp.Errors.Exception"}
+        assert "System" in meta["J"]["visible_namespaces"]
+        assert "System.Math" not in meta["J"]["visible_namespaces"]
+        assert "base_class_imports" not in meta["J"]
