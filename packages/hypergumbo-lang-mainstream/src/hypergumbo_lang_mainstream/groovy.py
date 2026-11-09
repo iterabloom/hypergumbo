@@ -5,7 +5,8 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
 - Class declarations
 - Interface declarations
 - Enum declarations
-- Method declarations (inside classes)
+- Method declarations (inside classes and enums; an enum's are named
+  ``Color.label``, WI-nomah)
 - Top-level function definitions (def keyword)
 - Identity over the FULL type chain (``_groovy_scope``; INV-fabih): methods
   hashed their emitted nearest-owner name (``Inner.go``) and types the
@@ -22,6 +23,12 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
 Note: Trait declarations are not currently supported by tree-sitter-groovy v0.1.2
 (the grammar parses 'trait X' as a function call). Support will be added when
 the grammar is updated.
+
+The same grammar ends an enum's body after its constants unless a ``;``
+follows them (``RED, GREEN;``): without it the enum closes early and its
+methods parse as top-level ``function_definition`` nodes, which are emitted
+as unqualified ``function`` symbols. With the ``;`` they are the enum's
+``method``s.
 
 It also handles Gradle build files (.gradle) which use Groovy DSL.
 
@@ -246,10 +253,12 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class/interface/trait name."""
+    """Walk up the tree to find the nearest enclosing type's name (class,
+    interface, trait or enum: ``_GROOVY_TYPE_DECLS``; WI-nomah: enum was
+    missing, so an enum's methods were emitted bare)."""
     current = node.parent
     while current is not None:
-        if current.type in ("class_declaration", "interface_declaration", "trait_declaration"):
+        if current.type in _GROOVY_TYPE_DECLS:
             name_node = find_child_by_type(current, "identifier")
             if name_node:
                 return node_text(name_node, source)
@@ -903,12 +912,29 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                             if method_resolver.too_ambiguous(callee_name):
                                 continue  # 3+ method candidates, suppress
 
-                            # Check local symbols first
-                            if callee_name in local_symbols:
-                                callee = local_symbols[callee_name]
+                            # Check local symbols first. ``local_symbols``
+                            # holds every method under its bare name too, last
+                            # one in the file winning, so prefer the scope's
+                            # own ``Type.callee``; a bare call's short-name hit
+                            # on another type's method is the INV-fahub magnet
+                            # and goes to the guarded resolver path below
+                            # (WI-nomah: ``helper()`` in ``K`` bound to an
+                            # ``Other.helper`` declared after it).
+                            _local_scope = receiver or _get_enclosing_class(node, source)
+                            local_callee: Optional[Symbol] = (
+                                local_symbols.get(f"{_local_scope}.{callee_name}")
+                                if _local_scope else None
+                            )
+                            if local_callee is None and callee_name in local_symbols:
+                                _short = local_symbols[callee_name]
+                                if receiver or not defer_bare_method_call(
+                                    _short.kind, _short.name, "suffix", _local_scope,
+                                ):
+                                    local_callee = _short
+                            if local_callee is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=callee.id,
+                                    dst=local_callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",

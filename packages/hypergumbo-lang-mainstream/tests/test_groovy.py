@@ -1418,3 +1418,65 @@ class TestGroovyCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in callable_kinds:
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestGroovyEnumMembersAndBareCalls:
+    """WI-nomah: an enum's methods are its own, and a bare call stays in its type.
+
+    ``_get_enclosing_class`` skipped ``enum_declaration``, so an enum's methods
+    were emitted bare (``label``); and ``local_symbols`` holds every method
+    under its bare name too, last one in the file winning, so ``helper()`` in
+    ``Color`` (or in any class) bound to an ``Other.helper`` declared after it.
+    """
+
+    def _calls(self, tmp_path: Path, code: str):
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "A.groovy").write_text(code)
+        result = analyze_groovy(tmp_path)
+        names = {s.id: s.name for s in result.symbols}
+        calls = {(names.get(e.src), names.get(e.dst))
+                 for e in result.edges if e.edge_type == "calls"}
+        return result, calls
+
+    def test_enum_methods_are_qualified_and_call_their_own(self, tmp_path: Path) -> None:
+        result, calls = self._calls(tmp_path, (
+            "enum Color {\n"
+            "    RED, GREEN;\n"
+            "    String label() { return helper() }\n"
+            "    String helper() { return \"x\" }\n"
+            "}\n"
+            "class Other {\n"
+            "    String helper() { return \"y\" }\n"
+            "}\n"
+        ))
+        methods = {s.name for s in result.symbols if s.kind == "method"}
+        assert {"Color.label", "Color.helper", "Other.helper"} <= methods
+        assert ("Color.label", "Color.helper") in calls
+        assert ("Color.label", "Other.helper") not in calls
+
+    def test_a_class_bare_call_stays_in_the_class(self, tmp_path: Path) -> None:
+        _, calls = self._calls(tmp_path, (
+            "class K {\n"
+            "    String a() { return helper() }\n"
+            "    String helper() { return \"x\" }\n"
+            "}\n"
+            "class Other {\n"
+            "    String helper() { return \"y\" }\n"
+            "}\n"
+        ))
+        assert ("K.a", "K.helper") in calls
+        assert ("K.a", "Other.helper") not in calls
+
+    def test_a_type_qualified_call_reaches_that_type(self, tmp_path: Path) -> None:
+        _, calls = self._calls(tmp_path, (
+            "class Other {\n"
+            "    static String helper() { return \"y\" }\n"
+            "}\n"
+            "class K {\n"
+            "    String a() { return Other.helper() }\n"
+            "    String helper() { return \"x\" }\n"
+            "}\n"
+        ))
+        assert ("K.a", "Other.helper") in calls
+        assert ("K.a", "K.helper") not in calls
