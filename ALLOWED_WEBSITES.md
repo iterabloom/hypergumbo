@@ -121,6 +121,19 @@
 # objects.githubusercontent.com, which is deliberately NOT added here — the
 # tarball route remains outside the allowlist.
 - cli.github.com
+# Toolchain installers for the opt-in SCIP backends' binaries.
+# RATIONALE: when scip-python or rust-analyzer is missing, hypergumbo prints
+# copy-paste install steps (install_steps.py). Their Node.js route installs
+# Node through nvm, which downloads it from nodejs.org, and their Rust route
+# starts from rustup.rs. Listing these lets those steps be run end to end
+# rather than only compared against their upstream docs (owner approval
+# 2026-11-09).
+# SCOPE LIMIT, stated rather than left implicit: these two hosts exactly.
+# Entries match whole host names, so sh.rustup.rs (the installer one-liner's
+# script) and static.rust-lang.org (where rustup downloads toolchains from)
+# are NOT covered and are not added here.
+- nodejs.org
+- rustup.rs
 
 ## Security advisories / CVEs
 - osv.dev
