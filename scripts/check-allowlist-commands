@@ -756,10 +756,14 @@ __version__ = "5.7.0"
 #: ``rustup`` (WI-fakil): install-rust-analyzer asks for it before its stubbed
 #: subprocess call, so without one the cron runner, which has no rustup, ran
 #: that variant and add-extras to exit 1 and reported both NOT CHECKED.
+#: ``npm``: install_steps looks it up only to choose which install steps to
+#: print and never runs it; the stand-in keeps that text the same on runners
+#: with and without npm.
 _STAND_IN_SCRIPTS = {
     "rust-analyzer": '#!/bin/sh\necho "rust-analyzer 0.0.0 (stand-in)"\n',
     "gitleaks": '#!/bin/sh\ncat > /dev/null\necho "[]"\n',
     "rustup": '#!/bin/sh\nexit 0\n',
+    "npm": '#!/bin/sh\nexit 0\n',
 }
 #: Every tool a stand-in exists for, the Python module included.
 STAND_IN_TOOLS = (*_STAND_IN_SCRIPTS, "sentence_transformers")
