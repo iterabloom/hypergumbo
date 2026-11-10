@@ -1,0 +1,12 @@
+"""Reads a data fixture: INV-kinin's shape, an edit the import graph cannot see."""
+import json
+from pathlib import Path
+
+from bedcore.tables import lookup
+
+DATA = Path(__file__).resolve().parent / "fixtures" / "expected.json"
+
+
+def test_lookup_matches_the_fixture():
+    expected = json.loads(DATA.read_text())
+    assert lookup(3) == expected["square_of_3"]

@@ -1,0 +1,9 @@
+from bedcore.misc import counter, help_text
+
+
+def test_help_text_comes_from_the_docstring():
+    assert help_text() == "Usage: bed run <x>"
+
+
+def test_counter():
+    assert counter == 0

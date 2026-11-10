@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""String dispatch: HANDLERS names its targets by string, so no import reaches them."""
+import importlib
+
+HANDLERS = {"upper": "bedcore.plugins." + "upper:handle"}
+
+
+def dispatch(name, value):
+    module, func = HANDLERS[name].split(":")
+    return getattr(importlib.import_module(module), func)(value)

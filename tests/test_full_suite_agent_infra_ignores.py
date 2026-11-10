@@ -42,6 +42,10 @@ def test_the_readability_test_is_ignored_where_nothing_is_installed() -> None:
     assert "tests/test_score_readability.py" in _ignored()
 
 
+def test_the_smart_test_bed_is_ignored_where_nothing_is_installed() -> None:
+    assert "tests/test_smart_test_bed.py" in _ignored()
+
+
 def test_every_ignored_test_runs_where_the_packages_are_installed() -> None:
     packages = _commands("test-all-packages")
     assert "pip install -e packages/hypergumbo-core" in packages

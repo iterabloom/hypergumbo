@@ -1,0 +1,5 @@
+from bedcore.chain_c import step_c
+
+
+def test_step_c():
+    assert step_c(1) == 4

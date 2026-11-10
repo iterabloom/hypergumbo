@@ -1,0 +1,229 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# One scripted edit per selection scenario, applied to a fresh copy of tree/.
+#
+#   oracle: mutate  MUST = tests that pass on the base tree and fail once every
+#                   block the edit changed (bedcore.block_hash digests) raises,
+#                   or, for a changed data file, once it is corrupted. Deleted
+#                   files have nothing to mutate: what imported them fails on
+#                   the edit itself.
+#   oracle: text    The edit changes no behaviour (a comment, a docstring, a
+#                   pragma, a type comment), so MUST is what reads it: the
+#                   edited tree's own failures plus readers.yaml plus `must`.
+#
+# Every edit's MUST also includes readers.yaml's readers of any file it touches,
+# and `must` (hand-written) for runtime readers no rule derives, such as a
+# docstring read through __doc__. `should_not` is hand-written: tests with no
+# path to the edit, which a precise selector leaves out.
+#
+# ops: {file, old, new} replaces `old`, which must occur exactly once;
+#      {file, append}; {file, delete: true}; {file, write} replaces the content.
+- name: comment-only
+  oracle: text
+  ops:
+    - file: packages/bed-core/src/bedcore/chain_c.py
+      old: |
+        def step_c(x):
+      new: |
+        # The last link: callers multiply what this returns.
+        def step_c(x):
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-app/tests/test_beta.py,
+               packages/bed-core/tests/test_shapes.py]
+
+- name: comment-marker
+  oracle: text
+  ops:
+    - file: packages/bed-core/src/bedcore/kinds.py
+      old: |
+        KIND_EDGE = "edge"  # axis: kind
+      new: |
+        KIND_EDGE = "edge"
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+- name: docstring-only
+  oracle: text
+  ops:
+    - file: packages/bed-core/src/bedcore/misc.py
+      old: |
+            """Usage: bed run <x>"""
+      new: |
+            """Usage: bed run <n>"""
+  must: [packages/bed-core/tests/test_misc.py, packages/bed-app/tests/test_cli.py]
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_tables.py]
+
+- name: pragma
+  oracle: text
+  ops:
+    - file: packages/bed-core/src/bedcore/misc.py
+      old: |
+        def debug_dump(value):  # pragma: no cover
+      new: |
+        def debug_dump(value):
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_tables.py]
+
+- name: type-comment
+  oracle: text
+  ops:
+    - file: packages/bed-core/src/bedcore/misc.py
+      old: |
+        counter = 0  # type: int
+      new: |
+        counter = 0  # type: float
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_tables.py]
+
+- name: body-edit-c
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/chain_c.py
+      old: |
+            return x + 3
+      new: |
+            return 3 + x
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-app/tests/test_beta.py,
+               packages/bed-core/tests/test_shapes.py, packages/bed-core/tests/test_upper.py,
+               packages/bed-app/tests/test_cli_usage.py]
+
+- name: signature
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/tables.py
+      old: |
+        def lookup(key):
+            return TABLE.get(key, -1)
+      new: |
+        def lookup(key, default=-1):
+            return TABLE.get(key, default)
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+- name: rename
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/chain_b.py
+      old: |
+        def step_b(x):
+      new: |
+        def double_step(x):
+    - file: packages/bed-core/src/bedcore/chain_a.py
+      old: |
+        from bedcore.chain_b import step_b
+
+
+        def run_a(x):
+            return step_b(x) + 1
+      new: |
+        from bedcore.chain_b import double_step
+
+
+        def run_a(x):
+            return double_step(x) + 1
+  should_not: [packages/bed-core/tests/test_chain_c.py, packages/bed-core/tests/test_shapes.py]
+
+- name: new-function
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/chain_c.py
+      append: |
+
+
+        def triple(x):
+            return x * 3
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_chain_c.py,
+               packages/bed-app/tests/test_cli.py]
+
+- name: shadowing-def
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/chain_c.py
+      append: |
+
+
+        def step_c(x):
+            return x + 3
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_shapes.py]
+
+- name: module-statement
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/tables.py
+      old: |
+        LIMIT = 10
+      new: |
+        LIMIT = 5 * 2
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+- name: import-time-function
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/tables.py
+      old: |
+            return {n: n * n for n in range(LIMIT)}
+      new: |
+            return {n: n ** 2 for n in range(LIMIT)}
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+- name: method
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/shapes.py
+      old: |
+                return self.side * self.side
+      new: |
+                return self.side ** 2
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_tables.py]
+
+- name: nested-function
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/shapes.py
+      old: |
+                return x * k
+      new: |
+                return k * x
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_tables.py]
+
+- name: shared-name
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/alpha.py
+      old: |
+            return text.strip().lower()
+      new: |
+            return text.lower().strip()
+  should_not: [packages/bed-app/tests/test_beta.py, packages/bed-core/tests/test_chain_a.py]
+
+- name: runtime-dispatch
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/plugins/upper.py
+      old: |
+            return value.upper()
+      new: |
+            return str.upper(value)
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+- name: delete-module
+  oracle: mutate
+  ops:
+    - file: packages/bed-app/src/bedapp/legacy.py
+      delete: true
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-app/tests/test_beta.py]
+
+- name: test-only
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/tests/test_shapes.py
+      old: |
+        def test_describe():
+            assert Square(2).describe() == "square 2"
+      new: |
+        def test_describe():
+            assert Square(2).describe() == "square 2"
+            assert Square(5).describe() == "square 5"
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_tables.py]
+
+- name: fixture-only
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/tests/fixtures/expected.json
+      write: |
+        {"square_of_3": 9, "square_of_4": 16}
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]

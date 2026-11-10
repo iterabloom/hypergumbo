@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Kind constants; test_kinds_markers checks each line's axis marker as TEXT."""
+
+KIND_NODE = "node"  # axis: kind
+KIND_EDGE = "edge"  # axis: kind

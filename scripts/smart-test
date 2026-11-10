@@ -39,10 +39,36 @@
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --background # Kick off full suite in background
+#
+# TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
+# helpers against ANOTHER repo laid out like this one (packages/<pkg>/src,
+# packages/<pkg>/tests, tests/). It exists for scripts/smart-test-bed, which
+# scores selection on a small repo in seconds instead of on this one's ~30k
+# tests. Two roots, never confused: TOOLS_ROOT is where the helpers live (this
+# checkout, so the scripts under change are what gets measured), REPO_ROOT is
+# the repo being selected for. Unset, they are the same directory and nothing
+# below behaves differently. Set, four things change, each because it belongs
+# to this repo rather than the target: the mypy ratchet is skipped (it gates
+# TOOLS_ROOT's types), coverage roots are the target's packages/*/src, the
+# no-embeddings coverage config is used only if the target has one, and test
+# timings are not ingested into this machine's leaderboard.
+# SMART_TEST_SELECTION_OUT=<dir> writes manifest.txt, after-union.txt and
+# local.txt there once the local run set is final, so a caller can read every
+# stage of one selection without parsing the log.
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOLS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$TOOLS_ROOT"
+TARGET_MODE=false
+if [[ -n "${SMART_TEST_TARGET_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "$SMART_TEST_TARGET_ROOT" && pwd)"
+    # Pointing it at this checkout is not target mode: every repo-specific
+    # gate (the mypy ratchet first) must still apply.
+    if [[ "$(cd "$REPO_ROOT" && pwd -P)" != "$(cd "$TOOLS_ROOT" && pwd -P)" ]]; then
+        TARGET_MODE=true
+    fi
+fi
 
 # ── WI-fopuh: this script writes the manifest of the repo it LIVES in ────────
 # Everything below is relative to REPO_ROOT (the `cd` at the end of this block)
@@ -283,12 +309,19 @@ fi
 #
 # HG_SKIP_MYPY_GATE exists for the ratchet's OWN test suite, which must be
 # able to run without recursion. It is not a workaround for a red ratchet.
-if [[ "${HG_SKIP_MYPY_GATE:-}" != "1" ]]; then
+#
+# TARGET MODE skips it, said out loud: the ratchet measures TOOLS_ROOT's
+# packages, and a target-mode run tests none of them, so the gate has nothing
+# to protect there. It cannot be used to test THIS repo ungated: pointing
+# SMART_TEST_TARGET_ROOT at this checkout leaves TARGET_MODE false.
+if [[ "$TARGET_MODE" == "true" ]]; then
+    echo "mypy ratchet: not run -- it gates $TOOLS_ROOT, and this run tests $REPO_ROOT (target mode)"
+elif [[ "${HG_SKIP_MYPY_GATE:-}" != "1" ]]; then
     echo "Checking mypy strict ratchet (INV-zogud) before running tests..."
     MYPY_GATE_LOG="$REPO_ROOT/.ci/mypy-gate.log"
     mkdir -p "$REPO_ROOT/.ci" 2>/dev/null || true
     set +e
-    "$REPO_ROOT/scripts/check-mypy-ratchet" --mode=strict > "$MYPY_GATE_LOG" 2>&1
+    "$TOOLS_ROOT/scripts/check-mypy-ratchet" --mode=strict > "$MYPY_GATE_LOG" 2>&1
     MYPY_GATE_RC=$?
     set -e
     if [[ $MYPY_GATE_RC -eq 1 ]]; then
@@ -342,6 +375,14 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-rust-analyzer/src"
     "--cov=packages/hypergumbo-lang-scip-python/src"
 )
+# Target mode measures the TARGET's packages. The list above is this repo's,
+# and naming paths the target lacks would measure nothing and say nothing.
+if [[ "$TARGET_MODE" == "true" ]]; then
+    COV_PATHS=()
+    for _src in "$REPO_ROOT"/packages/*/src; do
+        [[ -d "$_src" ]] && COV_PATHS+=("--cov=${_src#"$REPO_ROOT"/}")
+    done
+fi
 
 # Detect if embedding dependencies are available
 # If either sentence-transformers or onnxruntime is missing, use reduced
@@ -351,7 +392,9 @@ if python3 -c "import sentence_transformers" 2>/dev/null && \
     EMBEDDINGS_AVAILABLE=true
 else
     EMBEDDINGS_AVAILABLE=false
-    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+    if [[ "$TARGET_MODE" != "true" ]] || [[ -f "$REPO_ROOT/.coveragerc.no-embeddings" ]]; then
+        COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+    fi
 fi
 
 log() {
@@ -707,7 +750,7 @@ fold_selection_index() {
     # `set -u` makes a bare $1 an unbound-variable abort AFTER the suite
     # has already passed -- a green run reported as a failure.
     [[ "${1:-}" == "full" ]] && full_flag=(--full)
-    "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+    "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
         --junit "$JUNIT_XML" update \
         --coverage-db "$REPO_ROOT/.coverage" \
         --sha "$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" \
@@ -816,8 +859,11 @@ run_pytest() {
         fi
         summarize_pytest_output "$PYTEST_LOG" "$exit_code" "$zero_run"
 
-        # Ingest test timings into leaderboard (non-fatal)
-        if [[ -f "$JUNIT_XML" ]]; then
+        # Ingest test timings into leaderboard (non-fatal). Not in target
+        # mode: the leaderboard is THIS repo's, and a target's test ids would
+        # sit in it as rows for tests that do not exist here. ${…:-false}
+        # because test_smart_test_coverage_gate.py drives this function alone.
+        if [[ -f "$JUNIT_XML" ]] && [[ "${TARGET_MODE:-false}" != "true" ]]; then
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             "$SCRIPT_DIR/test-leaderboard" ingest "$JUNIT_XML" 2>/dev/null || true
         fi
@@ -943,7 +989,12 @@ run_full_suite() {
 
     disclose_full_suite_scope
     run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
-    exit $?
+    _full_rc=$?
+    # WI-damom: this path never folded. It is where `--full` on a clean tree
+    # lands ("no changed files detected"), so verifying dev after a merge -- a
+    # full-scope run, the kind the index most needs -- recorded nothing.
+    fold_selection_index full
+    exit $_full_rc
 }
 
 kick_off_background_suite() {
@@ -1152,7 +1203,7 @@ AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLI
 # ("tests/test_<basename>.py"), so false negatives for sub-directory helpers
 # are acceptable (they still get full-suite coverage under WI-javan's
 # test-agent-infra job).
-TOP_LEVEL_MAP_HELPER="$REPO_ROOT/.agent/hooks/_shared/top_level_test_map.py"
+TOP_LEVEL_MAP_HELPER="$TOOLS_ROOT/.agent/hooks/_shared/top_level_test_map.py"
 TOP_LEVEL_TESTS=""
 if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
     TOP_LEVEL_TESTS=$(echo "$CHANGED_FILES" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
@@ -1361,7 +1412,7 @@ fi
 # predicate here is how a widening lands in one home and not the other. The
 # fallback below is the only duplicate, it is narrower on purpose, and a test
 # pins that the two agree on the live tree.
-CATALOGUE_TERMS_HELPER="$REPO_ROOT/scripts/catalogue_gate_terms.py"
+CATALOGUE_TERMS_HELPER="$TOOLS_ROOT/scripts/catalogue_gate_terms.py"
 CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/[^/]+/src/[^/]+/[^/]+/' | grep -vE '\.pyi?$' || echo "")
 if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
     CATALOGUE_GATE_TERMS=""
@@ -1436,7 +1487,7 @@ fi
 # The helper's docstring carries the two-hop argument and the measurement that
 # rules out keying on a bare basename. Its cost is 0.1s here and 2s with every
 # source in the tree changed.
-CITATION_GATE_HELPER="$REPO_ROOT/scripts/citation_gate_tests.py"
+CITATION_GATE_HELPER="$TOOLS_ROOT/scripts/citation_gate_tests.py"
 if [[ -f "$CITATION_GATE_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_FILES" ]]; then
     CITATION_GATE_TESTS=$(echo "$CHANGED_FILES" \
         | python3 "$CITATION_GATE_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
@@ -1637,7 +1688,7 @@ fi
 # alphabetically-first test from any unrepresented affected package's
 # tests/ directory. Same lightweight-test rule the version-only branch
 # above already uses.
-PER_PKG_HELPER="$REPO_ROOT/scripts/per_package_fallback.py"
+PER_PKG_HELPER="$TOOLS_ROOT/scripts/per_package_fallback.py"
 if [[ -f "$PER_PKG_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     PER_PKG_TESTS_FILE=$(mktemp)
     echo "$AFFECTED_TESTS" > "$PER_PKG_TESTS_FILE"
@@ -1659,7 +1710,7 @@ fi
 # runs INSIDE smart-test, the manifest auto-pr regenerates via
 # `smart-test --manifest` includes them too, so the fix persists across the
 # commit-diff-driven regeneration (the manual-add workaround did not).
-COV_DEPS_HELPER="$REPO_ROOT/scripts/coverage_only_deps.py"
+COV_DEPS_HELPER="$TOOLS_ROOT/scripts/coverage_only_deps.py"
 COV_DEPS_MAP="$REPO_ROOT/.ci/coverage-only-deps.txt"
 if [[ -f "$COV_DEPS_HELPER" && -f "$COV_DEPS_MAP" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     COV_DEPS_TESTS_FILE=$(mktemp)
@@ -1724,7 +1775,7 @@ require_selection_on_disk "the manifest (.ci/affected-tests.txt)" "$MANIFEST_TES
 if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     _union_changed=$(mktemp)
     echo "$CHANGED_FILES" | grep -E '\.py$' > "$_union_changed" || true
-    COVERAGE_UNION_ADDS=$("$REPO_ROOT/scripts/coverage-select" \
+    COVERAGE_UNION_ADDS=$("$TOOLS_ROOT/scripts/coverage-select" \
         --repo-root "$REPO_ROOT" select \
         --changed-files "$_union_changed" \
         --base "${BASELINE:-HEAD}" 2>/dev/null || echo "")
@@ -1741,6 +1792,8 @@ if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
         fi
     fi
 fi
+
+UNION_RUN_SET="$AFFECTED_TESTS"
 
 # ── Coverage-directed selection, PHASE 3: NARROW (WI-bolot) ──────────────────
 # OPT-IN, never the default, never in CI — the item's own constraint, and the
@@ -1764,7 +1817,7 @@ if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     _nar_changed=$(mktemp); _nar_run=$(mktemp)
     echo "$CHANGED_FILES" | grep -E '\.py$' > "$_nar_changed" || true
     echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_nar_run" || true
-    NARROWED=$("$REPO_ROOT/scripts/coverage-select" \
+    NARROWED=$("$TOOLS_ROOT/scripts/coverage-select" \
         --repo-root "$REPO_ROOT" ${VERBOSE:+--verbose} narrow \
         --changed-files "$_nar_changed" --run-set "$_nar_run" \
         --base "${BASELINE:-HEAD}" || echo "")
@@ -1780,6 +1833,17 @@ fi
 # INV-tazur: the union and the narrowing above may change the local run set;
 # hold it to the same rule as the manifest before pytest sees it.
 require_selection_on_disk "the local run set" "$AFFECTED_TESTS"
+
+# SMART_TEST_SELECTION_OUT (see the header): every stage of this selection,
+# for scripts/smart-test-bed. Written only on this path; an early exit (a
+# full-suite fallback, nothing to run) leaves the directory empty, and the
+# caller reads the manifest's Mode line for those.
+if [[ -n "${SMART_TEST_SELECTION_OUT:-}" ]]; then
+    mkdir -p "$SMART_TEST_SELECTION_OUT"
+    echo "$MANIFEST_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/manifest.txt"
+    echo "$UNION_RUN_SET" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/after-union.txt"
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/local.txt"
+fi
 
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
@@ -1873,8 +1937,9 @@ COV_PATHS=($AFFECTED_COV)
 # a subset of tests. Only the targeted file-level check matters.
 COV_PATHS+=("--cov-report=")
 
-# Add no-embeddings config if needed
-if [[ "$EMBEDDINGS_AVAILABLE" == "false" ]]; then
+# Add no-embeddings config if needed (in target mode, only if the target has one)
+if [[ "$EMBEDDINGS_AVAILABLE" == "false" ]] && \
+   { [[ "$TARGET_MODE" != "true" ]] || [[ -f "$REPO_ROOT/.coveragerc.no-embeddings" ]]; }; then
     COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
 fi
 
@@ -1957,7 +2022,7 @@ if [[ "$SELECT_SHADOW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     _sel_changed=$(mktemp); _sel_actual=$(mktemp)
     echo "$CHANGED_FILES" | grep -E '\.py$' > "$_sel_changed" || true
     echo "$MANIFEST_TESTS" | sed '/^$/d' > "$_sel_actual" || true
-    "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+    "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
         --junit "$JUNIT_XML" shadow \
         --changed-files "$_sel_changed" --actual-tests "$_sel_actual" \
         --base "${BASELINE:-HEAD}" \
