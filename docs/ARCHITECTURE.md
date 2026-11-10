@@ -514,6 +514,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
 | `generate_schema_lib.py` | Introspection-driven $def builder for docs/schema.json (WI-kutas). |
+| `generator_check.py` | Exit codes for a doc generator's ``--check``: fresh, stale, or could not run. |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
 | `io-manifest` | Release gate: the I/O the installed CLI was OBSERVED to perform. |
 | `measure-analyzer-scaling.py` | Split the analyzer phase into FIXED cost and PER-FILE cost. |
@@ -993,8 +994,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3469bc06043b
-  commit_count: 9025
+  commit: b0ba5e44aa26
+  commit_count: 9028
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
