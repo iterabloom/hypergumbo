@@ -1,0 +1,5 @@
+from bedcore.plugins.upper import handle
+
+
+def test_handle():
+    assert handle("a") == "A"

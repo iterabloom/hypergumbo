@@ -1,0 +1,5 @@
+from bedcore.alpha import normalize
+
+
+def test_normalize_lowers():
+    assert normalize("  AbC ") == "abc"

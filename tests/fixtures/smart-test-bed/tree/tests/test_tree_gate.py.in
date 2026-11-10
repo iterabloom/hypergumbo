@@ -1,0 +1,11 @@
+"""TEXT reader of the WHOLE tree: every package source opens with an SPDX line."""
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_every_source_has_an_spdx_line():
+    sources = sorted(ROOT.glob("packages/*/src/**/*.py"))
+    assert sources
+    for source in sources:
+        assert source.read_text().startswith("# SPDX-License-Identifier:"), source

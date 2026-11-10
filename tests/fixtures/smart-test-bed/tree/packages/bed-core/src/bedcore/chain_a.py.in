@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""First link of A -> B -> C. test_chain_a imports only this module."""
+from bedcore.chain_b import step_b
+
+
+def run_a(x):
+    return step_b(x) + 1

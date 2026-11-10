@@ -1,0 +1,13 @@
+from bedcore.shapes import Square, make_scaler
+
+
+def test_area():
+    assert Square(3).area() == 9
+
+
+def test_describe():
+    assert Square(2).describe() == "square 2"
+
+
+def test_scaler():
+    assert make_scaler(3)(2) == 6

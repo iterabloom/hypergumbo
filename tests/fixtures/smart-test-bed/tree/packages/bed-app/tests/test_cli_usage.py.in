@@ -1,0 +1,7 @@
+"""Imports the whole chain through bedapp.cli but executes none of chain_c:
+the import slice selects it for a chain_c edit, coverage can show it need not."""
+from bedapp.cli import main
+
+
+def test_usage_text():
+    assert main([]).startswith("Usage")

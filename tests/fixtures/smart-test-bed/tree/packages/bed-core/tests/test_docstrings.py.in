@@ -1,0 +1,12 @@
+"""TEXT reader: every bedcore module has a module docstring."""
+import ast
+from pathlib import Path
+
+PKG = Path(__file__).resolve().parents[1] / "src" / "bedcore"
+
+
+def test_every_module_has_a_docstring():
+    modules = sorted(PKG.rglob("*.py"))
+    assert modules
+    for module in modules:
+        assert ast.get_docstring(ast.parse(module.read_text())), module

@@ -1,0 +1,11 @@
+"""TEXT reader: each file:LINE citation still points at its anchor."""
+from pathlib import Path
+
+SRC = Path(__file__).resolve().parents[1] / "src"
+CITED = {"bedcore/chain_c.py:4": 'ANCHOR_C = "chain-c-anchor"'}
+
+
+def test_citations_point_at_their_anchors():
+    for citation, anchor in CITED.items():
+        path, line = citation.rsplit(":", 1)
+        assert anchor in (SRC / path).read_text().splitlines()[int(line) - 1]
