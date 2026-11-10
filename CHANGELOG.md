@@ -125,6 +125,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **An interrupted survey never leaves a truncated `survey.json`.**
 - **gitleaks installs never follow a symlink** out of `~/.local/bin`.
 - **`install-gitleaks` installs gitleaks 8.30.0 only, checked against its published SHA-256.**
+- **`HF_HUB_OFFLINE=0` or `false` no longer lets analysis reach Hugging Face.**
 - **A secret scan that did not run says so** and is never cached as clean, including when gitleaks exits with an error; it ignores the analysed repository's gitleaks config.
 - **INI and `.properties` secrets print as `***`**, with no length or characters.
 - **Trust grants are private (0600) before they are written.**

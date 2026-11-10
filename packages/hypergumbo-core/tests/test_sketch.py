@@ -9428,7 +9428,7 @@ class TestHfOfflineBeforeImport:
     def test_ensure_offline_respects_existing_env(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An already-set HF_HUB_OFFLINE (user/CI) is honored without probing."""
+        """An HF_HUB_OFFLINE the user or CI set to an offline value is kept."""
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
         )
@@ -9437,6 +9437,62 @@ class TestHfOfflineBeforeImport:
         monkeypatch.setenv("HF_HUB_OFFLINE", "1")
         assert _ensure_hf_offline_for_cached_models() is True
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", "False", "y"])
+    def test_ensure_offline_overrides_a_value_that_leaves_the_hub_online(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch, value: str,
+    ) -> None:
+        """huggingface_hub reads only 1/ON/YES/TRUE as offline, so honouring
+        HF_HUB_OFFLINE=0 left a plain sketch contacting the hub (one connect
+        to the configured endpoint under strace) despite runtime-cli-no-network."""
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        monkeypatch.setenv("HF_HUB_OFFLINE", value)
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    @pytest.mark.parametrize("value", ["1", "TRUE", "yes", "On"])
+    def test_ensure_offline_keeps_a_value_that_already_means_offline(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch, value: str,
+    ) -> None:
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        monkeypatch.setenv("HF_HUB_OFFLINE", value)
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == value
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("huggingface_hub") is None,
+        reason="huggingface_hub not installed (embeddings extra absent)",
+    )
+    def test_subprocess_import_time_constant_true_when_user_set_zero(
+        self, tmp_path
+    ) -> None:
+        """The library's own constant, in a fresh interpreter started with
+        HF_HUB_OFFLINE=0: the guard must win, or the hub stays reachable."""
+        import subprocess
+        import sys
+
+        code = (
+            "from hypergumbo_core.sketch_embeddings import "
+            "_ensure_hf_offline_for_cached_models as f\n"
+            "forced = f()\n"
+            "import huggingface_hub.constants as hc\n"
+            "print(f'{forced}|{hc.HF_HUB_OFFLINE}')\n"
+        )
+        env = dict(os.environ, HF_HUB_OFFLINE="0", HF_HOME=str(tmp_path))
+        out = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().endswith("True|True"), out.stdout
 
     @pytest.mark.skipif(
         importlib.util.find_spec("huggingface_hub") is None,
