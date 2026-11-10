@@ -552,6 +552,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `score-readability` | Score the reader load of Python source files, one function at a time. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `show-site` | Print the code around one I/O allowlist site, for a human reviewing the sheet. |
+| `smart-test-bed` | Score smart-test's selectors on a small repo, in seconds (WI-damom). |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
 | `yaml-catalog-index` | Index hypergumbo's YAML catalogs (canonical-registry view). |
@@ -992,8 +993,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: a3acd065530c
-  commit_count: 9016
+  commit: 3469bc06043b
+  commit_count: 9025
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
