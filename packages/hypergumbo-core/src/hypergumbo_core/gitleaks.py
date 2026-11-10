@@ -20,7 +20,12 @@ Public surface
 - ``install_gitleaks`` / ``uninstall_gitleaks``: download / remove the
   binary from the hypergumbo-managed install location. The latter is
   symmetric with the former — components installed outside this module
-  (system package, hand-copied binary) are left alone.
+  (system package, hand-copied binary) are left alone. The download is the
+  pinned :data:`GITLEAKS_VERSION`, and its archive must match the SHA-256
+  that release published (:data:`GITLEAKS_ARCHIVE_SHA256`) before anything
+  is written. Until this pin it was whatever ``releases/latest`` named,
+  checked against nothing but HTTPS -- for a binary that is then handed the
+  sketch's text on every run.
 - ``scan_content`` / ``scan_content_cached``: scan a string of output
   for secrets. The cached path (WI-julir, UAT 2026-04-13 BUG-20) keys
   on a content hash and short-circuits repeated scans of identical
@@ -66,6 +71,7 @@ The goal is safety by default without requiring a PhD to configure.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 import shutil
@@ -102,8 +108,34 @@ GITLEAKS_INSTALL_DIR = Path.home() / ".local" / "bin"
 GITLEAKS_BINARY_NAME = "gitleaks.exe" if sys.platform == "win32" else "gitleaks"
 GITLEAKS_PATH = GITLEAKS_INSTALL_DIR / GITLEAKS_BINARY_NAME
 
-# GitHub API for releases
-GITLEAKS_RELEASES_URL = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest"
+#: The one gitleaks release ``install-gitleaks`` installs. Pinned rather than
+#: "latest": the scan hands gitleaks the sketch's text, which quotes the
+#: user's source, so the binary is the one a reviewer chose, not whatever was
+#: published most recently. Moving to a newer release means replacing the
+#: version and every hash below in one reviewed change.
+GITLEAKS_VERSION = "8.30.0"
+GITLEAKS_DOWNLOAD_BASE = (
+    f"https://github.com/gitleaks/gitleaks/releases/download/v{GITLEAKS_VERSION}"
+)
+
+#: SHA-256 of each archive in that release, copied from the
+#: ``gitleaks_8.30.0_checksums.txt`` published beside it. gitleaks signs
+#: nothing, so this table is the only check that the bytes downloaded are the
+#: bytes released; ``~/.local/bin/gitleaks`` installed on 2025-11-26 was
+#: confirmed identical to the binary in the linux_x64 archive.
+GITLEAKS_ARCHIVE_SHA256 = {
+    "gitleaks_8.30.0_darwin_arm64.tar.gz": "b251ab2bcd4cd8ba9e56ff37698c033ebf38582b477d21ebd86586d927cf87e7",
+    "gitleaks_8.30.0_darwin_x64.tar.gz": "ca221d012d247080c2f6f61f4b7a83bffa2453806b0c195c795bbe9a8c775ed5",
+    "gitleaks_8.30.0_linux_arm64.tar.gz": "b4cbbb6ddf7d1b2a603088cd03a4e3f7ce48ee7fd449b51f7de6ee2906f5fa2f",
+    "gitleaks_8.30.0_linux_armv6.tar.gz": "193d2e4580e3871f66a5c74d4a6098264d2dd0a50a49b53f7fb58081ab174742",
+    "gitleaks_8.30.0_linux_armv7.tar.gz": "affb600da323925f775df81709c9878cda3f276f30c8e9c5ebef45d66b60834d",
+    "gitleaks_8.30.0_linux_x32.tar.gz": "9da53611213a9d95d9352941ae5ebd4992ac0684eaf76e135eee13ee73c25085",
+    "gitleaks_8.30.0_linux_x64.tar.gz": "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e",
+    "gitleaks_8.30.0_windows_armv6.zip": "bb1c0e78f785cbf7c88a967d304372a5e36c3703b22a769fa44fd8bc514db8f6",
+    "gitleaks_8.30.0_windows_armv7.zip": "92f1dff6a9d75c027e8379edc38e79d1e8d4e9af5789f123f7ea394f416703e0",
+    "gitleaks_8.30.0_windows_x32.zip": "35b08db8fc11f4cec66fe54227a9bbd8ecfd7456941d31837f9137edb77ee60e",
+    "gitleaks_8.30.0_windows_x64.zip": "54fe94f644b832dd08e8c3a5915efb3bfa862386d59fb27ca0792cb687a83573",
+}
 
 
 @dataclass
@@ -164,40 +196,28 @@ def _get_platform_arch() -> tuple[str, str]:
     return plat, arch
 
 
-def _get_download_url() -> tuple[str, str]:
-    """Get the download URL and filename for current platform.
+def _get_download_url() -> tuple[str, str, str]:
+    """The pinned release's archive for this platform, and its expected hash.
+
+    Nothing is fetched: the URL is built from :data:`GITLEAKS_VERSION`, so the
+    archive is the only download.
 
     Returns:
-        Tuple of (download_url, filename)
+        Tuple of (download_url, filename, sha256)
 
     Raises:
-        RuntimeError: If unable to determine download URL
+        RuntimeError: If the pinned release ships no archive for this platform
     """
     plat, arch = _get_platform_arch()
-
-    try:
-        with urlopen(GITLEAKS_RELEASES_URL, timeout=30) as response:  # noqa: S310  # nosec B310
-            data = json.loads(response.read().decode())
-    except (URLError, json.JSONDecodeError) as e:
-        raise RuntimeError(f"Failed to fetch gitleaks releases: {e}") from e
-
-    version = data.get("tag_name", "").lstrip("v")
-    if not version:
-        raise RuntimeError("Could not determine gitleaks version from release")
-
-    # Build expected filename
     ext = "zip" if plat == "windows" else "tar.gz"
-    filename = f"gitleaks_{version}_{plat}_{arch}.{ext}"
-
-    # Find matching asset
-    for asset in data.get("assets", []):
-        if asset.get("name") == filename:
-            return asset["browser_download_url"], filename
-
-    raise RuntimeError(
-        f"No gitleaks release found for {plat}/{arch}. "
-        f"Expected: {filename}"
-    )
+    filename = f"gitleaks_{GITLEAKS_VERSION}_{plat}_{arch}.{ext}"
+    sha256 = GITLEAKS_ARCHIVE_SHA256.get(filename)
+    if sha256 is None:
+        raise RuntimeError(
+            f"No gitleaks {GITLEAKS_VERSION} release for {plat}/{arch}. "
+            f"Expected: {filename}"
+        )
+    return f"{GITLEAKS_DOWNLOAD_BASE}/{filename}", filename, sha256
 
 
 def install_gitleaks(quiet: bool = False) -> bool:
@@ -213,7 +233,7 @@ def install_gitleaks(quiet: bool = False) -> bool:
         print("Installing gitleaks for secret scanning...")  # pragma: no cover
 
     try:
-        url, filename = _get_download_url()
+        url, filename, expected_sha256 = _get_download_url()
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return False
@@ -227,6 +247,17 @@ def install_gitleaks(quiet: bool = False) -> bool:
             data = response.read()  # pragma: no cover
     except URLError as e:
         print(f"Error downloading gitleaks: {e}", file=sys.stderr)
+        return False
+
+    # Before the first write: a download that is not the released archive
+    # (tampered, truncated, or a different release) never reaches the disk.
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if actual_sha256 != expected_sha256:
+        print(
+            f"Error: {filename} has SHA-256 {actual_sha256}, but gitleaks "
+            f"{GITLEAKS_VERSION} published {expected_sha256}; not installing it.",
+            file=sys.stderr,
+        )
         return False
 
     # Extract binary - all of this is network-dependent

@@ -131,7 +131,7 @@ Finding the risky calls is mechanical. Deciding which kinds of call count as ris
 - The analysed repository's own `.hypergumbo.toml` *can* switch on the scip-python backend, which analyses statically and executes nothing from the repository.
 - hypergumbo has no sandbox of its own: a file crafted to exploit a parser bug would run with your permissions.
 
-**On any repository, your own included:** `install-gitleaks` downloads a release from github.com and checks no checksum or signature, and every `sketch` then hands that binary the sketch's text, which quotes your source.
+**On any repository, your own included:** every `sketch` hands gitleaks the sketch's text, which quotes your source. `install-gitleaks` installs gitleaks 8.30.0 only if the download matches the SHA-256 gitleaks published for it; gitleaks signs nothing, and a gitleaks you installed another way is used as it is.
 
 [More details: what a default run does, commands that download, compile or run other programs, the tracker (`htrac`), how these statements are checked, analysing a repository you don't trust, and running it confined.](https://github.com/iterabloom/hypergumbo/blob/dev/SECURITY.md#using-hypergumbo-safely)
 
