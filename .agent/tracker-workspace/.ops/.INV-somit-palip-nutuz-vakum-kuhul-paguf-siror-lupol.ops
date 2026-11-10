@@ -20,3 +20,18 @@
     fields:  # b82b
       statement: "Analysis makes no network request to Hugging Face whatever HF_HUB_OFFLINE the user has set."  # b82b
       root_cause: "_ensure_hf_offline_for_cached_models forced HF_HUB_OFFLINE=1 only when unset or empty. huggingface_hub reads only 1/ON/YES/TRUE as offline, once at import, so HF_HUB_OFFLINE=0 kept the hub online; the loader's later set to 1 comes after the import."  # b82b
+- op: update  # 567e
+  at: '2026-11-10T05:05:28Z'  # 567e
+  by: agent  # 567e
+  actor: jgstern_agent  # 567e
+  clock: 2  # 567e
+  nonce: 567e  # 567e
+  set:  # 567e
+    status: satisfied  # 567e
+- op: discuss  # 6a56
+  at: '2026-11-10T05:05:28Z'  # 6a56
+  by: agent  # 6a56
+  actor: jgstern_agent  # 6a56
+  clock: 3  # 6a56
+  nonce: 6a56  # 6a56
+  message: "Fixed in PR #2112: a set value is kept only if huggingface_hub reads it as offline; anything else becomes 1. Re-ran the filed repro after the fix: default sketch with HF_HUB_OFFLINE=0 -> 0 connects, =false -> 0, --config-extraction embedding with =0 -> 0; 5 cached model files opened in each, so the embeddings path ran. A fresh-interpreter test started with HF_HUB_OFFLINE=0 asserts huggingface_hub.constants.HF_HUB_OFFLINE is True."  # 6a56
