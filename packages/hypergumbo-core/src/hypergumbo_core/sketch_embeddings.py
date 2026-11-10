@@ -27,9 +27,10 @@ from here directly. ``nomic-ai/modernbert-embed-base``
 probe embeddings. Before every sentence_transformers import (in
 ``_has_sentence_transformers`` and in both loaders),
 ``_ensure_hf_offline_for_cached_models`` sets ``HF_HUB_OFFLINE=1`` for the
-whole process unless the variable is already set. It does this whether or
-not the models are cached, despite its name (INV-dasig, made unconditional
-by INV-gujus).
+whole process unless the variable already holds a value huggingface_hub reads
+as offline; ``0`` or ``false`` is overridden. It does this whether or not the
+models are cached, despite its name (INV-dasig, made unconditional by
+INV-gujus).
 
 The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
@@ -338,6 +339,12 @@ def _hf_model_is_cached(model_name: str) -> bool:
     return False
 
 
+#: The values huggingface_hub reads as true (``constants.ENV_VARS_TRUE_VALUES``,
+#: matched upper-cased). Copied, not imported: importing huggingface_hub here
+#: would freeze its offline switch before this module could set it.
+_HF_TRUE_VALUES = frozenset({"1", "ON", "YES", "TRUE"})
+
+
 def _ensure_hf_offline_for_cached_models() -> bool:
     """Set ``HF_HUB_OFFLINE=1`` BEFORE the first huggingface_hub import (INV-dasig).
 
@@ -356,12 +363,18 @@ def _ensure_hf_offline_for_cached_models() -> bool:
     one-time download could proceed -- which kept a partial-cache window open
     to HF metadata traffic. Analysis no longer downloads at all (the weights
     come from ``install-embeddings``, :func:`fetch_embedding_models`), so there
-    is no download to protect and offline is forced on every runtime load. An
-    already-set ``HF_HUB_OFFLINE`` (user / CI / test) is honored as-is.
+    is no download to protect and offline is forced on every runtime load.
+
+    A value the user already set is kept only when huggingface_hub reads it as
+    offline (:data:`_HF_TRUE_VALUES`, compared upper-cased as the library
+    does). Anything else -- ``0``, ``false``, ``no`` -- is replaced with ``1``.
+    Honouring every set value, as this did until the HF_HUB_OFFLINE=0 report,
+    left the hub reachable: a plain ``sketch`` made one connection to the
+    configured endpoint under strace, with the models loaded from cache.
 
     Returns True: offline mode is in effect (set here or already set).
     """
-    if not os.environ.get("HF_HUB_OFFLINE"):
+    if os.environ.get("HF_HUB_OFFLINE", "").upper() not in _HF_TRUE_VALUES:
         os.environ["HF_HUB_OFFLINE"] = "1"
     return True
 

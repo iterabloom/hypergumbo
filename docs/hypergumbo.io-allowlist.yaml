@@ -727,8 +727,9 @@ modules:
       - survey
       - 'on a results-cache miss without --minimal: slice, search, routes, explain, symbols,
         test-coverage, dead-code-maybe, repeat-finder, io-boundaries, verify-claims'
-      purpose: set HF_HUB_OFFLINE=1 when unset before any runtime model load, so the loader can never
-        download during analysis (INV-gujus); an already-set value is honored
+      purpose: set HF_HUB_OFFLINE=1 before any runtime model load, so the loader can never download
+        during analysis (INV-gujus); a value the user set is kept only if huggingface_hub reads it
+        as offline (1/ON/YES/TRUE), and 0, false or no is replaced
     - function: _load_embedding_model
       primitive: sentence_transformers.SentenceTransformer
       family: network
