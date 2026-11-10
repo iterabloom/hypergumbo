@@ -23,19 +23,28 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, get_args, get_origin
 
-# Add src to path for imports
-REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+# Resolve hypergumbo_core from this checkout, as generate-concept-axes does,
+# so the pre-commit freshness check needs no installed package. This read
+# `REPO_ROOT / "src"`, the layout before packages/. That directory is gone, so
+# the import worked only with the venv active, and without it the hook
+# reported the schema "out of date" (WI-ziguk).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
-from hypergumbo_core.entrypoints import REQUEST_INGRESS_KINDS, all_known_entrypoint_kinds
-from hypergumbo_core.evidence_types import EVIDENCE_TYPES
-from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.schema import SCHEMA_VERSION, VIEW_NAMES
+from generator_check import could_not_run, run
 
-from generate_schema_lib import build_all_defs
+try:
+    from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
+    from hypergumbo_core.entrypoints import REQUEST_INGRESS_KINDS, all_known_entrypoint_kinds
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+    from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
+    from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+    from hypergumbo_core.schema import SCHEMA_VERSION, VIEW_NAMES
+
+    from generate_schema_lib import build_all_defs
+except ImportError as exc:
+    sys.exit(could_not_run(exc))
 
 
 def python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
@@ -1163,4 +1172,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run(main)

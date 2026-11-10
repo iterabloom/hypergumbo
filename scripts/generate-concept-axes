@@ -35,50 +35,56 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # without requiring an editable install.
 sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
-from hypergumbo_core.edge_types import (  # noqa: E402
-    AXIS_ENDPOINT_SHAPE,
-    AXIS_PENDING,
-    AXIS_RELATIONSHIP,
-    EDGE_TYPES,
-    EdgeTypeSpec,
-)
-from hypergumbo_core.symbol_kinds import (  # noqa: E402
-    AXIS_LANGUAGE_CONSTRUCT,
-    AXIS_PENDING as KIND_AXIS_PENDING,
-    SYMBOL_KINDS,
-    SymbolKindSpec,
-)
-from hypergumbo_core.evidence_types import (  # noqa: E402
-    AXIS_INFERENCE_PATHWAY,
-    AXIS_PENDING as EVIDENCE_AXIS_PENDING,
-    EVIDENCE_TYPES,
-    EvidenceTypeSpec,
-)
-from hypergumbo_core.io_boundary_types import (
-    AXIS_DATA_CROSSING,
-    AXIS_DEFERRED_CROSSING,
-    AXIS_OPACITY,
-    AXIS_SPECULATIVE,
-    IO_BOUNDARY_TYPES,
-    IoBoundarySpec,
-)
-from hypergumbo_core.module_key_axis import (
-    AXIS_CALL_SITE_PROPERTY,
-    AXIS_OWNER_PATH,
-    AXIS_PENDING as MODULE_KEY_AXIS_PENDING,
-    AXIS_UNCERTAINTY,
-    MODULE_KEY_AXIOM,
-    MODULE_KEY_NOTIONS,
-)
-from hypergumbo_core.signature_axis import (
-    AXIS_DECLARATION_SURFACE,
-    AXIS_FOREIGN_FACT,
-    AXIS_PENDING as SIGNATURE_AXIS_PENDING,
-    FACT_HOMES,
-    LEGACY_VALUE_PARSERS,
-    SIGNATURE_AXIOM,
-    SIGNATURE_NOTIONS,
-)
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from generator_check import could_not_run, run  # noqa: E402
+
+try:
+    from hypergumbo_core.edge_types import (  # noqa: E402
+        AXIS_ENDPOINT_SHAPE,
+        AXIS_PENDING,
+        AXIS_RELATIONSHIP,
+        EDGE_TYPES,
+        EdgeTypeSpec,
+    )
+    from hypergumbo_core.symbol_kinds import (  # noqa: E402
+        AXIS_LANGUAGE_CONSTRUCT,
+        AXIS_PENDING as KIND_AXIS_PENDING,
+        SYMBOL_KINDS,
+        SymbolKindSpec,
+    )
+    from hypergumbo_core.evidence_types import (  # noqa: E402
+        AXIS_INFERENCE_PATHWAY,
+        AXIS_PENDING as EVIDENCE_AXIS_PENDING,
+        EVIDENCE_TYPES,
+        EvidenceTypeSpec,
+    )
+    from hypergumbo_core.io_boundary_types import (
+        AXIS_DATA_CROSSING,
+        AXIS_DEFERRED_CROSSING,
+        AXIS_OPACITY,
+        AXIS_SPECULATIVE,
+        IO_BOUNDARY_TYPES,
+        IoBoundarySpec,
+    )
+    from hypergumbo_core.module_key_axis import (
+        AXIS_CALL_SITE_PROPERTY,
+        AXIS_OWNER_PATH,
+        AXIS_PENDING as MODULE_KEY_AXIS_PENDING,
+        AXIS_UNCERTAINTY,
+        MODULE_KEY_AXIOM,
+        MODULE_KEY_NOTIONS,
+    )
+    from hypergumbo_core.signature_axis import (
+        AXIS_DECLARATION_SURFACE,
+        AXIS_FOREIGN_FACT,
+        AXIS_PENDING as SIGNATURE_AXIS_PENDING,
+        FACT_HOMES,
+        LEGACY_VALUE_PARSERS,
+        SIGNATURE_AXIOM,
+        SIGNATURE_NOTIONS,
+    )
+except ImportError as exc:
+    sys.exit(could_not_run(exc))
 
 
 # Edge.type section ordering (most-canonical first). Each entry:
@@ -730,4 +736,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    sys.exit(main())
+    run(main)
