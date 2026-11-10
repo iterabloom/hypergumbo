@@ -311,7 +311,7 @@ None of these run unless you invoke them, with one exception: the analysed repos
 
 | Command | What it does |
 |---|---|
-| `install-gitleaks` | Downloads the latest gitleaks release from github.com into `~/.local/bin/`. It checks no checksum or signature. |
+| `install-gitleaks` | Downloads gitleaks 8.30.0 from github.com into `~/.local/bin/`, refusing an archive whose SHA-256 differs from the one gitleaks published for that release. gitleaks publishes no signatures. |
 | `install-embeddings` | Runs `pip install sentence-transformers`, which pulls in PyTorch (about 2 GB), then downloads the two embedding models from huggingface.co. Analysis never downloads them. |
 | `install-rust-analyzer` | Runs `rustup component add rust-analyzer`. |
 | `build-grammars` | Compiles three tree-sitter grammars (Lean, Wolfram, Circom) with your compiler, from C source that ships inside `hypergumbo-core`, through `pip install`, which can download build tools from PyPI. |
@@ -344,7 +344,7 @@ The allowlist currently records one open finding:
 - Unless you turn on the rust-analyzer backend, hypergumbo parses the repository's code and never runs it.
 - Catalogue data inside the repository (the catalogue keys in `.hypergumbo.toml` and the files in `.hypergumbo/<family>.d/`) is ignored until you opt in with `--in-repo-catalogues` or `hypergumbo trust-catalogues` ([ADR-0061](docs/adr/0061-catalogue-tiers-for-every-family.md)). Its preferences do load by default, and that is how it can switch on scip-python.
 - It cannot turn on the rust-analyzer backend, and it cannot make hypergumbo write into it.
-- If gitleaks is installed, it runs in an empty directory of its own, so the repository's `.gitleaks.toml` and `.gitleaksignore` cannot hide secret-scan findings. Your own `GITLEAKS_CONFIG` still applies. gitleaks is handed the sketch's text, which quotes your source; hypergumbo runs `~/.local/bin/gitleaks` if present, otherwise the first `gitleaks` on your `PATH`, and `install-gitleaks` puts it in `~/.local/bin/` without checking a checksum or signature.
+- If gitleaks is installed, it runs in an empty directory of its own, so the repository's `.gitleaks.toml` and `.gitleaksignore` cannot hide secret-scan findings. Your own `GITLEAKS_CONFIG` still applies. gitleaks is handed the sketch's text, which quotes your source; hypergumbo runs `~/.local/bin/gitleaks` if present, otherwise the first `gitleaks` on your `PATH`, and `install-gitleaks` puts 8.30.0 there only after checking the archive's SHA-256 against the one gitleaks published. A gitleaks installed any other way is not checked.
 - It does control everything the parsers read. hypergumbo has no sandbox of its own, so a file crafted to exploit a parser bug would run with your permissions.
 
 ### Running it confined

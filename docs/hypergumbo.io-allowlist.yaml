@@ -223,22 +223,18 @@ modules:
       count: 2
   hypergumbo_core.gitleaks:
     zone: install
-    target: api.github.com (latest gitleaks release) / github.com release asset
+    target: github.com release asset of the pinned gitleaks version (GITLEAKS_VERSION, 8.30.0)
     commands:
     - install-gitleaks
     - add-extras
     sites:
-    - function: _get_download_url
-      primitive: urllib.request.urlopen
-      family: network
-      count: 1
-      purpose: resolve the latest gitleaks release asset URL for this platform
     - function: install_gitleaks
       primitive: urllib.request.urlopen
       family: network
       count: 1
-      purpose: download the gitleaks release archive (then extracted/installed via tmp_artifact_*
-        and install_artifact_* wrappers)
+      purpose: download the pinned gitleaks release archive; refused unless its SHA-256 matches
+        the one that release published (GITLEAKS_ARCHIVE_SHA256), then extracted/installed via
+        tmp_artifact_* and install_artifact_* wrappers
   hypergumbo_core.pass_metadata:
     zone: in_process
     commands:

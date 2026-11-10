@@ -10,6 +10,7 @@ This module tests the secret scanning functionality, including:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from io import StringIO
@@ -248,70 +249,32 @@ class TestFormatting:
 
 
 class TestDownloadUrl:
-    """Tests for download URL determination."""
+    """The download is pinned to one release and carries that release's hash."""
 
-    def test_get_download_url_handles_network_error(self) -> None:
-        """Raises RuntimeError on network failure."""
-        with patch("hypergumbo_core.gitleaks.urlopen", side_effect=URLError("network error")):
-            with pytest.raises(RuntimeError, match="Failed to fetch"):
-                _get_download_url()
+    def test_the_url_names_the_pinned_release_without_asking_the_network(self) -> None:
+        """No "latest" lookup: the URL is built from the pinned version, so
+        nothing is fetched before the archive itself."""
+        with patch("hypergumbo_core.gitleaks.urlopen", side_effect=AssertionError("network")), \
+                patch("platform.system", return_value="Linux"), \
+                patch("platform.machine", return_value="x86_64"):
+            url, filename, sha256 = _get_download_url()
 
-    def test_get_download_url_handles_invalid_json(self) -> None:
-        """Raises RuntimeError on invalid JSON response."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = b"not json"
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="Failed to fetch"):
-                _get_download_url()
-
-    def test_get_download_url_handles_missing_version(self) -> None:
-        """Raises RuntimeError when version not in response."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({"tag_name": ""}).encode()
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="Could not determine"):
-                _get_download_url()
-
-    def test_get_download_url_handles_missing_asset(self) -> None:
-        """Raises RuntimeError when expected asset not found."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "tag_name": "v8.30.0",
-            "assets": [{"name": "wrong_file.tar.gz"}]
-        }).encode()
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="No gitleaks release found"):
-                _get_download_url()
-
-    def test_get_download_url_success(self) -> None:
-        """Returns URL and filename on success."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "tag_name": "v8.30.0",
-            "assets": [{
-                "name": "gitleaks_8.30.0_linux_x64.tar.gz",
-                "browser_download_url": "https://example.com/download"
-            }]
-        }).encode()
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with patch("platform.system", return_value="Linux"):
-                with patch("platform.machine", return_value="x86_64"):
-                    url, filename = _get_download_url()
-
-        assert url == "https://example.com/download"
         assert filename == "gitleaks_8.30.0_linux_x64.tar.gz"
+        assert url == ("https://github.com/gitleaks/gitleaks/releases/download/"
+                       "v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz")
+        # From gitleaks_8.30.0_checksums.txt, published with the release.
+        assert sha256 == "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
+
+    def test_a_platform_the_release_does_not_ship_is_refused(self) -> None:
+        with patch("platform.system", return_value="Windows"), \
+                patch("platform.machine", return_value="arm64"):
+            with pytest.raises(RuntimeError, match=r"No gitleaks 8\.30\.0 release for windows/arm64"):
+                _get_download_url()
+
+    def test_every_hash_belongs_to_the_pinned_version(self) -> None:
+        for name, digest in gitleaks.GITLEAKS_ARCHIVE_SHA256.items():
+            assert name.startswith(f"gitleaks_{gitleaks.GITLEAKS_VERSION}_"), name
+            assert len(digest) == 64 and int(digest, 16) >= 0, name
 
 
 class TestInstallGitleaks:
@@ -326,7 +289,7 @@ class TestInstallGitleaks:
 
     def test_install_handles_download_error(self) -> None:
         """Returns False when download fails."""
-        with patch.object(gitleaks, "_get_download_url", return_value=("https://example.com/file.tar.gz", "file.tar.gz")):
+        with patch.object(gitleaks, "_get_download_url", return_value=("https://example.com/file.tar.gz", "file.tar.gz", "0" * 64)):
             with patch("hypergumbo_core.gitleaks.urlopen", side_effect=URLError("download failed")):
                 result = install_gitleaks(quiet=True)
 
@@ -380,8 +343,10 @@ class TestInstallGitleaks:
 
         response = MagicMock()
         response.__enter__.return_value.read.return_value = buf.getvalue()
+        digest = hashlib.sha256(buf.getvalue()).hexdigest()
         with patch.object(gitleaks, "_get_download_url",
-                          return_value=("https://example.invalid/g.tar.gz", "gitleaks_8.30.0_linux_x64.tar.gz")), \
+                          return_value=("https://example.invalid/g.tar.gz",
+                                        "gitleaks_8.30.0_linux_x64.tar.gz", digest)), \
                 patch.object(gitleaks, "urlopen", return_value=response):
             assert install_gitleaks(quiet=True) is True
 
@@ -391,6 +356,34 @@ class TestInstallGitleaks:
             root = scratch[0] if name.startswith("tmp_artifact_") else install_dir
             assert target == root or target.is_relative_to(root), (name, target, root)
         assert ("tmp_artifact_write_bytes", scratch[0] / "gitleaks_8.30.0_linux_x64.tar.gz") in calls
+
+
+    def test_an_archive_whose_hash_does_not_match_is_never_written(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A tampered or truncated download stops before the first write: no
+        archive in the tmp zone, nothing extracted, nothing installed."""
+        install_dir = tmp_path / ".local" / "bin"
+        monkeypatch.setattr(gitleaks, "GITLEAKS_INSTALL_DIR", install_dir)
+        monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", install_dir / gitleaks.GITLEAKS_BINARY_NAME)
+        writes: list[str] = []
+        for name in ("tmp_artifact_write_bytes", "tmp_artifact_extract",
+                     "install_artifact_mkdir", "install_artifact_copy"):
+            monkeypatch.setattr(gitleaks, name, lambda *a, _n=name, **k: writes.append(_n))
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b"not the release"
+
+        with patch.object(gitleaks, "_get_download_url",
+                          return_value=("https://example.invalid/g.tar.gz",
+                                        "gitleaks_8.30.0_linux_x64.tar.gz", "0" * 64)), \
+                patch.object(gitleaks, "urlopen", return_value=response):
+            assert install_gitleaks(quiet=True) is False
+
+        assert writes == []
+        assert not install_dir.exists()
+        err = capsys.readouterr().err
+        assert "SHA-256" in err and "0" * 64 in err
 
 
 class TestPlatformArchEdgeCases:

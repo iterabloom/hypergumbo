@@ -3,9 +3,10 @@
 
 ``HG_TRACE_ARGV``: the argv, JSON. ``HG_TRACE_STUB=1`` (the install / uninstall
 commands, run with HOME in scratch): ``subprocess.run`` succeeds without
-launching anything, and ``urlopen`` serves a fake gitleaks release -- JSON,
-then a tar.gz holding a ``gitleaks`` file -- so the download, extraction and
-install lines all run. ``HG_TRACE_PATCH="module:attr=True;..."`` replaces an
+launching anything, and ``urlopen`` serves a fake gitleaks release archive --
+a tar.gz holding a ``gitleaks`` file, whose hash replaces the pinned ones so
+the install's SHA-256 check passes -- so the download, extraction and install
+lines all run. ``HG_TRACE_PATCH="module:attr=True;..."`` replaces an
 availability predicate first, to reach the other branch. Prints
 ``HG_TRACE_RC=<exit code>`` last on stderr.
 """
@@ -34,25 +35,29 @@ if os.environ.get("HG_TRACE_STUB") == "1":
         def __exit__(self, *exc):
             return False
 
-    _calls = []
-
-    def _fake_urlopen(url, *a, **k):
-        _calls.append(url)
-        if len(_calls) == 1:
-            import hypergumbo_core.gitleaks as g
-            plat, arch = g._get_platform_arch()
-            name = f"gitleaks_8.0.0_{plat}_{arch}.tar.gz"
-            return _Resp(json.dumps({"tag_name": "v8.0.0", "assets": [
-                {"name": name, "browser_download_url": "https://example.invalid/" + name}]}).encode())
+    def _fake_archive() -> bytes:
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tf:
             data = b"#!/bin/sh\n"
             info = tarfile.TarInfo("gitleaks")
             info.size, info.mode = len(data), 0o755
             tf.addfile(info, io.BytesIO(data))
-        return _Resp(buf.getvalue())
+        return buf.getvalue()
+
+    _ARCHIVE = _fake_archive()
+
+    def _fake_urlopen(url, *a, **k):
+        return _Resp(_ARCHIVE)
 
     urllib.request.urlopen = _fake_urlopen
+
+    # gitleaks binds urlopen at import, so it is imported after the swap; the
+    # stand-in archive then takes the place of every pinned one.
+    import hashlib
+
+    import hypergumbo_core.gitleaks as _gitleaks
+    _gitleaks.GITLEAKS_ARCHIVE_SHA256 = dict.fromkeys(
+        _gitleaks.GITLEAKS_ARCHIVE_SHA256, hashlib.sha256(_ARCHIVE).hexdigest())
 
 import hypergumbo_core.cli as cli
 
