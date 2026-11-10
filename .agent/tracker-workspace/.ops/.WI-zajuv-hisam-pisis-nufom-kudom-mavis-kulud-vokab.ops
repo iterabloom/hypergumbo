@@ -1,0 +1,39 @@
+- op: create  # 2c55
+  at: '2026-11-10T20:25:06Z'  # 2c55
+  by: agent  # 2c55
+  actor: jgstern_agent  # 2c55
+  clock: 1  # 2c55
+  nonce: 2c55  # 2c55
+  data:  # 2c55
+    kind: work_item  # 2c55
+    title: "smart-test runs the full import-closure test set for a comment-only change: 814 test files (~17 min) for comment edits to 15 core modules"  # 2c55
+    status: todo_soft  # 2c55
+    priority: 3  # 2c55
+    parent:  # 2c55
+    tags:  # 2c55
+    - smart_test  # 2c55
+    - ci_infrastructure  # 2c55
+    isbefore: []  # 2c55
+    duplicate_of: []  # 2c55
+    not_duplicate_of: []  # 2c55
+    pr_ref:  # 2c55
+    description: "smart-test selects tests per changed FILE, so a change that touches only comments and docstrings runs the same import-closure test set as a code change.\n\nObserved: a comment-only change to 15 hypergumbo_core modules (taint.py, verify_claims.py, io_boundary.py, spec_validator.py, entrypoints.py, compact.py and 9 others; the ASTs, docstrings blanked, compare identical to HEAD) selected 968 dependent files and 814 test files, estimated ~17 min on 6 CPUs. No imported behaviour can change, so almost all of that run cannot fail.\n\nProposal: for each changed `.py` source file, parse HEAD's and the working tree's versions; if the ASTs are equal with docstrings blanked (`ast.dump` after replacing each module/class/function docstring constant with \"\"), treat the file as text-only and do NOT expand its import closure. Select for it only the tests that read its source as text.\n\nWhat must still run for a text-only file (the hazard; get this wrong and a gate rots green):\n- tests that read source text: the field-axis gate (`check-multi-value-field-axis-declaration` via test_multi_value_field_axis.py, which reads `# axis:` comments on ir.py / datamodels.py / io_boundary.py), docstring/comment-scanning checks, line-number and citation tests (WI-lujon: a test citing `bash.py:1353` by string), `# covers:` / `# pragma` parsers, check-docstring-drift's tests;\n- whole-tree gates the slice already misses (WI-nifif's shape) are no worse off, but must not get worse.\nFinding \"tests that read file X as text\" is the open design question: a static scan for the module's path or name as a string in tests (the WI-lujon mechanism, if it exists, may already be this), plus an explicit allowlist of whole-tree text gates. If that set cannot be built reliably, the fallback is to keep the current behaviour.\n\nAlso out of scope for the shortcut: a changed `# type:` comment or `# pragma: no cover` changes mypy or coverage results, though not the AST; `# pragma` lines must make a file NOT text-only (or coverage must still be measured for it). A changed `__doc__` read at runtime (e.g. spec_validator's verdict-enum check reads `ClaimVerdict.__doc__`) is a behaviour change, so docstring-only changes are text-only only for docstrings no code reads; simplest safe rule: blank comments only, keep docstrings in the comparison, unless a cheap check shows no `__doc__` reader.\n\nDone when: a comment-only change to a hub module selects only its text-reading tests (seconds, not minutes), the manifest written for CI reflects the same selection, and a test shows that a `# axis:` comment edit on io_boundary.py still selects the field-axis gate."  # 2c55
+    fields: {}  # 2c55
+- op: update  # 0f76
+  at: '2026-11-10T20:43:13Z'  # 0f76
+  by: agent  # 0f76
+  actor: jgstern_agent  # 0f76
+  clock: 2  # 0f76
+  nonce: 0f76  # 0f76
+  set:  # 0f76
+    title: "smart-test: find the tests that read a source file as TEXT, and (owner sign-off) keep a comment-only change's import closure out of the CI manifest"  # 0f76
+    description: "smart-test selects tests per changed FILE, so a change that touches only comments runs the same import-closure test set as a code change. Observed: a comment-only change to 15 hypergumbo_core modules (taint.py, verify_claims.py, io_boundary.py, spec_validator.py, entrypoints.py, compact.py and 9 others; ASTs identical to HEAD) selected 968 dependent files and 814 test files, ~17 min on 6 CPUs.\n\nSCOPE (adjusted): this item owns two things.\n\n(A) THE TEXT-READER SET, shared with the block-level narrowing item (this item isbefore it). For a source file X, the tests that read X as TEXT rather than executing it: the field-axis gate (test_multi_value_field_axis.py reads `# axis:` comments on ir.py / datamodels.py / io_boundary.py), citation and line-number tests (WI-lujon: a test citing `bash.py:1353` by string), docstring/comment-scanning checks, `# covers:` / `# pragma` parsers. Coverage cannot find these (they may execute nothing in X), so they need their own source: a static scan of tests for X's path or module name as a string (check whether WI-lujon's mechanism already is this), plus an explicit list of whole-tree text gates. If the set cannot be built reliably, nothing in this item ships.\n\n(B) THE CI-MANIFEST HALF. For a changed `.py` source file whose AST is identical to the base (comments only), do not expand its import closure into the manifest; select only its text-readers from (A). This is deterministic (an AST comparison, not the coverage index), but it NARROWS THE MERGE GATE, which the owner's 2026-08-16 option A on WI-kuliv / WI-bolot kept static: owner sign-off required before (B) lands.\nExceptions that keep the full closure: a changed `# pragma: no cover` or `# type:` comment (changes coverage or mypy without changing the AST); a docstring change (it is in the AST anyway, and spec_validator reads `ClaimVerdict.__doc__` at runtime).\n\nThe LOCAL half (a comment-only change runs seconds of tests locally) is now the block-level narrowing item: under a block-level keep set a comment-only edit changes no block, so it keeps only the text-readers from (A).\n\nDone when: (A) exists with a test that an `# axis:` comment edit on io_boundary.py selects the field-axis gate; and, if the owner approves (B), a comment-only change to a hub module writes a manifest of only its text-readers."  # 0f76
+  add:  # 0f76
+    isbefore: [WI-gapos-nubuz-vokod-jajul-magid-zajis-nakud-lomit]  # 0f76
+- op: discuss  # 8511
+  at: '2026-11-10T20:43:13Z'  # 8511
+  by: agent  # 8511
+  actor: jgstern_agent  # 8511
+  clock: 3  # 8511
+  nonce: '8511'  # 8511
+  message: "Re-scoped: the local half (a comment-only change runs seconds of tests locally) moved to WI-gapos-nubuz-vokod-jajul-magid-zajis-nakud-lomit, block-level --narrow, which needs this item's text-reader set first. This item keeps the text-reader set and the CI-manifest half; the latter narrows the merge gate and needs owner sign-off."  # 8511
