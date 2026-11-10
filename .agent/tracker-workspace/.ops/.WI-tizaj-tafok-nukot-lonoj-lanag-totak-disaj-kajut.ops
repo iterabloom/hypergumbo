@@ -1,0 +1,35 @@
+- op: create  # 8dd4
+  at: '2026-11-10T03:12:25Z'  # 8dd4
+  by: agent  # 8dd4
+  actor: jgstern_agent  # 8dd4
+  clock: 1  # 8dd4
+  nonce: 8dd4  # 8dd4
+  data:  # 8dd4
+    kind: work_item  # 8dd4
+    title: "install-gitleaks downloaded the latest release unpinned and unverified, then sketch hands that binary the sketch text"  # 8dd4
+    status: todo_hard  # 8dd4
+    priority: 2  # 8dd4
+    parent:  # 8dd4
+    tags:  # 8dd4
+    - security  # 8dd4
+    isbefore: []  # 8dd4
+    duplicate_of: []  # 8dd4
+    not_duplicate_of: []  # 8dd4
+    pr_ref:  # 8dd4
+    description: "install-gitleaks / add-extras resolved api.github.com releases/latest and installed the archive with no version pin and no checksum check (HTTPS only). gitleaks then receives the sketch's text, which quotes the user's source, on every sketch. gitleaks publishes gitleaks_<v>_checksums.txt per release and no signatures."  # 8dd4
+    fields: {}  # 8dd4
+- op: update  # 905f
+  at: '2026-11-10T03:12:31Z'  # 905f
+  by: agent  # 905f
+  actor: jgstern_agent  # 905f
+  clock: 2  # 905f
+  nonce: 905f  # 905f
+  set:  # 905f
+    status: done  # 905f
+- op: discuss  # 53c7
+  at: '2026-11-10T03:12:31Z'  # 53c7
+  by: agent  # 53c7
+  actor: jgstern_agent  # 53c7
+  clock: 3  # 53c7
+  nonce: 53c7  # 53c7
+  message: "Fixed in PR #2111: pinned GITLEAKS_VERSION=8.30.0; the archive must match GITLEAKS_ARCHIVE_SHA256 (copied from gitleaks_8.30.0_checksums.txt) before any write. Live evidence: a real install into a scratch HOME installs a binary with SHA-256 8b6fd684...f088, identical to the official linux_x64 archive's binary and to the existing ~/.local/bin/gitleaks; the same download against a wrong expected hash prints 'has SHA-256 79a3ab57..., but gitleaks 8.30.0 published 0000...; not installing it', returns False, and ~/.local/bin is never created."  # 53c7
