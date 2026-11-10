@@ -466,6 +466,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 |--------|-------------|
 | `agent-notes` | Agent-owned notes CLI for the split state-file design (INV-jofaf facet 2). |
 | `agent-supervisor` | scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub). |
+| `archaeology_heuristic.py` | Estimate how likely a piece of text is substantially historical exegesis. |
 | `audit-autopr-convergence` | audit-autopr-convergence — read the auto-pr convergence ledger (WI-lapap). |
 | `audit-closure-evidence` | audit-closure-evidence — advisory detector for proxy-only closures (WI-dafun). |
 | `audit-stale-timestamps` | Audit embedded timestamps in agent state files vs filesystem mtimes. |
@@ -991,8 +992,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 73cdbd6f5f75
-  commit_count: 9009
+  commit: f7209a92a09a
+  commit_count: 9013
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
