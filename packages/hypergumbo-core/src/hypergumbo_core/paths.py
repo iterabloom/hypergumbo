@@ -347,7 +347,7 @@ def classify_test_file(path: str) -> Optional[str]:
     filename = get_filename(path)
     filename_lower = filename.lower()
 
-    # Test patterns with _test suffix or test- prefix (any language)
+    # Test patterns with test_ prefix, test- prefix or _test suffix (any language)
     if filename.startswith("test_"):
         return TEST_FILE_REASON_TEST
     # Hyphen-separated test prefix: test-reach.c, test-date.c, test-parse.c

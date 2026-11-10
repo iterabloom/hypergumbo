@@ -293,11 +293,11 @@ class TaintSource:
     # which has no boundary because it did not come from an io_primitives
     # entry.
     #
-    # WHY IT IS CARRIED. AUTO_SOURCE_LABEL_MAP collapses FOUR boundaries —
-    # net_recv, ipc_recv, db_read and navigation_read — into the single label
-    # `untrusted_input`, and until now discarded which one it was. So "a
+    # WHY IT IS CARRIED. AUTO_SOURCE_LABEL_MAP collapses five boundaries —
+    # net_recv, ipc_recv, db_read, navigation_read and command_line_read —
+    # into the single label `untrusted_input`. Without the boundary, "a
     # request body reached the database" and "a row read from the database
-    # reached the database" were the same fact downstream, and on an
+    # reached the database" are the same fact downstream, and on an
     # ORM-backed application the second dominates: 93 of the 100 displayed
     # rows on pretix's largest violated claim are database-read to
     # database-write. Keeping the boundary makes them separable WITHOUT
@@ -710,9 +710,7 @@ class TaintFlowFinding:
     sink_zone: str
     sanitized: bool
     confidence: str  # "approximate" or "precise"
-    # "structural" / "ddg" / "ddg_mixed" — ddg_mixed was assigned by the
-    # propagator while this comment named only two values, so a reader
-    # enumerating the vocabulary from here got it wrong.
+    # "structural" / "ddg" / "ddg_mixed"
     analysis_method: str
     path: list[str] = field(default_factory=list)
     # INV-pojib: WHICH sanitizer made this flow safe, and whether the analysed
@@ -1160,9 +1158,7 @@ def collapse_unadjudicated_flows(
 
 # The two spellings the analyzers use for "receiver module could not be
 # recovered". ADR-0017 §3a exempts both from module filtering; keeping them in
-# one frozenset is what stops the pair drifting apart again — the live sink
-# matcher tested only the bare spelling for months while the (never-wired)
-# _sink_module_compatible tested both.
+# one frozenset means every matcher tests both spellings, not just one.
 #: Re-exported from :mod:`io_boundary`, which is the canonical home (the two
 #: consumers must not drift about what "no module" looks like).
 _UNRESOLVED_MODULE_PLACEHOLDERS = _UNRESOLVED_MODULE_PLACEHOLDERS_IO
@@ -2322,8 +2318,9 @@ def _derive_auto_imports_from_io_primitives(
                     return_tainted=not prim.returns_handle,
                     requires_target_boundary=gated_boundary,
                     abstention_fallback=is_fallback,
-                    # The map above is many-to-one: net_recv, ipc_recv and
-                    # db_read all become `untrusted_input`. Carry the
+                    # The map above is many-to-one: net_recv, ipc_recv,
+                    # db_read, navigation_read and command_line_read all
+                    # become `untrusted_input`. Carry the
                     # boundary so the collapse is reversible downstream
                     # (WI-vazal) instead of information the label ate.
                     source_boundary=prim.boundary,
@@ -4831,17 +4828,17 @@ def propagate_taint_structural(
         sink_callers, carriers=sink_carriers, site_lines=sink_site_lines,
     )
 
+    # INV-fumod shape (b): which names a source read, and which can reach what
+    # a sink writes. Built here, beside call_lines_by_pair below, because the
+    # pairing loop is the only consumer.
+    source_name_index, sink_name_index = _name_flow_indexes(edges)
+
     # (caller, callee) -> every line that call occurs on, for
     # ``_source_and_sink_are_one_call``. The DDG pass already builds this index
     # for the §3a walk; the structural pass has no walk and needed it only when
     # a primitive became both a source and a sink (INV-lozat), so it is built
     # here rather than hoisted into a shared helper that one caller would use
     # for two unrelated purposes.
-    # INV-fumod shape (b): which names a source read, and which can reach what
-    # a sink writes. Built here beside call_lines_by_pair for the same reason —
-    # the pairing loop is the only consumer.
-    source_name_index, sink_name_index = _name_flow_indexes(edges)
-
     call_lines_by_pair: dict[tuple[str, str], list[int]] = defaultdict(list)
     for edge in edges:
         if not _is_taint_call_edge(edge):
@@ -5325,7 +5322,7 @@ class EscapeSite(NamedTuple):
 
 #: Why the walk lost the value, one per ``escaped = True`` site. Bounded and
 #: named here so a measurement can assert it partitions the population rather
-#: than discovering a fifth cause by finding an unfamiliar string in a bucket.
+#: than discovering an unlisted cause as an unfamiliar string in a bucket.
 #:
 #: * ``source_undefined`` — the DDG recorded no definition at the SOURCE call
 #:   line, so the walk was never handed anything to follow. An extraction gap
@@ -6072,14 +6069,6 @@ def _walk_indexes(
         ].add(ddg_edge.use_line)
         defs_at[(ddg_edge.symbol_id, ddg_edge.def_line)].add(ddg_edge.variable)
 
-    # (symbol, line, consumed variable) -> variables that inherit from it.
-    #
-    # Variable-keying alone does NOT fix the conflation, and this is the half
-    # that does. `path` genuinely IS defined at line 7, so separating the index
-    # entries still leaves "which variable defined here inherits from
-    # `server`?" unanswered — and the edge set cannot answer it. The statement's
-    # own defines/uses can: `keep = str(server)` consumes `server`,
-    # `path = name` does not.
     # (caller, callee) → every line that call occurs on. A caller may invoke
     # the same callee more than once, and a flow is real if the taint reaches
     # ANY of those call sites, so this is a list rather than a single line.
@@ -6151,6 +6140,15 @@ def _walk_indexes(
     # carries `untrusted_input` from the net_recv row, which is the more
     # accurate statement of what `resp` holds.
     _io_names = _io_primitive_names(language, include_community)
+
+    # (symbol, line, consumed variable) -> variables that inherit from it.
+    #
+    # Variable-keying alone does NOT fix the conflation, and this is the half
+    # that does. `path` genuinely IS defined at line 7, so separating the index
+    # entries still leaves "which variable defined here inherits from
+    # `server`?" unanswered — and the edge set cannot answer it. The statement's
+    # own defines/uses can: `keep = str(server)` consumes `server`,
+    # `path = name` does not.
     inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
     for sym_id, statements in (stmt_defuse or {}).items():
         for line, defines, uses in statements:
@@ -6529,16 +6527,14 @@ def propagate_taint_ddg(
             #     unreachable. WI-losod records loop headers now; the guard
             #     stays for every construct still unrecorded.
             #
-            # (2) A sink call site recorded BEFORE the source cannot be the
-            #     one that consumes it, and — crucially — is not necessarily
-            #     the only one. The call graph emits ONE edge per
-            #     (caller, callee) pair, so ``line`` is *a* line where that
-            #     callee is invoked, not every line. printEnvironment calls
-            #     fmt.Printf twelve times and the edge records only the first
-            #     (454); the tainted call at 469 is invisible. When the
-            #     recorded line precedes the source, later call sites we
-            #     cannot see may well receive the taint, so the absence of a
-            #     dependence to the one line we can see licenses nothing.
+            # (2) Some sink call site must come after a source call site.
+            #     ``call_lines`` holds every recorded line of the pair
+            #     (``_edge_call_sites``), and the walk follows uses forward by
+            #     line, so it cannot see a value reach a sink at or before the
+            #     source: a loop back-edge, or the source nested in the sink's
+            #     own arguments. Finding no dependence to such a site proves
+            #     nothing, so the walk does not run and the row records
+            #     ``sink_before_source`` or ``sink_on_source_line``.
             adjudicated = False
             # INV-zidur. ``adjudicated`` is the CONFIRMATION question and stays
             # a bool because every consumer of it below asks exactly that. It is

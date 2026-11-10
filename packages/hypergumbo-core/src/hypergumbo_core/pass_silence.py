@@ -483,10 +483,9 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 # sum is not the answer either.
 #
 # The cure is :func:`census_silence`, which unions the two and is what a
-# consumer asking "which passes had no input?" should call. Whether the
-# ROUTING should change -- so the host becomes a function of the fact -- is
-# open on WI-mamiv and is not settled here, because it touches the WI-didil
-# AR-or-skip completeness contract.
+# consumer asking "which passes had no input?" should call. The ROUTING is
+# left as is by decision (WI-mamiv: one name, two hosts); making the host a
+# function of the fact is ADR-0056 item 5, reserved to the owner.
 #
 # NOTE the value split is NOT symmetric with the host split. Three values
 # (`dependency_unavailable`, `backend_disabled`, `pass_crashed`) appear only on

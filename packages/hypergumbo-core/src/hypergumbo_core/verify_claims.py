@@ -494,19 +494,10 @@ CONFIRMING_VERDICTS: frozenset[str] = frozenset({
 #: function neutralises the taint — so the verdict rests on an input rather
 #: than on the analysis.
 #:
-#: SCOPE, STATED SO THIS DOES NOT READ AS THE CLASS CLOSED. This covers the
-#: SANITIZER channel only. There is a SECOND, measured channel it does not
-#: cover: user sources and sinks merge through ``_merge_with_user_override``,
-#: where an entry matching a shipped one on ``(module, name, kind)`` REPLACES
-#: it, while sanitizers merely ``.extend()``. Measured — a user sink
-#: re-declaring ``pathlib.Path`` / ``write_text`` out of the ``host_fs`` zone
-#: takes a real ``violated`` rc 1 to ``confirmed`` rc 0, by both the
-#: ``--taint-sinks`` flag and the in-tree ``extra_catalogs:`` route, and NO
-#: caveat is raised. It cannot be: the shipped sink is filtered out of the
-#: catalogue, so the flow is never constructed and there is no finding to
-#: attribute. Detecting it means diffing the merged catalogue against the
-#: shipped one — catalogue-level machinery rather than the finding-level
-#: attribution here — which is why it is filed rather than bundled.
+#: SCOPE: the SANITIZER channel only (plus credited user function summaries).
+#: A user source or sink that REPLACES a shipped one through
+#: ``_merge_with_user_override`` leaves no finding to attribute, so it is
+#: disclosed by :data:`CAVEAT_DISPLACED_SHIPPED_ENTRY` instead.
 CAVEAT_USER_SUPPLIED_SANITIZER = "user_supplied_sanitizer"
 
 #: Caveat kind: the claim held everywhere the analysis could see, and control
@@ -1216,8 +1207,8 @@ def _merge_caveat(
         # data disagree is worse than either alone. Only the kinds whose
         # SENTENCE quotes their entries appear here; the sanitizer and
         # displaced-entry kinds do not, so their merged prose is already true.
-        # A fifth kind that quotes its entries must be added below or it will
-        # silently keep a stale sentence.
+        # Any other kind that quotes its entries must be added below or it
+        # will silently keep a stale sentence.
         if new.get("kind") == CAVEAT_OPAQUE_BOUNDARY:
             rebuilt = _opaque_boundary_caveat(merged_entries)
         elif new.get("kind") == CAVEAT_UNTYPED_RECEIVER:
@@ -2045,20 +2036,21 @@ class BoundaryCoverage:
     #:
     #: Carried here rather than recomputed per claim for the reason every other
     #: field on this object is: :func:`compute_boundary_coverage` is the one
-    #: place a disclosure can be attached where no caller can forget it. Unlike
-    #: its neighbours this one is NOT derived from the edge set — it cannot be,
-    #: which is the whole point — so it is the only field on this dataclass
-    #: whose value comes from a declaration rather than a measurement of the
+    #: place a disclosure can be attached where no caller can forget it. Like
+    #: :attr:`suppressed_sink_methods` and :attr:`construct_blind_sinks`, it is
+    #: NOT derived from the edge set — it cannot be, which is the whole point —
+    #: so its value comes from a declaration rather than a measurement of the
     #: run.
     method_call_blind_languages: list[str] = field(default_factory=list)
     #: Language -> the method names its analyzer declines to model that the
     #: language's own I/O catalogue declares as METHOD-kind sinks (INV-polad).
     #:
-    #: Like :attr:`method_call_blind_languages` and unlike every other field
-    #: here, this is not read off the edge set: the suppressed calls left no
-    #: edge to read. It is the intersection of a DECLARATION (the analyzer's
-    #: own denylist, which now lives in ``analyzer_disclosure`` so there is one
-    #: copy) with the shipped catalogue.
+    #: Like :attr:`method_call_blind_languages` and
+    #: :attr:`construct_blind_sinks`, this is not read off the edge set: the
+    #: suppressed calls left no edge to read. It is the intersection of a
+    #: DECLARATION (the analyzer's own denylist, which now lives in
+    #: ``analyzer_disclosure`` so there is one copy) with the shipped
+    #: catalogue.
     suppressed_sink_methods: dict[str, list[str]] = field(default_factory=dict)
     #: Language -> the ``module.name`` rows its catalogue declares as
     #: METHOD-kind sinks that source reaches by a construct the analyzer emits
@@ -4512,7 +4504,7 @@ def _adjudicate_external_modules(
         # resolved against the importing file, so no amount of suffix matching
         # bridges either one; the rule has to come from the language.
         #
-        # ASKED LAST, after the path-derived test, so the cheap and general
+        # ASKED AFTER the path-derived test, so the cheap and general
         # answer runs first and this one only sees what it could not explain.
         # Measured 2026-08-24: 5 of bellman's 23 reported modules and 6 of
         # express's 17 are exactly this, and because ``qualifying_only`` is
@@ -5280,12 +5272,14 @@ def compute_boundary_coverage(
     coverage.deferred_crossing_sites = deferred_crossing_sites(
         raw_edges, catalogs,
     )
-    # THE THIRD SIGNAL, and the only one not read off the edge set. A language
-    # whose analyzer never emits an external instance-method call edge produces
-    # the same empty set as a repository that simply makes no such call, so the
-    # answer has to come from a dated declaration (analyzer_disclosure). Scoped
-    # to languages whose catalogue actually declares method-kind sinks, because
-    # a language that catalogues none cannot be hurt by not seeing them.
+    # THE DECLARED SIGNALS, not read off the edge set: method-call blindness,
+    # suppressed sink methods and construct-blind sinks (assigned at the end).
+    # A language whose analyzer never emits an external instance-method call
+    # edge produces the same empty set as a repository that simply makes no
+    # such call, so the answer has to come from a dated declaration
+    # (analyzer_disclosure). Scoped to languages whose catalogue actually
+    # declares method-kind sinks, because a language that catalogues none
+    # cannot be hurt by not seeing them.
     from .analyzer_disclosure import (
         construct_blind_catalogued_sinks,
         method_call_blind_languages,
@@ -6231,9 +6225,9 @@ def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
     to correct rather than a milder form of it. So the built-in case is named
     and NOT marked, and the discriminator test pins that.
 
-    THIS DOES NOT CHANGE A VERDICT. It changes what a verdict SAYS. Whether the
-    exit code should also carry it is a separate, larger question (a consumer
-    contract), tracked on the item rather than decided here.
+    THIS DOES NOT CHANGE A VERDICT. It changes what a verdict SAYS. The verdict
+    value (``confirmed_with_caveats``, exit code 3) comes from the
+    :data:`CAVEAT_USER_SUPPLIED_SANITIZER` caveat the caller raises separately.
     """
     named, repo_supplied = _credited_sanitizers(findings)
     if not named:
@@ -6561,12 +6555,6 @@ def _verify_taint_claim_uncredited(
                 f"a sanitizer on every route"
                 f"{_sanitizer_attribution(constrained)}."
             )
-        # WI-bulag / arc T9. Said in the SENTENCE, not only in the JSON key.
-        # This is the confirmed path, where a silent exclusion is most
-        # misleading: the claim reads clean and the reader has no way to learn
-        # that flows reached the sink and were set aside. The wording says what
-        # was excluded AND why it is not a clean bill of health -- naming a
-        # resource is still a real flow, it is simply not the useful finding.
         trusted_sink_clause = ""
         if trusted_sink_flows:
             trusted_sink_clause = (
@@ -6582,6 +6570,12 @@ def _verify_taint_claim_uncredited(
                 f"as the launcher's choice, not an absence of flows "
                 f"(include_command_line: true counts them)."
             )
+        # WI-bulag / arc T9. Said in the SENTENCE, not only in the JSON key.
+        # This is the confirmed path, where a silent exclusion is most
+        # misleading: the claim reads clean and the reader has no way to learn
+        # that flows reached the sink and were set aside. The wording says what
+        # was excluded AND why it is not a clean bill of health -- naming a
+        # resource is still a real flow, it is simply not the useful finding.
         resource_naming_clause = ""
         if resource_naming_flows:
             resource_naming_clause = (
@@ -6684,10 +6678,11 @@ def _verify_taint_claim_uncredited(
                     f"taint; it takes that file's word for it."
                 ),
             })
-        # INV-nuhun. LAST, and only on this path. A ``violated`` verdict never
-        # reaches here, which is the whole discipline of this module: finding
-        # evidence is trustworthy regardless of what went unadjudicated, and
-        # coverage gates the ALL-CLEAR and nothing else.
+        # INV-nuhun. Coverage caveats, raised only on this path. A
+        # ``violated`` verdict never reaches here, which is the whole
+        # discipline of this module: finding evidence is trustworthy
+        # regardless of what went unadjudicated, and coverage gates the
+        # ALL-CLEAR and nothing else.
         #
         # SCOPED BY THE CLAIM'S OWN SINK ZONE, the taint vocabulary's equivalent
         # of the boundary scoping that made this shippable in the other arm: an

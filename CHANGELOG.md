@@ -139,6 +139,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The per-PR catalogue check reads the twice-daily run's graph.**
 - **The I/O allowlist matches traced runs of every subcommand**, and gates keep it so; it also sees descriptor writes, signals and environment writes.
 - **Every third-party library the shipped code imports is classified.**
+- **Core comments that contradicted the code now describe it.**
 
 ### Development tools and CI
 

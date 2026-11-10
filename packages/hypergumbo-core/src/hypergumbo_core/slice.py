@@ -156,9 +156,7 @@ from .symbol_kinds import container_kind_names
 # from this?" and "which interface does this implement?").
 # When the entry point IS a container type, forward slice class expansion
 # seeds the BFS with member methods so they are still reachable.
-# All three live on the relationship axis (ADR-0023); audited as
-# already-canonical at Phase 2 (WI-sahab-fatoz). Forward-compatible
-# through Phase 4 without change.
+# All four live on the relationship axis (ADR-0023; WI-sahab-fatoz).
 # WI-lobif: the class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
 # (extends/inherits/implements) rather than a hardcoded {extends, implements}
 # literal that omitted `inherits`; `contains` is the file/class membership edge
@@ -756,9 +754,8 @@ def slice_graph(
         # Edges without access_mode metadata are still followed (graceful
         # degradation when annotation coverage is incomplete).
         #
-        # WI-hukoh Phase A: every branch increments a counter in
-        # admission_stats so we can measure per-rule admission frequency
-        # on real repos and predict option-2 impact before implementing it.
+        # WI-hukoh: every branch increments a counter in admission_stats
+        # so per-rule admission frequency can be measured on real repos.
         # A probe (record=False) counts nothing: the counters describe the
         # walk, not the sizing of what a limit stopped.
         terminal = False

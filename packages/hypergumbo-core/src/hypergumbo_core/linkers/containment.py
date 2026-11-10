@@ -88,14 +88,14 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("containment-linker")
 
-# Symbol kinds that can be "contained" by a class/interface/service.
+# Symbol kinds that can be "contained" by a ``CONTAINER_KINDS`` symbol.
 #
 # ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
 # predicate needed. The post-fold canonical for Cluster D ``rpc`` is
 # ``method`` + ``meta["framework_role"]="rpc"`` — and ``method`` is
 # already in this set, so post-fold producers match unchanged.
-# Cluster H pending ``message`` resolves in Wave 6 and similarly
-# cannot fold without changing this set. None of the live schema
+# Cluster H ``message`` stays a CANONICAL kind (audit-findings 0007)
+# and is in this set as itself. None of the live schema
 # producers emits the legacy ``rpc`` / ``service`` kinds: proto.py
 # emits ``method`` with ``framework_role="rpc"`` under an ``interface``
 # with ``framework_role="service"``, thrift.py emits ``function``
@@ -119,16 +119,20 @@ PASS_ID = make_pass_id("containment-linker")
 # match a same-file container via Phase 1 — that is accepted: the dotted name
 # genuinely qualifies a real container when one exists in the file; when none
 # does, Phase 2 roots it at the container whose span encloses it (the file).
-# The dead-code reachability BFS does NOT traverse ``contains`` (it follows
-# calls/dispatches_to/wraps), so this de-orphaning does not move the
-# dead-code-maybe false-positive rate.
+#
+# Reachability: ``contains`` is not a call edge, but reachability walks derive
+# walk-only hops from it -- member -> container and file -> its type-like symbols
+# (``anchor_execution.py::anchor_execution_edges``, used by dead-code-maybe),
+# and class -> initializer for a class some edge constructs (``construction.py``).
+# So a new ``contains`` edge can make more code reachable, which can only remove
+# a dead-code-maybe claim. Apart from that initializer, it never makes a
+# contained function reachable from its container.
 CONTAINABLE_KINDS = frozenset(
     # WI-zajaz: ``field`` (class-body attributes, emitted with dotted names like
     # ``Widget.size`` by emission-parity F5) roots at its class exactly like
     # ``method`` — without it, 1862 real field symbols (99.6% of them) were
-    # orphans on self-analysis. The dead-code BFS does not traverse ``contains``
-    # (see the module note above), so this de-orphaning does not move the
-    # dead-code-maybe FP rate; it only gives fields their class-containment edge.
+    # orphans on self-analysis. Its reachability effect is the one in the note
+    # above.
     #
     # WI-fokag: ``subscript`` (Swift subscript members, emitted with dotted names
     # like ``JSON.subscript(key:)`` — the parenthesized ``(key:)`` suffix carries
@@ -137,9 +141,8 @@ CONTAINABLE_KINDS = frozenset(
     # struct-body subscripts had 0 ``contains`` edges (verified on SwiftyJSON
     # post-#689: the JSON struct contained its field/method members but not its
     # subscripts, leaving the flagship ``json[...]`` accessors looking like
-    # orphaned members of the central type). Like ``field`` above, this is a
-    # graph-completeness fix — the dead-code BFS does not traverse ``contains``,
-    # so it does not move the dead-code-maybe FP rate. (The separate gap where a
+    # orphaned members of the central type). Its reachability effect is the
+    # one in the note above. (The separate gap where a
     # ``json["key"]`` subscript-CALL site does not resolve to the subscript node
     # is a Swift-analyzer resolution facet, out of scope here.)
     #
@@ -335,7 +338,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     edges: list[Edge] = []
 
     for sym in ctx.symbols:
-        # Process methods, getters, setters, and nested classes
+        # Process CONTAINABLE_KINDS members and nested containers (not files)
         if not _may_be_contained(sym):
             continue
 

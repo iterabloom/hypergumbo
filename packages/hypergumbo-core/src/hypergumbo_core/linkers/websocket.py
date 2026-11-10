@@ -229,9 +229,8 @@ NATIVE_WEBSOCKET_TEMPLATE_PATTERN = re.compile(
 # Real-world TS/JS code often factors the URL into a helper:
 #     function getWsUrl() { return `${proto}//${host}/ws`; }
 #     ws = new WebSocket(getWsUrl());
-# Hypergumbo's own ws-client.ts uses this exact idiom. The inline-template
-# regex above misses it because the literal and the constructor are in
-# different expressions. The heuristic: a TS/JS file that uses
+# The inline-template regex above misses it because the literal and the
+# constructor are in different expressions. The heuristic: a TS/JS file that uses
 # ``new WebSocket(...)`` AND has a template literal whose trailing path is
 # preceded by at least one ``${...}`` block — i.e. URL-shaped, not a plain
 # log message — is treated as opening a WS to that path. The ``\}`` in the
@@ -266,10 +265,9 @@ FASTAPI_WEBSOCKET_DECORATOR = re.compile(
 )
 
 # WI-zolot: Starlette routing-table style. ``WebSocketRoute("/path", handler)``
-# is the routing-table style used by Starlette (and by hypergumbo's own
-# serve.py:433 ``WebSocketRoute("/ws", _ws_handler)``). The pre-fix linker
-# only recognised the FastAPI decorator form, so Starlette WS handlers
-# disappeared.
+# is the routing-table style used by Starlette (e.g. hypergumbo_tracker's
+# serve.py::create_app ``WebSocketRoute("/ws", _ws_handler)``), distinct from
+# the FastAPI decorator form above.
 STARLETTE_WEBSOCKET_ROUTE = re.compile(
     r"WebSocketRoute\s*\(\s*['\"]([^'\"]+)['\"]",
     re.MULTILINE,
@@ -719,7 +717,8 @@ def link_websocket(
 
     # WI-hifol: normalize pattern.file_path values to repo-relative strings
     # using the SAME prefix-strip algorithm as the orchestrator's path
-    # normalizer (analyze/all_analyzers.py::run_all_analyzers, ~line 204).
+    # normalizer (analyze/all_analyzers.py::run_all_analyzers, the repo_root
+    # prefix strip).
     # Pattern collection uses Path objects from find_*_files which yield
     # absolute paths. The orchestrator's file-symbol synthesis and language
     # analyzers emit ids with repo-relative paths (paths are normalized
@@ -936,20 +935,13 @@ def link_websocket(
             derived_from=[],
         ))
 
-    # WI-zolot: cross-language client↔server bridge.
-    #
-    # Hypothesis investigation for hypergumbo's own repo
-    # (notebookjournal_05162026_0438.md round 4) identified three concrete
-    # gaps: (1) template-string URL not extracted on the client side; (2)
-    # Starlette routing-table form not recognised on the server side; (3)
-    # no cross-language pairing logic at all — only within-language
-    # send/receive and file→endpoint references. Patterns (1) and (2) are
-    # fixed above. This block fixes (3) by emitting a ``calls`` edge with
-    # ``meta["protocol"]="ws"`` from each client endpoint to each server
-    # endpoint that shares a path string, following the HTTP linker
-    # convention. The pairing crosses language boundaries; cross-language-ness
-    # itself is NOT stamped on the edge — it is derivable from the endpoint
-    # node languages (INV-zigup: derive, don't store).
+    # WI-zolot: cross-language client↔server bridge. For each client endpoint
+    # and each server endpoint that share a path string, emit a ``calls``
+    # edge with ``meta["protocol"]="ws"`` from the client's FILE node to the
+    # server endpoint symbol, following the HTTP linker convention. The
+    # pairing crosses language boundaries; cross-language-ness itself is NOT
+    # stamped on the edge — it is derivable from the node languages
+    # (INV-zigup: derive, don't store).
     _CLIENT_PATTERN_TYPES = frozenset({"native", "socketio", "ws"})
     _SERVER_PATTERN_TYPES = frozenset({"fastapi", "starlette", "django_channels"})
 

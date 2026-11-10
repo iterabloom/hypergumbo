@@ -646,7 +646,7 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "binary_expression",  # Go / Rust / C# / PHP / JS / TS / Kotlin / Swift /
                           #   C / C++ / Solidity / WGSL
     "boolean_operator",   # MATLAB (&&/|| live here; element-wise &/| use a
-                          #   different node). Also a Python-only defensive entry.
+                          #   different node).
     "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
     "binary_op_expr",     # Erlang (andalso / orelse live here, INV-loguk slice C)
     "logical_expression", # PowerShell -and/-or, Fortran .and./.or. (INV-loguk
@@ -657,8 +657,8 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
                           #   absent from SHORT_CIRCUIT_OPS, so the scan never
                           #   runs for them.
     "binary_operator",    # R (&&/|| live here; vectorized &/| excluded).
-                          #   Elixir also uses binary_operator but is absent from
-                          #   BRANCH_NODE_TYPES (walker returns None first).
+                          #   Elixir also uses binary_operator but is routed to
+                          #   _HOMOICONIC_SPECS first, so the scan never runs.
     "binop_expr",         # Tcl (&&/|| live here, INV-loguk slice C batch 5)
     "binary_op",          # Lean (&&/|| live here, INV-loguk slice C batch 5)
     "infix",              # Wolfram (&&/|| live here, INV-loguk slice C batch 6).

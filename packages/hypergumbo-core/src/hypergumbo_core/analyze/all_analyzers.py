@@ -236,8 +236,8 @@ def collect_analyzer_result(
             })
         return
 
-    # Check if analyzer was skipped (optional deps missing)
-    # Some analyzers (Python, HTML) don't have skipped attribute
+    # Check if analyzer was skipped (optional deps missing). AnalysisResult
+    # always has `skipped`; getattr tolerates duck-typed results (`result: Any`).
     is_skipped = getattr(result, "skipped", False)
     skip_reason = getattr(result, "skip_reason", "")
 
@@ -530,8 +530,8 @@ def run_all_analyzers(
     # synthetic:F1 (WI-dizir/WI-mosil): emit a real AnalysisRun for this
     # synthesis pass and stamp its execution_id into the synthesized file
     # Symbols' origin_run_id, so the node->AnalysisRun JOIN resolves (the
-    # nodes previously carried origin_run_id=''). Only record the run when
-    # synthesis actually produced Symbols (no empty-pass records).
+    # nodes previously carried origin_run_id=''). The run is recorded even
+    # when synthesis produces no Symbols (WI-tivif, below).
     _file_synth_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
         pass_id="orchestrator_file_symbol_synthesis", version=PASS_VERSION,
         config_fingerprint=compute_config_fingerprint(
