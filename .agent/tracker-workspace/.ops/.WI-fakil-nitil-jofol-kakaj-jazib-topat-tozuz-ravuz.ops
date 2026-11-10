@@ -34,3 +34,10 @@
   clock: 3  # 262d
   nonce: 262d  # 262d
   message: "Fixed in PR #2101: a rustup stand-in (STAND_IN_TOOLS / _missing_tools in scripts/check-allowlist-commands), and a structural test holding the stand-in set to every tool hypergumbo-core probes with shutil.which / resolve (git excepted, the runner image ships it). Live repro, the cron's command `scripts/check-allowlist-commands --trace` with ~/.cargo/bin off PATH (no rustup): before, install-rust-analyzer and add-extras exited 1 (HG_TRACE_RC=1, 'Error: rustup is not on PATH') and were NOT CHECKED; after, 'stand-ins used for: rust-analyzer, rustup' and neither is listed. Locally survey-scip and any-backend-scip were NOT CHECKED because scip-python is not installed on this machine; the CI step npm-installs it and run 6149 listed neither. The cron itself has not run on it yet."  # 262d
+- op: discuss  # 68cd
+  at: '2026-11-09T14:42:25Z'  # 68cd
+  by: agent  # 68cd
+  actor: jgstern_agent  # 68cd
+  clock: 4  # 68cd
+  nonce: 68cd  # 68cd
+  message: "Correction to the earlier note: scip-python 0.6.6 IS installed here (~/.local/npm-scip/bin), just not on PATH, and the core finds it only via shutil.which. Re-ran the cron's command with it on PATH and ~/.cargo/bin removed: 'PATH=~/.local/npm-scip/bin:<PATH minus .cargo/bin> scripts/check-allowlist-commands --trace' -> 'stand-ins used for: rust-analyzer, rustup' / 'check-allowlist-commands: OK -- every entry's commands match', rc=0, no NOT CHECKED variants. survey-scip and any-backend-scip are now checked."  # 68cd

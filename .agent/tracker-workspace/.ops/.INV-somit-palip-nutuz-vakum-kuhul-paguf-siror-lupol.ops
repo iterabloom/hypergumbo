@@ -1,0 +1,22 @@
+- op: create  # b82b
+  at: '2026-11-10T05:04:30Z'  # b82b
+  by: agent  # b82b
+  actor: jgstern_agent  # b82b
+  clock: 1  # b82b
+  nonce: b82b  # b82b
+  data:  # b82b
+    kind: invariant  # b82b
+    title: "runtime-cli-no-network: HF_HUB_OFFLINE set to a non-true value (0/false/no) left analysis able to reach Hugging Face"  # b82b
+    status: violated  # b82b
+    priority: 2  # b82b
+    parent:  # b82b
+    tags:  # b82b
+    - security  # b82b
+    isbefore: []  # b82b
+    duplicate_of: []  # b82b
+    not_duplicate_of: []  # b82b
+    pr_ref:  # b82b
+    description: "strace with HF_ENDPOINT and proxies at a closed local port: default sketch with HF_HUB_OFFLINE=0 or false made 1 connect (unset: 0); cached models loaded in every run. SECURITY.md disclosed it as 'your setting wins'."  # b82b
+    fields:  # b82b
+      statement: "Analysis makes no network request to Hugging Face whatever HF_HUB_OFFLINE the user has set."  # b82b
+      root_cause: "_ensure_hf_offline_for_cached_models forced HF_HUB_OFFLINE=1 only when unset or empty. huggingface_hub reads only 1/ON/YES/TRUE as offline, once at import, so HF_HUB_OFFLINE=0 kept the hub online; the loader's later set to 1 comes after the import."  # b82b
