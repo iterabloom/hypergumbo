@@ -39,3 +39,19 @@
   set: {}  # e789
   remove:  # e789
     isbefore: [WI-linug-tazos-lujud-gihof-dosih-dahug-mofap-zojul]  # e789
+- op: update  # ce30
+  at: '2026-11-10T22:35:46Z'  # ce30
+  by: agent  # ce30
+  actor: jgstern_agent  # ce30
+  clock: 4  # ce30
+  nonce: ce30  # ce30
+  set:  # ce30
+    status: done  # ce30
+    pr_ref: '#2123'  # ce30
+- op: discuss  # 2e85
+  at: '2026-11-10T22:35:47Z'  # 2e85
+  by: agent  # 2e85
+  actor: jgstern_agent  # 2e85
+  clock: 5  # 2e85
+  nonce: '2e85'  # 2e85
+  message: "Done in PR #2123 (merged, 00008d40c4..e7829a677a).\n\nBUILT. `tests/fixtures/smart-test-bed/` has two packages (bedcore, bedapp), 18 test files and 19 scripted edits (edits.yaml), and readers.yaml declares which tests read files as text. `scripts/smart-test-bed run [all|manifest|union|narrow]` prints a must/selected/dropped/extra/should_not table for each edit. One edit takes about 13 s, and all 19 run in parallel in 59 s, so \"in seconds\" holds per edit, not for the whole set.\n\nLAYOUT QUESTION. The second option was taken: smart-test reads a target root, `SMART_TEST_TARGET_ROOT`, and the bed mimics this repo's layout. Helpers resolve from TOOLS_ROOT, so the scripts under change are what gets measured. In target mode the mypy ratchet is skipped only when the target is a different repo, coverage roots come from the target's packages/*/src, and timings stay out of the leaderboard. `SMART_TEST_SELECTION_OUT` writes the manifest, after-union and local sets from a single run.\n\nORACLE. A fresh index comes from `smart-test --full` on the clean base. Each edit then makes every changed block (block_hash digest) raise, or corrupts a changed data file. A test that passed at base and no longer passes is MUST-select. The declared text readers and the edit's hand-written `must` are added to that.\n\nBASELINE, merged tree, fresh index, 19 edits, file level:\n  selector  dropped MUST  extra  should_not hits  selected\n  manifest      33          43        8              73\n  union         32          43        8              74\n  narrow        33          39        7              69\n- 32 of the drops are the two whole-package text readers (test_docstrings over bedcore, tests/test_tree_gate over every source). Every selector drops them on all 16 edits that touch a bed-core source. This is WI-zajuv (A)'s target.\n- manifest drops test_registry (string dispatch) on `runtime-dispatch`; the union recovers it.\n- narrow drops test_cli_usage on `rename`. A changed `<module>` block runs on import, and no coverage row records that. Filed as WI-zunug-mikoz-furut-bumoh-dahom-pijut-vohuj-ginon.\n- new-function shows WI-gapos's headroom: 3 should_not tests stay selected under every selector.\n\nFIX ON THE WAY. run_full_suite never folded coverage into the index, so `smart-test --full` on an unchanged tree recorded nothing.\n\nEVIDENCE.\n- tests/test_smart_test_bed.py: 15 tests pass. Its end-to-end test runs three edits through the real smart-test.\n- Three mutation controls each turn a test red: (1) removing the new fold makes the harness exit 2 with \"built no index\"; (2) target mode ignoring the same-checkout check fails the ratchet control; (3) the union helper resolved from REPO_ROOT makes test_registry vanish from the union.\n- Branch smart-test run: 2517 passed, 1 failed. The failure was a WI-lotig Hypothesis too_slow flake under load; the file passes alone (51 passed).\n- PR CI is green.\n\nThe cron's test-agent-infra step ignores the bed test, and test-all-packages runs it; tests/test_full_suite_agent_infra_ignores.py pins the pair."  # 2e85

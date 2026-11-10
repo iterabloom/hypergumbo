@@ -1,0 +1,29 @@
+- op: create  # b60f
+  at: '2026-11-10T22:42:08Z'  # b60f
+  by: agent  # b60f
+  actor: jgstern_agent  # b60f
+  clock: 1  # b60f
+  nonce: b60f  # b60f
+  data:  # b60f
+    kind: work_item  # b60f
+    title: "pre-commit hook reports a freshness check that could not run as 'out of date' (generate-schema imports from a src/ that no longer exists)"  # b60f
+    status: in_progress  # b60f
+    priority: 3  # b60f
+    parent:  # b60f
+    tags:  # b60f
+    - ci_infrastructure  # b60f
+    isbefore: []  # b60f
+    duplicate_of: []  # b60f
+    not_duplicate_of: []  # b60f
+    pr_ref:  # b60f
+    description: "`.githooks/pre-commit` reports a freshness check that could not RUN as a doc that is OUT OF DATE.\n\nREPRO (11-10). `git commit` from a shell without the venv active printed \"Schema is out of date. Run: ./scripts/generate-schema\". Running `./scripts/generate-schema` then reported nothing to regenerate. The hook runs `./scripts/generate-X --check >/dev/null 2>&1` and treats any non-zero exit as stale. The generator returns 1 for stale, and Python also exits 1 on an uncaught `ModuleNotFoundError`, so the two outcomes look identical and the text that would separate them is discarded.\n\nROOT CAUSE FOR THE SCHEMA CHECK. `scripts/generate-schema` puts `REPO_ROOT/src` on `sys.path`, the layout from before the monorepo (2025-12-26). That directory no longer exists, so the script only works with an installed `hypergumbo_core`. Its sibling `generate-concept-axes` resolves `packages/hypergumbo-core/src`. Measured: with that path, `generate-schema --check` passes without the venv.\n\nMEASURED SCOPE without the venv:\n- Fail: `generate-schema` (rc 1, misreported); `check-confidence-sites` (rc 1, but the hook prints its log, so the real error shows); `scripts/tracker validate` (rc 1, and the hook greps the output for \"error\", so it shows, under \"Tracker validation failed\").\n- Pass: generate-concept-axes, generate-concepts, and the five *-drift / axis-declaration checks, plus check-audit-findings, check-fallback-coherence, check-id-construction and check-producer-axis-coherence.\n\nFIX, owner-approved 11-10 (both parts, auto-pr without --gov):\n(1) Generators. `generate-schema` resolves `packages/hypergumbo-core/src`. All three generators get a `--check` contract with three outcomes: 0 fresh, 1 stale, 2 could not run (an import failure or any other crash, with the reason on stderr).\n(2) Hook.\n- The three generator checks go through one helper: exit 1 prints \"out of date, regenerate\", and anything else prints \"could not run\" with the generator's output. Both still block.\n- A check that needs an installed package (confidence sites: hypergumbo_core; tracker validate: hypergumbo_tracker) first asks whether that module imports. If it doesn't, the hook stops with \"activate the dev environment\", rather than a message about the check's subject.\n- This is not a blanket preflight: after (1), a commit that stages neither package source nor tracker ops needs no venv, and a hook-wide gate would block commits that pass today."  # b60f
+    fields: {}  # b60f
+- op: update  # 06a2
+  at: '2026-11-10T23:08:55Z'  # 06a2
+  by: agent  # 06a2
+  actor: jgstern_agent  # 06a2
+  clock: 2  # 06a2
+  nonce: 06a2  # 06a2
+  set:  # 06a2
+    status: done  # 06a2
+    pr_ref: '#2124'  # 06a2
