@@ -834,8 +834,7 @@ def select_by_connectivity(
 
     # Compute centrality if not provided. WI-tahum: shared helper applies
     # rank_symbols' tuned compute_centrality params plus the canonical
-    # 8-stage dampener stack (tier → noise → utility → common-method →
-    # sibling-impl → trivial-sink → generated → file-kind). When the
+    # dampener stack (ranking.py::_CANONICAL_DAMPENERS). When the
     # caller supplies centrality, it is trusted as-is.
     if centrality is None:
         centrality = compute_dampened_centrality(symbols, edges)
@@ -1091,9 +1090,8 @@ def select_by_coverage(
         )
 
     # WI-tahum: shared helper applies rank_symbols' tuned
-    # compute_centrality params plus the canonical 8-stage dampener
-    # stack (tier → noise → utility → common-method → sibling-impl →
-    # trivial-sink → generated → file-kind).
+    # compute_centrality params plus the canonical dampener stack
+    # (ranking.py::_CANONICAL_DAMPENERS).
     centrality = compute_dampened_centrality(
         symbols, edges,
         first_party_priority=config.first_party_priority,
@@ -1355,8 +1353,7 @@ def format_compact_behavior_map(
     # is not a key symbol is precisely the noise leading compact's output today
     # (sherpa-csharp's top five emitted nodes were all run*.sh file nodes;
     # zoxide led with a shell completion and install.sh). Connectivity mode is
-    # deliberately exempt: its contract is bridging disconnected components
-    # (see the WI-vofud note below on why it keeps the adaptive seed policy),
+    # deliberately exempt: its contract is bridging disconnected components,
     # and a file node is frequently the only thing joining two islands, so
     # narrowing it would remove the bridges the mode exists to find.
     #
@@ -1903,7 +1900,8 @@ def format_tiered_behavior_map(
     # test/utility code.  Low-confidence entrypoints still compete on
     # centrality in the regular fill phase.
     # Cap total force-includes to half the estimated node capacity so
-    # bridge nodes always get budget, mirroring compact mode (line ~900).
+    # bridge nodes always get budget, mirroring the default (non-connectivity)
+    # seed quota in format_compact_behavior_map.
     _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.7
     force_include_ids: set[str] = set()
     if force_include_entrypoints:
@@ -1952,8 +1950,8 @@ def format_tiered_behavior_map(
     # (slice / verify-claims / test-coverage) to reason about external
     # edges, but the tiered compact view must still hide them because
     # they have no source code.
-    # WI-jukav slice 2 dual-shape: see comment on the eligible_symbols
-    # filter ~225 lines above.
+    # WI-jukav slice 2 dual-shape: see the comment on the eligible_symbols
+    # filter in select_by_tokens.
     eligible_symbols = [
         s for s in symbols
         if not is_excluded_kind(s.kind, s.meta, language=s.language)

@@ -239,7 +239,8 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "2.5"  # WI-gaziv: ipc_listen_edges added (a
 # ---------------------------------------------------------------------------
 # ``CATALOG_BOUNDARY_TYPES`` is the closed set of boundary tags that an
 # io-primitives catalog YAML may declare: ``IoBoundaryCatalog._from_dict`` iterates
-# exactly these keys, so any other key in a catalog is silently ignored.
+# exactly these keys, and refuses any top-level key outside ``_CATALOGUE_KEYS``
+# (WI-hapon).
 # ``compute_boundary_map`` additionally synthesizes one boundary that no
 # catalog declares — ``external_potential`` — for unmatched first-party
 # call edges (see ``_compute_external_potential``).
@@ -254,14 +255,10 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "2.5"  # WI-gaziv: ipc_listen_edges added (a
 # legitimately has zero ``net_send`` chains must still accept a
 # ``must_not_exist: net_send`` claim and confirm it.
 #
-# WI-lokuv / WI-kanir-huzuj: browser-local storage (``browser_storage_*``)
-# is structurally distinct from host filesystem — reachable via XSS, not
-# via local-user FS access. Paired with the ``browser_storage`` trust zone
-# in taint.py. The read side (browser_storage_read) is intentionally NOT in
-# AUTO_SOURCE_LABEL_MAP — matching how fs_read is treated — because the
-# sensitivity of a browser storage read depends on what's stored
-# (project-local catalogs can add taint_sources entries for their threat
-# model).
+# Why ``browser_storage_*`` is its own boundary, and why its read side is not
+# an auto-derived taint source: see its specs in ``io_boundary_types.py``
+# (WI-lokuv / WI-kanir-huzuj).
+
 #: The status of a catalogue that DOES NOT EXIST (WI-gofah). Not one of the two
 #: values a catalogue file may declare about itself — ``_validate_catalog_dict``
 #: refuses it in a YAML — because it describes the absence of the file rather
@@ -1948,9 +1945,9 @@ _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 #: (ADR-0061), not ``status``.
 _LEGACY_OVERLAY_STATUS = "overlay"
 
-# Languages that share an IO primitive catalog.  C++ uses C stdlib IO
-# functions (fopen, fread, fwrite, popen, etc.) so it falls back to the
-# C catalog.  TypeScript shares the JavaScript catalog.
+# Languages that share an IO primitive catalog and have none of their own.
+# TypeScript shares the JavaScript catalog. (C++ has its own catalog and
+# inherits C's through ``_CATALOG_PARENTS`` below.)
 _CATALOG_ALIASES: dict[str, str] = {
     "typescript": "javascript",
     # JVM languages that lack their own catalog share the Java IO catalog
@@ -2820,11 +2817,6 @@ def kind_assertion_census(
 
 
 # ---------------------------------------------------------------------------
-# Edge matching
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Mode-argument discrimination for dual-classified primitives
 # ---------------------------------------------------------------------------
 #
@@ -2945,14 +2937,6 @@ def _call_site_values(
     return (single,) if isinstance(single, str) else ()
 
 
-#: Target kinds naming a KERNEL DEVICE that discards, rather than a place in a
-#: filesystem. INV-nular. Kept as a set rather than a single string because the
-#: question ("does this call site cross a boundary at all") is one a second
-#: language will ask — python's ``open(os.devnull, 'w')`` is the same fact — and
-#: because a set makes the NON-members visible: ``std_stream`` is deliberately
-#: absent (a write to /dev/stderr really does leave the process and can publish
-#: a secret; it is a ``logging`` crossing, not a filesystem one) and so is
-#: ``unresolved`` (``> "$OUT"`` is a real write to a place we cannot name).
 #: Target kinds at which a call site touches nothing outside this process.
 #:
 #: TWO DIFFERENT REASONS, ONE PREDICATE, and the name says the predicate rather
@@ -2968,6 +2952,11 @@ def _call_site_values(
 #:
 #: Both make the CLAIM FALSE rather than merely unproven, which is what
 #: licenses a gate on them at all.
+#:
+#: Deliberately ABSENT: ``std_stream`` (a write to /dev/stderr really does
+#: leave the process and can publish a secret; it is a ``logging`` crossing,
+#: not a filesystem one) and ``unresolved`` (``> "$OUT"`` is a real write to a
+#: place we cannot name).
 _NON_CROSSING_TARGET_KINDS: Final[frozenset[str]] = frozenset({
     "null_device", "in_memory",
 })

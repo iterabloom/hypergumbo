@@ -182,10 +182,10 @@ def _is_frontend_file(sym: Symbol) -> bool:
                 return True
     return False
 
-# Minimum confidence threshold for entrypoint inclusion.
-# Entries below this threshold are filtered from detect_entrypoints() results.
-# This addresses INV-mahap: library_export entries demoted to 0.08 (below 0.10)
-# should not appear in --list-entries or --entry auto candidate lists.
+# Minimum rank_score for entrypoint inclusion (a rank floor, applied by
+# apply_rank_floor_and_cap; the name predates the rank_score split).
+# INV-mahap: library_export entries demoted to 0.075 (below 0.10) must not
+# appear in --list-entries or --entry auto candidate lists.
 MIN_ENTRYPOINT_CONFIDENCE: float = 0.10
 
 # Base entrypoint cap for small repos (< 5000 nodes).
@@ -628,18 +628,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # WebSocket route is not an HTTP route; meta.http_method="WS" is
             # retained on the symbol, only the entrypoint kind changes).
             if concept_type == "route":
-                # WI-kilal: when the concept dict doesn't carry method/path,
-                # fall back to the Symbol's meta-level fields. Rails routes
-                # are emitted by the ruby analyzer with framework_role="route"
-                # and http_method/route_path at sym.meta level (not in the
-                # concept dict), because rails.yaml matches them via
-                # ``framework_role: "^route$"`` definition-based enrichment
-                # rather than the usage-based ``extract`` that stamps method
-                # and path into the concept dict. Without this fallback,
-                # every Rails route produced the same generic "HTTP route"
-                # label, and the label-dedup in detect_entrypoints collapsed
-                # all of them to one entrypoint (e.g., chatwoot: 623 routes
-                # -> 1 HTTP_ROUTE entrypoint).
+                # WI-kilal: method/path come from routes.py::route_of, which
+                # is marker-first: on a framework_role="route" symbol the
+                # meta-level route_path/http_method win; otherwise the route
+                # concept dict supplies them. Rails routes carry method/path
+                # only at meta level, so without the marker read every one
+                # gets the same generic "HTTP route" label and the label
+                # dedup in detect_entrypoints collapses them to one.
                 info = route_of(sym)
                 protocol = info["protocol"]
                 method = method_token(info) or ""
@@ -2008,7 +2003,7 @@ def detect_entrypoint_candidates(
             return 0.0
         return lang_symbol_counts.get(sym.host_language, 0) / max_lang_count
 
-    # Boost confidence based on connectivity (outgoing edges).
+    # Boost rank_score (not confidence) based on connectivity (outgoing edges).
     # Uses one-hop transitive reach: an entrypoint's effective out-degree
     # includes the out-degree of its immediate callees (at 50% weight).
     # This handles the "thin wrapper" pattern: main() → tryMain() (178 edges)
@@ -2087,16 +2082,16 @@ def detect_entrypoint_candidates(
             connectivity_boost = raw_boost * lang_scale
             ep.rank_score = min(1.0, ep.rank_score + connectivity_boost)
 
-    # Sort by confidence (highest first) for better --entry auto behavior.
+    # Sort by rank_score (highest first) for better --entry auto behavior.
+    # ADR-0039 ruling 3: rank_score is the base confidence plus the
+    # penalties/demotions/boosts; the detection ``confidence`` stays at the
+    # construction base and is not a sort key.
     # Tiebreakers (in order):
     # 1. Language dominance: prefer entrypoints from the dominant language.
     #    In a C-heavy repo, C main() ranks above Python script even if
     #    the Python script has higher connectivity.
     # 2. Effective out-degree: when two entrypoints from the same language
-    #    tie on confidence, prefer the one with higher transitive reach.
-    # ADR-0039 ruling 3: order by rank_score (ranking prominence — base
-    # confidence plus the relocated penalties/demotions/boosts), NOT the
-    # detection ``confidence`` which now stays at the construction base.
+    #    tie on rank_score, prefer the one with higher transitive reach.
     unique_entrypoints.sort(
         key=lambda ep: (
             ep.rank_score,
@@ -2123,7 +2118,7 @@ def apply_rank_floor_and_cap(
     # Filter out entries below the minimum RANKING threshold (ADR-0039 ruling 3:
     # re-keyed from confidence to rank_score). After all adjustments (test
     # penalty, vendor penalty, library demotion), entries with very low
-    # prominence are noise — e.g. library_export demoted from 0.80 to 0.08 when
+    # prominence are noise — e.g. library_export demoted from 0.75 to 0.075 when
     # semantic entries exist. MIN_ENTRYPOINT_CONFIDENCE is a rank floor.
     kept = [
         ep for ep in candidates

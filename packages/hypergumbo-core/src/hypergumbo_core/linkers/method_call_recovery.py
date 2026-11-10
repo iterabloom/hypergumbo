@@ -92,20 +92,12 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("method-call-recovery-linker")
 
-# Edge types that signal "this caller refers to this class". This set is two
-# values because the ANALYZERS DISAGREE about the dst of an object-creation
-# edge, not because two different relationships are being collected: ruby
-# resolves ``Klass.new`` to ``Klass#initialize`` and emits ``calls`` with the
-# initialize METHOD as dst, while dart/csharp/java/py/js_ts/php/cpp/verilog emit
-# ``instantiates`` with the class (or constructor) as dst. Each is locally
-# correct under ADR-0023 for the dst its analyzer chose, so this linker has to
-# accept both. Tracked as INV-kahig; if that item rules one representation
-# canonical, this set collapses to one value.
-#
-# The previous comment here named "Java/Kotlin/Python" as the fallback-``calls``
-# languages and JS/TS as the ``instantiates`` one. That was stale in both
-# directions — java.py and py.py both emit ``instantiates`` today, and ruby is
-# the language that actually never does (WI-toruz).
+# Edge types that signal "this caller refers to this class"; only an edge whose
+# dst is a ``class`` symbol counts. Object creation reaches a class dst under
+# two labels: dart/csharp/java/py/js_ts/php/cpp/verilog emit ``instantiates``,
+# while kotlin and swift, where construction is call syntax (``Foo()``), emit
+# ``calls``. ruby emits ``instantiates`` with ``Klass#initialize`` as dst
+# (INV-kahig), a method, so it never supplies a hint here.
 _CLASS_HINT_EDGE_TYPES = frozenset({"calls", "instantiates"})
 
 
@@ -136,9 +128,9 @@ def parse_unresolved_name(dst: str) -> str | None:
     return parts[-2]
 
 
-# Backward-compat aliases for callers that imported the private names before
-# WI-gifar (PR-1 of INV-nilud) promoted them so the inherited_calls linker
-# (priority 18) can share the unresolved-dst parsing and short-form helpers.
+# Private aliases of the names WI-gifar (PR-1 of INV-nilud) made public for
+# inherited_calls and receiver_type_dispatch. Only
+# test_method_call_recovery_linker.py still imports them.
 _short_name = short_name
 _parse_unresolved_name = parse_unresolved_name
 

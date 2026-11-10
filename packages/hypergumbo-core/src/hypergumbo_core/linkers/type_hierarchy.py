@@ -95,17 +95,13 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 #   - go     — struct embedding is composition; calling a method on the
 #              embedded type always lands in the embedded type's method,
 #              never the embedder's same-named shadow method.
-#   - cpp    — only methods marked `virtual` dispatch polymorphically;
-#              non-virtual methods are statically resolved at the static
-#              type.  Pessimistic until per-method virtual tracking lands,
-#              except across a hop into an abstract base (WI-nizug).
 #   - rust   — no inheritance; struct/trait are separate concepts.  Trait
 #              dispatch flows through `implements` edges, which are
 #              unaffected by this gate.
 #
-# C# and C++ left this set in WI-digaj: their analyzers record which members
-# are virtual / overriding / static (C# per method, C++ per class), so the hop
-# is admitted and the per-METHOD rule (:func:`_method_pair_dispatches`)
+# C# and C++ are not in this set (WI-digaj): their analyzers record which
+# members are virtual / overriding / static (C# per method, C++ per class), so
+# the hop is admitted and the per-METHOD rule (:func:`_method_pair_dispatches`)
 # decides instead.
 #
 # Languages WITH virtual dispatch through `extends` (default behavior):
@@ -262,7 +258,8 @@ def build_inheritance_maps(
     """Build inheritance maps from extends/implements edges.
 
     Per WI-sukav A1, `extends` edges from no-virtual-dispatch languages
-    (Go, C++, Rust, C#) are filtered out of `parent_to_children` so the
+    (``NO_VIRTUAL_EXTENDS_LANGUAGES``: Go, Rust) are filtered out of
+    `parent_to_children` unless either endpoint is an abstract type, so the
     type-hierarchy linker does not create spurious dispatches_to edges
     from a parent's method to a child's shadow method.  `implements`
     edges are never filtered — interface dispatch is virtual in every
@@ -832,8 +829,9 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 # edge to itself), so it is not exercised by tests.
                 if override.id == parent_method.id:  # pragma: no cover
                     continue
-                # Avoid duplicate edges (defensive - find_implementing_methods
-                # uses a set, so duplicates are rare)
+                # Avoid duplicate edges (defensive - the index lists each
+                # method symbol once, so a pair repeats only on duplicated
+                # input symbols)
                 pair = (parent_method.id, override.id)
                 if pair in seen_pairs:  # pragma: no cover - defensive for edge cases
                     continue
