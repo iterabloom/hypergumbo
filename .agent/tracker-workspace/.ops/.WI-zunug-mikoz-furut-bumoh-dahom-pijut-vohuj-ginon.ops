@@ -1,0 +1,31 @@
+- op: create  # 12f0
+  at: '2026-11-10T22:35:02Z'  # 12f0
+  by: agent  # 12f0
+  actor: jgstern_agent  # 12f0
+  clock: 1  # 12f0
+  nonce: 12f0  # 12f0
+  data:  # 12f0
+    kind: work_item  # 12f0
+    title: "smart-test --narrow can drop a test that runs changed module-level code: an import is not a coverage row"  # 12f0
+    status: todo_hard  # 12f0
+    priority: 3  # 12f0
+    parent:  # 12f0
+    tags:  # 12f0
+    - smart_test  # 12f0
+    - ci_infrastructure  # 12f0
+    isbefore: []  # 12f0
+    duplicate_of: []  # 12f0
+    not_duplicate_of: []  # 12f0
+    pr_ref:  # 12f0
+    description: "`smart-test --narrow` (WI-bolot, opt-in, local only) can drop a test that executes changed module-level code. Found by the WI-damom bed (PR #2123), edit `rename`.\n\nREPRO. `scripts/smart-test-bed run narrow --edit rename`. The edit renames `chain_b.step_b` to `double_step` and changes the import line in `chain_a.py`, so `chain_a`'s `<module>` block changes. `packages/bed-app/tests/test_cli_usage.py` imports `bedapp.cli`, which imports `chain_a`, but it calls only `main([])` and never runs a `chain_a` function. The mutation oracle (the changed `<module>` block raises) breaks it, so it is MUST-select. The union keeps it; `--narrow` drops it.\n\nCAUSE. `selection_index` rule 2 credits a file's import-time blocks to \"every test that touches the file\", meaning a test observed executing some line of it. Module bodies run at import, under the empty coverage context, so a test that only imports the file has no row for it. `narrow_run_set` then treats that missing row as proof the test is irrelevant. The implication \"executes a line of F => imported F\" is sound; the converse that narrowing relies on is not. This is the ABSENT != EMPTY shape.\n\nSCOPE. Only `--narrow`. The union only adds tests, and the CI manifest is the static slice, which selects importers. The bed's other `<module>` edit, `module-statement` on `tables.py`, does not show it, because every importer of `tables` also calls one of its functions.\n\nCANDIDATE FIXES, not chosen:\n(a) A `narrowing_blocker`: a changed `<module>` or class-body block refuses narrowing, and the run set stays whole. This is sound and simple, and it gives up narrowing on edits like that.\n(b) Keep every run-set file that imports the changed file. This needs an import edge the index does not hold.\n\nWI-gapos (block-level keep set) inherits the same gap and should not ship until this is decided. Done when the bed scores `--narrow` with no dropped MUST on `rename`, plus a unit test in `selection_index`."  # 12f0
+    fields: {}  # 12f0
+- op: update  # be03
+  at: '2026-11-10T22:35:46Z'  # be03
+  by: agent  # be03
+  actor: jgstern_agent  # be03
+  clock: 2  # be03
+  nonce: be03  # be03
+  set:  # be03
+    status: todo_soft  # be03
+  add:  # be03
+    not_duplicate_of: [WI-gokop-nudub-zunal-zibij-fuvad-libot-bituk-visid]  # be03
