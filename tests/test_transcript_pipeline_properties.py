@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -1165,9 +1166,19 @@ class TestPropertiesSurviveALoadedMachine:
 
     Each case stalls deterministically, the way a descheduled worker does once,
     and runs under ``_LOAD_TOLERANT``. Each control runs the SAME stall under
-    the defaults and must fail, or the stall never reached the timer and the
-    passing case proved nothing.
+    the strict timers and must fail, or the stall never reached the timer and
+    the passing case proved nothing.
+
+    THE CONTROLS SPELL OUT THE STRICT TIMERS rather than inherit them. When the
+    ``CI`` variable is set, Hypothesis loads its built-in ``ci`` profile, which
+    already has ``deadline=None`` and suppresses ``too_slow`` (hypothesis
+    6.151.6, ``_settings.py``), so an inherited "default" is tolerant there and
+    a control that inherits it cannot fail (it did not, in PR CI). The same
+    profile is why this flake shows up in LOCAL runs: smart-test and
+    check-package-coverage do not set ``CI``.
     """
+
+    _STRICT = {"deadline": timedelta(milliseconds=200), "suppress_health_check": ()}
 
     @staticmethod
     def _stalled_example(chosen: settings) -> list[bool]:
@@ -1208,7 +1219,7 @@ class TestPropertiesSurviveALoadedMachine:
         from hypothesis.errors import DeadlineExceeded, FlakyFailure
 
         with pytest.raises((FlakyFailure, DeadlineExceeded)):
-            self._stalled_example(settings(max_examples=50))
+            self._stalled_example(settings(max_examples=50, **self._STRICT))
 
     def test_slow_input_generation_passes(self) -> None:
         """The SUPPRESSION alone survives the draws.
@@ -1218,8 +1229,6 @@ class TestPropertiesSurviveALoadedMachine:
         deadline back (a 1 s budget) to show the suppression doing the work.
         max_examples is lowered for speed only.
         """
-        from datetime import timedelta
-
         tolerant_draws = settings(
             _LOAD_TOLERANT, max_examples=15, deadline=timedelta(milliseconds=200))
         assert self._slow_draws(tolerant_draws) == 12
@@ -1228,4 +1237,4 @@ class TestPropertiesSurviveALoadedMachine:
         from hypothesis.errors import FailedHealthCheck
 
         with pytest.raises(FailedHealthCheck):
-            self._slow_draws(settings(max_examples=15))
+            self._slow_draws(settings(max_examples=15, **self._STRICT))

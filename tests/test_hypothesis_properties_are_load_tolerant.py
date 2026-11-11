@@ -18,6 +18,12 @@ by WI-ruhul) and ``test_transcript_pipeline_properties.py``'s
 one more failure under CI load on 2026-11-11). Neither relaxation changes a property or its example
 count.
 
+WHERE IT BITES: LOCAL RUNS. With ``CI`` set, Hypothesis loads its built-in
+``ci`` profile, which already has both relaxations (hypothesis 6.151.6), so a
+property inheriting the defaults is tolerant in CI and strict in smart-test and
+check-package-coverage, which do not set ``CI``. The explicit settings make the
+two agree.
+
 WHY A GUARD AND NOT A GLOBAL PROFILE. A ``settings.register_profile`` has to be
 LOADED to apply, from a conftest every run imports. CI runs each package's
 tests alone and the top-level ``tests/`` on their own, so the profile would
@@ -33,6 +39,8 @@ could not be imported there. What it accepts is deliberately narrow -- a
 ``deadline=None`` and lists ``HealthCheck.too_slow`` -- so a value it cannot
 read is a failure, not a pass.
 """
+
+# covers: tests/test_transcript_pipeline_properties.py, packages/hypergumbo-tracker/tests/test_compile_properties.py
 from __future__ import annotations
 
 import ast
