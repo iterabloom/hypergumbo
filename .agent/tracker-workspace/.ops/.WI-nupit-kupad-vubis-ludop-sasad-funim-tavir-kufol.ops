@@ -1,0 +1,22 @@
+- op: create  # 9e02
+  at: '2026-11-11T01:10:41Z'  # 9e02
+  by: agent  # 9e02
+  actor: jgstern_agent  # 9e02
+  clock: 1  # 9e02
+  nonce: '9e02'  # 9e02
+  data:  # 9e02
+    kind: work_item  # 9e02
+    title: "Four whole-tree text-reading tests cost ~815 serial seconds per full run; find out why and cut it"  # 9e02
+    status: todo_soft  # 9e02
+    priority: 3  # 9e02
+    parent:  # 9e02
+    tags:  # 9e02
+    - smart_test  # 9e02
+    - ci_infrastructure  # 9e02
+    - performance  # 9e02
+    isbefore: []  # 9e02
+    duplicate_of: []  # 9e02
+    not_duplicate_of: []  # 9e02
+    pr_ref:  # 9e02
+    description: "Lead (not investigated): four tests that read the whole source tree as text cost about 815 serial seconds per full run, 56% of what all 69 whole-tree text readers cost (1450 s of the suite's 23,084 s; timings from test_timings.json, reader set from the WI-zajuv measurement in ~/hypergumbo_lab_notebook/text_reader_measurement_11102026/):\n\n- packages/hypergumbo-core/tests/test_meta_write_discipline.py  226 s\n- packages/hypergumbo-core/tests/test_catalogue_error_exit_code.py  212 s\n- packages/hypergumbo-core/tests/test_stable_id_floor_gate.py  199 s\n- packages/hypergumbo-core/tests/test_producer_coherence.py  179 s\n\nA lint-like check over ~400 files should not need minutes. Hypotheses to check, none verified: the tree is rescanned per test case rather than once per module; a subprocess is spawned per file or per case; a full hypergumbo run on the repo is repeated. A fix here speeds every run that selects them, local and CI.\n\nFirst step: profile where the time goes in each (per-test durations, then a profiler on the slowest case). Done when each of the four is either faster with the numbers recorded, or has a stated reason its cost is necessary."  # 9e02
+    fields: {}  # 9e02

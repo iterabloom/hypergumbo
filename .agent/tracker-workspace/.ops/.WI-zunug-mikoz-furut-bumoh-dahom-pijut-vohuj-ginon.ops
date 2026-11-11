@@ -29,3 +29,17 @@
     status: todo_soft  # be03
   add:  # be03
     not_duplicate_of: [WI-gokop-nudub-zunal-zibij-fuvad-libot-bituk-visid]  # be03
+- op: discuss  # 27d8
+  at: '2026-11-10T23:38:12Z'  # 27d8
+  by: agent  # 27d8
+  actor: jgstern_agent  # 27d8
+  clock: 3  # 27d8
+  nonce: 27d8  # 27d8
+  message: "Owner decision 2026-11-10: go with fix (a), a narrowing_blocker that refuses narrowing when a changed file has a changed <module> or class-body block, unless the owner says otherwise after this note. Reason: every test that imports a module runs its import-time code, so the only safe keep set for such a file is all its importers, which is the un-narrowed import-graph selection; (b) only adds narrowing of the OTHER files in a multi-file change. Measured over the last 400 commits on dev: 113 modified package source; in 90 (80%) at least one changed file had a changed <module> block, 3 more changed only a class body, 20 (18%) changed only function or method bodies. Per file: 262 of 369 (71%). Follow-up being measured: how many <module> changes are module-docstring-only, which could be routed to the WI-zajuv text-reader set instead of all importers."  # 27d8
+- op: discuss  # b971
+  at: '2026-11-10T23:39:01Z'  # b971
+  by: agent  # b971
+  actor: jgstern_agent  # b971
+  clock: 4  # b971
+  nonce: b971  # b971
+  message: "Follow-up measured, same 400 commits: of the 90 with a changed <module> block, 12 changed only the module docstring. Routing those to the text-reader set would let narrowing apply to 32 of 113 commits instead of 20; most module-level changes are real code (imports, constants, registrations)."  # b971
