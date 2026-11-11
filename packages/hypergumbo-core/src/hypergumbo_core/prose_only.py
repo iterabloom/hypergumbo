@@ -39,7 +39,8 @@ introspecting block. Anything unknown is kept.
 WHAT IS PROSE-ONLY. :func:`classify` compares the base and current source:
 the AST with docstrings removed must be equal, and so must the machine-read
 comments (``# pragma:``, ``# covers:``, ``# type:``, ``# noqa`` ...), because a
-changed ``# pragma: no cover`` changes the coverage gate's answer. Docstrings
+changed ``# pragma: no cover`` changes the coverage gate's answer. Those are
+matched by pattern per line, so prose that quotes one counts as one. Docstrings
 are located as the first statement of a module, class or function; a string
 anywhere else is code. A new, deleted or unparsable file is code.
 
@@ -65,11 +66,9 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import io
 import json
 import re
 import sqlite3
-import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
@@ -120,14 +119,18 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 # ── What is prose-only ──────────────────────────────────────────────────────
 
 
-def _machine_comments(source: str) -> Optional[list[str]]:
-    out: list[str] = []
-    try:
-        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-            if tok.type == tokenize.COMMENT and _MACHINE_COMMENT.match(tok.string):
-                out.append(tok.string.strip())
-    except (tokenize.TokenError, SyntaxError):
-        return None
+def _machine_comments(source: str) -> list[str]:
+    """Machine-read comments in ``source``, found line by line.
+
+    A pattern, not a parser: text that merely LOOKS like one (``# noqa``
+    quoted in a docstring) is included. That errs toward calling a change
+    code, which only costs the rule an opportunity.
+    """
+    out = []
+    for line in source.splitlines():
+        match = _MACHINE_COMMENT.search(line)
+        if match:
+            out.append(line[match.start():].strip())
     return sorted(out)
 
 
@@ -143,8 +146,6 @@ def prose_digests(source: str) -> Optional[tuple[str, str]]:
     except (SyntaxError, ValueError):
         return None
     machine = _machine_comments(source)
-    if machine is None:
-        return None
     docs: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, _DOC_OWNERS) or not node.body:
