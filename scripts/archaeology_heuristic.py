@@ -33,25 +33,45 @@ anecdote is. Length itself is deliberately not a feature, since a long comment
 that states rules is long, not historical.
 
 WHERE THE WEIGHTS COME FROM. They are fitted (L2-regularised logistic
-regression) to the labelled comment blocks in
+regression, scikit-learn's ``LogisticRegression(C=0.18)`` on the capped
+densities) to the labelled COMMENT blocks in
 ``tests/fixtures/archaeology-corpus.json``, 108 blocks from hypergumbo_core;
 five-fold cross-validation classifies 88% of them correctly at 0.5. Most
 misses are mixed blocks, a rule wrapped in an incident story, which score
 between 0.3 and 0.5. The probability is a calibrated heuristic over that
 corpus, not a judgement: read a high-scoring block before cutting it. When the
-families change, refit against the corpus and update :data:`WEIGHTS` and
-:data:`BIAS`; the corpus test fails if the fit no longer separates it.
+families change, refit against the comment rows and update :data:`WEIGHTS`
+and :data:`BIAS`; the corpus test fails if the fit no longer separates them.
+
+A DOCSTRING SCORE IS A RANKING, NOT A PROBABILITY. The corpus's docstring
+rows, a random sample labelled blind to these scores, are held out of the fit.
+History is rare in docstrings, and the comment fit over-reads them: one word
+that is history in a comment and vocabulary in a docstring ("found", a
+version number, an array's dimension) saturates a short docstring's density,
+so about one rule-stating docstring in four scores over 0.5. Sort docstrings
+by score and read from the top; do not read 0.5 as even odds. Too few of the
+labelled docstrings are history to fit a docstring bias that does better than
+calling none of them history.
+
+BLOCKS. Score a Python file one block at a time, not as one text: a whole
+file's score is diluted by its code and by the rules around a historical
+paragraph. A block is a run of comment-only lines or one docstring (module,
+class or function). The two never share text: a ``#`` comment beside a
+docstring is not part of it, and a ``#`` line inside a docstring is docstring
+text. ``--kind all`` lists both kinds, each scored on its own and labelled.
 
 USAGE.
   archaeology_heuristic.py [FILE ...]           score each file's text (stdin if none)
   archaeology_heuristic.py --blocks FILE.py ... score each comment-only block
+  --kind comments|docstrings|all                which blocks to score; implies --blocks
   --threshold P   list only results scoring at least P
   --json          machine-readable output
-Exit 0, or 2 when a file cannot be read or (with --blocks) tokenised.
+Exit 0, or 2 when a file cannot be read or (with --blocks) tokenised or parsed.
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import io
 import json
 import math
@@ -139,13 +159,23 @@ class Assessment:
     matches: dict[str, tuple[str, ...]]
 
 
+#: What ``--kind`` may select: comment blocks, docstrings, or both.
+KINDS = ("comments", "docstrings", "all")
+
+
 @dataclass(frozen=True)
-class CommentBlock:
-    """A run of consecutive comment-only lines, ``#`` and leading space stripped."""
+class Block:
+    """One scoreable block of Python source and the lines it spans.
+
+    ``kind`` is ``"comment"`` for a run of consecutive comment-only lines
+    (``#`` and leading space stripped) or ``"docstring"`` for one docstring
+    (indentation cleaned, as ``inspect.cleandoc`` does).
+    """
 
     start: int
     end: int
     text: str
+    kind: str = "comment"
 
 
 def assess(text: str) -> Assessment:
@@ -170,7 +200,7 @@ _NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
              tokenize.DEDENT, tokenize.ENDMARKER}
 
 
-def comment_blocks(source: str) -> list[CommentBlock]:
+def comment_blocks(source: str) -> list[Block]:
     """The comment-only blocks of Python ``source``, each a run of adjacent lines.
 
     A comment that shares its line with code is not comment-only, and a ``#``
@@ -191,9 +221,48 @@ def comment_blocks(source: str) -> list[CommentBlock]:
         else:
             blocks.append([line])
     return [
-        CommentBlock(b[0], b[-1], "\n".join(comments[n].lstrip("#:").strip() for n in b))
+        Block(b[0], b[-1], "\n".join(comments[n].lstrip("#:").strip() for n in b))
         for b in blocks
     ]
+
+
+_HAS_DOCSTRING = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def docstring_blocks(source: str) -> list[Block]:
+    """The docstrings of Python ``source``: module, class and function, nested too.
+
+    A docstring is a string literal and a comment is a separate token, so the
+    two never share text: a ``#`` comment beside a docstring is not part of it,
+    and a ``#`` line inside one (a heading, an example) is docstring text, not
+    a comment. Only the FIRST statement of a body is its docstring; a later
+    bare string is not. Raises ``SyntaxError`` or ``ValueError`` on source it
+    cannot parse.
+    """
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, _HAS_DOCSTRING):
+            text = ast.get_docstring(node, clean=True)
+            if text is not None:
+                literal = node.body[0]
+                found.append(Block(literal.lineno, literal.end_lineno or literal.lineno,
+                                   text, "docstring"))
+    return sorted(found, key=lambda b: b.start)
+
+
+def blocks_of(source: str, kind: str) -> list[Block]:
+    """The blocks of ``source`` that ``kind`` (one of :data:`KINDS`) selects, in line order.
+
+    ``all`` lists both kinds side by side, each scored on its own: merging a
+    docstring with the comments around it would dilute a historical paragraph
+    with the rules beside it, as scoring a whole file does.
+    """
+    chosen: list[Block] = []
+    if kind in ("comments", "all"):
+        chosen += comment_blocks(source)
+    if kind in ("docstrings", "all"):
+        chosen += docstring_blocks(source)
+    return sorted(chosen, key=lambda b: b.start)
 
 
 @dataclass(frozen=True)
@@ -202,12 +271,13 @@ class _Scored:
 
     source: str
     assessment: Assessment
-    block: Optional[CommentBlock] = None
+    block: Optional[Block] = None
 
     def as_json(self) -> dict[str, object]:
         where: dict[str, object] = {"source": self.source}
         if self.block is not None:
-            where.update(start=self.block.start, end=self.block.end, text=self.block.text)
+            where.update(start=self.block.start, end=self.block.end,
+                         kind=self.block.kind, text=self.block.text)
         return {
             **where,
             "probability": round(self.assessment.probability, 4),
@@ -219,7 +289,8 @@ class _Scored:
         if self.block is not None:
             first = self.block.text.splitlines()[0][:100] if self.block.text else ""
             return (f"{self.assessment.probability:.2f}  "
-                    f"{self.source}:{self.block.start}-{self.block.end}  {first}")
+                    f"{self.source}:{self.block.start}-{self.block.end}  "
+                    f"{self.block.kind}  {first}")
         head = f"{self.assessment.probability:.2f}  {self.source}"
         detail = [f"  {f}: {', '.join(m)}" for f, m in self.assessment.matches.items()]
         return "\n".join([head, *detail])
@@ -229,17 +300,18 @@ class _Unreadable(Exception):
     """A named input could not be read or tokenised; the message names it."""
 
 
-def _score(files: Sequence[str], blocks: bool) -> Iterable[_Scored]:
+def _score(files: Sequence[str], kind: Optional[str]) -> Iterable[_Scored]:
     if not files:
         yield _Scored("<stdin>", assess(sys.stdin.read()))
         return
     for name in files:
         try:
             text = Path(name).read_text(encoding="utf-8")
-            found = comment_blocks(text) if blocks else []
-        except (OSError, UnicodeDecodeError, tokenize.TokenError, SyntaxError) as exc:
+            found = blocks_of(text, kind) if kind else []
+        except (OSError, UnicodeDecodeError, tokenize.TokenError, SyntaxError,
+                ValueError) as exc:
             raise _Unreadable(f"{name}: {exc}") from exc
-        if not blocks:
+        if not kind:
             yield _Scored(name, assess(text))
         for block in found:
             yield _Scored(name, assess(block.text), block)
@@ -251,13 +323,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("files", nargs="*", help="files to score (stdin when none)")
     parser.add_argument("--blocks", action="store_true",
-                        help="treat each file as Python and score its comment-only blocks")
+                        help="treat each file as Python and score its blocks one by one "
+                             "(comment blocks unless --kind says otherwise)")
+    parser.add_argument("--kind", choices=KINDS,
+                        help="which blocks to score: comments, docstrings or all; implies --blocks")
     parser.add_argument("--threshold", type=float, default=0.0,
                         help="list only results scoring at least this probability")
     parser.add_argument("--json", action="store_true", help="emit a JSON list")
     args = parser.parse_args(argv)
     try:
-        scored = [s for s in _score(args.files, args.blocks)
+        kind = args.kind or ("comments" if args.blocks else None)
+        scored = [s for s in _score(args.files, kind)
                   if s.assessment.probability >= args.threshold]
     except _Unreadable as exc:
         print(f"archaeology_heuristic: {exc}", file=sys.stderr)
