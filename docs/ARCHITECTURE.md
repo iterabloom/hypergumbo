@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **370** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 115 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **58424** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13070, of which 7490 are functions, methods or classes
-- **234544** edges, test code included, by type:
-  - calls: 132602
-  - contains: 54424
-  - imports: 20101
-  - instantiates: 12963
-  - references: 10423
-  - module_attr_ref: 2230
-  - other: 1801
+- **371** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 116 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **58527** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13119, of which 7510 are functions, methods or classes
+- **235037** edges, test code included, by type:
+  - calls: 132862
+  - contains: 54507
+  - imports: 20125
+  - instantiates: 12970
+  - references: 10518
+  - module_attr_ref: 2244
+  - other: 1811
 
 ## Package Architecture
 
@@ -677,6 +677,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
+- **`hypergumbo_core.prose_only`**: Prose-only changes: which tests a comment or docstring edit can aff...
 - **`hypergumbo_core.protocol_origins`**: Canonical registry of ``Symbol.protocol_origin`` values (ADR-0031).
 - **`hypergumbo_core.python_stdlib_versions`**: Top-level modules that are stdlib on some supported Python but not ...
 - **`hypergumbo_core.qualified_name_axis`**: Per-language separator policy for ``Symbol.qualified_name`` (ADR-00...
@@ -994,8 +995,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e48cb6743be2
-  commit_count: 9064
+  commit: c731421351bf
+  commit_count: 9065
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

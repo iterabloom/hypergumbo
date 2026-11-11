@@ -21,9 +21,11 @@ base, then:
      with history no scenario controls is the noise this exists to remove.
   2. The edit is applied to the working tree and ``smart-test --manifest
      --narrow`` computes one selection. ``SMART_TEST_SELECTION_OUT`` hands back
-     all three stages: the MANIFEST (static slice plus its declarative
-     unions, what CI runs), the UNION (plus coverage's picks, WI-kuliv), and
-     the NARROWED local run set (WI-bolot). A run that exits early (a
+     all four stages: the MANIFEST (static slice plus its declarative
+     unions, what CI runs), PROSE (the manifest after the prose-only rule,
+     which drops the tests a comment-or-docstring change cannot affect), the
+     UNION (plus coverage's picks, WI-kuliv), and the NARROWED local run set
+     (WI-bolot). Each later stage starts from the one before it. A run that exits early (a
      full-suite fallback, nothing to run) writes no stages, and every
      selector is then read from the manifest, which is what such a run
      actually executes.
@@ -47,7 +49,7 @@ holds one of each shape, so totals over edits are not a forecast of savings
 on real PRs; they compare selectors on the same shapes.
 
 Usage:
-    scripts/smart-test-bed run [all|manifest|union|narrow] [--edit NAME]...
+    scripts/smart-test-bed run [all|manifest|prose|union|narrow] [--edit NAME]...
                                [--jobs N] [--json FILE] [--keep]
     scripts/smart-test-bed materialize DIR      # a committed bed to poke at
     scripts/smart-test-bed list                 # the edits
@@ -75,9 +77,9 @@ import yaml
 REPO = Path(__file__).resolve().parent.parent
 BED = REPO / "tests" / "fixtures" / "smart-test-bed"
 SMART_TEST = REPO / "scripts" / "smart-test"
-SELECTORS = ("manifest", "union", "narrow")
-STAGE_FILES = {"manifest": "manifest.txt", "union": "after-union.txt",
-               "narrow": "local.txt"}
+SELECTORS = ("manifest", "prose", "union", "narrow")
+STAGE_FILES = {"manifest": "manifest.txt", "prose": "after-prose.txt",
+               "union": "after-union.txt", "narrow": "local.txt"}
 TEST_ROOTS = ("packages/bed-core/tests", "packages/bed-app/tests", "tests")
 
 sys.path.insert(0, str(REPO / "packages" / "hypergumbo-core" / "src"))
