@@ -158,6 +158,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The CI pytest step sets its plugin path as a plain value.**
 - **smart-test gives each parallel test worker one OpenMP thread: full suite 46 to 35 minutes.**
 - **Tests with an expensive shared setup run on one worker.**
+- **Hypothesis property tests no longer fail on a slow, loaded machine.**
 - **New CI checks**: declared axioms against real output, io-boundaries and taint classifying each call alike, a test run where every test skipped fails.
 - **Fixes for the twice-daily run's failing steps**: the test-only reachability and self-tree id checks; the I/O allowlist trace, which now checks `install-rust-analyzer` and `add-extras`; the readability tests, which run where hypergumbo is installed.
 - **`depends_on` must name earlier passes.**
