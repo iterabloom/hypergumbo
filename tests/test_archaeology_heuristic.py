@@ -145,37 +145,65 @@ def test_empty_text_scores_the_prior() -> None:
     assert result.probability < 0.5
 
 
-def _corpus(kind: str) -> list[dict[str, object]]:
+def _corpus(kind: str, sample: str | None = None) -> list[dict[str, object]]:
     blocks = json.loads(_CORPUS.read_text(encoding="utf-8"))["blocks"]
-    return [b for b in blocks if b["kind"] == kind]
+    return [b for b in blocks
+            if b["kind"] == kind and (sample is None or b["sample"] == sample)]
 
 
-def test_every_corpus_block_names_its_kind() -> None:
+def test_every_corpus_block_names_its_kind_and_sample() -> None:
     blocks = json.loads(_CORPUS.read_text(encoding="utf-8"))["blocks"]
-    assert {b["kind"] for b in blocks} == {"comment", "docstring"}
+    assert {(b["kind"], b["sample"]) for b in blocks} == {
+        ("comment", "curated"), ("comment", "random"), ("docstring", "random")}
 
 
-def test_the_fitted_weights_still_separate_the_labelled_comments() -> None:
-    """Over the COMMENT rows only: the docstring rows are held out of the fit,
-    and a blended accuracy would let one kind hide behind the other."""
-    blocks = _corpus("comment")
-    assert len(blocks) >= 100
-    scored = [(ah.probability(str(b["text"])), b["label"]) for b in blocks]
-    accuracy = sum((p >= 0.5) == bool(y) for p, y in scored) / len(scored)
-    assert accuracy >= 0.85
+def _auc(scored: list[tuple[float, object]]) -> float:
+    """Share of (history, rule) pairs the scores put in the right order."""
     history = [p for p, y in scored if y]
     rules = [p for p, y in scored if not y]
-    assert sum(history) / len(history) - sum(rules) / len(rules) >= 0.4
+    wins = sum((h > r) + 0.5 * (h == r) for h in history for r in rules)
+    return wins / (len(history) * len(rules))
+
+
+@pytest.mark.parametrize("sample, min_rows, min_auc", [
+    ("curated", 100, 0.90),
+    ("random", 240, 0.80),
+])
+def test_the_fitted_weights_still_separate_each_comment_sample(
+    sample: str, min_rows: int, min_auc: float
+) -> None:
+    """Sample by sample over the COMMENT rows, the fit's own data: a blended
+    figure would let the half-history curated rows hide the random ones, or
+    the reverse. Each must rank history above rule (floors a few points
+    under the fit's), separate the two by mean score, and beat calling every
+    block the sample's commoner label."""
+    blocks = _corpus("comment", sample)
+    assert len(blocks) >= min_rows
+    scored = [(ah.probability(str(b["text"])), b["label"]) for b in blocks]
+    assert _auc(scored) >= min_auc
+    history = [p for p, y in scored if y]
+    rules = [p for p, y in scored if not y]
+    assert sum(history) / len(history) - sum(rules) / len(rules) >= 0.3
+    accuracy = sum((p >= 0.5) == bool(y) for p, y in scored) / len(scored)
+    commoner = max(len(history), len(rules)) / len(scored)
+    assert accuracy > commoner
+
+
+def test_the_random_comments_are_the_40_word_sample() -> None:
+    blocks = _corpus("comment", "random")
+    assert {b["label"] for b in blocks} == {0, 1}
+    assert min(len(str(b["text"]).split()) for b in blocks) >= 40
 
 
 def test_the_labelled_docstrings_are_the_held_out_100_word_sample() -> None:
     """No accuracy floor: the weights are not fitted to docstrings, and the
-    module docstring says their score is weak evidence. What is pinned is the
-    sample the module docstring describes -- docstrings of 100 or more words,
-    from hypergumbo_core, holding both labels -- so a refit or a claim about
-    docstrings is measured against data that is what it says it is."""
+    module docstring says their score is weaker evidence. What is pinned is
+    the sample the module docstring describes -- random docstrings of 100 or
+    more words, from hypergumbo_core, holding both labels -- so a refit or a
+    claim about docstrings is measured against data that is what it says."""
     blocks = _corpus("docstring")
-    assert len(blocks) >= 240
+    assert len(blocks) >= 480
+    assert {b["sample"] for b in blocks} == {"random"}
     assert {b["label"] for b in blocks} == {0, 1}
     assert all(str(b["origin"]).startswith("hypergumbo_core/") for b in blocks)
     assert min(len(str(b["text"]).split()) for b in blocks) >= 100
