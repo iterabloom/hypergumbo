@@ -105,15 +105,38 @@ def test_empty_text_scores_the_prior() -> None:
     assert result.probability < 0.5
 
 
-def test_the_fitted_weights_still_separate_the_labelled_corpus() -> None:
+def _corpus(kind: str) -> list[dict[str, object]]:
     blocks = json.loads(_CORPUS.read_text(encoding="utf-8"))["blocks"]
+    return [b for b in blocks if b["kind"] == kind]
+
+
+def test_every_corpus_block_names_its_kind() -> None:
+    blocks = json.loads(_CORPUS.read_text(encoding="utf-8"))["blocks"]
+    assert {b["kind"] for b in blocks} == {"comment", "docstring"}
+
+
+def test_the_fitted_weights_still_separate_the_labelled_comments() -> None:
+    """Over the COMMENT rows only: the docstring rows are held out of the fit,
+    and a blended accuracy would let one kind hide behind the other."""
+    blocks = _corpus("comment")
     assert len(blocks) >= 100
-    scored = [(ah.probability(b["text"]), b["label"]) for b in blocks]
+    scored = [(ah.probability(str(b["text"])), b["label"]) for b in blocks]
     accuracy = sum((p >= 0.5) == bool(y) for p, y in scored) / len(scored)
     assert accuracy >= 0.85
     history = [p for p, y in scored if y]
     rules = [p for p, y in scored if not y]
     assert sum(history) / len(history) - sum(rules) / len(rules) >= 0.4
+
+
+def test_the_labelled_docstrings_are_a_held_out_sample_of_both_labels() -> None:
+    """No accuracy floor: the weights are not fitted to docstrings, and the
+    module docstring says their scores are a ranking, not a probability. What
+    is pinned is that the sample exists, is all docstrings, and holds both
+    labels, so a refit that claims to calibrate docstrings has data to show it."""
+    blocks = _corpus("docstring")
+    assert len(blocks) >= 60
+    assert {b["label"] for b in blocks} == {0, 1}
+    assert all(str(b["origin"]).startswith("hypergumbo_core/") for b in blocks)
 
 
 SOURCE = '''\
@@ -138,6 +161,73 @@ def test_comment_blocks_are_the_runs_of_comment_only_lines() -> None:
         "This used to assign, so the last match won.\n"
         "Measured on 2026-08-26 across 12 repos."
     )
+
+
+DOC_SOURCE = '''\
+"""Module docstring. This used to be a script."""
+# A comment right under the module docstring.
+import os
+
+
+class Thing:
+    """Class docstring: it must keep its key."""
+
+    # A comment between the class docstring and the method.
+    def method(self):
+        """Method docstring.
+
+        # Not a comment: a heading inside the docstring.
+        """
+        """A second string statement is not a docstring."""
+
+        def inner():
+            """Nested function docstring."""
+
+    async def run(self):  # trailing comment
+        """Async docstring."""
+'''
+
+
+def test_docstring_blocks_are_every_module_class_and_function_docstring() -> None:
+    blocks = ah.docstring_blocks(DOC_SOURCE)
+    assert [(b.start, b.end, b.kind) for b in blocks] == [
+        (1, 1, "docstring"), (7, 7, "docstring"), (11, 14, "docstring"),
+        (18, 18, "docstring"), (21, 21, "docstring"),
+    ]
+    assert blocks[0].text == "Module docstring. This used to be a script."
+    assert blocks[2].text == (
+        "Method docstring.\n\n# Not a comment: a heading inside the docstring."
+    )
+
+
+def test_a_comment_beside_a_docstring_stays_out_of_it() -> None:
+    docstrings = " ".join(b.text for b in ah.docstring_blocks(DOC_SOURCE))
+    assert "A comment right under" not in docstrings
+    assert "A comment between" not in docstrings
+    assert "trailing comment" not in docstrings
+
+
+def test_a_hash_line_inside_a_docstring_is_not_a_comment() -> None:
+    comments = ah.comment_blocks(DOC_SOURCE)
+    assert [(b.start, b.text, b.kind) for b in comments] == [
+        (2, "A comment right under the module docstring.", "comment"),
+        (9, "A comment between the class docstring and the method.", "comment"),
+    ]
+
+
+def test_all_lists_both_kinds_unmerged_in_line_order() -> None:
+    blocks = ah.blocks_of(DOC_SOURCE, "all")
+    assert [(b.start, b.kind) for b in blocks] == [
+        (1, "docstring"), (2, "comment"), (7, "docstring"), (9, "comment"),
+        (11, "docstring"), (18, "docstring"), (21, "docstring"),
+    ]
+    assert blocks == sorted(ah.comment_blocks(DOC_SOURCE) + ah.docstring_blocks(DOC_SOURCE),
+                            key=lambda b: b.start)
+
+
+def test_each_kind_selects_only_its_own_blocks() -> None:
+    assert ah.blocks_of(DOC_SOURCE, "comments") == ah.comment_blocks(DOC_SOURCE)
+    assert ah.blocks_of(DOC_SOURCE, "docstrings") == ah.docstring_blocks(DOC_SOURCE)
 
 
 def test_cli_scores_stdin(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -207,4 +297,47 @@ def test_cli_blocks_mode_shows_an_empty_comment_as_an_empty_first_line(
     path = tmp_path / "bare.py"
     path.write_text("x = 1\n#\n", encoding="utf-8")
     assert ah.main(["--blocks", str(path)]) == 0
-    assert capsys.readouterr().out == f"{ah.probability(''):.2f}  {path}:2-2  \n"
+    assert capsys.readouterr().out == f"{ah.probability(''):.2f}  {path}:2-2  comment  \n"
+
+
+def test_cli_kind_docstrings_scores_docstrings_without_blocks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "mod.py"
+    path.write_text(DOC_SOURCE, encoding="utf-8")
+    assert ah.main(["--kind", "docstrings", "--json", str(path)]) == 0
+    records = json.loads(capsys.readouterr().out)
+    assert [(r["start"], r["kind"]) for r in records] == [
+        (b.start, "docstring") for b in ah.docstring_blocks(DOC_SOURCE)]
+    assert records[0]["probability"] == pytest.approx(
+        ah.probability("Module docstring. This used to be a script."), abs=1e-4)
+
+
+def test_cli_kind_all_labels_each_line_with_its_kind(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "mod.py"
+    path.write_text(DOC_SOURCE, encoding="utf-8")
+    assert ah.main(["--blocks", "--kind", "all", str(path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [line.split("  ")[2] for line in lines] == [
+        b.kind for b in ah.blocks_of(DOC_SOURCE, "all")]
+    assert f"{path}:2-2  comment  A comment right under" in lines[1]
+
+
+def test_cli_blocks_alone_still_means_comments(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "mod.py"
+    path.write_text(DOC_SOURCE, encoding="utf-8")
+    assert ah.main(["--blocks", "--json", str(path)]) == 0
+    assert {r["kind"] for r in json.loads(capsys.readouterr().out)} == {"comment"}
+
+
+def test_cli_kind_refuses_a_file_it_cannot_parse(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "broken.py"
+    path.write_text("def f(:\n    pass\n", encoding="utf-8")
+    assert ah.main(["--kind", "docstrings", str(path)]) == 2
+    assert "broken.py" in capsys.readouterr().err
