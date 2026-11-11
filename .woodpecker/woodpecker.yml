@@ -645,7 +645,12 @@ steps:
         # ones are not, and pytest says so in its last lines. The gate is not
         # narrowed: a run this stops was already failing, and a green run is
         # untouched. See scripts/pytest_plugins/pytest_fail_grace.py.
-        PYTHONPATH="scripts/pytest_plugins${PYTHONPATH:+:$PYTHONPATH}" \
+        # A plain value, with no shell parameter expansion: Woodpecker
+        # substitutes dollar-brace forms itself before the shell runs, and
+        # turned the "append the old value if set" form into a bare colon
+        # plus the old value, leaving a trailing colon (= the repo root) on
+        # the path. Nothing else in this step sets PYTHONPATH.
+        PYTHONPATH="scripts/pytest_plugins" \
           pytest --rootdir=. -p pytest_fail_grace --fail-grace=15 -n "$WORKERS" --tb=short --junit-xml="$JUNIT" $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
         # INV-tazur: exit 5 is "collected nothing". It already fails the step;
         # say so in words, because pytest's own line ("no tests ran") reads like

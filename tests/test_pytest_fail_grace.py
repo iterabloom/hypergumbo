@@ -176,7 +176,11 @@ def test_the_per_pr_pytest_step_uses_the_rule() -> None:
     runs = [line for line in step.splitlines() if "--junit-xml" in line and "pytest" in line]
     assert len(runs) == 1, runs
     assert "-p pytest_fail_grace --fail-grace=15" in runs[0]
-    assert 'PYTHONPATH="scripts/pytest_plugins' in step
+    assert 'PYTHONPATH="scripts/pytest_plugins" \\\n' in step
+    # Woodpecker expands ${...} before the shell does; the first version's
+    # ${PYTHONPATH:+:$PYTHONPATH} reached the shell as ":$PYTHONPATH".
+    code = [line for line in step.splitlines() if not line.lstrip().startswith("#")]
+    assert not [line for line in code if "${PYTHONPATH" in line]
     for cron in ("full-suite.yml", "nightly.yml"):
         text = (REPO_ROOT / ".woodpecker" / cron).read_text(encoding="utf-8")
         assert "fail-grace" not in text, cron
