@@ -506,3 +506,58 @@ class TestChangeIsMeasuredAgainstGitNotAgainstTheIndex:
         mod.write_text(_SAMPLE.replace(
             "def alpha(x):\n    return x + 1\n\n\n", ""))
         assert "test_a" in select_tests(conn, {str(mod): _SAMPLE}).tests
+
+
+class TestImportTimeChanges:
+    """WI-zunug: which changed blocks run when the file is imported."""
+
+    _BASE = (
+        "import os\n"
+        "LIMIT = 1\n"
+        "class Holder:\n"
+        "    size = 1\n"
+        "    def method(self):\n"
+        "        return 1\n"
+        "def func():\n"
+        "    class Local:\n"
+        "        tag = 1\n"
+        "    return Local\n"
+    )
+
+    def _selection(self, tmp_path, new_source: str):
+        from hypergumbo_core.selection_index import open_index, select_tests
+
+        mod = tmp_path / "mod.py"
+        mod.write_text(new_source)
+        conn = open_index(tmp_path / "index.sqlite")
+        return str(mod), select_tests(conn, {str(mod): self._BASE})
+
+    def test_a_module_statement_is_import_time(self, tmp_path) -> None:
+        path, sel = self._selection(tmp_path, self._BASE.replace("LIMIT = 1", "LIMIT = 2"))
+        assert sel.import_time_changed == frozenset({(path, "<module>")})
+
+    def test_a_class_body_is_import_time(self, tmp_path) -> None:
+        path, sel = self._selection(tmp_path, self._BASE.replace("size = 1", "size = 2"))
+        assert sel.import_time_changed == frozenset({(path, "Holder")})
+
+    def test_a_function_or_method_body_is_not(self, tmp_path) -> None:
+        _path, sel = self._selection(tmp_path, self._BASE.replace("return 1", "return 2"))
+        assert sel.changed_blocks and sel.import_time_changed == frozenset()
+
+    def test_a_class_inside_a_function_is_not(self, tmp_path) -> None:
+        """Its body runs when the function is called, under a test's context."""
+        path, sel = self._selection(tmp_path, self._BASE.replace("tag = 1", "tag = 2"))
+        assert sel.changed_blocks == frozenset({(path, "func.Local")})
+        assert sel.import_time_changed == frozenset()
+
+    def test_a_deleted_class_counts(self, tmp_path) -> None:
+        """Its name is gone for every importer, and only the base knew it."""
+        gone = self._BASE.replace(
+            "class Holder:\n    size = 1\n    def method(self):\n        return 1\n", "")
+        path, sel = self._selection(tmp_path, gone)
+        assert (path, "Holder") in sel.import_time_changed
+        assert (path, "Holder.method") not in sel.import_time_changed
+
+    def test_a_comment_edit_changes_nothing(self, tmp_path) -> None:
+        _path, sel = self._selection(tmp_path, self._BASE + "# a comment\n")
+        assert sel.import_time_changed == frozenset()

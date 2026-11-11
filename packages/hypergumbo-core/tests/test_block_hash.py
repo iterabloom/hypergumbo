@@ -279,3 +279,22 @@ class TestLineOwnership:
         for i, line in enumerate(src.splitlines(), 1):
             if line.strip() and not line.strip().startswith("#"):
                 assert i in owner, f"line {i} ({line!r}) has no owning block"
+
+
+def test_import_time_marks_the_module_and_top_level_class_bodies() -> None:
+    """WI-zunug: these bodies run at import, under no test's coverage context."""
+    source = (
+        "X = 1\n"
+        "class A:\n"
+        "    y = 1\n"
+        "    class B:\n"
+        "        z = 1\n"
+        "    def m(self):\n"
+        "        class C:\n"
+        "            w = 1\n"
+        "def f():\n"
+        "    pass\n"
+    )
+    flags = {b.name: b.import_time for b in blocks_for_source("m.py", source)}
+    assert flags == {"<module>": True, "A": True, "A.B": True,
+                     "A.m": False, "A.m.C": False, "f": False}

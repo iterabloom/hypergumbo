@@ -59,7 +59,9 @@ Narrowing is stated as data rather than left to a shell pipeline:
 changed file, because the local coverage gate is whole-file);
 ``speakable_test_files`` is the only droppable set (files with coverage rows and
 no unmeasured test); ``narrowing_blockers`` names the reasons to refuse outright
-(an unknown coverable source file, a missing changed file); and
+(an unknown coverable source file, a missing changed file, changed import-time
+code -- a module or class body, which every importer runs and no coverage row
+records); and
 ``narrow_run_set`` applies them, returning a :class:`Narrowing` whose
 ``refusal`` is set, with the run set left whole, when a blocker fires or the
 result would be empty.
@@ -116,6 +118,10 @@ class Selection:
     #: a file that USED to exist has tests that exercised code which is now
     #: gone, and those are worth running.
     missing_paths: frozenset[str] = frozenset()
+    #: Changed or vanished blocks whose statements run at IMPORT (a module
+    #: body, a class body outside any function). No test has a coverage row
+    #: for those lines, so ``tests`` cannot name who runs them.
+    import_time_changed: frozenset[BlockKey] = frozenset()
 
 
 def open_index(path: Path) -> sqlite3.Connection:
@@ -294,11 +300,25 @@ def changed_blocks(
     A path that is now unreadable had all of its base blocks removed, so they
     all count as changed — those tests exercised code that is gone.
     """
+    changed, new, _import_time = _diff_blocks(base_sources)
+    return changed, new
+
+
+def _diff_blocks(
+    base_sources: Mapping[str, Optional[str]],
+) -> tuple[frozenset[BlockKey], frozenset[BlockKey], frozenset[BlockKey]]:
+    """``(changed, new, import-time changed)``; see :func:`changed_blocks`.
+
+    The third set is the subset of ``changed`` whose statements run at import.
+    A vanished block is judged by what it was at the base, since the current
+    source no longer says.
+    """
     changed: set[BlockKey] = set()
     new: set[BlockKey] = set()
+    import_time: set[BlockKey] = set()
     for path, base_src in base_sources.items():
         try:
-            current = {b.name: b.digest
+            current = {b.name: b
                        for b in blocks_for_source(path, Path(path).read_text())}
         except (OSError, SyntaxError):
             current = {}
@@ -306,19 +326,23 @@ def changed_blocks(
             new.update((path, name) for name in current)
             continue
         try:
-            base = {b.name: b.digest
-                    for b in blocks_for_source(path, base_src)}
+            base = {b.name: b for b in blocks_for_source(path, base_src)}
         except SyntaxError:  # pragma: no cover - base commit did not parse
             continue
-        for name, digest in current.items():
+        for name, block in current.items():
             if name not in base:
                 new.add((path, name))
-            elif base[name] != digest:
+            elif base[name].digest != block.digest:
                 changed.add((path, name))
+                if block.import_time:
+                    import_time.add((path, name))
         # Vanished blocks are the ONLY signal for a rename, move or deletion,
         # because children are removed from a parent's digest entirely.
-        changed.update((path, name) for name in set(base) - set(current))
-    return frozenset(changed), frozenset(new)
+        for name in set(base) - set(current):
+            changed.add((path, name))
+            if base[name].import_time:
+                import_time.add((path, name))
+    return frozenset(changed), frozenset(new), frozenset(import_time)
 
 
 def select_tests(
@@ -330,7 +354,7 @@ def select_tests(
         if not conn.execute(
             "SELECT 1 FROM block WHERE path = ? LIMIT 1", (p,)).fetchone()
     }
-    changed, new = changed_blocks(conn, base_sources)
+    changed, new, import_time = _diff_blocks(base_sources)
     tests: set[str] = set()
     for path, name in changed:
         tests.update(r[0] for r in conn.execute(
@@ -347,6 +371,7 @@ def select_tests(
         unknown_paths=frozenset(unknown),
         unmeasured=frozenset(unmeasured),
         missing_paths=frozenset(missing),
+        import_time_changed=import_time,
     )
 
 
@@ -518,6 +543,19 @@ def narrowing_blockers(
             out.append(f"unknown coverable source: {r}")
     for p in sorted(selection.missing_paths):
         out.append(f"missing changed file: {rel(p)}")
+    # AN IMPORT IS NOT A COVERAGE ROW (WI-zunug). A module or class body runs
+    # when the file is imported, under no test's context, so a test that only
+    # imports the file has no row for it, and narrowing read that absence as
+    # proof of irrelevance. Every importer runs the changed code; the index
+    # does not hold import edges, so the only safe keep set is the run set.
+    # Measured over 400 commits: 93 of the 113 that modify package source
+    # change such a block, so this refuses on most real changes. That is the
+    # cost of soundness here, not an accident. A test file is exempt: its
+    # importers are not tests, and it enters the run set as a changed test.
+    for p, name in sorted(selection.import_time_changed):
+        r = rel(p)
+        if not _is_test_path(r) and _is_coverable(r):
+            out.append(f"import-time code changed: {r} ({name})")
     return tuple(out)
 
 
