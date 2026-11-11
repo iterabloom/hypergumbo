@@ -116,9 +116,17 @@ def test_local_run_still_uses_the_run_set() -> None:
     under a new name, and the guard above would still pass.
     """
     text = _SMART_TEST.read_text(encoding="utf-8")
-    assert re.search(rf'run_pytest\s+"\${_RUN}"', text), (
-        "the local pytest invocation must read the run set, not the manifest set"
+    # WI-fipuf: the run reads RUN_ORDER, which is the run set REORDERED
+    # (failure-first). So the seam is checked one step back: pytest gets
+    # RUN_ORDER, and RUN_ORDER is built from the run set and never from the
+    # manifest set.
+    assert re.search(r'run_pytest\s+"\$RUN_ORDER"', text), (
+        "the local pytest invocation must read the (reordered) run set"
     )
+    start = text.index("RUN_ORDER=$( {")
+    block = text[start:text.index("awk 'NF && !seen[$0]++')", start)]
+    assert f'echo "${_RUN}"' in block, "RUN_ORDER must be built from the run set"
+    assert _MAN not in block, "RUN_ORDER must not read the manifest set"
 
 
 def test_guard_fires_when_manifest_publishes_the_run_set() -> None:

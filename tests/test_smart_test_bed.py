@@ -238,6 +238,13 @@ def test_every_helper_resolves_from_the_tools_root() -> None:
     assert "$REPO_ROOT/.agent/" not in text
 
 
+def test_the_rank_of_the_first_must_test_is_its_run_position() -> None:
+    """WI-fipuf: how soon a failure-first order reaches a test the edit breaks."""
+    bed = _load_harness()
+    assert bed.first_must_rank(["a", "b", "c"], ["c", "b"]) == 2
+    assert bed.first_must_rank(["a"], ["z"]) is None
+
+
 # ── end to end ───────────────────────────────────────────────────────────────
 
 def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:

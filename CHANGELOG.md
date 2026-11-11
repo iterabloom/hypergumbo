@@ -153,6 +153,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test's citation gate sees split paths and extensionless scripts.**
 - **`smart-test --narrow` refuses to narrow when import-time code changed.**
 - **Tests can build an expensive input once per session, shared across parallel workers.**
+- **A failing test run stops 15 seconds after its first failure, locally and in per-PR CI.**
+- **smart-test runs the likeliest failures first.**
 - **New CI checks**: declared axioms against real output, io-boundaries and taint classifying each call alike, a test run where every test skipped fails.
 - **Fixes for the twice-daily run's failing steps**: the test-only reachability and self-tree id checks; the I/O allowlist trace, which now checks `install-rust-analyzer` and `add-extras`; the readability tests, which run where hypergumbo is installed.
 - **`depends_on` must name earlier passes.**
