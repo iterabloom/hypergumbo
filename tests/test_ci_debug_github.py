@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tier-B behavioral tests for the GitHub arm of ``scripts/ci-debug`` (PR-C2).
+"""Tier-B behavioral tests for the GitHub arm of ``scripts/ci-debug``.
 
 Under GitHub + self-hosted Woodpecker, GitHub Actions is disabled, so
 ``/actions/runs`` returns an empty ``workflow_runs`` (HTTP 200) — the ``runs``
@@ -10,8 +10,9 @@ those status entries as pseudo-runs. ``status`` / ``pr-status`` / ``logs`` are
 already shape-compatible (``logs`` degrades inside the lib's
 ``_github_fetch_job_log``); those tests are regression guards.
 
-Dormant (default forgejo while Codeberg is origin), forced here via
-``HYPERGUMBO_FORGE_BACKEND=github``. Bash contributes no Python coverage.
+The github arm is the live backend (origin is github.com; WI-hajif); these
+tests force it explicitly via ``HYPERGUMBO_FORGE_BACKEND=github``. Bash
+contributes no Python coverage.
 """
 
 from __future__ import annotations
@@ -125,11 +126,10 @@ class TestStatusShapeCompat:
         """A GitHub `mergeable: null` must surface as `null`, not blank.
 
         This is the field auto-pr's Scenario B gate branches on, and GitHub
-        reports it as null while mergeability is still being computed. Until
-        pr-status carried it, the gate's live input was unobservable through
-        any approved script — which is why INV-rahib Surface 1 sat unverified
-        against the real backend. Rendering it as an empty string would put
-        the gap straight back.
+        reports it as null while mergeability is still being computed.
+        pr-status is how that live input is observed through an approved
+        script (INV-rahib Surface 1); rendering it as an empty string would
+        make "still computing" unobservable.
         """
         repo = fake_repo(tmp_path, "https://github.com/o/r.git")
         bindir = bindir_with_fakes(tmp_path)
@@ -169,15 +169,12 @@ class TestLogsDegradation:
         assert "https://ci.example.test/build/9" in r.stderr
 
 
-# WI-zavut: two gates report on the same commit, so "which pipeline?" is a
-# real question and the job name is the only answer to it. Before this, the
-# target_url resolver took the FIRST status carrying one and broke out of the
-# loop; the job name was applied later, to pick a STEP inside the pipeline
-# that had already been chosen wrongly. Measured on dev 45280d90, which
-# carries push/woodpecker (success) beside cron/full-suite (failure):
-# `ci-debug logs cron/full-suite 45280d90` returned the PUSH transcript
-# ("396 passed"), and so did every other job name tried. The cron gate's log
-# had therefore never been read by anyone, while the gate reported FAILURE.
+# Two gates report on the same commit, so "which pipeline?" is a real
+# question and the job name is the only answer to it (WI-zavut). The name must
+# choose the PIPELINE (the target_url of the matching status) before any STEP
+# is picked inside it. A resolver that took the FIRST status carrying a
+# target_url would answer `ci-debug logs cron/full-suite` with the PUSH
+# transcript, and a failing cron gate's log would never be read.
 _STATUS_TWO_GATES = json.dumps({
     "state": "failure",
     "statuses": [
@@ -219,10 +216,9 @@ class TestLogPipelineSelection:
     def test_no_job_name_lands_on_the_gate_that_FAILED(self, tmp_path):
         """The whole point of reaching for a log is that something broke.
 
-        Defaulting to the first status meant `ci-debug logs` with no
-        argument returned the GREEN pipeline's transcript while a different
-        gate was red — the same wrong answer, reached without even a typo to
-        blame. This mirrors the step-level rule already in the file.
+        Defaulting to the first status would make `ci-debug logs` with no
+        argument return the GREEN pipeline's transcript while a different
+        gate is red. This mirrors the step-level rule already in the file.
         """
         r = self._run(tmp_path, ("logs",))
         assert "pipeline/200" in r.stderr, r.stderr
@@ -236,9 +232,9 @@ class TestLogPipelineSelection:
     def test_unmatched_job_name_SAYS_it_substituted(self, tmp_path):
         """Degrading is fine; degrading SILENTLY is not.
 
-        The fallback above is the right behaviour and stays. What was missing
-        is that the caller is never told the transcript is not the gate they
-        named, so a substituted log reads exactly like an answer.
+        The fallback above is the right behaviour, but the caller must be told
+        the transcript is not the gate they named, or a substituted log reads
+        exactly like an answer.
         """
         r = self._run(tmp_path, ("logs", "no-such-job"))
         combined = r.stdout + r.stderr
@@ -251,12 +247,12 @@ class TestLogPipelineSelection:
         )
 
 
-# The commit that exposed this: dev ea0d6a83ab carries push/woodpecker
-# (success) and NOTHING else — the cron gate never ran on it. Asking for
-# cron/full-suite matched no status, fell past the failed-gate rule (there is
-# no failed gate) to `statuses[0]`, and returned the PUSH pipeline's GREEN
-# transcript at rc=0. Read without checking the test count, that is a cron
-# gate reporting success on a commit it never ran on.
+# A commit carrying push/woodpecker (success) and NOTHING else — the cron gate
+# never ran on it. Asking for cron/full-suite matches no status and falls past
+# the failed-gate rule (there is no failed gate) to `statuses[0]`, the PUSH
+# pipeline's GREEN transcript at rc=0. Read without checking the test count,
+# that is a cron gate reporting success on a commit it never ran on, so the
+# substitution must be announced.
 _STATUS_ONLY_GREEN_PUSH = json.dumps({
     "state": "success",
     "statuses": [
@@ -299,9 +295,8 @@ class TestAbsentGateIsNotSilentlySubstituted:
         and for those the gate-level lookup ALWAYS falls back. Warning there
         would fire on a correct, everyday call — and a warning that cries wolf
         on the common path is worth less than no warning, because the reader
-        learns to skip it. Verified against the live tree: asking for the gate
-        'cron/full-suite' on a commit that HAS it must stay silent even though
-        no step carries that name.
+        learns to skip it. Likewise, asking for a gate the commit HAS must
+        stay silent even though no step carries that name.
         """
         r = self._run(tmp_path, ("logs", "push/woodpecker"))
         assert "Nothing named" not in (r.stdout + r.stderr), (
@@ -333,7 +328,7 @@ class TestAbsentGateIsNotSilentlySubstituted:
 
 
 class TestStatusNamesEachStep:
-    """INV-bozid, the MASKING half, on ``status``.
+    """Per-step verdicts on ``status`` (INV-bozid, the MASKING half).
 
     The per-PR pipeline is one workflow too, so ``ci/woodpecker/pr/woodpecker:
     failure`` names none of lint / mypy / pytest / build-grammars. The
@@ -405,18 +400,14 @@ class TestStatusNamesEachStep:
         assert not any("wp.example/api" in u for u in _urls(logs))
 
 
-# WI-ratam. ``status`` LISTS every step behind every gate on a commit (the
-# per-step reader, INV-bozid), but ``logs <step>`` could only FETCH a step from
-# the gate the name selected as a CONTEXT -- and a step name matches no
-# context, so it fell through to a fallback gate before any step was looked
-# at. Observed on dev 8955d9a2 (INV-bofab's fix commit): push/woodpecker
-# (success) beside cron/full-suite (success, pipeline 2206, triggered by hand).
-# ``logs self-claims-gate`` said "Nothing named 'self-claims-gate' on this
-# commit -- no gate and no step by that name" and printed the PUSH transcript,
-# while ``status`` had just listed the step under the cron gate. Listing and
-# fetching disagreed about what exists, and the closure evidence for a
-# security-gate regression had to rest on a construction argument instead of
-# the transcript.
+# ``status`` LISTS every step behind every gate on a commit (the per-step
+# reader, INV-bozid), so ``logs <step>`` must be able to FETCH any of them
+# (WI-ratam). A step name matches no gate CONTEXT, so resolving it only as a
+# context falls through to a fallback gate before any step is looked at: with
+# push/woodpecker beside cron/full-suite, ``logs self-claims-gate`` would say
+# "Nothing named 'self-claims-gate' on this commit" and print the PUSH
+# transcript while ``status`` lists that step under the cron gate. Listing and
+# fetching must agree about what exists, so every gate's pipeline is searched.
 _STATUS_TWO_GREEN_GATES = json.dumps({
     "state": "success",
     "statuses": [
@@ -523,13 +514,13 @@ class TestAStepOnASiblingGateIsFetchedByName:
 
 
 class TestPrBody:
-    """``pr-body`` — the description text, which no approved script exposed.
+    """``pr-body`` — a PR's description text, through an approved script.
 
     ``pr-status`` already fetches ``/pulls/<n>``, and that payload carries
-    ``body``; it parsed six fields out and dropped the rest, so a merged PR's
-    description was unreachable without going around the CI Interaction
-    Policy. For a rebase-merged PR there is no merge commit carrying it
-    either, so the text was write-only from the agent's side.
+    ``body``, which ``pr-status`` does not print. ``pr-body`` exposes it, so a
+    merged PR's description is reachable without going around the CI
+    Interaction Policy. For a rebase-merged PR there is no merge commit
+    carrying the text either.
 
     These tests pin the two properties that make the subcommand worth having
     rather than merely possible: the failure modes stay separable, and the
@@ -649,7 +640,7 @@ class TestPrBody:
         assert "BEGIN PR BODY" not in combined, combined
 
     def test_an_http_200_with_an_empty_body_is_unreadable(self, tmp_path):
-        """Not hypothetical here: WI-holik is this exact shape.
+        """A real failure shape, not a hypothetical one (WI-holik).
 
         A 200 carrying zero bytes passes the shape check (it only rejects a
         NON-empty non-JSON first character) and passes the status check, so

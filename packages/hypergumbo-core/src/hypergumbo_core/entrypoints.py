@@ -27,11 +27,11 @@ requests arrive.
 
 Detection is based on two mechanisms (ADR-3aaa):
 
-1. **Definition-based patterns** (v1.0.x): Matches decorators, base classes,
+1. **Definition-based patterns**: Matches decorators, base classes,
    and annotations on symbol definitions. E.g., @app.route, @Get(), extends
    RequestHandler, etc.
 
-2. **Usage-based patterns** (v1.1.x): Matches UsageContext records emitted
+2. **Usage-based patterns**: Matches UsageContext records emitted
    by analyzers for call-based frameworks. E.g., path('/users', views.users)
    in Django, app.get('/users', handler) in Express.
 
@@ -48,8 +48,9 @@ gets up to 40% of the cap, and the overflow fills any slots left empty);
 reader uses. The survey writer calls the halves so it can also write
 ``request_ingress_entries(candidates)``: every request handler
 (``REQUEST_INGRESS_KINDS``) before the floor and the cap, the completeness
-list verify-claims' unseeded-ingress disclosure reads. Measured before the
-split, mlflow's capped list held 200 of 302 route handlers.
+list verify-claims' unseeded-ingress disclosure reads. It cannot come from
+the capped list, because the per-kind cap drops route handlers in large
+repos.
 
 Confidence Scores
 -----------------
@@ -70,9 +71,9 @@ Connectivity Boost (concept-based only):
 - LIBRARY_EXPORT entries with callers also get an in-degree boost of
   min(0.35, log(1 + in_degree) / 8), with the same language scale
 - This ranks "interesting" entrypoints higher (those that call many functions)
-- Entrypoints are sorted by final RANK_SCORE (highest first). Post-ADR-0039
-  `confidence` is pure detection reliability and carries only the base; the
-  penalties and the boost live on `rank_score`, which is what ordering uses.
+- Entrypoints are sorted by final RANK_SCORE (highest first). `confidence`
+  is pure detection reliability and carries only the base; the penalties and
+  the boost live on `rank_score`, which is what ordering uses (ADR-0039).
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
   double-counting; TEST_FUNCTION entries, symbols in test files and
   ``boost_suppressed_ids`` (build wrappers, and demoted library exports that
@@ -108,10 +109,10 @@ Ranking Penalties (``rank_score`` only, applied before the boost):
 One Entrypoint Per Symbol (INV-liraj):
 - When several detectors classify the same symbol (e.g. a function that is
   both main() and a CLI command), the most CONFIDENT entry is kept, ties
-  going to the earlier detector. Historically a Phoenix route marker also
-  matched the Elixir library_export convention and, under first-emitted-wins,
-  every Phoenix route was filed under library_export; framework_patterns now
-  drops that concept upstream (INV-liraj).
+  going to the earlier detector, so the chosen kind does not depend on
+  detector or concept order. Separately, framework_patterns drops the
+  library_export concept from route markers upstream, so a route marker is
+  never filed as a library export (INV-liraj).
 - Three further dedups follow: when several entries share a symbol NAME,
   C-style forward declarations (``declaration`` modifier) are dropped in
   favour of the definition; a file's MAIN_GUARD entry is dropped when the
@@ -182,10 +183,10 @@ def _is_frontend_file(sym: Symbol) -> bool:
                 return True
     return False
 
-# Minimum rank_score for entrypoint inclusion (a rank floor, applied by
-# apply_rank_floor_and_cap; the name predates the rank_score split).
-# INV-mahap: library_export entries demoted to 0.075 (below 0.10) must not
-# appear in --list-entries or --entry auto candidate lists.
+# Minimum rank_score for entrypoint inclusion (a rank floor on rank_score,
+# not on confidence despite the name, applied by apply_rank_floor_and_cap).
+# Library_export entries demoted to 0.075 fall below it, so they do not
+# appear in --list-entries or --entry auto candidate lists (INV-mahap).
 MIN_ENTRYPOINT_CONFIDENCE: float = 0.10
 
 # Base entrypoint cap for small repos (< 5000 nodes).
@@ -266,7 +267,7 @@ class EntrypointKind(Enum):
     # Mobile app entry kinds
     ANDROID_ACTIVITY = "android_activity"  # Android Activity.onCreate()
     ANDROID_APPLICATION = "android_application"  # Android Application.onCreate()
-    # Semantic concept-based entry kinds (ADR-3aaa v0.9.x)
+    # Semantic concept-based entry kinds (ADR-3aaa)
     CONTROLLER = "controller"  # Generic controller from concept metadata
     BACKGROUND_TASK = "background_task"  # Async/background task
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
@@ -398,14 +399,14 @@ class Entrypoint:
         kind: Type of entrypoint detected.
         confidence: Detection reliability (0.0-1.0) — how sure the detector
             is that this symbol IS an entrypoint. NOT a prominence value;
-            ADR-0039 ruling 3 relocates the ranking boosts/penalties to
-            ``rank_score``.
+            the ranking boosts/penalties live on ``rank_score`` (ADR-0039
+            ruling 3).
         rank_score: Ranking prominence (0.0-1.0). Initializes from
             ``confidence`` and accumulates the multiplicative penalties,
             library-export demotion, and degree boosts (ADR-0039 ruling 3).
             Entrypoint ordering + the ``MIN_ENTRYPOINT_CONFIDENCE`` filter
-            key on this; equal to ``confidence`` until those adjustments
-            relocate.
+            key on this; it equals ``confidence`` until
+            :func:`detect_entrypoint_candidates` applies those adjustments.
         label: Human-readable label for the entrypoint.
         meta: Provenance dict mirroring ``Edge.meta`` (WI-rukam). Carries
             ``id`` (auto-stamped content hash), and — when built via
@@ -427,8 +428,8 @@ class Entrypoint:
         # directly (e.g. in tests) rather than via ``create`` — carries a
         # stable identity. ``setdefault`` lets a caller pre-seed it.
         self.meta.setdefault("id", _entrypoint_id(self.kind, self.symbol_id, self.label))
-        # ADR-0039 ruling 3: ``rank_score`` mirrors detection ``confidence``
-        # until the ranking adjustments relocate onto it.
+        # ``rank_score`` starts at the detection ``confidence``; the ranking
+        # adjustments are applied to it later (ADR-0039 ruling 3).
         if self.rank_score is None:
             self.rank_score = self.confidence
 
@@ -628,13 +629,14 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # WebSocket route is not an HTTP route; meta.http_method="WS" is
             # retained on the symbol, only the entrypoint kind changes).
             if concept_type == "route":
-                # WI-kilal: method/path come from routes.py::route_of, which
-                # is marker-first: on a framework_role="route" symbol the
+                # Method/path come from routes.py::route_of, which is
+                # marker-first: on a framework_role="route" symbol the
                 # meta-level route_path/http_method win; otherwise the route
                 # concept dict supplies them. Rails routes carry method/path
                 # only at meta level, so without the marker read every one
-                # gets the same generic "HTTP route" label and the label
-                # dedup in detect_entrypoints collapses them to one.
+                # would get the same generic "HTTP route" label and the label
+                # dedup in detect_entrypoint_candidates would collapse them
+                # to one (WI-kilal).
                 info = route_of(sym)
                 protocol = info["protocol"]
                 method = method_token(info) or ""
@@ -683,10 +685,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # verb-named method -> HTTP_ROUTE (WI-losij). flask-restful
             # (get/post on a Resource), falcon (on_get), nex, http.server
             # (do_GET on a BaseHTTPRequestHandler) and the servlet API
-            # (doGet on an HttpServlet) emit ``route_handler``; nothing read
-            # it, so such a handler was no request-ingress entrypoint and
-            # verify-claims' unseeded-ingress withhold (WI-fuzik) could not
-            # fire on it. A symbol that also carries ``route`` is left to
+            # (doGet on an HttpServlet) emit ``route_handler``. Mapping it
+            # makes such a handler a request-ingress entrypoint, so
+            # verify-claims' unseeded-ingress withhold (WI-fuzik) covers
+            # it. A symbol that also carries ``route`` is left to
             # that arm (whichever order the concepts come in), so it is one
             # entrypoint labelled by its method and path. The frontend-file
             # suppression is the ``route`` arm's.
@@ -821,20 +823,15 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
 
-            # Error handler concept -> ERROR_HANDLER (WI-gudob Phase 1):
+            # Error handler concept -> ERROR_HANDLER (WI-gudob):
             # HTTP / middleware exception handlers are invoked by the framework
             # when a route handler raises; the call graph never sees those
             # invocations, so every decorator-registered error handler
             # (@app.errorhandler, @app.exception_handler, app.use(errorMid),
-            # rescue_from, #[catch(…)], etc.) looks dead. 37 framework YAML
-            # patterns emit this concept (fastapi, express, django, aspnet,
-            # flask, actix, axum, gin, nestjs, rails, laravel, symfony,
-            # phoenix, akka-http, ktor, vapor, etc.) — per the WI-dajul
-            # concept registry audit it's the #1 inert concept by producer
-            # count. Classifying it as a framework-invoked entrypoint makes
-            # the bodies reachable from dead-code analysis uniformly across
-            # every framework that already emits the concept, without
-            # needing per-framework dispatch logic.
+            # rescue_from, #[catch(…)], etc.) would look dead. Classifying it
+            # as a framework-invoked entrypoint makes the bodies reachable
+            # from dead-code analysis uniformly across every framework that
+            # emits the concept, without needing per-framework dispatch logic.
             elif concept_type == "error_handler":
                 if EntrypointKind.ERROR_HANDLER in added_kinds:
                     continue
@@ -852,7 +849,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.ERROR_HANDLER)
 
-            # Form concept -> FORM (WI-gudob Phase 4):
+            # Form concept -> FORM (WI-gudob):
             # Framework-reflected form classes (Django Form/ModelForm,
             # Flask-WTF FlaskForm, Laminas Form/Fieldset, FuelPHP Fieldset,
             # CakePHP Form, Laravel FormRequest, Symfony AbstractType, Yii
@@ -864,12 +861,8 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # when wired into a reachable route. Classifying the form class
             # itself as an entrypoint restores its reachability at class
             # level; internal method dispatch (form.clean_FIELD / form.save)
-            # is a separate concern deferred to a dispatch-registry follow-
-            # up because each framework names its reflective methods
-            # differently. 12 framework YAML patterns emit this concept per
-            # the WI-dajul concept registry audit (#4 inert by producer
-            # count after Phase-1 error_handler / Phase-2 controller /
-            # Phase-3 router).
+            # is not handled here, because each framework names its
+            # reflective methods differently.
             elif concept_type == "form":
                 if EntrypointKind.FORM in added_kinds:
                     continue
@@ -887,7 +880,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.FORM)
 
-            # Serializer concept -> SERIALIZER (WI-gudob Phase 5):
+            # Serializer concept -> SERIALIZER (WI-gudob):
             # Framework-reflected serializer / DTO classes (Django REST
             # Framework Serializer / ModelSerializer, Marshmallow Schema and
             # SQLAlchemySchema, Grape Entity, Laravel JsonResource /
@@ -900,13 +893,8 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # reachable route. Classifying the serializer class itself as
             # an entrypoint restores its reachability at class level;
             # per-method dispatch (``to_representation`` → field methods)
-            # is deferred to a per-framework dispatch-registry follow-up
-            # because each framework names its reflective methods
-            # differently. 9 framework YAML patterns emit this concept
-            # (django, flask, flask-restful, grape, laravel, litestar,
-            # hanami, django-ninja, pyramid per the WI-dajul concept
-            # registry audit) and the producers are uniformly class-level
-            # ``base_class`` matches, so the scope is clean.
+            # is not handled here, because each framework names its
+            # reflective methods differently.
             elif concept_type == "serializer":
                 if EntrypointKind.SERIALIZER in added_kinds:
                     continue
@@ -999,7 +987,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.GRAPHQL_SERVER)
 
             # Lifecycle hook concept -> ANDROID_ACTIVITY or ANDROID_APPLICATION
-            # (ADR-3aaa v1.1.x - pattern-based Android detection)
+            # (ADR-3aaa pattern-based Android detection)
             elif concept_type == "lifecycle_hook":
                 # Determine the specific Android entrypoint kind from matched_parent_base_class
                 matched_base = concept.get("matched_parent_base_class", "")
@@ -1056,7 +1044,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     added_kinds.add(EntrypointKind.CONTROLLER)
 
             # Language-level main() function concept -> MAIN_FUNCTION
-            # (ADR-3aaa v1.2.x - YAML-based language convention patterns)
+            # (ADR-3aaa YAML-based language convention patterns)
             elif concept_type == "main_function":
                 if EntrypointKind.MAIN_FUNCTION in added_kinds:
                     continue
@@ -1094,7 +1082,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.SHELL_SCRIPT)
 
-            # INV-tajap PR 2: html_entry concept -> HTML_ENTRY
+            # html_entry concept -> HTML_ENTRY (INV-tajap)
             # SPA root / convention-named index.html that bootstraps a JS
             # bundle. Stamped on the file-kind Symbol by the HTML analyzer
             # when the filename matches ``index.html`` (case-insensitive).
@@ -1134,24 +1122,23 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.MAIN_GUARD)
 
             # Library export concept -> LIBRARY_EXPORT
-            # (ADR-3aaa v1.3.x - Library public API detection)
+            # (ADR-3aaa library public API detection)
             # Exports from index files (index.ts, index.js) are treated as library
             # entry points since they define the public API surface.
             elif concept_type == "library_export":
                 if EntrypointKind.LIBRARY_EXPORT in added_kinds:
                     continue
-                # WI-pikib: a library_export entrypoint must be part of the
-                # package's PUBLIC API — externally importable. The concept
+                # A library_export entrypoint must be part of the package's
+                # PUBLIC API — externally importable (WI-pikib). The concept
                 # detector also fires on non-public symbols such as a nested
                 # private closure (`fold_string_interpolation._sub`, the
                 # callback passed to `re.sub`) that no consumer can import.
-                # INV-jusot's canonical `Symbol.visibility` axis (computed in
-                # finalize step 7b, which runs before detect_entrypoints — see
-                # cli.run_behavior_map) lets us reject those. Key on the
-                # canonical `visibility` axis (per the Wave-3 §E-5 constraint),
-                # not the older is_exported heuristic. A None visibility
-                # (uncomputed / legacy map) is left permissive so a genuine
-                # export is never suppressed on a missing signal.
+                # The canonical `Symbol.visibility` axis (INV-jusot; computed
+                # in finalize step 7b, which runs before entrypoint detection
+                # — see cli.run_survey) rejects those; it is used rather than
+                # the is_exported heuristic. A None visibility (uncomputed /
+                # legacy map) is left permissive so a genuine export is never
+                # suppressed on a missing signal.
                 if sym.visibility is not None and sym.visibility != "public":
                     continue
                 export_name = concept.get("export_name", sym.name)
@@ -1172,14 +1159,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
 
-            # WI-pimig: Go encoding callbacks (UnmarshalJSON, MarshalYAML, etc.).
+            # Go encoding callbacks (UnmarshalJSON, MarshalYAML, etc.).
             # These methods are dispatched reflectively by the encoding library
             # rather than called by name from anywhere in the codebase, so the
-            # call-graph BFS treats them as unreachable and dead-code-maybe
-            # reports them as candidates. Marking them as LIBRARY_EXPORT
+            # call-graph BFS would treat them as unreachable and dead-code-maybe
+            # would report them as candidates. Marking them as LIBRARY_EXPORT
             # entrypoints makes them seeds for the BFS so they (and anything
-            # they call) become reachable. On alertmanager this covers 82
-            # functions / ~1540 LOC — the largest WI-juhov triage category.
+            # they call) become reachable (WI-pimig).
             elif concept_type == "serialization_callback":
                 if EntrypointKind.LIBRARY_EXPORT in added_kinds:
                     continue
@@ -1196,8 +1182,8 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # Go http.Handler implementation -> GO_HANDLER (WI-jonin). The
             # server calls ServeHTTP through the interface for every request
             # routed to the type, so it receives a request no call edge
-            # carries: a request-ingress entrypoint, the first producer of
-            # this kind. go-net-http.yaml requires the request parameter.
+            # carries: a request-ingress entrypoint. go-net-http.yaml
+            # requires the request parameter.
             elif concept_type == "go_http_handler":
                 if EntrypointKind.GO_HANDLER in added_kinds:
                     continue
@@ -1213,7 +1199,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
             # Naming-based heuristics (lowest confidence tier)
             # These are fallbacks when no explicit annotation/base class is found
-            # ADR-3aaa v1.4.x - naming-conventions.yaml
+            # (ADR-3aaa, naming-conventions.yaml)
             elif concept_type == "controller_by_name":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue  # Already detected via framework pattern
@@ -1402,8 +1388,8 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # Servlet concept -> CONTROLLER
             # Emitted by scalatra.yaml (extends ScalatraServlet/ScalatraFilter)
             # only. A Java HttpServlet's handler methods are ``route_handler``
-            # (servlet.yaml, WI-losij), mapped above; no file has ever
-            # emitted ``servlet`` for Java, although a comment here said so.
+            # (servlet.yaml, WI-losij), mapped above; nothing emits
+            # ``servlet`` for Java.
             elif concept_type == "servlet":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue
@@ -1425,9 +1411,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     # Go (and other analyzers) create route-marker symbols — kind="function"
     # with meta.framework_role="route" per the ADR-0027 fold — that carry route
     # metadata (route_path, http_method) directly in sym.meta rather than going
-    # through YAML concept enrichment.  These symbols are found by the routes
-    # CLI command (which checks both concepts and the framework_role marker)
-    # but were missed by entrypoint detection until now.
+    # through YAML concept enrichment, so the concept pass above can miss
+    # them; this pass reads the framework_role marker directly, as the routes
+    # CLI command does.
     # Track existing route/websocket entrypoint symbol_ids to avoid duplicates.
     route_ep_ids = {
         ep.symbol_id for ep in entrypoints
@@ -1443,9 +1429,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
         protocol = info["protocol"]
         method = method_token(info) or ""
         path = info["path"] or ""
-        # WI-kuvig: a route whose transport is WebSocket is a WebSocket handler,
-        # not an HTTP route (INV-tibap: the transport now lives in route_protocol,
-        # normalized by route_of; only the entrypoint kind reflects it).
+        # A route whose transport is WebSocket is a WebSocket handler, not an
+        # HTTP route (WI-kuvig). The transport lives in route_protocol,
+        # normalized by route_of (INV-tibap); only the entrypoint kind
+        # reflects it.
         if protocol == "websocket":
             entrypoints.append(Entrypoint.create(
                 symbol_id=sym.id,
@@ -1476,11 +1463,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
-# ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_LANGUAGE_CONSTRUCT
-# (Cluster A) and stable across Phase 3. Intentionally wider than
-# ``ranking._CALLABLE_KINDS`` — connectivity-fallback entrypoints can
-# legitimately be constructors (e.g., a service object's __init__ wires
-# up dependencies and forms a real graph hub). Forward-compatible.
+# All members are language-construct symbol kinds (ADR-0027, WI-jukav).
+# Intentionally wider than ``ranking._CALLABLE_KINDS`` — connectivity-fallback
+# entrypoints can legitimately be constructors (e.g., a service object's
+# __init__ wires up dependencies and forms a real graph hub).
 _CALLABLE_KINDS = frozenset({"function", "method", "constructor"})
 _MAX_CONNECTIVITY_ENTRYPOINTS = 5
 
@@ -1545,7 +1531,7 @@ def _detect_script_modules(
     nodes: List[Symbol],
     edges: List[Edge],
 ) -> List[Entrypoint]:
-    """INV-tajap PR 3: detect TS/JS standalone-script entrypoints.
+    """Detect TS/JS standalone-script entrypoints (INV-tajap).
 
     A ``SCRIPT_MODULE`` entrypoint is a TS/JS file-kind Symbol that satisfies
     both:
@@ -1553,8 +1539,7 @@ def _detect_script_modules(
     1. **No inbound ``imports`` edges** — no other file imports this one,
        so the file isn't a library module.
     2. **At least one outbound ``calls`` edge** — the file does work at
-       module load (the proxy for "top-level executable code", spec rule
-       from the INV-tajap tracker).
+       module load (the proxy for "top-level executable code").
 
     Unlike SHELL_SCRIPT / HTML_ENTRY which derive from analyzer-stamped
     ``meta.concepts``, this rule needs the full edge set (inbound-imports
@@ -1620,7 +1605,7 @@ def detect_entrypoint_candidates(
     itself, so ``request_ingress`` can list every request handler while
     ``entrypoints`` stays the ranked overview (WI-vumig).
 
-    Detection sources (ADR-3aaa v1.2.x):
+    Detection sources (ADR-3aaa):
     1. Framework patterns (HTTP routes, CLI commands, controllers, etc.)
        - Highest confidence (0.95)
        - Detected via YAML patterns matching decorators, base classes, etc.
@@ -1628,11 +1613,13 @@ def detect_entrypoint_candidates(
        - Lower confidence (0.80) - may have many in a repo
        - Detected via YAML patterns matching symbol name + kind + language
 
-    All detection is now YAML-driven via framework_patterns.py. Symbols are
+    Concept detection is YAML-driven via framework_patterns.py. Symbols are
     enriched with concept metadata during the FRAMEWORK_PATTERNS phase, and
-    this function maps those concepts to entrypoint kinds.
+    this function maps those concepts to entrypoint kinds. Route markers and
+    TS/JS script modules are detected without concepts (see the module
+    docstring).
 
-    Confidence Adjustments:
+    Ranking adjustments (applied to ``rank_score``, not ``confidence``):
     - Test files: 90% penalty (x 0.1, deprioritized not excluded)
     - Utility files: 50% penalty (x 0.5)
     - Vendor/external deps (tier >= 3): 70% penalty (x 0.3)
@@ -1652,21 +1639,17 @@ def detect_entrypoint_candidates(
     # language conventions (main functions)
     entrypoints = _detect_from_concepts(nodes)
 
-    # INV-tajap PR 3: TS/JS standalone scripts — needs the edge set, so
-    # detected here rather than via a concept handler.
+    # TS/JS standalone scripts need the edge set, so they are detected here
+    # rather than via a concept handler (INV-tajap).
     entrypoints.extend(_detect_script_modules(nodes, edges))
 
     # Remove duplicates (same symbol detected by multiple strategies): keep
     # the MOST CONFIDENT entry per symbol, ties going to the earlier detector.
-    # INV-liraj: this used to keep the first-EMITTED entry, which made the
-    # chosen kind an accident of detector order. A Phoenix route marker
-    # (kind=function, framework_role=route) also matched the Elixir
-    # public-function library_export pattern; the concept pass emits that
-    # LIBRARY_EXPORT (0.75) before the route-marker pass emits HTTP_ROUTE
-    # (0.90), so every Phoenix route was filed under "Library API" and the
-    # sketch's HTTP Routes section lost them all. Choosing by detection
-    # confidence makes the outcome independent of emission order and of the
-    # order concepts happen to be listed on the symbol.
+    # Choosing by detection confidence makes the chosen kind independent of
+    # emission order and of the order concepts are listed on the symbol: the
+    # concept pass runs before the route-marker pass, so keeping the first
+    # emitted entry would let a 0.75 LIBRARY_EXPORT on a route marker beat
+    # its 0.90 HTTP_ROUTE (INV-liraj).
     best_index: dict[str, int] = {}
     unique_entrypoints: List[Entrypoint] = []
     for ep in entrypoints:
@@ -1744,8 +1727,8 @@ def detect_entrypoint_candidates(
 
     # Route-label deduplication: multiple symbols (route symbol, handler
     # method, different registration sites) can produce HTTP_ROUTE entrypoints
-    # with the same (method, path).  In prometheus, POST /-/quit appears 14x.
-    # Group by label and keep the highest-confidence entry per unique label.
+    # with the same (method, path). Group by label and keep the
+    # highest-rank_score entry per unique label.
     _ROUTE_KINDS = frozenset({
         EntrypointKind.HTTP_ROUTE,
         EntrypointKind.EXPRESS_ROUTE,
@@ -1774,8 +1757,8 @@ def detect_entrypoint_candidates(
             non_route_eps.append(ep)
     for _label, eps in route_label_groups.items():
         # ADR-0039 ruling 3: dedup keeps the most PROMINENT entrypoint per route
-        # label — a ranking decision, so key on rank_score (== confidence until
-        # the adjustments below relocate onto it).
+        # label — a ranking decision, so key on rank_score (still equal to
+        # confidence here; the ranking adjustments come below).
         # rank_score is populated from confidence in __post_init__, so it is
         # non-None for constructed entrypoints; `or 0.0` guards a
         # post-construction reset (the dataclass is not frozen) and keeps the
@@ -1797,14 +1780,12 @@ def detect_entrypoint_candidates(
     # Apply penalties for test files and vendor code (ADR-0039 ruling 3: these
     # are RANKING adjustments — they deprioritize an entrypoint without making
     # it less certainly an entrypoint — so they mutate ``rank_score``, leaving
-    # detection ``confidence`` at the construction base. rank_score initialized
-    # from confidence, so the accumulated ranking value is unchanged).
+    # detection ``confidence`` at the construction base).
     # Entrypoints whose rank_score was deliberately demoted and which must NOT
     # be re-inflated by the ADDITIVE connectivity boost below. Three categories
     # populate it (infrastructure-path exports, build wrappers, vendored
-    # exports); each learned the same lesson independently, so the skip-set is
-    # shared rather than a fourth parallel set the next category has to
-    # rediscover. Without it a x0.1 demotion to 0.0225 is undone by an
+    # exports); they share one skip-set so a new demoted category only has to
+    # add to it. Without it a x0.1 demotion to 0.0225 is undone by an
     # in-degree boost of up to +0.35 and the entry climbs back over the
     # MIN_ENTRYPOINT_CONFIDENCE floor — the demotion looks applied but the
     # entry still seeds `--entry auto`.
@@ -1815,26 +1796,25 @@ def detect_entrypoint_candidates(
             continue  # pragma: no cover - symbol should always exist
 
         # Penalty for test files (90% reduction).
-        # Must be aggressive: in repos like DMD where 98% of main()
-        # functions are in test files, a modest penalty (0.5) leaves
-        # test entrypoints at 0.40 confidence — high enough to dominate
-        # auto-slicing selections.  0.1 pushes them to 0.08, well below
-        # any production entrypoint.
+        # Must be aggressive: in repos where most main() functions are in
+        # test files, a modest penalty (0.5) leaves test entrypoints at 0.40
+        # — high enough to dominate auto-slicing selections. 0.1 pushes
+        # them to 0.08, well below any production entrypoint.
         #
-        # WI-popok / fundamental-concept audit (2026-07-17, KEEP verdict): this
-        # deliberately uses the BROAD ``paths.is_test_file`` heuristic (the
+        # This deliberately uses the BROAD ``paths.is_test_file`` heuristic (the
         # ranking notion of "test-OR-support" code: also mocks/, fakes/,
         # fixtures/, testdata/, benches/, ``_test.<any-ext>``, ``spec_*`` …),
         # NOT the narrow supply-chain role flag ``Symbol.is_test_file`` (which
         # per spec §14 means "test *code*" only — examples/benches/fuzz carry
         # other roles). The two are distinct-purpose predicates, not a
-        # coarse-vs-granular pair, so this is not a META-bifif re-derivation to
-        # fold: swapping onto ``sym.is_test_file`` would silently stop
+        # coarse-vs-granular pair, so this is not a re-derivation to fold
+        # (META-bifif): swapping onto ``sym.is_test_file`` would silently stop
         # deprioritizing mock/fixture/benchmark entrypoints and flood the entry
         # list. Re-evaluation trigger: if ``supply_chain.is_test`` is ever
-        # broadened to cover that support-code breadth, re-open the audit and
-        # reconsider consolidating (guarded by
-        # test_support_dir_entrypoint_penalized_via_broad_path_heuristic).
+        # broadened to cover that support-code breadth, reconsider
+        # consolidating (guarded by
+        # test_support_dir_entrypoint_penalized_via_broad_path_heuristic;
+        # fundamental-concept audit KEEP verdict, WI-popok).
         if sym.path and is_test_node(sym.path, sym.meta):
             ep.rank_score *= 0.1
 
@@ -1883,11 +1863,10 @@ def detect_entrypoint_candidates(
     # Application demotion: when real semantic entrypoints exist (routes,
     # commands, main, controllers), library_export entries are just API
     # visibility markers, not developer-facing entrypoints.  Heavily demote
-    # them so routes/commands dominate the entrypoint list.
-    #
-    # This fixes the "forgejo problem": 7,474 Go uppercase-symbol exports
-    # drowning out 772 meaningful HTTP routes.  The demotion is language-
-    # agnostic — any app with routes+exports benefits.
+    # them so routes/commands dominate the entrypoint list. Otherwise a Go
+    # app's thousands of uppercase-symbol exports drown out its HTTP routes.
+    # The demotion is language-agnostic — any app with routes+exports
+    # benefits.
     #
     # Only semantic entrypoints trigger demotion.  TEST_FUNCTION and
     # LIBRARY_EXPORT themselves do not count (a library with tests but
@@ -1930,19 +1909,19 @@ def detect_entrypoint_candidates(
         EntrypointKind.ANDROID_APPLICATION,
     })
     # Per-language demotion: only demote library_export entries when their
-    # own language has semantic entrypoints.  This prevents the ArkLib
-    # problem: 6 Python helper scripts (with main()) should NOT suppress
-    # 163 Lean library_export entries.  Lean exports ARE the right
-    # entrypoints for a Lean library — Python main() is incidental tooling.
+    # own language has semantic entrypoints, so a few Python helper scripts
+    # (with main()) do not suppress a Lean library's exports. Lean exports
+    # ARE the right entrypoints for a Lean library — Python main() is
+    # incidental tooling.
     #
-    # WI-batit: that carve-out protects FIRST-PARTY API surface, so it must not
-    # extend to VENDORED code.  A tier>=3 export is third-party code the repo
-    # merely carries; it is never the API surface a developer slices from, in
-    # any language.  Without this the carve-out shielded pretix's bundled JS
-    # (no JS semantic entrypoints -> js not in langs_with_semantic) at
-    # 0.75 * 0.3 = 0.225, above the 0.10 floor, so pdf.worker.js/d3/vue.js
-    # seeded both `slice --entry auto` and the reverse slice (which ranks with
-    # the same detect_entrypoints call) ahead of the real Django views.
+    # That carve-out protects FIRST-PARTY API surface, so it does not extend
+    # to VENDORED code (WI-batit). A tier>=3 export is third-party code the
+    # repo merely carries; it is never the API surface a developer slices
+    # from, in any language. Without this, bundled JS in a repo with no JS
+    # semantic entrypoints would keep 0.75 * 0.3 = 0.225, above the 0.10
+    # floor, and seed both `slice --entry auto` and the reverse slice (which
+    # ranks with the same detect_entrypoints call) ahead of the real
+    # application handlers.
     # Scoped by TIER, not by a vendor-path allowlist, so it is the supply-chain
     # axis doing the work rather than a second hand-curated basename set.
     langs_with_semantic: set[str] = set()
@@ -1955,9 +1934,9 @@ def detect_entrypoint_candidates(
             if sym and sym.host_language:
                 # Skip entrypoints from example/utility files — these are
                 # demonstration code, not real application entrypoints that
-                # should trigger library_export demotion.  Fixes the
-                # "livekit problem": example HTTP routes in examples/rpc/
-                # were demoting core library exports like Room.
+                # should trigger library_export demotion. Otherwise example
+                # HTTP routes in a library's examples/ would demote its core
+                # library exports.
                 if sym.path and is_utility_file(sym.path):
                     continue
                 langs_with_semantic.add(sym.host_language)
@@ -1969,7 +1948,7 @@ def detect_entrypoint_candidates(
             # reading of the tier is the documented contract (module docstring,
             # ADR-0041), and a generated export is no more the repo's API than
             # a vendored one. Named for both so the predicate says what it
-            # holds (WI-daruz; the 10-22 audit's tier-4 KEEP fired here).
+            # holds (WI-daruz).
             is_vendored_or_derived = sym is not None and sym.supply_chain_tier >= 3
             if is_vendored_or_derived or (lang and lang in langs_with_semantic):
                 ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
@@ -1978,8 +1957,8 @@ def detect_entrypoint_candidates(
                 # unconditionally.
                 # Infrastructure-path exports (telemetry/, metrics/, logging/)
                 # are internal plumbing, not developer-facing API, and get the
-                # same treatment (in gemini-cli, 77 telemetry exports survived
-                # at ~0.14 purely on the boost).
+                # same treatment; the boost alone would otherwise lift them
+                # back over the floor.
                 if is_vendored_or_derived or (
                     sym and sym.path and is_infrastructure_path(sym.path)
                 ):
@@ -2116,7 +2095,7 @@ def apply_rank_floor_and_cap(
     afterwards.
     """
     # Filter out entries below the minimum RANKING threshold (ADR-0039 ruling 3:
-    # re-keyed from confidence to rank_score). After all adjustments (test
+    # keyed on rank_score, not confidence). After all adjustments (test
     # penalty, vendor penalty, library demotion), entries with very low
     # prominence are noise — e.g. library_export demoted from 0.75 to 0.075 when
     # semantic entries exist. MIN_ENTRYPOINT_CONFIDENCE is a rank floor.
@@ -2127,8 +2106,8 @@ def apply_rank_floor_and_cap(
 
     # Cap the number of returned entrypoints.
     # The cap scales with repo size: small repos get 50, large repos up to 500.
-    # This ensures large codebases (GitLab: 90K+ files, 693+ controllers)
-    # don't lose most of their entrypoints to a fixed cap.
+    # This ensures large codebases with hundreds of controllers don't lose
+    # most of their entrypoints to a fixed cap.
     cap = compute_entrypoint_cap(node_count)
     if len(kept) > cap:
         kept = _diversity_cap(kept, cap)
@@ -2162,10 +2141,8 @@ def request_ingress_entries(
     :data:`REQUEST_INGRESS_KINDS`, in rank order, taken BEFORE the floor and
     the cap. ``entrypoints`` is a ranked overview and the floor and cap are
     right for it; verify-claims' unseeded-ingress disclosure is a
-    completeness statement and was silently partial while it read the
-    overview: mlflow (76k symbols, cap 500, 40% per kind) had 302 route
-    handlers, 200 in the capped list; the disclosure named 254 production
-    handlers of all ingress kinds and names 320 with this list.
+    completeness statement, and reading the overview would make it silently
+    partial, since the per-kind 40% quota drops route handlers in large repos.
     A test-code handler is listed too (it ranks x0.1 and falls under the
     floor); the disclosure's own production scope decides whether to name it.
     """

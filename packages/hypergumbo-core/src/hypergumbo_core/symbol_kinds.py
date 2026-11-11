@@ -46,13 +46,12 @@ python ``__init__``, javascript/typescript ``constructor``, ruby
 :data:`SOLIDITY_CALLABLE_DECLARATION_KINDS`, kept in core because both the
 Solidity producer and the ``solidity_abi`` linker read it.
 
-The ``endpoint_shape`` axis was retired in PR #3633 (Phase 4b enum
-closure / WI-butol). All 71 deprecated values that occupied that axis
-during the Phase 4a deprecation window are now removed from the
-registry; their fold targets live as ``Symbol.kind`` canonical values
-plus ``Symbol.meta`` keys (see :mod:`hypergumbo_core.axis_meta_keys`).
-Consult the per-cluster audit-findings docs (0009 / 0010 / 0011 / 0013
-/ 0005-0008) for the per-value canonical / fold-target map.
+There is no ``endpoint_shape`` axis: values that name an endpoint shape
+rather than a construct are not registered. Each folds to a canonical
+``Symbol.kind`` plus ``Symbol.meta`` keys (see
+:mod:`hypergumbo_core.axis_meta_keys`); the per-cluster audit-findings docs
+(0009 / 0010 / 0011 / 0013 / 0005-0008) give the per-value canonical /
+fold-target map (WI-butol).
 """
 
 from __future__ import annotations
@@ -63,10 +62,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-# INV-nosoz: these generic AST-literal helpers are shared with
-# ``edge_types.find_partial_inheritance_family_literals``. They moved to
+# These generic AST-literal helpers are shared with
+# ``edge_types.find_partial_inheritance_family_literals``. They live in
 # ``_literal_scan`` rather than being copied, because a fact kept in two
-# homes that drift apart is the defect this very linter exists to catch.
+# homes that drift apart is the defect this very linter exists to catch
+# (INV-nosoz).
 from .member_names import member_short_name
 from ._literal_scan import (
     declared_linker_languages as _declared_linker_languages,
@@ -92,8 +92,9 @@ TYPE_FAMILY_CONCRETE: Final[str] = "concrete_type"
 # a DEFECT from a correctly-scoped set. ``linkers/jackson_dispatch`` declares
 # ``depends_on=[["java"]]`` and lists ``{class, interface, struct}``: that omits
 # `trait` and `protocol` and is *right*, because no Java symbol is ever either.
-# ``linkers/type_hierarchy`` declares scala/rust/swift among twelve languages
-# and omits `protocol`: that is the measured Swift-loses-dispatch bug.
+# A linker like ``linkers/type_hierarchy``, which declares scala/rust/swift
+# among its languages, would be wrong to omit `protocol`: Swift would lose
+# dispatch.
 #
 # Re-evaluation trigger (R10): when an analyzer starts emitting one of these
 # kinds for a language not listed here, add it — otherwise the linter goes
@@ -113,8 +114,8 @@ AXIS_PENDING: Final[str] = "pending_classification"
 
 # Retired axis name kept as a public constant for audit-findings
 # validation (``hypergumbo_core.audit_findings._REGISTRIES``) and for
-# downstream readers comparing schema versions across the Phase 4a
-# deprecation window. Not in :data:`VALID_AXES` — no live spec may
+# downstream readers comparing against older schema versions that still
+# carry it. Not in :data:`VALID_AXES` — no live spec may
 # carry this axis; the property test in
 # ``tests/test_symbol_kinds.py`` enforces the empty-axis invariant.
 AXIS_ENDPOINT_SHAPE: Final[str] = "endpoint_shape"
@@ -133,7 +134,7 @@ class SymbolKindSpec:
     not a second axis (audit-findings 0018). ADR-0024's axis machinery is
     deliberately not invoked: no IR field changes, no value is reclassified,
     and every value keeps the axis it already had. What it adds is the
-    ability to *query* a subset, which the flat 138-value axis could not
+    ability to *query* a subset, which the flat axis alone cannot
     express — the ``Symbol.kind`` analogue of ``edge_types_on_axis()``.
 
     Leave it ``None`` for anything that is not a nominal type declaration.
@@ -237,10 +238,10 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Attribute declaration (Python class attribute, etc.)."),
     SymbolKindSpec("field", AXIS_LANGUAGE_CONSTRUCT,
                    "Field declaration on a struct / class / record."),
-    # INV-lagot: minted by the SCIP importer's DescriptorKind map, which had
-    # been emitting them unregistered. Both name a source-language syntactic
-    # construct directly, which is exactly what ADR-0027's axiom asks of a
-    # value, so they are registered rather than folded.
+    # Minted by the SCIP importer's DescriptorKind map. Both name a
+    # source-language syntactic construct directly, which is exactly what
+    # ADR-0027's axiom asks of a value, so they are registered rather than
+    # folded (INV-lagot).
     SymbolKindSpec("parameter", AXIS_LANGUAGE_CONSTRUCT,
                    "Formal parameter in a callable's signature."),
     SymbolKindSpec("type_parameter", AXIS_LANGUAGE_CONSTRUCT,
@@ -334,11 +335,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("object", AXIS_LANGUAGE_CONSTRUCT,
                    "Object / singleton declaration (Scala / Kotlin).",
                    TYPE_FAMILY_CONCRETE),
-    # WI-higik, ADR-0027 register-vs-fold: REGISTERED, not folded onto
-    # ``class``, because pony emits ``class`` from the same analyzer for its
-    # own class construct, so reuse would fuse two constructs (the
-    # Cluster-27C apex/peer break). Registering changes no node.id and no
-    # stable_id; a fold would change the kind fed to make_doc_stable_id.
+    # REGISTERED, not folded onto ``class``, because pony emits ``class``
+    # from the same analyzer for its own class construct, so reuse would fuse
+    # two constructs (the Cluster-27C apex/peer break). Registering also
+    # leaves node.id and stable_id untouched, whereas a fold would change the
+    # kind fed to make_doc_stable_id (ADR-0027 register-vs-fold; WI-higik).
     SymbolKindSpec("actor", AXIS_LANGUAGE_CONSTRUCT,
                    "Actor declaration (Pony): a type whose behaviours run "
                    "asynchronously on its own message queue.",
@@ -374,23 +375,20 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "construct in its source DSL, not a relabel of the imports Edge."),
 
     # ----------------------------------------------------------------
-    # Cluster D (framework roles) — Phase 4b removal complete.
-    # Producer migration folded all 29 values to canonical kind +
-    # ``meta['framework_role']=<role>`` per audit-findings 0013 /
-    # WI-habut Wave 5; deprecated registry entries removed in
-    # PR #3633 (WI-butol). Consult audit-findings 0013 for the
-    # per-value canonical / fold-target map.
+    # Cluster D (framework roles) — no registry entries.
+    # A framework role is not a kind: producers emit the canonical kind +
+    # ``meta['framework_role']=<role>``. Consult audit-findings 0013 for
+    # the per-value canonical / fold-target map (WI-habut, WI-butol).
     # ----------------------------------------------------------------
 
     # ----------------------------------------------------------------
     # Cluster E — Edge labels masquerading as Symbol kinds.
-    # Phase 4b removal complete: ``call`` / ``inherit`` / ``include`` /
-    # ``extends`` / ``read`` / ``write`` shipped as DEPRECATE-NO-FOLD
-    # (relationship lives on the Edge), ``function_call`` /
-    # ``subprocess_call`` / ``db_query`` / ``abi_call`` folded to
-    # ``call_site`` + ``meta['call_kind']`` per audit-findings 0010 /
-    # WI-zarov Wave 4. ``reference`` remains canonical below as the
-    # ObjC selector-ref / generic-use-site Symbol kind.
+    # Not registered: ``call`` / ``inherit`` / ``include`` / ``extends`` /
+    # ``read`` / ``write`` are DEPRECATE-NO-FOLD (the relationship lives on
+    # the Edge), and ``function_call`` / ``subprocess_call`` / ``db_query``
+    # / ``abi_call`` fold to ``call_site`` + ``meta['call_kind']``
+    # (audit-findings 0010; WI-zarov). ``reference`` remains canonical below
+    # as the ObjC selector-ref / generic-use-site Symbol kind.
     # ----------------------------------------------------------------
     SymbolKindSpec("reference", AXIS_LANGUAGE_CONSTRUCT,
                    "Use-site reference (Objective-C selector_ref shape; possibly "
@@ -406,10 +404,10 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
 
     # ----------------------------------------------------------------
     # Cluster F — Component / UI references.
-    # ``component_ref`` shipped as DEPRECATE-NO-FOLD per audit-findings
-    # 0011 / WI-mihiz Wave 4 (the relationship is captured by the
-    # imports Edge with the file-shape Symbol as src; no replacement
-    # Symbol kind). ``component`` remains canonical below.
+    # ``component_ref`` is DEPRECATE-NO-FOLD per audit-findings 0011
+    # (the relationship is captured by the imports Edge with the
+    # file-shape Symbol as src; no replacement Symbol kind; WI-mihiz).
+    # ``component`` remains canonical below.
     # ----------------------------------------------------------------
     SymbolKindSpec("component", AXIS_LANGUAGE_CONSTRUCT,
                    "Component declaration (Vue / Svelte / Astro / React)."),
@@ -418,18 +416,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
 
     # ----------------------------------------------------------------
     # Cluster B — File-shape entities.
-    # CANONICAL promotions per audit-findings 0005 (WI-runod Wave 6 PR 1):
-    # build-DSL / source-language top-level constructs (CMake, Meson,
-    # COBOL, Pascal, Fortran, VHDL declarations) are language-level
-    # constructs in their own tongue. Test 4 (mechanism vs. category)
-    # confirms each names a *category* of source-language construct,
-    # not a *mechanism* qualifier. Test 1 (property derivability) does
-    # not fire — none is derivable from another field. The remaining
-    # AXIS_PENDING entries below (module_file, component_file,
-    # npm_package, composer_package, main_entry, bin, library_export,
-    # export_entry, wasm_module, wasm_import, tsconfig) ship FOLD or
-    # DEPRECATE-NO-FOLD verdicts; their producer migrations are
-    # subsequent Wave-6 PRs.
+    # CANONICAL per audit-findings 0005 (WI-runod): build-DSL /
+    # source-language top-level constructs (CMake, Meson, COBOL, Pascal,
+    # Fortran, VHDL declarations) are language-level constructs in their
+    # own tongue. Test 4 (mechanism vs. category) confirms each names a
+    # *category* of source-language construct, not a *mechanism*
+    # qualifier. Test 1 (property derivability) does not fire — none is
+    # derivable from another field. Of the other Cluster B values, ``bin``
+    # stays on AXIS_PENDING and the rest fold (see below).
     # ----------------------------------------------------------------
     SymbolKindSpec("file", AXIS_LANGUAGE_CONSTRUCT,
                    "File-shape symbol — top-level file declaration in build / "
@@ -450,13 +444,12 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("project", AXIS_LANGUAGE_CONSTRUCT,
                    "Project declaration (Meson `project()`, .csproj root, "
                    "etc.). CANONICAL per audit-findings 0005."),
-    # Wave 6 PR 3 FOLDs per audit-findings 0005 — producer migration
-    # complete, deprecated entries (``module_file``, ``component_file``,
-    # ``npm_package``, ``composer_package``, ``main_entry``,
-    # ``library_export``, ``export_entry``, ``wasm_module``,
-    # ``wasm_import``, ``tsconfig``, ``script``) removed in PR #3633.
+    # FOLDs per audit-findings 0005, so not registered: ``module_file``,
+    # ``component_file``, ``npm_package``, ``composer_package``,
+    # ``main_entry``, ``library_export``, ``export_entry``,
+    # ``wasm_module``, ``wasm_import``, ``tsconfig``, ``script``.
     # Each fold target is the canonical Cluster A construct above; the
-    # framework / ecosystem qualifier moves to ``Symbol.meta`` under
+    # framework / ecosystem qualifier lives in ``Symbol.meta`` under
     # the named axis key (``module_system``, ``component_framework``,
     # ``package_ecosystem``, ``entry_role``, etc.).
     SymbolKindSpec("bin", AXIS_PENDING,
@@ -464,8 +457,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
 
     # ----------------------------------------------------------------
     # Cluster G — Build / config-shape.
-    # AXIS_PENDING: separate-axis vs canonical decision per cluster-G
-    # audit-findings doc.
+    # CANONICAL per audit-findings 0006; cluster-G values still awaiting
+    # audit sit on AXIS_PENDING further down.
     # ----------------------------------------------------------------
     SymbolKindSpec("test", AXIS_LANGUAGE_CONSTRUCT,
                    "Test-case symbol. CANONICAL per audit-findings 0006."),
@@ -500,7 +493,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
 
     # ----------------------------------------------------------------
     # Cluster H — Domain-specific long tail.
-    # AXIS_PENDING: per-value audit pending in cluster-H audit-findings.
+    # CANONICAL per audit-findings 0007; cluster-H values still awaiting
+    # audit sit on AXIS_PENDING further down.
     # ----------------------------------------------------------------
     SymbolKindSpec("section", AXIS_LANGUAGE_CONSTRUCT,
                    "Section symbol (markdown / config). CANONICAL per audit-findings 0007."),
@@ -540,17 +534,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subscription symbol (GraphQL operation). Top-level construct, "
                    "sibling to query/fragment (audit-findings 0007 omission; "
                    "registered per id-format:F3)."),
-    # GraphQL type-system sibling of type/input/interface/enum/union — all
-    # five of which are registered, and all six of which the GraphQL
-    # analyzer emits from one `type_kinds` dict (graphql.py
-    # `_process_graphql_tree`). `scalar` was the sole omission, and the
-    # cause is instructive: the corpus enumeration the audits were built
-    # from could not see dict-indirected `kind=` emits at all, so this
-    # value was structurally invisible until WI-zigih taught the L3
-    # walker to resolve `MAP[k]`. Registered, not folded: `scalar Date`
-    # is its own GraphQL construct, and `type` is already taken by
-    # `object_type_definition` in that same dict — conflating them would
-    # fuse two distinct constructs (ADR-0027 apex/peer).
+    # GraphQL type-system sibling of type/input/interface/enum/union, all
+    # six of which the GraphQL analyzer emits from one `type_kinds` dict
+    # (graphql.py `_process_graphql_tree`). Because the emit is
+    # dict-indirected, only the L3 walker's `MAP[k]` resolution sees it
+    # (WI-zigih). Registered, not folded: `scalar Date` is its own GraphQL
+    # construct, and `type` is already taken by `object_type_definition`
+    # in that same dict — conflating them would fuse two distinct
+    # constructs (ADR-0027 apex/peer).
     SymbolKindSpec("scalar", AXIS_LANGUAGE_CONSTRUCT,
                    "Scalar type-definition symbol (GraphQL `scalar Date`). "
                    "Top-level type-system construct, sibling to "
@@ -688,14 +679,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "behavior."),
 
     # ----------------------------------------------------------------
-    # WI-nubuv ext A discoveries — assignment-form producer leaks
+    # Assignment-form producer kinds
     # ----------------------------------------------------------------
-    # Surfaced by the L3 producer-coherence linter when extension A
-    # (function-local assignment trace) landed and walked back
-    # ``kind = "<literal>"`` shapes that were previously invisible to
-    # the literal-kwarg-only matcher. All registered AXIS_PENDING for
-    # follow-on Cluster-G / Cluster-H audit; the values themselves
-    # are real language-level kinds, just never previously surfaced.
+    # Producers assign these via ``kind = "<literal>"`` inside a function
+    # rather than passing a literal kwarg; the L3 producer-coherence
+    # linter's function-local assignment trace finds them (WI-nubuv).
+    # All are real language-level kinds, registered AXIS_PENDING for the
+    # Cluster-G / Cluster-H audits.
     SymbolKindSpec("binary", AXIS_PENDING,
                    "Cargo `[[bin]]` target kind. "
                    "Pending cluster-G audit."),
@@ -738,14 +728,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Registered per id-format:F3."),
 
     # ----------------------------------------------------------------
-    # WI-lijaz discovery -- a value read back through a returned tuple
+    # A value read back through a returned tuple
     # ----------------------------------------------------------------
     # clojure.py chooses ``kind`` from ``_is_def_form``'s dict of
     # ``(kind, visibility)`` tuples and unpacks the returned tuple
-    # (``kind, visibility = def_info``). value_flow refused that unpack as an
-    # escape of ``def_info`` until WI-lijaz stopped counting the read being
-    # answered as one; the value then surfaced. Registered AXIS_PENDING per
-    # the WI-nubuv ext A precedent above, for the per-cluster audit.
+    # (``kind, visibility = def_info``); value_flow follows that unpack
+    # rather than treating it as an escape of ``def_info`` (WI-lijaz).
+    # Registered AXIS_PENDING like the assignment-form kinds above, for the
+    # per-cluster audit.
     SymbolKindSpec("multimethod", AXIS_PENDING,
                    "Clojure ``defmulti``: a multimethod, the dispatch function "
                    "whose implementations are the ``defmethod`` forms (kind "
@@ -805,8 +795,8 @@ def type_like_kind_names() -> frozenset[str]:
     """Every kind that declares a nominal type (abstract or concrete).
 
     Use in place of literals like ``("class", "interface", "struct",
-    "trait")``. Audit 0018 found 26 such literals across 24 distinct
-    vocabularies, five of which silently omitted ``protocol``.
+    "trait")``, which drift independently and silently omit members —
+    ``protocol`` most often (audit-findings 0018).
     """
     return frozenset(
         spec.name for spec in SYMBOL_KINDS if spec.type_family is not None
@@ -817,8 +807,8 @@ def type_like_kind_names() -> frozenset[str]:
 #: nominal type (WI-totam): a ``file``, a ``module``, a ``type`` declaration
 #: (nim/go: its fields and methods), an ``instance`` (Haskell/Lean/PureScript
 #: instances, the Scala 3 ``given`` owner), a proto ``message`` (nested
-#: messages and fields) and a solidity ``library``. The per-kind evidence is
-#: in ``linkers/containment.py``'s history (WI-sakug, WI-pujiz, INV-hojus).
+#: messages and fields) and a solidity ``library`` (per-kind evidence:
+#: WI-sakug, WI-pujiz, INV-hojus).
 #: ``namespace`` / ``package`` / ``program`` are not listed: no analyzer roots
 #: members under them today, and adding one changes the containment graph,
 #: which wants its own measurement.
@@ -834,10 +824,9 @@ def container_kind_names() -> frozenset[str]:
     :data:`SCOPE_CONTAINER_KINDS`, so a newly registered type kind is a
     container without anyone editing a consumer. The ONE set the containment
     linker (which kinds own members) and slice (which entries expand to their
-    members) read. They used to keep a copy each, and slice's lacked
-    ``object`` (measured 2026-10-28 on 30 surveys: 40,820 ``contains`` edges
-    from Kotlin/Scala objects), ``contract``, ``type``, ``instance``,
-    ``record`` and ``union``, so a slice entering one returned only itself.
+    members) read. Separate copies drift: a slice set that lacks a container
+    kind (``object``, ``contract``, ``type``, ``instance``, ``record``,
+    ``union``, ...) returns only the entry itself when a slice enters one.
     ``variable`` is out: a Go variable has no members. ``external_symbol`` is
     out: it stands for code outside the project.
     """
@@ -858,16 +847,15 @@ def abstract_type_kind_names() -> frozenset[str]:
     )
 
 
-# INV-rolok: which contained member is "the code that runs on construction".
+# Which contained member is "the code that runs on construction" (INV-rolok).
 #
 # TWO MECHANISMS, because the analyzers genuinely disagree and neither is
 # wrong. java / csharp / apex / pony mint a dedicated ``constructor`` kind --
 # whose registry entry above already reads "Constructor / __init__ / init
 # method" -- so for them the KIND is the whole signal. python and js_ts emit
-# the initializer as an ordinary ``method`` (measured: 409 python
-# ``X.__init__`` and 625 javascript ``X.constructor`` methods in one pretix
-# survey, every one of them kind="method"), so for them the NAME is the only
-# signal there is.
+# the initializer as an ordinary ``method`` (``X.__init__`` /
+# ``X.constructor`` arrive as kind="method"), so for them the NAME is the
+# only signal there is.
 #
 # SCOPED PER LANGUAGE, NOT A GLOBAL BLOCKLIST. A python method named
 # ``constructor`` is an ordinary method and a javascript one named
@@ -965,17 +953,16 @@ def _enclosing_collection_covers(
 
     Read a row at a time, every one of those "omits" the other two, and the
     per-literal rule flags all three -- which is backwards, because together
-    they are the most complete mapping the family admits. The rule this
-    function restores is the one the docstring above always stated: the
-    question is whether the *enumeration* covers the family, and a row is not
-    an enumeration.
+    they are the most complete mapping the family admits. The rule, as
+    :func:`find_partial_abstract_family_literals` states it, is whether the
+    *enumeration* covers the family, and a row is not an enumeration.
 
     The trade-off, stated rather than hidden: a genuinely partial literal
     nested inside a large collection that happens to mention all three kinds
-    elsewhere is no longer flagged. That is a real loss of resolution, and it
-    is the cost of not flagging every bijection in the tree. The audit-0018
-    defect itself is untouched -- ``("class", "interface", "struct", "trait")``
-    sits in no collection containing ``protocol``, so it still fails.
+    elsewhere is not flagged. That is a real loss of resolution, and it is
+    the cost of not flagging every bijection in the tree. The audit-0018
+    defect itself is still caught -- ``("class", "interface", "struct",
+    "trait")`` sits in no collection containing ``protocol``, so it fails.
     """
     cur = parents.get(node)
     while cur is not None:
@@ -995,7 +982,7 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
     "enumerate all or none" — a complete literal is allowed (the resolver is
     preferred but a complete set is not the bug), a partial one is not.
 
-    Two exemptions, both principled:
+    Three exemptions, all principled:
 
     * ``packages/hypergumbo-lang-*`` — a per-language analyzer's incomplete
       set is *correct*; Java has no traits, Swift no interfaces.
@@ -1005,8 +992,8 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
     * a module whose ``@register_linker(depends_on=...)`` languages cannot
       produce the missing kind — see :data:`ABSTRACT_KIND_LANGUAGES`. This is
       what separates a Java-only framework linker (correct to omit `trait`)
-      from ``type_hierarchy``, which declares scala/rust/swift and omits
-      `protocol`.
+      from a linker like ``type_hierarchy``, which declares scala/rust/swift
+      and so must not omit `protocol`.
     """
     full = abstract_type_kind_names()
     offenders: list[str] = []
@@ -1097,17 +1084,18 @@ def find_axis_drift(repo_root: Path) -> list[str]:
             # value space, keyed by a Go TYPE (WI-suhug): a declared
             # ``net.Conn`` writer is a ``net_stream`` target, not a Symbol.kind.
             "_GO_TYPED_TARGET_KINDS",
-            # --- surfaced by WI-jinuj's widening (dicts / tuples are now
-            # collected). Each of these is 0/N conformant with this
-            # registry, which is the test that separates a name collision
-            # from a consumer: a constant that shares the ``KIND`` substring
-            # but none of the vocabulary is a different axis.
+            # --- dict / tuple constants (collected since WI-jinuj). Each
+            # of these is 0/N conformant with this registry, which is the
+            # test that separates a name collision from a consumer: a
+            # constant that shares the ``KIND`` substring but none of the
+            # vocabulary is a different axis.
             #
             # ``_RELATED_ENDPOINT_KINDS`` (cli.py) is the
-            # ``meta["framework_role"]`` vocabulary -- ADR-0027 Phase 3 /
-            # audit-findings 0013 folded these OFF Symbol.kind, and
-            # ``cmd_routes`` reads ``meta.framework_role`` first
-            # (cli.py:2239). Same shape as PROTOCOL_KINDS above.
+            # ``meta["framework_role"]`` vocabulary -- these are not
+            # Symbol.kinds (ADR-0027 / audit-findings 0013), and
+            # ``_count_related_endpoint_kinds`` reads
+            # ``meta.framework_role`` first. Same shape as PROTOCOL_KINDS
+            # above.
             "_RELATED_ENDPOINT_KINDS",
             # ``_PROVENANCE_KINDS`` (verify_claims.py) enumerates catalogue
             # PROVENANCE categories (io_primitives, taint_sinks, ...).
@@ -1129,14 +1117,11 @@ def find_axis_drift(repo_root: Path) -> list[str]:
             # Symbol.kinds and stay checked, which is what the per-side
             # exclusion is for.
             "_PHP_CONTAINER_KINDS:keys",
-            # --- DEBT, NOT A COLLISION: INV-lagot. ``scip/index.py``'s
-            # ``_KIND_MAP`` IS a Symbol.kind consumer -- 5 of its 8 values
-            # are registered -- and the other 3 (parameter, type_parameter,
-            # meta) plus the ``"unknown"`` fallback at index.py:166 are
-            # phantom values this registry does not describe. Suppressed
-            # here so WI-jinuj's shared-machinery widening lands green, per
-            # that item's own instruction that per-axis residue is filed
-            # rather than fixed. DELETE THIS LINE when INV-lagot closes.
+            # --- DEBT, NOT A COLLISION (INV-lagot). ``scip/index.py``'s
+            # ``_KIND_MAP`` IS a Symbol.kind consumer, not a different
+            # axis, so this exclusion is a suppression rather than a
+            # name-collision exemption. DELETE THIS LINE when INV-lagot
+            # closes.
             "_KIND_MAP",
         ),
     )

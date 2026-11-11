@@ -227,8 +227,7 @@ const GET_USERS = gql`query GetUsers { users { id } }`;
         result = link_graphql(tmp_path, [operation_symbol])
 
         # Should have canonical 'calls' edge with meta['protocol']='graphql'
-        # linking client to schema (post WI-vumum-juvil; pre-fold edge_type
-        # was 'graphql_calls').
+        # linking client to schema (WI-vumum-juvil).
         graphql_edges = [
             e for e in result.edges
             if e.edge_type == "calls" and e.meta.get("protocol") == "graphql"
@@ -277,9 +276,9 @@ class TestGraphQLLinkerRegistered:
 
 
 class TestClientSymbolCanonicalStableId:
-    """INV-hunup: graphql_client stand-ins emit stable_id=None and the
-    post-linker chokepoint stamps a canonical injective id (was a
-    collision-prone bare operation_name)."""
+    """graphql_client stand-ins emit stable_id=None and the post-linker
+    chokepoint stamps a canonical injective id; a bare operation_name would
+    collide when the same name appears in several files (INV-hunup)."""
 
     def _call(self, tmp_path: Path, fname: str, op_name):
         from hypergumbo_core.linkers.graphql import GraphQLClientCall
@@ -306,7 +305,7 @@ class TestClientSymbolCanonicalStableId:
         assert _CANONICAL_STABLE_ID_PATTERN.match(sym.stable_id)
 
     def test_repeated_operation_name_no_collision(self, tmp_path: Path) -> None:
-        # The old bare-operation_name stable_id collided when an op name repeated
+        # A bare-operation_name stable_id would collide when an op name repeats
         # across files; the chokepoint's (protocol_origin, kind, path, name,
         # occurrence) key makes them injective.
         from hypergumbo_core.linkers.graphql import _create_client_symbol
@@ -319,7 +318,8 @@ class TestClientSymbolCanonicalStableId:
 
 
 class TestRootField:
-    """WI-dinum: the client-to-server join the linker never had."""
+    """``_root_field`` extracts the root selection a client operation
+    invokes, the key of the client-to-schema-field join (WI-dinum)."""
 
     def test_named_operation_yields_its_root_selection(self) -> None:
         assert _root_field("query GetUsers { users { id name } }") == "users"
@@ -400,8 +400,8 @@ class TestRootFieldJoin:
     def test_the_client_symbol_is_still_minted_when_nothing_matches(
         self, tmp_path: Path,
     ) -> None:
-        """A minted node with no edge is the state this row is about; it is
-        still the honest record that a client call was found."""
+        """A client symbol with no matching schema field gets no edge but is
+        still minted: it is the honest record that a client call was found."""
         self._client(tmp_path, "query GetUsers { users { id } }")
         assert len(link_graphql(tmp_path, [], []).symbols) == 1
 
@@ -470,7 +470,8 @@ class TestSchemaFieldExtraction:
 
 
 class TestDeclarationNamesItsDestinationProducers:
-    """WI-dinum + WI-rasal: the clause names what supplies the DESTINATION."""
+    """The ``depends_on`` clause names the passes that supply the
+    DESTINATION of either join (WI-dinum, WI-rasal)."""
 
     def test_depends_on_names_the_two_schema_producers(self) -> None:
         import hypergumbo_core.cli  # linkers register by import side-effect
@@ -482,9 +483,9 @@ class TestDeclarationNamesItsDestinationProducers:
         ]
 
     def test_the_old_clause_named_host_languages_it_never_reads(self) -> None:
-        """The linker finds client calls by reading source files itself; it
-        consumes no host analyzer's output, so the six host languages the
-        clause used to name were the too-wide shape WI-rasal repaired."""
+        """The linker finds client calls by reading source files itself and
+        consumes no host analyzer's output, so the clause must not name the
+        host languages where client calls live (WI-rasal)."""
         import hypergumbo_core.cli  # linkers register by import side-effect
         from hypergumbo_core.catalog import get_default_catalog
 
@@ -494,8 +495,9 @@ class TestDeclarationNamesItsDestinationProducers:
 
 
 class TestJsTsClientLanguageFollowsFileSuffix:
-    """WI-komum: ``_scan_javascript_graphql`` labels a ``.ts``/``.tsx`` client
-    ``typescript`` (it hardcoded ``javascript``), via ``js_ts_language_from_path``."""
+    """``_scan_javascript_graphql`` labels a ``.ts``/``.tsx`` client
+    ``typescript`` and a ``.js``/``.jsx`` client ``javascript``, via
+    ``js_ts_language_from_path`` (WI-komum)."""
 
     def test_language_by_suffix(self) -> None:
         code = "const Q = gql`\n  query GetItems { items { id } }\n`;\n"

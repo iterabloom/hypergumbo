@@ -264,7 +264,7 @@ def _truncate_id(full_id: str, max_width: int) -> str:
     prefix = parts[0]
 
     if max_width <= 10:
-        # prefix + dash + 1 pair + ellipsis (len(parts) > 1 guaranteed by line 74)
+        # prefix + dash + 1 pair + ellipsis (len(parts) > 1 guaranteed above)
         candidate = f"{prefix}-{parts[1]}…"
         if len(candidate) <= max_width:
             return candidate
@@ -441,7 +441,7 @@ def _escape_user(text: str) -> str:
     these values into a string that is later passed to
     ``Static.update`` → ``Text.from_markup``.  Without escaping, the
     markup parser tries to interpret the user's brackets as style tags
-    and raises ``rich.errors.MarkupError`` (the WI-difij crash).
+    and raises ``rich.errors.MarkupError`` (WI-difij).
 
     Only ``[`` needs escaping — Rich treats unmatched ``]`` as literal.
     Backslashes do *not* need escaping for the markup parser; they pass
@@ -574,12 +574,9 @@ def tui_preferences_path(
     only the root differs by who must own the data: the journal under the agent
     home, the protected config under ``/etc``, this file under each user's home.
 
-    It used to be ``<tracker_root>/tracker-workspace/tui_preferences.json``:
-    one copy inside the shared checkout, removed by ``git clean -xdf``, never
-    journalled, and shared by every account. A second user's load swallowed the
-    PermissionError and returned defaults, and their first save replaced the
-    owner's file through a temp file in the group-writable directory, so the two
-    clobbered each other on every save.
+    The file lives outside the checkout so ``git clean -xdf`` cannot remove it,
+    and per user because a single copy in the shared, group-writable checkout
+    would let one account's save replace another's preferences.
     """
     env = os.environ if environ is None else environ
     state = env.get("XDG_STATE_HOME")
@@ -707,12 +704,8 @@ def _save_tui_preferences(
         path.parent.mkdir(parents=True, exist_ok=True)
         # Atomic write: temp-file + os.replace. Non-atomic write_text can
         # leave the file in a partial state when interrupted (kill, OOM)
-        # or racing against concurrent writes in the same dir (the
-        # two-user setup writes ops files alongside this file). A partial
-        # or empty file would corrupt all the v2 prefs — see the
-        # accompanying _move_selected fix where the v1-schema write used
-        # to drop human_read_state; even after that fix, an interrupted
-        # write here would still produce a degraded file.
+        # or racing against concurrent writes in the same dir. A partial
+        # or empty file would corrupt all the v2 prefs.
         #
         # Permission preservation: tempfile.mkstemp creates files with
         # mode 0600 by default. After os.replace, the destination inode
@@ -721,9 +714,8 @@ def _save_tui_preferences(
         # The tracker is designed to leverage OS user permissions
         # (some files are deliberately user-only, others are shared via
         # a project group), so the right behavior is to PRESERVE
-        # whatever mode the existing file has. For new files (no prior
-        # mode to preserve), fall through to the mkstemp default and
-        # let the project's perms-repair hook normalize on next git op.
+        # whatever mode the existing file has. A new file has no prior
+        # mode to preserve and keeps the mkstemp default.
         import stat as _stat
         try:
             preserve_mode = _stat.S_IMODE(path.stat().st_mode)
@@ -914,7 +906,7 @@ def _format_detail_lines(
     detail panel, but suppresses the inline discussion section (the activity
     panel handles it instead).
 
-    Per-field ``[locked]`` indicators replace the old summary line (D8).
+    Each locked field carries its own ``[locked]`` indicator (D8).
     When *fields_schema* is provided, known fields render in schema
     declaration order with descriptions; unknown fields go under ``Other`` (D7).
     Discussion badge ``[20+ msgs]`` appears when entry count >= 20 (D9).
@@ -984,7 +976,7 @@ def _format_detail_lines(
 
     # In wide mode, discussion is shown in the activity panel
     if tier != "wide" and item.discussion:
-        # WI-zonur: suppress tombstoned entries; surface the count via footer.
+        # Suppress tombstoned entries; surface the count via footer (WI-zonur).
         visible = [e for e in item.discussion if not e.is_tombstoned]
         hidden = len(item.discussion) - len(visible)
         count = len(visible)
@@ -1649,8 +1641,8 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
 class ItemNavModal(ModalScreen[None]):
     """Browser-style navigation modal for cross-referencing tracker items.
 
-    WI-sulij: clicking an item-ID hotspot in a Description or Activity
-    pane opens this modal on the target item. Back / Forward step
+    Clicking an item-ID hotspot in a Description or Activity pane
+    opens this modal on the target item (WI-sulij). Back / Forward step
     through the visited IDs (semantics in
     :class:`NavigationHistory`), a jump Input at the top accepts a
     typed ID for arbitrary navigation, and the rendered Description
@@ -2271,13 +2263,14 @@ class ItemTable(DataTable[Any]):
 class TrackerApp(App[None]):
     """Textual TUI for the hypergumbo tracker.
 
-    Three layout tiers are fully implemented:
+    Three layout tiers:
 
     - **compact** (40x16 - 59x19): Single DataTable (#item-table) with
       stacked detail view (Enter/Esc).
     - **standard** (60x20 - 120x38): Two-pane layout -- left panel holds
       a DataTable (#std-table) or Tree (#item-tree), right panel shows
-      detail for the highlighted item. Filter input (f) narrows items.
+      detail for the highlighted item. Filter panel (f) hides items by
+      status or tag.
     - **wide** (>120x38): Standard layout enhanced with extra DataTable
       columns (conflict, created, updated), longer proquint IDs, split
       right panel with activity log below detail, and filter status
@@ -2461,8 +2454,8 @@ class TrackerApp(App[None]):
         (``platformdirs.user_downloads_path``).  When the TUI is run from
         a different user account than the one whose home directory hosts
         the tracker, that directory may not exist, causing a silent
-        ``FileNotFoundError`` and a "Failed to take screenshot" toast.
-        We fix this by ensuring the directory exists before delegating.
+        ``FileNotFoundError`` and a "Failed to take screenshot" toast,
+        so the directory is created before delegating.
         """
         if path is None:
             from platformdirs import user_downloads_path
@@ -2508,7 +2501,7 @@ class TrackerApp(App[None]):
         self._legacy_prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / _PREFS_FILENAME
         )
-        # WI-sulij item-nav hotspots: compile once at construction so
+        # Item-nav hotspots (WI-sulij): compile once at construction so
         # every _show_* render reuses the same pattern. Configs with no
         # kinds cannot have IDs to match, so disable hotspots entirely.
         try:
@@ -3001,10 +2994,10 @@ class TrackerApp(App[None]):
         and swallows the expected lookup failures (not-found,
         ambiguous prefix) plus transient filesystem races. That keeps
         the per-cursor-move hotspot-resolver path off the
-        ``.ops``-content read path that crashed the TUI 2026-04-26
-        when it raced an atomic rename mid-write.
+        ``.ops``-content read path, which can race an atomic rename
+        mid-write and crash the TUI.
 
-        Per WI-sulij constraint 2, a dead hotspot renders as plain text.
+        A dead hotspot renders as plain text (WI-sulij).
         """
         return self._tracker_set.exists(item_id)
 
@@ -3472,7 +3465,7 @@ class TrackerApp(App[None]):
         self._rebuild_in_place()
 
     def action_toggle_edit_mode(self) -> None:
-        """WI-zonur: Ctrl-E toggles the per-message edit-mode window.
+        """Ctrl-E toggles the per-message edit-mode window (WI-zonur).
 
         Human-authority only (the underlying `edit_mode_on/off` Store methods
         raise `HumanAuthorityError` when invoked by an agent uid). The TUI is
@@ -4024,8 +4017,8 @@ class TrackerApp(App[None]):
                 x = ann.cell_x * cell_w
                 y = ann.cell_y * cell_h + y_offset + cell_h * 0.75
                 text = sanitize_label_text(ann.text)
-                # Use cell_h as font size (matches SVG grid) instead
-                # of hardcoded 14px (WI-gikut fix)
+                # Use cell_h as font size (matches SVG grid) rather
+                # than a fixed size (WI-gikut)
                 font_size = cell_h * 0.8
                 elements.append(
                     f'<text x="{x:.1f}" y="{y:.1f}" '
@@ -4127,8 +4120,8 @@ class TrackerApp(App[None]):
         a status or tag toggle, the full-ID toggle, a reorder, a write, a
         background reload — goes through here. ``_populate_table`` clears the
         table and leaves the cursor on row 0, which scrolls the viewport to
-        the top; Mark Read used to rebuild without capturing the offset, so
-        the list jumped to the top on every click.
+        the top, so a rebuild that skipped this would jump the list to the
+        top.
 
         Captures the scroll offset and the cursor row, rebuilds (re-reading
         items from the TrackerSet when *reload_items*), puts the cursor back
@@ -4270,7 +4263,7 @@ class TrackerApp(App[None]):
         """
         if len(self.screen_stack) > 1:
             return
-        # Refresh the WI-zonur edit-mode banner on every tick so the countdown
+        # Refresh the edit-mode banner (WI-zonur) on every tick so the countdown
         # ticks down smoothly even when no ops have changed.
         self._update_edit_mode_banner()
         try:

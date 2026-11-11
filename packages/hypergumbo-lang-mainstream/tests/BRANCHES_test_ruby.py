@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for Ruby analyzer.
 
-These tests specifically target uncovered branches in ruby.py.
+These tests target specific branches in ruby.py.
 They are in a separate file to allow easy management if they impact CI speed.
 
 Strategy:
@@ -21,7 +21,7 @@ from hypergumbo_core.cli import run_behavior_map
 
 
 def test_ruby_method_with_optional_param(tmp_path: Path) -> None:
-    """Cover branch: optional parameter extraction (line 230->235).
+    """Cover branch: optional parameter extraction.
 
     Ruby method with default value: def foo(name = "default").
     """
@@ -49,7 +49,7 @@ def test_ruby_method_with_optional_param(tmp_path: Path) -> None:
 
 
 def test_ruby_method_with_keyword_param(tmp_path: Path) -> None:
-    """Cover branch: keyword parameter extraction (line 236->251).
+    """Cover branch: keyword parameter extraction.
 
     Ruby method with keyword argument: def foo(name:) or def foo(name: value).
     """
@@ -77,7 +77,7 @@ def test_ruby_method_with_keyword_param(tmp_path: Path) -> None:
 
 
 def test_ruby_method_with_splat_param(tmp_path: Path) -> None:
-    """Cover branch: splat parameter extraction (line 252->257).
+    """Cover branch: splat parameter extraction.
 
     Ruby method with *args: def foo(*args).
     """
@@ -105,7 +105,7 @@ def test_ruby_method_with_splat_param(tmp_path: Path) -> None:
 
 
 def test_ruby_method_with_hash_splat_param(tmp_path: Path) -> None:
-    """Cover branch: hash splat parameter extraction (line 260->265).
+    """Cover branch: hash splat parameter extraction.
 
     Ruby method with **kwargs: def foo(**options).
     """
@@ -133,7 +133,7 @@ def test_ruby_method_with_hash_splat_param(tmp_path: Path) -> None:
 
 
 def test_ruby_method_with_block_param(tmp_path: Path) -> None:
-    """Cover branch: block parameter extraction (line 268->273).
+    """Cover branch: block parameter extraction.
 
     Ruby method with &block: def foo(&block).
     """
@@ -166,7 +166,7 @@ def test_ruby_method_with_block_param(tmp_path: Path) -> None:
 
 
 def test_ruby_rails_route_with_to_option(tmp_path: Path) -> None:
-    """Cover branch: Rails route with to: option (line 370->375).
+    """Cover branch: Rails route with to: option.
 
     Rails route: get '/users', to: 'users#index'.
     """
@@ -190,7 +190,7 @@ def test_ruby_rails_route_with_to_option(tmp_path: Path) -> None:
 
 
 def test_ruby_rails_hash_rocket_route(tmp_path: Path) -> None:
-    """Cover branch: Rails route with hash rocket syntax (line 344->358).
+    """Cover branch: Rails route with hash rocket syntax.
 
     Rails route: get '/path' => 'controller#action'.
     """
@@ -216,7 +216,7 @@ def test_ruby_rails_hash_rocket_route(tmp_path: Path) -> None:
 
 
 def test_ruby_rails_resources_macro(tmp_path: Path) -> None:
-    """Cover branch: Rails resources macro expansion (line 425->462).
+    """Cover branch: Rails resources macro expansion.
 
     Rails resources :users creates 7 RESTful routes.
     """
@@ -242,7 +242,7 @@ def test_ruby_rails_resources_macro(tmp_path: Path) -> None:
 
 
 def test_ruby_rails_resource_singular(tmp_path: Path) -> None:
-    """Cover branch: Rails singular resource macro (line 463->500).
+    """Cover branch: Rails singular resource macro.
 
     Rails resource :profile creates 6 RESTful routes (no index).
     """
@@ -265,7 +265,7 @@ def test_ruby_rails_resource_singular(tmp_path: Path) -> None:
 
 
 def test_ruby_sinatra_route_with_block(tmp_path: Path) -> None:
-    """Cover branch: Sinatra route with block (line 379->382).
+    """Cover branch: Sinatra route with block.
 
     Sinatra route: get '/path' do ... end.
     """
@@ -298,7 +298,7 @@ def test_ruby_sinatra_route_with_block(tmp_path: Path) -> None:
 
 
 def test_ruby_class_with_superclass(tmp_path: Path) -> None:
-    """Cover branch: class with superclass extraction (line 604->614).
+    """Cover branch: class with superclass extraction.
 
     Ruby class inheritance: class Dog < Animal.
     """
@@ -328,7 +328,7 @@ def test_ruby_class_with_superclass(tmp_path: Path) -> None:
 
 
 def test_ruby_class_with_qualified_superclass(tmp_path: Path) -> None:
-    """Cover branch: class with qualified superclass (line 612).
+    """Cover branch: class with qualified superclass.
 
     Ruby class: class User < ActiveRecord::Base.
     """
@@ -355,7 +355,7 @@ def test_ruby_class_with_qualified_superclass(tmp_path: Path) -> None:
 
 
 def test_ruby_module_method(tmp_path: Path) -> None:
-    """Cover branch: method inside module (line 566->567).
+    """Cover branch: method inside module.
 
     Ruby module method: module Helpers; def self.format; end; end.
     """
@@ -384,7 +384,7 @@ def test_ruby_module_method(tmp_path: Path) -> None:
 
 
 def test_ruby_top_level_method(tmp_path: Path) -> None:
-    """Cover branch: top-level method (line 568->569).
+    """Cover branch: top-level method.
 
     Ruby method defined at top level.
     """
@@ -416,7 +416,7 @@ def test_ruby_top_level_method(tmp_path: Path) -> None:
 
 
 def test_ruby_require_with_extension(tmp_path: Path) -> None:
-    """Cover branch: require with .rb extension (line 165->166).
+    """Cover branch: require with .rb extension.
 
     Ruby require: require 'foo.rb'.
     """
@@ -441,7 +441,7 @@ def test_ruby_require_with_extension(tmp_path: Path) -> None:
 
 
 def test_ruby_require_with_path(tmp_path: Path) -> None:
-    """Cover branch: require with path component (line 163).
+    """Cover branch: require with path component.
 
     Ruby require: require 'math/calculator'.
     """
@@ -471,7 +471,7 @@ def test_ruby_require_with_path(tmp_path: Path) -> None:
 
 
 def test_ruby_method_call_local(tmp_path: Path) -> None:
-    """Cover branch: local method call (line 739->753).
+    """Cover branch: local method call.
 
     Ruby method calling another method in the same class.
     """
@@ -501,7 +501,7 @@ def test_ruby_method_call_local(tmp_path: Path) -> None:
 
 
 def test_ruby_bare_method_call(tmp_path: Path) -> None:
-    """Cover branch: bare method call (line 783->795).
+    """Cover branch: bare method call.
 
     Ruby implicit method call without receiver.
     """
@@ -536,7 +536,7 @@ def test_ruby_bare_method_call(tmp_path: Path) -> None:
 
 
 def test_ruby_module_definition(tmp_path: Path) -> None:
-    """Cover branch: module definition (line 636->659).
+    """Cover branch: module definition.
 
     Ruby module declaration.
     """
@@ -569,7 +569,7 @@ def test_ruby_module_definition(tmp_path: Path) -> None:
 
 
 def test_ruby_method_with_no_params(tmp_path: Path) -> None:
-    """Cover branch: method with no parameters (line 223->224).
+    """Cover branch: method with no parameters.
 
     Ruby method without parameters: def foo().
     """

@@ -54,12 +54,12 @@ Call-edge details:
   analyzer cannot honestly name (``PFX(f)(args)``, the export-macro class
   misparse ``class API X : public MoveOnly<X, Y> {..}``) is drawn from the
   enclosing context -- an outer function, or the file anchor -- and carries
-  ``meta["src_stands_in_for"] = "unnamed_definition"`` (WI-tikop); before,
-  it was not emitted. The enclosing definition is found by its
+  ``meta["src_stands_in_for"] = "unnamed_definition"`` (WI-tikop). The
+  enclosing definition is found by its
   POSITION (``symbols_at`` / ``symbol_declared_by`` over ``file_symbols()``),
   never its short name: the name-keyed view keeps one symbol per name, so of
   ``P::run``/``Q::run`` or two overloads every call, ``new``, dispatch-table
-  use and ``std::cout`` read was drawn from the last (WI-saduj).
+  use and ``std::cout`` read would be drawn from the last (WI-saduj).
 - **Definition names**: found at any declarator depth by the shared
   ``c_family_declarator`` walk (``hypergumbo_core.analyze.c_family``) (``char **f()``, ``int *&f()``, a function
   returning a function pointer), and for every leaf tree-sitter-cpp gives a
@@ -85,8 +85,8 @@ Call-edge details:
   ``receiver_type_hint`` the inherited_calls linker walks. An untyped one
   never takes the enclosing class as its hint, a same-file short-name hit or
   an ``enclosing_class`` stamp: those are implicit-``this`` evidence, and the
-  pimpl idiom (``X::Generate`` forwarding to ``impl_->Generate``) turned them
-  into a false SELF-call -- 990 sites on sherpa-onnx.
+  pimpl idiom (``X::Generate`` forwarding to ``impl_->Generate``) turns them
+  into a false SELF-call.
 - **Included-header primitives**: a free, unqualified call whose resolved
   target is defined in another file is not bound when the I/O catalogue says
   one of the file's system ``#include`` headers declares that name
@@ -108,15 +108,15 @@ Call-edge details:
   Member calls carry ``call_construct="method"``.
 - **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
   enclosing namespaces and classes the name does not already spell
-  (``_cpp_scope_slot``); it was empty, so two nested ``class Inner`` (or
-  two in sibling namespaces, or two namespace-level ``run``) and their
-  members tied. Top-level declarations and members of top-level classes
-  keep their values.
+  (``_cpp_scope_slot``), so two nested ``class Inner`` (or two in sibling
+  namespaces, or two namespace-level ``run``) and their members do not tie.
+  Top-level declarations and members of top-level classes hash an empty
+  slot.
 - **Overloads** (WI-hilum): every definition records its parameters in
   ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
   stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
-  under the declarator, so ``compute_stable_id`` tied ``run()`` / ``run(int)``
-  on ``param_count 0``), with a
+  under the declarator, where ``compute_stable_id`` alone does not find them
+  and would tie ``run()`` / ``run(int)`` on ``param_count 0``), with a
   default written only on a separate prototype merged in at registration
   (``_merge_prototype_defaults``). The callee the name gives is then
   re-chosen among its same-named definitions by the call's argument count
@@ -322,16 +322,15 @@ def _cpp_has_pure_virtual(type_node: "tree_sitter.Node", source: bytes) -> bool:
 def _cpp_scope_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
     """The qualified-name slot a C++ stable_id hashes (INV-fabih).
 
-    Every cpp producer hashed an EMPTY qualified name beside a name that
-    spells at most the nearest class (``Inner::go``, ``Inner``), so two
-    nested ``class Inner`` in ``A`` and ``B`` -- or two in namespaces ``a``
-    and ``b``, or two ``run`` in two namespaces -- tied, and deleting the
-    first moved the second's id. This is
-    ``overload_arity.nested_member_qualified_name`` over the enclosing
-    namespaces and classes (``c_family_scope_chain``), which drops the
-    trailing ones ``name`` already spells: ``""`` for a top-level declaration and a member of a
-    top-level class (their ids do not move), ``A/Inner::go`` for a member of
-    a nested one.
+    A cpp name spells at most the nearest class (``Inner::go``, ``Inner``),
+    so with an empty qualified name two nested ``class Inner`` in ``A`` and
+    ``B`` -- or two in namespaces ``a`` and ``b``, or two ``run`` in two
+    namespaces -- would tie, and deleting the first would move the second's
+    id. This is ``overload_arity.nested_member_qualified_name`` over the
+    enclosing namespaces and classes (``c_family_scope_chain``), which drops
+    the trailing ones ``name`` already spells: ``""`` for a top-level
+    declaration and a member of a top-level class, ``A/Inner::go`` for a
+    member of a nested one.
     """
     return nested_member_qualified_name(c_family_scope_chain(node, source), name, "::")
 
@@ -356,8 +355,8 @@ def _emit_cpp_pure_virtual(
     Its parameters go to ``meta["parameters"]`` like a definition's, and its
     stable_id is the ADR-0035 producer formula over them
     (``declared_arity_stable_id``, WI-tusad): ``virtual int find(int) = 0`` and
-    ``find(int, int)`` in one class used to tie on the backstop floor key and
-    both go null. ``abstract,virtual`` is its decorator string, so it never
+    ``find(int, int)`` in one class would otherwise tie on the backstop floor
+    key and both go null. ``abstract,virtual`` is its decorator string, so it never
     ties with an out-of-line definition of the same pure virtual in the file.
     """
     start_line = field_decl.start_point[0] + 1
@@ -422,7 +421,7 @@ def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[s
         elif child.type == "qualified_identifier":
             # Qualified name like std::runtime_error. A name split across lines
             # (`ns::Engine::\n    Endpoint::Info`) keeps its whitespace in the
-            # node text, which reached an id's module slot (INV-kurup); the
+            # node text, which would reach an id's module slot (INV-kurup); the
             # whitespace around `::` is not part of the name.
             base_classes.append(_QUALIFIER_SPACE.sub("::", _node_text(child, source)))
 
@@ -662,7 +661,7 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     Returns (name, kind) tuple where kind is 'function' or 'method'. The name
     is found at any declarator depth by ``c_family_declarator`` (WI-saduj):
     ``char **f()``, ``int *&f()`` and a function returning a function pointer
-    each got no symbol when only one wrapper level was descended. The leaf
+    each nest the name more than one wrapper level deep. The leaf
     decides the name and kind:
 
     - ``qualified_identifier`` (``A::run``, ``A::operator bool``): method.
@@ -1001,7 +1000,7 @@ def _extract_symbols_from_tree(
     """
     analysis = FileAnalysis()
 
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
+    # File-identity anchor for this file's symbols (WI-bokab, v7). ``rel_path`` is
     # the repo-relative path (the base class computes it via
     # ``source_file.relative_to(repo_root)`` and the extract override threads it
     # here). Folded into compute_stable_id's containing slot so same-name
@@ -1036,9 +1035,8 @@ def _extract_symbols_from_tree(
                 meta = _cpp_type_meta(base_classes, node, source)
 
                 # A cpp class declaring a pure virtual IS abstract. Recorded in
-                # modifiers, where the shared type-family predicate reads it —
-                # audit 0018 measured cpp emitting an empty modifier list on
-                # every symbol, so abstract bases read as concrete.
+                # modifiers, where the shared type-family predicate reads it;
+                # without it abstract bases read as concrete (audit 0018).
                 class_modifiers = (
                     ["abstract"] if _cpp_has_pure_virtual(node, source) else []
                 )
@@ -1143,7 +1141,8 @@ def _extract_symbols_from_tree(
             name_node = _find_child_by_type(node, "type_identifier") if has_body else None
             # WI-pusan: `enum : uint16_t { ... }` has no name, and tree-sitter
             # fills the slot with a zero-width MISSING type_identifier. Read as
-            # a name it made `...:36-49::enum` and owner-less `::kA` fields.
+            # a name it would yield a nameless enum id and owner-less `::kA`
+            # fields.
             if name_node is not None and name_node.is_missing:
                 name_node = None
             if name_node:
@@ -1282,7 +1281,7 @@ def _extract_symbols_from_tree(
                     ),
                     # WI-tusad: arity from meta["parameters"] (the declarator's
                     # list compute_stable_id never finds), so run() / run(int)
-                    # stop tying on param_count 0.
+                    # do not tie on param_count 0.
                     stable_id=node_declared_arity_stable_id(
                         _analyzer, node, kind=kind, name=name, meta=fn_meta,
                         file_stable_id=file_stable_id,
@@ -1520,11 +1519,10 @@ def _resolve_cpp_field_chain(
 
 #: Namespaces whose qualified calls name a MODULE the catalogue keys on.
 #:
-#: WI-bapuk. cpp.yaml rows std::cout / std::cerr / std::cin under ``module: std``
-#: and the ATTRIBUTE path already emits ``std``; the CALL path discarded the
-#: namespace and used the file's #include list alone, so ``std::getline(...)``
-#: arrived as ``iostream,fstream,string`` and no ``std`` row could ever match.
-#: Keyed here rather than derived because an arbitrary namespace is a PROJECT's,
+#: cpp.yaml rows std::cout / std::cerr / std::cin under ``module: std``, and
+#: the ATTRIBUTE path emits ``std``; the CALL path adds the namespace to the
+#: file's #include list, since from the list alone (``iostream,fstream,string``
+#: for ``std::getline(...)``) no ``std`` row could match. (WI-bapuk) Keyed here rather than derived because an arbitrary namespace is a PROJECT's,
 #: and writing it into the module slot would be a present-but-wrong hint -- the
 #: INV-kotob shape, worse than untyped.
 _CPP_CATALOGUE_NAMESPACES: frozenset[str] = frozenset({"std"})
@@ -1732,8 +1730,8 @@ def _cpp_stream_target_kind(
     """``io_target_kind`` for a C++ stream read, or None to stay silent.
 
     Returns None for everything not provable -- a parameter, a field, a stream
-    from a function this file does not declare. An unstamped edge classifies
-    exactly as it did before this existed, falling to the first-declared row.
+    from a function this file does not declare. An unstamped edge falls to
+    the catalogue's first-declared row.
     """
     index = _CPP_STREAM_ARG_INDEX.get(_cpp_short_type(callee))
     if index is None:
@@ -1767,8 +1765,8 @@ def _cpp_bare_value_is_a_member(
     that name. Neither side always says so: a class declared with an export
     macro (``class APT_PUBLIC pkgCache::RlsFileIterator { ... }``) parses with
     no class at all, its inline members come out as free ``function`` symbols
-    (INV-tohuj's family), and apt's ``return Origin;`` (a data member) bound
-    one. So:
+    (INV-tohuj's family), and apt's ``return Origin;`` (a data member) would
+    bind one. So:
 
     - in code tree-sitter misread (:func:`_cpp_in_a_misread_region`) a bare
       value is never taken -- apt's export-macro classes put data members and
@@ -1875,8 +1873,9 @@ def _extract_edges_from_tree(
         file_symbols: Every symbol of this file (``file_symbols()``). The
             definition an edge is drawn from is found in it by POSITION
             (INV-midag, WI-saduj); ``local_symbols`` keeps one symbol per name,
-            so of ``P::run``/``Q::run`` or two overloads it drew every edge
-            from the last. Required, so no caller can fall back to that view.
+            so of ``P::run``/``Q::run`` or two overloads it would draw every
+            edge from the last. Required, so no caller can fall back to that
+            view.
         callables_by_name: Every callable definition of the run by name
             (``CppAnalyzer._callables_by_name``), the overload set a call's
             name-picked callee is re-chosen from by arity (WI-hilum). Required;
@@ -1899,18 +1898,19 @@ def _extract_edges_from_tree(
     # instead of being dropped.
     file_anchor = file_anchor_symbol("cpp", str(file_path), PASS_ID, run.execution_id)
 
-    # WI-rupik / WI-mafik: the headers this file can see, so the
-    # unresolved-call emit path can attribute calls to them. Without this,
+    # The headers this file can see, so the unresolved-call emit path can
+    # attribute calls to them (WI-rupik / WI-mafik). Without this,
     # ``std::printf(...)`` after ``#include <cstdio>`` produces a dst with no
     # header context.
     #
-    # INV-zikul: EVERY header the file can see, not its own angle includes.
+    # EVERY header the file can see, not its own angle includes (INV-zikul).
     # The coverage gate reads the slot as the complete list of a call's
     # possible homes (INV-zimud), so a header left out is a false all-clear:
-    # ``<cstdint>`` + ``"util.h"`` (which includes ``<cstdio>``) stamped
-    # ``fopen(p, "w")`` as ``cstdint``, the module filter refused the stdio
-    # row, cstdint is granted, and NO-FSWRITE read CONFIRMED. Same mechanism
-    # as c.py; see ``include_closure`` for what an unfound header contributes.
+    # a file including ``<cstdint>`` and ``"util.h"`` (which includes
+    # ``<cstdio>``) must carry ``cstdio`` too, or ``fopen(p, "w")`` reads as
+    # ``cstdint``'s, the module filter refuses the stdio row, and the gate
+    # passes. Same mechanism as c.py; see ``include_closure`` for what an
+    # unfound header contributes.
     if include_closure is None:
         include_closure = IncludeClosure(file_path.parent)
     visible_headers = include_closure.stamp(file_path, source, transitive_in_repo=False)
@@ -2048,7 +2048,7 @@ def _extract_edges_from_tree(
                 # has no symbol and no honest name. Its edges are drawn from
                 # the enclosing context -- an outer function, or the file
                 # anchor -- and marked as standing in, rather than dropped
-                # (which said there was no call) or named after the macro.
+                # (which would say there is no call) or named after the macro.
                 new_stands_in = True
 
         # Include directive
@@ -2087,9 +2087,9 @@ def _extract_edges_from_tree(
         # Function call
         elif node.type == "call_expression":
             # INV-kaduh — see the identical anchor in c.py. C++ inherits the C
-            # catalogue (``_CATALOG_PARENTS['cpp'] = 'c'``) and so inherited
-            # the missing producer; ``mode_argument_for`` walks the same parent
-            # link rather than growing a second ``cpp`` table to drift.
+            # catalogue (``_CATALOG_PARENTS['cpp'] = 'c'``), so
+            # ``mode_argument_for`` walks the same parent link rather than
+            # growing a second ``cpp`` table to drift.
             _edges_before_call = len(edges)
             if current_function is not None and not (
                 current_function is file_anchor and c_family_is_not_a_call(node)
@@ -2255,13 +2255,11 @@ def _extract_edges_from_tree(
                         # INV-nizom: the ONE fact that separates a real POSIX
                         # ``wait()`` from ``std::future::wait()`` once the
                         # receiver type is unknown. ``is_member_call`` is
-                        # already computed above (it has to be, to suppress the
-                        # STL fallback) and was being discarded, so
+                        # already computed above (to suppress the STL
+                        # fallback) and is carried onto the edge here, so
                         # ``gate_named_entry``'s ``call_construct == "method"``
-                        # refusal — the whole of io-boundary:F3's precision half
-                        # — was unreachable for C++: 1 of 34,983 call edges on
-                        # whisper.cpp carried the value, from a two-level
-                        # ``this->field->method()`` chain.
+                        # refusal — the whole of io-boundary:F3's precision
+                        # half — is reachable for C++.
                         #
                         # ``None``, not ``"function"``, for the negative case.
                         # The gate falls through on any value that is not
@@ -2324,9 +2322,9 @@ def _extract_edges_from_tree(
                             # on commas if they need per-header resolution,
                             # after expanding a module-set handle
                             # (module_sets.expand_module_slot, INV-jahuf).
-                            # WI-bapuk: the namespace the call NAMES is a
-                            # module home, and discarding it made every
-                            # `std::` row unreachable. ADDED to the
+                            # The namespace the call NAMES is a module home,
+                            # and without it every `std::` row is unreachable
+                            # (WI-bapuk). ADDED to the
                             # disjunction, never replacing it: classification
                             # asks whether ANY disjunct names a primitive, so
                             # adding one can only add matches, whereas
@@ -2351,15 +2349,10 @@ def _extract_edges_from_tree(
                             # `std` there asserts a module the catalogue keys
                             # nothing under -- cpp.yaml files chrono under
                             # `std::chrono::system_clock`, not `std` -- so the
-                            # fallback switched off and the classification was
-                            # DELETED. Measured on modsecurity: two
-                            # `std::chrono::system_clock::now()` chains in
-                            # collection_data.cc (no system includes) went
-                            # host_info_read -> nothing. Caught by diffing the
-                            # A/B BOTH WAYS on a module-stable key; the naive
-                            # diff hid it as 112 added / 102 removed, because
-                            # changing the module slot changes every dst string
-                            # and so the diff key itself moved.
+                            # fallback would switch off and the classification
+                            # be DELETED: `std::chrono::system_clock::now()` in
+                            # a file with no system includes would lose its
+                            # host_info_read.
                             _slots = (
                                 _slots + list(visible_headers)
                                 if visible_headers else []
@@ -2368,9 +2361,9 @@ def _extract_edges_from_tree(
                                 node, source, callee_name,
                             )
                             if _slots:
-                                # INV-jahuf: two or more homes are stored once
-                                # and named by a handle; on envoy the list ran
-                                # to 12 KB in every id, label and dst.
+                                # Two or more homes are stored once and named
+                                # by a handle, so a long list is not repeated
+                                # in every id, label and dst (INV-jahuf).
                                 module_hint = module_slot(_slots)
                                 ext_ref = ExternalRef(
                                     lang="cpp",
@@ -2464,7 +2457,7 @@ def _extract_edges_from_tree(
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
         elif node.type == "declaration":
-            # Function scope only (INV-bamij left this arm where it was): at file
+            # Function scope only, unlike the call arm (INV-bamij): at file
             # scope a declaration is as often ``extern Widget w;`` or a member
             # prototype ``static Widget Create();`` as a construction.
             if current_function is not None and current_function is not file_anchor:
@@ -2624,8 +2617,8 @@ def _extract_edges_from_tree(
 
     def _table_symbol(declaration: "tree_sitter.Node", name: str, table_id: str) -> None:
         """Emit the table variable once it holds a function (WI-dirij's C++
-        twin): every ``dispatches_to`` edge starts at its id, and before it was
-        emitted the src named no node and finalize dropped every edge."""
+        twin): every ``dispatches_to`` edge starts at its id, and without the
+        symbol the src names no node and finalize drops every edge."""
         if table_symbols is None or table_id in emitted_tables:
             return
         emitted_tables.add(table_id)
@@ -2736,10 +2729,10 @@ def _extract_edges_from_tree(
                 name = _node_text(inner, source)
                 if name in dispatch_tables and name not in seen_tables:
                     seen_tables.add(name)
-                    # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
-                    # Same as c.py — function references a dispatch-
-                    # table data symbol. Canonical 'references' +
-                    # meta['ref_construct']='dispatch_table'.
+                    # Same as c.py — a function referencing a dispatch-
+                    # table data symbol is a canonical 'references' edge +
+                    # meta['ref_construct']='dispatch_table'
+                    # (ADR-0023 §6, audit-findings 0001; WI-vasik-jofiv).
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
@@ -2751,15 +2744,15 @@ def _extract_edges_from_tree(
                         meta={"ref_construct": "dispatch_table"},
                     ))
 
-    # WI-zojid: emit module_attr_ref edges for scoped attribute reads on
+    # Emit module_attr_ref edges (WI-zojid) for scoped attribute reads on
     # ``std::``-prefixed iostream symbols (``std::cout`` / ``std::cerr`` /
     # ``std::cin``) and any other namespace alias the analyser tracks.
     # Pairs with ``attributes:`` entries in io_primitives/cpp.yaml; without
     # this wire-up the iostream IO would never reach
-    # ``hypergumbo io-boundaries`` on tree-sitter parses.  Cross-language
-    # helper added by WI-vipur (originally for Rust's ``scoped_identifier``);
-    # C++'s ``qualified_identifier`` has the same left-recursive ``scope``
-    # / ``name`` shape so the same helper applies with ``scoped_path=True``.
+    # ``hypergumbo io-boundaries`` on tree-sitter parses.  The cross-language
+    # helper (WI-vipur) also serves Rust's ``scoped_identifier``; C++'s
+    # ``qualified_identifier`` has the same left-recursive ``scope`` / ``name``
+    # shape so the same helper applies with ``scoped_path=True``.
     # ``std`` is injected as an implicit import — the C++ standard library
     # is in scope without an explicit ``using`` declaration.  Namespace
     # aliases declared with ``namespace fs = std::filesystem;`` are merged
@@ -2791,52 +2784,39 @@ def _extract_edges_from_tree(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
-        # INV-pusin, the C++ half of the same defect: `using std::string;`
-        # is an import and `std::string f(int)` is a type, and the walk
-        # emitted both as attribute reads. A declaration's type sits
-        # DIRECTLY under the declaring node here (no `scoped_type_identifier`
-        # wrapper as in rust), so the declaration kinds themselves are the
-        # skip context -- a genuine read resolves to `binary_expression` /
-        # `init_declarator` instead and is unaffected.
-        # INV-sibij: `using S = std::string;` is a TYPE ALIAS and its scoped
-        # path sits under `type_descriptor`, which this tuple did not carry —
-        # so INV-pusin's statement held for cpp's `using_declaration` and
-        # failed for its alias. `type_descriptor` was NOT appended when the
-        # defect was filed, because in the cpp grammar it also covers casts
-        # and template arguments and "whether every member of that population
-        # is genuinely a type annotation" was not established. It is now,
-        # by parsing each form and calling the production `_scoped_context_kind`
-        # (docs + instrument: ~/hypergumbo_lab_notebook/sibij_cpp_08272026):
+        # Contexts where a scoped path NAMES A TYPE and reads no value, so it
+        # is not an attribute read (INV-pusin, INV-sibij): `using std::string;`
+        # is an import and `std::string f(int)` is a type. A declaration's type
+        # sits DIRECTLY under the declaring node here (no
+        # `scoped_type_identifier` wrapper as in rust), so the declaration
+        # kinds themselves are the skip context -- a genuine read resolves to
+        # `binary_expression` / `init_declarator` instead and is unaffected.
+        # In the cpp grammar `type_descriptor` also covers casts and template
+        # arguments; each form, checked against the production
+        # `_scoped_context_kind`, NAMES a type and reads no value:
         #
         #   using S = std::string;              type_descriptor   type alias
         #   static_cast<std::string>(y)         type_descriptor   cast
         #   std::vector<std::string> v;         type_descriptor   template arg
         #
-        # All three NAME a type and read no value. Template arguments are by
-        # far the largest member (rocksdb 2359 vs 126 aliases), so that is
-        # where the population actually is.
+        # `base_class_clause` too: `class A : public std::exception {}` NAMES
+        # a type.
         #
-        # `call_expression` is the OTHER context measured as leaking and is
-        # deliberately NOT added: it is where genuine calls live, an I/O call
-        # (`std::ofstream("f")`) is one, and suppressing it would be the silent
-        # recall loss this item warns about. Likewise `binary_expression`
-        # (`std::cout << 1`) and `init_declarator` (`std::string::npos`) are
-        # VALUE reads and keep emitting — pinned by positive controls in
-        # test_base.py, because removing withholding is the false-all-clear
-        # direction.
-        # A CLOSURE CAN SATISFY THE REPRO AND NOT THE STATEMENT, so twelve
-        # further forms were enumerated past the filed one. `base_class_clause`
-        # was the second leak found: `class A : public std::exception {}` NAMES
-        # a type. `for_range_loop` is the third and is deliberately ABSENT --
-        # that context covers BOTH halves of the loop:
+        # `call_expression` is deliberately NOT skipped: it is where genuine
+        # calls live, an I/O call (`std::ofstream("f")`) is one, and
+        # suppressing it would be a silent recall loss. Likewise
+        # `binary_expression` (`std::cout << 1`) and `init_declarator`
+        # (`std::string::npos`) are VALUE reads and keep emitting — pinned by
+        # positive controls in test_base.py, because removing withholding is
+        # the false-all-clear direction. `for_range_loop` is deliberately
+        # ABSENT too -- that context covers BOTH halves of the loop:
         #     for (std::string x : v)   -> std::string  TYPE
         #     for (auto& l : std::cin)  -> std::cin     VALUE, a real stream
         # so skipping it would suppress a genuine read, the same hazard as
         # `std::cout << 1`. Separating the loop variable's TYPE from the RANGE
         # EXPRESSION needs FIELD-level granularity, which this parameter does
         # not have -- it matches ancestor KIND only. The residual over-
-        # withholds, which is the safe direction, and is recorded rather than
-        # forced.
+        # withholds, which is the safe direction.
         skip_context_kinds=(
             "using_declaration", "function_definition", "declaration",
             "parameter_declaration", "field_declaration", "type_descriptor",
@@ -2845,7 +2825,7 @@ def _extract_edges_from_tree(
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
         # The full list, not the name-keyed view: a read in an overload the
-        # view lost fell to the file anchor (WI-saduj).
+        # view drops would fall to the file anchor (WI-saduj).
         enclosing_symbols=file_symbols,
     )
 
@@ -2949,8 +2929,8 @@ class CppAnalyzer(TreeSitterAnalyzer):
 
         Does NOT register short names — the ``NameResolver`` suffix index
         handles ``"compute"`` → ``"MyClass::compute"`` lookups. Registering
-        short names caused false exact matches when multiple types share a
-        method name.
+        short names would cause false exact matches when multiple types share
+        a method name.
 
         WI-jusus chokepoint: field/variable data anchors are kept OUT of the
         call-resolution registry. A member field / global variable is never a

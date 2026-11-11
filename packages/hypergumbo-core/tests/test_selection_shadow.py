@@ -8,9 +8,10 @@ properties carry almost all the weight:
   * the two directions stay separate. A net delta would let a miss (dangerous)
     be cancelled by an extra (harmless), which is the one summary that must
     never be produced.
-  * a failed join is announced. Every join in this project that could fail
-    silently, did — pytest-cov's ``|setup`` suffix matched 0 of 20,437 contexts.
-    A report whose join collapsed shows zero misses and reads as a clean pass.
+  * a failed join is announced. A join can collapse silently (pytest-cov
+    records a context per phase, so an unstripped ``|setup`` suffix matches
+    no test id), and a report whose join collapsed shows zero misses and
+    reads as a clean pass.
 """
 from __future__ import annotations
 
@@ -183,12 +184,13 @@ class TestPassThrough:
 
 
 class TestAColdIndexIsNotEvidence:
-    """OBSERVED on the first real end-to-end run: 8 of 8 changed files unknown
-    to the index, 0 tests selected, 87 reported as MISSED_BY_COVERAGE — and the
-    report called itself trustworthy because the join rate was vacuously 1.0.
+    """When every changed file is unknown to the index, nothing is selected and
+    every file that ran reads as MISSED_BY_COVERAGE, while the join rate is
+    vacuously 1.0 — so the report would call itself trustworthy.
 
-    Phase 1's exit criterion counts misses, so admitting phantom ones from a
-    cold index corrupts exactly the evidence the shadow exists to collect.
+    The shadow phase's exit criterion counts misses, so admitting phantom ones
+    from a cold index corrupts exactly the evidence the shadow exists to
+    collect.
     """
 
     def test_all_changed_files_unknown_is_not_informative(self) -> None:
@@ -244,8 +246,7 @@ _JUNIT_MIXED = """<?xml version="1.0" encoding="utf-8"?>
 
 class TestFailedTests:
     """The exit criterion is "a miss that ALSO FAILED", so the failure set is
-    the load-bearing half of the evidence — and the shadow did not record it
-    at all when Phase 1 shipped.
+    the load-bearing half of the evidence.
     """
 
     def _tree(self, tmp_path: Path) -> Path:
@@ -263,8 +264,8 @@ class TestFailedTests:
 
     def test_errors_count_as_failures(self, tmp_path) -> None:
         """A collection or fixture error is a test that did not pass. Counting
-        only <failure> would let the INV-vilag shape — green verdict on modules
-        that never imported — back in through the evidence."""
+        only <failure> would let a green verdict on modules that never
+        imported into the evidence (INV-vilag)."""
         root = self._tree(tmp_path)
         assert "pkg/tests/test_y.py::test_blew_up" in failed_tests_from_junit(
             root / "junit.xml", root)

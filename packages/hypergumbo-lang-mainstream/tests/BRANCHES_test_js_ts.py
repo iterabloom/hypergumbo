@@ -32,7 +32,7 @@ from hypergumbo_lang_mainstream.js_ts import (
 
 
 def test_express_route_with_external_handler_not_in_symbols(tmp_path: Path) -> None:
-    """Cover branch: handler_name not in symbol_by_name (line 696->699).
+    """Cover branch: handler_name not in symbol_by_name.
 
     When Express route uses an imported handler that isn't locally defined.
     """
@@ -58,7 +58,7 @@ def test_express_route_with_external_handler_not_in_symbols(tmp_path: Path) -> N
 
 
 def test_express_route_with_inline_arrow_function(tmp_path: Path) -> None:
-    """Cover branch: inline handler with symbol_by_position lookup (line 699->709).
+    """Cover branch: inline handler with symbol_by_position lookup.
 
     When Express route uses an inline arrow function.
     """
@@ -85,7 +85,7 @@ def test_express_route_with_inline_arrow_function(tmp_path: Path) -> None:
 
 
 def test_express_router_chained_route(tmp_path: Path) -> None:
-    """Cover branch: router.route('/path').get() pattern (line 530->533).
+    """Cover branch: router.route('/path').get() pattern.
 
     Express Router with chained route definition.
     """
@@ -130,7 +130,7 @@ def test_express_router_chained_route(tmp_path: Path) -> None:
 
 
 def test_typescript_function_with_no_type_params(tmp_path: Path) -> None:
-    """Cover branch: function with no typed parameters (line 436->461).
+    """Cover branch: function with no typed parameters.
 
     TypeScript function with no parameter type annotations.
     """
@@ -152,7 +152,7 @@ def test_typescript_function_with_no_type_params(tmp_path: Path) -> None:
 
 
 def test_typescript_method_definition(tmp_path: Path) -> None:
-    """Cover branch: method_definition type (line 433->436).
+    """Cover branch: method_definition type.
 
     TypeScript class method definition.
     """
@@ -350,17 +350,17 @@ def test_async_arrow_function(tmp_path: Path) -> None:
 
 
 # ============================================================================
-# Tests for _extract_param_types unrecognized node type (branch 433->436)
+# Tests for _extract_param_types unrecognized node type
 # ============================================================================
 
 
 def test_extract_param_types_unrecognized_node_type() -> None:
-    """Cover branch 433->436: node.type is none of the recognized function types.
+    """Cover branch: node.type is none of the recognized function types.
 
-    When _extract_param_types receives a node whose type is not
-    function_declaration, arrow_function, method_definition, or function,
-    all elif branches are False and params_node stays None, so we fall
-    through to line 436 and return an empty dict.
+    When _extract_param_types receives a node whose type is not a function
+    declaration, generator, arrow_function, method_definition, or function,
+    all elif branches are False and params_node stays None, so it returns
+    an empty dict.
     """
     mock_node = SimpleNamespace(type="class_declaration")
     result = _extract_param_types(mock_node, b"")
@@ -368,30 +368,29 @@ def test_extract_param_types_unrecognized_node_type() -> None:
 
 
 # ============================================================================
-# Tests for _find_route_path_in_chain traversal branches (492->488, 494->492,
-# 500->499, 507->506)
+# Tests for _find_route_path_in_chain traversal branches
 # ============================================================================
 
 
 def test_find_route_path_in_chain_variable_arg() -> None:
-    """Cover branches 492->488, 494->492, 500->499, 507->506.
+    """Cover the loop-exhaustion branches of _find_route_path_in_chain.
 
     Constructs a mock call_expression for router.route(routeVar) where the
     route argument is a variable (not a string literal).
 
     Branch coverage:
-    - 494->492: arguments found but arg loop exhausts (no "string" child)
-    - 492->488: args_child loop exhausts, continues subchild loop
-    - 507->506: call_expression child (arguments) is not member_expression
-    - 500->499: member_expression child (identifier/property_identifier) is
-      not call_expression
+    - arguments found but the arg loop exhausts (no "string" child)
+    - the args_child loop exhausts and the subchild loop continues
+    - a call_expression child (arguments) is not a member_expression
+    - a member_expression child (identifier/property_identifier) is not a
+      call_expression
     """
     source = b"route"
 
     # Build mock AST: call_expression with .route(variable)
     #   call_expression
-    #   ├── arguments              (placed first so #5 fires during traversal)
-    #   │   └── identifier         (not "string" → #3)
+    #   ├── arguments              (placed first: a non-member_expression child)
+    #   │   └── identifier         (not "string" → arg loop exhausts)
     #   └── member_expression
     #       ├── identifier         (not property_identifier)
     #       └── property_identifier "route"
@@ -417,18 +416,18 @@ def test_find_route_path_in_chain_variable_arg() -> None:
 
 
 # ============================================================================
-# Tests for _get_receiver_name chained call branches (533->527, 534->533)
+# Tests for _get_receiver_name chained call branches
 # ============================================================================
 
 
 def test_get_receiver_name_call_expression_without_member_expr() -> None:
-    """Cover branches 533->527, 534->533.
+    """Cover the chained-call branches of _get_receiver_name.
 
     A member_expression whose first child is a call_expression (chained call)
     with no member_expression subchild.  Example: require('express')().get(...)
 
-    - 534->533: subchild of call_expression is not member_expression (continue)
-    - 533->527: subchild loop exhausts without finding member_expression
+    - a subchild of the call_expression is not a member_expression (continue)
+    - the subchild loop exhausts without finding a member_expression
     """
     source = b"app"
 
@@ -450,14 +449,14 @@ def test_get_receiver_name_call_expression_without_member_expr() -> None:
 
 
 # ============================================================================
-# Tests for _detect_route_call no property_identifier branch (582->587)
+# Tests for _detect_route_call no property_identifier branch
 # ============================================================================
 
 
 def test_detect_route_call_no_property_identifier() -> None:
-    """Cover branch 582->587: callee member_expression has no property_identifier.
+    """Cover branch: callee member_expression has no property_identifier.
 
-    The for loop at line 582 exhausts without finding a property_identifier
+    The method-name loop exhausts without finding a property_identifier
     child, so method_name stays None → not in HTTP_METHODS → return None, None.
     """
     source = b"app"
@@ -479,16 +478,16 @@ def test_detect_route_call_no_property_identifier() -> None:
 
 
 # ============================================================================
-# Tests for _find_route_handler_in_call last-arg fallthrough (646->622)
+# Tests for _find_route_handler_in_call last-arg fallthrough
 # ============================================================================
 
 
 def test_find_route_handler_last_arg_not_identifier_or_member() -> None:
-    """Cover branch 646->622: last arg is neither identifier nor member_expression.
+    """Cover branch: last arg is neither identifier nor member_expression.
 
     When all args are strings (e.g. app.get('/path', '/redirect')), the last arg
-    is a "string" type, so neither the member_expression check (641) nor the
-    identifier check (646) matches. We continue the outer for loop.
+    is a "string" type, so neither the member_expression check nor the
+    identifier check matches and the outer for loop continues.
     """
     source = b""
 
@@ -507,17 +506,15 @@ def test_find_route_handler_last_arg_not_identifier_or_member() -> None:
 
 # ============================================================================
 # Tests for _extract_express_usage_contexts handler resolution branches
-# (699->709, 705->709, 710->716, 711->710)
 # ============================================================================
 
 
 def test_express_route_with_external_handler_no_position_lookup(tmp_path: Path) -> None:
-    """Cover branch 699->709: symbol_by_position is None.
+    """Cover branch: symbol_by_position is None.
 
-    When an external handler is not found by name and symbol_by_position is None,
-    the elif on line 699 is False → skip to line 709.
-    Also covers 711->710 and 710->716 since call_expression children include
-    non-member_expression types (arguments).
+    When an external handler is not found by name and symbol_by_position is
+    None, the inline-handler position lookup is skipped and handler_ref stays
+    None; the route context is still emitted.
     """
     app_file = tmp_path / "app.js"
     app_file.write_text(
@@ -530,7 +527,7 @@ def test_express_route_with_external_handler_no_position_lookup(tmp_path: Path) 
     source = app_file.read_bytes()
     tree = parser.parse(source)
 
-    # Pass symbol_by_position=None to trigger branch 699->709
+    # Pass symbol_by_position=None to skip the position lookup
     contexts = _extract_express_usage_contexts(
         tree, source, app_file, symbol_by_name={}, line_offset=0,
         symbol_by_position=None,
@@ -540,11 +537,11 @@ def test_express_route_with_external_handler_no_position_lookup(tmp_path: Path) 
 
 
 def test_express_route_inline_handler_position_miss(tmp_path: Path) -> None:
-    """Cover branch 705->709: position_key not in symbol_by_position.
+    """Cover branch: position_key not in symbol_by_position.
 
     Inline handler is found (handler_name is None, handler_node is non-None),
-    symbol_by_position is non-empty but doesn't contain the handler's position.
-    The elif condition on 699 is True, but line 705 is False → skip to 709.
+    symbol_by_position is non-empty but doesn't contain the handler's position,
+    so the position lookup is taken but misses and handler_ref stays None.
     """
     app_file = tmp_path / "app.js"
     app_file.write_text(
@@ -569,12 +566,11 @@ def test_express_route_inline_handler_position_miss(tmp_path: Path) -> None:
 
 # ============================================================================
 # Tests for _extract_object_properties edge-case branches
-# (777->772, 781->772, 784->765, 790->765)
 # ============================================================================
 
 
 def test_object_properties_non_identifier_key() -> None:
-    """Cover branch 777->772: pair child before colon is not property_identifier or string.
+    """Cover branch: pair child before colon is not property_identifier or string.
 
     A pair whose key is a computed expression (e.g., [expr]: value) — the
     key_node before the colon is not property_identifier or string.
@@ -588,12 +584,12 @@ def test_object_properties_non_identifier_key() -> None:
     obj = SimpleNamespace(type="object", children=[pair])
 
     result = _extract_object_properties(obj, source)
-    # key_node is None (777->772 fires, then 784->765: key_node is falsy)
+    # key_node stays None, so the pair contributes no property
     assert result == {}
 
 
 def test_object_properties_comma_after_colon() -> None:
-    """Cover branch 781->772: pair child after colon is a comma.
+    """Cover branch: pair child after colon is a comma.
 
     A pair with trailing comma in children: { key: value, }
     The comma child after the colon has type ',' which is in (',',) → skip.
@@ -613,16 +609,16 @@ def test_object_properties_comma_after_colon() -> None:
 
 
 def test_object_properties_no_value() -> None:
-    """Cover branch 790->765: key_node is set but value_node is None.
+    """Cover branch: key_node is set but value_node is None.
 
     A pair that has only a key and colon but no value: { key: }
-    key_node is truthy (784 passes) but value_node is None (790->765 fires).
+    key_node is truthy but value_node is None.
     """
     source = b"key"
 
     key = SimpleNamespace(type="property_identifier", start_byte=0, end_byte=3)
     colon = SimpleNamespace(type=":")
-    # Only a comma after colon (filtered out by 781), leaving value_node = None
+    # Only a comma after colon (filtered out by the comma check), leaving value_node = None
     comma = SimpleNamespace(type=",")
     pair = SimpleNamespace(type="pair", children=[key, colon, comma])
     obj = SimpleNamespace(type="object", children=[pair])
@@ -634,15 +630,14 @@ def test_object_properties_no_value() -> None:
 
 # ============================================================================
 # Tests for _extract_hapi_usage_contexts missing path/method branches
-# (880->876, 887->884)
 # ============================================================================
 
 
 def test_hapi_route_object_without_path_or_method(tmp_path: Path) -> None:
-    """Cover branch 880->876: object arg has neither 'path' nor 'method'.
+    """Cover branch: object arg has neither 'path' nor 'method'.
 
     server.route({ handler: someHandler }) — object has handler but no path
-    or method. The if on line 880 is False → continue the arg loop.
+    or method, so it is not added to route_configs and the arg loop continues.
     """
     app_file = tmp_path / "server.js"
     app_file.write_text(
@@ -662,10 +657,10 @@ def test_hapi_route_object_without_path_or_method(tmp_path: Path) -> None:
 
 
 def test_hapi_route_array_element_without_path_or_method(tmp_path: Path) -> None:
-    """Cover branch 887->884: array element object has neither 'path' nor 'method'.
+    """Cover branch: array element object has neither 'path' nor 'method'.
 
     server.route([{ handler: h1 }, { method: 'GET', path: '/ok', handler: h2 }])
-    First array element has no path/method (887->884), second does.
+    First array element has no path/method and is skipped; the second does.
     """
     app_file = tmp_path / "server.js"
     app_file.write_text(
@@ -690,16 +685,16 @@ def test_hapi_route_array_element_without_path_or_method(tmp_path: Path) -> None
 
 # ============================================================================
 # Tests for _extract_nextjs_usage_contexts export branches
-# (1056->1051, 1078->1043)
 # ============================================================================
 
 
 def test_nextjs_export_function_without_name(tmp_path: Path) -> None:
-    """Cover branch 1056->1051: function_declaration child has no identifier name.
+    """Cover branch: exported function is neither default nor a meaningful export.
 
-    An export statement with an anonymous function declaration (edge case
-    in tree-sitter parsing). name is None → if on 1056 is False → continue.
-    Also covers 1078->1043: neither default export nor meaningful export name.
+    Calls _extract_nextjs_usage_contexts directly on a pages/ file whose only
+    export is a named function outside the meaningful-exports set, so no
+    context is emitted. (The "function_declaration with no name" branch is
+    marked ``pragma: no branch`` in the source and is not exercised here.)
     """
     pages_dir = tmp_path / "pages"
     pages_dir.mkdir()
@@ -716,15 +711,15 @@ def test_nextjs_export_function_without_name(tmp_path: Path) -> None:
     contexts = _extract_nextjs_usage_contexts(
         tree, source, page_file, symbol_by_name={}, line_offset=0,
     )
-    # "randomHelper" is not a meaningful Next.js export → 1078->1043 fires
+    # "randomHelper" is not a meaningful Next.js export → no context
     assert len(contexts) == 0
 
 
 def test_nextjs_non_meaningful_named_export(tmp_path: Path) -> None:
-    """Cover branch 1078->1043 via integration: export name not in meaningful_exports.
+    """Cover branch via integration: export name not in meaningful_exports.
 
-    A Next.js page file that exports a non-meaningful named function.
-    The condition on line 1078 is False → continue outer loop.
+    A Next.js page file that exports a non-meaningful named function, so the
+    export is skipped and the outer loop continues.
     """
     pages_dir = tmp_path / "pages"
     pages_dir.mkdir()

@@ -3,18 +3,17 @@
 
 Background
 ----------
-On 2026-04-08 a backgrounded ``auto-pr`` invocation completed end-to-end —
-push, CI poll, merge, branch cleanup — but the orchestrating agent's
-``run_in_background`` mechanism captured zero bytes of stdout. From the
-agent's perspective the run never happened, so it ran ``auto-pr`` again,
-hit "commit is the same as the old commit" rejections, and queued a stale
-vPR. The user had to manually intervene with "its merged -- pr 2773".
+A backgrounded ``auto-pr`` invocation can complete end-to-end — push, CI
+poll, merge, branch cleanup — while the orchestrating agent's background
+mechanism captures zero bytes of stdout. From the agent's perspective the
+run never happened, so it would run ``auto-pr`` again, hit "commit is the
+same as the old commit" rejections, and queue a stale vPR.
 
-WI-miriz adds a final-state marker file at ``.git/AUTOPR_LAST_RESULT.json``
-that ``auto-pr`` writes on every exit from an action subcommand
+So ``auto-pr`` writes a final-state marker file at
+``.git/AUTOPR_LAST_RESULT.json`` on every exit from an action subcommand
 (``do_pr``, ``flush_queue``, ``gov_cleanup``). External observers — and
-the agent that backgrounded the script — can then check this file to
-discover whether the run succeeded, without depending on captured stdout.
+the agent that backgrounded the script — check this file to discover
+whether the run succeeded, without depending on captured stdout.
 
 Strategy
 --------
@@ -726,8 +725,7 @@ class TestVprQueueReconciliation:
 # overwritten (see TestSentinelOverwrite). Convergence is a property of the
 # SEQUENCE of runs, so it gets its own append-only artifact rather than a
 # second meaning bolted onto the sentinel — one fact, one home. Without it
-# the invariant's 2026-06-17 validation criterion had nothing to evaluate,
-# which is how it went unexamined across 579 commits.
+# the invariant has nothing to be evaluated against.
 # ---------------------------------------------------------------------------
 
 

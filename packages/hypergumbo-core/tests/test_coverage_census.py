@@ -214,11 +214,10 @@ class TestFixtureAwareCost:
 class TestStripPhase:
     """pytest-cov records one context PER PHASE; nothing else spells it that way.
 
-    Measured on a full census run of this repo: 19,103 ``|run`` contexts,
-    1,210 ``|setup``, 124 ``|teardown``. Joining those raw against pytest's
-    ``--durations`` report (which keys on the bare node id) matched **0 of
-    20,437**. After folding, 19,129 of 19,129. A census that skipped this step
-    would have produced a complete-looking table with every duration missing.
+    Contexts carry a ``|setup`` / ``|run`` / ``|teardown`` suffix, while
+    pytest's ``--durations`` report keys on the bare node id, so joining the
+    raw contexts against it matches nothing. A census that skipped this fold
+    would produce a complete-looking table with every duration missing.
     """
 
     @pytest.mark.parametrize("phase", ["setup", "run", "teardown"])
@@ -313,12 +312,11 @@ class TestGreedyTrajectory:
     def test_marginal_gain_shrinks_as_lines_are_covered(self) -> None:
         """Submodularity, asserted on the GAIN rather than on the pick.
 
-        CORRECTED IN PLACE, carrying the measurement that refuted it: this
-        first asserted ``"redundant" not in picked``, which is the wrong rule.
         ``redundant`` covers 5 lines for 0.1s (50/s) and ``wide`` covers 10 for
         1.0s (10/s), so picking the dense cheap one FIRST is cost-weighting
         working exactly as intended — a coverage-only greedy is what would
-        prefer ``wide``. What submodularity actually promises is that ``wide``'s
+        prefer ``wide``. Asserting ``"redundant" not in picked`` would be the
+        wrong rule. What submodularity actually promises is that ``wide``'s
         gain then DROPS from 10 to 5, and that is what is pinned here.
         """
         idx = CoverageIndex()
@@ -340,11 +338,10 @@ class TestGreedyTrajectory:
         """Zero marginal gain means zero reason to pay for it, at any price.
 
         The ratios are set so ``wide`` genuinely wins the first pick — 10
-        lines / 0.1s = 100/s against ``shadowed``'s 5 / 1.0s = 5/s. An earlier
-        version of this test made ``shadowed`` the cheaper one and then
-        asserted it would not be picked, which greedy rightly ignored: a test
-        is only "shadowed" relative to what is ALREADY covered, so the
-        construction has to put the shadowing test first on merit.
+        lines / 0.1s = 100/s against ``shadowed``'s 5 / 1.0s = 5/s. A test is
+        only "shadowed" relative to what is ALREADY covered, so the
+        construction has to put the shadowing test first on merit; were
+        ``shadowed`` the better ratio, greedy would rightly pick it first.
         """
         idx = CoverageIndex()
         idx.add("wide", "f.py", range(1, 11))
@@ -458,13 +455,9 @@ class TestCanonicalLines:
 
     A multi-line statement (``if (`` spanning four lines) is traced on its INNER
     lines and attributed by coverage's parser back to the statement's first
-    line. Intersecting raw traced lines with the statement set — the census's
-    original remedy — therefore DISCARDS the coverage of every such statement.
-
-    Measured on the real census DB before this landed: 144 statements across 53
-    files that coverage reports covered were absent from the index, concentrated
-    in the largest analyzers (py.py 17, go.py 15, java.py 12). Translating first
-    closes it to 0.
+    line. Intersecting raw traced lines with the statement set would therefore
+    DISCARD the coverage of every such statement, so traced lines are
+    translated to their statement's first line before they are indexed.
     """
 
     def test_a_continuation_line_maps_to_the_statement_start(
@@ -496,9 +489,9 @@ class TestCanonicalLines:
 class TestImportTimeAttribution:
     """Module-level code executes at IMPORT, under no test context at all.
 
-    Measured on the real census: 9,192 statements — 14.5% of the coverage
-    gate's denominator — are executed only under the empty context. Left out,
-    the index optimises over 85.2% of what CI actually scores.
+    Statements executed only under the empty context are a substantial share
+    of the coverage gate's denominator. Left out, the index would optimise
+    over only part of what CI actually scores.
 
     The rule that recovers them is an implication, not an approximation: if a
     test executes any line in file F, then F was necessarily imported, so F's
@@ -522,9 +515,10 @@ class TestImportTimeAttribution:
     ) -> None:
         """The control, and the one a careless fix breaks.
 
-        Crediting every import-time line to every test would make the recovered
-        14.5% unconditionally free, which is exactly the false claim the
-        original blind spot hid. The credit is conditional on TOUCHING the file.
+        Crediting every import-time line to every test would make import-time
+        coverage unconditionally free, which is false: a test that never
+        touches a file does not import it. The credit is conditional on
+        TOUCHING the file.
         """
         db, _sample, untouched = census_db_two_files
         index = load_index_from_coverage(db)
@@ -535,9 +529,10 @@ class TestImportTimeAttribution:
     def test_unattributable_import_lines_are_reported_not_discarded(
         self, census_db_two_files,
     ) -> None:
-        """The residual is 25 lines over 7 files on the real census, 6 of them
-        package ``__init__.py``. Small, but it is a real gap in what the index
-        can see and it belongs in the data structure rather than in a comment.
+        """Import-time lines in a file no test touches (typically a package
+        ``__init__.py``) cannot be credited to any test. They are a real gap
+        in what the index can see, so they belong in the data structure
+        (``unattributed_lines``) rather than being silently dropped.
         """
         db, _sample, untouched = census_db_two_files
         index = load_index_from_coverage(db)
@@ -549,7 +544,8 @@ class TestLoadIndexEndToEnd:
     def test_a_multiline_statement_is_covered_by_the_test_that_ran_it(
         self, census_db,
     ) -> None:
-        """The two fixes meeting: translation feeding the index."""
+        """Canonical-line translation feeding the index: the ``if (`` head is
+        credited to the test that ran its continuation lines."""
         db, sample = census_db
         index = load_index_from_coverage(db)
         head = _lineno(sample, "if (")
@@ -578,11 +574,11 @@ def _idx(**tests: set[int]) -> CoverageIndex:
 class TestLazyGreedyReevaluation:
     """The CELF machinery itself — stale-gain re-push, exhausted candidates,
     and the epsilon cut-off. These branches carry the algorithm's correctness
-    guarantee and none of them had a test.
+    guarantee.
 
-    Every expected pick below is DERIVED, not observed. Two earlier tests in
-    this file asserted a pick without computing gain-per-second; both times
-    greedy was right and the test was wrong.
+    Every expected pick below is DERIVED by computing gain-per-second by hand,
+    not copied from observed output: a pick asserted without that arithmetic
+    is easy to get wrong while greedy is right.
     """
 
     def test_a_stale_entry_beaten_by_the_next_is_repushed_not_taken(
@@ -638,7 +634,7 @@ class TestLazyGreedyReevaluation:
 
         This is exactly the shape :attr:`CoverageIndex.unattributed_lines`
         describes — import-time lines in a file no test touches. Built directly
-        here because the loader now routes those OUT of ``line_ids``, so the
+        here because the loader routes those OUT of ``line_ids``, so the
         only way to reach this branch is to construct the index by hand.
 
         TWO tests, not one, and that is load-bearing. Line 2 is unreachable, so
@@ -650,9 +646,8 @@ class TestLazyGreedyReevaluation:
                                 candidate -> the `if not candidates` exit.
 
         With a single test the heap is empty by iteration 2 and the ``while
-        heap`` guard exits FIRST, so that exit is never reached. The one-test
-        version of this test passed while leaving the branch uncovered — the
-        assertion was right and the construction did not exercise the mechanism.
+        heap`` guard exits FIRST, so that exit is never reached, even though the
+        assertion would still pass.
         """
         index = CoverageIndex(
             line_ids={("m.py", 1): 0, ("m.py", 2): 1},
@@ -669,17 +664,16 @@ class TestUnmeasuredTestsAreNotRedundant:
     """A test with NO coverage rows is ABSENT from the data, not zero — and
     the difference is the whole safety property.
 
-    Measured on this suite: 3,614 tests (15.9%) produce no rows at all.
-    2,818 are hypergumbo-tracker, which is not in ``COV_PATHS`` at all; 435
-    have an IMPORT-TIME subject (a registry or frozen dataclass built at
-    import, so nothing executes during the test); 255 run their code in a
-    subprocess; 106 test a file under ``scripts/``, which is outside
-    ``packages/*/src``.
+    Tests produce no rows when they cover hypergumbo-tracker (not in
+    ``COV_PATHS``), have an IMPORT-TIME subject (a registry or frozen
+    dataclass built at import, so nothing executes during the test), run
+    their code in a subprocess, or test a file under ``scripts/``, which is
+    outside ``packages/*/src``.
 
-    Because the index derives its population FROM the rows, those tests were
-    invisible — which made them look like the 18,181 "coverage-redundant"
-    tail. They are not redundant; they are unobserved. And the import-time
-    group is the dangerous one: ``test_specs_are_frozen`` and
+    Because the index derives its population FROM the rows, those tests would
+    be invisible — and so look like part of the "coverage-redundant" tail.
+    They are not redundant; they are unobserved. And the import-time group is
+    the dangerous one: ``test_specs_are_frozen`` and
     ``test_registry_has_no_duplicate_names`` validate exactly the lines this
     module credits to OTHER tests, so dropping them moves the coverage gate
     not at all while deleting an invariant guard.
@@ -705,8 +699,8 @@ class TestUnmeasuredTestsAreNotRedundant:
     def test_the_redundant_share_excludes_what_was_never_observed(
         self, census_db,
     ) -> None:
-        """The denominator is the bug. Counting unmeasured tests as redundant
-        is how 76% of the observable suite got reported as 79% of the whole."""
+        """The denominator is the hazard. Counting unmeasured tests as
+        redundant inflates the redundant share of the suite."""
         db, _sample = census_db
         index = load_index_from_coverage(
             db, known_tests=["test_used", "ghost_a", "ghost_b"],

@@ -219,14 +219,13 @@ class Pattern:
             websocket_endpoint, …) instead of overloading ``symbol_kind``.
         meta_match: Dict of ``Symbol.meta`` key → regex pattern. Each key must
             be present in ``Symbol.meta`` and its string-coerced value must
-            match the regex. WI-limas wired this in to re-bind Wave 6 / ADR-0027
-            fold rules (devDependency → kind="dependency" + meta["dependency_scope"]="dev",
-            tsconfig → kind="file" + meta["config_format"]="tsconfig", etc.)
-            that previously hardcoded the post-fold meta value into ``symbol_kind``.
-            framework_role has its own dedicated field because the framework_role
-            axis predates this generic mechanism and has bespoke per-pattern-type
-            interaction with symbol_name; meta_match handles every other
-            ADR-0027 fold-residue axis uniformly.
+            match the regex. It binds rules to ADR-0027 fold-residue meta values
+            rather than to ``symbol_kind`` (devDependency → kind="dependency" +
+            meta["dependency_scope"]="dev", tsconfig → kind="file" +
+            meta["config_format"]="tsconfig", etc.) (WI-limas).
+            framework_role has its own dedicated field because it has bespoke
+            per-pattern-type interaction with symbol_name; meta_match handles
+            every other ADR-0027 fold-residue axis uniformly.
         modifiers: Regex pattern requiring at least one modifier to match (positive filter)
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
         symbol_path: Regex pattern to match against symbol's file path (search, not match)
@@ -535,8 +534,8 @@ class Pattern:
         # fields are AND conditions, not independent alternatives.
         # symbol_kind / framework_role / meta_match can be specified
         # together (AND). meta_match alone is also a valid match shape:
-        # WI-limas yaml rules of the form "all symbols with meta key X
-        # whose value matches /regex/" don't need a symbol_kind clause.
+        # yaml rules of the form "all symbols with meta key X whose value
+        # matches /regex/" don't need a symbol_kind clause (WI-limas).
         if (
             (
                 self._symbol_kind_re
@@ -890,12 +889,10 @@ class FrameworkPatternDef:
         language: Primary language for this framework
         patterns: List of patterns to match
 
-    There is no ``linkers`` field (WI-hapon). 101 of 107 shipped files
-    declared ``linkers:`` -- "linkers that should be activated when this
-    framework is detected" -- and nothing outside the tests read it: a
-    linker's activation is its ``LinkerActivation`` in code. A list that says
-    which linkers run, and decides nothing, was deleted rather than kept as
-    a second, unchecked statement of the same fact.
+    There is no ``linkers`` field: a linker's activation is its
+    ``LinkerActivation`` in code, so a YAML list of the linkers a framework
+    activates would decide nothing and be a second, unchecked statement of
+    the same fact. As an unknown key, ``linkers:`` is refused (WI-hapon).
     """
 
     id: str
@@ -912,10 +909,9 @@ class FrameworkPatternDef:
         Returns:
             FrameworkPatternDef instance
         """
-        # WI-hapon: a key nothing reads is refused, at each level, naming the
-        # file (the loader wraps this ValueError). ``name_pattern`` and
-        # ``usage_call`` were accepted and read by nobody, so the Graphene
-        # resolver rule and both ZIO route rules matched nothing.
+        # A key nothing reads is refused, at each level, naming the file (the
+        # loader wraps this ValueError). Silently accepting an unread key
+        # would leave the rule that declares it matching nothing (WI-hapon).
         reject_unknown_keys(
             data, _FILE_KEYS, origin="framework pattern definition",
             where="top-level", error=ValueError,
@@ -974,16 +970,12 @@ class FrameworkPatternDef:
 
 # Cache for loaded framework patterns, keyed on (frameworks_dir, framework_id).
 #
-# INV-kazij: the key MUST include the resolved directory, because
+# The key MUST include the resolved directory, because
 # ``get_frameworks_dir`` is patchable and a cache keyed on the id alone
-# memoizes half the function's input. The measured failure mode: a test
-# patched the dir to a tmp path, the convention ids (main-functions,
-# config-conventions, ...) cached as None, and every symbol analyzed
-# afterwards IN THE SAME PROCESS carried zero concepts — so the
-# pyproject-console-script entrypoint test failed on exactly the xdist
-# workers whose earlier schedule included a dir-patching test. That
-# worker-composition dependence spent three cron runs looking like an
-# interpreter, container, and install-set problem in turn.
+# memoizes half the function's input: a lookup made while the dir is patched
+# to a tmp path would cache the convention ids (main-functions,
+# config-conventions, ...) as None, and every symbol analyzed afterwards in the
+# same process would carry zero concepts (INV-kazij).
 _PATTERN_CACHE: dict[tuple[str, str], FrameworkPatternDef | None] = {}
 
 # Framework alias mapping: maps detected framework names to pattern file names
@@ -1478,8 +1470,8 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
 
     WI-bosab: naming-convention concepts (``service_by_name``,
     ``controller_by_name``, ``handler_by_name``) fire on a class purely by its
-    name, so a test fixture like ``class MyService`` in ``tests/`` was mislabeled
-    a production service. The concept-enrichment pass (``enrich_symbols``) runs
+    name, so a test fixture like ``class MyService`` in ``tests/`` would be
+    mislabeled a production service. The concept-enrichment pass (``enrich_symbols``) runs
     BEFORE supply-chain classification in the pipeline (linker-produced symbols
     must be classified too), so ``Symbol.is_test_file`` — the canonical
     supply-chain *test-code* verdict (the narrow role flag, spec §14; distinct
@@ -1492,7 +1484,7 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
     rule (``_test_excluded_concepts``): once the always-loaded
     python-http-server.yaml declares ``route_handler`` test-excluded, a
     flask-restful or falcon fixture's handler in ``tests/`` loses the concept
-    too (WI-losij, measured: flask-restful's 41 test-file handlers), which is
+    too (WI-losij), which is
     the intended reading -- a test's handler is not the program's ingress --
     and a comment on each of those rules says so. Returns the number of
     concepts stripped.
@@ -1507,12 +1499,10 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
         meta = symbol.meta
         if not meta:
             continue
-        # INV-hazov (a)/(b). This was `meta["concepts"] = kept` on a LOCAL
-        # ALIAS of symbol.meta, and both halves of that were invisible:
-        # the linter's bypass rule matched only `<expr>.meta["k"] = ...`, so
-        # an alias hid a direct assignment to a merge_union key; and the
-        # chokepoint had no way to express a REMOVAL, since write_meta_key
-        # would have unioned the stripped concepts straight back in.
+        # ``concepts`` is a merge_union key, so a removal goes through the
+        # filter_meta_key chokepoint: write_meta_key would union the stripped
+        # concepts straight back in, and a direct assignment through a local
+        # alias of symbol.meta would bypass the chokepoint unseen (INV-hazov).
         stripped += filter_meta_key(
             meta,
             "concepts",
@@ -1573,10 +1563,10 @@ def _drop_library_export_on_route_marker(
     takes every non-``defp`` function (the marker has no ``private``
     modifier), the Go pattern every uppercase-initial name ("GET /users").
     ``library_export`` means "externally importable public API"; nothing can
-    import a route registration. Left in place the concept leaked into
-    ``meta.concepts`` and, through first-emitted-wins dedup, displaced the
-    marker's HTTP_ROUTE entrypoint (thc: 377 Phoenix routes filed as library
-    exports). Dropped here — the one point every definition-based match
+    import a route registration. Left in place the concept would leak into
+    ``meta.concepts`` and, through first-emitted-wins dedup, displace the
+    marker's HTTP_ROUTE entrypoint, filing routes as library exports. Dropped
+    here — the one point every definition-based match
     passes through — rather than per-language in the YAML, because the YAML
     matcher has no ``framework_role`` exclusion and every current and future
     language's export convention would need its own.
@@ -1677,7 +1667,7 @@ def enrich_symbols(
 
     # Build lookups for parent resolution and name-based fallback
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
-    # Build name-based lookup for fallback resolution (INV-002 fix)
+    # Build name-based lookup for fallback resolution (INV-002)
     # Uses simple name as key; for qualified names, use the last component
     symbol_by_name: dict[str, Symbol] = {}
     for s in symbols:
@@ -1708,11 +1698,10 @@ def enrich_symbols(
             # concept=route onto an already-marked marker (dual-carry orphans
             # the framework). Lift the framework onto route_framework and drop
             # the redundant concept before stamping.
-            # INV-hazov instance 7: this was a bare assignment, so a symbol
-            # the ANALYZER had already stamped (python's ``main_guard``,
-            # bash's ``shell_script``, go's ``middleware``) lost that fact
-            # the moment any framework pattern matched it. Both facts are
-            # independently true; the union is the sound fold.
+            # The matches are unioned into existing concepts, not assigned
+            # over them: a concept the ANALYZER already stamped (python's
+            # ``main_guard``, bash's ``shell_script``, go's ``middleware``)
+            # stays true when a framework pattern also matches (INV-hazov).
             # INV-liraj: and a route marker is not importable API, so the
             # accidental library_export match is dropped too.
             write_meta_key(
@@ -1808,15 +1797,15 @@ def enrich_symbols(
     if usage_contexts:
         for ctx in usage_contexts:
             # Distinct from the `for symbol in symbols:` loop var above (that is
-            # a Symbol; this is a nullable lookup result) — renamed to satisfy
-            # mypy [no-redef]/[assignment] (WI-hokag).
+            # a Symbol; this is a nullable lookup result), so mypy does not
+            # report [no-redef]/[assignment] (WI-hokag).
             resolved_symbol: Symbol | None = None
 
             # Try direct symbol_ref lookup first
             if ctx.symbol_ref:
                 resolved_symbol = symbol_by_id.get(ctx.symbol_ref)
 
-            # Fallback: try name-based resolution from metadata (INV-002 fix)
+            # Fallback: try name-based resolution from metadata (INV-002)
             # This handles cases where view_name exists but symbol_ref wasn't set
             # because the symbol was in a different file during analysis
             if resolved_symbol is None and ctx.metadata:
@@ -1839,13 +1828,8 @@ def enrich_symbols(
                 # Both definition-based (Phase 1) and usage-based (Phase 3)
                 # can produce the same concept (e.g., Go route handlers
                 # matched by both decorator and UsageContext patterns).
-                # INV-hazov: this block used to hand-roll the union (read
-                # existing, dedup by sorted items, append). The identical
-                # fold was ALSO owed by the def-based phase above, which
-                # assigned over the top instead and destroyed producer-set
-                # concepts — one fact, two homes, one of them wrong. Both
-                # now route through the single fold on the key's
-                # merge_union declaration.
+                # Both phases route through the single fold on the key's
+                # merge_union declaration (write_meta_key) (INV-hazov).
                 write_meta_key(resolved_symbol.meta, "concepts", matches)
 
     if report is not None:
@@ -1889,9 +1873,9 @@ def resolve_deferred_symbol_refs(
 ) -> DeferredResolutionStats:
     """Resolve symbol_ref for UsageContexts that couldn't be resolved during analysis.
 
-    This is the proper fix for INV-002: Usage patterns extracted by analyzers should
-    become concepts on nodes, but this requires resolving string-based handler
-    references to actual Symbol IDs.
+    Usage patterns extracted by analyzers become concepts on nodes only once
+    their string-based handler references are resolved to actual Symbol IDs
+    (INV-002).
 
     The problem: When an analyzer extracts a UsageContext (e.g., Django URL pattern
     referencing 'views.list_users'), the target symbol may be in a different file
@@ -2067,13 +2051,12 @@ def materialize_route_symbols(
     new_route_symbols: list[SymbolCls] = []
     seen_routes: set[str] = set()  # Dedupe by (method, path)
 
-    # WI-tizad: also dedupe against analyzer-emitted route-marker symbols.
+    # Also dedupe against analyzer-emitted route-marker symbols (WI-tizad).
     # Django's urls.py analyzer creates routes at the URL registration site
     # (e.g. `path("/users/", UsersView.as_view())`) AND the view class's
     # get/post methods get concept=route via framework enrichment. Without
     # this pre-populate, the same (method, path) pair is emitted twice:
-    # once at urls.py and once at the view method. Pretix UAT saw 985 routes
-    # where only ~500 were unique.
+    # once at urls.py and once at the view method.
     for existing in symbols:
         if (existing.meta or {}).get("framework_role") != "route":
             continue
@@ -2128,10 +2111,10 @@ def materialize_route_symbols(
             # would emit a single ``GET,POST`` route Symbol that the
             # WI-tizad dedupe (keyed on the joined string) misses,
             # producing a duplicate alongside the per-method analyzer
-            # emissions. Surfaced by WI-pusad once bare-name framework
-            # promotion (here: starlette via ``starlette.routing``
-            # compound import) made starlette.yaml load on repos
-            # without an explicit manifest declaration.
+            # emissions. starlette.yaml can load without an explicit
+            # manifest declaration (bare-name framework promotion via a
+            # ``starlette.routing`` import, WI-pusad), so both paths can
+            # fire on one repo.
             if "," in method_raw:
                 methods_list = [m.strip() for m in method_raw.split(",") if m.strip()]
             else:
@@ -2142,7 +2125,7 @@ def materialize_route_symbols(
                 #
                 # WI-misud: when the source symbol is kind="file", scope the
                 # dedupe key by source symbol id. File-level route concepts
-                # (WI-tisam: node-http.yaml / graphql.yaml's startStandaloneServer
+                # (WI-tisam: node-http.yaml's startStandaloneServer
                 # / http.createServer catch-all patterns) attach to file Symbols
                 # via UC-enrichment, and different files calling these framework
                 # entry points are DISTINCT deployments — not duplicate
@@ -2272,15 +2255,12 @@ def expand_class_based_view_routes(
         )
         for method_name in sorted(methods):
             http_method = method_name.upper()
-            # WI-javag / WI-zugob: mint through the shared chokepoint rather
-            # than deriving a name by string concatenation. The old
-            # f"{sym.name}.{method_name}" inherited whatever the parent marker
-            # was called, and py.py's Django markers were named
-            # "django:{view}" — so the COLON went straight into
-            # make_symbol_id's name slot and produced a SIX-segment id that
-            # could not be parsed back into its ADR-0036 slots at all. Deriving
-            # the name from method+path removes the whole class of problem
-            # instead of sanitizing one instance of it.
+            # Minted through the shared chokepoint, which derives the name from
+            # method+path, rather than by concatenating onto the parent
+            # marker's name: a parent name containing a separator such as ``:``
+            # would land in make_symbol_id's name slot and produce an id that
+            # cannot be parsed back into its ADR-0036 slots
+            # (WI-javag / WI-zugob).
             new_routes.append(make_route_symbol(
                 language=sym.host_language or "python",
                 path=sym.path,

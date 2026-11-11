@@ -46,6 +46,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
 - **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.
+- **Comments and docstrings in 168 files describe current code, not history.**
 
 ### Removed
 

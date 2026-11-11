@@ -6,10 +6,7 @@ canonical ``event_publishes`` edges (with ``meta["channel_kind"]="ipc"``)
 for the send-side of cross-process communication, plus ``calls`` edges
 (with ``meta["bridge_kind"]="context_bridge"``) for Electron contextBridge
 mediation. The receive side is intentionally not emitted — see audit-
-findings 0002.
-
-Post-Phase 3 IPC fold (WI-hahap-farid; pre-fold edge_types were
-``message_send`` / ``message_receive`` / ``bridge_invokes``):
+findings 0002 (WI-hahap-farid).
 
 Detected Patterns
 -----------------
@@ -39,13 +36,12 @@ Electron contextBridge (preload → renderer):
 - contextBridge.exposeInMainWorld('ns', { method: () => ipcRenderer.invoke('ch') })
   Detects bridge definitions, then scans for window.ns.method() calls in renderer
   files. Emits canonical ``calls`` edges with ``meta["bridge_kind"]="context_bridge"``
-  from renderer call sites to the IPC send symbols in the preload file (post WI-mifor-
-  vabul Phase 3 bridge/FFI; pre-fold edge_type was ``bridge_invokes``), enabling
-  end-to-end traceability from UI code through the preload bridge into the main process
-  handler. The edge's dst IS the send site's own node -- same (file, line, channel),
-  so same id -- the one the channel join's ``event_publishes`` edge leaves, so
-  renderer -> preload -> main is one connected path (WI-kokuv; it used to target a
-  separate ``0-0`` stand-in with no outgoing edge). A bridge send through a custom
+  from renderer call sites to the IPC send symbols in the preload file (WI-mifor-
+  vabul), enabling end-to-end traceability from UI code through the preload bridge
+  into the main process handler. The edge's dst IS the send site's own node -- same
+  (file, line, channel), so same id -- the one the channel join's ``event_publishes``
+  edge leaves, so renderer -> preload -> main is one connected path (WI-kokuv). A
+  bridge send through a custom
   ``ipcInvoke('ch')`` wrapper, which no ``ipcRenderer.*`` pattern detects, is added
   to the senders before the join and publishes to the receivers itself.
 
@@ -60,8 +56,8 @@ Electron IPC wrappers (WI-pumit):
 - A call to a wrapper, with a literal or same-file-constant channel, is a site
   of the forwarded call's direction at the call's line (``this.ipcHandle('ch',
   ...)`` is a receive site). The forwarding call inside the wrapper names a
-  parameter, not a channel, and is no site: it used to join every other
-  wrapper's same-named parameter on the identifier (``variable_match``).
+  parameter, not a channel, and is no site: as a site it would join every
+  other wrapper's same-named parameter on the identifier (``variable_match``).
 - Scope: names match repo-wide, but a call must show it can reach a wrapper
   of that name -- a bare ``f('ch')`` in the wrapper's file or a file that
   imports ``f``; ``this.f('ch')`` inside the wrapper's class or in a file where
@@ -116,8 +112,8 @@ How It Works
    (in the same scan as step 2, recording each exposure's send line, so its
    send site joins the step-4 channel match), then scan the files for
    window.namespace.method() calls and create canonical ``calls`` edges
-   (``meta["bridge_kind"]="context_bridge"``; the pre-fold edge type was
-   ``bridge_invokes``) linking those calls to the IPC send symbols. The same
+   (``meta["bridge_kind"]="context_bridge"``) linking those calls to the IPC
+   send symbols. The same
    path also covers individually-exposed functions and custom ``ipcInvoke`` /
    ``ipcSend`` wrappers
 6. Between steps 2 and 4, detect IPC wrappers per file, drop their forwarding
@@ -320,9 +316,7 @@ def _bridge_wrapper_sends(text: str) -> list[tuple[str, dict[str, _BridgeSend]]]
         });
 
     and the renderer calls ``window.api.openFile()``. Returns one
-    ``(namespace, {method: send})`` per exposure. This is the linker's own
-    reader; the public ``detect_context_bridge_wrappers`` view of it was
-    retired when nothing but its tests called it (WI-puvom).
+    ``(namespace, {method: send})`` per exposure.
     """
     results: list[tuple[str, dict[str, _BridgeSend]]] = []
     for bridge_match in _CONTEXT_BRIDGE_PATTERN.finditer(text):
@@ -371,9 +365,7 @@ def _bridge_function_sends(text: str) -> list[tuple[str, _BridgeSend]]:
 
     and the renderer calls ``window.listContainers()``. A custom
     ``ipcInvoke`` / ``ipcSend`` wrapper around ``ipcRenderer`` counts as the
-    send. Returns one ``(func_name, send)`` per exposure. The public
-    ``detect_context_bridge_functions`` view was retired as test-only
-    (WI-puvom).
+    send. Returns one ``(func_name, send)`` per exposure.
     """
     results: list[tuple[str, _BridgeSend]] = []
     for match in _CONTEXT_BRIDGE_FUNC_PATTERN.finditer(text):
@@ -814,8 +806,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     """Link IPC patterns across files in a repository.
 
     Scans JavaScript/TypeScript files for IPC patterns and creates
-    ``event_publishes`` edges for matching channels (the pre-fold
-    ``message_send`` / ``message_receive`` pair).
+    ``event_publishes`` edges for matching channels, plus ``calls`` edges
+    from ``window.*`` calls to contextBridge-exposed sends.
 
     Args:
         repo_root: Root directory of the repository
@@ -872,8 +864,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 f"{type(e).__name__}: {e}",
             )
 
-    # WI-pumit: a wrapper's forwarding call names its parameter, not a
-    # channel -- no site; each call that can see the wrapper is the site.
+    # A wrapper's forwarding call names its parameter, not a channel -- no
+    # site; each call that can see the wrapper is the site (WI-pumit).
     wrappers = [
         w for file_str, content in file_contents.items()
         for w in _ipc_wrappers(content, file_str)
@@ -912,15 +904,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
         """Create symbol for IPC endpoint if not already created."""
         sym_id = _make_symbol_id(pattern, channel)
         if sym_id not in created_symbol_ids:
-            # ADR-0027 Phase 3 / audit-findings 0013: f-string Symbol.kind
-            # framework-role leak (was kind=f"ipc_{pattern.type}", expanding
-            # to "ipc_send" or "ipc_receive"). Fold to canonical
-            # kind="function" + meta["framework_role"] capturing the same
-            # information dynamically. The framework_role meta key is
-            # open-form per ADR-0024 §"Fold-residue discipline".
+            # kind="function"; the send/receive role is carried in
+            # meta["framework_role"], not in the kind (ADR-0027, audit-
+            # findings 0013). The framework_role meta key is open-form per
+            # ADR-0024 §"Fold-residue discipline".
             # ADR-0031 Class B: synthetic stand-in for an IPC send/receive
-            # site. Was LITERAL-HOST ("javascript"); now derives the host
-            # language from the file extension.
+            # site; its host language derives from the file extension.
             symbols.append(Symbol(
                 id=sym_id,
                 name=f"ipc:{pattern.type}:{channel}",
@@ -938,8 +927,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 meta={
-                    # WI-misod: the channel VALUE -- None when the identifier
-                    # written at the site could not be resolved.
+                    # The channel VALUE -- None when the identifier written
+                    # at the site could not be resolved (WI-misod).
                     "channel": pattern.arg.value,
                     "channel_type": pattern.channel_type,
                     "channel_identifier": pattern.channel_identifier,
@@ -950,12 +939,13 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             created_symbol_ids.add(sym_id)
         return sym_id
 
-    # WI-kokuv: a bridge's send IS the send site the scan detected there --
-    # the same (file, line, channel) gives the same id, so the bridge ``calls``
-    # edge and the join's ``event_publishes`` edge meet on ONE node and
-    # renderer -> preload -> main is a connected path. A bridge send no
-    # ``ipcRenderer.*`` pattern detected (a custom ``ipcInvoke('ch')`` wrapper)
-    # joins ``senders`` itself, so it, too, publishes to the receivers.
+    # A bridge's send IS the send site the scan detected there -- the same
+    # (file, line, channel) gives the same id, so the bridge ``calls`` edge
+    # and the join's ``event_publishes`` edge meet on ONE node and
+    # renderer -> preload -> main is a connected path (WI-kokuv). A bridge
+    # send no ``ipcRenderer.*`` pattern detected (a custom ``ipcInvoke('ch')``
+    # wrapper) joins ``senders`` itself, so it, too, publishes to the
+    # receivers.
     sender_ids = {_make_symbol_id(s, s.channel) for s in senders}
 
     def _bridge_send_id(preload_file: str, send: _BridgeSend) -> str:
@@ -992,9 +982,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     for sender in senders:
         _ensure_symbol(sender, sender.channel)
 
-    # WI-misod: the shared ``pair_by_name`` joins on the channel VALUE when
-    # both are known and on the IDENTIFIER only when one side is unresolved --
-    # never an identifier's text against a channel string.
+    # The shared ``pair_by_name`` joins on the channel VALUE when both are
+    # known and on the IDENTIFIER only when one side is unresolved -- never
+    # an identifier's text against a channel string (WI-misod).
     for sender, receiver, join in pair_by_name(
         senders, receivers, lambda p: p.arg, lambda p: p.arg,
     ):
@@ -1004,10 +994,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
         # identifiers (heuristic).
         is_variable_match = not join.on_value
         confidence = 0.65 if is_variable_match else 0.85
-        # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-        # Electron renderer→main message exchange is the
-        # publish-family shape; "ipc" is the channel kind.
-        # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
+        # Electron renderer→main message exchange is the publish-family
+        # shape and "ipc" is the channel kind: canonical 'event_publishes'
+        # + meta['channel_kind']='ipc' (ADR-0023 §6, audit-findings 0002).
         # Pass meta via kwarg so Edge.create merges with dataflow
         # fields — assigning edge.meta afterward would wipe out
         # the dataflow meta fields (INV-forim).
@@ -1033,12 +1022,11 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
         )
         edges.append(edge)
 
-    # audit-findings 0002 (WI-hahap-farid): the converse-direction
-    # message_receive edges are dropped — the forward
-    # event_publishes edges above already capture the relationship,
-    # and hypergumbo's slice handles reverse traversal natively
-    # (no per-edge converse-direction emit needed). Same verdict
-    # as audit-findings 0001's event_subscribes shape problem.
+    # No converse-direction (receiver -> sender) edge is emitted: the
+    # forward event_publishes edges above already capture the relationship,
+    # and hypergumbo's slice handles reverse traversal natively. See
+    # audit-findings 0002 (same verdict as audit-findings 0001 for
+    # event_subscribes).
 
     # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
     # For each preload file with bridge definitions, scan other files for
@@ -1083,8 +1071,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     f":{namespace}.{method_name}:bridge_caller"
                 )
                 if caller_id not in created_symbol_ids:
-                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
-                    # leak.
+                    # The bridge-caller role is carried in
+                    # meta["framework_role"], not in the kind (ADR-0027).
                     # ADR-0031 Class B: synthetic stand-in for an IPC bridge
                     # caller (window.<namespace>.<method>).
                     symbols.append(Symbol(
@@ -1115,12 +1103,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 # dst: the preload send site's own node (WI-kokuv), which
                 # every sender got above.
 
-                # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
-                # 'calls' + meta['bridge_kind']='context_bridge' for
-                # Electron's contextBridge mediation.
-                #
-                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                # leak; meta["framework_dispatch"]="electron_context_bridge".
+                # Canonical 'calls' + meta['bridge_kind']='context_bridge'
+                # for Electron's contextBridge mediation (ADR-0023 §6); the
+                # dispatching framework is named in
+                # meta["framework_dispatch"] (ADR-0028).
                 edge = Edge.create(
                     src=caller_id,
                     dst=preload_send_id,
@@ -1172,8 +1158,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     f":{func_name}:bridge_caller"
                 )
                 if caller_id not in created_symbol_ids:
-                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
-                    # leak.
+                    # The bridge-caller role is carried in
+                    # meta["framework_role"], not in the kind (ADR-0027).
                     # ADR-0031 Class B: synthetic stand-in for an IPC bridge
                     # caller (window.<func>).
                     symbols.append(Symbol(
@@ -1200,11 +1186,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     ))
                     created_symbol_ids.add(caller_id)
 
-                # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
-                # 'calls' + meta['bridge_kind']='context_bridge'.
-                #
-                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                # leak; meta["framework_dispatch"]="electron_context_bridge".
+                # Canonical 'calls' + meta['bridge_kind']='context_bridge'
+                # (ADR-0023 §6); the dispatching framework is named in
+                # meta["framework_dispatch"] (ADR-0028).
                 edge = Edge.create(
                     src=caller_id,
                     dst=preload_send_id,

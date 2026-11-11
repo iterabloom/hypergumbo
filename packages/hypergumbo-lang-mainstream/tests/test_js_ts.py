@@ -175,7 +175,7 @@ class UserService {
         method_symbols = [s for s in result.symbols if s.kind == "method"]
         method_names = [m.name for m in method_symbols]
 
-        # Method names now include class prefix
+        # Method names include the class prefix
         assert "UserService.constructor" in method_names
         assert "UserService.createUser" in method_names
         assert "UserService.validate" in method_names
@@ -214,7 +214,7 @@ class User {
         getter_names = [g.name for g in getter_symbols]
         setter_names = [s.name for s in setter_symbols]
 
-        # Getter/setter names now include class prefix
+        # Getter/setter names include the class prefix
         assert "User.name" in getter_names
         assert "User.age" in getter_names
         assert len(getter_symbols) == 2
@@ -272,7 +272,7 @@ function main() {
         """Bare-name calls to named imports emit unresolved call edges (WI-banaf).
 
         Without these edges io-boundaries cannot match Node/browser I/O
-        primitives in TypeScript projects (UAT 2026-04-13 BUG-09a). The
+        primitives in TypeScript projects. The
         destination ID encodes the import path as the module hint so the
         catalog lookup can disambiguate (``fs`` vs ``crypto`` etc.).
         """
@@ -327,9 +327,9 @@ function main() { helper(); }
     def test_unresolved_call_to_namespace_import_member(self, tmp_path: Path) -> None:
         """`import * as fs from 'node:fs'; fs.readFileSync()` emits unresolved edge.
 
-        Per WI-vurop: the namespace-import member-call path also needs the
-        unresolved fallback so io-boundaries can match Node fs / HTTP /
-        subprocess calls invoked through namespace aliases.
+        The namespace-import member-call path also needs the unresolved
+        fallback so io-boundaries can match Node fs / HTTP / subprocess calls
+        invoked through namespace aliases (WI-vurop).
         """
         pytest.importorskip("tree_sitter_typescript")
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -387,14 +387,13 @@ export async function fetchUser(id: string) {
                 assert segs[1] == "axios", c
 
     def test_unresolved_unimported_name_gets_no_module(self, tmp_path: Path) -> None:
-        """A call to a bare name nothing binds is recorded (WI-fahod), but
-        never with a module it did not import.
+        """A call to a bare name nothing binds is recorded, but never with a
+        module it did not import.
 
-        This test used to assert the OPPOSITE -- that such a call emitted no
-        edge, to keep the catalogue match precise. Silence was the defect
-        WI-fahod filed: the ADR-0017 walk read the missing ``callees_at``
-        entry as an escape site. The call now lands on the ``external``
-        placeholder, whose module slot names nothing.
+        The call must produce an edge: the ADR-0017 walk reads a missing
+        ``callees_at`` entry as an escape site. It lands on the ``external``
+        placeholder, whose module slot names nothing, so the catalogue match
+        stays precise (WI-fahod).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -417,10 +416,9 @@ function main() {
     def test_unresolved_call_to_global_object_methods(self, tmp_path: Path) -> None:
         """`console.log()` + `localStorage.setItem()` with no imports emit edges.
 
-        WI-pinop: bare global object.method() patterns where no import or
-        local binding shadows the object. Needed so the io-boundaries layer
-        can tag browser projects that never import anything for console or
-        storage.
+        Bare global object.method() patterns where no import or local binding
+        shadows the object. Needed so the io-boundaries layer can tag browser
+        projects that never import anything for console or storage (WI-pinop).
         """
         pytest.importorskip("tree_sitter_typescript")
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -447,12 +445,12 @@ export function run(x: string) {
     def test_unresolved_global_shadowed_by_named_import(
         self, tmp_path: Path,
     ) -> None:
-        """Named-import shadowing suppresses the WI-pinop global edge.
+        """Named-import shadowing suppresses the global-object fallback edge.
 
         If a file does ``import { console } from './my-console'``, the
         ``console.log(...)`` calls should be treated as calls into the
-        imported module (via the existing WI-banaf/WI-vurop paths), not as
-        a browser-global.
+        imported module (via the named/namespace-import paths), not as
+        a browser-global (WI-pinop).
         """
         pytest.importorskip("tree_sitter_typescript")
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -471,7 +469,7 @@ export function run(x: string) {
             e.dst for e in result.edges
             if e.edge_type == "calls" and ":unresolved" in e.dst
         }
-        # No WI-pinop edge: any console.log unresolved edge that uses the
+        # No global-fallback edge: any console.log unresolved edge that uses the
         # global ``console`` as module hint would be wrong here. The import
         # path './my-console' (or a resolved intra-repo symbol) is correct.
         for c in callees:
@@ -486,8 +484,8 @@ export function run(x: string) {
 
         If a user writes ``function f(console: Logger) { console.log(x); }``,
         the parameter's type annotation lands in ``var_types`` and Case 3
-        should take precedence. The WI-pinop fallback must not fire, even if
-        the intra-repo resolve fails.
+        should take precedence. The global-object fallback must not fire, even
+        if the intra-repo resolve fails.
         """
         pytest.importorskip("tree_sitter_typescript")
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -512,11 +510,11 @@ export function run(console: Logger, x: string) {
     def test_unresolved_global_shadowed_by_namespace_import(
         self, tmp_path: Path,
     ) -> None:
-        """Namespace-import shadowing also suppresses the WI-pinop path.
+        """Namespace-import shadowing also suppresses the global-object fallback.
 
         ``import * as console from './my-console'; console.log()`` must
-        resolve through Case 2 (namespace import) rather than the WI-pinop
-        global fallback, so the module hint points at the user module.
+        resolve through Case 2 (namespace import) rather than the global
+        fallback, so the module hint points at the user module.
         """
         pytest.importorskip("tree_sitter_typescript")
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -718,7 +716,7 @@ const x = require(name);
         assert class_symbols[0].name == "ApiClient"
 
     def test_exported_function_is_flagged(self, tmp_path: Path) -> None:
-        """WI-nimug: ``export function`` sets Symbol.is_exported=True."""
+        """``export function`` sets Symbol.is_exported=True (WI-nimug)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -731,7 +729,7 @@ const x = require(name);
         assert by_name["privateFn"].is_exported is False
 
     def test_exported_class_is_flagged(self, tmp_path: Path) -> None:
-        """WI-nimug: ``export class`` sets Symbol.is_exported=True."""
+        """``export class`` sets Symbol.is_exported=True (WI-nimug)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -746,7 +744,7 @@ const x = require(name);
     def test_export_default_function_is_flagged(
         self, tmp_path: Path,
     ) -> None:
-        """WI-nimug: ``export default function`` sets is_exported=True."""
+        """``export default function`` sets is_exported=True (WI-nimug)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -763,7 +761,7 @@ const x = require(name);
         assert handler_sym.is_exported is True
 
     def test_export_clause_named_is_flagged(self, tmp_path: Path) -> None:
-        """WI-nimug: ``export { foo, bar }`` clause flags both names."""
+        """``export { foo, bar }`` clause flags both names (WI-nimug)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -780,8 +778,8 @@ const x = require(name);
 
     def test_module_symbol_not_exported(self, tmp_path: Path) -> None:
         """The synthetic file pseudo-node carries no verdict at all: this
-        analyzer's rule is about declarations, and INV-kubup says a producer
-        with no rule for a record says nothing rather than "not exported"."""
+        analyzer's rule is about declarations, and a producer with no rule for
+        a record says nothing rather than "not exported" (INV-kubup)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -955,16 +953,14 @@ const enum Direction {
 
 
 class TestImportEdgeSrcWiring:
-    """INV-judod: import-edge ``src`` must equal the importing file's
-    canonical Symbol ID (the one produced by ``make_file_id``).
+    """Import-edge ``src`` must equal the importing file's canonical Symbol
+    ID (the one produced by ``make_file_id``).
 
-    Pre-fix bug: js_ts.py constructed the src ID with the file's basename
-    in the ``name`` slot (e.g. ``typescript:.../main.ts:1-1:main.ts:file``)
-    while the file Symbol's actual ID uses the literal ``file`` in that
-    slot (``typescript:.../main.ts:1-1:file:file``). Downstream graph
-    queries asking "what does file X import?" therefore returned zero
-    matches for every TS/JS file in the repo. Python's analyzer always
-    used ``make_file_id`` so its imports surfaced correctly.
+    The file Symbol's ID uses the literal ``file`` in the ``name`` slot
+    (``typescript:.../main.ts:1-1:file:file``), not the basename
+    (``...:1-1:main.ts:file``). An import edge whose src differs from that ID
+    is invisible to graph queries asking "what does file X import?"
+    (INV-judod).
     """
 
     def test_es6_import_src_matches_file_symbol_id(self, tmp_path: Path) -> None:
@@ -2981,9 +2977,9 @@ router.delete('/users/:id', userController.deleteUser);
 
         assert len(routes) == 3
 
-        # WI-zugob: Symbol.name is now "{METHOD} {path}" fleet-wide; handler
-        # identity moved to meta["handler_ref"] (what route_handler resolves
-        # against). Same assertion, read from where the handler now lives.
+        # Route Symbol.name is "{METHOD} {path}"; handler identity lives in
+        # meta["handler_ref"], which is what route_handler resolves against
+        # (WI-zugob).
         handlers = {(r.meta or {}).get("handler_ref") for r in routes}
         assert "userController.register" in handlers
         assert "userController.getUsers" in handlers
@@ -3029,7 +3025,7 @@ router.get('/users', handleUsers);
         routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(routes) == 1
-        # WI-zugob: name is "{METHOD} {path}"; the handler is in handler_ref.
+        # Name is "{METHOD} {path}"; the handler is in handler_ref (WI-zugob).
         assert routes[0].name == "GET /users"
         assert routes[0].meta.get("http_method") == "GET"
         assert routes[0].stable_id is not None
@@ -3214,14 +3210,12 @@ app.get('/data', (req, res) => {
     def test_call_inside_callback_attributed_to_callback_symbol(self, tmp_path: Path) -> None:
         """Calls inside an anonymous callback attribute to the *callback* symbol.
 
-        WI-zavad anon-callback slice changed this contract: the callback
-        ``data.forEach((item) => { helper(); })`` is now extracted as a
-        ``_cb_forEach`` function node, so ``helper()`` attributes to it rather
-        than to the enclosing named ``main`` (the prior behavior, which had no
-        callback symbol to anchor on). The enclosing ``main`` still reaches the
-        callback — and transitively ``helper`` — via the companion
+        The callback ``data.forEach((item) => { helper(); })`` is extracted as
+        a ``_cb_forEach`` function node, so ``helper()`` attributes to it rather
+        than to the enclosing named ``main``. The enclosing ``main`` still
+        reaches the callback — and transitively ``helper`` — via the companion
         ``references`` edge, so reachability is preserved while attribution
-        becomes more precise.
+        stays precise (WI-zavad).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -3247,7 +3241,7 @@ function main() {
 
         cb = next(s for s in result.symbols if s.name == "_cb_forEach")
         main = next(s for s in result.symbols if s.name == "main")
-        # the body call now attributes to the callback symbol, not main directly
+        # the body call attributes to the callback symbol, not main directly
         assert any(e.src == cb.id for e in helper_calls), \
             f"Call should attribute to the callback symbol, got sources: {[e.src for e in helper_calls]}"
         # main reaches the callback via a companion references edge (preserves
@@ -3360,7 +3354,7 @@ export class UsersController {
     def test_nestjs_get_with_path(self, tmp_path: Path) -> None:
         """NestJS @Get(':id') with @Controller('users') should combine to full path.
 
-        Route path combination is now handled by enrichment (via prefix_from_parent)
+        Route path combination is handled by enrichment (via prefix_from_parent)
         rather than at the analyzer level.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -4003,9 +3997,9 @@ function sum(...numbers) {
 
         result = analyze_javascript(tmp_path)
 
-        # NOTE: the inline ``reduce((a, b) => a + b, 0)`` callback is now also a
-        # function symbol (WI-zavad anon-callback slice), so find ``sum`` by name
-        # rather than assuming it is the only function.
+        # NOTE: the inline ``reduce((a, b) => a + b, 0)`` callback is also a
+        # function symbol (``_cb_reduce``), so find ``sum`` by name rather than
+        # assuming it is the only function.
         funcs = [s for s in result.symbols if s.kind == "function"]
         sum_fn = next(s for s in funcs if s.name == "sum")
         sig = sum_fn.signature
@@ -4034,16 +4028,13 @@ function greet(name: string): string {
 
 
 class TestJsTsSignatureParityINVgolap:
-    """INV-golap: JS function/method nodes must populate ``signature`` at
-    parity with TypeScript.
+    """JS function/method nodes must populate ``signature`` at parity with
+    TypeScript (INV-golap).
 
-    The original "0/10 JS vs 25/26 TS" asymmetry was stale for ordinary
-    constructs (the signature code path was added after the measuring pass).
-    The residual real gap was route-handler pseudo-symbols: the inline
-    handler emit site created a ``kind="function"`` Symbol without ever
-    calling ``_extract_jsts_signature``, leaving ``signature=None`` even
-    though ``(req, res)`` is right there on the handler node. These tests
-    lock in parity so the closure cannot silently regress.
+    Covers ordinary constructs and route-handler pseudo-symbols: the inline
+    handler emit site creates its own ``kind="function"`` Symbol, so it must
+    call ``_extract_jsts_signature`` itself to carry the ``(req, res)``
+    signature present on the handler node.
     """
 
     # Construct families that the analyzer extracts as named function/method
@@ -4309,14 +4300,14 @@ function run() {
 
         When two files define the same function name, a named import should
         resolve calls to the correct module via import path disambiguation.
-        Previously, direct calls like ``process()`` after
-        ``import { process } from './dir_a/utils'`` would resolve to whichever
-        file was processed last (global_symbols last-one-wins), ignoring the
-        import statement entirely.
+        A direct call like ``process()`` after
+        ``import { process } from './dir_a/utils'`` must follow the import
+        rather than whichever file was processed last (global_symbols is
+        last-one-wins).
 
         Uses two consumers (one importing from each dir) so the test is
         order-independent: regardless of which symbol wins global_symbols,
-        one consumer MUST break without the fix.
+        one consumer fails if the import path is ignored.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -5042,7 +5033,7 @@ class CatsController {
         # Alias should be the key, not the original name
         assert "CS" in imports
         assert imports["CS"] == "./cats.service"
-        # WI-kujom: originals dict preserves the underlying name.
+        # The originals dict preserves the underlying name (WI-kujom).
         assert originals["CS"] == "CatsService"
 
     def test_disambiguate_non_relative_import_falls_through(self, tmp_path: Path) -> None:
@@ -5138,8 +5129,9 @@ class CatsController {
             if ctrl_edges:
                 controllers_with_edges.add(ctrl.path)
 
-        # The bug: only 1 of 3 controllers produces edges because
-        # _get_enclosing_function uses global_symbols (one per name)
+        # Each same-named controller must anchor its own calls; a name-keyed
+        # enclosing-function lookup (one symbol per name) would leave only one
+        # of the three with edges.
         assert len(controllers_with_edges) == 3, (
             f"Expected ALL 3 controllers to have call edges, "
             f"but only {len(controllers_with_edges)} do: "
@@ -5148,7 +5140,7 @@ class CatsController {
 
 
 # ============================================================================
-# TypeScript Decorator Metadata Tests (Phase 4)
+# TypeScript Decorator Metadata Tests
 # ============================================================================
 
 
@@ -5169,9 +5161,8 @@ class TestDecoratorMetadata:
         decorated class to the decorator function.
 
         This exercises the happy path of the decorator resolver in
-        _extract_decorator_edges — previously uncovered because every
-        decorator test only verified metadata extraction, not edge
-        construction.
+        _extract_decorator_edges (edge construction, not just metadata
+        extraction).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -5387,7 +5378,7 @@ class ApiController {
 
 
 # ============================================================================
-# TypeScript Base Class Metadata Tests (Phase 4)
+# TypeScript Base Class Metadata Tests
 # ============================================================================
 
 
@@ -6371,11 +6362,11 @@ class UserRepository extends Repository<User> {
     def test_external_base_class_emits_unresolved_extends_edge(
         self, tmp_path: Path
     ) -> None:
-        """External base classes now emit an UNRESOLVED extends edge (F4/A2).
+        """External base classes emit an UNRESOLVED extends edge.
 
-        Previously the extractor dropped external bases entirely, orphaning the
-        class in the inheritance graph. The edge is unresolved-external (its dst
-        is a ``:unresolved`` placeholder, not a resolved in-repo symbol)."""
+        Without it the class would be an orphan in the inheritance graph. The
+        edge is unresolved-external (its dst is a ``:unresolved`` placeholder,
+        not a resolved in-repo symbol)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "component.tsx").write_text("""
@@ -6395,8 +6386,8 @@ class MyComponent extends React.Component {
         assert my_class is not None
         assert "base_classes" in (my_class.meta or {})
 
-        # External base now yields exactly one UNRESOLVED extends edge (not a
-        # resolved in-repo target, and no longer dropped).
+        # External base yields exactly one UNRESOLVED extends edge (not a
+        # resolved in-repo target, and not dropped).
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
         assert len(extends_edges) == 1, [(e.dst, e.is_resolved) for e in extends_edges]
         edge = extends_edges[0]
@@ -6409,9 +6400,9 @@ class MyComponent extends React.Component {
     ) -> None:
         """When multiple classes share a name, extends resolves to the imported one.
 
-        INV-015: Same bug as Python (Django 238 Model stubs). Two files define
-        class 'Model'; child file imports from specific path and extends 'Model'.
-        Edge should resolve to the imported Model, not the other one.
+        Two files define class 'Model'; child file imports from a specific path
+        and extends 'Model'. Edge should resolve to the imported Model, not the
+        other one. Same rule as the Python analyzer (INV-015).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -7623,10 +7614,10 @@ class TestCrossPackageGuardAllPaths:
     """Tests for cross-package guard on namespace calls, method inference,
     object field references, and direct call fallback.
 
-    These edge creation paths previously lacked the cross-package guard
-    that was applied to ``callback_argument_reference`` and direct calls
-    with import-path disambiguation.  Common names like ``error``,
-    ``request``, ``f``, ``apply`` resolved across npm package boundaries.
+    These edge creation paths need the same cross-package guard as
+    ``callback_argument_reference`` and direct calls with import-path
+    disambiguation; without it, common names like ``error``, ``request``,
+    ``f``, ``apply`` resolve across npm package boundaries.
     """
 
     def test_namespace_call_no_cross_package(
@@ -7872,8 +7863,7 @@ class TestNormalizeJstsSignature:
 
 class TestJsTsTopLevelCallEdges:
     """Top-level code (outside any function) should produce call edges
-    attributed to the file pseudo-node (INV-jahom; updated for INV-kokaj
-    to use kind='file' instead of kind='module')."""
+    attributed to the kind='file' pseudo-node (INV-jahom, INV-kokaj)."""
 
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
@@ -7901,7 +7891,7 @@ class TestJsTsTopLevelCallEdges:
         assert file_syms[0].id.startswith("javascript:")
         assert file_syms[0].id.endswith(":1-1:file:file")
         assert "index.js" in file_syms[0].id
-        # No legacy kind='module' Symbol for the file pseudo-node.
+        # No kind='module' Symbol for the file pseudo-node.
         mod_syms = [
             s for s in result.symbols
             if s.kind == "module" and s.language == "javascript"
@@ -8368,10 +8358,10 @@ class TestReactRouterJSXRouteDetection:
         route = next(r for r in routes if r.meta["route_path"] == "/nolazy")
         assert "lazy_import" not in route.meta
 
-    # INV-dogif residual gaps (3), (4), (5) — see tracker discussion 2026-05-17
+    # Dynamic route paths and v5 render-prop routes (INV-dogif gaps 3-5).
 
     def test_jsx_dynamic_path_expression_does_not_emit_route(self, tmp_path: Path) -> None:
-        """INV-dogif gap (4): <Route path={someVar}> must NOT emit a route.
+        """<Route path={someVar}> must NOT emit a route (INV-dogif gap 4).
 
         The identifier text of a JSX expression is the variable NAME, not its
         value, so emitting a route with route_path='someVar' would be a false
@@ -8398,12 +8388,11 @@ class TestReactRouterJSXRouteDetection:
         )
 
     def test_object_config_dynamic_path_does_not_emit_route(self, tmp_path: Path) -> None:
-        """INV-dogif gap (5): {path: someVar, ...} must NOT emit a bogus route.
+        """{path: someVar, ...} must NOT emit a bogus route (INV-dogif gap 5).
 
-        At js_ts.py:1140-1141, the code blindly extracts _node_text from the
-        value_node and treats it as the path. For identifier nodes that yields
-        the variable name as a fake route_path — a junk entry in routes.txt.
-        Skip emission when the value isn't a string literal.
+        For an identifier value node, its text is the variable name, which
+        would become a fake route_path — a junk entry in routes.txt. Emission
+        is skipped when the value isn't a string literal.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -8428,7 +8417,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
     def test_v5_render_prop_route(self, tmp_path: Path) -> None:
-        """INV-dogif gap (3): React Router v5 <Route render={...}> recognized.
+        """React Router v5 <Route render={...}> recognized (INV-dogif gap 3).
 
         v5 uses render-prop and children-prop patterns alongside element/component.
         The route's path must still be detected; the render-prop component name
@@ -8560,7 +8549,7 @@ class TestSpaBootstrapUsageContext:
         ctx = bootstrap_ctx[0]
         assert ctx.context_name == "createRoot"
         # symbol_ref should point to the module symbol
-        # INV-kokaj: file pseudo-node is now kind="file" (was "module").
+        # The file pseudo-node has kind="file" (INV-kokaj).
         module_sym = next(
             s for s in result.symbols
             if s.kind == "file" and s.language in ("javascript", "typescript")
@@ -8586,7 +8575,7 @@ class TestSpaBootstrapUsageContext:
         assert len(bootstrap_ctx) == 1
         ctx = bootstrap_ctx[0]
         assert ctx.context_name == "ReactDOM.render"
-        # INV-kokaj: file pseudo-node is now kind="file" (was "module").
+        # The file pseudo-node has kind="file" (INV-kokaj).
         module_sym = next(
             s for s in result.symbols
             if s.kind == "file" and s.language in ("javascript", "typescript")
@@ -8688,7 +8677,7 @@ class TestSpaBootstrapUsageContext:
             if c.kind == "call" and c.context_name == "app.whenReady"
         ]
         assert len(bootstrap_ctx) == 1
-        # INV-kokaj: file pseudo-node is now kind="file" (was "module").
+        # The file pseudo-node has kind="file" (INV-kokaj).
         module_sym = next(
             s for s in result.symbols
             if s.kind == "file" and s.language in ("javascript", "typescript")
@@ -8715,16 +8704,16 @@ class TestSpaBootstrapUsageContext:
 
 
 class TestHttpHandlerUsageContext:
-    """INV-rolul: tests for HTTP/GraphQL server handler call detection
-    via UsageContext.
+    """Tests for HTTP/GraphQL server handler call detection via
+    UsageContext (INV-rolul).
 
     The JS/TS analyzer must emit ``kind="call"`` UsageContexts for the
     function-name set targeted by ``frameworks/node-http.yaml`` ``usage:
-    kind: "^call$"`` patterns (WI-tisam / WI-donud — Apollo entrypoints
-    relocated from graphql.yaml to node-http.yaml so they fire on thin
-    consumers without ``@apollo/server`` in package.json). Without these
-    UCs, the YAML patterns never fire end-to-end on real consumers even
-    though their unit tests (synthesise-UC-then-feed-matcher) pass.
+    kind: "^call$"`` patterns. Apollo entrypoints are among them, so they
+    fire on thin consumers without ``@apollo/server`` in package.json
+    (WI-tisam, WI-donud). Without these UCs, the YAML patterns never fire
+    end-to-end on real consumers even though their unit tests
+    (synthesise-UC-then-feed-matcher) pass.
     """
 
     def test_start_standalone_server(self, tmp_path: Path) -> None:
@@ -9058,12 +9047,12 @@ class TestJsTsShapeId:
         assert cls.shape_id.startswith("sha256:")
 
 
-# WI-lozug PR 2: wire emit_module_attribute_refs into _analyze_javascript_impl
-# so that attribute reads on imported/global modules (e.g. ``process.env``)
-# produce ``module_attr_ref`` edges that io_boundary can tag against the
-# ``attributes:`` entries in ``io_primitives/javascript.yaml``.
+# _analyze_javascript_impl calls emit_module_attribute_refs so that attribute
+# reads on imported/global modules (e.g. ``process.env``) produce
+# ``module_attr_ref`` edges that io_boundary can tag against the
+# ``attributes:`` entries in ``io_primitives/javascript.yaml`` (WI-lozug).
 class TestJsTsModuleAttrRefs:
-    """Tests for ``module_attr_ref`` emission in JS/TS (WI-lozug PR 2)."""
+    """Tests for ``module_attr_ref`` emission in JS/TS (WI-lozug)."""
 
     def test_emits_module_attr_ref_for_process_env(
         self, tmp_path: Path,
@@ -9188,15 +9177,11 @@ console.log(env);
 
 
 class TestAccessModeClassificationOnCallEdges:
-    """WI-kohah: ADR-0015 dataflow annotation must classify call edges in
-    JS/TS so the --dataflow slice can answer "what writes vs reads this
-    value". Pre-WI-kohah coverage (the bakeoff-deep DEEP cohort 1 reflect
-    on 2026-05-10) showed 0/61 nestjs and 0/80 apollo-server sampled
-    calls edges had access_mode set in the MqttController dataflow slice,
-    even though the assignment-positional rules existed in the yaml — the
-    surviving edges were inside framework decorator calls / return
-    statements / RxJS publishers, none of which fit the assignment
-    schema. WI-kohah extends the JS/TS dataflow config with:
+    """ADR-0015 dataflow annotation must classify call edges in JS/TS so the
+    --dataflow slice can answer "what writes vs reads this value" (WI-kohah).
+    Assignment-positional rules alone miss most JS/TS call edges, which sit
+    inside framework decorator calls / return statements / RxJS publishers.
+    The JS/TS dataflow config therefore adds:
 
     1. ``returns:`` positional rules for return_statement / throw_statement
        / yield_expression / await_expression (call inside any of these →
@@ -9258,8 +9243,8 @@ class TestAccessModeClassificationOnCallEdges:
         )
 
     def test_await_call_classification_known_limitation(self, tmp_path: Path) -> None:
-        """Documents a known limitation that intersects WI-kohah and the
-        ``_build_line_index`` heuristic in dataflow.py.
+        """Documents a known limitation of the ``_build_line_index``
+        heuristic in dataflow.py.
 
         ``const x = await fetcher();`` parses as
         ``lexical_declaration > [const, variable_declarator > [x, =,
@@ -9276,14 +9261,12 @@ class TestAccessModeClassificationOnCallEdges:
         Fixing this requires teaching ``_build_line_index`` to prefer
         deeper-by-depth non-punctuation tokens (or, more invasively,
         teaching ``annotate_dataflow`` to look up by edge column not
-        just edge line). Both are out of scope for WI-kohah, which is
-        a JS/TS YAML enrichment WI, not a positional-walk rewrite WI.
-        Tracked separately if the bakeoff signal warrants it.
+        just edge line). Both are outside the JS/TS YAML dataflow config
+        this class tests.
 
         The 7 other tests in this class exercise the cases that DO
         thread through the existing line-index machinery (top-level
-        return / throw / library-pattern method calls), which is where
-        the bulk of nestjs / apollo-server call edges live.
+        return / throw / library-pattern method calls).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -9417,7 +9400,7 @@ class TestJsTsLinesOfCode:
 
 
 class TestJsTsDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on JS/TS callable symbols."""
+    """Symbol.docstring on JS/TS callable symbols (INV-jahiv)."""
 
     def test_js_function_with_jsdoc(self, tmp_path: Path) -> None:
         """Function symbols populate docstring from preceding JSDoc."""
@@ -9449,7 +9432,7 @@ class TestJsTsDocstring:
 
 
 class TestJSTSQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on JS/TS symbols."""
+    """Symbol.qualified_name on JS/TS symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
         """Methods inside a class carry Class.method qualified_name with '.' separator."""
@@ -9542,19 +9525,17 @@ class TestJsTsCyclomaticComplexity:
 
 
 class TestWizavadCjsModuleBindingParity:
-    """WI-zavad / emission-parity F2: CommonJS module bindings are first-class
-    import aliases (parity with ESM), and module-variant extensions
-    (.mjs/.cjs/.mts/.cts) are discovered.
+    """CommonJS module bindings are first-class import aliases (parity with
+    ESM), and module-variant extensions (.mjs/.cjs/.mts/.cts) are discovered
+    (WI-zavad).
 
-    Before this fix the ``require()`` edge-emitter recorded the *import* edge
-    but never registered the bound name as a namespace/named alias, so member
-    calls on a require-bound module
-    (``const fs = require('fs'); fs.readFileSync(...)``) emitted ZERO ``calls``
-    edges — leaving CommonJS Node I/O invisible to the io-boundaries layer (the
-    WI-zavad P0 symptom: a CJS service file reports zero I/O, output identical
-    to a genuinely I/O-free file). ESM ``import * as fs`` / ``import { x }``
-    already routed through the namespace (Case 2 / WI-vurop) and named-import
-    (WI-banaf) unresolved-call paths; CommonJS now reaches the same parity.
+    The ``require()`` edge-emitter records the *import* edge and also
+    registers the bound name as a namespace/named alias, so member calls on a
+    require-bound module (``const fs = require('fs'); fs.readFileSync(...)``)
+    emit ``calls`` edges through the same namespace (Case 2) and named-import
+    unresolved-call paths as ESM ``import * as fs`` / ``import { x }``.
+    Without the alias, CommonJS Node I/O is invisible to the io-boundaries
+    layer and a CJS service file looks identical to an I/O-free one.
     """
 
     def test_cjs_default_binding_member_call_emits_unresolved_edge(
@@ -9713,19 +9694,15 @@ class TestWizavadCjsModuleBindingParity:
 
 
 class TestWizavadGlobalIoEmission:
-    """WI-zavad / emission-parity F2 (slice 2): browser/worker global I/O calls
-    reach the io-boundary catalog.
+    """Browser/worker global I/O calls reach the io-boundary catalog
+    (WI-zavad).
 
-    The JavaScript io-primitives catalog already lists ``caches`` (Service
-    Worker CacheStorage), ``indexedDB``, and the global ``fetch`` — but the
-    analyzer never emitted calls for them, so a Service Worker file built
-    entirely from top-level ``self.addEventListener('fetch', e => caches.open(...))``
-    callbacks produced zero edges (the WI-zavad frozen-substrate repro:
-    ``service-worker.js`` full of ``caches.open()``/``fetch()`` emitted only
-    event-subscriber 'uses' edges). ``caches``/``indexedDB`` join
-    ``JS_KNOWN_GLOBALS`` (member-call Case 3b) and bare ``fetch()`` gets an
-    unresolved-call path; calls in top-level/anonymous-callback scope attribute
-    to the file pseudo-node (``module_symbol``).
+    The JavaScript io-primitives catalog lists ``caches`` (Service Worker
+    CacheStorage), ``indexedDB``, and the global ``fetch``. ``caches`` /
+    ``indexedDB`` are in ``JS_KNOWN_GLOBALS`` (member-call Case 3b) and bare
+    ``fetch()`` has an unresolved-call path, so a Service Worker built from
+    ``self.addEventListener('fetch', e => caches.open(...))`` callbacks emits
+    its I/O calls rather than only event-subscriber 'uses' edges.
     """
 
     def test_caches_member_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
@@ -9773,10 +9750,8 @@ class TestWizavadGlobalIoEmission:
         assert hits, callees
 
     def test_service_worker_idiom_emits_io_calls(self, tmp_path: Path) -> None:
-        """The WI-zavad P0 reproduction: a Service Worker built from top-level
-        anonymous-callback event listeners now emits its CacheStorage + network
-        I/O calls (attributed to the file pseudo-node), where it previously
-        emitted zero call edges."""
+        """A Service Worker built from top-level anonymous-callback event
+        listeners emits its CacheStorage + network I/O calls (WI-zavad)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "service-worker.js").write_text(
@@ -9818,28 +9793,22 @@ class TestWizavadGlobalIoEmission:
 
 
 class TestWizavadGeneratorFnExprEmission:
-    """WI-zavad / emission-parity F2 (named function-node slice): generator
-    functions and const-bound *function expressions* emit function symbols at
-    parity with ordinary function declarations and const-bound arrow functions.
+    """Generator functions and const-bound *function expressions* emit
+    function symbols at parity with ordinary function declarations and
+    const-bound arrow functions, in both JS and TS (WI-zavad).
 
-    Two NAMED extraction holes (symmetric across JS and TS — distinct from
-    INV-golap's signature asymmetry, which only affected route handlers):
+    Two named constructs the symbol-extraction branches must match:
 
     1. ``function* gen() {}`` parses as ``generator_function_declaration``
-       (declaration) / ``generator_function`` (expression), neither of which the
-       symbol-extraction branches matched — so generators emitted ZERO function
-       symbols (invisible to call graph / centrality / dead-code / CC / LOC /
-       signature).
+       (declaration) / ``generator_function`` (expression). Without a symbol,
+       generators are invisible to call graph / centrality / dead-code / CC /
+       LOC / signature.
     2. ``const f = function () {}`` binds a ``function_expression`` (or
-       ``generator_function``) to a variable, but the ``lexical_declaration``
-       emit path only matched ``arrow_function`` values — so const-bound
-       function expressions emitted zero symbols.
+       ``generator_function``) to a variable, so the ``lexical_declaration``
+       emit path must match those values as well as ``arrow_function``.
 
-    These are the named counterpart of the still-deferred anonymous-callback
-    function-NODE slice (same HIGH-blast-radius class: adds function symbols
-    corpus-wide, shifting symbol/centrality/dead-code counts). Fixing emission
-    also requires call-attribution parity (``_get_enclosing_function`` must
-    recognise generator bodies) so calls inside a generator attribute to the
+    Emission also needs call-attribution parity (``_get_enclosing_function``
+    recognises generator bodies) so calls inside a generator attribute to the
     generator symbol rather than dangling on the file pseudo-node.
     """
 
@@ -10028,8 +9997,8 @@ class TestWizavadGeneratorFnExprEmission:
     ) -> None:
         """A generator param shadowing a global function name must NOT emit a
         false call edge to the global (``_is_shadowed_by_param`` must recognise
-        generator scopes). Before the fix, ``cb`` inside the generator was not
-        seen as a param, so ``cb()`` falsely resolved to the global ``cb``."""
+        generator scopes); otherwise ``cb()`` inside the generator would
+        resolve to the global ``cb``."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / f"a.{ext}").write_text(
@@ -10055,8 +10024,7 @@ class TestWizavadGeneratorFnExprEmission:
         ``Client`` so a weaker name-only fallback would mis-resolve to
         ``Other.send``: the test therefore requires the typed-param gate to
         actually fire (resolve to ``Client.send`` AND attribute to ``gen``),
-        rather than passing on the single-method name-disambiguation coincidence
-        that made an earlier version of this test vacuous."""
+        rather than passing on a single-method name-disambiguation coincidence."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "a.ts").write_text(
@@ -10128,7 +10096,7 @@ class TestWizavadGeneratorFnExprEmission:
 
     def test_inline_generator_route_handler_emitted(self, tmp_path: Path) -> None:
         """An inline generator route handler (Koa-v1 idiom) emits a route symbol
-        retaining its declared name, instead of being silently dropped."""
+        retaining its declared name."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "a.js").write_text(
@@ -10149,31 +10117,28 @@ class TestWizavadGeneratorFnExprEmission:
 
 
 class TestWizavadAnonCallbackFunctionNode:
-    """WI-zavad / emission-parity F2 (anonymous-callback function-node slice,
-    Option 1 — documented-idiom scope).
+    """Anonymous callback function nodes (WI-zavad).
 
     Anonymous functions that are (a) passed as call arguments
     (``self.addEventListener('x', e => {})``, ``arr.forEach(cb)``,
     ``p.then(cb)``) or (b) immediately-invoked function expressions / IIFEs
-    (``(function () {})()``) now emit function-node symbols.
+    (``(function () {})()``) emit function-node symbols.
 
-    Before this slice these anonymous callbacks produced NO symbol (only the
-    file pseudo-node), so body-calls inside them attributed to the file node and
-    the WS-linker fell back to a file anchor as the edge src (the F159.A2-c
-    facet on the frozen service-worker substrate).
+    Without these symbols, body-calls inside the callbacks attribute to the
+    file pseudo-node and the WS-linker falls back to a file anchor as the
+    edge src.
 
     Naming convention:
       * call-argument callback -> ``_cb_<callee>`` (the function/method the
         callback is passed to, e.g. ``_cb_forEach`` / ``_cb_addEventListener``).
       * IIFE -> ``_iife``.
 
-    Scope is deliberately bounded to the two idioms WI-zavad names. Anonymous
-    arrows in return / ternary / template-substitution position have no
-    call-site anchor for an incoming edge and are NOT extracted (a separate,
-    explicitly-deferred follow-up).
+    Scope is deliberately bounded to these two idioms. Anonymous arrows in
+    return / ternary / template-substitution position have no call-site anchor
+    for an incoming edge and are NOT extracted.
 
-    The attribution machinery already supported callbacks via position lookup
-    (``_get_enclosing_function``); this slice is the *extraction* half plus a
+    Attribution to callbacks works via position lookup
+    (``_get_enclosing_function``); extraction adds the symbols plus a
     companion incoming edge (``references``/``callback_argument_reference`` for
     call-arg callbacks, ``calls`` for IIFEs) so the new symbols are not
     dead-code false-positives.
@@ -10618,9 +10583,9 @@ class TestWizavadAnonCallbackFunctionNode:
     def test_service_worker_idiom_emits_callback_symbols_js(
         self, tmp_path: Path
     ) -> None:
-        """The WI-zavad frozen-substrate reproduction: a file built entirely
-        from top-level addEventListener callbacks plus an IIFE previously
-        emitted ZERO function nodes (only the file pseudo-node)."""
+        """A file built entirely from top-level addEventListener callbacks
+        plus an IIFE emits a function node for each callback and the IIFE,
+        not just the file pseudo-node."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "sw.js").write_text(
@@ -10638,12 +10603,11 @@ class TestWizavadAnonCallbackFunctionNode:
 
 
 class TestJsTsUnresolvedExternalInheritance:
-    """Tests for the unresolved-external extends/implements fallback (F4 / A2).
+    """Tests for the unresolved-external extends/implements fallback.
 
-    Before this fix the JS/TS inheritance-edge extractor emitted edges only for
-    bases that resolved intra-repo; external/library bases (``extends
-    LitElement``, ``implements OnInit``) were dropped entirely, leaving the
-    class an inheritance-graph orphan indistinguishable from a base-less class.
+    External/library bases (``extends LitElement``, ``implements OnInit``)
+    still get an inheritance edge; without one the class would be an
+    inheritance-graph orphan indistinguishable from a base-less class.
 
     The fallback mirrors the unresolved-CALL convention (WI-banaf/WI-vurop): an
     edge to ``{lang}:{module_hint}:0-0:{base}:unresolved`` with ``is_resolved=
@@ -10875,8 +10839,8 @@ class TestJsTsUnresolvedExternalInheritance:
     def test_intra_repo_base_still_resolves_no_unresolved(
         self, tmp_path: Path, ext: str
     ) -> None:
-        """An intra-repo base still resolves to a real symbol (no regression),
-        and does NOT additionally emit an unresolved edge for it."""
+        """An intra-repo base still resolves to a real symbol, and does NOT
+        additionally emit an unresolved edge for it."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / f"base.{ext}").write_text("export class LocalBase {}\n")
@@ -11046,8 +11010,9 @@ class TestJsTsBareMethodMagnetGate:
 
     def test_bare_call_tie_among_methods_is_deferred(self, tmp_path: Path) -> None:
         """A bare ``compute()`` that two OTHER classes' methods could answer is
-        a tie the resolver no longer guesses (WI-jomik): it is deferred with
-        ``enclosing_class``, exactly as a weak pick of one of them was."""
+        a tie the resolver does not guess: it is deferred with
+        ``enclosing_class``, the same as any weak cross-class match
+        (WI-jomik)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "w.ts").write_text("class Widget {\n  compute() { return 1; }\n}\n")

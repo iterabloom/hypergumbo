@@ -83,14 +83,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      error types.
 3. Post-process: Extract decorated_by edges from attribute metadata
 
-Scope in identity (INV-fabih). Every stable_id hashes the inline ``mod``
-blocks and functions enclosing the item (``_rust_hash_scope``): callables and
-members through ``rust_hashed_qualified_name`` (``a::Inner::go`` where they
-hashed ``Inner::go``), structs, enums and traits through
-``overload_arity.scoped_table_stable_id`` (they had the backstop's bare-name
-table key). Two ``struct Inner`` in ``mod a`` and ``mod b`` and their members
-tied, and deleting the first moved the second's ids. Top-level items keep
-their values.
+Scope in identity. Every stable_id hashes the inline ``mod`` blocks and
+functions enclosing the item (``_rust_hash_scope``): callables and members
+through ``rust_hashed_qualified_name`` (``a::Inner::go``, not
+``Inner::go``), structs, enums and traits through
+``overload_arity.scoped_table_stable_id`` (not the backstop's bare-name table
+key). Without the scope, two ``struct Inner`` in ``mod a`` and ``mod b`` and
+their members would tie, and deleting the first would move the second's ids.
+A top-level item has an empty scope, so its id is the unscoped value
+(INV-fabih).
 
 Parity with the SCIP backend
 ----------------------------
@@ -225,10 +226,10 @@ def _extract_rust_signature(
     Returns a signature string like "(x: i32, y: String) -> bool" or None
     if extraction fails.
 
-    WI-duguk: also accepts ``function_signature_item`` — a trait method with no
-    default body. That node carries the same ``parameters`` / ``return_type``
-    fields as ``function_item`` and differs only in having no ``body``, which
-    this extractor never reads. Nothing else changes: for a trait contract the
+    Also accepts ``function_signature_item`` — a trait method with no
+    default body (WI-duguk). That node carries the same ``parameters`` /
+    ``return_type`` fields as ``function_item`` and differs only in having no
+    ``body``, which this extractor never reads. For a trait contract the
     signature is the entire content of the member, so declining to extract it
     would make the emitted symbol strictly less useful than its impl-side
     counterpart.
@@ -318,15 +319,15 @@ def _rust_split_first_top_level_arg(s: str) -> str:
 def _extract_rust_return_type_name(signature: str | None) -> str | None:
     """Extract the return-type name from a Rust function signature.
 
-    WI-titor (INV-dihos Phase 3) return-type registry entry-point for
-    Rust. Signatures follow the form ``(params) -> ReturnType`` produced
-    by ``_extract_rust_signature``. The extractor:
+    Return-type registry entry point for Rust (WI-titor). Signatures
+    follow the form ``(params) -> ReturnType`` produced by
+    ``_extract_rust_signature``. The extractor:
 
     * leaves opaque returns unregistered — ``impl Trait`` and
       ``dyn Trait`` (no concrete name for ``var_types`` to consume);
     * strips references and lifetimes — ``&'a T`` / ``&mut T`` / ``&T`` → ``T``;
-    * unwraps the WI-titor Tier 2 wrapper set
-      (``Result<T,E>`` / ``Option<T>`` / ``Box<T>`` / ``Rc<T>`` / ``Arc<T>``)
+    * unwraps the ``_RUST_UNWRAP_WRAPPERS`` set
+      (``Result<T,E>`` /``Option<T>`` / ``Box<T>`` / ``Rc<T>`` / ``Arc<T>``)
       to the first generic argument, recursing once so nested wrappers
       like ``Box<Result<Client,Error>>`` reduce to ``Client``;
     * strips other generics (``Vec<User>`` → ``Vec``, consistent with
@@ -389,7 +390,7 @@ def _extract_rust_return_type_name(signature: str | None) -> str | None:
 def _normalize_rust_type_to_bare_name(type_text: str) -> str | None:
     """Reduce a Rust type expression to a bare type identifier or None.
 
-    WI-titor shared helper used by ``_extract_param_types_rust`` and the
+    Shared helper used by ``_extract_param_types_rust`` and the
     let-binding var_types walker. Mirrors the residue path of
     ``_extract_rust_return_type_name`` (after the arrow-strip and
     wrapper-unwrap steps): strip references and lifetimes, unwrap
@@ -408,11 +409,10 @@ def _extract_param_types_rust(
 ) -> dict[str, str]:
     """Extract parameter ``name -> type`` mapping from a Rust function_item.
 
-    WI-titor (INV-dihos Phase 3) var_types bootstrap. The result feeds
-    the file-scoped ``var_types`` dict so method calls on typed
-    parameters (``fn process(client: Client) { client.send() }``)
+    The result seeds the file-scoped ``var_types`` dict so method calls
+    on typed parameters (``fn process(client: Client) { client.send() }``)
     resolve to ``Client::send`` instead of falling through to the
-    short-name ambiguity guard.
+    short-name ambiguity guard (WI-titor).
 
     Skips ``self`` / ``&self`` / ``&mut self`` (they're handled
     separately by ``_get_impl_target`` + ``field_type_registry``).
@@ -447,11 +447,12 @@ def _extract_enum_variant_field_types_rust(
     """Map ``EnumName::Variant`` -> positional tuple-field types.
 
     Feeds match-arm / ``if let`` / ``while let`` / destructuring-``let`` binding
-    inference (WI-kodap): a local destructured from a tuple-struct enum variant
+    inference: a local destructured from a tuple-struct enum variant
     (``Cmd::Query(q)``) adopts the variant's field type, so a later
     ``q.method()`` resolves to the concrete impl instead of collapsing to a
-    short-name-ambiguous method (zoxide's subcommand dispatch left every
-    concrete handler with 0 incoming calls). A position whose type is a builtin
+    short-name-ambiguous method, which would leave every concrete handler of
+    a subcommand-dispatch enum with no incoming calls (WI-kodap). A position
+    whose type is a builtin
     / opaque / non-identifier normalizes to ``None`` (skipped at bind time, but
     the slot is kept so multi-field patterns stay positionally aligned). Unit
     and struct-like (``Named { x: Foo }``) variants are not indexed — their
@@ -490,8 +491,8 @@ def _extract_var_types_rust(
 ) -> dict[str, str]:
     """Build a file-scoped ``var_name -> type_name`` map for Rust.
 
-    WI-titor (INV-dihos Phase 3) var_types bootstrap + chained-call
-    registry consumption. File-scoped (not method-scoped) matches the
+    Seeds ``var_types`` and consumes the return-type registry for
+    chained calls (WI-titor). File-scoped (not method-scoped) matches the
     Java/Kotlin/C#/Go convention per ADR-0006; the documented trade-off
     is occasional false positives when the same variable name carries
     different types across functions (extra edges, never missing edges).
@@ -510,11 +511,10 @@ def _extract_var_types_rust(
        ``s := Server{}`` rule.
     4. ``let x = Type { ... }`` — ``struct_expression`` body, the type
        is the ``name`` field.
-    5. ``let x = receiver.method(...)`` — Phase 3 new path: when
-       ``receiver`` is already bound in ``var_types`` and the registry
-       knows ``ReceiverType::method``'s return type, ``x`` adopts that
-       return type. Without the registry, this returns no binding
-       (fail-open — matches the pre-WI-titor behavior).
+    5. ``let x = receiver.method(...)`` — when ``receiver`` is already
+       bound in ``var_types`` and the registry knows
+       ``ReceiverType::method``'s return type, ``x`` adopts that return
+       type. Without the registry, this returns no binding (fail-open).
 
     Returns an empty dict when no patterns match; never raises.
     """
@@ -529,10 +529,10 @@ def _extract_var_types_rust(
             for k, v in _extract_param_types_rust(node, source).items():
                 var_types.setdefault(k, v)
         elif node.type == "tuple_struct_pattern":
-            # WI-kodap: a tuple-struct enum-variant pattern (match arm, if/while
-            # let, or destructuring let) binds each positional local to the
-            # variant's field type, so a later `local.method()` resolves to the
-            # concrete impl. First-writer-wins, file-scoped (the documented
+            # A tuple-struct enum-variant pattern (match arm, if/while let, or
+            # destructuring let) binds each positional local to the variant's
+            # field type, so a later `local.method()` resolves to the concrete
+            # impl (WI-kodap). First-writer-wins, file-scoped (the documented
             # var_types trade-off: extra edges, never missing).
             type_node = _find_child_by_field(node, "type")
             if type_node is None:  # pragma: no cover - grammar invariant
@@ -582,12 +582,13 @@ def _extract_var_types_rust(
 def _qualified_rust_type_path(type_text: str, bare: str) -> str | None:
     """Return the WRITTEN module path of a type expression, or None.
 
-    INV-linub L3. ``_normalize_rust_type_to_bare_name`` reduces a type
-    expression to its terminal identifier — "strip module paths", per its own
-    docstring — which is exactly right for the first-party symbol lookups the
-    typed-receiver strategies perform, and exactly wrong for the module slot
-    of an edge whose receiver type is EXTERNAL. When the source spells
-    ``std::fs::File`` the path is present in the text and is simply discarded.
+    ``_normalize_rust_type_to_bare_name`` reduces a type expression to its
+    terminal identifier — "strip module paths", per its own docstring — which
+    is exactly right for the first-party symbol lookups the typed-receiver
+    strategies perform, and exactly wrong for the module slot of an edge
+    whose receiver type is EXTERNAL. When the source spells ``std::fs::File``
+    the path is present in the text, and normalization discards it
+    (INV-linub L3).
 
     This recovers that path WITHOUT re-deriving the type. It is deliberately
     incapable of inventing one: it returns a value only when the written text
@@ -631,10 +632,10 @@ def _extract_qualified_var_type_paths(
       2. ``let f: std::fs::File = ...``           — binding annotation
       3. ``let s = std::time::Instant::now();``   — scoped construction
 
-    Shape 3 was the largest single miss in the four-repo measurement (52 of 80
-    ``elapsed`` sites). Shapes this does NOT cover — a struct-field receiver
-    and a chained receiver — lose the type further upstream, in the receiver
-    walk rather than in normalization, and are filed separately.
+    Shapes this does NOT cover — a struct-field receiver and a chained
+    receiver — lose the type further upstream, in the receiver walk rather
+    than in normalization; the field- and chained-receiver arms of the
+    unresolved-external path in ``_extract_edges_from_file`` recover those.
 
     First-writer-wins and file-scoped, matching ``_extract_var_types_rust``'s
     documented trade-off exactly, so the two maps never disagree about which
@@ -702,9 +703,9 @@ def _extract_qualified_var_type_paths(
     return paths
 
 
-#: Methods that project ``Result<T, E>`` / ``Option<T>`` to ``T``. WI-papar: a
-#: receiver reached through one of these IS the inner type, so the type walk steps
-#: through them rather than looking them up. Kept to the spellings that
+#: Methods that project ``Result<T, E>`` / ``Option<T>`` to ``T``. A receiver
+#: reached through one of these IS the inner type, so the type walk steps
+#: through them rather than looking them up (WI-papar). Kept to the spellings that
 #: unambiguously yield ``T`` -- ``ok()`` yields ``Option<T>`` and is NOT here.
 _RUST_RESULT_PROJECTORS = frozenset({
     "unwrap", "expect", "unwrap_or", "unwrap_or_else", "unwrap_or_default",
@@ -724,19 +725,17 @@ def _infer_type_from_rust_rhs(
     ``None`` (fail-open). Pulled out as a helper so the same logic can
     be reused at edge-extraction time if needed.
     """
-    # WI-papar: strip the wrappers that project `Result<T, E>` / `Option<T>`
-    # to `T`, because none of them changes WHICH type the receiver is.
+    # Strip the wrappers that project `Result<T, E>` / `Option<T>` to `T`,
+    # because none of them changes WHICH type the receiver is (WI-papar).
     #
-    #     File::create(p)?             try_expression   -- the form #595 left alone
+    #     File::create(p)?             try_expression
     #     File::create(p).unwrap()     a method call on the Result
     #
-    # Both are the same mechanism and the second is the MORE common one: measured
-    # over ripgrep + bellman + tiktoken-rs, a receiver reached through
-    # `.unwrap()` / `.expect()` occurs 49 times against 29 for `?`. Handling only
-    # the syntax form would fix the rarer half of one mechanism, so the helper
-    # takes both -- and it takes them HERE, in the shared helper, because #595's
-    # shape-3 walker mirrors this function exactly and the two must not disagree
-    # about which node carries the type.
+    # Both are the same mechanism, and the method-call form is the more common
+    # one, so the helper takes both -- and it takes them HERE, in the shared
+    # helper, because the shape-3 walker in
+    # ``_extract_qualified_var_type_paths`` mirrors this function and the two
+    # must not disagree about which node carries the type.
     for _ in range(6):
         if value_node.type == "parenthesized_expression" or value_node.type == "try_expression":
             inner = next((c for c in value_node.children if c.is_named), None)
@@ -859,13 +858,13 @@ def _rust_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """The inline ``mod`` blocks and functions enclosing ``node``, outermost
     first: what a Rust stable_id hashes beside the owner and name (INV-fabih).
 
-    Members hashed ``Owner::name`` and types the backstop's bare-name table
-    key, so two ``struct Inner`` (and their ``impl``) in ``mod a`` and ``mod
-    b`` -- or two ``fn run`` in them, or two helpers nested in two functions
-    -- tied, and deleting the first moved the second's id. The crate-level
-    module is the file itself, which the file anchor identifies, so a
-    top-level item keeps its value. ``rust_scip`` hashes the same chain
-    (WI-zakub parity).
+    Hashing only ``Owner::name`` for members and the backstop's bare-name
+    table key for types would make two ``struct Inner`` (and their ``impl``)
+    in ``mod a`` and ``mod b`` -- or two ``fn run`` in them, or two helpers
+    nested in two functions -- tie, and deleting the first would move the
+    second's id. The crate-level module is the file itself, which the file
+    anchor identifies, so a top-level item's scope is empty. ``rust_scip``
+    hashes the same chain (WI-zakub parity).
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type not in ("mod_item", "function_item"):
@@ -907,8 +906,9 @@ def _rust_method_candidate(sym: Symbol) -> bool:
     """A method call ``x.f()`` reaches a METHOD, never a free function.
 
     The shared resolver's call-shape filter (WI-jomik). The method pool also
-    holds free functions, for ``module::f()`` paths, so a lone free ``fn join``
-    bound every ``p.join("x")`` in the crate -- std's ``Path::join`` on just.
+    holds free functions, for ``module::f()`` paths, so without this filter a
+    lone free ``fn join`` would bind every ``p.join("x")`` in the crate --
+    std's ``Path::join`` included.
     Calling a function-valued field needs ``(x.f)()``, which is not this shape.
     """
     return sym.kind == "method"
@@ -946,7 +946,7 @@ def _get_trait_owner(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
     Stops at the first ``impl_item`` and returns ``None``: in
     ``impl Drawable for Service`` the methods belong to **Service**, not to
-    Drawable, which is what the impl path has always emitted.
+    Drawable, which is what the impl path emits.
     """
     current = node.parent
     while current is not None:
@@ -1260,10 +1260,10 @@ def _enclosing_impl_block_annotations(
     misses that inherited annotation (each method's preceding-sibling
     chain only contains attributes immediately above the ``fn``).
 
-    WI-tijim wired this in for PyO3's ``#[pymethods]`` specifically —
-    without the propagation, the pyffi linker's PyO3 detector saw 4 of
-    ~100 methods on the canonical PyO3 crate (Robyn) and dropped the
-    rest, breaking Python→Rust FFI chain tracing through the bridge.
+    The motivating case is PyO3's ``#[pymethods]``: without the
+    propagation, the pyffi linker's PyO3 detector misses the methods of a
+    ``#[pymethods]`` impl block, breaking Python→Rust FFI chain tracing
+    through the bridge (WI-tijim).
 
     Mirrors :func:`_is_inside_cfg_test`'s walk-up-to-container pattern.
     Returns annotations in source order from the nearest impl outward
@@ -1368,10 +1368,9 @@ def _extract_struct_field_types(
     ``_unwrap_deref_type`` so the registry contains effective dispatch types.
 
     Tuple structs (``struct Foo(Bar)``) register their fields by POSITION
-    (``"0"``, ``"1"``, ...), the names ``self.0.method()`` uses. They were
-    skipped on the belief that the pattern does not apply; it does, and with
-    no field type ``self.0.push(x)`` fell to the short-name fallback and bound
-    a first-party ``push`` (WI-lirik).
+    (``"0"``, ``"1"``, ...), the names ``self.0.method()`` uses. With no field
+    type, ``self.0.push(x)`` would fall to the short-name fallback and bind a
+    first-party ``push`` (WI-lirik).
 
     Args:
         tree: Parsed tree-sitter tree for a single file.
@@ -1443,7 +1442,7 @@ def _extract_symbols_from_file(
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
     """
     analysis = FileAnalysis()
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # File-identity anchor for this file's symbols (WI-bokab). ``file_path`` is
     # the repo-relative path (the extract override passes ``rel_path``). Folded into
     # make_typed_stable_id's containing slot so same-name functions/methods in
     # different files hash distinctly. MUST byte-match rust_scip's anchor for the same
@@ -1457,12 +1456,12 @@ def _extract_symbols_from_file(
             if name_node:
                 func_name = node_text(name_node, source)
                 impl_target = _get_impl_target(node, source)
-                # WI-duguk: a trait method with a DEFAULT BODY parses as a
-                # `function_item` inside the `trait_item`, so it reached here
-                # with no impl target and was emitted as a bare `function` —
+                # A trait method with a DEFAULT BODY parses as a
+                # `function_item` inside the `trait_item`, so it arrives here
+                # with no impl target. Emitted as a bare `function` it would be
                 # indistinguishable from a module-level free function, and
                 # unrooted by the containment linker (whose parent extraction
-                # needs a separator in the name). The trait owns it.
+                # needs a separator in the name). The trait owns it (WI-duguk).
                 owner = impl_target or _get_trait_owner(node, source)
                 if owner:
                     full_name = f"{owner}::{func_name}"
@@ -1480,9 +1479,9 @@ def _extract_symbols_from_file(
                 # Extract annotations for YAML pattern matching
                 annotations = _extract_rust_annotations(node, source)
 
-                # WI-tijim: inherit annotations from the enclosing impl
-                # block. PyO3 attribute macros (``#[pymethods]``) and
-                # async-trait wrappers go on the impl, not on each method.
+                # Inherit annotations from the enclosing impl block. PyO3
+                # attribute macros (``#[pymethods]``) and async-trait
+                # wrappers go on the impl, not on each method (WI-tijim).
                 if impl_target:
                     for ann in _enclosing_impl_block_annotations(node, source):
                         if ann not in annotations:
@@ -1513,8 +1512,8 @@ def _extract_symbols_from_file(
                 ) if norm_sig else None
 
                 mod_path = _get_rust_mod_path(node, source)
-                # Phase 6 PR6 (ADR-0034 id_format closure): canonical IDs
-                # forbid ``:`` in the name segment. Rust impl-method names
+                # Canonical IDs forbid ``:`` in the name segment (ADR-0034
+                # id_format). Rust impl-method names
                 # use ``::`` (e.g., ``MyStruct::method``); the ID segment
                 # collapses to ``.`` while Symbol.name and Symbol.qualified_name
                 # keep the native ``::`` form.
@@ -1548,11 +1547,11 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-                # WI-titor (INV-dihos Phase 3): populate the return-type
-                # registry so Pass 2 var_types inference can chain through
-                # ``let x = receiver.method()``. Keyed by qualified name
-                # (``Receiver::method``) for methods and bare name for
-                # free functions; first writer wins downstream.
+                # Populate the return-type registry so Pass 2 var_types
+                # inference can chain through ``let x = receiver.method()``
+                # (WI-titor). Keyed by qualified name (``Receiver::method``)
+                # for methods and bare name for free functions; first
+                # writer wins downstream.
                 ret_name = _extract_rust_return_type_name(signature)
                 if ret_name:
                     analysis.method_return_types[full_name] = ret_name
@@ -1592,8 +1591,8 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    # INV-fabih: the table formula over the enclosing mods and
-                    # functions (the backstop's own value at top level).
+                    # The table formula over the enclosing mods and functions
+                    # (the backstop's own value at top level; INV-fabih).
                     stable_id=scoped_table_stable_id(
                         kind="struct", lang="rust", path=file_path,
                         name=struct_name, scope=type_scope,
@@ -1608,8 +1607,8 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[struct_name] = symbol
 
-                # WI-jusus (emission-parity F5): emit a kind="field" Symbol per
-                # NAMED struct field. Tuple structs (`struct W(i32)`) have no
+                # Emit a kind="field" Symbol per NAMED struct field (WI-jusus,
+                # emission parity). Tuple structs (`struct W(i32)`) have no
                 # field_declaration_list (positional fields) -> no field symbols.
                 body = find_child_by_type(node, "field_declaration_list")
                 for fdecl in body.children if body else ():
@@ -1660,8 +1659,8 @@ def _extract_symbols_from_file(
                     analysis.node_for_symbol[f_sym.id] = node
                     analysis.symbol_by_name[f_full] = f_sym
 
-        # Module-level const / static — WI-jusus (emission-parity F5): a
-        # kind="variable" Symbol for each top-level or mod-level value binding.
+        # Module-level const / static: a kind="variable" Symbol for each
+        # top-level or mod-level value binding (WI-jusus, emission parity).
         # Function-body locals and impl-/trait-associated consts are excluded
         # (see _is_rust_module_level_const).
         elif node.type in ("const_item", "static_item") and _is_rust_module_level_const(node):
@@ -1710,9 +1709,9 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(v_sym)
                 analysis.symbol_by_name[var_name] = v_sym
 
-        # Module-level type alias -- WI-bamar: ``pub type R<T> = Result<T, E>;``
-        # is a declaration, and emitted nothing (two of the three SCIP-only
-        # declarations on aardvark-dns). Module level only, by the const rule:
+        # Module-level type alias: ``pub type R<T> = Result<T, E>;`` is a
+        # declaration, which the SCIP backend reports too (WI-bamar).
+        # Module level only, by the const rule:
         # an impl's ``type Item = u32;`` is an associated type, and a trait's
         # ``type Item;`` is not a ``type_item`` at all.
         elif node.type == "type_item" and _is_rust_module_level_const(node):
@@ -1807,9 +1806,9 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[enum_name] = symbol
 
-                # WI-duguk: emit a kind="field" Symbol per enum variant, the
-                # same shape the struct-field loop above uses and the same
-                # choice the D and Nim analyzers already made. Without these
+                # Emit a kind="field" Symbol per enum variant, the same shape
+                # the struct-field loop above uses and the same choice the D
+                # and Nim analyzers make (WI-duguk). Without these
                 # the enum is a container with nothing in it, so the
                 # containment linker roots nothing and `slice --reverse` from
                 # the enum returns the container alone. All three variant
@@ -1870,29 +1869,29 @@ def _extract_symbols_from_file(
                     analysis.node_for_symbol[v_sym.id] = variant
                     analysis.symbol_by_name[v_full] = v_sym
 
-        # WI-duguk: a trait method with NO default body parses as a
-        # `function_signature_item`, a node type the walk never handled, so a
-        # pure trait contract produced no members at all. Emitted as a
-        # `method` owned by the trait, matching both the impl path
-        # (`Service::run`) and the default-bodied trait method handled in the
-        # `function_item` branch. Associated `const`/`type` items are distinct
-        # node types and are deliberately not swept in — this is the callable
-        # surface.
+        # A trait method with NO default body parses as a
+        # `function_signature_item`; without this branch a pure trait contract
+        # would have no members at all. It is emitted as a `method` owned by
+        # the trait, matching both the impl path (`Service::run`) and the
+        # default-bodied trait method handled in the `function_item` branch
+        # (WI-duguk). Associated `const`/`type` items are distinct node types
+        # and are deliberately not swept in — this is the callable surface.
         elif node.type == "function_signature_item":
             name_node = _find_child_by_field(node, "name")
             trait_owner = _get_trait_owner(node, source)
             foreign_block = _enclosing_foreign_block(node)
             if name_node and foreign_block is not None:
-                # INV-lopus: a function declared in an ``extern`` block. It had
-                # no symbol, so a call to it stayed unresolved with the
-                # ``external`` slot and the catalogue matched it by SHORT NAME
-                # -- loro's wasm_bindgen ``Date.now`` read as
-                # ``std::time::Instant.now``. A free ``function`` (it has no
-                # owner a receiver could be), with the foreign binding the
-                # source states in ``meta["ffi_import"]``. Identity is computed
-                # as the ``function_item`` branch computes it, so ``rust_scip``
-                # -- which already recomputes a stable id for any unowned
-                # ``function_signature_item`` -- stays byte-identical.
+                # A function declared in an ``extern`` block. Without a
+                # symbol, a call to it would stay unresolved with the
+                # ``external`` slot and the catalogue would match it by SHORT
+                # NAME -- a wasm_bindgen ``Date.now`` read as
+                # ``std::time::Instant.now`` (INV-lopus). It is a free
+                # ``function`` (it has no owner a receiver could be), with the
+                # foreign binding the source states in ``meta["ffi_import"]``.
+                # Identity is computed as the ``function_item`` branch
+                # computes it, so ``rust_scip`` -- which recomputes a stable
+                # id for any unowned ``function_signature_item`` -- stays
+                # byte-identical.
                 f_name = node_text(name_node, source)
                 f_start = node.start_point[0] + 1
                 f_end = node.end_point[0] + 1
@@ -2278,9 +2277,8 @@ def _use_tree_bindings(
     Wildcards are the one shape that deliberately yields nothing: the set of
     names ``use a::*;`` brings into scope is a property of the imported
     module, which the analyzer cannot see, so registering anything here would
-    invent a binding rather than record one.  Top-level wildcards have always
-    behaved this way; a wildcard INSIDE a group must not suppress its
-    siblings.
+    invent a binding rather than record one.  This holds at the top level
+    and inside a group, where a wildcard must not suppress its siblings.
     """
     kind = node.type
 
@@ -2359,7 +2357,7 @@ _RUST_ABSOLUTE_PATH_ROOTS: frozenset[str] = frozenset({"std", "core", "alloc"})
 
 #: ``a::b::c`` with plain identifier segments, optionally ``::``-rooted. A
 #: turbofish (``Vec::<u8>::new``) or a qualified-self path
-#: (``<T as Trait>::m``) does not match and keeps its previous treatment.
+#: (``<T as Trait>::m``) does not match and is not split.
 _PLAIN_RUST_PATH = re.compile(r"(?:::)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+")
 
 
@@ -2507,14 +2505,13 @@ def _extract_use_aliases(
     - ``use std::fs::{File, read};``      -> ``File: std::fs::File``,
       ``read: std::fs::read``
 
-    The last form is why this is a recursive walk rather than three lookups
-    (INV-zuvib).  Every non-grouped form is a DIRECT child of
-    ``use_declaration``, so the original implementation found them with
-    ``find_child_by_type``; a grouped list is wrapped in a ``scoped_use_list``
-    one level down, matched none of the three, and registered nothing at all.
-    A call through such an import then reached no module slot and matched no
+    The last form is why this is a recursive walk rather than direct-child
+    lookups.  Every non-grouped form is a DIRECT child of
+    ``use_declaration``, but a grouped list is wrapped in a
+    ``scoped_use_list`` one level down, which a direct-child lookup misses.
+    A call through a missed import reaches no module slot and matches no
     ``io_primitives`` row -- silently, because the file still parses and the
-    call edge is still emitted.
+    call edge is still emitted (INV-zuvib).
 
     Returns a dict mapping local alias -> full import path.
     """
@@ -2711,7 +2708,7 @@ def _rust_value_target(
     # ``Type::f`` with a ``Type`` this repo does not declare (``String::from``,
     # ``log::LevelFilter::from``) is chosen by trait dispatch on the argument
     # type, which this pass cannot see: a repo ``impl From<Foo> for String``
-    # bound every ``.map(String::from)`` on a ``&str`` (zellij).
+    # would otherwise bind every ``.map(String::from)`` on a ``&str``.
     owners = candidates_by_name.get(owner) or [
         s for s in local_symbols.values() if s.name == owner
     ]
@@ -2721,9 +2718,8 @@ def _rust_value_target(
     if local is not None and local.kind in ("function", "method"):
         return local, None
     # Every declaration of that name, narrowed to the caller's crate when there
-    # are several -- two crates may each have an ``Error::regex`` (ripgrep's
-    # regex and pcre2), and the name lookup picked one by order. Still
-    # several: no edge.
+    # are several -- two crates may each have an ``Error::regex``, and a name
+    # lookup would pick one by order. Still several: no edge.
     hits = [
         s for s in candidates_by_name.get(text, ())
         if s.kind in ("function", "method")
@@ -2774,7 +2770,7 @@ def _rust_type_is_external(
     (``std::collections::HashMap``), or a name a ``use`` brought in from
     outside it (``use std::collections::VecDeque``). A type parameter
     (``inner: T``), a first-party type, or a name nothing explains is not
-    evidence, and returns False: the short-name fallback then runs as before.
+    evidence, and returns False: the short-name fallback then runs.
     """
     def outside(path: str) -> bool:
         head = path.split("::", 1)[0]
@@ -2800,10 +2796,10 @@ def _rust_use_path_function(
 
     ``use crate::config::parse_configs; parse_configs(..)`` and ``use
     app::config; config::parse_configs(..)`` name ONE function, in the module
-    file the path resolves to. The bare-name lookup they used to fall to
-    returns whichever same-named function registered last, so the call graph
-    depended on file order: a survey's sorted order bound a ``#[cfg(test)]``
-    helper of the same name, the recorded harness's walk order did not.
+    file the path resolves to. A bare-name lookup returns whichever
+    same-named function registered last, which makes the call graph depend
+    on file order: one walk order binds a ``#[cfg(test)]`` helper of the same
+    name, another does not.
 
     Positive evidence only: the path's module must resolve to a file in the
     tree, and that file must declare exactly one free function of the name.
@@ -2870,10 +2866,10 @@ def _extract_edges_from_file(
             trait_sym for any name and the unresolved-trait branch
             handles edge emission.
         var_types: Optional file-scoped ``var_name -> type_name`` map
-            from ``_extract_var_types_rust`` (WI-titor / INV-dihos Phase
-            3). When provided, ``receiver.method()`` calls whose
+            from ``_extract_var_types_rust`` (WI-titor). When provided,
+            ``receiver.method()`` calls whose
             ``receiver`` is a bound variable resolve directly to
-            ``{ReceiverType}::{method}`` — a new strategy that fires
+            ``{ReceiverType}::{method}`` — a strategy that fires
             between the self-field path (Strategy 1.5) and the
             short-name fallback (Strategy 2), bypassing the
             generic-trait-method blocklist for receivers with known
@@ -2889,19 +2885,20 @@ def _extract_edges_from_file(
     file_anchor = file_anchor_symbol("rust", str(file_path), PASS_ID, run_id)
     _var_types: dict[str, str] = var_types or {}
     _var_type_paths: dict[str, str] = var_type_paths or {}
-    # WI-milak / BUG-04: hoisted out of the iter_tree loop so the
-    # impl_item ``_lookup_trait`` closure doesn't trigger ruff B023
+    # Hoisted out of the iter_tree loop so the impl_item ``_lookup_trait``
+    # closure doesn't trigger ruff B023
     # (function-definition-does-not-bind-loop-variable). The contents
-    # don't change across nodes within a single file.
+    # don't change across nodes within a single file (WI-milak / BUG-04).
     _trait_kind_index = kind_index if kind_index is not None else {}
-    # INV-lopus: this file's FREE functions by qualified name, so a bare call
-    # binds to the item its OWN module declares. ``local_symbols`` keeps one
-    # symbol per short name, and the last same-named declaration in the file
-    # wins: with ``extern "C" { fn now(); }`` at the root and ``mod helpers {
-    # pub fn now() }`` below it, a root-level ``now()`` bound to
+    # This file's FREE functions by qualified name, so a bare call binds to
+    # the item its OWN module declares. ``local_symbols`` keeps one symbol
+    # per short name, and the last same-named declaration in the file wins:
+    # with ``extern "C" { fn now(); }`` at the root and ``mod helpers {
+    # pub fn now() }`` below it, a root-level ``now()`` would bind to
     # ``helpers::now`` -- an item Rust does not even put in that scope (a
     # module's items are visible only inside it, or through a ``use``). Only
-    # a BARE identifier call asks this; a method or path call is untouched.
+    # a BARE identifier call asks this; a method or path call is untouched
+    # (INV-lopus).
     _free_fns_by_qname: dict[str, Symbol] = {
         s.qualified_name: s for s in (file_functions or ())
         if s.kind == "function" and s.qualified_name
@@ -2916,28 +2913,26 @@ def _extract_edges_from_file(
                 trait_name = _extract_base_type_name(trait_node, source)
                 impl_type_name = _extract_base_type_name(type_node, source)
                 if trait_name and impl_type_name:
-                    # WI-kahaz: the LHS of ``impl X for Y`` (``X``) must resolve
-                    # to a trait. Without this discipline, when a project also
-                    # defines a non-trait symbol named ``X`` (e.g. candle's
-                    # marker ``struct Clone;`` in cuda_backend/mod.rs:85),
-                    # ``impl Clone for Y`` binds to the struct and emits a
-                    # spurious confidence-0.95 ``Y implements struct-X`` edge.
-                    # Same structural class as WI-zozuz BUG-03 (the
-                    # inheritance-linker analogue, fixed in
-                    # ``linkers/inheritance.py`` via Rust kind discipline).
+                    # The LHS of ``impl X for Y`` (``X``) must resolve to a
+                    # trait. Without this discipline, when a project also
+                    # defines a non-trait symbol named ``X`` (e.g. a marker
+                    # ``struct Clone;``), ``impl Clone for Y`` binds to the
+                    # struct and emits a spurious confidence-0.95
+                    # ``Y implements struct-X`` edge (WI-kahaz;
+                    # ``linkers/inheritance.py`` applies the same Rust kind
+                    # discipline, WI-zozuz).
                     #
-                    # WI-milak / BUG-04: the kind-discipline guard alone is
-                    # insufficient when both a trait and a struct of the same
-                    # short name exist in different files (candle-core's
-                    # ``trait Module`` vs candle-kernels' ``struct Module``).
-                    # The single-value ``global_symbols`` dict overwrites on
-                    # registration order; the survivor leaks through and the
-                    # canonical trait is unreachable. Prefer the kind-segregated
-                    # multi-value index populated by ``register_symbol`` —
-                    # it sees every same-named candidate, lets us pick the
-                    # trait deterministically (same-file first, then by
-                    # stable id), and falls through to ``return None``
-                    # rather than to a struct/enum when no trait exists.
+                    # The kind-discipline guard alone is insufficient when
+                    # both a trait and a struct of the same short name exist
+                    # in different files (``trait Module`` in one crate,
+                    # ``struct Module`` in another). The single-value
+                    # ``global_symbols`` dict overwrites on registration
+                    # order, so the canonical trait can be unreachable. The
+                    # kind-segregated multi-value index populated by
+                    # ``register_symbol`` sees every same-named candidate,
+                    # picks the trait deterministically (same-file first,
+                    # then by stable id), and returns None rather than a
+                    # struct/enum when no trait exists (WI-milak / BUG-04).
                     def _lookup_trait(name: str) -> Optional["Symbol"]:
                         candidates = _trait_kind_index.get(name)
                         if candidates is None:
@@ -2945,8 +2940,8 @@ def _extract_edges_from_file(
                         traits = [c for c in candidates if c.kind == "trait"]
                         if not traits:
                             # Same-named non-trait candidates exist but no
-                            # trait — preserve WI-kahaz: don't fall back
-                            # to a struct/enum.
+                            # trait: don't fall back to a struct/enum
+                            # (WI-kahaz).
                             return None
                         same_file = [t for t in traits if t.path == file_path]
                         if same_file:
@@ -2991,10 +2986,10 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 evidence_type="trait_impl",
                                 is_resolved=False,
-                                # WI-nurun: confidence kept explicit — trait_impl
-                                # is single-valued in the derivation table (0.95),
+                                # Confidence is explicit because trait_impl is
+                                # single-valued in the derivation table (0.95),
                                 # so it cannot express the lower reliability of an
-                                # *unresolved* trait impl.
+                                # *unresolved* trait impl (WI-nurun).
                                 confidence=0.70,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
@@ -3012,16 +3007,15 @@ def _extract_edges_from_file(
             if path_node:
                 import_paths = [node_text(path_node, source)]
             else:
-                # WI-silam: a brace list (``use a::{b, c};``, a
-                # ``scoped_use_list``) or an alias (``use a::b as c;``, a
-                # ``use_as_clause``) matched none of the shapes above and
-                # emitted NO imports edge; a top-level ``use {...}`` matched
-                # ``use_list`` and emitted ONE edge to its whole text. The use-tree walker the alias map
-                # already uses expands every path it binds, at any depth.
-                # A top-level ``use { a::b, c };`` (just's prelude) is a bare
-                # ``use_list`` the walker does not take as a node: its items
-                # are walked with no prefix. It used to be one stand-in whose
-                # module slot was the whole brace text.
+                # A brace list (``use a::{b, c};``, a ``scoped_use_list``) or
+                # an alias (``use a::b as c;``, a ``use_as_clause``) matches
+                # none of the shapes above. The use-tree walker the alias map
+                # uses expands every path it binds, at any depth, so each
+                # gets its own imports edge (WI-silam). A top-level
+                # ``use { a::b, c };`` is a bare ``use_list`` the walker does
+                # not take as a node: its items are walked with no prefix,
+                # rather than becoming one stand-in whose module slot is the
+                # whole brace text.
                 bindings: dict[str, str] = {}
                 for child in node.named_children:
                     items = child.named_children if child.type == "use_list" else [child]
@@ -3030,9 +3024,9 @@ def _extract_edges_from_file(
                 import_paths = list(dict.fromkeys(bindings.values()))
             emitted: set[str] = set()
             for import_path in import_paths:
-                # WI-rilof: a path into the tree imports the file it reaches
-                # rather than a ``module`` placeholder finalize turns into a
-                # tier-3 external_symbol.
+                # A path into the tree imports the file it reaches rather
+                # than a ``module`` placeholder finalize turns into a tier-3
+                # external_symbol (WI-rilof).
                 in_tree = (
                     analyzer.in_tree_crates().resolve(
                         str(file_path), import_path, _inline_mod_depth(node),
@@ -3042,7 +3036,7 @@ def _extract_edges_from_file(
                 if in_tree == str(file_path):
                     # A path into this file's own (inline) modules imports
                     # nothing from another file; no edge, rather than a
-                    # self-import or the external stub it used to become.
+                    # self-import or an external ``module`` stub.
                     continue
                 dst = (
                     make_file_id("rust", in_tree) if in_tree is not None
@@ -3134,15 +3128,14 @@ def _extract_edges_from_file(
 
                     if callee_name:
                         resolved = False
-                        # WI-dizag: Strategy 1.5 resolves a self.field
-                        # receiver's type and then uses it ONLY to find a
-                        # first-party symbol. When the field's type is
-                        # EXTERNAL that lookup misses and the type was
-                        # dropped, so the call fell through to the
-                        # unresolved branch carrying the bare ``external``
-                        # placeholder. Carried here so the external branch
-                        # below can put it in the module slot -- the same
-                        # move PR #595 made for ``_var_types``.
+                        # Strategy 1.5 resolves a self.field receiver's type
+                        # and uses it to find a first-party symbol. When the
+                        # field's type is EXTERNAL that lookup misses and the
+                        # call falls through to the unresolved branch, so the
+                        # type is carried here for that branch to put in the
+                        # module slot instead of the bare ``external``
+                        # placeholder -- as it does for ``_var_types``
+                        # (WI-dizag).
                         field_receiver_type: str | None = None
 
                         # Async spawn detection: tokio::spawn(task()),
@@ -3185,17 +3178,16 @@ def _extract_edges_from_file(
                         # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
                         # This gives precise resolution for qualified calls.
                         #
-                        # INV-fahub Phase A: every bind in this branch resolves a
+                        # Every bind in this branch resolves a
                         # ``Type::method`` scoped call whose target type the CALL
                         # SITE named explicitly, so the edge carries
                         # ``meta.receiver="qualified"``. Without it the
-                        # language-agnostic magnet detector counts a qualified
-                        # associated-function call to a method-kind symbol
-                        # (rodio's ``SamplesBuffer::new`` <- 26 callers) as a
-                        # receiver-blind cross-class magnet even though every one
-                        # is correct — the reframe left the detector-side
-                        # ``qualified`` exclusion ready and this stamps the
-                        # producer half.
+                        # language-agnostic magnet detector would count a
+                        # qualified associated-function call to a method-kind
+                        # symbol (a ``SamplesBuffer::new`` with many callers) as
+                        # a receiver-blind cross-class magnet even though every
+                        # one is correct; the detector excludes ``qualified``
+                        # edges, and this stamps the producer half (INV-fahub).
                         if not resolved and full_scoped_name and full_scoped_name != callee_name:
                             if full_scoped_name in local_symbols:
                                 callee = local_symbols[full_scoped_name]
@@ -3212,10 +3204,11 @@ def _extract_edges_from_file(
                                 resolved = True
                             else:
                                 import_hint = use_aliases.get(callee_name)
-                                # WI-lirik: ``config::parse_configs(..)`` after
+                                # ``config::parse_configs(..)`` after
                                 # ``use app::config`` names the function in
-                                # config's file; looked up by name it bound a
-                                # same-named caller, itself included.
+                                # config's file; a lookup by name alone can
+                                # bind a same-named function elsewhere, the
+                                # caller itself included (WI-lirik).
                                 _by_path = _rust_use_path_function(
                                     _rust_use_path_of_call(full_scoped_name, use_aliases),
                                     file_path, kind_index or {},
@@ -3304,8 +3297,8 @@ def _extract_edges_from_file(
                                     value_node, source, impl_target,
                                 )
                                 if receiver_type is not None:
-                                    # WI-dizag: keep it whether or not the
-                                    # first-party lookup below succeeds.
+                                    # Keep it whether or not the first-party
+                                    # lookup below succeeds (WI-dizag).
                                     field_receiver_type = receiver_type
                                     # Strip module prefix from scoped types
                                     # (e.g., "std::sync::Mutex" → "Mutex")
@@ -3333,20 +3326,21 @@ def _extract_edges_from_file(
                                         ))
                                         resolved = True
 
-                        # WI-dizag shape B: a VAR-ROOTED field chain,
-                        # ``h.f.write_all(..)`` with ``h`` a typed parameter or
-                        # local. Strategy 1.5 above handles only ``self``-rooted
-                        # chains (``resolve_receiver_type`` returns None for a
-                        # non-self root), so it left ``field_receiver_type``
-                        # None here and the module-slot recovery downstream had
-                        # nothing to consume. ``resolve_var_field_chain`` is the
-                        # sibling walk: root ``h`` -> ``Holder`` via
-                        # ``_var_types``, field ``f`` -> ``File`` via the same
-                        # struct field-type registry. It sets the type ONLY;
-                        # like #595 it does not set ``has_explicit_binding`` or
-                        # ``resolved``, so emission is byte-identical and the
-                        # module slot is rebuilt from the recovered type
-                        # exactly as the ``self.field`` case is.
+                        # A VAR-ROOTED field chain, ``h.f.write_all(..)`` with
+                        # ``h`` a typed parameter or local (WI-dizag). Strategy
+                        # 1.5 above handles only ``self``-rooted chains
+                        # (``resolve_receiver_type`` returns None for a
+                        # non-self root), which would leave
+                        # ``field_receiver_type`` None and give the module-slot
+                        # recovery downstream nothing to consume.
+                        # ``resolve_var_field_chain`` is the sibling walk: root
+                        # ``h`` -> ``Holder`` via ``_var_types``, field ``f`` ->
+                        # ``File`` via the same struct field-type registry. It
+                        # sets the type ONLY; like the ``_var_types`` recovery
+                        # it does not set ``has_explicit_binding`` or
+                        # ``resolved``, so which edges are emitted does not
+                        # change, and the module slot is rebuilt from the
+                        # recovered type exactly as the ``self.field`` case is.
                         if (
                             field_receiver_type is None
                             and is_method_call
@@ -3364,7 +3358,7 @@ def _extract_edges_from_file(
                                 if _vt is not None:
                                     field_receiver_type = _vt
 
-                        # Strategy 1.8 (WI-titor / INV-dihos Phase 3):
+                        # Strategy 1.8 (WI-titor):
                         # ``var.method()`` where ``var`` is a typed local
                         # / parameter / let-binding tracked in
                         # ``_var_types``. Resolves the receiver type
@@ -3467,14 +3461,14 @@ def _extract_edges_from_file(
 
                         # Strategy 2: Fall back to short name
                         if not resolved:
-                            # WI-lirik: the receiver's type is known to be
+                            # When the receiver's type is known to be
                             # EXTERNAL (``self.items: Vec<u8>``, a
-                            # ``use std::collections::VecDeque`` field), and the
-                            # typed lookup above missed. A same-named
-                            # first-party method is then not the callee --
-                            # ``self.items.push(x)`` bound the enclosing
+                            # ``use std::collections::VecDeque`` field) and the
+                            # typed lookup above missed, a same-named
+                            # first-party method is not the callee --
+                            # ``self.items.push(x)`` must not bind the enclosing
                             # ``push`` -- so the short name binds nothing. A
-                            # type parameter is not that evidence.
+                            # type parameter is not that evidence (WI-lirik).
                             _receiver_is_external = (
                                 is_method_call
                                 and field_receiver_type is not None
@@ -3492,11 +3486,10 @@ def _extract_edges_from_file(
                                 and _local.meta
                                 and "ffi_import" in _local.meta
                             ):
-                                # INV-lopus: a foreign declaration is reached
-                                # by its bare name only. ``SystemTime::now()``
-                                # beside an ``extern { fn now(); }`` is not a
-                                # call to it (loro change.rs:288 bound to it
-                                # on the first A/B).
+                                # A foreign declaration is reached by its bare
+                                # name only. ``SystemTime::now()`` beside an
+                                # ``extern { fn now(); }`` is not a call to it
+                                # (INV-lopus).
                                 _local = None
                             if _local is not None:
                                 callee = _local
@@ -3525,13 +3518,13 @@ def _extract_edges_from_file(
                                 # full "Type::new" wasn't found).  Both are
                                 # method-like calls that should not resolve to
                                 # arbitrary same-name symbols.
-                                # INV-fahub bare->method magnet gate: track
-                                # whether this candidate came from the bare
-                                # (non-method, non-scoped) ``resolver.lookup``
-                                # path, plus the enclosing impl type, so a weak
-                                # short-name hit on a DIFFERENT impl's method
-                                # can be deferred to the inherited_calls Site-1
-                                # walker instead of misbound (see below).
+                                # Bare->method magnet gate: track whether this
+                                # candidate came from the bare (non-method,
+                                # non-scoped) ``resolver.lookup`` path, plus the
+                                # enclosing impl type, so a weak short-name hit
+                                # on a DIFFERENT impl's method can be deferred
+                                # to the inherited_calls Site-1 walker instead
+                                # of misbound (see below; INV-fahub).
                                 _used_bare_resolver = False
                                 _bare_enclosing_type: str | None = None
                                 use_method_guard = (
@@ -3551,7 +3544,7 @@ def _extract_edges_from_file(
                                         # (e.g., nova/nifs.rs over neutron/nifs.rs
                                         # when called from nova/). A tie inside it
                                         # with none in this file is a guess and
-                                        # stays unresolved (WI-jomik: ~80% wrong).
+                                        # stays unresolved (WI-jomik).
                                         caller_dir = (
                                             file_path.rsplit("/", 1)[0]
                                             if "/" in file_path else ""
@@ -3572,18 +3565,18 @@ def _extract_edges_from_file(
                                         import_hint is not None
                                         and import_hint.rsplit("::", 1)[-1] != callee_name
                                     ):
-                                        # WI-silam: ``use m::helper as h3; h3()``
-                                        # calls the function the alias's PATH
-                                        # names. A lookup of the name ``h3``
-                                        # found nothing and minted a stand-in,
-                                        # and a lookup of ``helper`` prefers a
-                                        # same-named function of THIS file
-                                        # (zellij: ``fn generate_random_name``
-                                        # wraps the aliased one). So the path
-                                        # is resolved: in the tree, the function
+                                        # ``use m::helper as h3; h3()`` calls
+                                        # the function the alias's PATH names.
+                                        # A lookup of the name ``h3`` finds
+                                        # nothing, and a lookup of ``helper``
+                                        # prefers a same-named function of THIS
+                                        # file (e.g. a wrapper around the
+                                        # aliased one). So the path is
+                                        # resolved: in the tree, the function
                                         # in the module file it names
                                         # (``_rust_function_in_module``, as for
-                                        # function values); outside, nothing.
+                                        # function values); outside, nothing
+                                        # (WI-silam).
                                         aliased = _rust_function_in_module(
                                             import_hint, file_path, kind_index or {},
                                             analyzer.in_tree_crates() if analyzer is not None else None,
@@ -3592,10 +3585,10 @@ def _extract_edges_from_file(
                                             symbol=aliased[0] if aliased is not None else None,
                                         )
                                     else:
-                                        # WI-lirik: an unaliased ``use`` path
-                                        # names its function too; the exact-
-                                        # name entry below is whichever
-                                        # same-named function registered last.
+                                        # An unaliased ``use`` path names its
+                                        # function too; the exact-name entry
+                                        # below is whichever same-named
+                                        # function registered last (WI-lirik).
                                         _by_path = _rust_use_path_function(
                                             import_hint, file_path, kind_index or {},
                                             analyzer.in_tree_crates() if analyzer is not None else None,
@@ -3615,7 +3608,7 @@ def _extract_edges_from_file(
                                     _used_bare_resolver = not use_method_guard
                                     _bare_enclosing_type = _get_impl_target(node, source)
                                 _sym = lookup_result.symbol
-                                # INV-fahub: a BARE call (``foo()``) that resolved
+                                # A BARE call (``foo()``) that resolves
                                 # only to a DIFFERENT impl's method on weak
                                 # short-name (suffix / ambiguous) evidence is a
                                 # magnet — withhold it and defer to the
@@ -3627,7 +3620,8 @@ def _extract_edges_from_file(
                                 # ``Type::m()`` calls take the method_resolver
                                 # guard path, and same-file free functions are
                                 # caught by the ``local_symbols`` check above, so
-                                # this gate only fires on the cross-impl magnet.
+                                # this gate only fires on the cross-impl magnet
+                                # (INV-fahub).
                                 _defer = (
                                     _used_bare_resolver
                                     and _sym is not None
@@ -3638,14 +3632,15 @@ def _extract_edges_from_file(
                                         separator="::",
                                     )
                                 )
-                                # INV-lopus: a foreign declaration in ANOTHER
-                                # file does not capture a name this file binds
-                                # by ``use`` to a path outside the crate. After
+                                # A foreign declaration in ANOTHER file does
+                                # not capture a name this file binds by ``use``
+                                # to a path outside the crate. After
                                 # ``use std::fs::write;``, ``write(p, b)`` is
                                 # std's, whatever ``extern { fn write(); }``
                                 # the repository declares elsewhere -- binding
-                                # it there turned a real fs_write into a call to
-                                # libc's ``write`` declaration.
+                                # it there would turn a real fs_write into a
+                                # call to libc's ``write`` declaration
+                                # (INV-lopus).
                                 if (
                                     _used_bare_resolver
                                     and _sym is not None
@@ -3661,7 +3656,7 @@ def _extract_edges_from_file(
                                     and _sym is not None
                                     and not _defer
                                 ):
-                                    # WI-fazaj: a scoped ``Type::method()`` call that
+                                    # A scoped ``Type::method()`` call that
                                     # resolves *here* (Strategy 1 missed it; the
                                     # cross-package survey ``method_resolver`` / bare-name
                                     # fallback bound it) still named its target type at the
@@ -3670,10 +3665,10 @@ def _extract_edges_from_file(
                                     # (mirroring the Strategy-1 sites) so
                                     # ``find_receiver_blind_magnets`` excludes it. The
                                     # branch is reachable only through the full-survey
-                                    # method_resolver (verified unreachable across 8
-                                    # isolated ``analyze_rust`` scenarios — cross-file,
-                                    # nested modules, ``use`` aliases, generics, ``::new``
-                                    # ambiguity, re-exports — which all bind via Strategy 1),
+                                    # method_resolver (isolated ``analyze_rust`` runs --
+                                    # cross-file, nested modules, ``use`` aliases, generics,
+                                    # ``::new`` ambiguity, re-exports -- all bind via
+                                    # Strategy 1; WI-fazaj),
                                     # so it carries ``# pragma: no cover``.
                                     _meta = {"call_construct": "function"}
                                     if full_scoped_name is not None:  # pragma: no cover
@@ -3690,7 +3685,7 @@ def _extract_edges_from_file(
                                         meta=_meta,
                                     ))
                                 else:
-                                    # WI-volob / WI-mafik: consult use_aliases
+                                    # Consult use_aliases (WI-volob / WI-mafik)
                                     # to attribute the external call to its
                                     # source module via the structured
                                     # ExternalRef. Three cases:
@@ -3710,26 +3705,24 @@ def _extract_edges_from_file(
                                     #     name field gets the underlying
                                     #     ``create_dir``, not the alias.
                                     # All three short-circuit the 6-seg dst
-                                    # rebuild path (the parsing-bug class
-                                    # documented in WI-tihup foundation).
+                                    # rebuild path and its parsing hazards
+                                    # (WI-tihup).
                                     ext_ref: ExternalRef | None = None
                                     module_hint = "external"
                                     unresolved_name = full_scoped_name or callee_name
                                     has_explicit_binding = False
                                     if full_scoped_name and "::" in full_scoped_name:
                                         head, _, tail = full_scoped_name.partition("::")
-                                        # INV-duzom: the ABSOLUTE path, then one
-                                        # split on its last ``::``. In call
-                                        # position the last segment is the callee
-                                        # and the rest is the item that owns it (a
+                                        # The ABSOLUTE path, then one split on
+                                        # its last ``::``. In call position the
+                                        # last segment is the callee and the
+                                        # rest is the item that owns it (a
                                         # module, a type, an enum), which is the
-                                        # (module, name) pair the slots carry. The
-                                        # aliased arm used to stop at the alias,
-                                        # so ``fs::File::open`` after ``use
-                                        # std::fs;`` became module ``std::fs`` +
-                                        # name ``File::open``; a path written in
-                                        # full had no alias and kept its whole
-                                        # text in the NAME slot.
+                                        # (module, name) pair the slots carry:
+                                        # ``fs::File::open`` after ``use
+                                        # std::fs;`` is module ``std::fs::File``
+                                        # + name ``open``, and a path written in
+                                        # full splits the same way (INV-duzom).
                                         absolute: str | None = None
                                         if head in use_aliases:
                                             absolute = f"{use_aliases[head]}::{tail}"
@@ -3763,34 +3756,31 @@ def _extract_edges_from_file(
                                                 name=name,
                                             )
                                             has_explicit_binding = True
-                                    # INV-linub L3: a TYPED receiver whose type
-                                    # is EXTERNAL must keep its type. The typed
-                                    # strategies above (1.5 / 1.8 / 1.9)
-                                    # resolve ``Type::method`` against
-                                    # first-party symbols only, so an external
-                                    # receiver type misses, ``resolved`` stays
-                                    # False, and control arrives here — where
-                                    # the module slot is rebuilt from
-                                    # ``use_aliases`` alone and a METHOD name is
-                                    # never in ``use_aliases``. The receiver
-                                    # type computed moments earlier was simply
-                                    # dropped. Measured on encrypted-dns-server:
-                                    # 203 of 219 method-construct edges carried
-                                    # the bare ``external`` placeholder and NOT
-                                    # ONE carried a stdlib module, so
-                                    # ``_lookup_named_entry`` refused every one
+                                    # A TYPED receiver whose type is EXTERNAL
+                                    # must keep its type. The typed strategies
+                                    # above (1.5 / 1.8 / 1.9) resolve
+                                    # ``Type::method`` against first-party
+                                    # symbols only, so an external receiver
+                                    # type misses, ``resolved`` stays False,
+                                    # and control arrives here — where the
+                                    # module slot would otherwise be rebuilt
+                                    # from ``use_aliases`` alone, and a METHOD
+                                    # name is never in ``use_aliases``. The
+                                    # edge would then carry the bare
+                                    # ``external`` placeholder, which
+                                    # ``_lookup_named_entry`` refuses
                                     # (correctly — an untyped method call must
-                                    # not match a method-kind entry) and the
-                                    # method half of rust.yaml was unreachable.
+                                    # not match a method-kind entry), leaving
+                                    # the method half of rust.yaml unreachable
+                                    # (INV-linub L3).
                                     #
                                     # DELIBERATELY NARROW. This changes the
                                     # module SLOT only; it does NOT set
                                     # ``has_explicit_binding``, so which edges
                                     # get emitted — including the
                                     # generic-trait-method suppression below —
-                                    # is byte-identical. Widening emission is a
-                                    # separate question with a separate
-                                    # measurement.
+                                    # does not change. Widening emission is a
+                                    # separate question.
                                     if (
                                         not has_explicit_binding
                                         and is_method_call
@@ -3827,8 +3817,8 @@ def _extract_edges_from_file(
                                                     module_path=_full,
                                                     name=callee_name,
                                                 )
-                                    # WI-dizag: the FIELD receiver's type, when
-                                    # the identifier arm above found nothing. The
+                                    # The FIELD receiver's type, when the
+                                    # identifier arm above found nothing. The
                                     # arm above requires ``_recv.type ==
                                     # "identifier"``, so ``self.f.write_all(..)``
                                     # never reaches it -- the receiver node is a
@@ -3836,13 +3826,13 @@ def _extract_edges_from_file(
                                     # resolved that chain through the struct
                                     # field-type registry; this is the same
                                     # module-slot recovery applied to the type it
-                                    # computed.
+                                    # computed (WI-dizag).
                                     #
-                                    # SAME NARROWNESS AS #595: module SLOT only,
-                                    # ``has_explicit_binding`` untouched, so which
-                                    # edges get emitted -- including the
-                                    # generic-trait-method suppression below -- is
-                                    # byte-identical.
+                                    # Same narrowness as the identifier arm:
+                                    # module SLOT only, ``has_explicit_binding``
+                                    # untouched, so which edges get emitted --
+                                    # including the generic-trait-method
+                                    # suppression below -- does not change.
                                     if (
                                         ext_ref is None
                                         and not has_explicit_binding
@@ -3864,32 +3854,31 @@ def _extract_edges_from_file(
                                                 module_path=_fpath,
                                                 name=callee_name,
                                             )
-                                    # WI-papar: the CHAINED receiver's type, when
-                                    # neither arm above found one.
+                                    # The CHAINED receiver's type, when neither
+                                    # arm above found one.
                                     # ``File::create(p)?.write_all(..)`` leaves no
                                     # intermediate variable for the var_types
                                     # walker, so the identifier arm cannot see it
                                     # and the field arm does not apply. Strategy
-                                    # 1.9 above ALREADY inferred the type through
-                                    # ``_infer_type_from_rust_rhs`` and dropped it
-                                    # when the in-repo ``Type::method`` lookup
-                                    # missed -- which is exactly what an EXTERNAL
-                                    # type does. This is the same module-slot
-                                    # recovery the other two arms perform, applied
-                                    # to the type that inference already computed,
-                                    # and qualified the same way: a scoped type
-                                    # names its own module, a bare one needs the
-                                    # ``use`` alias that brought it in, so the slot
-                                    # carries ``std::fs::File`` rather than the
-                                    # bare ``File`` the helper returns.
+                                    # 1.9 above infers the type through
+                                    # ``_infer_type_from_rust_rhs`` but uses it
+                                    # only for the in-repo ``Type::method``
+                                    # lookup, which an EXTERNAL type misses. This
+                                    # is the same module-slot recovery the other
+                                    # two arms perform, applied to that inferred
+                                    # type, and qualified the same way: a scoped
+                                    # type names its own module, a bare one needs
+                                    # the ``use`` alias that brought it in, so the
+                                    # slot carries ``std::fs::File`` rather than
+                                    # the bare ``File`` the helper returns
+                                    # (WI-papar).
                                     #
-                                    # SAME NARROWNESS AS #595 AND WI-dizag: module
-                                    # SLOT only. ``has_explicit_binding`` is
-                                    # untouched, so which edges get emitted --
+                                    # Same narrowness as the other two arms:
+                                    # module SLOT only. ``has_explicit_binding``
+                                    # is untouched, so which edges get emitted --
                                     # including the generic-trait suppression
-                                    # below -- is byte-identical.
-                                    # TWO GUARDS, both found by reading the moved
-                                    # rows back rather than by reasoning.
+                                    # below -- does not change.
+                                    # TWO GUARDS:
                                     #
                                     # (a) THE CALL'S OWN CALLEE MUST NOT BE A
                                     #     PROJECTOR. In `File::create(p).unwrap()`
@@ -3897,8 +3886,7 @@ def _extract_edges_from_file(
                                     #     `Result<File, E>`, not the `File`, so
                                     #     carrying `std::fs::File` here attributes
                                     #     `unwrap` to a type that does not declare
-                                    #     it. Measured: without this guard, 135 of
-                                    #     213 new ripgrep edges were exactly that.
+                                    #     it.
                                     #
                                     # (b) THE RECEIVER MUST HAVE BEEN UNWRAPPED.
                                     #     `File::create(p)` evaluates to a RESULT;
@@ -3954,11 +3942,11 @@ def _extract_edges_from_file(
                                         # scoped path to a BARE name, so
                                         # `std::fs::File::create(p)?` comes back as
                                         # `File` and the written path is gone --
-                                        # the package-stripped hazard this item's
-                                        # own ADR-0051 annotation names. Recover it
-                                        # from the source the way #595's
-                                        # `_var_type_paths` does for annotations:
-                                        # a scoped callee names its own module.
+                                        # the package-stripped hazard ADR-0051
+                                        # names. Recover it from the source the
+                                        # way `_var_type_paths` does for
+                                        # annotations: a scoped callee names its
+                                        # own module.
                                         _written = None
                                         _inner_call = _cr
                                         for _ in range(4):
@@ -3998,17 +3986,18 @@ def _extract_edges_from_file(
                                                 module_path=_cpath,
                                                 name=callee_name,
                                             )
-                                    # INV-pamis: the denylist exists because a
+                                    # The denylist exists because a
                                     # generic-trait NAME on an untypable receiver
                                     # (``x.clone()``, ``v.into()``) cannot be bound
-                                    # honestly and emitting it blind bloated two
-                                    # crates' edges by 33-207%. A receiver whose
+                                    # honestly, and emitting it blind floods the
+                                    # graph with edges. A receiver whose
                                     # type the signature DECLARES (``sock:
                                     # &UdpSocket`` -> ``std::net::UdpSocket``) is the
                                     # evidence the denylist lacks: ``sock.send`` on
                                     # it is the catalogued net_send sink, emitted
                                     # with the type in the slot. Untyped receivers
-                                    # keep the denylist and its disclosure.
+                                    # keep the denylist and its disclosure
+                                    # (INV-pamis).
                                     if (
                                         has_explicit_binding
                                         or ext_ref is not None
@@ -4019,24 +4008,22 @@ def _extract_edges_from_file(
                                             node.start_point[0] + 1, PASS_ID, run_id,
                                             module_hint=module_hint,
                                             dst_ref=ext_ref,
-                                            # INV-fibis disclosure parity: stamp the
+                                            # Disclosure parity: stamp the
                                             # construct so
                                             # ``verify_claims.untyped_receiver_sites``
-                                            # can name this site. rust stamps
-                                            # ``call_construct`` on its RESOLVED
-                                            # paths in three places and omitted it
-                                            # here — on the unresolved-external
-                                            # path, which is the population the
-                                            # disclosure exists for — so rust
-                                            # reached a clean verdict over 34
-                                            # catalogued method sinks in silence.
+                                            # can name this site. The
+                                            # unresolved-external path is the
+                                            # population the disclosure exists
+                                            # for; without the stamp, catalogued
+                                            # method sinks reached here would go
+                                            # unreported (INV-fibis).
                                             call_construct=(
                                                 "method" if is_method_call else None
                                             ),
-                                            # INV-fahub: carry the enclosing impl
-                                            # type on the deferred magnet so the
-                                            # Site-1 inherited_calls walker can
-                                            # recover a genuine inherited call.
+                                            # Carry the enclosing impl type on the
+                                            # deferred magnet so the Site-1
+                                            # inherited_calls walker can recover a
+                                            # genuine inherited call (INV-fahub).
                                             enclosing_class=(
                                                 _bare_enclosing_type if _defer else None
                                             ),
@@ -4046,10 +4033,11 @@ def _extract_edges_from_file(
         # Tree-sitter parses macro bodies as flat token_tree, not structured
         # AST, so call_expression nodes are never created.  We pattern-match
         # token sequences to extract likely calls.
-        # META-mino: a function VALUE -- ``Cmd { run: handler }``,
+        # A function VALUE -- ``Cmd { run: handler }``,
         # ``let f = handler``, ``static F: fn() = handler``, ``[a, b]``,
-        # ``(a, 0)``, ``h = handler``, ``xs.iter().map(parse)``. Until this arm
-        # Rust recorded only calls, so a function used as a value looked dead.
+        # ``(a, 0)``, ``h = handler``, ``xs.iter().map(parse)``. Without this
+        # arm only calls are recorded, so a function used as a value would look
+        # dead (META-mino).
         elif (
             node.type in ("identifier", "scoped_identifier")
             and _is_rust_value_position(node)
@@ -4105,9 +4093,9 @@ def _extract_edges_from_file(
                             if lr.found and lr.symbol is not None:
                                 target = lr.symbol
                         if target is not None:
-                            # NO ``call_construct`` (WI-dapap). ``macro_body``
-                            # named the detector that found the site, not a
-                            # construct. The real construct differs per site
+                            # NO ``call_construct`` (WI-dapap). A ``macro_body``
+                            # value would name the detector that found the site,
+                            # not a construct. The real construct differs per site
                             # (``self.m()``, ``Self::f()``, ``f()``), and
                             # stamping it is not inert: a ``method`` stamp here
                             # enters ``unknown_receiver_scope``'s denominator,
@@ -4123,13 +4111,13 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                             ))
 
-    # WI-vipur: emit module_attr_ref edges for scoped attribute reads
+    # Emit module_attr_ref edges for scoped attribute reads
     # on imported Rust paths (e.g. ``std::env::consts::OS``).  These
     # pair with the ``attributes:`` entries in io_primitives/rust.yaml
-    # (``module: std::env, attributes: [consts]``).  Without them the
-    # env_read chain for ``consts`` was silently inert on the
-    # tree-sitter path — rust-analyzer's semantic backend has its own
-    # resolver and is unaffected.  ``std`` is injected as an implicit
+    # (``module: std::env, attributes: [consts]``); without them the
+    # env_read chain for ``consts`` is inert on the tree-sitter path
+    # (WI-vipur).  rust-analyzer's semantic backend has its own
+    # resolver and does not need these.  ``std`` is injected as an implicit
     # import (Rust stdlib is in-scope without a ``use`` statement).
     attr_imports = dict(use_aliases)
     attr_imports.setdefault("std", "std")
@@ -4159,31 +4147,27 @@ def _extract_edges_from_file(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
-        # INV-pusin: a `use` path and a return-type path are both
-        # scoped_identifiers, so the walk emitted them as attribute reads.
-        # The `use` case duplicated a fact that already has an `imports`
-        # edge, and re-entered the uncatalogued-module gate that
-        # deliberately excludes imports -- `use std::fs;` alone put `std`
-        # and `std.fs` on a zero-dependency crate's "could not classify"
-        # list. `generic_type` catches a scoped path directly under a
-        # generic; `scoped_type_identifier` catches the common
-        # `std::io::Result<_>` shape.
+        # A `use` path and a return-type path are both scoped_identifiers,
+        # but neither is an attribute read. A `use` already has an `imports`
+        # edge, and reading it again would re-enter the uncatalogued-module
+        # gate that deliberately excludes imports -- `use std::fs;` alone
+        # would put `std` and `std.fs` on a zero-dependency crate's "could
+        # not classify" list. `generic_type` catches a scoped path directly
+        # under a generic; `scoped_type_identifier` catches the common
+        # `std::io::Result<_>` shape (INV-pusin).
         skip_context_kinds=("scoped_type_identifier", "generic_type"),
-        # INV-pusin, SECOND CLOSURE. `use_declaration` USED TO LIVE IN THE
-        # TUPLE ABOVE and it only ever suppressed the one spelling whose
-        # path sits directly beneath it (`use std::fs;`). The grammar wraps
-        # every other form -- `use std::io::{self, Write};` in
-        # `scoped_use_list`, `use std::io::*;` in `use_wildcard`,
-        # `use std::fs as f;` in `use_as_clause` -- so six of the fourteen
-        # spellings in `_USE_FORMS` (tests/test_rust.py) still emitted
-        # reads, and `use std::io::*;` alone put a BARE `std` on the
-        # uncatalogued list, which no `module_completeness` entry can ever
-        # clear because nobody can audit the whole standard library.
-        #
-        # It is matched by ANCESTRY here rather than added to the proximate
-        # tuple as three more strings: the three wrappers are not the
-        # invariant, they are today's spelling of it. The invariant is that
-        # a path anywhere inside a `use` is an import.
+        # `use_declaration` is matched by ANCESTRY, not in the proximate
+        # tuple above: as a proximate context it would suppress only the
+        # spelling whose path sits directly beneath it (`use std::fs;`).
+        # The grammar wraps every other form -- `use std::io::{self,
+        # Write};` in `scoped_use_list`, `use std::io::*;` in
+        # `use_wildcard`, `use std::fs as f;` in `use_as_clause` (see
+        # `_USE_FORMS` in tests/test_rust.py) -- and `use std::io::*;`
+        # would put a BARE `std` on the uncatalogued list, which no
+        # `module_completeness` entry can clear because nobody can audit the
+        # whole standard library. The wrappers are not the invariant; the
+        # invariant is that a path anywhere inside a `use` is an import
+        # (INV-pusin).
         skip_ancestor_kinds=("use_declaration",),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
@@ -4232,12 +4216,12 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
 # Generic trait method names that create false-positive in-degree when resolved
 # via method_resolver.  Without receiver type information, calls like `x.into()`
 # or `v.push()` resolve to arbitrary concrete implementations (e.g.,
-# `StatusRow::into` absorbing 817 `.into()` edges in penumbra).  These method
+# one `StatusRow::into` absorbing every `.into()` in a crate).  These method
 # names are blocked from short-name resolution; fully-scoped calls like
 # `StatusRow::into()` still resolve via Strategy 1.
 #
-# INV-polad: THE SET NOW LIVES IN ``hypergumbo_core.analyzer_disclosure`` and is
-# imported here rather than declared here.  It is not only a resolution policy:
+# The set lives in ``hypergumbo_core.analyzer_disclosure`` and is imported
+# here rather than declared here (INV-polad).  It is not only a resolution policy:
 # ten of these names are methods ``io_primitives/rust.yaml`` declares as I/O
 # SINKS (``UdpSocket.send``, ``io::Write.write``, ``TcpStream.read`` ...), so
 # the same set decides what ``verify-claims`` must DISCLOSE it did not look at.
@@ -4357,7 +4341,8 @@ def _extract_attribute_edges(
 
             # Built-in attributes must never resolve to user symbols.
             # Skip entirely — they have no user-space definition, and even
-            # unresolved edges create noise (derive gets 175 in-edges).
+            # unresolved edges create noise (``derive`` alone would collect
+            # an in-edge from every derived type).
             # For qualified names like "tracing::instrument", check both
             # the full name and the crate name (first path component).
             if attr_name in _BUILTIN_RUST_ATTRIBUTES:
@@ -4451,8 +4436,8 @@ class RustAnalyzer(TreeSitterAnalyzer):
         Does NOT register by short name for ``::``-qualified symbols
         (e.g., ``Diff::compute``). The suffix index in ``NameResolver``
         handles ``"compute"`` → ``"Diff::compute"`` lookups. Registering
-        the short name caused false exact matches when multiple types
-        share a method name (the last one registered won the key).
+        the short name would cause false exact matches when multiple types
+        share a method name (the last one registered would win the key).
 
         Also populates a kind-segregated multi-value index
         (``_kind_index_cache``) so the impl_item handler can disambiguate
@@ -4460,9 +4445,9 @@ class RustAnalyzer(TreeSitterAnalyzer):
         same short name (BUG-04 / WI-milak).  Without this side index
         the single-value dict overwrite races on insertion order — the
         survivor wins, the loser is silently dropped, and ``impl Foo
-        for Bar`` resolves either to the wrong struct (pre-WI-kahaz) or
-        to a manufactured unresolved-trait id (post-WI-kahaz) instead of
-        the canonical trait. The cache is keyed on ``global_symbols``
+        for Bar`` can miss the canonical trait (binding the struct, or,
+        under the trait-kind guard, a manufactured unresolved-trait id).
+        The cache is keyed on ``global_symbols``
         identity to auto-invalidate between ``analyze()`` runs (matches
         the ``_mr_cache`` pattern below).
         """
@@ -4491,13 +4476,13 @@ class RustAnalyzer(TreeSitterAnalyzer):
         if cache is None or cache[0] is not global_symbols:
             global_methods: dict[str, list[Symbol]] = {}
             for sym in global_symbols.values():
-                # INV-lopus: a foreign (``extern``-block) declaration is
-                # reached only by its own name, never through a receiver or a
-                # ``Type::`` path -- it has no owner. Pooled here, it became
-                # the one ``now`` in loro and bound every ``Instant::now()``
-                # in the repository to wasm's ``Date.now`` (44 real clock
-                # reads lost on the first A/B). This pool serves exactly the
-                # method / scoped-path fallback, so the declaration stays out.
+                # A foreign (``extern``-block) declaration is reached only by
+                # its own name, never through a receiver or a ``Type::`` path
+                # -- it has no owner. Pooled here, an ``extern`` ``now`` could
+                # be the only ``now`` and bind every ``Instant::now()`` in the
+                # repository to wasm's ``Date.now``. This pool serves exactly
+                # the method / scoped-path fallback, so the declaration stays
+                # out (INV-lopus).
                 if sym.meta and "ffi_import" in sym.meta:
                     continue
                 if sym.kind in ("method", "function"):
@@ -4511,12 +4496,12 @@ class RustAnalyzer(TreeSitterAnalyzer):
         # Build span index from EVERY declaration of this file (INV-midag).
         # local_symbols (symbol_by_name) loses entries when short names
         # collide -- free function "caller" is overwritten by method
-        # "Foo::caller". The global registry was the fix for that, and it
-        # has the same defect one level up: it is keyed by QUALIFIED name,
-        # which two ``impl IntoIterator for AttributeSet`` /
-        # ``for &AttributeSet`` blocks share (just's attribute_set.rs), so
-        # one ``AttributeSet::into_iter`` vanished and its calls fell back
-        # to the name lookup. ``file_symbols`` is the per-file list itself.
+        # "Foo::caller". The global registry has the same defect one level
+        # up: it is keyed by QUALIFIED name, which two
+        # ``impl IntoIterator for AttributeSet`` / ``for &AttributeSet``
+        # blocks share, so one ``AttributeSet::into_iter`` would vanish and
+        # its calls fall back to the name lookup. ``file_symbols`` is the
+        # per-file list itself.
         file_syms = [
             s for s in self.file_symbols(local_symbols)
             if s.path == rel_path and s.kind in ("function", "method")
@@ -4526,19 +4511,19 @@ class RustAnalyzer(TreeSitterAnalyzer):
             for s in file_syms if s.span is not None
         }
 
-        # WI-milak / BUG-04: pull the kind-segregated multi-value index
-        # populated by register_symbol so the impl_item handler can
-        # prefer ``trait Foo`` over ``struct Foo`` when both share a
-        # short name. Empty-fallback for synthetic callers that bypass
-        # register_symbol; those paths fall back to the WI-kahaz
-        # single-value lookup.
+        # Pull the kind-segregated multi-value index populated by
+        # register_symbol so the impl_item handler can prefer
+        # ``trait Foo`` over ``struct Foo`` when both share a short name
+        # (WI-milak / BUG-04). Empty-fallback for synthetic callers that
+        # bypass register_symbol; with an empty index the impl_item
+        # handler finds no trait and emits the unresolved-trait edge.
         kind_cache = getattr(self, "_kind_index_cache", None)
         if kind_cache is not None and kind_cache[0] is global_symbols:
             kind_index = kind_cache[1]
         else:
             kind_index = {}
 
-        # WI-titor: pre-compute file-scoped var_types from let bindings
+        # Pre-compute file-scoped var_types from let bindings
         # and parameter declarations, consulting the cross-file
         # method-return-type registry for chained method calls. The
         # registry comes from base.py's Pass-1 aggregation step
@@ -4607,7 +4592,7 @@ def is_rust_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-# WI-juzig: the incumbent of two rust backends. ADR-0057 §10 (WI-hohuh): its
+# One of two rust backends (WI-juzig). Per ADR-0057 §10 (WI-hohuh), its
 # records pair with the SCIP arm's by the last ``::`` segment of the name —
 # this analyzer qualifies a method by its impl target (``CoreDns::process_message``)
 # where rust-analyzer emits the bare descriptor name — over the ITEM span it
@@ -4619,9 +4604,9 @@ def is_rust_tree_sitter_available() -> bool:
     merge=MergeAnchor(
         name_key=last_segment(QUALIFIED_NAME_SEPARATORS["rust"]),
         span_role=SPAN_ROLE_ITEM,
-        # Nothing to declare: since INV-kubup every tracked attribute's
-        # default is absent, so each record says for itself whether this
-        # producer observed it. The declaration stays for the next field
+        # Nothing to declare: every tracked attribute's default is absent
+        # (INV-kubup), so each record says for itself whether this
+        # producer observed it. The declaration stays for a future field
         # whose type cannot (ADR-0057 §10).
         observes=(),
     ),

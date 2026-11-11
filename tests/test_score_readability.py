@@ -388,7 +388,7 @@ def test_cli_json_carries_the_whole_panel(mod, sample, capsys) -> None:
     assert file["functions"][0]["global_lines"] == 0
     assert file["functions"][0]["loc"] == 2 and file["functions"][0]["loc_physical"] == 2
     assert file["functions"][0]["dataflow_uncovered"] == 0
-    # params and calls left the text table; the JSON still carries them.
+    # params and calls are not in the text table; the JSON still carries them.
     assert file["functions"][0]["params"] == 4 and file["functions"][0]["calls"] == 0
     assert file["functions"][2]["flags"] == ["dataflow 13>4"]  # Widget.loop
 

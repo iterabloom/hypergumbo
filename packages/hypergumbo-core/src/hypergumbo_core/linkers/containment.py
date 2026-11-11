@@ -53,8 +53,8 @@ functions, variables and classes at its ``kind="file"`` anchor. In no
 phase is a file a child: its name is a dotted path, and a module spanning
 the whole file encloses it. A dotted name whose prefix is no symbol (a Lean ``A.S`` in ``namespace A``, an F#
 ``A.run`` in ``module A``, a dotted Clojure or Agda module, a C++
-out-of-line ``Token::get`` whose class is not emitted) used to get no
-fallback and stayed an orphan; a dotted name Phase 1 placed is not given
+out-of-line ``Token::get`` whose class is not emitted) gets this fallback
+rather than staying an orphan; a dotted name Phase 1 placed is not given
 a second parent. For a bare name only an identical parent→child pair
 already emitted is deduplicated.
 
@@ -90,26 +90,22 @@ PASS_ID = make_pass_id("containment-linker")
 
 # Symbol kinds that can be "contained" by a ``CONTAINER_KINDS`` symbol.
 #
-# ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
-# predicate needed. The post-fold canonical for Cluster D ``rpc`` is
-# ``method`` + ``meta["framework_role"]="rpc"`` — and ``method`` is
-# already in this set, so post-fold producers match unchanged.
-# Cluster H ``message`` stays a CANONICAL kind (audit-findings 0007)
-# and is in this set as itself. None of the live schema
-# producers emits the legacy ``rpc`` / ``service`` kinds: proto.py
-# emits ``method`` with ``framework_role="rpc"`` under an ``interface``
-# with ``framework_role="service"``, thrift.py emits ``function``
-# members of such an ``interface``, and capnp.py emits plain
-# ``interface`` / ``method`` with no role. They pass the kind through
-# positional helpers that the L3 producer-coherence linter cannot
-# statically gate; the Wave-5
-# framework-linker producers don't reach this filter (their
-# synthetic-node names lack class-qualifier separators, so the
-# parent-extraction step in :func:`link_containment` skips them
-# before kind matters).
+# Membership is by kind alone; no ``framework_role`` check is needed. An RPC
+# is ``method`` + ``meta["framework_role"]="rpc"`` (ADR-0027 Cluster D), and
+# ``method`` is in this set. ``message`` is a CANONICAL kind (audit-findings
+# 0007) and is in this set as itself. No live schema producer emits ``rpc`` /
+# ``service`` as a kind: proto.py emits ``method`` with
+# ``framework_role="rpc"`` under an ``interface`` with
+# ``framework_role="service"``, thrift.py emits ``function`` members of such
+# an ``interface``, and capnp.py emits plain ``interface`` / ``method`` with
+# no role. They pass the kind through positional helpers that the L3
+# producer-coherence linter cannot statically gate (WI-jukav). The
+# framework-linker producers don't reach this filter (their synthetic-node
+# names lack class-qualifier separators, so the parent-extraction step in
+# :func:`link_containment` skips them before kind matters).
 #
-# dispatch:F4 (INV-pohik de-orphan): ``function`` and ``variable`` are
-# graph-structural members of their enclosing file/module. They are reached
+# ``function`` and ``variable`` are graph-structural members of their
+# enclosing file/module (dispatch:F4; INV-pohik). They are reached
 # almost entirely through Phase-2 span_overlap — a top-level ``def`` or module
 # ``var`` carries a bare name, so Phase-1 naming-convention cannot match it —
 # attaching them to the ``kind="file"`` anchor that encloses their span
@@ -128,29 +124,28 @@ PASS_ID = make_pass_id("containment-linker")
 # a dead-code-maybe claim. Apart from that initializer, it never makes a
 # contained function reachable from its container.
 CONTAINABLE_KINDS = frozenset(
-    # WI-zajaz: ``field`` (class-body attributes, emitted with dotted names like
-    # ``Widget.size`` by emission-parity F5) roots at its class exactly like
-    # ``method`` — without it, 1862 real field symbols (99.6% of them) were
-    # orphans on self-analysis. Its reachability effect is the one in the note
-    # above.
+    # ``field`` (class-body attributes, emitted with dotted names like
+    # ``Widget.size``; emission-parity F5) roots at its class exactly like
+    # ``method`` — without it, class-body fields are orphans. Its
+    # reachability effect is the one in the note above. (WI-zajaz)
     #
-    # WI-fokag: ``subscript`` (Swift subscript members, emitted with dotted names
+    # ``subscript`` (Swift subscript members, emitted with dotted names
     # like ``JSON.subscript(key:)`` — the parenthesized ``(key:)`` suffix carries
     # no name separator, so parent-name extraction already yields ``JSON``) roots
-    # at its enclosing type exactly like ``method``. Without it, correctly-named
-    # struct-body subscripts had 0 ``contains`` edges (verified on SwiftyJSON
-    # post-#689: the JSON struct contained its field/method members but not its
-    # subscripts, leaving the flagship ``json[...]`` accessors looking like
-    # orphaned members of the central type). Its reachability effect is the
-    # one in the note above. (The separate gap where a
-    # ``json["key"]`` subscript-CALL site does not resolve to the subscript node
-    # is a Swift-analyzer resolution facet, out of scope here.)
+    # at its enclosing type exactly like ``method``. Without it, struct-body
+    # subscripts get no ``contains`` edge while the type's fields and methods
+    # do, so accessors like ``json[...]`` look like orphaned members of their
+    # type. Its reachability effect is the one in the note above. (The
+    # separate gap where a ``json["key"]`` subscript-CALL site does not
+    # resolve to the subscript node is a Swift-analyzer resolution facet, out
+    # of scope here.) (WI-fokag)
     #
-    # WI-lozop: ``constructor`` (java, dart, csharp, swift, pony, apex, pascal
-    # and solidity emit their initializers with this kind) roots at its class
-    # like ``method``. Without it a class held no ``contains`` edge to its
+    # ``constructor`` (java, dart, csharp, swift, pony, apex, pascal and
+    # solidity emit their initializers with this kind) roots at its class like
+    # ``method``. Without it a class holds no ``contains`` edge to its
     # constructor, so a construction landing on the class (java/dart
-    # ``instantiates``) reached no initializer in construction.py's hop.
+    # ``instantiates``) reaches no initializer in construction.py's hop.
+    # (WI-lozop)
     {
         "method", "getter", "setter", "message", "function", "variable", "field",
         "subscript", "constructor",
@@ -159,29 +154,22 @@ CONTAINABLE_KINDS = frozenset(
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs) and message for
-# proto (nested messages). NOT `service`: the ADR-0027 Cluster-D fold made
-# `interface` + meta["framework_role"]="service" the canonical, and proto.py
-# emits exactly that today — so a `service` entry here would be dead. (This
-# comment previously named `service` as a member of the set; it was a
-# pre-fold fossil, and slice.py cited it as fact.)
-#
-# ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
-# predicate needed. The post-fold canonical for Cluster D ``service``
-# is ``interface``/``class`` + ``meta["framework_role"]="service"`` —
-# both are already in this set. Wave-5 framework-linker producers
-# don't reach this filter for the same reason as ``CONTAINABLE_KINDS``
-# above (synthetic-node names lack class-qualifier separators).
-# WI-totam: one set, derived from the registry (``container_kind_names``) and
-# shared with slice, which kept its own narrower copy. The per-kind history
-# that built this list -- WI-sakug (contract, library, type, object, union),
-# WI-pujiz (instance), WI-duguk (protocol), WI-pidos (record), INV-hojus
-# (file) -- is in git; each of those kinds is either a nominal type in the
-# registry or in ``SCOPE_CONTAINER_KINDS``. Registering a type kind (pony's
-# ``actor`` / ``primitive``, WI-higik) makes it a container here too.
+# proto (nested messages). NOT `service`: a service is ``interface`` (or
+# ``class``) + ``meta["framework_role"]="service"`` (ADR-0027 Cluster D), and
+# proto.py emits exactly that — so a `service` entry here would be dead, and
+# both ``interface`` and ``class`` are already in this set (WI-jukav).
+# Framework-linker producers don't reach this filter for the same reason as
+# ``CONTAINABLE_KINDS`` above (synthetic-node names lack class-qualifier
+# separators).
+# One set, derived from the registry (``container_kind_names``) and shared
+# with slice, so the two cannot drift (WI-totam). Each member is either a
+# nominal type in the registry or in ``SCOPE_CONTAINER_KINDS``, so
+# registering a type kind (pony's ``actor`` / ``primitive``, WI-higik) makes
+# it a container here too.
 CONTAINER_KINDS = container_kind_names()
 
-# Separator vocabulary lives in ``member_names`` (INV-tihim): it was
-# recorded in three consumers and they disagreed.
+# Separator vocabulary lives in ``member_names``, the one place every
+# consumer reads it from, so they cannot disagree about it (INV-tihim).
 
 
 def _extract_parent_name(method_name: str) -> str | None:
@@ -259,7 +247,7 @@ def _find_parent(
             # name match is to the wrong class; refuse (Phase 2's span_overlap
             # fallback then roots the child at whatever does enclose it).
             return None
-        # No span to disambiguate with: preserve the legacy first-match.
+        # No span to disambiguate with: take the first match.
         return same_file[0]
 
     # Priority 2: same language (any file)
@@ -369,10 +357,10 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             dst=sym.id,
             edge_type="contains",
             line=sym.span.start_line if sym.span else 0,
-            # ADR-0039 R1: derive from the naming_convention registry seed
-            # (0.85 — below the certain span_overlap 0.90) instead of the old
-            # hardcoded 1.0 that breached the 0.95 band ceiling and inverted
-            # reliability vs span_overlap (WI-vakuh / WI-lutad).
+            # Confidence derives from the naming_convention registry seed
+            # (0.85): a name-parse heuristic ranks below the certain
+            # span_overlap 0.90 and stays under the 0.95 band ceiling.
+            # (ADR-0039 R1; WI-vakuh / WI-lutad)
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="naming_convention",

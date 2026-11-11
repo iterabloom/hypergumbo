@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""ADR-0057 §12 / WI-romuh: the committed aardvark-dns recording is what it says.
+"""The committed aardvark-dns recording is what it says (ADR-0057 §12, WI-romuh).
 
 A recorded fixture is a claim about a producer; these tests keep the claim
 checkable. The index parses with the shipped ``scip_pb2``; its counts are
@@ -9,7 +9,10 @@ cannot drift apart silently); and — the number every later row builds on —
 under the anchors both Rust arms declare, the live tree-sitter arm run on
 the committed crate pairs exactly the SCIP definitions the module says it
 does. The pairing here is computed inline by the declared rule, not by the
-merge pass (WI-kokiz), which is what must later reproduce it.
+merge pass (WI-kokiz), so it is an independent reference for the merge pass
+to reproduce. Later classes run both arms through the merge pass, the
+backend-agreement instrument and same-site supersession, and pin their
+numbers to the recorded module's tallies.
 """
 from __future__ import annotations
 
@@ -116,7 +119,7 @@ def _read_crate_file(path: str) -> bytes | None:
 
 class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
     def test_pairing_under_the_declared_rule(self) -> None:
-        """150 of 169, none ambiguous (148 before WI-bamar's type aliases). The rule, spelled out once so the
+        """150 of 169, none ambiguous. The rule, spelled out once so the
         merge pass has a reference to reproduce: same path, equal declared
         name keys, SCIP token line inside the tree-sitter item span."""
         incumbent, scip_anchor = _anchors()
@@ -161,9 +164,10 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         } == AARDVARK_DNS_PAIRING
         # The one non-namespace leftover is a `static` inside a function body,
         # which the tree-sitter arm emits no Symbol for by its module-level
-        # rule; the two `type` aliases pair since WI-bamar.
+        # rule; the two `type` aliases pair through their `type_alias` Symbols
+        # (WI-bamar).
         assert sorted(unpaired_names) == ["DNSBACKEND"]
-        # WI-gapup: the SCIP arm reads the producer's declared kind, so the
+        # The SCIP arm reads the producer's declared kind (WI-gapup), so the
         # paired records agree on kind except for `const` items, where SCIP's
         # `constant` is the more precise claim and stays a contest.
         measured_kind = {
@@ -189,9 +193,9 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
 
 class TestTheCallEdgesAgreeWithTheIncumbentWhereBothSeeTheCall:
     def test_call_site_tally(self) -> None:
-        """WI-zapuk: a SCIP reference whose target is a declared callable is
-        ``calls``; on paired endpoints those are the same edges the tree-sitter
-        arm emits, and now carry the same type. The 113 field-target edges
+        """A SCIP reference whose target is a declared callable is ``calls``
+        (WI-zapuk); on paired endpoints those are the same edges the
+        tree-sitter arm emits, and carry the same type. The 113 field-target edges
         keep ``references`` (the row's "field references keep a non-calls
         type"). Twins are found by pairing symbols through the declared
         anchors and then matching (src, dst)."""
@@ -301,12 +305,12 @@ def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
 
 
 class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
-    """WI-paluk: a survey fills a missing ``stable_id`` by kind at the
-    orchestrator chokepoint (``populate_kind_stable_ids``), BEFORE the merge
-    pass. While the harness skipped that step, the tree-sitter arm's 10
-    structs, 3 enums and 1 trait reached the merge with no ``stable_id``.
-    The committed 0019 table then read 14 one-sided to ``rust_analyzer``,
-    which a live survey of this crate does not reproduce (0 / 150 / 0 / 0)."""
+    """A survey fills a missing ``stable_id`` by kind at the orchestrator
+    chokepoint (``populate_kind_stable_ids``), BEFORE the merge pass, and the
+    harness must too. Without that step the tree-sitter arm's 10 structs,
+    3 enums and 1 trait would reach the merge with no ``stable_id``, and the
+    0019 table would read 14 one-sided to ``rust_analyzer``, which a live
+    survey of this crate does not reproduce (0 / 150 / 0 / 0) (WI-paluk)."""
 
     def test_the_declaration_kinds_carry_the_backstop_id(self) -> None:
         from hypergumbo_core.analyze.base import make_declaration_stable_id
@@ -324,8 +328,8 @@ class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
 
 
 class TestTheMergePassOnBothArms:
-    """WI-kokiz's acceptance, on committed input: the pass folds exactly the
-    150 declarations the anchors pair, leaves the 21 SCIP-only records and
+    """The merge pass on committed input (WI-kokiz): it folds exactly the
+    150 declarations the anchors pair, leaves the 19 SCIP-only records and
     no tree-sitter-only record, stamps both producers on every merged
     record, and rewires the edges so the 122 shared call sites collapse."""
 
@@ -345,9 +349,10 @@ class TestTheMergePassOnBothArms:
         assert runs[-1]["pass"] == "producer-merge"
 
     def test_merged_records_carry_the_provenance_slot(self) -> None:
-        """WI-binis: every merged record says who holds each value. On this
-        producer pair the span (token vs item) and stable_id (moniker hash vs
-        rust.py's) are contested on all 150; kind on the 15 const items."""
+        """Every merged record says who holds each value (WI-binis). On this
+        producer pair the span (token vs item) is contested on all but the 2
+        unit enum variants, the stable_id (moniker hash vs rust.py's) on all
+        150, and kind on the 15 const items."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         merged = [s for s in symbols if s.origin == ["rust", "scip"]]
@@ -385,7 +390,7 @@ class TestTheMergePassOnBothArms:
         assert all("item_span" not in (s.meta or {}) for s in symbols)  # the carrier is spent
 
     def test_a_scip_only_record_is_spanned_over_its_item(self) -> None:
-        """INV-lodum on committed input: of the 19 SCIP-only records, the
+        """On committed input (INV-lodum): of the 19 SCIP-only records, the
         three whose Definition encloses more than its name (two inline
         ``mod tests`` and the function-local ``static DNSBACKEND``) take the
         recorded ``enclosing_range``; the 16 file-level modules, whose name
@@ -408,12 +413,12 @@ class TestTheMergePassOnBothArms:
         assert [e for e in edges if {e.src, e.dst} & old] == []
 
     def test_no_two_records_share_a_stable_id_after_the_merge(self) -> None:
-        """INV-kutid on committed input. The recording is the producer's own
+        """On committed input (INV-kutid). The recording is the producer's own
         evidence (rust-analyzer logs "Duplicate symbol: ... crate/"): the
         lib, bin and build-script roots of aardvark-dns define ``crate/``
-        under one moniker. Hashed alone, the three SCIP-only roots shared
-        ``sha256:fe9021ce48cd040c`` -- one cross-file group, which the
-        within-file splitter cannot reach. Path-anchored, the run has none."""
+        under one moniker. Hashed by moniker alone, the three SCIP-only roots
+        would share ``sha256:fe9021ce48cd040c`` -- one cross-file group, which
+        the within-file splitter cannot reach. Path-anchored, the run has none."""
         from hypergumbo_core.spec_validator import compute_stable_id_stats
 
         symbols, edges, runs = _both_arms()
@@ -480,20 +485,17 @@ class TestTheAgreementInstrumentOnBothArms:
         assert report.superseded_edges == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
         by_attr = {a.attribute: a for a in report.attributes}
         assert by_attr["kind"].shapes == [("variable", "constant", 15)]
-        # INV-huboz: no shapes, because there is no contest left. The SCIP
-        # arm declares it computes no exportedness, so its dataclass-default
-        # False is not a candidate and the attribute is one-sided to the
-        # incumbent. (While the instrument read this nested attribute from the
-        # top level it pinned `("null", "false", 41)` — a value that never
-        # existed, WI-pofih; the true carried value was `true`.)
+        # No shapes, because there is no contest. The SCIP arm declares it
+        # computes no exportedness, so its dataclass-default False is not a
+        # candidate and the attribute is one-sided to the incumbent (INV-huboz).
         assert by_attr["is_exported"].shapes == []
         assert (by_attr["is_exported"].agree, by_attr["is_exported"].disagree) == (0, 0)
         assert by_attr["is_exported"].only == {"rust": 150, "rust_analyzer": 0}
 
     def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
-        """WI-hukuf on the recorded fixture: prefer the SCIP arm for `kind`
-        and the 15 `const` items carry `constant`; every other attribute
-        row, the pairing and the edge overlap are the built-in numbers."""
+        """On the recorded fixture, preferring the SCIP arm for `kind` makes
+        the 15 `const` items carry `constant`; every other attribute row, the
+        pairing and the edge overlap are the built-in numbers (WI-hukuf)."""
         from hypergumbo_core.arbitration import ArbitrationPolicy
         from hypergumbo_core.backend_agreement import measure_backend_agreement
 
@@ -526,9 +528,9 @@ class TestTheAgreementInstrumentOnBothArms:
             assert re.search(rf"^    {key}: {value}$", text, re.MULTILINE), f"{key}: {value} not in the committed table"
         for attribute, (agree, disagree, rust_only, scip_only) in AARDVARK_DNS_ATTRIBUTE_AGREEMENT.items():
             assert f"| `{attribute}` | {agree} | {disagree} | {rust_only} | {scip_only} |" in text
-        # WI-vosop: the pairing and edge rows went unchecked, and the committed
-        # table kept a pre-INV-sipod 269 references row and a pre-WI-bamar
-        # type_alias row while the instrument said otherwise.
+        # The pairing and edge rows are checked too, so a stale row in the
+        # committed table fails here instead of drifting from what the
+        # instrument says (WI-vosop).
         assert report.pairing and report.edges  # reach
         for kind, row in report.pairing.items():
             assert f"| `{kind}` | {row['paired']} | {row['rust']} | {row['rust_analyzer']} |" in text, kind
@@ -540,10 +542,10 @@ class TestTheAgreementInstrumentOnBothArms:
 
 class TestSameSiteSupersessionOnBothArms:
     def test_only_the_same_callee_is_superseded(self) -> None:
-        """WI-lihis: the resolution verdict is imitated as finalize does it
+        """The resolution verdict is imitated as finalize does it
         (a dst that is a real node -> resolved, else a stub), then the rule
         runs. Three stubs are genuinely superseded; twenty-four share a line
-        and type with a resolved call to a DIFFERENT callee and stay."""
+        and type with a resolved call to a DIFFERENT callee and stay (WI-lihis)."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         edges = deduplicate_edges(edges)
@@ -588,7 +590,7 @@ class TestSameSiteSupersessionOnBothArms:
 
 class TestTheArmStampsWhatItDeclares:
     def test_every_translated_record_carries_the_declared_origin(self) -> None:
-        """INV-gabak: the declaration is checked against the emission.
+        """The declaration is checked against the emission (INV-gabak).
 
         This arm registers as ``rust_analyzer`` and declares
         ``emits_origin="scip"``, because the SCIP translation it delegates to

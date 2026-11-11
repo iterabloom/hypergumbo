@@ -10,8 +10,9 @@ deferral state for a meta key).
 Drift detection is intentionally out of scope here (see the module
 docstring of :mod:`hypergumbo_core.axis_meta_keys` — meta-key access
 shape differs from the set-literal shape that
-``axis_drift.find_drift`` walks; a subscript-access drift linter is
-filed as a follow-on).
+``axis_drift.find_drift`` walks; the subscript-write checks live in
+:mod:`hypergumbo_core.meta_write_discipline` and
+:mod:`hypergumbo_core.meta_key_coherence`).
 """
 
 from __future__ import annotations
@@ -104,8 +105,9 @@ def test_meta_keys_on_axis_returns_only_matching():
 
 def test_meta_keys_on_axis_edge_meta_includes_fold_residues():
     edge_keys = {spec.name for spec in meta_keys_on_axis(AXIS_EDGE_META)}
-    # Wave 5 (ADR-0028 Cluster C) + Wave 4 (Cluster D) + ADR-0023
-    # protocol/bridge vocabularies all live on Edge.meta.
+    # Framework-dispatch (ADR-0028 Cluster C) and call-construct (Cluster D)
+    # fold residues plus the ADR-0023 protocol/bridge vocabularies all live
+    # on Edge.meta.
     assert {
         "framework_dispatch", "call_construct", "protocol",
         "bridge_kind", "io_primitive", "access_mode",
@@ -115,8 +117,7 @@ def test_meta_keys_on_axis_edge_meta_includes_fold_residues():
 def test_linker_vocabulary_keys_registered_on_edge_meta():
     """WI-mulub: the cross-language / framework vocabularies emitted on
     ``Edge.meta`` by their linkers must be registered so the writer-contract
-    and registry-drift checks can police them. These were emitted but absent
-    from ``MetaKeySpec`` — websocket (client/server_framework), message_queue
+    and registry-drift checks can police them. Pinned here: websocket (client/server_framework), message_queue
     (topic/topic_type/queue_type), database_query (query_type/table_name),
     route_handler + go_cobra (handler_name), the analyzer receiver-inference
     (receiver_type_hint), and the ir.py edge-dedup pass (referring_paths)."""
@@ -170,7 +171,7 @@ def test_no_meta_key_collides_with_typed_field():
     ``entrypoint_meta`` key against ``Entrypoint`` fields. Cross-dataclass
     name reuse is NOT a collision — ``Entrypoint.meta["id"]`` is fine even
     though ``Edge`` has a typed ``id`` field, because they describe
-    different records (WI-rukam introduced the third axis)."""
+    different records (``entrypoint_meta``: WI-rukam)."""
     from hypergumbo_core.ir import Edge, Symbol
     from hypergumbo_core.entrypoints import Entrypoint
 
@@ -199,23 +200,20 @@ def test_meta_keys_on_axis_entrypoint_meta_includes_provenance():
 #
 # ADR-0038 ruling 2 declares a per-edge-type applicability matrix for
 # ``access_mode``: 4 APPLICABLE (None = "missing data, fix the emitter") and
-# DECLARED-N/A (None = "the question does not arise"). The matrix originally
-# covered only INV-tibob's 17-type census; the WI-pusuv census (2026-07-21)
-# classified the residual relationship tail after both non-relationship axes
-# drained to empty, so EVERY canonical edge type is now classified (applicable
-# XOR N/A). ``data_flows_to`` is N/A here (its DIRECTION lives in the
-# ``data_direction`` key, ADR-0038 ruling 3, not access_mode); ``crypto_flow``
-# folded into it and is no longer a registry value.
+# DECLARED-N/A (None = "the question does not arise"). EVERY canonical edge
+# type is classified (applicable XOR N/A). ``data_flows_to`` is N/A here (its
+# DIRECTION lives in the ``data_direction`` key, ADR-0038 ruling 3, not
+# access_mode); ``crypto_flow`` is folded into it and is not a registry value.
 
 _ADR0038_APPLICABLE = frozenset({
     "calls", "references", "module_attr_ref", "event_publishes",
 })
 _ADR0038_NA = frozenset({
-    # INV-tibob's original 17-type census:
+    # Structural, dependency and constructor edge types (INV-tibob):
     "contains", "decorated_by", "depends_on", "depends_on_manifest",
     "dispatches_to", "extends", "implements", "imports", "inherits",
     "overrides", "uses", "instantiates",
-    # WI-pusuv census completion — the residual relationship tail (all N/A-now):
+    # The residual relationship types, all N/A-now (WI-pusuv):
     "constrains", "data_flows_to", "defines_target", "includes", "links",
     "module_exports", "sources", "subprocess_calls", "wraps",
 })
@@ -242,8 +240,8 @@ def test_access_mode_matrix_data_flows_to_is_na_direction_family():
     """``data_flows_to`` carries dataflow value-propagation + DIRECTION (the
     ``data_direction`` key, ADR-0038 ruling 3), NOT state access — so the
     access question does not arise and it is declared N/A (WI-pusuv census).
-    ``crypto_flow`` folded into ``data_flows_to`` (Batch 7) and is no longer a
-    registry value, so it is absent from both sets."""
+    ``crypto_flow`` is folded into ``data_flows_to`` and is not a registry
+    value, so it is absent from both sets."""
     assert is_access_mode_not_applicable("data_flows_to") is True
     both = access_mode_applicable_edge_types() | access_mode_na_edge_types()
     assert "data_flows_to" in both
@@ -252,10 +250,8 @@ def test_access_mode_matrix_data_flows_to_is_na_direction_family():
 
 
 def test_access_mode_matrix_total_census_complete():
-    """WI-pusuv census COMPLETE (2026-07-21): after both non-relationship axes
-    drained to empty (endpoint_shape via WI-pumav, pending_classification via
-    WI-sumik), EVERY canonical edge type is classified applicable XOR N/A —
-    zero unclassified. This is the census close condition: a consumer reading
+    """The access_mode census is COMPLETE: EVERY canonical edge type is
+    classified applicable XOR N/A — zero unclassified (WI-pusuv). This is the census close condition: a consumer reading
     ``access_mode=None`` can always tell "does not arise" (N/A type) from
     "missing data" (applicable type)."""
     classified = (
@@ -280,16 +276,16 @@ def test_is_access_mode_not_applicable_resolver():
     # Applicable → False.
     assert is_access_mode_not_applicable("calls") is False
     assert is_access_mode_not_applicable("references") is False
-    # WI-pusuv census additions → N/A (True).
+    # Residual relationship types → N/A (True; WI-pusuv).
     assert is_access_mode_not_applicable("subprocess_calls") is True
     assert is_access_mode_not_applicable("data_flows_to") is True
     assert is_access_mode_not_applicable("wraps") is True
     # A non-registry / unknown value → False (not declared N/A).
     assert is_access_mode_not_applicable("crypto_flow") is False
     assert is_access_mode_not_applicable("not_a_real_edge_type") is False
-    # script_src was pruned from the registry (WI-pumav Batch 0, ADR-0023
-    # Phase 4b'): it is no longer a registered edge type, so it is not in the
-    # N/A set and the classifier treats it as unclassified → False.
+    # script_src is not a registered edge type (ADR-0023, WI-pumav), so it
+    # is not in the N/A set and the classifier treats it as unclassified →
+    # False.
     assert is_access_mode_not_applicable("script_src") is False
 
 
@@ -312,8 +308,8 @@ def test_data_direction_registered_on_edge_meta():
 
 
 def test_dest_access_mode_removed():
-    """ADR-0038 ruling 3 removes dest_access_mode entirely (the bridge
-    direction it encoded now lives in data_direction)."""
+    """ADR-0038 ruling 3: ``dest_access_mode`` is not a registered key; the
+    bridge direction lives in ``data_direction``."""
     assert find_meta_key("dest_access_mode") is None
 
 
@@ -327,17 +323,12 @@ def test_valid_data_directions_vocabulary():
 # --- WI-toruz: the call-family scope is DECLARED, not described ---
 
 def test_call_construct_declares_the_call_family_scope():
-    """WI-toruz: ``call_construct``'s edge scope is a typed field, not prose.
+    """``call_construct``'s edge scope is a typed field, not prose (WI-toruz).
 
-    The prose said "on ``calls`` edges" and the sibling ``ref_construct``
-    entry said the two keys have "distinct edge families, zero overlap".
-    That was written on 2026-06-30 (INV-lajov) from a corpus measurement
-    that contained no Dart or C# object creation, and it was already false
-    by the five ``constructor``-on-``instantiates`` sites that landed
-    2026-05-05 (audit-findings 0012 sec 4, WI-nibis Wave 4).
-
-    A scope that lives only in a sentence cannot be checked, which is why
-    it drifted. Declaring it on ``applicable_edge_types`` — the field
+    The scope includes ``instantiates``: ``constructor`` sites on object
+    creation (dart, C#) land on ``instantiates`` edges, so a prose scope of
+    "``calls`` edges" is wrong, and a scope that lives only in a sentence
+    cannot be checked (INV-lajov; audit-findings 0012 sec 4). Declaring it on ``applicable_edge_types`` — the field
     ADR-0038 ruling 2 already built for exactly this — makes it
     machine-readable, and lets the live-tree producer gate assert against
     the declaration instead of against a hand-maintained literal.
@@ -362,8 +353,8 @@ def test_call_construct_scope_covers_instantiates_deliberately():
     ``instantiates``. So ``call_construct='constructor'`` is the only
     cross-language invariant for object creation that survives the
     relationship-label disagreement, and it is NOT redundant with
-    ``edge_type``. Tracked as INV-kahig; this assertion pins the reason the
-    scope is two-valued so a later reader does not "tidy" it back to one.
+    ``edge_type`` (INV-kahig). This assertion pins the scope as two-valued
+    so a later reader does not "tidy" it back to one.
     """
     spec = find_meta_key("call_construct")
     assert spec is not None
@@ -373,11 +364,11 @@ def test_call_construct_scope_covers_instantiates_deliberately():
 
 # --- WI-dapap: the call_construct vocabulary is an ALLOWLIST ---
 #
-# Was a DENYLIST of four ejected values (INV-tadup). A denylist cannot stop a
-# value it has never seen: ``assignment`` shipped with no review of whether it
-# belonged on this axis. And the old walk read only DICT LITERALS, so it could
-# not have seen ``assignment`` even had it been denied -- that value is emitted
-# as a ``call_construct=`` KEYWORD. The walk below reads every literal shape.
+# An allowlist because a denylist cannot stop a value it has never seen
+# (INV-tadup). The walk below reads every literal shape a producer uses --
+# dict literal, keyword argument and subscript assignment -- because a value
+# such as ``assignment`` is emitted only as a ``call_construct=`` KEYWORD, which
+# a dict-literal-only walk would miss.
 
 
 def _literal_values(node: ast.expr) -> list[str] | None:
@@ -481,9 +472,9 @@ def test_every_declared_call_construct_value_has_a_producer() -> None:
     ('f(call_construct=helper())', set()),
 ])
 def test_the_emit_scan_reads_every_producer_shape(source, expected) -> None:
-    """POSITIVE CONTROL, one per shape. A scan that silently misses a shape is
-    the defect this section replaces: the old walk read dict literals only,
-    and ``assignment`` is a keyword. The last case pins what the scan does NOT
+    """POSITIVE CONTROL, one per shape. A scan that silently misses a shape
+    lets an undeclared value through: ``assignment`` is a keyword emit, which
+    a dict-literal-only walk misses. The last case pins what the scan does NOT
     claim to read."""
     assert set(_call_construct_literal_emits_in(ast.parse(source), "x")) == expected
 
@@ -503,7 +494,7 @@ _FOLDED_CALL_CONSTRUCTS = {
     # symbol id).
     "remote_external",
     "application_external",
-    # A resolution MECHANISM, now on ``resolution_quality``.
+    # A resolution MECHANISM, which belongs on ``resolution_quality``.
     "chained_return_type",
     # An inference PATHWAY the same edge already carried as
     # ``evidence_type="interface_dispatch"`` — one value stated twice on two
@@ -519,6 +510,5 @@ _FOLDED_CALL_CONSTRUCTS = {
 
 
 def test_no_folded_value_is_declared() -> None:
-    """INV-tadup, kept as a record: the allowlist must not readmit an ejected
-    value. Emitting one is already caught above, because it is undeclared."""
+    """The allowlist must not readmit an ejected value (INV-tadup). Emitting one is already caught above, because it is undeclared."""
     assert _FOLDED_CALL_CONSTRUCTS & all_call_construct_values() == set()

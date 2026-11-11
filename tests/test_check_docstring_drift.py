@@ -4,34 +4,31 @@
 ``scripts/check-docstring-drift`` dates a docstring by ``git blame``-ing its
 line range and taking the youngest commit. That answers "when did any byte in
 this region last change", which is NOT "when were these claims last checked".
-Three mass events in this repo's history decouple the two — the ADR-0010
-monorepo reorg (blame follows the move), the Phase-3/4 TreeSitterAnalyzer
-migrations (boilerplate stamped into ~106 analyzer docstrings), and the
-ADR-3bbb subcategory sweep (ONE LINE prepended to 45 linker docstrings).
+Mass edits decouple the two: a monorepo reorg (blame follows the move; see
+ADR-0010), boilerplate stamped into many analyzer docstrings by a shared
+refactor, and a one-line subcategory prefix prepended to every linker
+docstring (ADR-3bbb).
 
-THE TEMPTING FIX IS WRONG, and these tests exist mostly to keep it from being
-re-attempted. The obvious move is to detect such sweeps and "look past" them
-to the last real edit. It cannot be done from blame. Measured on this corpus:
-
-    3f29f139b1  ADR-3bbb convention stamp   median 1 line   2% of docstring
-    c9406ccd54  staleness-audit fix         median 2 lines  4% of docstring
-
-The first is a prefix nobody read; the second is the most careful reading
-those files have ever had. Same size, similar file counts. Any rule that
-demotes the stamp also demotes every prior audit's own fix commits — which
-would make each audit blind the next one to exactly the files it just
-verified, a self-defeating instrument.
+THE TEMPTING FIX IS WRONG, and these tests exist mostly to keep it out. The
+obvious move is to detect such sweeps and "look past" them to the last real
+edit. It cannot be done from blame. A convention-stamp commit and a
+staleness-audit fix commit look alike in blame: each owns a median of 1-2
+lines (2-4% of the docstring) across similar file counts. The first is a
+prefix nobody read; the second is the most careful reading those files have
+had. Any rule that demotes the stamp also demotes every prior audit's own fix
+commits — which would make each audit blind the next one to exactly the files
+it just verified, a self-defeating instrument.
 
 So the scan reports three FACTS (floor sha, share of the docstring it owns,
 how many other docstrings it floors) and leaves judgement to the semantic
 step, which is where the playbook already puts judgement.
 
 Separately, the day-based threshold decays. ``delta = ds_age - body_age`` with
-a PINNED ds grows with wall clock alone: the ``ds=2026-02-19`` cohort could
-not fire at ANY body age on 2026-05-15 (ds_age was 85, under the 90 minimum)
-and fires for anything touched within 89 days by 2026-08-18. 28 flags became
-87 with nothing having drifted. ``body_commits_since_ds`` counts commits
-rather than days and so does not move with the calendar.
+a PINNED ds grows with wall clock alone: a cohort whose ds_age is under the
+90-day minimum cannot fire at ANY body age, yet a few months later the same
+cohort fires for anything touched recently, so the flag count climbs with
+nothing having drifted. ``body_commits_since_ds`` counts commits rather than
+days and so does not move with the calendar.
 """
 
 import importlib.machinery
@@ -75,8 +72,8 @@ def test_floor_facts_reports_share_and_cofloor_count():
 def test_floor_facts_does_not_look_past_the_floor():
     """THE LOAD-BEARING TEST: no auto-skipping, because it cannot be justified.
 
-    If this ever starts returning the older timestamp, the instrument has gone
-    back to guessing intent from blame — and will silently demote every prior
+    If this ever starts returning the older timestamp, the instrument is
+    guessing intent from blame — and will silently demote every prior
     audit's fix commits along with the stamps.
     """
     blamed = [(900 * DAY, "stamp"), (100 * DAY, "realwork")]
@@ -122,7 +119,7 @@ def test_body_commit_count_flags_even_when_the_day_delta_is_short():
 
 
 def test_the_day_delta_arm_still_fires_on_its_own():
-    """POSITIVE CONTROL: adding the new arm must not disable the old one."""
+    """POSITIVE CONTROL: the commit-count arm must not disable the day arm."""
     rows = [_row(ds_ts=10 * DAY, body_commits_since_ds=0)]
     out = cdd.partition_rows(rows, window_days=120, min_delta_days=90,
                              min_body_commits=12, now_ts=400 * DAY)
@@ -173,14 +170,13 @@ def test_a_big_share_on_a_shared_floor_stays_flagged():
 
 
 def test_a_pinned_row_can_only_be_flagged_by_the_clock_independent_arm():
-    """The recalibration, stated as a property.
+    """The pinned-row gating, stated as a property.
 
     Pinning IS the decay mechanism — a ds that stops moving while the clock
     runs makes `delta` grow by itself, so on a pinned row `delta >= 90`
     degenerates into "was this touched recently". Such a row must therefore
-    earn its flag from the commit count or not at all. Without this the scan
-    re-inflates every year: 28 flags became 87 between 2026-05-15 and
-    2026-08-18 with no docstring having drifted.
+    earn its flag from the commit count or not at all. Without this the flag
+    count inflates with the calendar while no docstring drifts.
     """
     huge_delta_but_pinned = _row(path="pinned.py", ds_ts=1 * DAY,
                                  body_commits_since_ds=0,
@@ -211,9 +207,9 @@ def test_the_same_huge_delta_DOES_flag_when_the_floor_is_particular():
 
 
 def test_default_scope_is_every_package_src():
-    """The default scope was a hand-kept tuple that left
-    hypergumbo-lang-scip-python unscanned. It is now read from the checkout,
-    so it must equal the package trees on disk, scip-python included."""
+    """The default scope is read from the checkout, not hand-listed (a
+    hand-kept list can silently omit a package), so it must equal the package
+    trees on disk, hypergumbo-lang-scip-python included."""
     root = SCRIPTS.parent
     on_disk = {str(p) for p in (root / "packages").glob("*/src")}
     scope = cdd.default_scope(str(root))
@@ -224,11 +220,10 @@ def test_default_scope_is_every_package_src():
 # --- registry cross-reference (WI-sipuk) ------------------------------------
 #
 # Blame cannot see a docstring that never aged relative to its body but names a
-# value the registry retired. The 2026-08-18 audit found 63 such lines in 19
-# files, nine of them in files the co-change scan never flagged, and one had
-# shipped into docs/schema.json through a MetaKeySpec description. These tests
-# pin the name-exact replacement: the fixtures are excerpts of those sites as
-# they stood before 22418804f4 cleaned them.
+# value the registry retired. Such names sit in files the co-change scan never
+# flags, and can reach docs/schema.json through a MetaKeySpec description.
+# These tests pin name-exact matching; many fixtures are excerpts of real
+# prose that named retired values.
 
 VOCAB = {
     "edge-type": frozenset({"calls", "contains", "dispatches_to",
@@ -275,15 +270,15 @@ def test_a_quoted_bare_word_is_vocabulary():
 
 
 def test_scare_quoted_english_before_edges_is_not_vocabulary():
-    """Measured on the live tree (go.py, linkers/registry.py): "resolved" and
-    "unresolved" edges are concepts in scare quotes. Quotes are syntax only
+    """Prose speaks of "resolved" and "unresolved" edges as concepts in
+    scare quotes. Quotes are syntax only
     after an explicit anchor such as kind=."""
     src = '"""Minting a "resolved" edge; analyzers create \'unresolved\' edges."""\n'
     assert _hits(src) == []
 
 
 def test_a_list_cannot_borrow_an_english_word():
-    """Measured on the live tree: "enters ``node_ids`` and the edge enters"
+    """Phrases like "enters ``node_ids`` and the edge enters"
     and "with repo_root, symbols, and edges" each read as a name list ending
     in 'edges'. Every element of the list must itself be a name."""
     src = ('"""The destination enters ``node_ids`` and the edge enters\n'
@@ -293,8 +288,8 @@ def test_a_list_cannot_borrow_an_english_word():
 
 def test_a_name_live_on_any_registry_is_not_retired():
     """Prose says "``ast_call`` edges" for edges carrying that evidence type.
-    The membership test is the union of the registries, as the item
-    specifies; the hit still names the axis the prose context claims."""
+    The membership test is the union of the registries (WI-sipuk); the hit
+    still names the axis the prose context claims."""
     assert _hits('"""Pathway label on ``ast_call`` edges."""\n') == []
     src = '"""message_send and message_receive edges for matching channels."""\n'
     assert _flagged(src) == [(1, "message_receive", "edge-type")]
@@ -306,8 +301,9 @@ def test_a_one_letter_kind_is_a_placeholder():
 
 
 def test_after_an_anchor_the_list_continues_only_through_quoted_names():
-    """Measured on the live tree (ir.py, noise_filter.py): the bare word after
-    kind="call", is the next keyword argument, not a second kind."""
+    """In a call such as ``UsageContext(kind="call", context_name=...)``, the
+    bare word after kind="call", is the next keyword argument, not a second
+    kind."""
     src = ('"""UsageContext(kind="method", context_name="path") and\n'
            '(``kind=="file" and entry_role=="script"``)."""\n')
     assert _hits(src) == []
@@ -337,7 +333,8 @@ def test_a_retired_pair_split_across_concatenated_strings_is_flagged():
 
 
 def test_function_docstrings_and_comments_are_prose_too():
-    """Most of the 63 lines were not in module docstrings."""
+    """Retired names turn up in function docstrings and comments, not only in
+    module docstrings."""
     src = ('def f():\n'
            '    """Extract invokes_callback edges from OTP behaviours."""\n'
            '    # These create invokes_callback edges from controller class\n'
@@ -389,8 +386,8 @@ def test_a_retired_symbol_kind_literal_in_prose_is_flagged():
 
 
 def test_a_kind_literal_inside_rst_backticks_is_flagged():
-    """framework_patterns.py:35 and play_routes.py:17 before 22418804f4: the
-    closing quote is followed by the RST backticks around the literal."""
+    """In RST-quoted prose the closing quote is followed by the backticks
+    around the literal."""
     src = '"""3. Creates ``kind="route"`` Symbol objects with meta."""\n'
     assert _flagged(src) == [(1, "route", "symbol-kind")]
     assert _hits('"""See x.routes_to edges; set edge_type=pick_type(node)."""\n'
@@ -410,7 +407,7 @@ def test_a_retired_evidence_type_is_checked_against_its_own_registry():
 
 
 def test_a_live_evidence_type_named_outside_an_edge_context_is_not_flagged():
-    """websocket.py:161 names message_send correctly, as an evidence type.
+    """A comment can name message_send correctly, as an evidence type.
     A context-free scan over edge + symbol-kind names would flag it."""
     src = ("# Socket.io emit patterns (message_send) - matches literals\n"
            "X = 1\n")
@@ -452,9 +449,9 @@ def test_the_cross_reference_reports_unscanned_files(tmp_path):
 
 
 def test_live_vocabulary_comes_from_the_resolvers():
-    """The item's own correction: EDGE_TYPES is a tuple of specs, so a
-    membership test against it is False for every name. Assert NAMED live
-    entries on each axis, not a count."""
+    """EDGE_TYPES is a tuple of specs, so a membership test against it is
+    False for every name. Assert NAMED live entries on each axis, not a
+    count."""
     vocab = cdd.live_vocabulary(str(SCRIPTS.parent))
     assert set(vocab) == set(cdd.REGISTRY_AXES)
     assert "contains" in vocab["edge-type"]
@@ -468,8 +465,8 @@ def test_live_vocabulary_comes_from_the_resolvers():
 
 
 def test_the_fold_explanation_sites_on_the_live_tree_are_not_flagged():
-    """The test set the item names: every surviving hit for the retired names
-    under packages/*/src is fold-explanation prose and must not flag."""
+    """In these core files every hit for a retired name is fold-explanation
+    prose and must not flag (file set from WI-sipuk)."""
     vocab = cdd.live_vocabulary(str(SCRIPTS.parent))
     core = SCRIPTS.parent / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
     retired = {"routes_to", "invokes_callback", "contains_routes",
@@ -500,11 +497,11 @@ def test_registry_refs_is_part_of_all_and_never_sets_the_exit_code(
 
 # --- rolling read: the review ledger ---------------------------------------
 #
-# A co-change flag is not a selection rule. Measured 2026-10-06: a seeded
-# random sample of 30 files no audit had read (median 2 body commits since the
-# docstring, so none flagged) drifted at >= 19/30, against 57-89% for flagged
-# files across runs. The rolling read covers what the flags cannot: each audit
-# also reads the N files whose last recorded review is oldest.
+# A co-change flag is not a selection rule: files no audit has read drift at a
+# rate similar to flagged files even when too few body commits have landed
+# since the docstring for any flag to fire. The rolling read covers what the
+# flags cannot: each audit also reads the N files whose last recorded review is
+# oldest.
 
 
 def _rrow(path, ds_ts=100 * DAY):

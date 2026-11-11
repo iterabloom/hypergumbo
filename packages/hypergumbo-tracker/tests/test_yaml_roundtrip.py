@@ -445,17 +445,17 @@ class TestFlowStyleUpdateLists:
 class TestLongStringRoundtrip:
     """Verify long string scalars round-trip without nonce-injection corruption.
 
-    Regression for WI-pusif-bukor: at the previous ry.width=4096 setting,
-    ruamel.yaml folded long double-quoted scalars across physical lines.
-    The per-line nonce post-processor in `_serialize_op` then appended
-    `  # <nonce>` to every physical line, including continuation lines,
-    embedding the nonce comment INSIDE the string value. CSafeLoader treats
-    `#` as literal inside double-quoted scalars, so on read-back the value
-    contained `# <nonce>` substrings the user never wrote.
+    The per-line nonce post-processor in `_serialize_op` appends
+    `  # <nonce>` to every physical line. If ruamel.yaml folded a long
+    double-quoted scalar across physical lines (as it does at a finite
+    width such as 4096), the nonce comment would land on continuation lines
+    INSIDE the string value; CSafeLoader treats `#` as literal inside
+    double-quoted scalars, so on read-back the value would contain
+    `# <nonce>` substrings the user never wrote.
 
-    The fix sets `ry.width = sys.maxsize`, so no realistic scalar folds.
-    Each scalar is one physical line, the nonce-on-every-line invariant
-    remains intact, and the corruption class is structurally impossible.
+    `_serialize_op` sets `ry.width = sys.maxsize`, so no realistic scalar
+    folds: each scalar is one physical line, the nonce-on-every-line
+    invariant holds, and this corruption class cannot occur (WI-pusif-bukor).
 
     These tests use `_parse_ops_bytes` (which delegates to CSafeLoader) so
     they exercise the same parser the production read path uses — no nonce
@@ -514,8 +514,8 @@ class TestLongStringRoundtrip:
         """10 KB scalar with no whitespace — adversarial fold target.
 
         Whitespace gives the YAML folder natural break points; a long run
-        of non-whitespace must still be emitted without folding. With the
-        WI-pusif fix this is structurally guaranteed.
+        of non-whitespace must still be emitted without folding. With
+        `ry.width = sys.maxsize` this is structurally guaranteed.
         """
         long_desc = "x" * 10000
         op = {
@@ -536,9 +536,9 @@ class TestLongStringRoundtrip:
     def test_adversarial_literal_hash_pattern_in_long_string(self) -> None:
         """User-supplied text containing literal '  # NNNN' must round-trip.
 
-        The original WI-pusif description noted that the literal sequence
-        `'  # 1234'` or `'  # abcd'` inside user content is at risk of
-        being mistaken for a nonce comment by any naive post-processor.
+        The literal sequence `'  # 1234'` or `'  # abcd'` inside user
+        content is at risk of being mistaken for a nonce comment by any
+        naive post-processor (WI-pusif).
         With ry.width=sys.maxsize the entire scalar lives on one line and
         CSafeLoader correctly preserves these literal substrings.
         """
@@ -560,12 +560,11 @@ class TestLongStringRoundtrip:
         assert parsed[0]["message"] == long_desc
 
     def test_inv_gajap_size_regression(self) -> None:
-        """A description ~4106 YAML bytes — the original failure size class.
+        """A description of 4000-5000 YAML bytes — just past a 4096 fold width.
 
-        WI-pusif was first observed updating INV-gajap with a 4106-byte
-        description that corrupted at position `'periodic  # f084 audit'`.
-        Any description in the 4080-5000 byte range is at risk under the
-        old serializer; this test pins one such size.
+        A description in the 4080-5000 byte range is at risk of folding (and
+        so of an injected nonce) under a 4096-column serializer width; this
+        test pins one such size (WI-pusif, INV-gajap).
         """
         long_desc = (
             "Sentence about the invariant that violates expectation. "
@@ -590,12 +589,12 @@ class TestLongStringRoundtrip:
     def test_no_nonce_substring_leaks_into_long_scalar(self) -> None:
         """Direct check: parsed long scalar must NOT contain '# <hex>'.
 
-        Under the old fold-then-nonce-inject bug, the parsed string would
+        If the serializer folded long scalars, the parsed string would
         contain `# <4-hex-chars>` substrings injected at every fold boundary
-        (~4096 bytes apart). This test detects exactly that corruption
-        signature on a multi-fold-length input.
+        (~4096 bytes apart at width 4096). This test detects exactly that
+        corruption signature on a multi-fold-length input.
         """
-        # ~12 KB — would have ~3 fold boundaries under width=4096.
+        # ~12 KB — ~3 fold boundaries at a width of 4096.
         long_desc = "ipsum dolor sit amet consectetur adipiscing elit " * 250
         op = {
             "op": "create",
@@ -633,7 +632,7 @@ class TestLongStringRoundtrip:
         serialized = _serialize_op(op)
         non_empty = [l for l in serialized.split("\n") if l.strip()]
         # Header fields (op, at, by, actor, clock, nonce) + 1 message line.
-        # With width=4096 we'd see ~25 extra lines from message folding.
+        # A width of 4096 would add ~25 extra lines from message folding.
         assert len(non_empty) < 15, (
             f"suspected folding: {len(non_empty)} non-empty physical lines "
             f"for a single 100 KB scalar; expected <15"

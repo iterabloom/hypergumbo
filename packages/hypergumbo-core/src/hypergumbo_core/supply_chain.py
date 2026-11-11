@@ -53,8 +53,8 @@ file. Signals are checked in order; first match wins:
    - Otherwise → tier 1 (workspace IS the project)
 7. Test code detection (tier 1 with is_test=True) - language-specific
    overrides first, then tests/, spec/, __tests__/, _test.go, .test.js, etc.
-   Routing tests through tier 2 historically made tier 2 a synonym for
-   is_test and drowned out the real internal-dep signal (INV-tisid).
+   Tests are not routed through tier 2: that would make tier 2 a synonym
+   for is_test and drown out the real internal-dep signal (INV-tisid).
 8. Notebook (.ipynb) and fuzz/bench detection (tier 1) - in-repo role files;
    the role is carried by the reason string (INV-naduh).
 9. First-party detection (tier 1) - ``first_party_patterns``, then
@@ -71,8 +71,8 @@ Configuration
 -------------
 The ``SupplyChainConfig`` arms (``derived_patterns``,
 ``internal_package_roots``, ``first_party_patterns``) are honoured in steps
-1, 5 and 9 when a caller passes ``classify_file(config=...)``, but as of
-2026-10 no CLI flag or config key feeds them: its one production caller,
+1, 5 and 9 when a caller passes ``classify_file(config=...)``, but no CLI
+flag or config key feeds them: its one production caller,
 ``cli._classify_symbols`` (which ``sketch._run_analysis`` also goes through),
 passes no ``config``, and ``.hypergumbo.toml`` rejects these keys as unknown
 settings, so a CLI run emits no tier-2 node.
@@ -114,7 +114,7 @@ Manifest Readers
 - :class:`DependencyManifest` holds what a language analyzer parsed from
   go.mod / Maven / Gradle / Python manifests (the flat ``entries``) and from
   Mix and npm manifests (the per-package-scheme ``scoped`` tables, WI-juzaj).
-  Per ADR-0041 §1 it no longer sets tier (every boundary node is tier 3);
+  Per ADR-0041 §1 it does not set tier (every boundary node is tier 3);
   ``directness_for(language, module)`` returns ``direct`` / ``transitive`` /
   ``undeclared`` (or ``None`` when it cannot tell), and
   ``ir.create_boundary_nodes`` stamps that on the ``directness`` meta key.
@@ -181,11 +181,11 @@ class DependencyManifest:
 
     Entries map module path strings to dicts with at least a ``direct`` bool key.
 
-    ADR-0041 §1/§2 (supply:F5): the manifest no longer influences *tier*. Tier
+    The manifest does not influence *tier* (ADR-0041 §1/§2, supply:F5). Tier
     names supply-chain distance only, so every third-party import is tier 3
-    (``classify_import`` is now constant ``EXTERNAL_DEP``). The direct/transitive
-    declaration relationship the old mapping burned into tier 2 is exposed by
-    ``classify_directness`` and recorded on the ``directness`` meta key instead.
+    (``classify_import`` is constant ``EXTERNAL_DEP``). The direct/transitive
+    declaration relationship is exposed by ``classify_directness`` and
+    recorded on the ``directness`` meta key.
     Tier 2 (``internal_dep``) is org-internal code outside the project,
     assigned by file classification — never by this manifest classifier.
     """
@@ -214,8 +214,8 @@ class DependencyManifest:
         siblings included) and org-internal code (tier 2) are assigned by file
         classification, not here.
 
-        The direct/transitive/undeclared *declaration relationship* this method
-        used to fold into tier 2 now lives on :meth:`classify_directness`.
+        The direct/transitive/undeclared *declaration relationship* is
+        reported separately, by :meth:`classify_directness`.
 
         Returns:
             Tier.EXTERNAL_DEP (3), always.
@@ -236,8 +236,7 @@ class DependencyManifest:
           since stdlib is declared nowhere — the stdlib-vs-third_party split is
           the separate ``ecosystem`` axis, ADR-0041 §3).
 
-        Matching mirrors the old tier classifier's longest-prefix logic across
-        slash-separated (Go: ``github.com/foo/bar``) and dot-separated
+        Matching is by longest prefix, across slash-separated (Go: ``github.com/foo/bar``) and dot-separated
         (Java/Kotlin: ``com.fasterxml.jackson.core``) module paths.
         """
         best_match = ""
@@ -440,8 +439,8 @@ class SupplyChainConfig:
     """Configuration for supply chain classification.
 
     Allows customizing tier classification when passed as
-    ``classify_file(config=...)``. No production caller constructs one as of
-    2026-10 (see the module docstring's "Configuration" section).
+    ``classify_file(config=...)``. No production caller constructs one
+    (see the module docstring's "Configuration" section).
 
     Attributes:
         first_party_patterns: Additional patterns to classify as tier 1
@@ -478,9 +477,9 @@ class FileClassification:
     `tier` and the boolean role flags (`is_test`, `is_example`,
     `is_config`, `is_generated`) are independent axes (WI-rigun-patuz,
     WI-jobuj). Per INV-tisid, test code is tier 1 with is_test=True —
-    tests are first-party code, and routing them through tier 2 made
-    tier 2 a synonym for is_test (~99% of self-analysis tier-2 entries
-    were tests, drowning out actual internal-dep signal). Per INV-naduh /
+    tests are first-party code, and routing them through tier 2 would
+    make tier 2 a synonym for is_test, drowning out the actual
+    internal-dep signal. Per INV-naduh /
     ADR-0041 §1, tier 2 is reserved for org-internal *dependency* packages
     (``SupplyChainConfig.internal_package_roots``, when a caller passes a
     config); other in-repo role files
@@ -489,7 +488,7 @@ class FileClassification:
 
     At most one of `is_test`, `is_example`, `is_config` is True per file
     (mutual exclusion preserved by the classifier order); the property is
-    tier-independent now that role files are first-party.
+    tier-independent, since role files are all first-party.
     """
 
     tier: Tier
@@ -505,8 +504,8 @@ class FileClassification:
 # Only names no project uses for source. ``dist/`` / ``build/`` / ``out/`` /
 # ``target/`` are NOT here: whether one is generated output is decided by the
 # tool that writes it (discovery.BUILD_OUTPUT_RULES, asked through
-# ``_build_output_root``) -- qemu's root ``target/`` is 653 files of CPU
-# emulation source, and matching it by name made all of it tier 4.
+# ``_build_output_root``) -- qemu's root ``target/``, for one, is CPU
+# emulation source, which a name match would make tier 4.
 DERIVED_PATH_PATTERNS = [
     r"^\.next/",
     r"^\.nuxt/",
@@ -531,7 +530,7 @@ DERIVED_FILENAME_PATTERNS = [
     r"_pb2_grpc\.py$",      # Python gRPC generated code
 ]
 
-# WI-tizij: patterns for generated code (OpenAPI/Swagger, protobuf, etc.)
+# Patterns for generated code (OpenAPI/Swagger, protobuf, etc.; WI-tizij).
 # These files are structurally central but have low developer relevance.
 # The is_generated flag lets ranking apply a centrality penalty.
 GENERATED_CODE_PATTERNS = [
@@ -546,29 +545,26 @@ GENERATED_CODE_PATTERNS = [
     # OpenAPI generated Go clients
     r"^(?:.*/)?zz_generated\.\w+\.go$",                  # Kubernetes code-gen
     r"^(?:.*/)?mock_\w+\.go$",                           # mockgen output
-    # WI-sozah: go-swagger output layouts. Conventional alertmanager-style
+    # go-swagger output layouts (WI-sozah). Conventional alertmanager-style
     # ``api/vN/{restapi,models}/`` directory hierarchies hold generated server
     # stubs and DTOs. The catch-all is anchored at ``api/v\d+/(restapi|models)/``
     # so first-party ``models/`` directories without an ``api/vN/`` parent are
     # not falsely flagged.
     r"(?:^|/)api/v\d+/(?:restapi|models)/",
-    # WI-sozah: go-swagger fingerprint files. These names are unambiguous
+    # go-swagger fingerprint files (WI-sozah). These names are unambiguous
     # — the tool always emits them under the chosen output package — so
     # they can be matched at any depth without needing the ``api/vN/`` anchor.
     r"(?:^|/)restapi/embedded_spec\.go$",
     r"(?:^|/)restapi/configure_[^/]+\.go$",
     r"(?:^|/)restapi/server\.go$",
     r"(?:^|/)restapi/doc\.go$",
-    # WI-vubad: openapi-codegen TypeScript SDK output. Airflow, FastAPI,
+    # openapi-codegen TypeScript SDK output (WI-vubad). Airflow, FastAPI,
     # and many Python web projects ship a generated TS client under
-    # ``openapi-gen/`` (sometimes ``openapi/`` or ``api-client/``). The
-    # prospector evidence from WI-tubot 2026-04-11 showed ~200 candidate
-    # dead-code functions per airflow run came from
-    # ``airflow-core/src/airflow/api_fastapi/auth/managers/simple/ui/
-    # openapi-gen/requests/core/{request,CancelablePromise}.ts`` alone.
+    # ``openapi-gen/`` (sometimes ``openapi/`` or ``api-client/``).
     # These files are generated by openapi-codegen / openapi-typescript
     # and are effectively unreachable via hypergumbo's normal call
-    # graph — they should be is_generated=True and demoted out of
+    # graph, so left unflagged they would flood the dead-code candidates
+    # (WI-tubot); they are is_generated=True and demoted out of
     # dead-code candidate ranking.
     r"(?:^|/)openapi-gen/.*\.(?:ts|tsx|js|jsx|mjs|cjs)$",
 ]
@@ -590,15 +586,15 @@ EXTERNAL_DEP_PATTERNS = [
 # Patterns matched with re.search (anywhere in path) for vendored SDKs
 # that live inside subdirectories rather than at the repo root.
 # Common in Go monorepos where cloud providers embed SDK copies.
-# INV-mogud: cluster-autoscaler has 19K+ nodes from these SDKs classified
-# as tier-1 because they don't match the root-anchored patterns above.
+# Without these, SDK copies such as cluster-autoscaler's would be tier 1,
+# because the root-anchored patterns above do not match them (INV-mogud).
 EXTERNAL_DEP_DEEP_PATTERNS = [
     (r"(?:^|/)[^/]+-sdk-go(?:-[^/]+)?/", "vendored Go SDK"),
     (r"(?:^|/)[^/]+-go-sdk/", "vendored Go SDK"),
     (r"(?:^|/)[^/]+-sdk-golang/", "vendored Go SDK"),
     (r"(?:^|/)vendor-internal/", "vendor-internal/"),
-    # INV-kokik: vendored third-party front-end assets nested under a
-    # first-party root (typically src/.../static/). These marker directory
+    # Vendored third-party front-end assets nested under a first-party root,
+    # typically src/.../static/ (INV-kokik). These marker directory
     # names are unambiguous vendoring signals (same rationale as
     # vendor-internal/ above), so they fire even under a src/ prefix and
     # demote un-minified vendored JS/CSS out of tier-1. Deliberately NOT a
@@ -609,14 +605,14 @@ EXTERNAL_DEP_DEEP_PATTERNS = [
     (r"(?:^|/)npm_mirror/", "vendored npm mirror"),
     (r"(?:^|/)bower_components/", "bower_components/"),
     # ADR-0004 §"Installed dependency source" point 3: a COMMITTED vendor tree
-    # below the root (kata-containers ``src/runtime/vendor``, 3,282 files; a
-    # ``web/node_modules`` committed for offline builds) is analysed now that
-    # discovery no longer drops these names wholesale, and it is dependency
+    # below the root (kata-containers ``src/runtime/vendor``; a
+    # ``web/node_modules`` committed for offline builds) is analysed, since
+    # discovery does not drop these names wholesale, and it is dependency
     # code wherever it sits. The root-anchored patterns above keep their
     # labels; these catch the nested remainder. Cost, stated: a first-party
     # directory that is literally named ``vendor`` below the root (a
-    # marketplace app's domain module) is tier 3 rather than tier 1 -- still
-    # analysed, which is more than the old name exclusion gave it.
+    # marketplace app's domain module) is tier 3 rather than tier 1 -- but
+    # still analysed.
     (r"(?:^|/)node_modules/", "node_modules/"),
     (r"(?:^|/)vendor/", "vendor/"),
 ]
@@ -640,7 +636,7 @@ EXAMPLE_PATTERNS = [
     r"^tutorials?/",  # tutorials/ or tutorial/
 ]
 
-# WI-jobuj: dependency/build manifest filenames. Files matching these
+# Dependency/build manifest filenames (WI-jobuj). Files matching these
 # names are flagged with ``is_config=True`` independently of tier (see
 # FileClassification). The set is intentionally narrow — canonical
 # package-manager and build-tool manifests, not arbitrary dotfiles —
@@ -702,8 +698,7 @@ FUZZ_BENCH_PATTERNS = [
 # Per INV-tisid, BOTH dedicated test directories AND co-located test
 # files route to tier 1 (FIRST_PARTY) with is_test=True. Tier 2 is
 # reserved for org-internal dependency packages (INV-naduh); a
-# "test dir → tier 2" rule had made tier 2 a synonym
-# for is_test (~99% of self-analysis tier-2 entries were tests).
+# "test dir → tier 2" rule would make tier 2 a synonym for is_test.
 TEST_DIR_PATTERNS = [
     r"(?:^|/)tests?/",       # tests/ or test/ at any level
     r"(?:^|/)__tests__/",    # __tests__/ (Jest convention) at any level
@@ -733,12 +728,9 @@ TEST_FILE_PATTERNS = [
 # puts `*_test.exs` files at `test/<context>/<thing>_test.exs` — they ARE
 # in a `test/` directory by convention, but they're still first-party
 # production-adjacent code (the dir is part of the project, not vendored).
-# WI-pugas (FCA finding on phoenix bakeoff 2026-05-10): 1328/1328 nodes
-# at supply_chain.tier=2 on phoenix were Elixir test files, none vendored
-# — tier 2 had become a synonym for "is_test" instead of "internal_dep".
-# Adding the Elixir test pattern HERE (override) routes Phoenix tests to
-# tier 1 with is_test=True, freeing tier 2 to mean what it should:
-# "in-repo non-test internal dependency / fuzz / example / etc."
+# Matching the Elixir test pattern HERE (override) classifies such a file by
+# its file pattern; either arm gives tier 1 with is_test=True, keeping tier 2
+# for org-internal dependency packages (WI-pugas).
 TEST_FILE_PATTERNS_DIR_OVERRIDE = [
     r"_test\.exs$",              # Elixir/Phoenix: user_test.exs
 ]
@@ -753,7 +745,7 @@ WORKSPACE_FIRST_PARTY_PATTERNS = [
 
 _GENERATED_CODE_RE = [re.compile(p) for p in GENERATED_CODE_PATTERNS]
 
-# WI-pofin: content-based generated-code detection.
+# Content-based generated-code detection (WI-pofin).
 #
 # Matches the canonical ``@generated`` marker (Facebook / openapi /
 # various codegen tools) and the Go stdlib convention
@@ -770,16 +762,14 @@ _GENERATED_CODE_RE = [re.compile(p) for p in GENERATED_CODE_PATTERNS]
 # - ``# Code generated by X. DO NOT EDIT`` (Python codegen)
 # - ``<!-- @generated -->`` (HTML/XML/Markdown)
 #: THE ONE PREDICATE for "does this file announce itself as generated"
-#: (INV-bokim + INV-pogob). Two lived here, disagreeing, and the more
-#: DESTRUCTIVE consumer held the weaker rule: ``is_likely_minified``
-#: heuristic 3 was an unanchored case-insensitive
-#: ``(Generated by|@generated|DO NOT EDIT)`` over five lines, and it decides
-#: ``Tier.DERIVED``, which drops every symbol in the file. Measured cost --
-#: two hand-written first-party test files in THIS repository contributed
-#: ZERO nodes to a default survey because their DOCSTRINGS mention some other
-#: file being regenerated ("regenerated by" contains "generated by"); and a
-#: Go probe reported 0 of 210 primitives reachable because its own fixture
-#: carried ``// generated by <script>``.
+#: (INV-bokim + INV-pogob). Both the ``is_generated`` flag and
+#: ``is_likely_minified`` heuristic 3 use it. The latter decides
+#: ``Tier.DERIVED``, which drops every symbol in the file, so it must not run
+#: a looser rule than the flag: an unanchored case-insensitive
+#: ``(Generated by|@generated|DO NOT EDIT)`` match would drop hand-written
+#: files whose DOCSTRINGS mention some other file being regenerated
+#: ("regenerated by" contains "generated by"), or a fixture carrying
+#: ``// generated by <script>``.
 #:
 #: TWO HALVES, EACH LOAD-BEARING.
 #:   COMMENT-ANCHORED. A generated file DECLARES itself in a comment. Prose
@@ -790,10 +780,10 @@ _GENERATED_CODE_RE = [re.compile(p) for p in GENERATED_CODE_PATTERNS]
 #:     is how a human annotates a checked-in artefact they still edit;
 #:     ``DO NOT EDIT`` is what makes it a generator speaking. So the bare
 #:     phrase is NOT a marker, while ``DO NOT EDIT`` anywhere on an anchored
-#:     line is -- which also keeps the Python protobuf header
+#:     line is -- which also catches the Python protobuf header
 #:     ``# Generated by the protocol buffer compiler.  DO NOT EDIT!``, a real
-#:     detection the previous STRICT pattern missed because it required the
-#:     literal "Code generated by".
+#:     declaration that a pattern requiring the literal "Code generated by"
+#:     would miss.
 #:
 #: The marker may sit anywhere on the anchored line, because real headers put
 #: the tool name first (``// Code generated by protoc-gen-go. DO NOT EDIT.``).
@@ -817,16 +807,16 @@ def _leading_comment_block(text: str) -> str:
     """The comment block at the top of the file -- blank lines included, the
     first line of actual code excluded.
 
-    WHY THE SCOPE IS THE BLOCK AND NOT A BYTE OR LINE COUNT, measured rather
-    than reasoned. A first cut scanned the whole ``_HEADER_SCAN_BYTES`` head
-    for an anchored marker and, on a five-repository sweep, newly classified
-    three first-party files as generated:
+    WHY THE SCOPE IS THE BLOCK AND NOT A BYTE OR LINE COUNT. Scanning the
+    whole ``_HEADER_SCAN_BYTES`` head for an anchored marker classifies
+    first-party files as generated on comments like these, found in real
+    hand-written files:
 
-      test_max_tier.py:106   ``# ...classified tier 4 via its "DO NOT EDIT" header,``
-      BaseToggleActionDelegate.java:38  ``// TODO Auto-generated method stub``
-      CloverModuleConfig.java:41        ``// autogenerated``
+      test_max_tier.py   ``# ...classified tier 4 via its "DO NOT EDIT" header,``
+      BaseToggleActionDelegate.java  ``// TODO Auto-generated method stub``
+      CloverModuleConfig.java        ``// autogenerated``
 
-    The first is INV-bokim's own defect wearing a comment instead of a
+    The first is the INV-bokim defect wearing a comment instead of a
     docstring -- prose ABOUT generated code, in a hand-written test. The second
     is Eclipse's per-METHOD stub marker, which says nothing about the file. A
     generated file DECLARES itself in its header, so the header is the scope.
@@ -839,7 +829,7 @@ def _leading_comment_block(text: str) -> str:
     A block comment whose interior lines carry no prefix of their own (a bare
     ``/*`` followed by unprefixed prose) ends the block at that line. That is
     deliberate and it errs toward NOT classifying as generated, which is the
-    direction that keeps symbols -- the direction INV-bokim was filed about.
+    direction that keeps symbols -- the direction INV-bokim protects.
     """
     out: list[str] = []
     for line in text.splitlines()[:_HEADER_COMMENT_MAX_LINES]:
@@ -856,7 +846,7 @@ def _has_generated_marker(head: str) -> bool:
     The single home for the question. Both consumers -- the ``is_generated``
     flag via :func:`_has_generated_header` and the tier via
     :func:`is_likely_minified` -- route through here, so they cannot drift
-    apart again the way INV-pogob found them.
+    apart (INV-pogob).
     """
     return _GENERATED_MARKER_PATTERN.search(
         _leading_comment_block(head),
@@ -867,10 +857,10 @@ _C_FAMILY_EXTS = frozenset({".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh"})
 
 #: Structural fingerprints of generator output that does not DECLARE itself
 #: (WI-munam). Each entry is a set of patterns that must ALL match the head.
-#: Measured cause: of the three vendored tree-sitter grammars in this tree only
-#: lean's parser.c says ``@generated``; circom's and wolfram's open with the
-#: parser include and the ``LANGUAGE_VERSION`` table header, so their parse
-#: tables were tier 3 and stood for hand-written C. The INV-bokim discipline
+#: A tree-sitter ``parser.c`` need not say ``@generated`` (of the vendored
+#: grammars in this tree, circom's and wolfram's open with just the parser
+#: include and the ``LANGUAGE_VERSION`` table header); without a fingerprint
+#: their parse tables would stand for hand-written C. The INV-bokim discipline
 #: holds: tree-sitter and ``#line`` are preprocessor directives at the start of
 #: a line, the banners must sit on a comment line, and only C-family files are
 #: examined, so prose ABOUT a generator -- a docstring, a Python test fixture,
@@ -927,8 +917,8 @@ _CONTENT_SCAN_EXTS = frozenset({
 def _is_generated_file(rel_path: str) -> bool:
     """Check if a file path matches known generated-code patterns.
 
-    WI-tizij: generated code (OpenAPI models, protobuf stubs, Kubernetes
-    code-gen) is structurally central but has low developer relevance.
+    Generated code (OpenAPI models, protobuf stubs, Kubernetes code-gen) is
+    structurally central but has low developer relevance (WI-tizij).
     """
     for pat in _GENERATED_CODE_RE:
         if pat.search(rel_path):
@@ -939,7 +929,7 @@ def _is_generated_file(rel_path: str) -> bool:
 def _is_config_file(rel_path: str) -> bool:
     """Check if a file path matches a known dependency/build manifest filename.
 
-    WI-jobuj: matches the basename against ``CONFIG_FILE_NAMES``.
+    Matches the basename against ``CONFIG_FILE_NAMES`` (WI-jobuj).
     Path-position-agnostic — a ``pyproject.toml`` at the repo root and
     one inside a workspace are both flagged.
     """
@@ -951,9 +941,10 @@ def _is_config_file(rel_path: str) -> bool:
 def _has_generated_header(path: Path) -> bool:
     """Check the first few KB of *path* for a generated-file marker.
 
-    WI-pofin: complements path-pattern detection for files that don't
-    match known paths but clearly announce themselves as generated via
-    a comment-line marker in the file header. Reads only
+    Complements path-pattern detection for files that don't match known
+    paths but clearly announce themselves as generated via a comment-line
+    marker (or a C-family generator fingerprint) in the file header
+    (WI-pofin). Reads only
     ``_HEADER_SCAN_BYTES`` bytes and skips files whose extension isn't
     in ``_CONTENT_SCAN_EXTS`` to keep the cost bounded. Errors
     reading the file (permission, missing, etc.) are silently treated
@@ -1004,18 +995,18 @@ def classify_file(
         # Path not under repo_root, default to first-party
         return FileClassification(Tier.FIRST_PARTY, "default (outside repo)")
 
-    # WI-tizij: path-based generated-code detection.
-    # WI-pofin: fall back to a content-based header scan when the path
-    # is unambiguous. Path check first because it's cheaper.
+    # Path-based generated-code detection (WI-tizij), falling back to a
+    # content-based header scan when no path pattern matches (WI-pofin).
+    # Path check first because it's cheaper.
     generated = _is_generated_file(rel) or _has_generated_header(path)
     config_filename = _is_config_file(rel)
 
     result = _classify_file_core(rel, path, repo_root, package_roots, config)
     if generated:
         result.is_generated = True
-    # WI-jobuj: is_config is mutually exclusive with is_test / is_example
-    # (test and example detection wins on a tie, e.g., a
-    # package.json under examples/ is is_example=True, not is_config).
+    # is_config is mutually exclusive with is_test / is_example (WI-jobuj):
+    # test and example detection wins on a tie, e.g., a
+    # package.json under examples/ is is_example=True, not is_config.
     if config_filename and not result.is_test and not result.is_example:
         result.is_config = True
     return result
@@ -1222,12 +1213,9 @@ def _classify_file_core(
             try:
                 if path.is_relative_to(pkg_root):
                     rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
-                    # INV-tisid: test directories inside workspace packages
-                    # are tier 1 with is_test=True. Tier 2 is reserved for
+                    # Test directories inside workspace packages are tier 1
+                    # with is_test=True (INV-tisid). Tier 2 is reserved for
                     # org-internal dependency packages (INV-naduh).
-                    # Previously this branch returned
-                    # INTERNAL_DEP, causing 99% of self-analysis tier-2
-                    # entries to be tests rather than actual internal deps.
                     for test_pat in TEST_DIR_PATTERNS:
                         if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
@@ -1255,12 +1243,11 @@ def _classify_file_core(
             except (ValueError, TypeError):
                 continue
 
-    # 5b-pre. WI-pugas: language-specific test patterns that OVERRIDE
-    # the dir pattern. Phoenix/Elixir tests live at `test/<ctx>/foo_test.exs`
+    # 5b-pre. Language-specific test patterns that OVERRIDE the dir pattern
+    # (WI-pugas). Phoenix/Elixir tests live at `test/<ctx>/foo_test.exs`
     # by convention — they match both the dir pattern (test/) and the
-    # file pattern (_test.exs), and the right verdict is tier 1
-    # (first-party with is_test=True), not tier 2 (which conflates "is
-    # test" with "is vendored").
+    # file pattern (_test.exs), and are reported here by the file pattern;
+    # the verdict is tier 1 (first-party with is_test=True) either way.
     for pattern in TEST_FILE_PATTERNS_DIR_OVERRIDE:
         if re.search(pattern, rel):
             return FileClassification(
@@ -1269,7 +1256,7 @@ def _classify_file_core(
                 is_test=True,
             )
 
-    # 5b. INV-tisid: test directories are tier 1 with is_test=True.
+    # 5b. Test directories are tier 1 with is_test=True (INV-tisid).
     # Tier 2 is reserved for org-internal dependency packages
     # (INV-naduh); test code is first-party code that
     # the project's authors write, not a vendored dependency.
@@ -1281,10 +1268,10 @@ def _classify_file_core(
                 is_test=True,
             )
     # Co-located test FILE patterns (e.g. _test.go, .test.js next to
-    # source files) → tier 1 with is_test=True.  Prior to this change,
-    # these were tier 2, which made tier-2 useless for distinguishing
-    # first-party tests from actual third-party dependencies in Go and
-    # other languages where tests are co-located with source.
+    # source files) → tier 1 with is_test=True.  Tier 2 here would make
+    # tier 2 useless for distinguishing first-party tests from actual
+    # dependencies in Go and other languages where tests are co-located
+    # with source.
     for pattern in TEST_FILE_PATTERNS:
         if re.search(pattern, rel):
             return FileClassification(
@@ -1323,7 +1310,7 @@ def _classify_file_core(
     return FileClassification(Tier.FIRST_PARTY, "default (no matching pattern)")
 
 
-# INV-lukop: the average-line-length minification heuristic (Heuristic 1 in
+# The average-line-length minification heuristic (Heuristic 1 in
 # ``is_likely_minified``) only makes sense for WEB ASSETS — JS/CSS/HTML bundles
 # are the artifacts that get minified into long single lines. A dense-but-real
 # source file in another language (a Python data/lookup/i18n module, a very long
@@ -1331,8 +1318,9 @@ def _classify_file_core(
 # length and must NOT be misclassified as minified: doing so classifies its whole
 # file tier-4 (derived), and the default tier filter then drops EVERY symbol and
 # edge for that file with no diagnostic. Gating the heuristic to these extensions
-# closes that silent-whole-file-drop vector; the @generated / sourcemap / webpack
-# heuristics stay universal because they are language-agnostic generation signals.
+# prevents that silent whole-file drop (INV-lukop); the @generated / sourcemap /
+# webpack heuristics stay universal because they are language-agnostic
+# generation signals.
 _MINIFIABLE_WEB_EXTENSIONS = frozenset({
     ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
     ".css", ".scss", ".sass", ".less",
@@ -1383,9 +1371,8 @@ def is_likely_minified(path: Path) -> bool:
 
     # Heuristic 3: a comment-anchored generated-file DECLARATION in the header.
     # Shares :func:`_has_generated_marker` with the ``is_generated`` flag, and
-    # shares its WINDOW too (``_HEADER_SCAN_BYTES``) rather than the five lines
-    # it used to read -- two windows would still be two answers for a file whose
-    # marker sits at line eight, which is the drift INV-pogob was filed for.
+    # shares its WINDOW too (``_HEADER_SCAN_BYTES``): two windows would be two
+    # answers for a file whose marker sits at, say, line eight (INV-pogob).
     if _has_generated_marker(content[:_HEADER_SCAN_BYTES]):
         return True
 
@@ -1589,7 +1576,7 @@ def _installed_dependency_root(
     return None
 
 
-# INV-kutub / ADR-0041 §1 — a dependency declaration naming an in-tree package.
+# A dependency declaration naming an in-tree package (INV-kutub, ADR-0041 §1).
 #
 # A declaration stands for the package it names, so a declaration naming a
 # package whose source is in the analysed tree carries THAT package's tier
@@ -1640,11 +1627,11 @@ def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[
 
     DOES NOT DESCEND INTO A DIRECTORY SYMLINK (INV-pivir), which is what
     ``Path.rglob`` and discovery already do. ``Path.is_dir()`` follows links,
-    so the walk this replaces pushed a link back to its own parent forever:
-    arti's ``maint/rust-maint-common/{maint,common} -> .`` is two self-links
-    per level, an exponential walk, and ``verify-claims`` sat at 100% CPU for
-    30+ minutes before any analysis ran. A symlinked manifest FILE is still
-    read -- reading one file is bounded.
+    so a walk that trusted it would follow a link back to its own parent
+    forever: arti's ``maint/rust-maint-common/{maint,common} -> .`` is two
+    self-links per level, an exponential walk that stalls ``verify-claims``
+    before any analysis runs. A symlinked manifest FILE is still read --
+    reading one file is bounded.
     """
     from .discovery import manifest_walk_skip, walks_into
 
@@ -1767,16 +1754,14 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     the language marks as internal (``is_definitionally_first_party`` —
     ``crate::``, ``./``). Neither can see a repo that refers to itself by the
     name it publishes, because that name lives in a manifest and not in the
-    directory layout: bellman's ``bellman.VerificationError`` and caddy's
-    ``github.com/caddyserver/caddy/v2/modules/caddyhttp`` were both reported as
-    unexamined third-party modules, the latter while caddy's RELATIVE spellings
-    of the same package were correctly suppressed.
+    directory layout: without it, bellman's ``bellman.VerificationError`` and
+    caddy's ``github.com/caddyserver/caddy/v2/modules/caddyhttp`` read as
+    unexamined third-party modules, the latter even though caddy's RELATIVE
+    spellings of the same package are suppressed.
 
-    WHY NOT ``supply_chain_tier``, which INV-vivok proposed. Measured over 42
-    cached surveys the tier is populated on all 796 package nodes (187 tier 1,
-    609 tier 3) — the item's "None on every package node" was a top-level read
-    of a field that serialises nested under ``supply_chain.tier``. It is still
-    the wrong instrument: a package node's tier comes from its DECLARING FILE'S
+    WHY NOT ``supply_chain_tier`` (serialised nested under
+    ``supply_chain.tier``). It is the wrong instrument: a package node's tier
+    comes from its DECLARING FILE'S
     path, so a third-party package declared in an in-repo manifest reads
     first_party (``cmake:CMakeLists.txt:204-204:"GnuTLS":package`` at tier 1).
     Reading the manifest is a fact; the tier is a proxy that fails open.
@@ -1787,18 +1772,18 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     — which names a THIRD-PARTY package — cannot leak in. Returns names in
     their published spelling; the separator fold belongs to the consumer.
 
-    Returns an empty set for a repo with none of these manifests, which leaves
-    every caller's behaviour exactly unchanged.
+    Returns an empty set for a repo with none of these manifests, so callers
+    then suppress nothing by published name.
 
-    MEASURED RESIDUAL, disclosed rather than asserted away. Over the 42-survey
-    corpus this suppresses 154 module reports and adds none. Of those 154, 150
-    are unambiguous — the name is declared by an in-repo manifest and either
-    unconsumed or consumed through a ``workspace:``/``path``/``file:`` spec,
-    which is the workspace-sibling shape INV-nuzas already rules first-party.
-    The remaining 4 (``@y-sweet/{client,react,sdk}``, ``@simplex-chat/types``)
-    are a monorepo pattern where the repo PUBLISHES a package to a registry and
-    one of its own sub-projects then depends on it BY VERSION (``^0.1.0``)
-    rather than by link. The name is still the repo's own and the source is in
+    RESIDUAL, disclosed rather than asserted away. The suppression only ever
+    removes module reports, never adds one. It is unambiguous when the name is
+    declared by an in-repo manifest and either unconsumed or consumed through
+    a ``workspace:``/``path``/``file:`` spec, which is the workspace-sibling
+    shape INV-nuzas already rules first-party. The ambiguous case (e.g.
+    ``@y-sweet/{client,react,sdk}``, ``@simplex-chat/types``) is a monorepo
+    pattern where the repo PUBLISHES a package to a registry and one of its
+    own sub-projects then depends on it BY VERSION (``^0.1.0``) rather than by
+    link. The name is still the repo's own and the source is in
     the tree, so the suppression matches the invariant; what is not established
     is whether that sub-project resolves to the in-repo copy or to an installed
     one. This is a disclosure gate rather than a supply-chain integrity gate,
@@ -1971,8 +1956,8 @@ def declaration_ecosystem(path: str, name: str) -> str:
     """The ADR-0041 §3 ``ecosystem`` of a manifest dependency DECLARATION (INV-fuhin).
 
     A manifest declares a package to FETCH, so a declaration is
-    ``third_party`` -- the WI-juzaj reasoning ``ir.create_boundary_nodes``
-    applies to a module the manifest resolves -- except composer's platform
+    ``third_party`` -- the reasoning ``ir.create_boundary_nodes`` applies to
+    a module the manifest resolves (WI-juzaj) -- except composer's platform
     requirements, which name the runtime and its bundled extensions
     (``stdlib``). The producers are pyproject / Cargo (toml_config), Maven
     (xml_config) and package.json / composer.json (json_config); none reads a

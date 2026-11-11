@@ -53,20 +53,17 @@ Ranking uses multiple signals combined:
    ``test_helper*``) get 90% centrality reduction. This supplements hub
    saturation (which only caps in-degree) with name-, concept- and
    path-based detection of symbols that are plumbing, not architecture.
-   Motivated by INV-mahap (DefaultClock.Now with in-degree 474
-   dominated rankings because hub saturation at 100 only reduced effective_in
-   to ~106). The name rule matches the Clock type, not its Now method; a
+   Hub saturation alone leaves such a symbol near the top: at threshold 100
+   an in-degree of 474 still yields an effective in-degree of ~106
+   (INV-mahap). The name rule matches the Clock type, not its Now method; a
    short Now body is caught by trivial-sink dampening (5) instead.
 
 5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
    line_span <= 5, or with out_degree 0 AND line_span <= 20 (pure sinks
    whose span includes a docstring), get 90% centrality reduction.  These
    are trivial accessors/stubs that accumulate high in-degree through
-   ubiquitous use but have no architectural significance.  Addresses
-   bakeoff cohorts 16-17 findings: Timer.Duration (in=98, LoC=3),
-   noopMetric.Inc (in=109, LoC=1), CheckError (in=195, LoC=3),
-   syncTask.name (in=109, LoC=2) all dominated rankings despite being
-   plumbing.
+   ubiquitous use but have no architectural significance (e.g. a 3-line
+   ``Timer.Duration`` or a 1-line ``noopMetric.Inc`` with in-degree ~100).
 
 6. **Noise Path Dampening**: Symbols in database-migration / noise paths
    (e.g. ``db/migrate/``, ``migrations/``) get a 0.1x multiplier
@@ -236,17 +233,15 @@ class RankedFile:
 
 DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "calls": 1.0,
-    # Post WI-vumum-juvil: gRPC client→server edges are emitted as
-    # canonical 'calls' (weight 1.0); the prior 'grpc_calls' weight
-    # entry was dead after the protocol-call family fold. implements_rpc
-    # folded to 'implements' + meta['protocol']='grpc' (audit-findings
-    # 0016); it keeps its call-like 1.0 weight via the grpc-rpc predicate
-    # at the lookup below (NOT a plain 'implements' 0.5), so gRPC
-    # centrality is not silently demoted.
+    # gRPC client→server edges are canonical 'calls' (weight 1.0;
+    # WI-vumum-juvil). A gRPC RPC implementation is an 'implements' edge
+    # with meta['protocol']='grpc' (audit-findings 0016); it gets the
+    # call-like 1.0 weight via the grpc-rpc predicate at the lookup below
+    # (NOT a plain 'implements' 0.5), so gRPC centrality is not silently
+    # demoted.
     "event_publishes": 0.8,
-    # crypto_flow folded to canonical data_flows_to (ADR-0023 Batch 7 /
-    # audit-findings 0017); the crypto linker is data_flows_to's only
-    # producer, so this preserves the prior 0.8 weight for those edges.
+    # The crypto linker is data_flows_to's only producer, so this is the
+    # weight of crypto-flow edges (ADR-0023 Batch 7 / audit-findings 0017).
     "data_flows_to": 0.8,
     "dispatches_to": 0.6,
     "imports": 0.3,
@@ -405,10 +400,10 @@ def compute_centrality(
         # (main/run/app — typically out >= 20) get a minimum effective
         # in-degree proportional to their out-degree.  Without this,
         # within-file dampening and per-file capping crush orchestration
-        # hubs: alertmanager's `run` (in=9 all same-file, out=128) got
-        # effective_in=0.90 after 0.3x within-file weight and
-        # max_per_file_in=5, burying it at rank 45 below symbols with
-        # moderate in-degree from many files.  The threshold prevents
+        # hubs: a `run` whose few callers are all in its own file keeps only
+        # a tiny effective_in however large its out-degree, and ranks below
+        # symbols with moderate in-degree from many files.  The threshold
+        # prevents
         # the floor from affecting normal functions with a few out-edges.
         _ORCHESTRATION_OUT_THRESHOLD = 20
         if outd >= _ORCHESTRATION_OUT_THRESHOLD:
@@ -604,8 +599,7 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # Case-insensitive prefix, but suffix must be uppercase (to exclude "Mockingbird").
     re.compile(r"^(?:[Dd]ummy|[Mm]ock|[Ff]ake|[Ss]tub|[Ss]py)[A-Z_]"),
     # Assertion/panic/abort/exit builtins: control-flow primitives called
-    # everywhere but not domain architecture. Bakeoff: assert() ranked 6th
-    # in automerge, logPanicAndDie dominated firecracker.
+    # everywhere but not domain architecture.
     # Catches: assert, assertEqual, assert_eq, panic, abort, exit, die, unreachable,
     #          logPanicAndDie, panicOnError (compound camelCase with ^log prefix).
     # Avoids: PanicButton, ExitSurvey, aborted (domain terms).
@@ -615,7 +609,7 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     # The ^log_ pattern catches snake_case (log_error) but not camelCase (logError).
     re.compile(r"^log[A-Z]"),  # logPanicAndDie, logAndExit, logError
     # UI primitive components: leaf design-system elements rendered everywhere.
-    # Bakeoff: Button ranked above JobQueue.add in AFFiNE. These are plumbing.
+    # These are plumbing.
     # Exact match only — compound names like LoginButton are domain-specific.
     re.compile(r"^(?:Button|Icon|Input|Checkbox|Select|Tooltip|Spinner|Modal|Avatar|Badge|Divider|Label|Switch|Slider|Radio|Popover|Drawer|Skeleton|Progress|Tag|Chip|Snackbar|Toast)$"),
 ]
@@ -747,11 +741,11 @@ def apply_trivial_sink_weights(
 ) -> Dict[str, float]:
     """Dampen centrality for trivial sinks — short-bodied symbols with near-zero out-degree.
 
-    Bakeoff cohorts 16-17 showed that trivial accessors/stubs dominate
-    rankings purely through raw in-degree even after hub saturation and
-    bidirectional scoring.  The root cause: when the highest in-degree
-    symbols in a codebase are ALL pure sinks, there are no connectors
-    with enough in-degree to overcome the sink's base score.
+    Trivial accessors/stubs can dominate rankings purely through raw
+    in-degree even after hub saturation and bidirectional scoring: when
+    the highest in-degree symbols in a codebase are ALL pure sinks, there
+    are no connectors with enough in-degree to overcome the sink's base
+    score.
 
     Examples dampened by this function:
       - Timer.Duration (in=98, out=0, LoC=3) — 1-line accessor
@@ -812,11 +806,11 @@ def apply_trivial_sink_weights(
     return weighted
 
 
-# WI-ramuv: ``kind="file"`` Symbols are language-conditionally suppressed
-# from centrality ranking. Inverse of WI-gafog's CSS-variable allow-list:
-# the default is "exclude file Symbols from ranking" (their in-degree
-# equals each file's import count, which deterministically displaces real
-# functions/classes) and a future language whose file Symbols ARE
+# ``kind="file"`` Symbols are language-conditionally suppressed from
+# centrality ranking (WI-ramuv). This is the inverse of the CSS-variable
+# allow-list (WI-gafog): the default is "exclude file Symbols from
+# ranking" (their in-degree equals each file's import count, which
+# deterministically displaces real functions/classes) and a future language whose file Symbols ARE
 # meaningful as ranking entries can opt back in by joining this set.
 # Empty by default — every language's file Symbols are ranking-suppressed.
 _FILE_KIND_RANKING_ALLOWED_LANGUAGES: frozenset[str] = frozenset()
@@ -839,8 +833,8 @@ def apply_file_kind_weights(
 
     The Symbols stay in the symbol list (so containment, slice traversal,
     and per-file metrics still see them); only their ranking weight is
-    zeroed. Inverse of the WI-gafog precedent: filter is applied by
-    default and languages opt back in via
+    zeroed. Inverse of the CSS-variable allow-list (WI-gafog): the filter
+    is applied by default and languages opt back in via
     :data:`_FILE_KIND_RANKING_ALLOWED_LANGUAGES`.
 
     Args:
@@ -876,9 +870,9 @@ def apply_generated_code_weights(
 ) -> Dict[str, float]:
     """Dampen centrality for generated code symbols.
 
-    WI-tizij: OpenAPI models, protobuf stubs, and Kubernetes code-gen
-    artifacts are structurally central (many classes extend a generated
-    base like Configuration) but have near-zero developer relevance.
+    OpenAPI models, protobuf stubs, and Kubernetes code-gen artifacts are
+    structurally central (many classes extend a generated base like
+    Configuration) but have near-zero developer relevance (WI-tizij).
     Symbols with ``is_generated_file=True`` get their centrality
     multiplied by ``generated_weight`` (default 0.05 = 95% reduction).
 
@@ -916,9 +910,9 @@ def apply_common_method_name_weights(
     with that name get attributed to the same target.  This function applies
     a dampening factor proportional to the number of symbols sharing the name.
 
-    Bakeoff finding WI-luvaj: PartialToViewsMappings#execute (in-degree 2894)
-    dominated rankings because 'execute' appears on 50+ classes and every
-    unresolved `.execute()` call was attributed to it.
+    Without it, in a repo where 'execute' appears on 50+ classes, one
+    ``execute`` method can collect every unresolved `.execute()` call and
+    dominate the ranking (WI-luvaj).
 
     Detection:
     - Count distinct symbols with each method/function name
@@ -942,12 +936,11 @@ def apply_common_method_name_weights(
     # Only count callable kinds (function, method) — class names are
     # expected to repeat across modules.
     #
-    # ADR-0027 Phase-2 audit (WI-jukav): both members are AXIS_LANGUAGE_CONSTRUCT
-    # (Cluster A) and stable across Phase 3. The set is intentionally
-    # narrower than the entrypoints._CALLABLE_KINDS counterpart (which
+    # Both members are AXIS_LANGUAGE_CONSTRUCT kinds (Cluster A; ADR-0027,
+    # WI-jukav). The set is intentionally narrower than the
+    # entrypoints._CALLABLE_KINDS counterpart (which
     # includes "constructor"); constructors carry the class name, so
     # name-conflict dampening on them would penalise normal Java/C# style.
-    # Forward-compatible — no migration needed.
     _CALLABLE_KINDS = {"function", "method"}
 
     name_counts: Dict[str, int] = {}
@@ -1037,9 +1030,8 @@ def filter_edges_for_ranking(
         exclude_test_edges: If True, ignore edges originating from test
             files. Default True.
         exclude_import_edges: If True, ignore every member of
-            ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES`` (today a
-            single member, ``imports``: ADR-0023 §6 folded away the former
-            ``imports_module`` / ``imports_component`` specializations).
+            ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES`` (a single
+            member, ``imports``; see ADR-0023 §6).
             If False (default), import edges are kept and weighted by
             edge_type_weights in compute_centrality (imports get 0.3x
             weight). Default False.
@@ -1049,10 +1041,10 @@ def filter_edges_for_ranking(
     Returns:
         Filtered list of edges.
     """
-    # WI-lobif: class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
-    # (extends/inherits/implements) instead of a hardcoded {extends, implements}
-    # literal that omitted the registered `inherits` edge type — so inherits
-    # edges from test files are now preserved (architectural importance) too.
+    # Class is-a edges come from the registry's INHERITANCE_EDGE_TYPES
+    # (extends/inherits/implements), so every registered inheritance edge
+    # from a test file is preserved for its architectural importance
+    # (WI-lobif).
     _STRUCTURAL_EDGE_TYPES = INHERITANCE_EDGE_TYPES
 
     if exclude_test_edges:
@@ -1095,8 +1087,8 @@ def filter_edges_for_ranking(
         # not relocated a ranking adjustment, rank_score == confidence, so the
         # filtered set is unchanged; the one edge family that differs is the
         # type_hierarchy ``dispatches_to`` fan-out (rank_score carries the 1/sqrt(N)
-        # dampener + test penalty), which is exactly the WI-kabom demotion this
-        # filter is meant to apply.
+        # dampener + test penalty), which is exactly the demotion this filter
+        # is meant to apply (WI-kabom).
         filtered = [
             e for e in filtered
             if e.rank_score >= min_edge_confidence
@@ -1111,12 +1103,10 @@ def filter_edges_for_ranking(
 # victim-removal step). Order is load-bearing — see ranking.py for
 # rationale on why tier comes first and file_kind comes last.
 #
-# WI-karad (2026-05-24): an 8th dampener `sibling_impl` was removed after
-# a 3-repo diagnostic (alertmanager / hypergumbo / django) confirmed it
-# produced 0 top-100 movement in the canonical pipeline. Mechanism:
-# apply_common_method_name_weights (threshold=10) runs first and dampens
-# the same large name groups uniformly by 10/count, which is already
-# enough to push every group's tail out of top-100 by itself.
+# There is no separate sibling-implementation dampener:
+# apply_common_method_name_weights (threshold=10) already dampens large
+# same-name groups uniformly by 10/count, which is enough by itself to
+# push each group's tail out of the top 100 (WI-karad).
 _CANONICAL_DAMPENERS: tuple[str, ...] = (
     "tier",
     "noise",
@@ -1285,7 +1275,7 @@ def rank_symbols(
         edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
     )
 
-    # WI-tahum: dampener stack via shared internal helper. Order:
+    # Dampener stack via the shared internal helper (WI-tahum). Order:
     # tier → noise → utility → common-method → trivial-sink →
     # generated → file-kind.
     weighted_centrality = _apply_canonical_dampeners(
@@ -1583,7 +1573,7 @@ class CentralityResult:
     Attributes:
         normalized_scores: Dict mapping file paths to a symbol-mention DENSITY
             score = Σ(in-degree of mentioned symbols) ÷ file length in characters.
-            The name is historical: it is normalized *by file size*, NOT to a
+            Despite the name, it is normalized *by file size*, NOT to a
             [0,1] range — the value is unbounded ≥ 0 (a short file naming
             high-in-degree symbols exceeds 1.0) and is meaningful only as a
             relative ranking key within one run, never as a probability or a
@@ -1609,8 +1599,8 @@ def compute_symbol_mention_centrality_batch(
     """Compute symbol mention centrality for multiple files efficiently.
 
     Each file is read once and matched by :class:`_NameMatcher`, linear in
-    the file's bytes. A single alternation over every name cost names x bytes
-    and did not finish on flink (WI-rukaz).
+    the file's bytes. A single alternation over every name would cost
+    names x bytes, which does not finish on large repos (WI-rukaz).
 
     Args:
         files: List of file paths to scan.
@@ -1672,11 +1662,10 @@ class _NameMatcher:
     """Which of a fixed set of names occur in a text as whole-word matches.
 
     WHY NOT ONE ALTERNATION (WI-rukaz). ``\\b(n1|n2|...|nN)\\b`` makes
-    CPython's sre try every branch at every text position, so a scan cost
-    names x bytes. On flink (106,317 eligible names over 18.6 MB of docs)
-    fewer than 100 of 1,775 files were done after 32 minutes, and the
-    thread pool could not help, because ``re`` holds the GIL for a whole
-    ``findall``.
+    CPython's sre try every branch at every text position, so a scan costs
+    names x bytes: with ~100k eligible names over ~20 MB of docs (flink) it
+    does not finish in tens of minutes. The thread pool cannot help, because
+    ``re`` holds the GIL for a whole ``findall``.
 
     HOW. A name is reported iff ``\\b<name>\\b`` matches somewhere in the
     text, decided per name without scanning per name:
@@ -1770,7 +1759,7 @@ def _compute_centrality_with_python(
             name_to_in_degree.get(name, 0) for name in matched_names
         )
 
-        # WI-sigof: density = Σ in-degree of mentioned symbols ÷ file length.
+        # Density = Σ in-degree of mentioned symbols ÷ file length (WI-sigof).
         # This is normalized by file size, NOT to [0,1] — it is unbounded ≥ 0
         # and is only a relative ranking key (see CentralityResult docstring).
         score = total_in_degree / len(content) if content else 0.0

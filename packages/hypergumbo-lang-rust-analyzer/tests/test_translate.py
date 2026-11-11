@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for :mod:`hypergumbo_lang_rust_analyzer.translate` (WI-duzul Slice A).
+"""Tests for :mod:`hypergumbo_lang_rust_analyzer.translate` (WI-duzul).
 
 Covers the SCIP bytes → ``(symbols, edges)`` translator plus the rust.py
 stable-id parity post-processor. All tests build SCIP fixtures in-memory
 via the vendored ``scip_pb2`` module and serialize to bytes so the
 production entry point (:func:`translate_scip_to_hg`) is exercised end
-to end. No live ``rust-analyzer`` invocation — that arrives in Slice B.
+to end. No live ``rust-analyzer`` invocation here; the shell-out wrapper
+(``invoke.py``) has its own tests.
 """
 from __future__ import annotations
 
@@ -144,11 +145,11 @@ class TestReassignRustStableIds:
         """When the parity helper returns an id, stable_id is rewritten.
 
         A SINGLE-line function is the one shape where rust-analyzer's token
-        range equals the item range, so the helper matches. This used to hedge
-        "either parity succeeded OR tree-sitter-rust is unavailable" and pass
-        on both branches — a control that could not fail (INV-dolud).
-        tree-sitter-rust is a hard dependency of the rust analyzer, so the
-        overwrite is asserted outright.
+        range equals the item range, so the helper matches. The overwrite is
+        asserted outright: hedging on "either parity succeeded OR
+        tree-sitter-rust is unavailable" would pass on both branches — a
+        control that cannot fail (INV-dolud) — and tree-sitter-rust is a hard
+        dependency of the rust analyzer.
         """
         source = b"pub fn add(a: i32, b: i32) -> i32 { a + b }\n"
         sym = self._symbol(span=Span(1, 1, 0, 0))
@@ -157,15 +158,15 @@ class TestReassignRustStableIds:
         assert out[0].stable_id.startswith("sha256:")
 
     def test_production_shaped_span_keeps_the_scip_id_for_a_multi_line_function(self) -> None:
-        """INV-dolud: what production actually supplies, and what it gets.
+        """What production actually supplies, and what it gets (INV-dolud).
 
         rust-analyzer's Definition occurrence is the identifier token (line 1
         here) while the ``function_item`` runs 1-3; the helper requires both
         endpoints to match, so the SCIP-derived id is retained and the two
-        Rust arms carry independent identities for this function. Measured
-        on aardvark-dns: 0 of 52 shared functions reach parity. Re-point this
-        test when the helper is taught the token range — that is the fix
-        landing, not a regression.
+        Rust arms carry independent identities for this function — as on the
+        recorded aardvark-dns crate, where no paired record shares an id.
+        Re-point this test if the helper is taught the token range — that
+        would be the fix landing, not a regression.
         """
         source = b"pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n"
         sym = self._symbol(span=Span(1, 1, 7, 10))
@@ -178,8 +179,8 @@ class TestReassignRustStableIds:
         "producer-shaped arm is test_production_shaped_span_keeps_the_scip_id_..."
     )
     def test_parity_byte_matches_rust_py_for_nested_path(self, tmp_path: Path) -> None:
-        """WI-bokab v7: the SCIP parity helper's id must byte-EQUAL ``analyze_rust``'s id
-        for the same function at the same repo-relative NESTED path. Post-v7 the file path
+        """The SCIP parity helper's id must byte-EQUAL ``analyze_rust``'s id
+        for the same function at the same repo-relative NESTED path (WI-bokab). The file path
         is folded into the typed-tier hash, so a path-representation divergence between the
         SCIP backend (``doc.relative_path`` -> ``sym.path``) and rust.py's
         ``str(source_file.relative_to(repo_root))`` would silently break cross-pass dedup
@@ -300,16 +301,15 @@ class TestTranslateScipToHg:
         )
 
     def test_edge_endpoints_are_hypergumbo_symbol_ids(self) -> None:
-        """Regression (scip-edge-drop): a translated edge's src/dst must be the
-        translated Symbols' hypergumbo ids — NOT the raw SCIP descriptor strings.
+        """A translated edge's src/dst must be the translated Symbols'
+        hypergumbo ids — NOT the raw SCIP descriptor strings.
 
-        translate_scip_to_hg was calling the edge builders without a
-        ``resolve_symbol`` map, so every edge kept the raw SCIP symbol string
-        (e.g. ``'... crate/'``) as its endpoint. Those match no Symbol.id, so
-        every scip edge is dangling and the survey's endpoint-integrity finalize
-        drops all of them (2978 → 0 on zoxide) even though the scip *symbols*
-        survive — a silent half-merge that made the rust-analyzer backend emit no
-        call graph via ``hypergumbo survey``.
+        Without a ``resolve_symbol`` map the edge builders keep the raw SCIP
+        symbol string (e.g. ``'... crate/'``) as each endpoint. Those match no
+        Symbol.id, so every scip edge would dangle and the survey's
+        endpoint-integrity finalize would drop all of them even though the
+        scip *symbols* survive — a silent half-merge leaving the rust-analyzer
+        backend with no call graph via ``hypergumbo survey``.
         """
         caller = _rust_symbol("m/caller().")
         callee = _rust_symbol("m/callee().")
@@ -367,15 +367,15 @@ class TestTranslateScipToHg:
 
 
 class TestProvenanceStamping:
-    """WI-didag / WI-zabus: translate is the single place run provenance lands.
+    """Translate is the single place run provenance lands, on symbols AND
+    edges (WI-didag / WI-zabus).
 
-    Before this, ``translate_scip_to_hg`` stamped ``origin_run_id`` on EDGES
-    only — because ``Edge.__post_init__`` hard-raises on an empty value
-    (WI-higap) and ``Symbol`` has no equivalent guard. The measured
-    consequence on a real crate was 669 symbols carrying ``''`` beside 637
-    edges carrying a fabricated UUID: the guarded side manufactured a
-    convincing value, the unguarded side stayed honestly empty, and neither
-    resolved to an ``AnalysisRun``.
+    ``Edge.__post_init__`` hard-raises on an empty ``origin_run_id``
+    (WI-higap) and ``Symbol`` has no equivalent guard, so stamping only where
+    a guard forces it would leave symbols carrying ``''`` beside edges
+    carrying a fabricated UUID: the guarded side manufactures a convincing
+    value, the unguarded side stays honestly empty, and neither resolves to
+    an ``AnalysisRun``.
     """
 
     def _one_function_index(self) -> bytes:
@@ -412,27 +412,26 @@ class TestProvenanceStamping:
 
 
 # ---------------------------------------------------------------------------
-# INV-kukiz: a document-scoped local must never become a cross-file edge
+# A document-scoped local must never become a cross-file edge (INV-kukiz)
 # ---------------------------------------------------------------------------
 
 
 def test_document_scoped_locals_never_become_cross_file_references() -> None:
-    """INV-kukiz's filed repro, in miniature, at the production entry point.
+    """INV-kukiz in miniature, at the production entry point.
 
     Two documents each define ``local 0`` (rust-analyzer numbers locals per
     document, so the SAME string recurs in every file) and each read it
-    once. Before the fix both were minted as Symbols, ``translate.py``'s
-    index-wide ``id_by_scip_symbol`` map kept one arbitrary winner for the
-    key ``"local 0"``, and the read in the OTHER file resolved to it — a
-    reference across files to a binding that cannot be seen across files.
-    Measured on aardvark-dns: 329 of 455 local-pointing edges, 21.2% of all
-    edges in the artifact.
+    once. Minted as Symbols under an index-wide key, ``"local 0"`` would keep
+    one arbitrary winner, and the read in the OTHER file would resolve to
+    it — a reference across files to a binding that cannot be seen across
+    files.
 
-    Ruled 2026-09-18 (owner): SCIP locals are dropped, matching every other
-    backend. So the invariant "an edge to a local has both endpoints in one
+    SCIP locals are dropped, matching every other backend (an owner
+    ruling). So the invariant "an edge to a local has both endpoints in one
     file" holds by there being no edge to a local at all — and the control
     arm proves a REAL cross-file reference (``b.rs`` reading ``a::f``)
-    still survives, so the fix removed the false edges and not the graph.
+    still survives, so dropping locals removes the false edges and not the
+    graph.
     """
     ns_a, ns_b = _rust_symbol("crate_a/"), _rust_symbol("crate_b/")
     f_a, local = _rust_symbol("crate_a/f()."), "local 0"
@@ -481,9 +480,10 @@ def test_document_scoped_locals_never_become_cross_file_references() -> None:
 def test_body_references_are_attributed_to_the_enclosing_method_not_the_namespace() -> None:
     """End to end at the production entry point, with rust-analyzer's real
     shape: the Definition ``range`` is the identifier token and
-    ``enclosing_range`` is the item. Before the fix every SCIP edge on
-    aardvark-dns was sourced from a namespace (182 of 182); the edge here
-    must be ``increment -> helper``, and the namespace must source nothing.
+    ``enclosing_range`` is the item. Attributed by the token ``range``
+    alone, every body reference would be sourced from the enclosing
+    namespace; the edge here must be ``increment -> helper``, and the
+    namespace must source nothing.
     ``Symbol.span`` stays the token range on purpose (see WI-gojum).
     """
     ns = _rust_symbol("crate/")

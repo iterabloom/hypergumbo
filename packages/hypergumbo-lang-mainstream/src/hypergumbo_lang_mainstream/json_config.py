@@ -105,10 +105,9 @@ def is_json_tree_sitter_available() -> bool:
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
     """Generate a location-based ID via the shared ADR-0036 minter.
 
-    Delegates rather than re-implementing the grammar as an f-string: this
-    module was the last of the three manifest analyzers holding its own copy,
-    which meant it silently opted out of the minter's name-slot sanitization
-    (INV-dulah).
+    Delegates rather than re-implementing the grammar as an f-string, so
+    the id gets the minter's name-slot sanitization like the other manifest
+    analyzers' ids (INV-dulah).
     """
     return make_symbol_id("json", path, start_line, end_line, name, kind)
 
@@ -201,13 +200,11 @@ def _process_dependencies(
                 meta: dict = {"package": pkg_name}
                 if version:
                     meta["version"] = version
-                # Wave 6 PR 5 fold per audit-findings 0006: devDependency
-                # → kind="dependency" + meta["dependency_scope"]="dev".
-                # Phase 6 PR6 (ADR-0034 id_format closure): the ID's kind
-                # segment now uses the post-fold ``kind_value`` so the
-                # canonical 5-segment shape uses lowercase identifiers
-                # only (``devDependency`` violates the kind-segment regex
-                # ``^[a-z][a-z0-9_]*$``).
+                # A devDependency is kind="dependency" with
+                # meta["dependency_scope"]="dev" (audit-findings 0006). The
+                # ID's kind segment uses ``kind_value`` as well, because
+                # ``devDependency`` violates the kind-segment regex
+                # ``^[a-z][a-z0-9_]*$`` (ADR-0034).
                 if dep_type == "devDependency":
                     meta["dependency_scope"] = "dev"
                 kind_value = "dependency" if dep_type == "devDependency" else dep_type
@@ -225,7 +222,7 @@ def _process_dependencies(
                         scope=(meta["dependency_scope"],) if "dependency_scope" in meta else (),
                     ),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind=kind_value,
                     name=pkg_name,
                     path=rel_path,
@@ -292,7 +289,7 @@ def _process_scripts(
                     stable_id=None,
                     shape_id=None,
                     display_label=f"npm run {script_name}",
-                    # ADR-0032: fingerprint stamped by central post-pass.
+                    # The central post-pass stamps the fingerprint (ADR-0032).
                     kind="file",
                     name=script_name,
                     path=rel_path,
@@ -340,7 +337,7 @@ def _process_bin(
                 id=symbol_id,
                 stable_id=scoped_stable_id(kind="bin", lang="json", path=rel_path, name=pkg_name),
                 shape_id=None,
-                # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                 kind="bin",
                 name=pkg_name,
                 path=rel_path,
@@ -396,7 +393,7 @@ def _process_bin(
                     id=symbol_id,
                     stable_id=scoped_stable_id(kind="bin", lang="json", path=rel_path, name=bin_name),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="bin",
                     name=bin_name,
                     path=rel_path,
@@ -463,7 +460,7 @@ def _process_main_entry(
         id=symbol_id,
         stable_id=None,
         shape_id=None,
-        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
         kind="file",
         name=entry_name,
         path=rel_path,
@@ -578,7 +575,7 @@ def _process_exports(
                 stable_id=None,
                 shape_id=None,
                 qualified_name=f"{pkg_name or 'pkg'}:{entry_name}",
-                # ADR-0032: fingerprint stamped by central post-pass.
+                # The central post-pass stamps the fingerprint (ADR-0032).
                 kind="export",
                 name=entry_name,
                 path=rel_path,
@@ -639,7 +636,7 @@ def _process_exports(
             stable_id=None,
             shape_id=None,
             qualified_name=f"{pkg_name or 'pkg'}:{subpath}",
-            # ADR-0032: fingerprint stamped by central post-pass.
+            # The central post-pass stamps the fingerprint (ADR-0032).
             kind="export",
             name=subpath,
             path=rel_path,
@@ -718,7 +715,7 @@ def _process_package_json(
             id=project_id,
             stable_id=scoped_stable_id(kind="package", lang="json", path=rel_path, name=pkg_name),
             shape_id=None,
-            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+            # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
             kind="package",
             name=pkg_name,
             path=rel_path,
@@ -787,12 +784,10 @@ def _process_tsconfig(
     start_line = obj_node.start_point[0] + 1
     end_line = obj_node.end_point[0] + 1
 
-    # Create tsconfig symbol. Wave 6 PR 3 DEPRECATE-NO-FOLD per
-    # audit-findings 0005: drop the kind="tsconfig" specialisation;
-    # consumer queries is_config_file=True + meta["config_format"]=
-    # "tsconfig" instead. ADR-0036 Ruling 2 completes the fold: the id
-    # kind-slot is the Symbol's own kind ("file"), not the "tsconfig"
-    # fold-source (which survives only on meta["config_format"]).
+    # Create tsconfig symbol. There is no kind="tsconfig": consumers query
+    # is_config_file=True + meta["config_format"]="tsconfig" (audit-findings
+    # 0005). The id kind-slot is the Symbol's own kind ("file"); "tsconfig"
+    # appears only in meta["config_format"] (ADR-0036 Ruling 2).
     config_id = _make_symbol_id(rel_path, start_line, end_line, rel_path, "file")
 
     sym = Symbol(
@@ -800,7 +795,7 @@ def _process_tsconfig(
         stable_id=None,
         shape_id=None,
         display_label=rel_path,
-        # ADR-0032: fingerprint stamped by central post-pass.
+        # The central post-pass stamps the fingerprint (ADR-0032).
         kind="file",
         is_config_file=True,
         name=Path(rel_path).name,
@@ -818,8 +813,8 @@ def _process_tsconfig(
     symbols.append(sym)
 
     # Process references (project references)
-    # Cluster E sub-case (b) per audit-findings 0010: per-reference Symbol
-    # was redundant with the references Edge. Edge dst is now the referenced
+    # Each reference is a references Edge only; a per-reference Symbol would
+    # duplicate it (audit-findings 0010). Edge dst is the referenced
     # tsconfig file id (5-part well-formed dangling id; IR's boundary
     # materialization handles it).
     refs_node = _find_object_key(obj_node, source, "references")
@@ -883,7 +878,7 @@ def _process_composer_json(
             id=project_id,
             stable_id=scoped_stable_id(kind="package", lang="json", path=rel_path, name=pkg_name),
             shape_id=None,
-            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+            # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
             kind="package",
             name=pkg_name,
             path=rel_path,

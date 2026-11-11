@@ -83,8 +83,8 @@ def _make_toml_symbol_id(
     """Generate a location-based symbol ID for TOML symbols.
 
     Uses the standard ``lang:path:start-end:name:kind`` format so that
-    symbol IDs are human-readable and resolvable by ``slice --entry``.
-    Previously used sha256 hashes, which made compact output IDs opaque.
+    symbol IDs are human-readable and resolvable by ``slice --entry``
+    (a hash would make compact output IDs opaque).
     """
     return make_symbol_id("toml", path, start_line, end_line, name, kind)
 
@@ -108,9 +108,10 @@ def _get_key_text(node: "tree_sitter.Node") -> str:
 
     tree-sitter-toml nests a dotted key of three or more parts
     (``a.b.c`` is ``dotted_key(dotted_key(a, b), c)``), so the inner
-    ``dotted_key`` is joined too: skipping it named ``[tool.poetry.dependencies]``
-    and ``[target.'cfg(windows)'.dependencies]`` both ``dependencies``, one
-    name under two different parents, whose ids tied (INV-punig).
+    ``dotted_key`` is joined too; skipping it would name both
+    ``[tool.poetry.dependencies]`` and ``[target.'cfg(windows)'.dependencies]``
+    ``dependencies``, one name under two different parents, and their ids
+    would tie (INV-punig).
     """
     if node.type == "bare_key":
         return node.text.decode("utf-8", errors="replace") if node.text else ""
@@ -225,7 +226,7 @@ def _process_toml_tree(
                     id=symbol_id,
                     stable_id=_toml_stable_id(kind, name, rel_path),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind=kind,
                     name=name,
                     path=rel_path,
@@ -241,10 +242,10 @@ def _process_toml_tree(
             )
 
             # Process dependencies if this is a dependency table.
-            # WI-limas: dev-dependencies and build-dependencies fold to
-            # kind="dependency" + meta["dependency_scope"] = "dev" / "build".
-            # The bare "dev-dependency" / "build-dependency" symbol_kind
-            # values never landed in the canonical registry post-ADR-0027.
+            # dev-dependencies and build-dependencies use kind="dependency"
+            # with meta["dependency_scope"] = "dev" / "build"; the symbol-kind
+            # registry has no separate dev-/build-dependency kinds
+            # (WI-limas, ADR-0027).
             if is_cargo and table_name in (
                 "dependencies",
                 "dev-dependencies",
@@ -321,7 +322,7 @@ def _process_toml_tree(
                     id=symbol_id,
                     stable_id=_toml_stable_id(kind, name, rel_path),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind=kind,
                     name=name,
                     path=rel_path,
@@ -339,20 +340,18 @@ def _process_toml_tree(
 
             # Create edge from build target to source file.
             #
-            # INV-zatug: declare the pathway. Without an explicit
-            # evidence_type this inherited Edge.create's ``ast_call_direct``
-            # default — "inferred from a direct (non-method) call site" — which
-            # a Cargo [[bin]]/[[test]] target naming its source path plainly is
-            # not, and which then had the edge judged against the call-site
-            # band. Confidence is dropped so the ir.py chokepoint derives it
-            # from the pathway seed; the old 1.0 literal breached the reserved
-            # ceiling (no detection method is certain).
+            # The edge declares the build_target_main pathway: a Cargo
+            # [[bin]]/[[test]] target naming its source path is not a call
+            # site, so Edge.create's ``ast_call_direct`` default would judge
+            # it against the call-site band. No confidence is passed; the
+            # ir.py chokepoint derives it from the pathway seed, since no
+            # detection method is certain (INV-zatug).
             if target_path:
                 edges.append(
                     Edge.create(
                         src=symbol_id,
-                        # WI-bufar-pokam: the target file's node id, not the
-                        # bare path (no id at all); the linker reads the path.
+                        # The target file's node id; the linker reads the
+                        # path from meta["target_path"] (WI-bufar-pokam).
                         dst=make_manifest_target_dst(rel_path, target_path, "rust"),
                         edge_type="defines_target",
                         line=start_line,
@@ -487,13 +486,11 @@ def _extract_cargo_dependencies(
 ) -> None:
     """Extract dependencies from a Cargo.toml dependencies table.
 
-    ``scope`` carries the axis-meta value that the YAML
-    ``config-conventions.yaml`` rules consume via ``meta_match`` — the
-    Wave 6 fold collapsed kind="dev-dependency" / "build-dependency" onto
-    a single canonical kind="dependency" with ``meta["dependency_scope"]``
-    naming the table the entry lives in (``dev``, ``build``, or absent
-    for production dependencies). WI-limas wired the producer side here
-    so the YAML side could migrate off the legacy bare-kind regexes.
+    ``scope`` becomes ``meta["dependency_scope"]``, naming the table the
+    entry lives in (``dev``, ``build``, or absent for production
+    dependencies). Every Cargo dependency has kind="dependency", so the
+    ``config-conventions.yaml`` rules tell dev and build dependencies apart
+    by this meta value via ``meta_match`` (WI-limas).
 
     The stable_id is ``overload_arity.scoped_table_stable_id`` scoped by the
     table the entry lives in (INV-punig, scheme v9): ``scope`` for
@@ -525,7 +522,7 @@ def _extract_cargo_dependencies(
                             scope=(table,) if table else (),
                         ),
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="dependency",
                         name=dep_name,
                         path=rel_path,
@@ -597,7 +594,7 @@ def _extract_pyproject_dependencies(
                                 id=symbol_id,
                                 stable_id=None,
                                 shape_id=None,
-                                # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                                # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                                 kind="dependency",
                                 name=dep_name,
                                 path=rel_path,
@@ -673,7 +670,7 @@ def _extract_pyproject_scripts(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="file",
                         name=script_name,
                         path=rel_path,
@@ -705,11 +702,10 @@ def _extract_pyproject_scripts(
                         target_path, target_func = parsed
                         module_dotted = entry_point.rsplit(":", 1)[0]
                         dst_id = f"python:{module_dotted}:0-0:{target_func}:unresolved"
-                        # INV-zatug: a [project.scripts] entry IS a build
-                        # target's main entry point, so declare that pathway
-                        # instead of inheriting the ast_call_direct default.
-                        # Confidence derives at the ir.py chokepoint (the 1.0
-                        # literal breached the reserved ceiling).
+                        # A [project.scripts] entry is a build target's main
+                        # entry point, so the edge declares build_target_main
+                        # rather than the ast_call_direct default. Confidence
+                        # derives at the ir.py chokepoint (INV-zatug).
                         edges.append(
                             Edge.create(
                                 src=symbol_id,

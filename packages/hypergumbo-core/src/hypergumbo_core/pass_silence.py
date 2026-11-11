@@ -1,26 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Canonical pass-silence-reason axis (INV-bikaj / INV-hujog, arc T6).
+"""Canonical pass-silence-reason axis (INV-bikaj / INV-hujog).
 
 Why this axis exists
 --------------------
-INV-bikaj's headline — "61 of 84 AnalysisRun passes produce 0 edges" — is a
-count of an UNDIFFERENTIATED population. A pass that emitted no edges is in
-one of three states that need opposite responses, and before this field a
-reader of a survey could not tell which one they were looking at:
+A count of passes that produced zero edges is a count of an UNDIFFERENTIATED
+population. A pass that emitted no edges is in one of three states that need
+opposite responses, and the count alone cannot say which:
 
     A  ran, and there was genuinely nothing to find   (correct, uninteresting)
     B  ran, and could not find what was there         (a recall defect)
     C  did not really run — a prerequisite was absent (an ordering defect)
 
-Sizing the population (2026-09-11, five repositories, 405 pass-runs) found
-**274 of 322 zero-edge pass-runs analysed ZERO FILES** — state A, and no
-mechanism changes them — 26 emitted nodes but no edges (not silent at all),
-and only **22 were truly silent**: they opened files and produced nothing.
-Those 22 are the population this axis exists to explain, and they had nowhere
-to record a reason, structurally rather than accidentally: the spec
-deliberately excludes non-analyzer passes from ``limits.skipped_passes``
-("a linker with no applicable targets is a correct no-op, not a pass that did
-not run"), so a silent linker was invisible by design.
+Most zero-edge pass-runs analysed ZERO FILES — state A, and no mechanism
+changes them. Some emitted nodes but no edges, which is not silence at all.
+The population this axis exists to explain is the remainder: passes that
+opened files and produced nothing. Those have nowhere else to record a
+reason, structurally rather than accidentally: the spec deliberately excludes
+non-analyzer passes from ``limits.skipped_passes`` ("a linker with no
+applicable targets is a correct no-op, not a pass that did not run"), so
+without this field a silent linker is invisible by design.
 
 The axiom
 ---------
@@ -31,41 +29,34 @@ rejects ``slow`` and ``low_value`` (cost, not reason) and
 
 Why a registry and not a free-text string
 -----------------------------------------
-Because the free-text version is already in the tree and has already drifted.
-``limits.skipped_passes[].reason`` carries prose, and across ``packages/*/src/``
-there are **nineteen distinct spellings** — ten of which mean "the grammar is
-missing" (``"{lang} tree-sitter grammar not available"``,
-``"tree-sitter-language-pack not available"``, ``"tree-sitter-kotlin not
-available"``, ``"java analysis skipped: grammar not available. "`` with a
-trailing space, one embedding a pip command …) and five of which mean "the
-parser failed to initialise". A consumer cannot ask "was this skipped for a
-missing grammar?" without matching ten spellings.
+Because free-text reasons drift. ``limits.skipped_passes[].reason`` carries
+prose, and its producers spell the same reason many different ways: several
+spellings mean "the grammar is missing" (``"{lang} tree-sitter grammar not
+available"``, ``"tree-sitter-language-pack not available"``,
+``"tree-sitter-kotlin not available"``, ``"java analysis skipped: grammar not
+available. "`` with a trailing space, one embedding a pip command …) and
+several more mean "the parser failed to initialise". A consumer cannot ask
+"was this skipped for a missing grammar?" without matching every spelling.
 
-**That drift was called LATENT. It is now OBSERVED** (WI-dukoh). The original
-sizing — 490 surveys carrying 39,757 skip records, only TWO strings, because
-the machine that produced them has every grammar installed — was honest about
-its own blindness and wrong about the conclusion people drew from it. The
-blindness was a venv, not a law: a venv built WITHOUT
-``tree-sitter-language-pack``, surveying one ordinary repository, produces
-**29 skip records in 28 distinct spellings** in a single run. The drift bites
-a user in a bare environment, which is exactly who cannot report it to us —
-so the bare environment was constructed instead of waited for.
+The drift is invisible on a machine with every grammar installed, where
+nearly every skip is "no files matched". It shows in a bare environment — a
+venv built WITHOUT ``tree-sitter-language-pack`` surveying one ordinary
+repository yields almost as many distinct spellings as skip records — and
+that user is exactly who cannot report it (WI-dukoh).
 
-The structured code on a skip record is therefore a MIGRATION, not a new
-signal: the prose
-``reason`` stays as human-readable detail (it carries the pip command and the
-exception message, payload a code cannot express) and the code carries the
-classification. One channel, two fields — never two channels, which is the
-defect WI-finij named.
+The structured code on a skip record therefore sits BESIDE the prose rather
+than replacing it: the prose ``reason`` stays as human-readable detail (it
+carries the pip command and the exception message, payload a code cannot
+express) and the code carries the classification. One channel, two fields —
+never two channels (WI-finij).
 
 The empty string is NOT a member, and that is the design
 --------------------------------------------------------
 ``AnalysisRun.silence_reason == ""`` means NOT APPLICABLE — the pass emitted
 something, so there is no silence to explain. :data:`UNREPORTED` means CANNOT
 DETERMINE — the pass was silent and did not say why. Collapsing the two would
-repeat a defect this project has already paid for once (a relative
-``--tracker-root`` read as "not a repo" fell through to a writable config
-because "cannot determine" and "not applicable" looked alike).
+let a silent pass that gave no reason read as a pass with nothing to explain;
+"cannot determine" and "not applicable" must never look alike.
 
 Why the orchestrator does not guess
 -----------------------------------
@@ -75,7 +66,7 @@ from counters the orchestrator already holds. It never infers
 looked for a construct and failed to find one; a reason invented on the
 producer's behalf would be a fabricated disclosure, which is worse than none.
 The residue is stamped :data:`UNREPORTED`, which makes it COUNTABLE instead of
-invisible and leaves a later pass to drain it producer by producer.
+invisible; a producer drains it by stating its own reason.
 
 What the module provides
 ------------------------
@@ -149,16 +140,12 @@ BACKEND_DISABLED: Final[str] = "backend_disabled"
 #: A declared upstream pass did not run, AND it went missing for a reason
 #: other than the repository lacking its files. State C — the ordering defect.
 #:
-#: **Instances are now observed (WI-dabup).** This used to read "no instance
-#: has been observed", and that was true only of an environment where every
-#: grammar is installed. In a venv without ``tree-sitter-rust``, surveying a
-#: JS+Rust repository, ``tauri-ipc-linker`` and ``rust-trait-dispatch-linker``
-#: are silent while Rust files sit in the tree — and before this value had a
-#: producer they claimed :data:`NO_CANDIDATE_FILES`, which is declared to mean
-#: "nothing to find, and no ordering or declaration mechanism would change it".
-#: Installing the grammar changes it. The axis was asserting something false,
-#: which is worse than abstaining, and is why the producer was built rather
-#: than the value deprecated.
+#: Example: in a venv without ``tree-sitter-rust``, surveying a JS+Rust
+#: repository, ``tauri-ipc-linker`` and ``rust-trait-dispatch-linker`` are
+#: silent while Rust files sit in the tree. :data:`NO_CANDIDATE_FILES` would be
+#: false for them — it means "nothing to find, and no ordering or declaration
+#: mechanism would change it", and installing the grammar does change it
+#: (WI-dabup).
 #:
 #: Produced by :func:`prerequisite_absent_clauses` at the linker chokepoint,
 #: and ONLY where the pass body left the field empty — a body that spoke keeps
@@ -194,8 +181,7 @@ class SilenceReasonSpec:
 
     ``routine`` is declared, not computed from ``states``: an opt-in backend
     left off may be State C (it did not run, and the files may be there) yet
-    asks nothing of anyone, because the user chose it (WI-vadom, owner ruling
-    2026-10-15)."""
+    asks nothing of anyone, because the user chose it (WI-vadom)."""
 
     name: str
     states: frozenset[str]
@@ -261,9 +247,8 @@ def silence_states(reason: str) -> frozenset[str]:
 #: The reasons a run on an ordinary repository produces in bulk and that ask
 #: nothing of anyone: nothing to find (state A, at the file level and the
 #: construct level) and an opt-in backend the user left off. The stderr lines
-#: count them but do not name them (WI-vadom, owner ruling 2026-10-15): on
-#: hypergumbo's own tree they were 122 of the 128 passes the two lines
-#: reported, which buried the six worth a look. The artifact keeps every
+#: count them but do not name them, because named they dominate the line and
+#: bury the few reasons worth a look (WI-vadom). The artifact keeps every
 #: reason. Read off :data:`SILENCE_REASON_SPECS`.
 ROUTINE_SILENCE_REASONS: Final[frozenset[str]] = frozenset(
     spec.name for spec in SILENCE_REASON_SPECS if spec.routine
@@ -318,17 +303,16 @@ def derive_silence_reason(
 
     Returns ``""`` when the pass emitted anything — NOT APPLICABLE, there is
     no silence to explain. A pass that emitted nodes but no edges is NOT
-    silent (26 of the 48 file-reading zero-edge pass-runs in the sizing were
-    exactly this, and calling them silent would have been the headline's
-    original error repeated one level down).
+    silent, and counting it as silent would inflate the very population the
+    axis exists to explain.
 
     Returns :data:`NO_CANDIDATE_FILES` when the pass saw no input at all —
     the only silence the orchestrator can attribute with certainty.
 
     Returns :data:`UNREPORTED` otherwise: the pass opened files and produced
     nothing, and the orchestrator does not know why. This is the population
-    T6 exists to explain, and naming it ``no_candidate_files`` to make the
-    output look complete would be the field lying about exactly those runs.
+    the axis exists to explain, and naming it ``no_candidate_files`` to make
+    the output look complete would be the field lying about exactly those runs.
     """
     if nodes_emitted or edges_emitted:
         return ""
@@ -355,21 +339,11 @@ def silence_reason_for_candidates(candidates: "Sized") -> str:
     there the construct IS present.
 
     Empty gives :data:`NO_CANDIDATE_CONSTRUCT`; non-empty gives
-    :data:`CANDIDATES_UNRESOLVED`. **Both are positive claims**, and the second
-    one is why this function was rewritten. It used to return ``""`` on the
-    non-empty branch — asserting nothing, and sending a run whose body had just
+    :data:`CANDIDATES_UNRESOLVED`. **Both are positive claims.** Returning
+    ``""`` on the non-empty branch would send a run whose body had just
     measured the answer into :data:`UNREPORTED`, which is declared to mean the
-    pass "did not say why". A producer that computes a fact and discards it is
-    the INV-bikaj complaint one level down, inside the axis built to cure it.
-
-    The superseded ruling in this docstring argued against declaring the second
-    value on three grounds, each of which the tree refutes: it would be a
-    "seventh" member (the vocabulary already held seven), with "a single
-    producer" (eleven call sites through this helper — the same shape as
-    :data:`NO_CANDIDATE_CONSTRUCT`, which is considered good design) and "no
-    consumer" (:func:`summarize_silence` counts by whatever string it finds and
-    :func:`format_silence_summary` prints every non-routine reason by name,
-    both wired into the CLI). Recorded in ``docs/adr/0054-pass-silence-candidates-unresolved.md``.
+    pass "did not say why" — a producer computing a fact and discarding it.
+    See ``docs/adr/0054-pass-silence-candidates-unresolved.md``.
 
     Note it never returns ``""``: a pass that emitted has no silence to explain,
     and the chokepoints clear a body claim in that case without the body having
@@ -418,8 +392,7 @@ def format_silence_summary(
 
     Reasons are ordered most-common-first, ties broken alphabetically, so the
     line is DETERMINISTIC across runs and two surveys can be diffed without
-    spurious churn (the elixir non-determinism of WI-jozap is a standing
-    reminder that arbitrary iteration order is a measurement hazard, not a
+    spurious churn (arbitrary iteration order is a measurement hazard, not a
     cosmetic one).
 
     The line names where to look rather than only that a problem exists: a
@@ -440,11 +413,10 @@ def format_silence_summary(
 def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
     """Write the one-line silence summary to stderr; silent when none is due.
 
-    This is the CONSUMER half of the axis, and it is the half that discharges
-    the observability complaint INV-nanon actually raised. Stamping the field
-    made the reason RECORDABLE; without a surface that reads it back, the
-    survey would carry a value nobody is shown — and a disclosure nothing reads
-    is not a disclosure.
+    This is the CONSUMER half of the axis. Stamping the field makes the
+    reason RECORDABLE; without a surface that reads it back, the survey would
+    carry a value nobody is shown — and a disclosure nothing reads is not a
+    disclosure (INV-nanon).
     """
     line = format_silence_summary(
         summarize_silence(analysis_runs), total_passes=len(analysis_runs)
@@ -454,33 +426,32 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# WHAT ACTUALLY DECIDES THE HOST (WI-mamiv, measured 2026-09-17)
+# WHAT ACTUALLY DECIDES THE HOST (WI-mamiv)
 #
 # The section below frames the split as "did the pass run?". That is the
-# INTENT; it is not what the code does, and the difference is measurable.
+# INTENT; it is not what the code does.
 #
-# On component-model-demo, 162 passes: 130 of them carry `no_candidate_files`
-# -- 48 through `AnalysisRun.silence_reason` and 82 through
-# `limits.skipped_passes[].silence_reason`. The SAME value, for the SAME
-# fact (zero files of that language in this tree), on two different fields.
+# The SAME value for the SAME fact -- `no_candidate_files`, zero files of
+# that language in this tree -- lands on `AnalysisRun.silence_reason` for
+# some passes and on `limits.skipped_passes[].silence_reason` for others.
 # Three routes get you there, and none is a property of the silence:
 #
-#   route                                      discriminator                n
-#   pre-filter short-circuit                   every declared language is    75  -> skipped_passes
-#                                              in taxonomy.LANGUAGE_EXTENSIONS
-#   dispatched, returns bare AnalysisResult()  the analyzer's return style    7  -> skipped_passes
-#   dispatched, returns run w/ files_analyzed=0  the analyzer's return style 26  -> analysis_runs
+#   route                                        discriminator                  host
+#   pre-filter short-circuit                     every declared language is     skipped_passes
+#                                                in taxonomy.LANGUAGE_EXTENSIONS
+#   dispatched, returns bare AnalysisResult()    the analyzer's return style    skipped_passes
+#   dispatched, returns run w/ files_analyzed=0  the analyzer's return style    analysis_runs
 #
-# Measured cleanly: 0 in-taxonomy analyzers report on the AnalysisRun host
-# and 75 on the skip host; 26 out-of-taxonomy report on the AnalysisRun host
-# and 7 on the skip host. `apex`, `twig` and `make`
-# go one way; `java`, `matlab` and `scss` go the other, for the identical fact.
+# An in-taxonomy analyzer with no files never reaches the AnalysisRun host;
+# an out-of-taxonomy one reaches either, depending on its return style.
+# `apex`, `twig` and `make` go one way; `java`, `matlab` and `scss` go the
+# other, for the identical fact.
 #
 # So the host encodes PRODUCER REGISTRATION AND IMPLEMENTATION DETAIL. A
 # consumer that reads one field and not the other gets a number that depends
-# on the taxonomy table, and the two stderr summaries report `64 of 79` and
-# `83 of 162` -- different denominators over overlapping populations, whose
-# sum is not the answer either.
+# on the taxonomy table, and the two stderr summaries use different
+# denominators over overlapping populations, whose sum is not the answer
+# either.
 #
 # The cure is :func:`census_silence`, which unions the two and is what a
 # consumer asking "which passes had no input?" should call. The ROUTING is
@@ -491,8 +462,8 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 # (`dependency_unavailable`, `backend_disabled`, `pass_crashed`) appear only on
 # skipped_passes and three (`no_candidate_construct`, `candidates_unresolved`,
 # `prerequisite_absent`) only on AnalysisRun; the overlap is exactly
-# `no_candidate_files` and `unreported`, and it is the overlap that carries
-# 80% of the volume.
+# `no_candidate_files` and `unreported`, and that overlap carries most of the
+# volume.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -508,8 +479,8 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 # an ``AnalysisRun`` before it finds the grammar missing, and that record is
 # discarded: it carries nothing the skip entry lacks (its toolchain is the
 # default precisely because the grammar it would name is the missing thing),
-# and WI-mamiv declined to route it (WI-gidid). Their home is
-# ``limits.skipped_passes``, where their free-text twins already lived.
+# and it is deliberately not routed (WI-mamiv / WI-gidid). Their home is
+# ``limits.skipped_passes``, beside their free-text ``reason``.
 #
 # THE INIT-FAILURE RULING. Six producer sites report a parser that failed to
 # INITIALISE (``"Failed to load Go parser: {e}"`` and kin) — the grammar is
@@ -517,9 +488,8 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 # "install the package" is the wrong advice for it. It is stamped
 # :data:`PASS_CRASHED`, whose declaration is "the pass raised and the crash was
 # contained" — true of a caught constructor exception, and the value says
-# nothing about WHO contained it. This gives `pass_crashed` real producers;
-# ADR-0056 recorded it as speculative because its free-text twin had fired zero
-# times in 229,541 records, and that was measuring only the twin.
+# nothing about WHO contained it. These sites, with the contained linker
+# crash, are `pass_crashed`'s producers.
 # ---------------------------------------------------------------------------
 
 
@@ -543,11 +513,11 @@ def summarize_skip_reasons(
     An entry with NO ``silence_reason`` counts as :data:`UNREPORTED`, and
     that choice is the whole discipline of this function. The obvious
     alternative — bucketing a missing code under :data:`NO_CANDIDATE_FILES`,
-    which is 98.94% of all skip records — would manufacture the majority answer
-    on behalf of every producer that has not been converted, turning "this
-    producer did not classify itself" into "the repository lacks those files".
-    That is the absent-versus-empty substitution the axis exists to cure, and
-    the migration is exactly when it would be easiest to commit.
+    which is the overwhelming majority of skip records — would manufacture the
+    majority answer on behalf of every producer that does not classify itself,
+    turning "this producer did not classify itself" into "the repository lacks
+    those files". That is the absent-versus-empty substitution the axis exists
+    to cure.
 
     A code OUTSIDE the vocabulary is counted under its own name rather than
     dropped, so a drifted producer cannot be laundered into a clean count.
@@ -586,12 +556,11 @@ def emit_skip_summary(
 ) -> None:
     """Write the skipped-passes summary to stderr; silent when nothing skipped.
 
-    The reader ``skipped_passes`` has never had. It has been serialized on
-    every survey since the field existed and **nothing summarized it** — so the
-    2,383 ``backend_disabled`` records and the 60 ``dependency_unavailable``
-    ones sat in artifacts nobody was shown. Landing a structured code without
-    this would have been a vocabulary with no consumer, which is the same
-    defect as a value with no producer, one step to the right.
+    The reader of ``skipped_passes``. The field is serialized on every survey,
+    and without this summary its ``backend_disabled`` and
+    ``dependency_unavailable`` records would sit in artifacts nobody is shown.
+    A structured code with no consumer is the same defect as a value with no
+    producer, one step to the right.
     """
     # The denominator is passes ATTEMPTED — those that produced a run plus
     # those that did not. A share of the runs alone would exclude exactly the
@@ -608,35 +577,32 @@ def emit_skip_summary(
 class SilenceCensus:
     """Every pass's silence reason, whichever of the two fields carried it.
 
-    WHY THIS EXISTS. Both hosts now spell the field ``silence_reason`` (one
+    WHY THIS EXISTS. Both hosts spell the field ``silence_reason`` (one
     fact, one name -- WI-mamiv), but it is still ONE CHANNEL ON TWO HOSTS,
-    and the split is documented as "did the pass run?".
-    Measured (WI-mamiv, component-model-demo, 162 passes), that is not what
-    decides it: **130 of 162 passes carry ``no_candidate_files``, 48 on one
-    host and 82 on the other**, and the host is chosen by
-    ``taxonomy.LANGUAGE_EXTENSIONS`` membership and by whether the analyzer
-    returns a bare ``AnalysisResult()`` or a run with ``files_analyzed=0``.
-    `apex`, `twig` and `make` report through one field; `java`, `matlab` and
-    `scss` report the IDENTICAL fact -- zero files of that language in this
-    tree -- through the other. Both are producer registration and
-    implementation detail, not properties of the silence.
+    and the split is documented as "did the pass run?". That is not what
+    decides it: the same ``no_candidate_files`` fact lands on either host
+    according to ``taxonomy.LANGUAGE_EXTENSIONS`` membership and whether the
+    analyzer returns a bare ``AnalysisResult()`` or a run with
+    ``files_analyzed=0``. `apex`, `twig` and `make` report through one field;
+    `java`, `matlab` and `scss` report the IDENTICAL fact -- zero files of
+    that language in this tree -- through the other. Both are producer
+    registration and implementation detail, not properties of the silence.
 
-    So a consumer asking "which passes had no input?" had to know about the
-    WI-jadig pre-filter to get a right answer, and nothing in the tree unioned
-    the two populations: the stderr lines report ``64 of 79`` and ``83 of
-    162`` -- different denominators over overlapping populations, whose sum is
-    not the answer either.
+    So a consumer asking "which passes had no input?" would otherwise have to
+    know about the file-presence pre-filter (WI-jadig) to get a right answer;
+    the two stderr lines use different denominators over overlapping
+    populations, whose sum is not the answer either. This class is the union.
 
     ``unaccounted`` IS ``None`` WHEN NO CATALOG WAS SUPPLIED, and that is the
     point rather than a convenience. An empty tuple would claim "I checked and
     every pass is accounted for"; ``None`` says "I could not check". The
     distinction is not academic: the third outcome -- a pass in NEITHER host --
-    is real, and the concept audit that produced this helper missed it because
-    it measured at the default configuration. ``rust_analyzer``'s success path
-    returned output with no ``AnalysisRun``, so it appeared in neither list,
-    the only one of 118 registered analyzers for which that was true
-    (WI-didag). A union built over ``runs + skips`` alone is structurally
-    blind to exactly that case, which is why this takes the catalog.
+    is possible. Any route by which a pass escapes the orchestrator's run
+    accounting puts it in neither list (WI-didag: a productive pass that
+    returns no ``AnalysisRun``, which ``collect_analyzer_result`` covers by
+    synthesizing one). A union built over ``runs + skips`` alone is
+    structurally blind to exactly that case, which is why this takes the
+    catalog.
     """
 
     by_pass: "Mapping[str, str]"
@@ -664,22 +630,21 @@ def census_silence(
       APPLICABLE -- the pass emitted something -- so it is omitted.
     * On ``skipped_passes`` a missing ``silence_reason`` means the producer
       did not classify itself, which reads as :data:`UNREPORTED` and never as
-      the 98.94%-common ``no_candidate_files``.
+      the far more common ``no_candidate_files``.
 
     When ``catalog_pass_ids`` is given, any id in it that appears in neither
     host is reported in ``unaccounted``. Omit it and ``unaccounted`` is
     ``None``, never ``()``.
 
-    WHICH FIELD IS AUTHORITATIVE, stated because this function is the reader
-    that re-opened the pass-silence audit's Pair B (WI-daruz, 2026-10-28):
+    WHICH FIELD IS AUTHORITATIVE (the pass-silence audit's Pair B, WI-daruz):
     ``silence_reason`` answers WHY a pass was silent and is what this census
     reads; ``AnalysisRun.files_analyzed`` answers whether it HAD INPUT, and
-    this census never infers one from the other. They are no longer
-    restatements: since a body-stamped reason survives the orchestrator's
-    derivation (``analyze/all_analyzers.py``), ``no_candidate_files`` still
-    implies ``files_analyzed == 0`` but ``files_analyzed == 0`` no longer
-    implies ``no_candidate_files`` (a body may say ``backend_disabled``).
-    So Pair B is KEEP both, each the authority for its own question.
+    this census never infers one from the other. They are not restatements:
+    a body-stamped reason survives the orchestrator's derivation
+    (``analyze/all_analyzers.py``), so ``no_candidate_files`` implies
+    ``files_analyzed == 0`` but ``files_analyzed == 0`` does not imply
+    ``no_candidate_files`` (a body may say ``backend_disabled``). Both fields
+    are kept, each the authority for its own question.
     """
     by_pass: dict[str, str] = {}
     hosts: dict[str, str] = {}
@@ -718,10 +683,9 @@ def census_silence(
 def format_unaccounted_warning(census: SilenceCensus) -> str | None:
     """Name catalogue passes that reached NEITHER host, or ``None``.
 
-    The reader half. ``unaccounted`` being a fact nobody is shown is the
-    instrument-with-no-reader defect this codebase keeps paying for, and this
-    particular signal is the one that would have surfaced WI-didag on the run
-    that introduced it instead of a month later.
+    The reader half: ``unaccounted`` is useless as a fact nobody is shown.
+    This line surfaces a pass that reached neither host on the very run where
+    it happens (WI-didag).
 
     Returns ``None`` when the census could not check (no catalog) as well as
     when it checked and found nothing -- the caller prints neither, and the
@@ -754,29 +718,28 @@ def prerequisite_absent_clauses(
 ) -> list[list[str]]:
     """Conjuncts a pass declared, that went missing for a TOOLCHAIN reason.
 
-    The producer :data:`PREREQUISITE_ABSENT` never had (WI-dabup / ADR-0056 W3),
-    and the reason it took three steps to build is that **the obvious rule is
-    wrong**. "Stamp it when a ``depends_on`` conjunct is unsatisfied" fails on
-    measurement: 98.94% of 229,541 skip records are ``no files matched``, so an
-    unsatisfied conjunct nearly always means *the repository lacks that
-    language* — State A, a correct no-op. Stamping that as an ordering defect
-    would make the field assert a defect about a repo that simply has no Rust
-    in it: the axis's founding sin, committed inside the axis built to cure it.
+    The producer of :data:`PREREQUISITE_ABSENT` (WI-dabup / ADR-0056 W3).
+    **The obvious rule is wrong.** "Stamp it when a ``depends_on`` conjunct is
+    unsatisfied" fails because the overwhelming majority of skip records are
+    ``no files matched``, so an unsatisfied conjunct nearly always means *the
+    repository lacks that language* — State A, a correct no-op. Stamping that
+    as an ordering defect would make the field assert a defect about a repo
+    that simply has no Rust in it.
 
     **The discriminator is not "is the conjunct satisfied" but "was the missing
     literal skipped for a FILE reason or a TOOLCHAIN reason"** — which is
-    precisely what the structured code made askable, and why W2 had to land
-    first.
+    precisely what the structured skip code makes askable.
 
     A conjunct qualifies when EVERY literal in it is absent from the run
     (present in ``silence_reasons``) and AT LEAST ONE of them went missing for
     a reason that does not establish State A -- whose
     :func:`silence_states` are not exactly ``{A}``. Only
     :data:`NO_CANDIDATE_FILES` and :data:`NO_CANDIDATE_CONSTRUCT` establish
-    it; any other value, and any string outside the vocabulary, does not
-    (WI-punod: this read ``!= NO_CANDIDATE_FILES``, which called
-    ``no_candidate_construct`` a toolchain reason and would have called every
-    value added later one too). The disjunction is honoured both ways: one
+    it; any other value, and any string outside the vocabulary, does not.
+    Reading the states rather than comparing against
+    :data:`NO_CANDIDATE_FILES` keeps ``no_candidate_construct``, and any value
+    added later, from being mistaken for a toolchain reason (WI-punod). The
+    disjunction is honoured both ways: one
     surviving member satisfies the clause, and a clause all of whose members
     are State A stays State A.
 

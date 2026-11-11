@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the L3 producer-side axis-coherence linter.
 
-The L3 linter walks producer call sites (Edge.create / Edge( origin="test", origin_run_id="test") /
+The L3 linter walks producer call sites (Edge.create / Edge() /
 Symbol.create / Symbol()) and verifies that literal-string keyword
 arguments to axis-bearing parameters are in the corresponding
 canonical registry. F-string arguments are advisory (Phase-3 fold
@@ -55,10 +55,9 @@ def test_no_strict_producer_violations_for_evidence_type():
 
 
 def test_ast_call_method_not_emitted_after_cluster_d_fold():
-    """WI-nibis substrate-wide negative close-check: no producer still emits
-    the folded-out ``ast_call_method`` evidence type. The py.py:3811 default
-    leak is folded to ``ast_call`` + ``meta['call_construct']='method'`` per
-    audit-findings 0012 (Cluster 28D apex/peer collapse)."""
+    """No producer emits the folded-out ``ast_call_method`` evidence type: a
+    method call is ``ast_call`` + ``meta['call_construct']='method'`` per
+    audit-findings 0012 (Cluster 28D apex/peer collapse; WI-nibis)."""
     emitted = find_emitted_evidence_types(REPO_ROOT)
     assert "ast_call_method" not in emitted
 
@@ -218,9 +217,9 @@ def test_dict_subscript_rhs_resolves_to_value_union(tmp_path: Path):
     """``et = SOME_MAP[k]`` resolves to the union of the dict's literal
     string values, so an unregistered value is FLAGGED.
 
-    This is the direct-subscript half of the WI-rorul blind spot: before
-    WI-zigih ``_resolve_simple_rhs`` returned ``None`` for any Subscript
-    RHS, poisoning resolution and letting the value ship unseen.
+    This is the direct-subscript half of the WI-rorul shape: treating a
+    Subscript RHS as unresolvable would poison resolution and let the value
+    ship unseen (WI-zigih).
     """
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
@@ -243,12 +242,11 @@ def test_dict_subscript_rhs_resolves_to_value_union(tmp_path: Path):
 
 def test_tuple_unpack_from_dict_subscript_resolves_by_position(tmp_path: Path):
     """``suffix, et = MAP[k]`` resolves ``et`` to the union of each dict
-    value tuple's element 1 — the exact WI-rorul OTP-linker shape.
+    value tuple's element 1 — the OTP-linker shape
+    ``handler_suffix, edge_type = CALL_TYPE_MAP[call_type]`` (WI-rorul).
 
-    The OTP linker shipped unregistered ``otp_call``/``otp_cast`` through
-    ``handler_suffix, edge_type = CALL_TYPE_MAP[call_type]`` and the gate
-    stayed green because ``_resolve_function_local`` only matched
-    ``ast.Name`` targets, skipping the Tuple target entirely.
+    A resolver that matched only ``ast.Name`` targets would skip the Tuple
+    target entirely and let an unregistered value through.
     """
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
@@ -275,7 +273,7 @@ def test_tuple_unpack_from_dict_subscript_resolves_by_position(tmp_path: Path):
 
 
 def test_tuple_unpack_resolves_registered_values_clean(tmp_path: Path):
-    """The post-WI-rorul shape (registered values) stays clean — the new
+    """The same shape with registered values stays clean — tuple-unpack
     resolution must not manufacture false positives."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
@@ -326,9 +324,9 @@ def test_tuple_unpack_with_short_value_tuple_contributes_nothing(
 ):
     """A dict value tuple shorter than the unpack position cannot yield a
     value there (unpacking it raises), so it contributes nothing -- and the
-    well-formed entry's value is still reported. Before ``value_flow`` the
-    short entry poisoned the whole map and the site was silently skipped,
-    which hid ``otp_cast``."""
+    well-formed entry's value is still reported. Letting the short entry
+    poison the whole map would silently skip the site and hide the
+    well-formed entry's value."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_MAP = {"call": ("only_one",), "cast": ("a", "otp_cast")}\n'
@@ -351,7 +349,7 @@ def test_tuple_unpack_with_short_value_tuple_contributes_nothing(
 
 def test_unknown_dict_name_subscript_is_silently_skipped(tmp_path: Path):
     """A subscript over a name that is not a resolvable dict literal
-    (e.g. a function parameter) keeps the pre-WI-zigih silent skip."""
+    (e.g. a function parameter) is silently skipped."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def emit(mapping, kind):\n'
@@ -556,10 +554,9 @@ def test_unresolvable_subscript_at_kwarg_site_is_silently_skipped(
 def test_fstring_segment_over_dict_subscript_expands_through_value_flow(
     tmp_path: Path,
 ):
-    """Formerly a documented boundary (the f-string expander resolved its
-    segments without the module tree, so ``part = _MAP[kind]`` stayed
-    unexpandable). An f-string the named shapes cannot expand now falls back
-    to ``value_flow`` in ``expand`` mode, which resolves the dict."""
+    """An f-string segment bound by ``part = _MAP[kind]`` expands: an
+    f-string the named shapes cannot expand falls back to ``value_flow`` in
+    ``expand`` mode, which resolves the dict."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_MAP = {"a": "suffix_one"}\n'
@@ -578,8 +575,7 @@ def test_fstring_segment_over_dict_subscript_expands_through_value_flow(
 
 def test_dict_subscript_values_reach_the_enumerator(tmp_path: Path):
     """``find_emitted_literal_values`` shares ``_classify_value``, so the
-    dict-indirection shape must also enumerate — closing the coverage gap
-    the module docstring listed as 'dict-subscript-target (no)'."""
+    dict-indirection shape must also enumerate."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_MAP = {"a": "alpha_edge", "b": "beta_edge"}\n'
@@ -615,7 +611,7 @@ def test_test_files_are_excluded_by_default(tmp_path: Path):
 
 
 def test_bare_constructor_call_matches(tmp_path: Path):
-    """Bare ``Edge(..., origin="test", origin_run_id="test")`` (no `.create`) should also be inspected."""
+    """Bare ``Edge(...)`` (no `.create`) should also be inspected."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'Edge(id="x", src="a", dst="b", edge_type="calls", line=1, '
@@ -686,13 +682,13 @@ def test_call_without_keyword_is_skipped(tmp_path: Path):
 
 # --- WI-nubuv extension A: assignment-form trace ---
 #
-# These cases mirror the WI-nitil empirical leak shape:
+# These cases cover the leak shape (WI-nitil):
 #   kind = "<literal>"
 #   ...
 #   Symbol(kind=kind, ...)
-# The literal-kwarg-only matcher caught NONE of them; the WI-nubuv
-# extension walks back simple assignment patterns within the enclosing
-# function to surface the literal candidates.
+# A literal-kwarg-only matcher sees none of them; the assignment-form trace
+# walks back simple assignment patterns within the enclosing function to
+# surface the literal candidates.
 
 
 def test_assignment_form_literal_in_registry_is_clean(tmp_path: Path):
@@ -716,8 +712,8 @@ def test_assignment_form_literal_in_registry_is_clean(tmp_path: Path):
 
 
 def test_assignment_form_literal_not_in_registry_is_strict(tmp_path: Path):
-    """The WI-nitil shape: function-local single-literal assignment
-    whose value is NOT in the registry should fail strictly."""
+    """Function-local single-literal assignment whose value is NOT in
+    the registry should fail strictly (the WI-nitil shape)."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make():\n'
@@ -883,8 +879,8 @@ def test_assignment_form_annassign_resolves(tmp_path: Path):
 
 
 def test_assignment_form_function_param_is_silent(tmp_path: Path):
-    """A function parameter (no in-scope assignment of the name) keeps
-    the existing silent-skip behaviour. Regression guard."""
+    """A function parameter (no in-scope assignment of the name) stays
+    silently skipped. Regression guard."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(label):\n'
@@ -935,8 +931,8 @@ def test_assignment_form_ternary_one_branch_unresolvable_is_silent(tmp_path: Pat
 #
 # The literal-kwarg matcher never descends into ``_make_proto_symbol``
 # and never binds the positional ``"service"``/``"rpc"`` to the ``kind``
-# param, so these two unregistered kinds report ``strict=0`` (the false
-# RESOLVED audit-0013 / INV-numat named). ``descend_helpers=True``
+# param, so unregistered kinds passed this way report ``strict=0``
+# (INV-numat). ``descend_helpers=True``
 # discovers helper functions whose parameter flows into a known sink
 # (fixpoint) and binds positional AND keyword arguments at their call
 # sites.
@@ -952,7 +948,7 @@ def test_public_helper_positional_literal_is_invisible_by_default(tmp_path: Path
     """The proto shape through a PUBLIC helper: the DEFAULT (non-transitive)
     linter is blind to it, because a public module function's callers may
     live in other modules, so ``value_flow`` will not enumerate its
-    parameter. WI-zipis's descent is what closes this one."""
+    parameter. Helper descent (WI-zipis) is what closes this one."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(name, kind):\n'
@@ -1269,7 +1265,7 @@ def test_live_tree_producer_axis_ratchet():
     unregistered helper-descend emitted values, per axis, must exactly
     equal the committed baseline. A NEW unregistered value fails
     (regression); a baselined value since drained must be removed
-    (shrink-only). Replaces per-cohort violation-counting."""
+    (shrink-only)."""
     baseline = json.loads(
         (REPO_ROOT / ".ci" / "producer-axis-coherence-baseline.json").read_text()
     )
@@ -1277,7 +1273,7 @@ def test_live_tree_producer_axis_ratchet():
         ("Symbol.kind", unregistered_symbol_kinds),
         ("Edge.evidence_type", unregistered_evidence_types),
         ("Edge.edge_type", unregistered_edge_types),
-        # WI-lijaz: the meta KEY axis (hypergumbo_core.meta_key_coherence).
+        # The meta KEY axis (hypergumbo_core.meta_key_coherence; WI-lijaz).
         ("Edge.meta key", unregistered_edge_meta_keys),
     ):
         live = set(finder(REPO_ROOT))
@@ -1338,7 +1334,7 @@ def test_emitted_symbol_kinds_returns_literal_kwarg_emit_sites(tmp_path: Path):
 
 def test_emitted_evidence_types_returns_literal_kwarg_emit_sites(tmp_path: Path):
     """find_emitted_evidence_types maps {evidence_type: (file:line, ...)}
-    and catches literal-kwarg emits at Edge(..., origin="test", origin_run_id="test") call sites."""
+    and catches literal-kwarg emits at Edge(...) call sites."""
     _write_producer(
         tmp_path,
         'from foo import Edge\n'
@@ -1353,7 +1349,7 @@ def test_emitted_evidence_types_returns_literal_kwarg_emit_sites(tmp_path: Path)
 
 def test_emitted_edge_types_returns_literal_kwarg_emit_sites(tmp_path: Path):
     """find_emitted_edge_types maps {edge_type: (file:line, ...)} and
-    catches literal-kwarg emits at Edge(..., origin="test", origin_run_id="test") call sites."""
+    catches literal-kwarg emits at Edge(...) call sites."""
     _write_producer(
         tmp_path,
         'from foo import Edge\n'
@@ -1459,20 +1455,18 @@ def test_assignment_form_module_constant_still_takes_precedence(tmp_path: Path):
 
 # --- WI-nubuv: inline IfExp + non-string-constant skip ---
 #
-# The pre-ext-B classifier only recognized inline ternary at the
-# function-local-assignment path, not at the kwarg site itself. And the
-# function-local walker poisoned on ``= None`` sentinels even when the
-# real string assignments followed (the ``edge_type = None`` shape at
-# linkers/inheritance.py:209 vs the resolvable string assignments at
-# :218 / :227). Both gaps closed in this PR.
+# An inline ternary is resolved at the kwarg site itself, not only on the
+# function-local-assignment path. And a ``= None`` sentinel followed by real
+# string assignments (the ``edge_type = None`` shape in
+# linkers/inheritance.py) contributes nothing rather than poisoning the
+# function-local walk.
 
 
 def test_inline_ternary_resolves_when_both_branches_in_registry(tmp_path: Path):
     """Inline ``evidence_type="a" if cond else "b"`` at the kwarg site
     resolves to the union of both branches via _resolve_simple_rhs.
-    Pre-fix, this was classified ``unresolvable=IfExp`` and silently
-    skipped — a real producer-side leak shape (ipc.py:546,
-    message_queue.py:516)."""
+    Classifying it ``unresolvable=IfExp`` would silently skip a real
+    producer-side leak shape (ipc.py, message_queue.py)."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(cond):\n'
@@ -1565,11 +1559,10 @@ def test_inline_ternary_one_branch_unresolvable_falls_to_unresolvable(tmp_path: 
 
 
 def test_assignment_form_none_sentinel_then_literal_resolves(tmp_path: Path):
-    """The inheritance.py:209 shape: ``edge_type = None`` sentinel before
-    real string assignments. Pre-fix, _resolve_simple_rhs returned None
-    for ``= None`` and poisoned the whole resolution; now non-string
-    Constants contribute empty set, letting the real string assignments
-    populate candidates normally."""
+    """The inheritance.py shape: ``edge_type = None`` sentinel before
+    real string assignments. Non-string Constants contribute the empty set
+    rather than poisoning the whole resolution, so the real string
+    assignments populate candidates normally."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(cond):\n'
@@ -1617,7 +1610,7 @@ def test_assignment_form_only_non_string_constants_falls_to_unresolvable(tmp_pat
 
 
 def test_fstring_expand_mode_silently_accepts_resolvable(tmp_path: Path):
-    """The acceptance criterion from the WI: an f-string with a literal
+    """WI-nubuv extension B: an f-string with a literal
     prefix concatenated with a function-locally-resolvable Name expands
     to the prefix-concatenated set of candidates; if every candidate is
     in the registry, the site is silently accepted (no advisory)."""
@@ -1799,8 +1792,8 @@ def test_fstring_expand_cartesian_cap_bails_to_advisory(tmp_path: Path):
 
 def test_fstring_advisory_mode_preserves_pre_ext_b_behavior(tmp_path: Path):
     """In advisory mode (the base-function default), f-strings still
-    surface as advisories regardless of expandability — preserves the
-    pre-WI-nubuv-ext-B contract."""
+    surface as advisories regardless of expandability — expansion is
+    opt-in (WI-nubuv extension B)."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make():\n'
@@ -1847,8 +1840,7 @@ def test_fstring_expand_with_constant_inner_resolves(tmp_path: Path):
 
 
 def test_variable_form_silent_default_preserves_existing_behavior(tmp_path: Path):
-    """Default ``variable_form_mode='silent'`` keeps the pre-ext-C
-    contract: unresolvable Names (function params, for-loop unpacks,
+    """Default ``variable_form_mode='silent'``: unresolvable Names (function params, for-loop unpacks,
     function calls) surface as neither strict nor advisory."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
@@ -2011,11 +2003,11 @@ def test_edge_type_wrapper_accepts_mode_kwargs():
 class TestEveryProducerNamesItsPathway:
     """INV-nudoj: ``Edge.evidence_type`` defaults to ``ast_call_direct``, so
     a producer that omits it does not abstain — it claims the most specific
-    inference pathway in a 126-value vocabulary, and ``Edge.create`` then
+    inference pathway in the vocabulary, and ``Edge.create`` then
     DERIVES the edge's confidence from that claim and stamps it
-    ``evidence_derived``. Fifty-one sites did, including three linkers that
-    perform no call analysis at all. The cure is to make the omission
-    impossible rather than to detect the phantom downstream.
+    ``evidence_derived`` — even for a linker that performs no call analysis
+    at all. So the gate makes the omission impossible rather than detecting
+    the phantom downstream.
     """
 
     def test_no_shipped_producer_leaves_its_pathway_to_the_default(self) -> None:
@@ -2084,11 +2076,11 @@ class TestEveryProducerNamesItsPathway:
 
 # --- WI-nakur / INV-dahuh / WI-pubin: values that flow through data ---
 #
-# Every shape below shipped an unregistered value past every gate built on
-# ``_classify_value``, because the value reached the constructor through a
-# loop over tuples, a helper's appended return, a dict of tuples, or a
-# record-class field. ``value_flow`` follows them back; these tests pin that
-# the GATE (not just the resolver) now reports them.
+# In every shape below the value reaches the constructor through a loop
+# over tuples, a helper's appended return, a dict of tuples, or a
+# record-class field, which ``_classify_value`` alone cannot see.
+# ``value_flow`` follows them back; these tests pin that the GATE (not just
+# the resolver) reports them.
 
 
 _FLOW_SHAPES: dict[str, str] = {
@@ -2149,7 +2141,7 @@ _FLOW_SHAPES: dict[str, str] = {
 class TestValuesCarriedThroughDataReachTheGate:
     """Each shape: the unregistered ``has_type`` is a strict violation, it is
     in the enumerator, and the ratchet's ``unregistered_emitted_values``
-    names it. Before ``value_flow`` all three were silent."""
+    names it."""
 
     @staticmethod
     def _tree(tmp_path: Path, body: str) -> Path:

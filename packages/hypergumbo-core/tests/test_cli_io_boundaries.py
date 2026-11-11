@@ -125,10 +125,10 @@ _MULTI_BOUNDARY = {
 }
 
 
-# WI-kumol: the consumer-time io-boundary facade (cmd_io_boundaries /
-# cmd_verify_claims) must carry is_resolved + dst_ref from the serialized map so
-# compute_boundary_map's ADR-0028 unresolved-receiver gate (io_boundary.py:1174)
-# and the WI-tihup structured dst_ref lookup fire on the CLI path. Node/edge
+# The consumer-time io-boundary facade (cmd_io_boundaries / cmd_verify_claims)
+# must carry is_resolved + dst_ref from the serialized map so
+# compute_boundary_map's ADR-0028 unresolved-receiver gate and the structured
+# dst_ref lookup (WI-tihup) fire on the CLI path (WI-kumol). Node/edge
 # shapes lifted from a real `hypergumbo run` of a fixture (os.remove +
 # obj.read() + bus.write()): os.remove is is_resolved=False but resolves via its
 # dst_ref module hint -> fs_write; the two duck-typed method calls are
@@ -182,9 +182,9 @@ def test_cmd_io_boundaries_suppresses_unresolved_receiver_external_potential(
 
     Duck-typed ``obj.read()`` / ``bus.write()`` on an unknown receiver
     (``is_resolved=False``, no ``dst_ref``) must NOT be surfaced as
-    external_potential — the previous 4-field facade dropped ``is_resolved``, so
-    the ADR-0028 unresolved-receiver gate never fired on the CLI path and these
-    bare-name matches inflated the external_potential bucket. A
+    external_potential — a facade that dropped ``is_resolved`` would keep the
+    ADR-0028 unresolved-receiver gate from firing on the CLI path and let these
+    bare-name matches inflate the external_potential bucket. A
     resolved-via-``dst_ref`` stdlib call (``os.remove``) must STILL classify as
     a real ``fs_write`` boundary.
     """
@@ -205,7 +205,7 @@ def test_cmd_io_boundaries_suppresses_unresolved_receiver_external_potential(
 
 
 # ---------------------------------------------------------------------------
-# Original tests (updated with explicit args attributes)
+# Core detection and output-format tests
 # ---------------------------------------------------------------------------
 
 
@@ -259,9 +259,9 @@ def test_cmd_io_boundaries_format_json_matches_json_flag(
     """WI-kitud: ``--format json`` (the canonical read-view spelling) emits the
     same JSON envelope as the ``--json`` back-compat alias.
 
-    io-boundaries historically used ``--json``; WI-kitud brings it onto the
-    shared ``--format text|json`` convention so a consumer driving multiple
-    read subcommands need learn only one flag spelling.
+    io-boundaries follows the shared ``--format text|json`` convention so a
+    consumer driving multiple read subcommands need learn only one flag
+    spelling; ``--json`` stays as an alias.
     """
     bmap = _make_behavior_map(
         nodes=[
@@ -324,17 +324,14 @@ def test_cmd_io_boundaries_format_text_emits_text(
 def test_cmd_io_boundaries_json_envelope_top_level_keys(
     tmp_path: Path, capsys,
 ) -> None:
-    """PR-B property test: --json envelope top-level shape locked.
+    """Property test: the --json envelope's top-level shape is locked.
 
-    The io-boundaries envelope (schema_version 2.4 since WI-pogar added
-    untraced_modules, the modules behind the external_potential chains grouped
-    by ecosystem; 2.3 since WI-fasap added
-    db_compose_edges, the database twin of net_listen; 2.2 since
-    WI-nosah/ADR-0049 added net_listen_edges for deferred crossings; 2.1 added
-    command_launch_edges; 2.0 redefined total_io_edges + added
-    external_potential_edges) is a wire contract for downstream consumers (verify-claims, security audit
-    scripts, RCT variants). Loud-fail on any silent change to the
-    top-level keys, value types, or schema_version string.
+    The io-boundaries envelope is a wire contract for downstream consumers
+    (verify-claims, security audit scripts, RCT variants). Loud-fail on any
+    silent change to the top-level keys, value types, or schema_version
+    string; a key change must come with an ``IO_BOUNDARIES_SCHEMA_VERSION``
+    bump (its definition in io_boundary.py lists the fields added per
+    version).
     """
     from hypergumbo_core.io_boundary import IO_BOUNDARIES_SCHEMA_VERSION
 
@@ -407,7 +404,7 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
 def test_cmd_io_boundaries_chain_shows_dst_tier_for_external_boundary(
     tmp_path: Path, capsys,
 ) -> None:
-    """PR2 of stop-stripping plan: each chain's JSON output carries
+    """Each chain's JSON output carries
     dst_tier / dst_tier_name / dst_external_boundary, and the human
     text output annotates external-boundary destinations with
     [tier-N tier_name] so users can see at a glance whether a chain
@@ -422,7 +419,7 @@ def test_cmd_io_boundaries_chain_shows_dst_tier_for_external_boundary(
                 "span": {"start_line": 1, "end_line": 5},
                 "supply_chain": {"tier": 1, "tier_name": "first_party"},
             },
-            # The boundary node serialized after PR1.
+            # The boundary node as run_behavior_map serializes it.
             {
                 "id": "python:urllib.request:0-0:urlopen:unresolved",
                 "name": "urlopen", "kind": "external_symbol",
@@ -467,9 +464,9 @@ def test_a_user_overlay_does_not_mark_unrelated_chains_unreliable(
     tmp_path: Path, capsys, no_default_overlays: bool,
 ) -> None:
     """WI-donod, through the command: a user overlay describing ONE library
-    used to drop python's catalogue to in_progress, so an unrelated
-    external_potential chain flipped dst_classification_unreliable to True
-    (rendered ``[unreliable]``). The overlay says nothing about the stdlib."""
+    must not drop python's catalogue to in_progress, so an unrelated
+    external_potential chain keeps dst_classification_unreliable=False (no
+    ``[unreliable]`` marker). The overlay says nothing about the stdlib."""
     overlay = tmp_path / "my-io.yaml"
     overlay.write_text(
         "language: python\n"
@@ -519,7 +516,7 @@ def test_a_user_overlay_does_not_mark_unrelated_chains_unreliable(
 def test_cmd_io_boundaries_renders_external_potential_section(
     tmp_path: Path, capsys,
 ) -> None:
-    """Plan C, PR C: edges into a tier-3 boundary node not in the catalog
+    """Edges into a tier-3 boundary node not in the catalog
     surface as ``external_potential`` chains, both in JSON output and in
     the text-mode boundary section.  The Python catalog (status=provenance_declared)
     means the annotation is the standard ``[tier-3 external_dep]``;
@@ -537,8 +534,8 @@ def test_cmd_io_boundaries_renders_external_potential_section(
                 "supply_chain": {"tier": 1, "tier_name": "first_party"},
             },
             # Tier-3 boundary node for a wrapper not in the catalog
-            # (huggingface_hub.snapshot_download was reverted in the
-            # WI-jihuj revert; PR A enforces strict-stdlib).
+            # (huggingface_hub.snapshot_download is third-party; the Python
+            # catalog is stdlib-scoped; WI-jihuj).
             {
                 "id": "python:huggingface_hub:0-0:snapshot_download:unresolved",
                 "name": "snapshot_download", "kind": "external_symbol",
@@ -683,9 +680,9 @@ def test_external_potential_hidden_by_default_in_by_type_text_output(
     """WI-mibag: external_potential bucket is hidden from the default
     by-type text output and replaced by a one-line summary.
 
-    The bucket dominates display on large repos (kafka had 76K chains
-    of 76K total). It remains useful as a signal — exposed via JSON
-    output, the `--show-external-potential` flag, or `--boundary
+    On large repos the bucket can account for nearly every chain and
+    drown out the rest of the display. It remains useful as a signal — exposed via
+    JSON output, the `--show-external-potential` flag, or `--boundary
     external_potential`.
     """
     args = _make_args(tmp_path, _make_external_potential_bmap())
@@ -833,7 +830,7 @@ def test_cmd_io_boundaries_multiple_boundaries(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: caller info / call sites
+# Caller info / call sites
 # ---------------------------------------------------------------------------
 
 
@@ -880,7 +877,7 @@ def test_shows_caller_info_fallback(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: entry points displayed
+# Entry points displayed
 # ---------------------------------------------------------------------------
 
 
@@ -931,7 +928,7 @@ def test_shows_entry_points(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: per-primitive counts
+# Per-primitive counts
 # ---------------------------------------------------------------------------
 
 
@@ -977,16 +974,16 @@ def test_primitive_counts(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: high-risk highlighting
+# High-risk highlighting
 # ---------------------------------------------------------------------------
 
 
 def test_high_risk_marker_in_text(tmp_path: Path, capsys) -> None:
     """Subprocess primitives are HIGH RISK-marked; destructive-fs is not.
 
-    high_risk is subprocess-scoped (the net/fs curation was retired — see
-    io_boundary.HIGH_RISK_PRIMITIVES); shutil.rmtree still appears as an
-    fs_write primitive but no longer carries the marker.
+    high_risk is subprocess-scoped (see io_boundary.HIGH_RISK_PRIMITIVES);
+    shutil.rmtree still appears as an fs_write primitive but does not carry
+    the marker.
     """
     bmap = _make_behavior_map(**_MULTI_BOUNDARY)
     args = _make_args(tmp_path, bmap)
@@ -996,7 +993,7 @@ def test_high_risk_marker_in_text(tmp_path: Path, capsys) -> None:
     assert "HIGH RISK" in out
     assert "subprocess.Popen" in out
     assert "shutil.rmtree" in out
-    # rmtree is listed but no longer on a HIGH RISK line.
+    # rmtree is listed but not on a HIGH RISK line.
     rmtree_lines = [ln for ln in out.splitlines() if "shutil.rmtree" in ln]
     assert rmtree_lines
     assert all("HIGH RISK" not in ln for ln in rmtree_lines)
@@ -1013,7 +1010,7 @@ def test_no_high_risk_marker_for_safe_primitives(tmp_path: Path, capsys) -> None
 
 
 # ---------------------------------------------------------------------------
-# New tests: --boundary filter
+# --boundary filter
 # ---------------------------------------------------------------------------
 
 
@@ -1052,7 +1049,7 @@ def test_filter_boundary_json(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: --primitive filter
+# --primitive filter
 # ---------------------------------------------------------------------------
 
 
@@ -1092,7 +1089,7 @@ def test_filter_primitive_json(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: --by-file view
+# --by-file view
 # ---------------------------------------------------------------------------
 
 
@@ -1143,7 +1140,7 @@ def test_by_file_high_risk(tmp_path: Path, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: enriched JSON output
+# Enriched JSON output
 # ---------------------------------------------------------------------------
 
 
@@ -1339,9 +1336,8 @@ def test_typescript_alias_io_boundaries_detected(tmp_path: Path, capsys) -> None
     when a Symbol has language='typescript' but the IO-primitive catalog is
     the shared JavaScript one (catalog.language='javascript' ≠ lang),
     catalogs[catalog.language] must also be keyed so edge-prefix lookups
-    find the catalog. Was previously the 'objective-c' alias case before
-    the objc language-tag harmonization; typescript→javascript is the
-    remaining alias in io_boundary._CATALOG_ALIASES.
+    find the catalog. typescript→javascript is the alias in
+    io_boundary._CATALOG_ALIASES that exercises this branch.
     """
     bmap = _make_behavior_map(
         nodes=[
@@ -1513,9 +1509,8 @@ class TestIoBoundariesExcludeTests:
 
         When ``args.exclude_tests`` is not set at all (i.e., the user did
         not pass ``--exclude-tests`` or ``--include-tests``), the command
-        must default to excluding test-file chains. Without this fix, the
-        bakeoff's ``io-boundaries.txt`` was 78% noise on alertmanager
-        (env_read: 9 chains, 7 in test files).
+        must default to excluding test-file chains; test-file chains would
+        otherwise dominate the output on repos with large test suites.
         """
         bmap = _make_behavior_map(
             nodes=[
@@ -1718,11 +1713,10 @@ def test_cmd_io_boundaries_json_output_empty_unsupported_when_all_supported(
 
 class TestLeafCallersSurviveFilterPass:
     """The WI-darad rollups (leaf_callers, entry_points_per_leaf) are
-    computed inside compute_boundary_map but cmd_io_boundaries runs a
-    filter pass (default exclude_tests=True) that previously dropped
-    them by reconstructing BoundaryMapEntry without those fields.
-    Bakeoff cohort-001/iter-010 caught this as a regression: every
-    boundary had chain_count>0 but leaf_callers=[].
+    computed inside compute_boundary_map, and cmd_io_boundaries runs a
+    filter pass (default exclude_tests=True) that reconstructs
+    BoundaryMapEntry; the reconstruction must carry those fields over, or
+    every boundary reports chain_count>0 with leaf_callers=[].
     """
 
     def test_leaf_callers_present_with_default_exclude_tests(
@@ -1841,9 +1835,8 @@ def test_io_boundaries_tier_tag_attaches_to_primitive_not_caller(
     destination, not the caller — so it must render on the primitive line,
     not on each caller line.
 
-    Previously the tag appeared at the end of `<- caller (path:line)` lines,
-    which made it visually attach to the caller's identifier and led
-    reviewers to mis-attribute the tier to the caller.
+    At the end of a `<- caller (path:line)` line the tag would visually
+    attach to the caller's identifier and read as the caller's tier.
     """
     bmap = _make_behavior_map(
         nodes=[

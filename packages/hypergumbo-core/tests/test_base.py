@@ -330,22 +330,23 @@ class TestMakeRouteSymbol:
         return make_route_symbol(**base)
 
     def test_id_name_slot_round_trips_against_symbol_name(self) -> None:
-        """ADR-0036 Ruling 1 holds by construction — the whole point of the
-        chokepoint (the invariant every hand-rolled producer drifted from)."""
+        """ADR-0036 Ruling 1 holds by construction: the id's name slot
+        round-trips against ``Symbol.name``. Guaranteeing that in one place,
+        instead of in each producer, is the point of the chokepoint."""
         sym = self._mint()
         assert sym.name == "GET /users"
         assert sym.id.rsplit(":", 2)[-2] == sym.name
 
     def test_kind_is_function_not_the_route_fossil(self) -> None:
-        """ADR-0027 Phase-3 route->function fold: `route` is not a registered
-        symbol kind, so an id kind-slot of `route` fails id_format."""
+        """`route` is not a registered symbol kind (route markers are
+        functions, ADR-0027), so an id kind-slot of `route` fails id_format."""
         sym = self._mint()
         assert sym.kind == "function"
         assert sym.id.rsplit(":", 1)[-1] == "function"
 
     def test_provenance_is_stamped(self) -> None:
-        """cross_field + axis_conformance: the defects WI-zugob filed alongside
-        the id fossil were an absent origin_run_id and an unregistered origin."""
+        """The marker carries an ``origin_run_id`` and a registered ``origin``,
+        which the cross_field and axis_conformance checks require (WI-zugob)."""
         sym = self._mint(origin="go", origin_run_id="uuid:abc")
         assert sym.origin == ["go"]
         assert sym.origin_run_id == "uuid:abc"
@@ -421,12 +422,10 @@ class TestMakeRouteStableId:
         assert id1 == id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``sha256:<16hex>`` shape (Phase 6 PR1).
+        """Result uses the canonical ``sha256:<16hex>`` shape.
 
-        Pre-Phase-6 this returned a raw 64-char hexdigest; Phase 6 PR1
-        (INV-hunup) aligned the output with the rest of the
-        ``make_*_stable_id`` factory family so the ``id_format``
-        validator pins a single canonical shape.
+        Every ``make_*_stable_id`` factory returns this shape, so the
+        ``id_format`` validator pins a single canonical form (INV-hunup).
         """
         result = make_route_stable_id("GET", "/users")
         assert result.startswith("sha256:")
@@ -451,7 +450,7 @@ class TestMakeSiteStableId:
     """ADR-0035 §3 SITE-axis call_site identity (v8, WI-napoh)."""
 
     def test_same_target_different_files_distinct(self) -> None:
-        """The Wave-2 fix: the same request in two files must NOT collide."""
+        """The same request in two files must NOT collide."""
         a = make_site_stable_id("http", "a/client.py", "GET:/api/users")
         b = make_site_stable_id("http", "b/client.py", "GET:/api/users")
         assert a != b
@@ -517,10 +516,10 @@ def _route_sym(
 
 
 class TestWidenRouteStableIds:
-    """WI-gokiv (v8): post-pass folding file+language into LOGICAL route ids."""
+    """Post-pass folding file+language into LOGICAL route ids (v8, WI-gokiv)."""
 
     def test_same_route_distinct_across_files(self) -> None:
-        """The dominant Wave-2 residual: GET / in two files must NOT collide."""
+        """GET / in two files must NOT collide."""
         shared = make_route_stable_id("GET", "/")
         a = _route_sym(shared, "examples/auth/index.js", "javascript", id_suffix="route")
         b = _route_sym(shared, "examples/cookies/index.js", "javascript", id_suffix="route")
@@ -605,10 +604,10 @@ class TestMakeEntryStableId:
         assert id1 != id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``sha256:<16hex>`` shape (Phase 6 PR1).
+        """Result uses the canonical ``sha256:<16hex>`` shape.
 
         See ``TestMakeRouteStableId.test_returns_canonical_sha256_prefixed_form``
-        for the migration rationale.
+        for why the factory family shares one shape.
         """
         result = make_entry_stable_id("compute", "dispatch", "shaders/a.wgsl")
         assert result.startswith("sha256:")
@@ -624,7 +623,7 @@ class TestMakeEntryStableId:
 
 
 class TestMakeProtocolStableId:
-    """Tests for ``make_protocol_stable_id`` — Phase 6 PR1 (INV-hunup)."""
+    """Tests for ``make_protocol_stable_id`` (INV-hunup)."""
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
         """Result uses the canonical ``sha256:<16hex>`` shape."""
@@ -1161,7 +1160,7 @@ class TestIsGrammarAvailable:
         assert result is False
 
     def test_returns_false_when_tree_sitter_unavailable(self) -> None:
-        """Should return False when tree_sitter itself is not installed (covers base.py:186)."""
+        """Should return False when tree_sitter itself is not installed."""
         from unittest.mock import patch
 
         original_find_spec = __import__("importlib.util").util.find_spec
@@ -1178,10 +1177,10 @@ class TestIsGrammarAvailable:
 
 
 # ---------------------------------------------------------------------------
-# WI-gapam: emit_module_attribute_refs — cross-language helper for
-# tree-sitter analyzers that produces module_attr_ref edges for attribute
-# reads on imported/global modules (matches ``attributes:`` entries in
-# io_primitives/*.yaml).
+# emit_module_attribute_refs — cross-language helper for tree-sitter
+# analyzers that produces module_attr_ref edges for attribute reads on
+# imported/global modules (matches ``attributes:`` entries in
+# io_primitives/*.yaml). (WI-gapam)
 # ---------------------------------------------------------------------------
 
 
@@ -1347,9 +1346,9 @@ class TestEmitModuleAttributeRefs:
 
     def test_alias_maps_to_real_module_name(self) -> None:
         """The imports map can rename a local alias to the real module
-        name (the Python WI-guhok pattern: ``import os as o`` →
+        name, as Python does for ``import os as o`` →
         imports={"o": "os"} → edge dst uses ``os.environ`` not
-        ``o.environ``).
+        ``o.environ`` (WI-guhok).
         """
         root = _parse_javascript("const x = p.env;\n")
         caller = _fake_caller()
@@ -1517,10 +1516,11 @@ def _parse_rust(source: str):
 
 
 class TestEmitModuleAttributeRefsScopedPath:
-    """WI-vipur: tests for ``scoped_path=True`` mode — the left-recursive
+    """Tests for ``scoped_path=True`` mode — the left-recursive
     walk over ``scoped_identifier`` / ``qualified_identifier`` nodes used
     by languages whose scoped access is not a binary object+property
-    pair.  Exercised with tree-sitter-rust's ``scoped_identifier``."""
+    pair.  Exercised with tree-sitter-rust's ``scoped_identifier``
+    (WI-vipur)."""
 
     def test_basic_scoped_path_emits_edge_in_the_language_separator(self) -> None:
         """``std::env::consts::OS`` emits edges for each scoped_identifier
@@ -1528,13 +1528,11 @@ class TestEmitModuleAttributeRefsScopedPath:
         left to ``std`` (in imports), so an edge whose dst names
         ``std::env::consts`` fires.
 
-        THIS TEST WAS THE CONTRACT FOR THE DOTTED SPELLING and named itself so
-        (``..._emits_dot_normalized_edge``), with the justification "to survive
-        downstream ``:``-split parsing". That justification was stale: ADR-0036
-        (D1a) made the path slot colon-TOLERANT and ``symbol_path_slot`` uses a
-        colon-bearing rust id as its own worked example. The normalisation was
-        splitting one module into two nodes (INV-rilit), so it is gone and this
-        test now pins the language's own separator."""
+        The dst keeps the language's own ``::`` separator rather than a dotted
+        spelling. The id's path slot is colon-tolerant (ADR-0036 D1a;
+        ``symbol_path_slot`` uses a colon-bearing rust id as its worked
+        example), and normalising to dots splits one module into two nodes
+        (INV-rilit)."""
         source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
         root = _parse_rust(source)
         caller = _fake_caller("rust:lib.rs:0-0:file:file")
@@ -1988,9 +1986,10 @@ class TestPopulateDocstringsFromTree:
 class TestMakeUnresolvedEdge:
     """Tests for make_unresolved_edge — base + INV-nilud hint kwargs."""
 
-    # WI-gifar (PR-1 of INV-nilud inherited_calls campaign): the three
-    # _hint_ kwargs below let analyzers attach Edge.meta entries that the
-    # upcoming inherited_calls linker can walk ancestor chains against.
+    # The hint kwargs below (enclosing_class, receiver_type_hint,
+    # inherited_field_receiver) let analyzers attach Edge.meta entries that
+    # the inherited_calls linker walks ancestor chains against
+    # (INV-nilud, WI-gifar).
 
     def test_creates_correct_edge(self) -> None:
         """Creates an Edge with correct format and confidence."""
@@ -2042,11 +2041,10 @@ class TestMakeUnresolvedEdge:
         assert edge.line == 12
 
     def test_no_hints_yields_only_the_unconditional_callee_name(self) -> None:
-        """Was ``assert edge.meta is None``. Meta is no longer ever None here:
+        """Omitting the hint kwargs adds no HINT keys. Meta is never None here:
         ADR-0036 Ruling 1 makes the id's name slot LOSSY, so the full-fidelity
         callee name needs a home that is not the id, and ``callee_name`` is
-        stamped unconditionally (INV-divuf). The point this test actually makes
-        — that omitting the hint kwargs adds no HINT keys — is preserved."""
+        stamped unconditionally (INV-divuf)."""
         edge = self._call()
         assert edge.meta == {"callee_name": "baz"}
 
@@ -2080,10 +2078,10 @@ class TestMakeUnresolvedEdge:
     def test_call_construct_omitted_stays_out_of_meta(self) -> None:
         """A receiverless call must not claim to be a method call.
 
-        Asserted on the KEY rather than on ``meta is None``, which is what this
-        test always meant: ``callee_name`` now rides every such edge
-        (INV-divuf), and a whole-dict assertion would let a future unconditional
-        key silently re-open the question this test exists to close."""
+        Asserted on the KEY rather than on the whole meta dict: ``callee_name``
+        rides every such edge (INV-divuf), and a whole-dict assertion would let
+        a future unconditional key silently re-open the question this test
+        exists to close."""
         assert "call_construct" not in (self._call().meta or {})
 
     def test_all_four_hints_combined(self) -> None:
@@ -2102,16 +2100,15 @@ class TestMakeUnresolvedEdge:
         }
 
     def test_module_hint_kwarg_still_works(self) -> None:
-        """module_hint must remain reachable alongside the new kwargs."""
+        """module_hint must remain reachable alongside the hint kwargs."""
         edge = self._call(module_hint="java.util", enclosing_class="Foo")
         assert edge.dst == "java:java.util:0-0:baz:unresolved"
         assert edge.meta == {"callee_name": "baz", "enclosing_class": "Foo"}
 
     def test_derives_dst_ref_when_omitted(self) -> None:
         """ADR-0037 ruling 2: dst_ref is derived unconditionally from the
-        (lang, module_hint, callee_name) the helper already holds — no longer
-        the optional-and-usually-None field that left 67.8% of external edges
-        without a structured ref (WI-zuhon)."""
+        (lang, module_hint, callee_name) the helper already holds, so every
+        unresolved edge carries a structured ref (WI-zuhon)."""
         edge = self._call(module_hint="java.util", callee_name="parseInt")
         assert edge.dst_ref == ExternalRef(
             lang="java", module_path="java.util", name="parseInt",
@@ -2140,7 +2137,7 @@ def _make_caller_symbol(
 
 
 class TestSynthesizeFileSymbolsForDanglingEdges:
-    """Tests for WI-ramuv synthesize_file_symbols_for_dangling_edges."""
+    """Tests for synthesize_file_symbols_for_dangling_edges (WI-ramuv)."""
 
     def test_synthesizes_for_dangling_src(self) -> None:
         """A make_file_id-shape src with no matching Symbol gets one synthesized."""
@@ -2168,10 +2165,10 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         assert sym.origin == ["orchestrator_file_symbol_synthesis"]
 
     def test_stamps_provided_origin_run_id(self) -> None:
-        """synthetic:F1: a provided ``origin_run_id`` is stamped onto each
-        synthesized file Symbol so the node->AnalysisRun JOIN
-        (``origin_run_id`` -> ``execution_id``) resolves. ``origin`` stays the
-        synthesis-mechanism pass-id."""
+        """A provided ``origin_run_id`` is stamped onto each synthesized file
+        Symbol so the node->AnalysisRun JOIN (``origin_run_id`` ->
+        ``execution_id``) resolves. ``origin`` stays the synthesis-mechanism
+        pass-id (synthetic:F1)."""
         caller = _make_caller_symbol()
         edge = Edge.create(
             src=make_file_id("python", "src/main.py"),
@@ -2188,8 +2185,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         assert new_syms[0].origin_run_id == "uuid:file-synth-run"
 
     def test_origin_run_id_defaults_empty(self) -> None:
-        """The ``origin_run_id`` kwarg defaults to '' so pre-F1 call sites are
-        unaffected; the orchestrator supplies the real execution_id."""
+        """The ``origin_run_id`` kwarg defaults to '' so callers that do not
+        pass it still work; the orchestrator supplies the real execution_id."""
         caller = _make_caller_symbol()
         edge = Edge.create(
             src=make_file_id("python", "src/main.py"), dst=caller.id,
@@ -2197,8 +2194,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         )
         new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
         assert new_syms[0].origin_run_id == ""
-        # origin is always the synthesis mechanism (distinguishes the fixed code
-        # from a regression that drops the origin stamp).
+        # origin is always the synthesis mechanism (catches a regression that
+        # drops the origin stamp).
         assert new_syms[0].origin == ["orchestrator_file_symbol_synthesis"]
 
     def test_synthesizes_for_dangling_dst(self) -> None:
@@ -2307,25 +2304,18 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
 class TestSynthesizeFileSymbolsHonorIdentity:
     """INV-vaguj: file-Symbol identity (``name`` and ``span``) must be honest.
 
-    ``orchestrator_file_symbol_synthesis`` historically stamped two
-    correlated lies into its file-kind Symbols: ``name`` reflected whatever
-    path was packed into the dangling endpoint id (often absolute from an
-    analyzer that hadn't normalised yet), and ``span`` was hardcoded
-    ``start_line=1, end_line=1`` regardless of the file's actual extent.
-
-    The fix takes a ``repo_root`` argument:
+    The dangling endpoint id may carry an absolute path (from an analyzer
+    that has not normalised yet), and the id alone says nothing about the
+    file's extent. Given a ``repo_root``, the synthesiser corrects both:
 
     1. **name / path normalisation** — paths under ``repo_root`` strip to
-       repo-relative form, so a 3179-line ``packages/.../cli.py`` no longer
-       ships as ``name="/home/.../cli.py"`` with ``path="packages/.../cli.py"``.
+       repo-relative form, so ``name`` is never an absolute filesystem path.
     2. **span end_line** — when the file is readable under ``repo_root``,
-       ``end_line`` becomes the actual newline count. Unreadable files
-       keep ``end_line=1`` (a valid value matching the schema, not the
-       invariant-violating sentinel ``-1`` the tracker originally proposed).
+       ``end_line`` is the file's actual line count. Unreadable files
+       keep ``end_line=1`` (schema-valid, unlike a ``-1`` sentinel).
 
-    The legacy (``repo_root=None``) call form preserves the prior shape,
-    so the older ``TestSynthesizeFileSymbolsForDanglingEdges`` cases that
-    pre-date this fix continue to pass without modification.
+    With ``repo_root=None`` the synthesiser keeps the 1-1 span and
+    name=path shape that ``TestSynthesizeFileSymbolsForDanglingEdges`` pins.
     """
 
     def test_absolute_path_in_endpoint_normalises_to_relative(
@@ -2408,12 +2398,10 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         assert sym.span.end_line >= 0
 
     def test_repo_root_none_preserves_legacy_behaviour(self) -> None:
-        """Existing call sites without ``repo_root`` keep the pre-fix shape.
+        """Call sites without ``repo_root`` get a 1-1 span with name=path.
 
-        Backwards compat for tests / consumers that never had repo_root in
-        scope. New orchestrator code path passes it; old call sites continue
-        to produce hardcoded 1-1 spans with name=path. This preserves the
-        existing six tests above without forcing a rewrite cascade.
+        This serves tests and consumers that have no repo_root in scope; the
+        orchestrator passes repo_root.
         """
         caller = _make_caller_symbol()
         edge = Edge.create(
@@ -2459,14 +2447,14 @@ class TestSynthesizeFileSymbolsHonorIdentity:
 
 
 class TestPopulateSyntheticClassBIdentity:
-    """synthetic:F2 (5a): the ``populate_synthetic_class_b_identity`` post-pass
-    backstops ``stable_id`` / ``display_label`` / ``fingerprint`` on Class-B
+    """The ``populate_synthetic_class_b_identity`` post-pass backstops
+    ``stable_id`` / ``display_label`` / ``fingerprint`` on Class-B
     synthetic protocol-synth Symbols (``language is None AND protocol_origin``
     set) that linkers leave null — identity-neutrally (per-field skip-if-set,
-    so it never overrides an existing value). Closes META-huvuh's producer
-    half (display_label absent on Class-B). LOGICAL kinds hash by name;
-    SITE kinds (``call_site``) are occurrence-indexed, line out of the hash
-    (ADR-0035 §3). Never touches supply_chain_* (WI-lidig)."""
+    so it never overrides an existing value). The stable_id key is
+    ``(protocol_origin, kind, path, name, occurrence)``, with the line out
+    of the hash (ADR-0035 §3). Never touches supply_chain_* (WI-lidig).
+    (synthetic:F2, META-huvuh)"""
 
     def _class_b(self, **kw):
         from hypergumbo_core.ir import Symbol, Span
@@ -2535,11 +2523,11 @@ class TestPopulateSyntheticClassBIdentity:
 
     def test_distinct_nodes_never_share_stable_id(self) -> None:
         """ADR-0035 §1 zero-by-design-collisions regression guard: distinct
-        Class-B nodes must get distinct stable_ids. The coarse first-cut key
-        (protocol_origin, name) collided (a) an @objc definition with a
-        #selector reference to the same name [kind separates them now] and
-        (b) a CRDT writer with a same-channel observer [occurrence separates
-        the role-distinct same-name, same-kind siblings]."""
+        Class-B nodes must get distinct stable_ids. A (protocol_origin, name)
+        key alone would collide (a) an @objc definition with a #selector
+        reference to the same name [kind separates them] and (b) a CRDT
+        writer with a same-channel observer [occurrence separates the
+        role-distinct same-name, same-kind siblings]."""
         from hypergumbo_core.ir import Span
         from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
 
@@ -2634,8 +2622,9 @@ class TestPopulateSyntheticClassBIdentity:
         assert gap.shape_id is None  # shape_id never written
 
     def test_preserves_supply_chain_fields_wi_lidig(self) -> None:
-        """WI-lidig: the post-pass must NOT stamp supply_chain_reason/tier at
-        mint (the annotator re-classifies tier==1 AND reason=='' nodes)."""
+        """The post-pass must NOT stamp supply_chain_reason/tier: a node given
+        either counts as classified, so the annotator's path classifier would
+        skip it (WI-lidig)."""
         from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
 
         s = self._class_b(supply_chain_tier=1, supply_chain_reason="")
@@ -2645,8 +2634,9 @@ class TestPopulateSyntheticClassBIdentity:
 
 
 class TestMakeDocStableId:
-    """make_doc_stable_id (id-format:F2 4a): canonical, span/kind-disambiguated
-    stable identity for documentation/config noise-node Symbols."""
+    """make_doc_stable_id: canonical stable identity for documentation/config
+    noise-node Symbols, disambiguated by kind and scope chain but not by span
+    (id-format:F2 4a)."""
 
     def test_canonical_sha256_shape(self) -> None:
         import re
@@ -2654,8 +2644,8 @@ class TestMakeDocStableId:
         assert re.match(r"^sha256:[0-9a-f]{16}$", sid), sid
 
     def test_span_is_not_hashed_and_scope_separates(self) -> None:
-        # WI-tusad (stable_id scheme bump): lines stay out of the hash (ADR-0035
-        # §3), so deleting a line above a doc node moves no id. Two same-name
+        # Lines stay out of the hash (ADR-0035 §3; WI-tusad), so deleting a
+        # line above a doc node moves no id. Two same-name
         # same-kind nodes in one scope are a same-scope tie the per-file split
         # pass orders; the producer's scope chain is what tells nested ones apart.
         a = make_doc_stable_id("markdown", "R.md", "code_block", "code:text", 5, 7)
@@ -2682,7 +2672,7 @@ class TestMakeDocStableId:
 class TestMakeDocSymbolIds:
     """make_doc_symbol_ids (INV-dulah): mints the (node.id, stable_id) PAIR for a
     doc/markup/template Symbol from one argument set, so the two can never drift
-    (the WI-rijup bug class, where nine analyzers shipped stable_id == raw id)."""
+    apart — e.g. into a stable_id equal to the raw id (WI-rijup)."""
 
     def test_returns_id_and_stable_id_pair(self) -> None:
         result = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$c", 1, 1)
@@ -2690,39 +2680,34 @@ class TestMakeDocSymbolIds:
 
     def test_node_id_format(self) -> None:
         # node.id is the canonical ADR-0036 grammar
-        # {lang}:{path}:{start}-{end}:{name}:{kind}. It was previously the
-        # doc-family shape {lang}:{path}:{kind}:{start_line}:{name}, which put
-        # the kind word in the span slot and so did not parse at all
-        # (INV-dulah, doc-family slot-ORDER limb).
+        # {lang}:{path}:{start}-{end}:{name}:{kind}; the span must sit in the
+        # third slot for the id to parse (INV-dulah).
         node_id, _ = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
         assert node_id == "scss:styles/main.scss:1-1:$primary-color:variable"
 
     def test_node_id_delegates_to_make_symbol_id(self) -> None:
-        # The helper must not re-implement the grammar in a local f-string: an
-        # f-string copy is precisely how js_ts.py and json_config.py each opted
-        # out of the shared minter's guarantees, and it is what let this family
-        # drift from ADR-0036 for months. Pinning equality with the canonical
-        # minter means a future edit to the grammar reaches this family too.
+        # The helper must not re-implement the grammar in a local f-string: a
+        # local copy opts out of the shared minter's guarantees and drifts
+        # from ADR-0036. Pinning equality with the canonical minter means a
+        # future edit to the grammar reaches this family too.
         node_id, _ = make_doc_symbol_ids("twig", "t/page.twig", "macro", "field", 6, 8)
         assert node_id == make_symbol_id("twig", "t/page.twig", 6, 8, "field", "macro")
 
     def test_node_id_name_slot_colon_sanitized(self) -> None:
-        # Delegating inherits the WI-sikar always-on name-slot sanitization,
-        # which repairs a real defect the old f-string shipped: svelte's
-        # on:click event symbols carried an id name-slot of "button:click",
-        # whose colon shifted every right-anchored slot and pushed the id to six
-        # segments. The round-trip is documented-lossy (fidelity lives in
+        # Delegating inherits the always-on name-slot sanitization (WI-sikar):
+        # an unsanitized name like svelte's "button:click" event would shift
+        # every right-anchored slot and push the id to six segments. The
+        # round-trip is documented-lossy (fidelity lives in
         # Symbol.name); what matters is that the id parses.
         node_id, _ = make_doc_symbol_ids("svelte", "W.svelte", "event", "button:click", 8, 8)
         assert node_id == "svelte:W.svelte:8-8:button.click:event"
         assert len(node_id.split(":")) == 5
 
     def test_stable_id_unaffected_by_the_node_id_reorder(self) -> None:
-        # The slot-ORDER fix is identity-SAFE: stable_id is computed from the
-        # same argument set regardless of how node.id is laid out, so it stays
-        # byte-identical and no *_scheme bumps (the scheme-bump principle — a
-        # bump follows an ALTERED existing computed value). These digests are
-        # the pre-reorder values.
+        # stable_id is computed from the argument set, independent of how
+        # node.id is laid out, so a node.id layout change leaves it
+        # byte-identical and needs no *_scheme bump (a bump follows only an
+        # ALTERED existing computed value).
         _, scss_sid = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
         assert scss_sid == make_doc_stable_id("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
 
@@ -2740,9 +2725,8 @@ class TestMakeDocSymbolIds:
         assert str_ids == path_ids
 
     def test_start_line_separates_node_ids_but_not_stable_ids(self) -> None:
-        # The line-less adopters (rst/robot/pony/sparql) gained the start_line
-        # segment in node.id, which separates two same-name nodes. The stable_id
-        # no longer hashes it (WI-tusad): the two are a same-scope tie, ordered
+        # node.id carries the span, which separates two same-name nodes. The
+        # stable_id does not hash it (WI-tusad): the two are a same-scope tie, ordered
         # by the per-file split pass; a scope tells nested ones apart.
         a_id, a_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 5, 6)
         b_id, b_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 40, 41)
@@ -2753,8 +2737,8 @@ class TestMakeDocSymbolIds:
 
 
 class TestSynthesizeFileAnchorsForNodeBearingPaths:
-    """WI-dagif (file-anchor:F1, node-bearing slice): every path that has
-    content nodes but no file anchor gets exactly one synthesized."""
+    """Every path that has content nodes but no file anchor gets exactly one
+    synthesized (WI-dagif; file-anchor:F1)."""
 
     @staticmethod
     def _content(path, kind="class", language="java", name="Data", sid=None):
@@ -2950,14 +2934,14 @@ def _parse_cpp(source: str):
 
 
 class TestScopedPathSkipsImportAndTypePositions:
-    """INV-pusin: a ``use`` path and a return-type path are scoped_identifiers,
-    and the ``scoped_path`` walk emitted BOTH as attribute reads.
+    """A ``use`` path and a return-type path are scoped_identifiers, but the
+    ``scoped_path`` walk must not emit either as an attribute read (INV-pusin).
 
-    The ``use`` case is a duplicate home — the analyzer already emits the same
-    statement as an ``imports`` edge — so the fact the uncatalogued-module gate
-    deliberately excludes as an import re-entered as a ``module_attr_ref`` and
-    withheld a boundary verdict on a zero-dependency crate. The return-type
-    case has no second home and is simply not a read.
+    The ``use`` case would be a duplicate home — the analyzer already emits the
+    same statement as an ``imports`` edge — so the fact the uncatalogued-module
+    gate deliberately excludes as an import would re-enter as a
+    ``module_attr_ref`` and withhold a boundary verdict on a zero-dependency
+    crate. The return-type case has no second home and is simply not a read.
 
     ``skip_context_kinds`` names the per-language ancestor kinds that mean
     "this scoped name is a declaration or a type, not a value being read".
@@ -2968,14 +2952,13 @@ class TestScopedPathSkipsImportAndTypePositions:
 
     # MIRRORS OF WHAT THE ANALYZERS SHIP, bound by
     # test_the_skip_tuples_mirror_what_the_analyzers_actually_ship below.
-    # `use_declaration` is deliberately ABSENT from RUST_SKIP: INV-pusin's
-    # second closure moved it out of the proximate tuple and into
-    # `skip_ancestor_kinds`, because the grammar wraps every `use` form except
-    # the bare one (`scoped_use_list`, `use_wildcard`, `use_as_clause`), so a
-    # proximate match suppressed one spelling of fourteen. This constant went
-    # on carrying it for both, which meant every rust test here passed through
-    # the mechanism production had ABANDONED — the right answer for the wrong
-    # reason, and blind to a regression in the real one.
+    # `use_declaration` is deliberately ABSENT from RUST_SKIP and lives in
+    # `skip_ancestor_kinds` instead, because the grammar wraps every `use` form
+    # except the bare one (`scoped_use_list`, `use_wildcard`, `use_as_clause`),
+    # so a proximate match suppresses only the bare spelling. Carrying it in
+    # RUST_SKIP too would route the rust tests here through a mechanism
+    # production does not use — the right answer for the wrong reason, and
+    # blind to a regression in the real one.
     RUST_SKIP = ("scoped_type_identifier", "generic_type")
     RUST_SKIP_ANCESTORS = ("use_declaration",)
     CPP_SKIP = (
@@ -3029,9 +3012,9 @@ class TestScopedPathSkipsImportAndTypePositions:
 
     def test_rust_use_declaration_emits_no_attribute_read(self) -> None:
         """``use std::net::UdpSocket;`` is an import, already carried by an
-        ``imports`` edge. It emitted TWO module_attr_ref edges (the nested
-        walk fires at each depth), which is what put ``std`` and ``std.net``
-        on the uncatalogued-module list for a crate with no dependencies."""
+        ``imports`` edge. Unskipped, the nested walk fires at each depth and
+        emits TWO module_attr_ref edges, putting ``std`` modules on the
+        uncatalogued-module list for a crate with no dependencies."""
         edges = self._emit_rust("use std::net::UdpSocket;\n", self.RUST_SKIP)
         assert edges == [], [e.dst for e in edges]
 
@@ -3115,33 +3098,33 @@ class TestScopedPathSkipsImportAndTypePositions:
         )
 
     def test_cpp_type_alias_emits_no_attribute_read(self) -> None:
-        """THE FILED DEFECT (INV-sibij). ``using S = std::string;`` names a
-        type — INV-pusin's statement in its C++ spelling — but its scoped path
-        sits under ``type_descriptor``, which the tuple did not carry, so a
-        type alias re-entered as a module_attr_ref and withheld verdicts."""
+        """``using S = std::string;`` names a type — INV-pusin's statement in
+        its C++ spelling — and its scoped path sits under ``type_descriptor``.
+        Without that kind in the tuple, a type alias re-enters as a
+        module_attr_ref and withholds verdicts (INV-sibij)."""
         edges = self._emit_cpp("using S = std::string;\n", self.CPP_SKIP)
         assert edges == [], [e.dst for e in edges]
 
     def test_cpp_cast_emits_no_attribute_read(self) -> None:
         """COLLATERAL OF THE SAME CONTEXT, enumerated rather than assumed.
-        ``type_descriptor`` also covers a cast, and the item declined to append
-        it to the tuple until every member of that population was shown to be
-        a type mention. A cast NAMES a type and reads no value."""
+        ``type_descriptor`` also covers a cast, and skipping it is safe only
+        because every member of that population is a type mention. A cast
+        NAMES a type and reads no value."""
         source = "void f(){ auto x = static_cast<std::string>(y); }\n"
         edges = self._emit_cpp(source, self.CPP_SKIP)
         assert edges == [], [e.dst for e in edges]
 
     def test_cpp_template_argument_emits_no_attribute_read(self) -> None:
         """The third and by far the LARGEST member of ``type_descriptor``: a
-        template argument. Counted on real repositories, these outnumber type
-        aliases 10-25x (rocksdb 2359 vs 126), so this is where the population
-        actually is — and it too names a type and reads nothing."""
+        template argument. On real repositories these far outnumber type
+        aliases, so this is where the population actually is — and it too
+        names a type and reads nothing."""
         edges = self._emit_cpp("std::vector<std::string> v;\n", self.CPP_SKIP)
         assert edges == [], [e.dst for e in edges]
 
     def test_cpp_base_class_clause_emits_no_attribute_read(self) -> None:
-        """SECOND LEAK, found by enumerating past the filed repro.
-        ``class A : public std::exception {}`` names a base TYPE."""
+        """``class A : public std::exception {}`` names a base TYPE, under
+        ``base_class_clause``."""
         edges = self._emit_cpp("class A : public std::exception { };\n",
                                self.CPP_SKIP)
         assert edges == [], [e.dst for e in edges]
@@ -3162,12 +3145,11 @@ class TestScopedPathSkipsImportAndTypePositions:
         assert dsts, "the range expression is a value read and must emit"
 
     def test_cpp_stream_write_survives_the_same_skip_tuple(self) -> None:
-        """POSITIVE CONTROL, and the reason this fix is one token and not two.
-        ``std::cout << 1`` is a GENUINE attribute read of a stream object —
-        exactly what module_attr_ref exists to emit — and it sits under
-        ``binary_expression``. If a wider tuple ever swallows it, the fix has
-        become a mute button, and removing withholding is the false-all-clear
-        direction."""
+        """POSITIVE CONTROL. ``std::cout << 1`` is a GENUINE attribute read of
+        a stream object — exactly what module_attr_ref exists to emit — and it
+        sits under ``binary_expression``. If a wider tuple ever swallows it,
+        the skip has become a mute button, and removing withholding is the
+        false-all-clear direction."""
         source = "void f(){ std::cout << 1; }\n"
         dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
         assert dsts, "std::cout << 1 is a value read and must keep emitting"
@@ -3188,8 +3170,8 @@ class TestScopedPathSkipsImportAndTypePositions:
 
     def test_omitting_the_tuple_changes_nothing_for_other_languages(self) -> None:
         """NON-DESTRUCTION. Languages that pass no ``skip_context_kinds``
-        (javascript, java, go, python) must emit exactly what they did
-        before — the default is empty and the walk is unchanged."""
+        (javascript, java, go, python) are unaffected — the default is empty,
+        so the walk skips nothing."""
         source = "const p = process.env;\n"
         edges: list[Edge] = []
         emit_module_attribute_refs(

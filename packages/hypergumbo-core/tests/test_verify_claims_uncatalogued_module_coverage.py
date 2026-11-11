@@ -2,28 +2,18 @@
 """A boundary verdict may not be ``confirmed`` over calls into a module the catalogue
 has never heard of.
 
-WHAT WAS BROKEN, reproduced live on two UNMODIFIED upstream repos before this landed:
+THE CASE, on two unmodified upstream repos. poetry imports ``requests`` in 14 files and
+calls ``requests.Session()`` / ``.get()`` / ``.post()``, while the same analysis finds
+``fs_read`` chains -- so a clean ``net_send`` verdict there is NOT the analysis being
+blind and saying so: it looked, it could not classify ``requests``, and it would report
+the silence as safety. ``full-stack-fastapi-template/backend`` is the database half:
+"never writes to a database" against ``crud.py``'s ``session.add(db_obj);
+session.commit()``.
 
-    $ hypergumbo verify-claims ~/ALL_REPOS/curriculum_repos/poetry/src/poetry ...
-      x [CONTROL-FSREAD]  violated - 20 fs_read chain(s) found     <- the run WORKED
-      v [NET] This service never sends data over the network.
-          Verdict: confirmed.  No net_send chains found.
-
-poetry imports ``requests`` in 14 files and calls ``requests.Session()`` / ``.get()`` /
-``.post()``. The same run found 20 ``fs_read`` chains, so this is NOT the analysis being
-blind and saying so — it looked, it could not classify ``requests``, and it reported the
-silence as safety. ``full-stack-fastapi-template/backend`` reproduces the database half:
-``confirmed`` for "never writes to a database" against ``crud.py:14-15``
-``session.add(db_obj); session.commit()``.
-
-WHY THE EXISTING GATE MISSED IT. :func:`compute_boundary_coverage` modelled two blind
-spots (WI-kajil / INV-bitig), both at the resolution of *"did this language produce ANY
-call edges"*. Python produces hundreds of thousands, so coverage read complete and the
-verdict was confirmable. This is the residual the gate's own caller already had on
-record -- ``cli.py``'s "KNOWN RESIDUAL ... closing it needs a signal with resolution
-finer than 'any', e.g. the share of method-construct call edges that resolve to
-something the catalogue can match" -- and which
-``test_language_with_a_token_call_edge_still_falsely_confirms`` pins as an xfail.
+WHY THE LANGUAGE-LEVEL BLIND SPOTS DO NOT CATCH IT. :func:`compute_boundary_coverage`'s
+two original blind spots (WI-kajil / INV-bitig) work at the resolution of *"did this
+language produce ANY call edges"*. Python produces hundreds of thousands, so they read
+complete. This gate works at the resolution of one external module.
 
 THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE (LIVE.md default-deny). An
 external call edge supports a clean verdict only when the catalogue has ENUMERATED that
@@ -31,18 +21,14 @@ module's I/O surface -- :meth:`IoBoundaryCatalog.module_io_is_enumerated`, backe
 dated per-module audit. Anything else -- ``requests``, ``sqlmodel``, ``boto3`` -- is a
 module about which the catalogue has no opinion, so "no net_send chains" means "none that
 I could see", which is not confirmable. A blocker list would fail open the moment a repo
-imported a library nobody had thought of, which is precisely how ``requests`` slipped
-through.
+imported a library nobody had thought of -- ``requests``, say.
 
-THE PERMITTING CASE WAS ITSELF TOO WIDE FOR EIGHT MONTHS, and this file's own tests said
-so was fine. Until INV-buzab / INV-zubuh it also permitted (a) any module the interpreter
-ships, and (b) any module carrying a single catalogued row. Both were measured open on
-the shipped CLI: ``telnetlib.Telnet(...).write(secret)`` confirmed "never sends data over
-the network", and ``os.open`` + ``os.write`` confirmed "never writes to the host
-filesystem", while ``requests.post`` and ``os.makedirs`` controls behaved correctly in the
-same runs. The class below that pins ``confirmed`` REACHABLE was rewritten alongside;
-:class:`TestWeakerEvidenceDoesNotEarnIt` now pins both rejected rules to a refusal so this
-file cannot drift back.
+TWO WEAKER PERMITTING RULES FAIL OPEN, and neither is used (INV-buzab / INV-zubuh):
+permitting (a) any module the interpreter ships, or (b) any module carrying a single
+catalogued row. Under them ``telnetlib.Telnet(...).write(secret)`` would confirm "never
+sends data over the network", and ``os.open`` + ``os.write`` would confirm "never writes
+to the host filesystem". :class:`TestWeakerEvidenceDoesNotEarnIt` pins both rules to a
+refusal.
 
 SCOPE, AND THE RESIDUAL IT DELIBERATELY LEAVES OPEN. Only edges whose dst NAMES a module
 are counted. An edge carrying the bare ``external`` placeholder -- an untyped receiver,
@@ -54,13 +40,10 @@ population is the receiver-typing gap (INV-linub L3), tracked separately.
 ``test_untyped_receiver_population_is_the_disclosed_residual`` pins that this gate stays
 ``complete`` over it.
 
-WHAT THAT SCOPE NOTE USED TO CONCLUDE IS NO LONGER TRUE. It read "a repo whose I/O is
-reached ONLY through untyped receivers still confirms today" -- reproduced live, then
-closed at the VERDICT layer rather than here (INV-fibis): ``untyped_receiver_sites`` asks
-the narrower question this gate cannot -- is the CALLEE a method catalogued for the
-boundary under claim -- and QUALIFIES the clean verdict with ``CAVEAT_UNTYPED_RECEIVER``.
-See ``test_verify_claims_untyped_receiver_caveat.py``. The scoping decision here is
-unchanged and still correct; only its consequence moved.
+That residual is not left silent: it is disclosed at the VERDICT layer instead (INV-fibis).
+``untyped_receiver_sites`` asks the narrower question this gate cannot -- is the CALLEE a
+method catalogued for the boundary under claim -- and QUALIFIES the clean verdict with
+``CAVEAT_UNTYPED_RECEIVER``. See ``test_verify_claims_untyped_receiver_caveat.py``.
 """
 
 from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
@@ -70,8 +53,8 @@ from hypergumbo_core.verify_claims import compute_boundary_coverage
 def _py_catalog() -> IoBoundaryCatalog:
     """A stand-in for python.yaml, shaped so the three permitting cases differ.
 
-    Deliberately asymmetric, because the defect this file now guards against
-    was invisible in a fixture where they coincided:
+    Deliberately asymmetric, because a fixture where they coincide cannot tell
+    the permitting rules apart:
 
     - ``pathlib`` is ENUMERATED (a dated closed-world audit) **and** carries a
       row. It is the only module here that may support a clean verdict.
@@ -99,7 +82,7 @@ def _call(dst: str, src: str = "python:app.py:1-5:handler:function") -> dict:
 
 
 class TestUncataloguedModuleBlocksConfirmation:
-    """The reproduced defect, at the unit the CLI actually calls."""
+    """An uncatalogued module blocks a clean verdict, at the unit the CLI calls."""
 
     def test_third_party_network_module_blocks_a_clean_verdict(self) -> None:
         """poetry's shape: an identified ``requests`` call the catalogue cannot judge."""
@@ -140,19 +123,13 @@ class TestUncataloguedModuleBlocksConfirmation:
 
 class TestConfirmationIsPreservedWhereItIsEarned:
     """The blanket-downgrade failure mode is the other way to make a verdict
-    worthless, and ``cli.py`` records it happening once already. These pin that
-    ``confirmed`` stays REACHABLE.
+    worthless. These pin that ``confirmed`` stays REACHABLE.
 
-    WHAT "EARNED" MEANS CHANGED, and three tests in this class changed with it.
-    They used to assert that a catalogued row, or mere membership in
-    ``sys.stdlib_module_names``, earned a clean verdict. Both were measured
-    open on the shipped CLI — ``telnetlib`` / ``ssl`` / ``ctypes`` confirmed a
-    network claim on programs that exfiltrate, and ``os.open`` + ``os.write``
-    confirmed a filesystem claim on a program that writes (INV-buzab,
-    INV-zubuh). The guard survives, the doctrine does not: what earns a clean
-    verdict is an ENUMERATED module, and the discriminators for the two
-    rejected rules now live in :class:`TestWeakerEvidenceDoesNotEarnIt` so this
-    class cannot quietly go back to passing for the old reason.
+    What earns a clean verdict is an ENUMERATED module or a CLASSIFIED call --
+    not a catalogued row, and not mere membership in
+    ``sys.stdlib_module_names`` (INV-buzab, INV-zubuh). The discriminators for
+    those two rejected rules live in :class:`TestWeakerEvidenceDoesNotEarnIt`,
+    so this class cannot pass for the wrong reason.
     """
 
     def test_an_enumerated_module_keeps_coverage_complete(self) -> None:
@@ -170,9 +147,9 @@ class TestConfirmationIsPreservedWhereItIsEarned:
 
         ``socket.socket.send`` is catalogued, so a call to it was CLASSIFIED —
         the analysis looked at that site and identified it. No enumeration
-        record is needed or relevant. Blaming the module here is what made an
-        earlier draft print "no I/O catalog coverage (builtins, json)" directly
-        above "2 fs_write chain(s) found" through those same modules.
+        record is needed or relevant. Blaming the module here would print "no
+        I/O catalog coverage (builtins, json)" directly above "2 fs_write
+        chain(s) found" through those same modules.
         """
         coverage = compute_boundary_coverage(
             [_call("python:socket.socket:0-0:send:external_symbol")],
@@ -185,11 +162,12 @@ class TestConfirmationIsPreservedWhereItIsEarned:
         """A declaration for ``pathlib`` does NOT vouch for a module merely
         spelled underneath it.
 
-        An earlier draft let declarations propagate down a separator. That is
-        wrong in three shipped languages at once — ``urllib`` is a namespace
-        package whose submodules have unrelated I/O surfaces, Go's ``/`` is not
-        containment (``os`` would have vouched for ``os/exec``), and Rust's
-        ``::`` was not in the separator list at all.
+        Letting declarations propagate down a separator is wrong in three
+        shipped languages at once — ``urllib`` is a namespace package whose
+        submodules have unrelated I/O surfaces, Go's ``/`` is not containment
+        (``os`` would vouch for ``os/exec``), and Rust namespaces with ``::``,
+        so a dot/slash rule would be inert there. Completeness matching is
+        EXACT (:meth:`IoBoundaryCatalog.module_io_is_enumerated`).
         """
         coverage = compute_boundary_coverage(
             [_call("python:pathlib.PurePosixPath:0-0:joinpath:external_symbol")],
@@ -211,13 +189,12 @@ class TestConfirmationIsPreservedWhereItIsEarned:
 
 
 class TestWeakerEvidenceDoesNotEarnIt:
-    """The two rules this gate used to accept, each pinned to a refusal.
+    """Two weaker permitting rules, each pinned to a refusal.
 
     Without these, :class:`TestConfirmationIsPreservedWhereItIsEarned` would
-    pass just as happily under the old, broken predicate — which is exactly how
-    the defect survived: the version of that class shipped before this one
-    asserted the broken doctrine in its own docstrings and stayed green for
-    eight months. The end-to-end reproductions live in
+    pass just as happily under a predicate that accepted a catalogued row or a
+    recognised stdlib name as proof of coverage. The end-to-end reproductions
+    live in
     ``test_verify_claims_examined_negative.py``; these are the same two rules at
     the predicate.
     """
@@ -226,8 +203,8 @@ class TestWeakerEvidenceDoesNotEarnIt:
         """INV-zubuh. ``socket.socket.send`` is catalogued, so a call to
         ``send`` would be tagged — but the row says nothing about the rest of
         ``socket``, nor about any other boundary kind. On the shipped
-        catalogue this exact rule let ``os.open`` + ``os.write`` confirm
-        "never writes to the host filesystem" on the strength of the 40
+        catalogue this rule would let ``os.open`` + ``os.write`` confirm
+        "never writes to the host filesystem" on the strength of the
         unrelated ``os`` rows."""
         coverage = compute_boundary_coverage(
             [_call("python:socket.socket:0-0:sendfile:external_symbol")],
@@ -253,9 +230,10 @@ class TestWeakerEvidenceDoesNotEarnIt:
     def test_a_stdlib_submodule_is_not_adjudicable_by_its_parent_s_NAME(
         self,
     ) -> None:
-        """The old rule reached submodules through ``stdlib_modules`` — ``os``
-        is enumerated by the interpreter, so ``os.path`` was permitted. Only a
-        completeness DECLARATION propagates now, and ``os`` carries none."""
+        """Being a name the interpreter ships (``os`` is in ``stdlib_modules``)
+        vouches for nothing, ``os.path`` included. Only a completeness
+        DECLARATION permits a module, matched exactly, and neither ``os`` nor
+        ``os.path`` carries one."""
         coverage = compute_boundary_coverage(
             [_call("python:os.path:0-0:exists:external_symbol")],
             {"python"},
@@ -265,8 +243,8 @@ class TestWeakerEvidenceDoesNotEarnIt:
         assert "os.path" in coverage.reason
 
     def test_enumeration_does_not_leak_across_a_name_boundary(self) -> None:
-        """The prefix rule requires a separator, so an audit of ``pathlib``
-        does not vouch for an unrelated ``pathlib2`` — and, unlike the boundary
+        """Completeness matching is exact, so an audit of ``pathlib`` does not
+        vouch for an unrelated ``pathlib2`` — and, unlike the boundary
         tagger's ``_module_matches``, nothing here matches a trailing
         COMPONENT, so a third-party ``vendor.pathlib`` stays unadjudicable.
         Merging the two rules toward the permissive one would make a cosmetic
@@ -282,11 +260,12 @@ class TestWeakerEvidenceDoesNotEarnIt:
 
 
 class TestOnlyGenuineLeavesCount:
-    """Both refinements below were forced by MEASUREMENT, not foresight. The first
-    draft of this gate reported 258 uncatalogued modules on poetry; 231 came from
-    ``imports`` edges and 120 were poetry's OWN modules. Filtered, the same repo
-    reports 51 — ``requests``, ``requests.Session``, ``dulwich``, ``keyring``,
-    ``cachecontrol`` — which is the population the claim is actually blind to."""
+    """Only call sites into genuinely external modules count. Two refinements
+    keep the report to the population the claim is actually blind to: ``imports``
+    edges are not call sites, and a repo's OWN modules are not catalogue gaps.
+    Unfiltered, poetry's report is dominated by both; filtered, it names
+    ``requests``, ``requests.Session``, ``dulwich``, ``keyring``,
+    ``cachecontrol``."""
 
     def test_an_import_is_not_a_call_site(self) -> None:
         """``import requests`` performs no I/O; ``requests.get(...)`` does. The
@@ -323,17 +302,14 @@ class TestOnlyGenuineLeavesCount:
         assert "requests" in coverage.reason
 
     def test_a_src_layout_import_name_is_first_party_too(self) -> None:
-        """INV-liloh. ``analyzed`` derives from SRC PATHS
+        """``analyzed`` derives from SRC PATHS
         (``packages.hypergumbo-core.src.hypergumbo_core.cli``) while an
         unresolved callee slot carries the IMPORT name
-        (``hypergumbo_core.scip._generated``) — and exact prefix membership
-        can never match across a packaging prefix, so every src-layout repo's
-        own modules read as catalogue gaps. Measured on hypergumbo's own
-        self-survey: three first-party names in the uncatalogued set of a
-        gate whose ``_is_analyzed_module`` exists to empty that population.
-        The extractor's own docstring promises the suffix relation
-        ("suffix-matches hypergumbo_core.cli"); the membership test never
-        implemented it."""
+        (``hypergumbo_core.scip._generated``) — and exact membership can never
+        match across a packaging prefix, so without a component-bounded match
+        every src-layout repo's own modules would read as catalogue gaps
+        (INV-liloh). The relation is the one the extractor's docstring states
+        ("suffix-matches hypergumbo_core.cli")."""
         coverage = compute_boundary_coverage(
             [
                 _call("python:pathlib.Path:0-0:read_text:external_symbol",
@@ -350,8 +326,8 @@ class TestOnlyGenuineLeavesCount:
         """``core.scip`` must NOT be vouched for by
         ``packages.hypergumbo-core.src.hypergumbo_core.scip`` matching on a
         bare string suffix — ``hypergumbo_core`` ends with ``core`` and shares
-        no component. A prefix/suffix rule over names was measured wrong in
-        three languages at once; this pins the component boundary."""
+        no component. Bare string containment misfires in several languages;
+        this pins the component boundary."""
         coverage = compute_boundary_coverage(
             [
                 _call("python:pathlib.Path:0-0:read_text:external_symbol",
@@ -427,13 +403,10 @@ class TestDisclosedResiduals:
         """The bare ``external`` placeholder names no module, so it cannot be
         counted as an uncatalogued one and COVERAGE STAYS COMPLETE.
 
-        THE SENTENCE THAT USED TO END THIS DOCSTRING IS GONE, not reworded: "a
-        repo reaching its I/O only this way still confirms". It did, it was
-        reproduced, and INV-fibis closed it -- at the verdict layer, where such
-        a repo now returns ``confirmed_with_caveats`` naming the call sites.
-        This assertion is unchanged and still load-bearing: reversing it here is
-        the blanket-``inconclusive`` outcome PR #251 rejected, which is exactly
-        what a later reader tempted by INV-fibis might reach for."""
+        A repo reaching its I/O only this way is not silently confirmed: the
+        verdict layer returns ``confirmed_with_caveats`` naming the call sites
+        (INV-fibis). This assertion is still load-bearing: reversing it here
+        would make every repo a blanket ``inconclusive``."""
         coverage = compute_boundary_coverage(
             [_call("python:external:0-0:get:unresolved")],
             {"python"},
@@ -442,28 +415,21 @@ class TestDisclosedResiduals:
         assert coverage.complete is True
 
     def test_a_language_with_no_catalogue_blocks_a_clean_verdict(self) -> None:
-        """INVERTED (INV-dabov). This test used to assert ``complete is True``
-        on the rationale that "coverage for an uncatalogued language is already
-        decided upstream (``unsupported_taint_languages`` / ``is_supported``)".
+        """Nothing upstream of this gate decides coverage for a language with
+        no catalogue, so the gate must (INV-dabov).
 
-        BOTH HALVES OF THAT RATIONALE ARE FALSE for this command, and the
-        prose saying so was already corrected once — in
-        ``_adjudicate_external_modules``'s SCOPE paragraph — without this
-        assertion being revisited. ``cmd_verify_claims`` derives its supported
-        set as ``languages & set(catalogs)`` and never consults
-        ``is_supported``; ``unsupported_taint_languages`` is populated only
-        when the claims file carries a taint constraint, so a boundary-only
-        claims file leaves it empty. Nothing upstream decided anything.
+        ``cmd_verify_claims`` derives its supported set as ``languages &
+        set(catalogs)`` and never consults ``is_supported``;
+        ``unsupported_taint_languages`` is populated only when the claims file
+        carries a taint constraint, so a boundary-only claims file leaves it
+        empty. Without this check a 7-line Ruby fixture doing
+        ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")`` would
+        confirm a ``net_send`` claim at rc 0 with no disclosure — and the
+        analyzer is not blind, it emits the call edge.
 
-        The consequence was a live false confirm on the shipped CLI: a 7-line
-        Ruby fixture doing ``Net::HTTP.new(...).post(path,
-        "key=#{ENV['API_KEY']}")`` returned **confirmed, rc 0** for a
-        ``net_send`` claim, with no disclosure — and the analyzer is not
-        blind, it emits the call edge.
-
-        The python edge remains load-bearing for the same reason it always
-        was: without it the *second* blind spot fires (python declared
-        supported, no call edges) and this would pass for the wrong reason.
+        The python edge is load-bearing: without it the *second* blind spot
+        fires (python declared supported, no call edges) and this would pass
+        for the wrong reason.
         """
         coverage = compute_boundary_coverage(
             [
@@ -484,8 +450,8 @@ class TestDisclosedResiduals:
     def test_a_cross_language_dst_into_an_uncatalogued_language_is_the_residual(
         self,
     ) -> None:
-        """WHAT INV-dabov's FIX DOES **NOT** REACH, pinned so it is not
-        mistaken for covered.
+        """WHAT THE UNCATALOGUED-LANGUAGE CHECK DOES **NOT** REACH (INV-dabov),
+        pinned so it is not mistaken for covered.
 
         The coverage gate's uncatalogued-language check is keyed on the
         language of the edge's ``src`` — the code doing the calling. A call
@@ -495,9 +461,9 @@ class TestDisclosedResiduals:
         ``catalog is None`` because there is no catalogue to adjudicate the
         module against. So the module is neither classified nor reported.
 
-        This is narrower than the defect INV-dabov closed: it needs a
-        cross-language call edge rather than merely a file in an uncatalogued
-        language, and the whole-language case is now caught. It is recorded
+        This is narrower than the whole-language case the previous test pins:
+        it needs a cross-language call edge rather than merely a file in an
+        uncatalogued language. It is recorded
         here rather than closed because the honest fix is a catalogue for the
         target language, not a wider gate — widening this one to dst languages
         would make any FFI edge into an uncatalogued target downgrade every
@@ -520,7 +486,7 @@ class TestDisclosedResiduals:
 
     def test_a_long_module_list_is_summarised_rather_than_dumped(self) -> None:
         """A reason is read by a human deciding whether to trust a verdict, so it
-        names libraries — but poetry alone reports 51 and a 200-dependency repo
+        names libraries — but poetry alone reports dozens and a 200-dependency repo
         would emit an unreadable wall. The tail is counted, not dropped."""
         coverage = compute_boundary_coverage(
             [_call(f"python:lib{i}:0-0:go:external_symbol") for i in range(9)],
@@ -545,28 +511,27 @@ class TestDisclosedResiduals:
         assert coverage.complete is True
 
     def test_the_two_original_blind_spots_still_fire_and_win(self) -> None:
-        """Regression guard on WI-kajil / INV-bitig. An empty analysis must still
-        report the ORIGINAL reason -- the new check must not shadow it."""
+        """The language-level blind spots win (WI-kajil / INV-bitig). An empty
+        analysis reports "no call edges at all" -- the per-module check must not
+        shadow it."""
         coverage = compute_boundary_coverage([], {"python"}, {"python": _py_catalog()})
         assert coverage.complete is False
         assert "no call edges at all" in coverage.reason
 
 
 class TestShorteningIsBoundedByItsOwnPurpose:
-    """INV-lakom. ``_is_analyzed_module`` shortens the callee module because the
-    slot may carry a trailing TYPE name (``app.config.Loader`` for a callee
-    defined in ``app/config.py``). The shortening was UNBOUNDED, so it also
-    licensed ``os.path`` → ``os`` and ``crypto.tls`` → ``crypto`` — and a repo
-    that happens to own a directory named ``os`` then vouches for the standard
+    """``_is_analyzed_module`` shortens the callee module because the slot may
+    carry a trailing TYPE name (``app.config.Loader`` for a callee defined in
+    ``app/config.py``). Unbounded, the shortening would also license
+    ``os.path`` → ``os`` and ``crypto.tls`` → ``crypto`` — and a repo that
+    happens to own a directory named ``os`` would then vouch for the standard
     library's ``os.path``, silently, in the direction that produces a clean
-    verdict over an unexamined module.
+    verdict over an unexamined module (INV-lakom).
 
-    MEASURED 2026-08-24 while A/B-ing INV-juvul's fix on caddy; the defect is
-    pre-existing and independent of that change. Same shape as INV-juvul's own
-    finding one layer up — there, folding ``os/exec`` to ``os.exec`` and then
-    shortening suppressed the SUBPROCESS module because the repo owned
-    ``internal/filesystems/os.go``. That was fixed by testing the folded
-    spelling WHOLE. This is the dotted loop, which was left unbounded.
+    The same hazard exists one layer up for separator-folded spellings (Go's
+    ``os/exec`` folded to ``os.exec``, then shortened, would be suppressed by a
+    repo owning an ``os.go``); there the folded spelling is tested WHOLE
+    (INV-juvul). This class pins the bound on the dotted shortening.
 
     THE BOUND IS THE STATED PURPOSE, not a new heuristic: strip at most the ONE
     trailing component a type name occupies, and never shorten to a single
@@ -580,9 +545,9 @@ class TestShorteningIsBoundedByItsOwnPurpose:
     def test_a_stdlib_submodule_is_not_vouched_for_by_a_colliding_directory(
         self,
     ) -> None:
-        """THE FILED REPRO. A repo owning ``myapp/os/helpers.py`` and calling
-        ``os.path.join`` reported coverage COMPLETE over the standard library
-        ``os`` — nothing about ``os.path`` was examined."""
+        """A repo owning ``myapp/os/helpers.py`` and calling ``os.path.join``
+        must not report coverage COMPLETE over the standard library ``os`` —
+        nothing about ``os.path`` was examined."""
         coverage = compute_boundary_coverage(
             [
                 _call("python:os.path:0-0:join:external_symbol",
@@ -634,7 +599,8 @@ class TestShorteningIsBoundedByItsOwnPurpose:
         src-layout callee ``hypergumbo_core.scip._generated`` shortens to
         ``hypergumbo_core.scip``, which sits INSIDE
         ``packages.hypergumbo-core.src.hypergumbo_core.scip.loader`` and is not
-        a suffix of it. A suffix rule would have broken INV-liloh's fix."""
+        a suffix of it. A suffix rule would break the src-layout match
+        (INV-liloh)."""
         coverage = compute_boundary_coverage(
             [
                 _call("python:pathlib.Path:0-0:read_text:external_symbol",
@@ -648,13 +614,13 @@ class TestShorteningIsBoundedByItsOwnPurpose:
 
 
 class TestBuiltinsDoNotWithholdTheVerdict:
-    """INV-bofab, pinned against the SHIPPED catalogue rather than a stand-in.
+    """Pinned against the SHIPPED catalogue rather than a stand-in (INV-bofab).
 
-    After INV-foluz every bare builtin call names ``builtins`` in its module
-    slot. A stand-in catalogue cannot catch the regression this guards
-    against -- it was python.yaml's own completeness list that lacked the
-    entry -- so these load ``python.yaml`` and ask the gate the question the
-    CLI asks on every Python repo.
+    Every bare builtin call names ``builtins`` in its module slot (INV-foluz),
+    so python.yaml's own completeness list must enumerate ``builtins`` or every
+    Python repo is withheld. A stand-in catalogue cannot check that entry, so
+    these load ``python.yaml`` and ask the gate the question the CLI asks on
+    every Python repo.
     """
 
     def test_a_repo_calling_only_builtins_earns_a_complete_coverage(self) -> None:

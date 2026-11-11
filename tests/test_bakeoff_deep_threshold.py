@@ -80,7 +80,7 @@ class TestIoTagRateScaling:
     def test_small_repo_scales_gently(self):
         """Repos with ~2K nodes get a gently scaled threshold (~3.7%).
 
-        Scaling now starts at 500 nodes, so even small repos get some adjustment.
+        Scaling starts above 500 nodes, so even small repos get some adjustment.
         """
         # 3.0% is below scaled threshold (~3.65%) at 2000 nodes
         status, msg = bf.assess_metric("io_tag_rate", 3.0, total_nodes=2000)
@@ -139,7 +139,7 @@ class TestIoTagRateScaling:
         assert status != "GOOD"
 
     def test_existing_large_repo_still_scales(self):
-        """Repos above 10K still scale (preserving existing behavior)."""
+        """Repos above 10K nodes keep scaling down along the same log curve."""
         # gvisor (35K nodes, 2.6%) should be GOOD
         status, msg = bf.assess_metric("io_tag_rate", 2.6, total_nodes=35571)
         assert status == "GOOD", f"gvisor-like repo (35K nodes, 2.6%) should be GOOD: {msg}"
@@ -239,12 +239,11 @@ class TestDataflowSliceRatioConditional:
     def test_low_ratio_suppressed_by_high_slice_access_mode_coverage(self):
         """Low dataflow_slice_ratio should NOT WARN when slice has high access_mode coverage.
 
-        The prometheus deep-20260407-030917 case: slice.0 grew from ~962 to 1689
-        nodes after the INV-kunam route resolver fix.  The dataflow slice didn't
-        shrink but the regular slice grew, dropping the ratio from 6.3% to 6.0%.
-        Meanwhile, 70.7% of call edges in the slice still carry access_mode.
-        This is a denominator effect, not a dataflow regression — the warn
-        should be suppressed when the slice itself is well-annotated.
+        A low ratio can be a denominator effect: the regular slice grows (e.g.
+        from better edge resolution elsewhere) while the dataflow slice stays
+        the same size. When most call edges in the slice carry access_mode
+        (here 70.7%), the slice is well-annotated and the low ratio is not a
+        dataflow regression, so the warn is suppressed.
         """
         status, msg = bf.assess_metric(
             "dataflow_slice_ratio", 6.0,

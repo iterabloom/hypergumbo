@@ -39,10 +39,9 @@ How It Works
    ``protocol_origin="openapi"``)
 4. Match to route symbols by path pattern and HTTP method
 5. Create ``references`` edges (spec operation → handler, tagged
-   ``meta.ref_construct="openapi_operation"``). The bespoke
-   ``openapi_implements`` type was folded onto ``references`` per the
-   audit-findings 0016 relationship-axis consolidation; the spec→handler
-   direction is preserved deliberately to power the forward-slice-from-spec.
+   ``meta.ref_construct="openapi_operation"``; audit-findings 0016). The
+   spec→handler direction is deliberate: it powers the forward slice from
+   a spec, which an impl→contract ``implements`` edge would reverse.
 
 Why This Design
 ---------------
@@ -268,12 +267,11 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
     """Extract ``(route_path, http_method)`` for OpenAPI operation matching.
 
-    Delegates to the canonical MARKER-FIRST ``routes.route_of`` (WI-tosul
-    Phase-1b-alpha). The prior concept-first duplicate had NO meta-fallback at
-    all, so a marker-only route (Go net/http, Express — ``framework_role`` +
-    ``route_path``/``http_method``, no concept) returned ``(None, None)`` and was
-    silently dropped from OpenAPI matching (BUG-2). The ``'WS'`` sentinel is
-    reconstructed from ``route_of``'s normalized ``protocol``.
+    Delegates to the canonical MARKER-FIRST ``routes.route_of``, so a
+    marker-only route (Go net/http, Express — ``framework_role`` +
+    ``route_path``/``http_method``, no concept) yields its path and stays in
+    OpenAPI matching, as does a concept-only route (WI-tosul). The ``'WS'``
+    sentinel is reconstructed from ``route_of``'s normalized ``protocol``.
     """
     info = route_of(symbol)
     if info is None:
@@ -285,8 +283,8 @@ def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
     """Extract route symbols (marker OR ``concept == 'route'``) from context.
 
-    Exactly ``routes.is_route``'s disjunction, folded onto the canonical
-    accessor (WI-tosul Phase-1b-alpha).
+    Exactly ``routes.is_route``'s disjunction, via the canonical accessor
+    (WI-tosul).
     """
     return [s for s in ctx.symbols if is_route(s)]
 
@@ -330,11 +328,11 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             f":{sanitize_id_name_segment(op.method + ' ' + op.path)}:operation"
         )
 
-        # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
-        # Fold to canonical kind="function" + meta["framework_role"].
+        # Canonical kind="function" + meta["framework_role"] (ADR-0027;
+        # audit-findings 0013).
         # ADR-0031 Class B: synthetic stand-in for an OpenAPI operation.
-        # Was LITERAL-SENTINEL ("openapi" — not a real language); now
-        # language=None, discovery_language records the spec-file language
+        # "openapi" is not a real language, so language=None;
+        # discovery_language records the spec-file language
         # (yaml/json/openapi-document), protocol_origin="openapi".
         symbol = Symbol(
             id=symbol_id,
@@ -362,7 +360,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         # Try to match to route handlers
         matched = False
         for route in route_symbols:
-            # Extract route info from concept metadata (single source of truth)
+            # Extract route info via the canonical routes.route_of accessor
             route_path, route_method = _get_route_info_from_concept(route)
 
             if not route_path:
@@ -372,19 +370,19 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             if _paths_match(op.path, route_path):
                 # Method must match, allowing for the wildcard spellings and
                 # the comma-joined multi-method form. Delegated to the routes
-                # chokepoint (WI-zunal): the inline check here knew only
-                # ANY / *, so a node-http `ALL` catch-all and every
+                # chokepoint, which covers a node-http `ALL` catch-all and a
                 # YAML-enriched multi-method route (`"GET,POST"`, which can
-                # never equal a single verb) silently failed to link.
+                # never equal a single verb) that a plain equality check or
+                # an ANY / * check would fail to link (WI-zunal).
                 if not method_matches(route_method, op.method):
                     continue
 
                 # Create edge linking spec to implementation
-                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-                # audit-findings 0016 FOLD: openapi_implements -> references +
-                # meta['ref_construct']='openapi_operation', direction-preserving
-                # (spec->handler is deliberate — powers the forward-slice-from-
-                # spec; folding to impl->contract 'implements' would flip it).
+                # A 'references' edge + meta['ref_construct']='openapi_operation',
+                # with the dispatch shape in meta['framework_dispatch'] (ADR-0028;
+                # audit-findings 0014, 0016). Spec->handler is deliberate: it
+                # powers the forward slice from a spec, and an impl->contract
+                # 'implements' edge would flip it.
                 edge = Edge.create(
                     src=symbol.id,
                     dst=route.id,
@@ -413,10 +411,8 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             for route in route_symbols:
                 # Check if operationId matches function name
                 if route.name == op.operation_id:
-                    # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                    # leak. audit-findings 0016 FOLD: openapi_implements ->
-                    # references + meta['ref_construct']='openapi_operation'
-                    # (direction-preserving; see the path-match site above).
+                    # Same edge shape and spec->handler direction as the
+                    # path-match site above.
                     edge = Edge.create(
                         src=symbol.id,
                         dst=route.id,

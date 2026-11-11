@@ -394,7 +394,7 @@ members = ["crates/*"]
         # Files in workspace src/ are tier 1 (the workspace IS the library)
         result = classify_file(crate_dir / "src" / "lib.rs", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
-        # Workspace files are first-party (reason no longer requires "source")
+        # Workspace files are first-party (the reason string is not checked)
 
     def test_maven_workspaces(self, tmp_path):
         """Detect internal modules from Maven parent pom.xml."""
@@ -427,7 +427,7 @@ members = ["crates/*"]
             tmp_path, roots,
         )
         assert result.tier == Tier.FIRST_PARTY
-        # Workspace files are first-party (reason no longer requires "source")
+        # Workspace files are first-party (the reason string is not checked)
 
     def test_maven_workspaces_nonexistent_module(self, tmp_path):
         """Maven modules that don't exist on disk are ignored."""
@@ -498,7 +498,7 @@ members = ["crates/*"]
         result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
         assert "socket.io" in result.reason
-        # Workspace files are first-party (reason no longer requires "source")
+        # Workspace files are first-party (the reason string is not checked)
 
     def test_workspace_non_source_is_first_party(self, tmp_path):
         """Non-test files in workspace are first-party (workspace IS the project)."""
@@ -521,9 +521,8 @@ members = ["crates/*"]
         is_test=True (INV-tisid).
 
         Workspace packages are by definition part of the project; their
-        tests are first-party test code, not vendored deps. Pre-fix
-        (INV-tisid) the workspace branch returned INTERNAL_DEP, making
-        ~99% of self-analysis internal_dep entries tests rather than
+        tests are first-party test code, not vendored deps. Returning
+        INTERNAL_DEP here would make tier 2 mostly tests rather than
         actual internal dependencies.
         """
         pkg_json = tmp_path / "package.json"
@@ -567,11 +566,10 @@ members = ["crates/*"]
         examples/ dir, BOTH are first-party (tier 1) but carry distinct role
         flags — tests get is_test=True, examples get is_example=True.
 
-        INV-tisid: pre-fix the workspace test branch returned INTERNAL_DEP,
-        making ~99% of self-analysis internal_dep entries tests rather than
-        real internal deps (508 of 509 on 2026-05-16). INV-naduh / ADR-0041
-        §1: examples are the project's own code (distance 0) → first-party,
-        with is_example carrying the role, not tier 2.
+        Tests are not INTERNAL_DEP, which would make tier 2 mostly tests
+        rather than real internal deps (INV-tisid). Examples are the project's
+        own code (distance 0) → first-party, with is_example carrying the
+        role, not tier 2 (INV-naduh, ADR-0041 §1).
         """
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
@@ -920,9 +918,8 @@ class TestTestFileClassification:
     (configured internal_package_roots); other in-repo role files — tests,
     examples, fuzz harnesses, notebooks, docs — are first-party (tier 1)
     with their role carried by flags/reason, not by tier. Per INV-tisid,
-    routing tests through tier 2 made tier 2 a synonym for is_test and
-    drowned out the real internal-dep signal (~99% of self-analysis
-    internal_dep entries were tests).
+    routing tests through tier 2 would make tier 2 a synonym for is_test and
+    drown out the real internal-dep signal.
 
     Common conventions across languages:
     - Directory-based: tests/, test/, __tests__/, spec/, src/test/
@@ -1047,14 +1044,11 @@ class TestTestFileClassification:
     def test_elixir_test_exs_in_phoenix_test_dir_is_first_party(self, tmp_path):
         """WI-pugas: Phoenix `test/<ctx>/foo_test.exs` files are tier 1
         with is_test=True. The file lives in a `test/` directory AND
-        matches the `_test.exs$` co-located pattern, and the FILE pattern
-        wins (override) because the file is first-party Elixir code, not
-        a vendored dep.
+        matches the `_test.exs$` co-located pattern; the FILE pattern is
+        checked first (override), so the reason names it.
 
-        Pre-fix on phoenix bakeoff 2026-05-10, all 1328 test files
-        classified as supply_chain.tier=2 (internal_dep), conflating
-        "is_test" with "is vendored" on the tier axis. This regression
-        guard ensures Elixir tests don't leak back into tier 2.
+        Pins that Elixir tests stay out of tier 2, which would conflate
+        "is_test" with "is a dependency" on the tier axis.
         """
         # Phoenix-style layout: test/ at repo root with mix.exs.
         (tmp_path / "mix.exs").write_text(
@@ -1092,9 +1086,9 @@ class TestTestFileClassification:
 
     def test_elixir_test_helper_in_test_dir_is_first_party(self, tmp_path):
         """Non-`_test.exs` files in test/ (e.g., test_helper.exs) fall
-        through to the dir pattern, which now routes to tier 1 with
-        is_test=True per INV-tisid. The "broader 'all of test/ is
-        first-party' rule" hinted at by WI-pugas is now in effect.
+        through to the dir pattern, which routes to tier 1 with
+        is_test=True per INV-tisid, so all of test/ is first-party
+        (WI-pugas).
         """
         (tmp_path / "mix.exs").write_text("defmodule X.MixProject do\nend\n")
         test_dir = tmp_path / "test"
@@ -1110,9 +1104,9 @@ class TestTestFileClassification:
 
     def test_elixir_test_exs_outside_test_dir_is_first_party(self, tmp_path):
         """An Elixir `_test.exs` file co-located outside `test/` (e.g.
-        `lib/my_app/things/widget_test.exs`) was already tier 1 via the
-        existing TEST_FILE_PATTERNS check; the override list doesn't
-        regress that path."""
+        `lib/my_app/things/widget_test.exs`) is tier 1 with is_test=True,
+        recognised by the override pattern alone (no test directory is
+        involved)."""
         src_dir = tmp_path / "lib" / "my_app"
         src_dir.mkdir(parents=True)
         (src_dir / "widget_test.exs").write_text(
@@ -1222,7 +1216,7 @@ class TestTestFileClassification:
         derived branch fires first and is_test stays False — the file is
         not exposed as a test file because it isn't read as source.
         """
-        # dist/tests/ should still be tier 4 (derived), not tier 2 (test)
+        # dist/tests/ should still be tier 4 (derived), not tier 1 (test)
         (tmp_path / "package.json").write_text('{"main": "dist/index.js"}')
         dist_tests = tmp_path / "dist" / "tests"
         dist_tests.mkdir(parents=True)
@@ -1864,10 +1858,10 @@ class TestSupplyChainLimits:
 class TestClassifySymbolsRecordsClassificationFailures:
     """INV-virik: _classify_symbols wires Limits.add_classification_failure.
 
-    Pre-Phase-6 the schema declared the field but no producer wrote to it.
-    The Phase 6 PR2 fix passes the run-level ``Limits`` instance into
-    ``_classify_symbols`` so the "outside repo" default-fallback case
-    records into ``limits.supply_chain.classification_failures``.
+    The run-level ``Limits`` instance is passed into ``_classify_symbols`` so
+    the "outside repo" default-fallback case records into
+    ``limits.supply_chain.classification_failures``; without it the schema
+    field would have no producer.
     """
 
     def test_outside_repo_symbol_records_failure(self, tmp_path: Path) -> None:
@@ -1965,9 +1959,9 @@ class TestClassifySymbolsOncePerPath:
     """WI-fojot: ``classify_file`` is a function of the PATH, so it runs once
     per path, not once per symbol.
 
-    Per symbol it stats the file and reads the WHOLE file
-    (``is_likely_minified``): a file with N symbols was read N times (40x the
-    bytes on nestjs; 319 s of CPU on flink).
+    Each call stats the file and reads the WHOLE file
+    (``is_likely_minified``), so calling it per symbol would read a file with
+    N symbols N times -- a large CPU cost on big repos.
     """
 
     def test_one_classify_call_per_path(
@@ -2079,10 +2073,10 @@ class TestClassifySymbolsPreservesTier:
     def test_a_protocol_stand_in_takes_its_files_distance(self, tmp_path: Path) -> None:
         """WI-zuzud: a synthetic protocol stand-in is tiered by its PATH.
 
-        It used to be skipped outright (INV-bonup), which assigned it no
-        distance at all: it kept the default tier 1 even inside a minified
-        bundle the tier filter removed around it. Only the tier and its reason
-        are stamped; the per-file flags are left alone."""
+        Skipping it would assign it no distance at all: it would keep the
+        default tier 1 even inside a minified bundle the tier filter removes
+        around it (INV-bonup). Only the tier and its reason are stamped; the
+        per-file flags are left alone."""
         from hypergumbo_core.cli import _classify_symbols
         from hypergumbo_core.ir import Symbol, Span
 
@@ -2215,9 +2209,9 @@ class TestClassifySymbolsDependencyTier:
     def test_dev_dependency_gets_tier3(self, tmp_path: Path) -> None:
         """Dev-scoped dependency symbols should be tier 3.
 
-        Post-Phase-4b (ADR-0027 §6, PR #3633): producers emit
-        ``kind="dependency"`` + ``meta["dependency_scope"]="dev"``
-        rather than the deprecated ``kind="devDependency"``."""
+        Producers emit ``kind="dependency"`` +
+        ``meta["dependency_scope"]="dev"`` rather than the deprecated
+        ``kind="devDependency"`` (ADR-0027 §6)."""
         from hypergumbo_core.cli import _classify_symbols
         from hypergumbo_core.ir import Symbol, Span
 
@@ -2298,8 +2292,8 @@ class TestInTreeDependencyDeclarationTier:
     every ecosystem whose manifests both publish a name and declare
     dependencies. A third-party declaration stays tier 3.
 
-    Python sibling declarations used to be tier 2 and npm / Cargo ones tier 3
-    'external' while the sibling's own package node was tier 1."""
+    So a sibling declaration (Python, npm, Cargo, ...) never disagrees with
+    the sibling's own package node, which is tier 1."""
 
     def test_python_sibling_is_tier1_and_names_the_sibling(self, tmp_path: Path) -> None:
         _write(tmp_path / "packages/a/pyproject.toml",
@@ -2465,13 +2459,13 @@ class TestCollectInTreePackages:
 class TestIsTestFileAxis:
     """WI-rigun: is_test_file is independent of supply_chain_tier.
 
-    These tests pin the new behavior end-to-end: classify_file sets
+    These tests pin the behavior end-to-end: classify_file sets
     is_test, _classify_symbols propagates it to Symbol.is_test_file,
     and Symbol.to_dict / Symbol.from_dict round-trip the field through
     the supply_chain block.  Test files (both co-located like _test.go
     AND in dedicated directories like tests/, spec/) are tier 1 with
-    is_test=True per INV-tisid; tier 2 is reserved for in-repo non-test
-    code (examples, fuzz harnesses, vendored deps).
+    is_test=True per INV-tisid; tier 2 is reserved for org-internal
+    dependency packages (INV-naduh).
     """
 
     def test_workspace_test_file_is_test_true(self, tmp_path: Path) -> None:
@@ -2611,7 +2605,7 @@ class TestIsTestFileAxis:
         # INV-kubup: the PRESENCE of an export modifier is the signal this
         # step reads. `unexported` is a signal too, but it is the visibility
         # pass's (finalize maps it to `private`, which cannot be public API);
-        # this step no longer writes a False nobody computed.
+        # this step does not write a False nobody computed.
         assert private_fn.is_exported is None
 
     def test_classify_symbols_sets_is_exported_for_rust_pub(
@@ -2698,7 +2692,7 @@ class TestIsGeneratedFileAxis:
         result = classify_file(
             tmp_path / "service_pb2.py", tmp_path
         )
-        # pb2 files are already DERIVED tier AND now also is_generated
+        # pb2 files are DERIVED tier AND also is_generated
         assert result.is_generated is True
 
     def test_zz_generated_go_is_generated(self, tmp_path: Path) -> None:
@@ -2946,13 +2940,14 @@ class TestIsGeneratedFileAxis:
 class TestDependencyManifest:
     """Tests for DependencyManifest (WI-vovuk).
 
-    ADR-0041 §1/§2 (supply:F5): ``classify_import`` now returns
-    ``Tier.EXTERNAL_DEP`` for ALL third-party imports — tier names supply-chain
-    distance and nothing else, so a declared (direct) third-party package is no
-    longer promoted to tier 2. The direct/transitive/undeclared declaration
-    relationship moved to ``classify_directness`` (stamped as the ``directness``
-    meta key). Tier 2 (``internal_dep``) is reserved for workspace/org-internal
-    packages, assigned by file classification, not by the manifest classifier.
+    ``classify_import`` returns ``Tier.EXTERNAL_DEP`` for ALL third-party
+    imports (ADR-0041 §1/§2, supply:F5) — tier names supply-chain distance and
+    nothing else, so a declared (direct) third-party package is not promoted
+    to tier 2. The direct/transitive/undeclared declaration relationship is
+    reported by ``classify_directness`` (stamped as the ``directness`` meta
+    key). Tier 2 (``internal_dep``) is reserved for org-internal code outside
+    the project, assigned by file classification, not by the manifest
+    classifier.
     """
 
     def test_classify_direct_dep(self) -> None:
@@ -3208,7 +3203,7 @@ class TestIsConfigFileAxis:
     def test_config_under_tests_is_test_not_config(self, tmp_path: Path) -> None:
         """tests/fixtures/package.json → is_test=True, is_config=False.
 
-        After INV-tisid the file is tier 1 (first-party test fixture),
+        The file is tier 1 (first-party test fixture, INV-tisid),
         not tier 2. The role-flag mutual-exclusion guarantee is what
         this test pins: is_config must remain False because is_test
         already claimed the role slot.
@@ -3223,13 +3218,13 @@ class TestIsConfigFileAxis:
 
 
 class TestRoleFlagMutualExclusion:
-    """WI-jobuj acceptance (rescoped per INV-naduh): every Symbol has at most
-    one of is_test_file / is_example_file / is_config_file set.
+    """Every Symbol has at most one of is_test_file / is_example_file /
+    is_config_file set (WI-jobuj acceptance).
 
-    WI-jobuj originally scoped this to tier 2, but per INV-naduh / ADR-0041
-    §1 the role-bearing files (tests, examples, configs) are now first-party
-    (tier 1). The mutual-exclusion property is tier-independent: a file may
-    carry at most one role flag regardless of its supply-chain tier.
+    Per INV-naduh / ADR-0041 §1 the role-bearing files (tests, examples,
+    configs) are first-party (tier 1). The mutual-exclusion property is
+    tier-independent: a file may carry at most one role flag regardless of
+    its supply-chain tier.
     """
 
     def _classify(self, tmp_path: Path, rel: str, content: str = "") -> FileClassification:
@@ -3484,10 +3479,10 @@ class TestTierByPath:
 class TestGeneratorFingerprints:
     """WI-munam: generator output that does not declare itself in a comment.
 
-    Of the three vendored tree-sitter grammars, only lean's parser.c carries
-    ``@generated``; circom's and wolfram's open with the parser include and
-    the ``LANGUAGE_VERSION`` table header and were classified tier 3, their
-    generated parse tables standing for hand-written C.
+    A tree-sitter parser.c need not carry ``@generated``: some (circom's and
+    wolfram's vendored grammars) open with just the parser include and the
+    ``LANGUAGE_VERSION`` table header. Without a fingerprint their generated
+    parse tables would stand for hand-written C.
     """
 
     _TS_PARSER = (

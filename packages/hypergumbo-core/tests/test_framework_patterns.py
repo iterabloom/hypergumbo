@@ -102,16 +102,10 @@ class TestStripTestFileOnlyConcepts:
 def _clean_pattern_cache():
     """Clear framework pattern cache between tests.
 
-    Belt-and-braces since INV-kazij: the cache is keyed on the RESOLVED
-    frameworks dir, so a test that patches get_frameworks_dir caches its
-    Nones under the patched dir's key and can no longer shadow the real
-    patterns for later tests. This fixture predates that fix — it cleared
-    the cache for THIS file's tests while the poisoned entries leaked to
-    every OTHER file sharing the xdist worker (the mechanism behind the
-    cron-only pyproject-console-script failure: zero concepts, therefore
-    zero concept-derived entrypoints, on whichever worker had run a
-    dir-patching test first). Kept because a clean cache per test is
-    still the right hygiene here.
+    Belt-and-braces: the cache is keyed on the RESOLVED frameworks dir, so a
+    test that patches get_frameworks_dir caches its Nones under the patched
+    dir's key and cannot shadow the real patterns for later tests (INV-kazij).
+    A clean cache per test is still the right hygiene here.
     """
     clear_pattern_cache()
 
@@ -131,9 +125,9 @@ class TestPatternCacheIsDirKeyed:
             assert load_framework_patterns("main-functions") is None
             assert load_framework_patterns("config-conventions") is None
         # ...and once the patch lifts, the REAL patterns must load — the
-        # Nones cached under the patched dir must not shadow them. Before
-        # the dir-keyed cache this returned None and every symbol analyzed
-        # afterwards in the same process carried zero concepts.
+        # Nones cached under the patched dir must not shadow them, or every
+        # symbol analyzed afterwards in the same process would carry zero
+        # concepts.
         assert load_framework_patterns("main-functions") is not None
         assert load_framework_patterns("config-conventions") is not None
 
@@ -242,18 +236,17 @@ class TestPattern:
     def test_decorator_bare_pattern_does_not_match_qualified_source(self) -> None:
         """Decorator YAML uses dispatch-set triplets; bare patterns must stay literal.
 
-        Regression guard for WI-pisab Phase 2. The YAML decorator corpus pairs
-        bare patterns (e.g., ``^task$`` in celery.yaml) with qualified
-        counterparts (``^(celery|app)\\.task$``) as a mutually-exclusive
-        dispatch set. Retrofitting ``_decorator_re`` to NameMatcher would
-        make the bare pattern also match the qualified source via the
-        terminal-segment fallback, firing both rules against one decorator
-        and doubling the concept enrichment on every celery/cdi codebase.
+        The YAML decorator corpus pairs bare patterns (e.g., ``^task$`` in
+        celery.yaml) with qualified counterparts (``^(celery|app)\\.task$``)
+        as a mutually-exclusive dispatch set. Matching ``_decorator_re`` with
+        NameMatcher would make the bare pattern also match the qualified
+        source via the terminal-segment fallback, firing both rules against
+        one decorator and doubling the concept enrichment on every celery/cdi
+        codebase (WI-pisab).
 
-        Keep decorator matching on raw ``re.compile``. The equivalent retrofit
-        lands safely on base_class, parent_base_class, annotation, and
-        parameter_type because their YAML corpora do not use dispatch-set
-        triplets.
+        Keep decorator matching on raw ``re.compile``. NameMatcher is safe on
+        base_class, parent_base_class, annotation, and parameter_type because
+        their YAML corpora do not use dispatch-set triplets.
         """
         bare = Pattern(concept="task_bare", decorator=r"^task$")
         qualified = Pattern(
@@ -376,12 +369,11 @@ class TestPattern:
     def test_pattern_matches_base_class_qualified_spelling(self) -> None:
         """Anchored pattern ``^BaseModel$`` matches qualified source ``pydantic.BaseModel``.
 
-        WI-pisab regression test. Prior to the NameMatcher retrofit, the raw
-        ``re.match`` against an anchored pattern rejected every qualified
+        A raw ``re.match`` against an anchored pattern rejects every qualified
         source spelling: a codebase using ``import pydantic`` + ``class
-        Foo(pydantic.BaseModel)`` missed enrichment that an otherwise-
-        identical codebase using ``from pydantic import BaseModel`` got.
-        NameMatcher's terminal-segment fallback closes this gap.
+        Foo(pydantic.BaseModel)`` would miss enrichment that an otherwise-
+        identical codebase using ``from pydantic import BaseModel`` gets.
+        NameMatcher's terminal-segment fallback closes this gap (WI-pisab).
         """
         pattern = Pattern(
             concept="model",
@@ -439,11 +431,11 @@ class TestPattern:
     def test_pattern_matches_annotation_qualified_spelling(self) -> None:
         """Anchored bare pattern matches qualified annotation via terminal fallback.
 
-        WI-pisab regression test (Phase 2). A YAML annotation pattern like
-        ``^RestController$`` should match a source spelling of
+        A YAML annotation pattern like ``^RestController$`` should match a
+        source spelling of
         ``org.springframework.web.bind.annotation.RestController`` —
         otherwise Java codebases whose analyzer stores fully-qualified
-        annotation names silently lose concept enrichment.
+        annotation names silently lose concept enrichment (WI-pisab).
         """
         pattern = Pattern(
             concept="controller",
@@ -504,11 +496,11 @@ class TestPattern:
     def test_pattern_matches_parameter_type_qualified_spelling(self) -> None:
         """Anchored bare pattern matches qualified param type via terminal fallback.
 
-        WI-pisab regression test (Phase 2). A YAML parameter_type pattern like
-        ``^Depends$`` should match a source parameter type spelling of
-        ``fastapi.Depends`` stored in the ``type`` field. Matters whenever a
-        language analyzer records type annotations in their qualified form
-        (``import fastapi`` + ``def handler(db: fastapi.Depends) -> ...``).
+        A YAML parameter_type pattern like ``^Depends$`` should match a
+        source parameter type spelling of ``fastapi.Depends`` stored in the
+        ``type`` field (WI-pisab). Matters whenever a language analyzer
+        records type annotations in their qualified form (``import fastapi``
+        + ``def handler(db: fastapi.Depends) -> ...``).
         """
         pattern = Pattern(
             concept="dependency",
@@ -935,10 +927,10 @@ class TestPattern:
     def test_pattern_meta_match_single_key(self) -> None:
         """Pattern matches symbol by a single meta key (WI-limas).
 
-        Post-Wave-6 ADR-0027 folds collapsed several legacy symbol_kind
-        values (devDependency, build-dependency, …) onto canonical kinds
-        plus per-axis ``Symbol.meta`` keys. Pattern.meta_match is the YAML
-        construct that re-binds those rules to the new emission shape.
+        Under the ADR-0027 folds, producers emit canonical kinds plus
+        per-axis ``Symbol.meta`` keys rather than kinds like devDependency or
+        build-dependency. Pattern.meta_match is the YAML construct that binds
+        rules to that emission shape.
         """
         pattern = Pattern(
             concept="npm_dev_dependency",
@@ -1364,14 +1356,14 @@ class TestFrameworkPatternDef:
 
 
 class TestConfigConventionsMigratedRules:
-    """Per-rule pinning tests for config-conventions.yaml after WI-limas.
+    """Per-rule pinning tests for config-conventions.yaml (WI-limas).
 
     Each test builds a synthetic Symbol matching what the relevant producer
-    emits today (post-Wave-6 ADR-0027 fold) and asserts that the
-    corresponding rule in config-conventions.yaml fires. If any of these
-    rules silently regresses to its pre-WI-limas bare-kind form, the
-    matching test will report no match and a future agent can recover
-    the producer→pattern coupling without re-deriving it.
+    emits (canonical kind plus ADR-0027 per-axis meta keys) and asserts that
+    the corresponding rule in config-conventions.yaml fires. If any of these
+    rules were keyed on a bare kind no producer emits, the matching test
+    would report no match, and the test itself records the
+    producer→pattern coupling.
     """
 
     @staticmethod
@@ -1503,7 +1495,7 @@ class TestConfigConventionsMigratedRules:
         assert "cargo_build_dependency" in concepts
 
     def test_cargo_workspace_post_fold(self) -> None:
-        """Cargo workspace: kind="workspace" (legacy 'workspace-member' never landed)."""
+        """Cargo workspace: kind="workspace" (no producer emits 'workspace-member')."""
         pat = self._load_config_conventions()
         sym = Symbol(
             id="toml:Cargo.toml:1:workspace:workspace",
@@ -1518,7 +1510,7 @@ class TestConfigConventionsMigratedRules:
         assert "cargo_workspace_member" in concepts
 
     def test_cargo_library_post_fold(self) -> None:
-        """Cargo [lib]: kind="library" (legacy 'lib' never landed)."""
+        """Cargo [lib]: kind="library" (no producer emits 'lib')."""
         pat = self._load_config_conventions()
         sym = Symbol(
             id="toml:Cargo.toml:1:mylib:library",
@@ -1620,7 +1612,7 @@ class TestConfigConventionsMigratedRules:
 
 
 class TestLanguageConventionsMigratedRules:
-    """Per-rule pinning tests for language-conventions.yaml after WI-limas."""
+    """Per-rule pinning tests for language-conventions.yaml (WI-limas)."""
 
     @staticmethod
     def _load() -> FrameworkPatternDef:
@@ -1634,11 +1626,11 @@ class TestLanguageConventionsMigratedRules:
         return pat
 
     def test_starlark_build_rule_post_fold(self) -> None:
-        """Starlark build target: kind="target" (legacy 'rule' never landed).
+        """Starlark build target: kind="target" (no producer emits 'rule').
 
         starlark.py:287 emits kind="target" + meta["rule_type"]=<rule name>
-        (e.g. py_library, java_binary). The previous YAML rule keyed on
-        ``symbol_kind: ^rule$`` matched nothing.
+        (e.g. py_library, java_binary), so a YAML rule keyed on
+        ``symbol_kind: ^rule$`` would match nothing.
         """
         pat = self._load()
         sym = Symbol(
@@ -1659,8 +1651,8 @@ class TestLanguageConventionsMigratedRules:
 
     # WI-vibaz: CUDA function fold. cuda.py emits kind="function" +
     # meta["cuda_execution_space"]; language-conventions.yaml's three
-    # CUDA rules migrated from registry-absent bare-kind symbol_kinds
-    # (^global$ / ^device$ / ^host$) to ^function$ + meta_match.
+    # CUDA rules key on ^function$ + meta_match, not on the registry-absent
+    # bare kinds ^global$ / ^device$ / ^host$.
 
     def test_cuda_gpu_kernel_post_fold(self) -> None:
         """CUDA __global__ kernel: kind="function" + cuda_execution_space="global"."""
@@ -1699,10 +1691,7 @@ class TestLanguageConventionsMigratedRules:
     def test_cuda_host_device_function_post_fold(self) -> None:
         """CUDA __host__ __device__: kind="function" + cuda_execution_space="host_device".
 
-        Picks up the new gpu_function rule keyed on host_device — pre-WI-
-        vibaz there was no host_device YAML rule at all, since the
-        producer had its own bare-kind 'host_device_function' that no
-        rule referenced.
+        Pins the gpu_function rule keyed on host_device (WI-vibaz).
         """
         pat = self._load()
         sym = Symbol(
@@ -1884,8 +1873,8 @@ class TestMatchPatterns:
         """Multiple decorators on one symbol should each produce a match result.
 
         When a function has @app.options('/v1/models') AND @app.get('/v1/models'),
-        both should produce route concepts (one OPTIONS, one GET). Previously
-        only the first matching decorator was captured.
+        both should produce route concepts (one OPTIONS, one GET), not only
+        the first matching decorator.
         """
         pattern_def = FrameworkPatternDef(
             id="fastapi",
@@ -2694,9 +2683,9 @@ class TestBottlePatterns:
     def test_bare_patch_does_not_match_bottle_route(self) -> None:
         """Bare @patch decorator (e.g., unittest.mock.patch) must not match as route.
 
-        Bottle's bare decorator patterns (^(get|post|put|delete|patch)$)
-        matched @mock.patch() and @patch(), causing 76% false positive
-        routes in Superset. Fixed by removing bare decorator patterns.
+        bottle.yaml has no bare-verb decorator patterns
+        (^(get|post|put|delete|patch)$): they would match @mock.patch() and
+        @patch() in test code as routes.
         """
         clear_pattern_cache()
         pattern_def = load_framework_patterns("bottle")
@@ -8086,9 +8075,9 @@ class TestMicronautPatterns:
 class TestJavaAnalyzerIntegration:
     """Integration tests: Java analyzer + YAML patterns end-to-end.
 
-    These tests prove that YAML patterns can replace deprecated analyzer-level
-    route detection (ADR-3aaa v1.0.x). They run the actual Java analyzer, then
-    enrich_symbols(), and verify both concepts and legacy fields are populated.
+    These tests show that YAML patterns alone provide route detection, with no
+    analyzer-level route fields (ADR-3aaa v1.0.x). They run the actual Java
+    analyzer, then enrich_symbols(), and verify the concepts it adds.
     """
 
     @pytest.fixture(autouse=True)
@@ -8102,8 +8091,8 @@ class TestJavaAnalyzerIntegration:
         This test demonstrates that:
         1. Java analyzer extracts @GetMapping to meta.decorators
         2. spring-boot.yaml patterns match these decorators
-        3. enrich_symbols populates both concepts AND legacy fields
-        4. The deprecated analyzer code is NOT needed for this to work
+        3. enrich_symbols adds a route concept with method, path and framework
+        4. No analyzer-level route detection is needed for this to work
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -8131,7 +8120,7 @@ public class UserController {
         decorators = method.meta["decorators"]
         assert any(d.get("name") == "GetMapping" for d in decorators)
 
-        # Enrich with YAML patterns - this is what replaces deprecated code
+        # Enrich with YAML patterns - the route concept comes from here
         enriched = enrich_symbols([method], {"spring-boot"})
         assert len(enriched) == 1
         enriched_method = enriched[0]
@@ -8212,12 +8201,12 @@ public class ApiController {
         assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
 
     def test_yaml_patterns_without_deprecated_code(self, tmp_path: Path) -> None:
-        """YAML patterns work even if symbol has no legacy fields.
+        """YAML patterns work even if symbol has no http_method/route_path fields.
 
         This test creates a symbol with only decorators (no http_method/route_path)
-        to prove YAML patterns can fully replace deprecated analyzer code.
+        to show YAML patterns alone produce the route concept.
         """
-        # Create a symbol as if the deprecated code was NOT run
+        # Create a symbol carrying only decorators
         symbol = Symbol(
             id="test:UserController.java:10:getUsers:method",
             name="getUsers",
@@ -8229,7 +8218,7 @@ public class ApiController {
                 "decorators": [
                     {"name": "GetMapping", "args": ["/users"], "kwargs": {}},
                 ],
-                # Note: NO http_method or route_path - simulates removed deprecated code
+                # Note: NO http_method or route_path - the route comes from YAML alone
             },
         )
 
@@ -8337,19 +8326,17 @@ class TestUsagePatternSpec:
 
 
 class TestBareNodeHttpAndApolloStandaloneRoutes:
-    """WI-tisam: route detection for raw-stdlib HTTP servers.
+    """Route detection for raw-stdlib HTTP servers (WI-tisam).
 
     ``http.createServer(callback)`` and Apollo's ``startStandaloneServer``
-    establish HTTP entry points without any framework router. routes.txt
-    on apollo-server reported "No API routes found" because no YAML
-    pattern recognised these idioms (DEEP cohort 1 reflect on
-    deep-20260510-054430). WI-tisam added the patterns in
-    ``frameworks/node-http.yaml`` (always-loaded). WI-donud subsequently
-    relocated the Apollo entrypoints (``startStandaloneServer``,
-    ``runHttpQuery``, ``executeHTTPGraphQLRequest``) from
-    ``frameworks/graphql.yaml`` to ``node-http.yaml`` so they fire on
-    thin consumers (e.g. apollo-server/smoke-test) whose local
-    package.json doesn't declare ``@apollo/server``.
+    establish HTTP entry points without any framework router, so no
+    framework YAML recognises them. The patterns live in the always-loaded
+    ``frameworks/node-http.yaml``. The Apollo entrypoints
+    (``startStandaloneServer``, ``runHttpQuery``,
+    ``executeHTTPGraphQLRequest``) are there rather than in the
+    framework-gated ``frameworks/graphql.yaml`` so they fire on thin
+    consumers (e.g. apollo-server/smoke-test) whose local package.json
+    doesn't declare ``@apollo/server`` (WI-donud).
     """
 
     def test_node_http_createServer_via_usage_context(self) -> None:
@@ -8523,18 +8510,17 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
             )
 
     def test_apollo_patterns_fire_without_graphql_framework(self) -> None:
-        """WI-donud closure guard: a thin Apollo consumer whose local
+        """A thin Apollo consumer whose local
         package.json doesn't declare ``@apollo/server`` produces an empty
         ``detected_frameworks`` set. The Apollo HTTP-entrypoint patterns
         (startStandaloneServer / runHttpQuery / executeHTTPGraphQLRequest)
         must still fire end-to-end through ``enrich_symbols`` so that the
         calling file Symbol receives a ``concept: route`` annotation and
-        materialises into a route Symbol downstream.
+        materialises into a route Symbol downstream (WI-donud).
 
-        This is the regression test for the smoke-test fixture path that was
-        reporting "No API routes found" despite ``_extract_http_handler_contexts``
-        emitting ``kind=call`` UCs (INV-rolul shipped that emission but
-        graphql.yaml's framework gate suppressed the YAML match).
+        Pins the smoke-test fixture path: ``_extract_http_handler_contexts``
+        emits ``kind=call`` UCs (INV-rolul), and a framework-gated YAML match
+        would leave them unmatched, reporting "No API routes found".
         """
         from hypergumbo_core.framework_patterns import (
             clear_pattern_cache,
@@ -9107,9 +9093,8 @@ class TestEnrichSymbolsWithUsageContexts:
     def test_inv002_fallback_resolution_by_view_name(self) -> None:
         """INV-002: Enriches symbol via view_name when symbol_ref is None.
 
-        This tests the fix for INV-002 where UsageContext records with
-        symbol_ref=None but view_name in metadata can still enrich symbols
-        by falling back to name-based resolution.
+        UsageContext records with symbol_ref=None but view_name in metadata
+        still enrich symbols by falling back to name-based resolution.
         """
         # Symbol representing the view function
         symbol = Symbol(
@@ -9160,7 +9145,7 @@ class TestEnrichSymbolsWithUsageContexts:
                 usage_contexts=[ctx],
             )
 
-        # Symbol should be enriched via name-based fallback (INV-002 fix)
+        # Symbol should be enriched via name-based fallback (INV-002)
         assert enriched[0].meta is not None
         assert "concepts" in enriched[0].meta
         concepts = enriched[0].meta["concepts"]
@@ -9172,7 +9157,7 @@ class TestEnrichSymbolsWithUsageContexts:
 
 
 class TestResolveDeferredSymbolRefs:
-    """Tests for resolve_deferred_symbol_refs() - INV-002 proper fix.
+    """Tests for resolve_deferred_symbol_refs() (INV-002).
 
     This tests the deferred resolution phase that runs BEFORE enrichment
     to resolve symbol_ref for UsageContexts that couldn't be resolved
@@ -10688,9 +10673,9 @@ class TestLanguageConventionPatterns:
     def test_enrich_symbols_with_cuda_kernel(self) -> None:
         """enrich_symbols enriches CUDA kernel with gpu_kernel concept.
 
-        WI-vibaz: post-fold, CUDA kernels emit kind="function" with
+        CUDA kernels emit kind="function" with
         meta["cuda_execution_space"]="global"; language-conventions.yaml's
-        gpu_kernel rule matches that shape.
+        gpu_kernel rule matches that shape (WI-vibaz).
         """
         symbol = Symbol(
             id="cuda:kernel.cu:1-50:compute:global",
@@ -19328,7 +19313,6 @@ class TestJavaQualifiedMainDetection:
         """Scala Object.main should be classified as main_function.
 
         Scala analyzer produces qualified method names (e.g., ``Kafka.main``).
-        Kafka has 7 Scala main methods that were previously undetected.
         """
         clear_pattern_cache()
         symbols = [
@@ -19597,11 +19581,11 @@ class TestMaterializeRouteSymbols:
         assert route.meta["materialized_from"] == handler.id
 
     def test_stable_id_assigned(self) -> None:
-        """Materialized route has a canonical-shape stable_id (Phase 6 PR1).
+        """Materialized route has a canonical-shape stable_id.
 
-        ``make_route_stable_id`` now produces the ``sha256:<16hex>`` shape
+        ``make_route_stable_id`` produces the ``sha256:<16hex>`` shape
         (23 chars) shared by the rest of the ``make_*_stable_id``
-        factory family — INV-hunup closure.
+        factory family (INV-hunup).
         """
         handler = self._make_handler("createUser", "POST", "/api/users")
         routes = materialize_route_symbols([handler])
@@ -19804,10 +19788,10 @@ class TestMaterializeRouteSymbols:
         per-method splitting in materialize, the YAML+materialize path
         would emit a third Symbol with method='GET,POST' that the
         WI-tizad dedupe (keyed on the joined string) doesn't match
-        against the analyzer-emitted ones. Surfaced by WI-pusad when
-        starlette.yaml started loading on repos without an explicit
-        manifest declaration (bare-name promotion via the
-        starlette.routing compound import).
+        against the analyzer-emitted ones. Both paths fire on one repo
+        because starlette.yaml can load without an explicit manifest
+        declaration (bare-name promotion via the starlette.routing
+        compound import, WI-pusad).
         """
         handler = Symbol(
             id="python:app.py:10-20:list_items:function",
@@ -19856,8 +19840,8 @@ class TestMaterializeRouteSymbols:
 
 class TestMaterializeRouteSymbolsWiMisud:
     """WI-misud: file-level catch-all route concepts from WI-tisam YAML patterns
-    (node-http.yaml / graphql.yaml's startStandaloneServer / http.createServer
-    patterns) attach to kind=file Symbols. Different files calling these
+    (node-http.yaml's startStandaloneServer / http.createServer patterns)
+    attach to kind=file Symbols. Different files calling these
     framework entry points are DISTINCT deployments, not duplicate registrations
     of the same handler — so the (method, path) dedupe key must include the
     source file when the source symbol is kind=file.
@@ -21293,13 +21277,14 @@ class TestMixedConceptsFormats:
 
 
 class TestFrameworkPatternEcosystemGating:
-    """WI-vuzur / WI-vifun: framework patterns must not fire cross-ecosystem.
+    """Framework patterns must not fire cross-ecosystem (WI-vuzur / WI-vifun).
 
     The matcher consults only the per-pattern ``language`` / ``symbol_path``
-    filters, never ``FrameworkPatternDef.language`` (the file-level gate), so a
-    JS-only ``lit`` pattern keyed on a bare ``@property`` decorator fired on a
-    Python ``@property``, and the byte-identical cargo/poetry TOML-dependency
-    patterns both fired on every ``pyproject.toml`` and ``Cargo.toml`` dep.
+    filters, never ``FrameworkPatternDef.language`` (the file-level gate), so
+    the gate has to be per-pattern: without it a JS-only ``lit`` pattern keyed
+    on a bare ``@property`` decorator would fire on a Python ``@property``, and
+    the otherwise byte-identical cargo/poetry TOML-dependency patterns would
+    both fire on every ``pyproject.toml`` and ``Cargo.toml`` dep.
     """
 
     @staticmethod
@@ -21388,12 +21373,11 @@ class TestRouteMarkerSingleHome:
     (``meta['framework_role'] == 'route'``) must NOT also gain a redundant
     *path-less* ``concept=route`` from a def-based framework pattern
     (rails/phoenix/sinatra/laravel ``framework_role: '^route$'``). That
-    dual-carry state orphans the concept's framework from the marker (the
-    2026-07-07 route-surfacing audit reproduced two silent bugs on it).
+    dual-carry state orphans the concept's framework from the marker.
     ``enrich_symbols`` lifts the concept's framework onto the marker's
     canonical ``route_framework`` home and drops the redundant concept, so
-    the route fact stays single-homed — the producer-side root that
-    ``route_of``'s framework-UNION only tolerated at the accessor.
+    the route fact stays single-homed at the producer, where ``route_of``'s
+    framework-UNION only tolerates the dual-carry at the accessor.
     """
 
     def _route_marker(self) -> Symbol:
@@ -21431,8 +21415,8 @@ class TestRouteMarkerSingleHome:
 
     def test_route_of_framework_preserved_after_dedup(self) -> None:
         # Behavior-preserving at the accessor: route_of still surfaces the
-        # framework, now via the marker's route_framework home rather than the
-        # co-resident concept it previously had to fall through to.
+        # framework, via the marker's route_framework home, after the
+        # redundant co-resident concept is dropped.
         from hypergumbo_core.routes import route_of
 
         sym = self._route_marker()

@@ -751,15 +751,16 @@ fn main() {
 
 
 class TestRustQualifiedReceiverMarking:
-    """INV-fahub Phase A — a scoped ``Type::method()`` call names the target type
-    at the call site, so its resolved edge must carry ``meta.receiver="qualified"``.
+    """A scoped ``Type::method()`` call names the target type at the call
+    site, so its resolved edge must carry ``meta.receiver="qualified"``
+    (INV-fahub).
 
     Such a call is a *correct* resolution (the type is explicit), NOT a
     receiver-blind magnet. Without the marker the language-agnostic detector
-    (``find_receiver_blind_magnets``) counts every qualified associated-function
-    call to a method-kind symbol as a cross-class magnet — e.g. rodio's
-    ``SamplesBuffer::new`` <- 26 callers, all correct. The marker (which the
-    detector already excludes) is the producer half the reframe left open.
+    (``find_receiver_blind_magnets``) would count every qualified
+    associated-function call to a method-kind symbol as a cross-class magnet
+    — e.g. a ``SamplesBuffer::new`` with many callers, all correct. The
+    detector excludes marked edges; this producer stamps the marker.
     """
 
     def test_scoped_call_stamps_qualified_and_is_not_a_magnet(self, tmp_path: Path) -> None:
@@ -874,8 +875,8 @@ fn decorated() {}
     def test_builtin_attributes_produce_no_edges(self, tmp_path: Path) -> None:
         """Built-in attributes like derive, test, cfg produce zero edges.
 
-        Previously builtins produced unresolved edges
-        (e.g. ``rust:unresolved:0-0:derive:unresolved`` with 175 in-edges).
+        An unresolved edge per use (e.g. to
+        ``rust:unresolved:0-0:derive:unresolved``) would be pure noise.
         """
         from hypergumbo_lang_mainstream.rust import _extract_attribute_edges
         from hypergumbo_core.ir import Symbol, Span
@@ -1109,9 +1110,9 @@ fn greet(name: &str) -> String {
 
 
 class TestRustReturnTypeExtraction:
-    """Unit tests for _extract_rust_return_type_name (WI-titor Tier 2 escape hatches).
+    """Unit tests for _extract_rust_return_type_name (WI-titor).
 
-    INV-dihos Phase 3: the return-type registry needs a Rust-aware extractor
+    The return-type registry needs a Rust-aware extractor
     that unwraps the smart-pointer / fallible wrappers Rust users routinely
     return (Result, Option, Box, Rc, Arc), strips references and lifetimes,
     and refuses to register opaque `impl Trait` / `dyn Trait` returns
@@ -1181,7 +1182,7 @@ class TestRustReturnTypeExtraction:
         ) == "HashMap"
 
     def test_impl_trait_is_opaque(self) -> None:
-        """WI-titor: ``impl Trait`` return types carry no concrete name."""
+        """``impl Trait`` return types carry no concrete name."""
         from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
         assert _extract_rust_return_type_name(
             "() -> impl Iterator<Item=Foo>"
@@ -1229,9 +1230,9 @@ class TestRustReturnTypeExtraction:
 
 
 class TestRustParamTypeExtraction:
-    """Unit tests for _extract_param_types_rust (WI-titor bootstrap).
+    """Unit tests for _extract_param_types_rust (WI-titor).
 
-    Tier-2 var_types source: function parameters with type annotations.
+    A var_types source: function parameters with type annotations.
     Mirrors _extract_param_types in kotlin.py / similar helpers in
     java.py / go.py.
     """
@@ -1317,7 +1318,7 @@ class TestRustVarTypesExtraction:
     - ``let x: Type = ...`` (explicit annotation)
     - ``let x = Type::new(...)`` (constructor / associated-function call)
     - ``let x = Type { ... }`` (struct expression)
-    - ``let x = receiver.method(...)`` (registry-driven, Phase 3 new path)
+    - ``let x = receiver.method(...)`` (registry-driven)
     """
 
     def _parse(self, source_text: str):
@@ -1363,8 +1364,8 @@ class TestRustVarTypesExtraction:
         assert var_types == {"c": "Config"}
 
     def test_let_via_registry_chained_call(self) -> None:
-        """WI-titor Phase 3 new path: ``let x = obj.method()`` consults
-        the method_return_type_registry to set ``var_types[x]``."""
+        """``let x = obj.method()`` consults the
+        method_return_type_registry to set ``var_types[x]``."""
         from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
         registry = {"Engine::query": "Query"}
         tree, src = self._parse(
@@ -1424,15 +1425,15 @@ class TestRustVarTypesExtraction:
 
 
 class TestRustEnumMatchDispatch:
-    """WI-kodap: a binding destructured from a tuple-struct enum variant adopts
-    the variant's field type, so a subsequent method call on it resolves to the
-    concrete impl instead of a short-name collision / external stub.
+    """A binding destructured from a tuple-struct enum variant adopts the
+    variant's field type, so a subsequent method call on it resolves to the
+    concrete impl instead of a short-name collision / external stub (WI-kodap).
 
-    Zoxide's subcommand tree is the canonical shape: ``enum Cmd { Query(Query),
-    Add(Add) }`` dispatched by ``match self { Cmd::Query(q) => q.run() }``. The
-    match-arm binding ``q`` was untyped, so ``q.run()`` fell to short-name
-    resolution and every arm bound to the same (last-registered) ``run`` method,
-    leaving the concrete handlers with 0 incoming calls.
+    A subcommand tree is the canonical shape: ``enum Cmd { Query(Query),
+    Add(Add) }`` dispatched by ``match self { Cmd::Query(q) => q.run() }``. An
+    untyped match-arm binding ``q`` would send ``q.run()`` to short-name
+    resolution, binding every arm to the same (last-registered) ``run`` method
+    and leaving the concrete handlers with no incoming calls.
     """
 
     def _parse(self, source_text: str):
@@ -1527,15 +1528,16 @@ class TestRustEnumMatchDispatch:
 
 
 class TestRustChainedReturnDispatch:
-    """WI-lohup: a method call whose receiver is itself a chained call —
+    """A method call whose receiver is itself a chained call —
     ``Cmd::parse().run()`` — resolves the outer method against the receiver
     call's inferred return type, so main's forward slice reaches the correct
-    dispatcher (``Cmd::run``) instead of a short-name-ambiguous sibling.
+    dispatcher (``Cmd::run``) instead of a short-name-ambiguous sibling
+    (WI-lohup).
 
-    Left unfixed, ``Cmd::parse().run()`` typed nothing for the receiver
-    (no intermediate variable for the let-binding var_types walker), so
-    ``.run()`` fell to short-name resolution and bound to the last-registered
-    ``run`` — leaving the forward slice from main stranded at the parse call.
+    ``Cmd::parse().run()`` leaves no intermediate variable for the let-binding
+    var_types walker, so without return-type inference ``.run()`` falls to
+    short-name resolution and binds the last-registered ``run`` — leaving the
+    forward slice from main stranded at the parse call.
     """
 
     def test_chained_associated_fn_call_resolves_to_receiver_type_method(
@@ -1575,8 +1577,8 @@ class TestRustReturnTypeRegistryIntegration:
     Drives `analyze_rust` against synthetic Rust fixtures and verifies
     that typed-receiver calls resolve through the registry — i.e. the
     full pipeline of Pass 1 ``method_return_types`` population +
-    aggregation + Pass 2 ``var_types`` consumption + new resolution
-    strategy is wired up.
+    aggregation + Pass 2 ``var_types`` consumption + typed-receiver
+    resolution strategy is wired up.
     """
 
     def test_typed_param_method_call_resolves(self, tmp_path: Path) -> None:
@@ -2381,7 +2383,7 @@ class TestRustMethodCallAmbiguity:
 
     Rust method calls like foo.clone() resolve by name only, which causes
     massive false-positive fan-in when common names (.clone, .get, .build)
-    match dozens or hundreds of symbols. The fix applies a confidence
+    match dozens or hundreds of symbols. The analyzer applies a confidence
     penalty proportional to the number of ambiguous candidates for method
     calls (field_expression), not regular function calls (identifier).
     """
@@ -3158,9 +3160,9 @@ class TestRustEnclosingFunctionQualified:
     def test_call_attributed_to_correct_impl_method(self, tmp_path: Path) -> None:
         """Calls inside Diff::compute are attributed to Diff::compute, not Parser::compute.
 
-        The bug: symbol_by_name["compute"] is overwritten by whichever impl
-        is processed last. _get_enclosing_function uses only the short name,
-        so calls inside Diff::compute get attributed to Parser::compute.
+        The hazard: symbol_by_name["compute"] is overwritten by whichever impl
+        is processed last, so a short-name-only _get_enclosing_function would
+        attribute calls inside Diff::compute to Parser::compute.
         """
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -3671,16 +3673,14 @@ class TestRustTraitImplEdges:
     ) -> None:
         """``impl Clone for X`` must not bind to a same-named ``struct Clone``.
 
-        WI-kahaz: candle defines a marker ``struct Clone;`` in
-        ``candle-core/src/cuda_backend/mod.rs:85`` (used for an
-        ``impl Map1 for Clone`` block) and elsewhere has a manual
-        ``impl<B: Backend> Clone for VarBuilderArgs<'_, B>`` referring to
-        ``std::clone::Clone``. The impl_item handler must require
-        ``trait_sym.kind == "trait"``; otherwise it binds to the candle-local
-        ``struct Clone`` and emits a spurious confidence-0.95
-        ``VarBuilderArgs implements struct-Clone`` edge. Same structural class
-        as WI-zozuz BUG-03 (the inheritance-linker analogue, already fixed via
-        Rust kind discipline).
+        A crate may define a marker ``struct Clone;`` (used for an
+        ``impl Map1 for Clone`` block) and elsewhere have a manual
+        ``impl Clone for VarBuilderArgs`` referring to ``std::clone::Clone``.
+        The impl_item handler must require ``trait_sym.kind == "trait"``;
+        otherwise it binds to the local ``struct Clone`` and emits a spurious
+        confidence-0.95 ``VarBuilderArgs implements struct-Clone`` edge
+        (WI-kahaz; the inheritance linker applies the same Rust kind
+        discipline, WI-zozuz).
         """
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -3731,18 +3731,16 @@ class TestRustTraitImplEdges:
     ) -> None:
         """impl Module for Bar binds to trait Module when struct Module also exists.
 
-        WI-milak / BUG-04: ``rust.py`` previously did a single-value
-        ``global_symbols.get(name)`` for the trait lookup. When a trait
-        and a struct share a short name across files (candle's
-        ``candle-core::Module`` trait vs ``candle-kernels::Module``
-        struct), the dict overwrites and the surviving symbol is
-        registration-order dependent. With WI-kahaz's kind-discipline
-        guard in place, the bug morphs from "edge points at the wrong
-        struct" into "edge is unresolved" — both incorrect; only the
-        canonical trait edge is correct.
+        When a trait and a struct share a short name across files (a
+        ``Module`` trait in one crate, a ``Module`` struct in another), a
+        single-value ``global_symbols.get(name)`` trait lookup is
+        registration-order dependent: the dict keeps whichever registered
+        last. Under the kind-discipline guard that yields an unresolved
+        edge, without it an edge to the struct — both incorrect; only the
+        canonical trait edge is correct (WI-milak / BUG-04).
 
-        Filenames here bias the trait toward registering first so the
-        pre-fix struct overwrite is exercised.
+        Filenames here bias the trait toward registering first, so a
+        single-value lookup would see the struct overwrite it.
         """
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -4029,9 +4027,9 @@ class TestRustGenericTraitMethodBlocklist:
     def test_blocked_load_prevents_atomic_false_positives(self, tmp_path: Path) -> None:
         """x.load() produces no edge — prevents AtomicU64.load() false positives.
 
-        WI-bakak: jolt's JoltDevice::load rslice had 22/29 false positive
-        depth=1 callers from AtomicU64.load(Ordering::Relaxed) conflated
-        with JoltDevice.load().
+        Without the block, ``AtomicU64.load(Ordering::Relaxed)`` calls are
+        conflated with a first-party ``Device::load`` and flood its reverse
+        slice with false callers (WI-bakak).
         """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
@@ -4792,7 +4790,7 @@ struct Server {
 
     def test_tuple_struct_fields_by_position(self) -> None:
         """Tuple structs register their fields by position, the names
-        ``self.0.method()`` uses (WI-lirik; they were skipped before)."""
+        ``self.0.method()`` uses (WI-lirik)."""
         result = self._parse(b"struct Wrapper(pub App, Box<Handler>);")
         assert result["Wrapper"] == {"0": "App", "1": "Handler"}
 
@@ -5168,9 +5166,10 @@ impl Server {
     def test_scoped_type_field_call(self, tmp_path: Path) -> None:
         """self.inner.lock() where inner: std::sync::Mutex resolves to Mutex::lock.
 
-        WI-tupun: scoped_type_identifier returns the full module path
+        scoped_type_identifier returns the full module path
         (e.g., "std::sync::Mutex") but symbols are stored with bare names.
-        The module prefix must be stripped before constructing typed_name.
+        The module prefix must be stripped before constructing typed_name
+        (WI-tupun).
         """
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -5488,7 +5487,7 @@ impl Server {
             f"Should detect Self::handle inside select!, got: {call_edges}"
         )
         # Check evidence type. The macro-body edge carries NO call_construct
-        # (WI-dapap): ``macro_body`` named the detector, not a construct.
+        # (WI-dapap): ``macro_body`` would name the detector, not a construct.
         macro_edges = [
             e for e in handle_edges
             if e.evidence_type == "ast_call" and "call_construct" not in (e.meta or {})
@@ -5735,10 +5734,10 @@ fn main() { helper(); }
         assert len(unresolved_helper) == 0
 
 
-# WI-vipur: Rust tree-sitter scoped-path attribute emission.
+# Rust tree-sitter scoped-path attribute emission (WI-vipur).
 #
-# The WI-gapam ``emit_module_attribute_refs`` helper was extended with
-# a ``scoped_path=True`` mode (left-recursive walk over ``path`` + ``name``
+# The shared ``emit_module_attribute_refs`` helper has a
+# ``scoped_path=True`` mode (left-recursive walk over ``path`` + ``name``
 # children) so it can match Rust's ``scoped_identifier`` nodes.
 # ``std::env::consts::OS`` parses as a nested chain of
 # ``scoped_identifier`` nodes; walking left finds the ``std`` alias
@@ -5746,15 +5745,14 @@ fn main() { helper(); }
 # without a ``use``), and the middle-level match ``std::env::consts``
 # emits a ``module_attr_ref`` edge that io_boundary tags as
 # ``host_info_read`` against rust.yaml's ``module: std::env,
-# attributes: [consts]`` (``env_read`` until INV-tutar split the boundary --
-# ``consts::OS`` is the platform's NAME, not configuration).
+# attributes: [consts]`` (not ``env_read``: ``consts::OS`` is the platform's
+# NAME, not configuration; INV-tutar).
 #
 # Note: the ``rust-analyzer`` optional backend
 # (``hypergumbo-lang-rust-analyzer``) has its own semantic resolver
-# that is untouched by this change.  Users who have rust-analyzer
-# installed continue to get full Rust semantics via that path.
+# and does not use this path.
 class TestRustModuleAttrRefsScoped:
-    """WI-vipur: verify the tree-sitter Rust analyzer emits
+    """Verify the tree-sitter Rust analyzer emits
     ``module_attr_ref`` edges for scoped-path attribute reads and
     that io_boundary tags them against rust.yaml."""
 
@@ -5881,7 +5879,7 @@ pub fn os_name() -> &'static str {
 
 
 class TestRustDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on Rust callable symbols."""
+    """Symbol.docstring on Rust callable symbols (INV-jahiv)."""
 
     def test_function_with_rustdoc_comment(self, tmp_path: Path) -> None:
         """Function symbols populate docstring from preceding /// comments."""
@@ -5981,10 +5979,11 @@ class TestRustCyclomaticComplexity:
 
 
 class TestRustBareMethodMagnetGate:
-    """INV-fahub: a bare identifier call (``foo()``) must NOT bind a
+    """A bare identifier call (``foo()``) must NOT bind a
     high-confidence ``calls`` edge to a DIFFERENT impl's same-named method on
     weak short-name (suffix) evidence — the cross-language "magnet" misbind
-    (dozens of bare call sites collapsing onto one arbitrary ``Type::foo``).
+    (dozens of bare call sites collapsing onto one arbitrary ``Type::foo``;
+    INV-fahub).
 
     The gate (shared ``defer_bare_method_call`` helper, ``separator="::"``)
     withholds such a match and instead emits an unresolved edge carrying
@@ -6126,15 +6125,15 @@ class TestRustBareMethodMagnetGate:
 
 
 class TestRustUseAndTypePositionsAreNotAttributeReads:
-    """INV-pusin: the scoped-path walk emitted ``use`` paths and return-type
-    paths as attribute reads.
+    """The scoped-path walk must not emit ``use`` paths or return-type paths
+    as attribute reads (INV-pusin).
 
-    The ``use`` case is a DUPLICATE HOME. The analyzer already emits each
-    ``use`` statement as an ``imports`` edge; the uncatalogued-module gate in
-    ``verify_claims`` deliberately excludes imports because an import performs
-    no I/O — and the same fact re-entered through ``module_attr_ref``, putting
-    ``std`` / ``std.net`` / ``std.io`` on the "could not classify" list for a
-    crate with no dependencies at all.
+    The ``use`` case would be a DUPLICATE HOME. The analyzer already emits
+    each ``use`` statement as an ``imports`` edge; the uncatalogued-module
+    gate in ``verify_claims`` deliberately excludes imports because an import
+    performs no I/O — and the same fact re-entering through
+    ``module_attr_ref`` would put ``std`` / ``std.net`` / ``std.io`` on the
+    "could not classify" list for a crate with no dependencies at all.
     """
 
     def test_use_statements_produce_imports_edges_and_no_attribute_reads(
@@ -6193,18 +6192,15 @@ pub fn os_name() -> &'static str {
         )
 
 
-# INV-pusin, SECOND CLOSURE. The first closure's repro used exactly one
-# spelling — ``use a::b::c;`` — and the item was marked satisfied on it. Five
-# other ``use`` spellings still leaked, because the tree-sitter-rust grammar
-# does not put every ``use`` path directly under ``use_declaration``: it wraps
-# the braced, wildcard and aliased forms in ``scoped_use_list`` /
+# Every ``use`` spelling, not just one (INV-pusin). The tree-sitter-rust
+# grammar does not put every ``use`` path directly under ``use_declaration``:
+# it wraps the braced, wildcard and aliased forms in ``scoped_use_list`` /
 # ``use_wildcard`` / ``use_as_clause``, and ``_scoped_context_kind`` reports
-# the WRAPPER, which the skip tuple did not name. So a closure satisfied the
-# repro and not the statement.
+# the WRAPPER. A fix checked against one spelling (``use a::b::c;``) can
+# therefore pass while the others leak.
 #
-# This table is the remedy the item's ruling asked for: a FORM ENUMERATION, so
-# that a ``use`` spelling nobody has thought of fails CI instead of silently
-# re-opening the defect a third time. It is paired with
+# This table is a FORM ENUMERATION, so that a ``use`` spelling nobody has
+# thought of fails CI instead of silently leaking. It is paired with
 # ``test_every_use_node_kind_in_the_grammar_is_exercised`` below, which fails
 # if the grammar grows a ``use_*`` shape this table does not cover.
 _USE_FORMS: tuple[tuple[str, str], ...] = (
@@ -6232,8 +6228,8 @@ _USE_FORMS: tuple[tuple[str, str], ...] = (
 )
 
 # NEGATIVE CONTROLS. Every one of these is a GENUINE value read or call and
-# MUST keep emitting: the direction of this fix is to REMOVE withholding, so
-# an over-broad suppression would buy clean verdicts by going blind, which is
+# MUST keep emitting: an over-broad suppression would buy clean verdicts by
+# going blind, which is
 # the false-all-clear direction. Without these the enumeration above is
 # satisfied by an analyzer that stopped emitting attribute reads at all.
 _VALUE_READS: tuple[tuple[str, str, str], ...] = (
@@ -6251,7 +6247,7 @@ _VALUE_READS: tuple[tuple[str, str, str], ...] = (
 
 
 class TestRustEveryUseFormIsAnImportNotAnAttributeRead:
-    """INV-pusin: NO ``use`` spelling may reach the coverage gate as a read."""
+    """NO ``use`` spelling may reach the coverage gate as a read (INV-pusin)."""
 
     @pytest.mark.parametrize(
         "form_id,src", _USE_FORMS, ids=[f[0] for f in _USE_FORMS]
@@ -6330,10 +6326,11 @@ class TestRustEveryUseFormIsAnImportNotAnAttributeRead:
 
 
 def test_a_method_call_never_binds_a_free_function(tmp_path: Path) -> None:
-    """WI-jomik call shape: ``p.join("x")`` calls a METHOD on ``p``; a free
+    """Call shape: ``p.join("x")`` calls a METHOD on ``p``; a free
     ``fn join`` elsewhere in the crate is not a candidate. The method pool
-    holds free functions too (for ``module::f()`` paths), so the lone free
-    ``join`` used to bind every ``.join()`` -- std's ``Path::join`` on just."""
+    holds free functions too (for ``module::f()`` paths), so without the
+    call-shape filter the lone free ``join`` would bind every ``.join()`` --
+    std's ``Path::join`` included (WI-jomik)."""
     from hypergumbo_lang_mainstream.rust import analyze_rust
 
     (tmp_path / "src").mkdir()

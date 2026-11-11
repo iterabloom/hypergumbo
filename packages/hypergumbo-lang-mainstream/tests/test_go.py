@@ -556,9 +556,9 @@ var name string
     def test_skips_function_local_var(self, tmp_path: Path) -> None:
         """INV-sidab: an initialized function-local ``var x = ...`` must NOT
         emit a module variable — only package (file) scope vars are module
-        variables. Before the fix, the all-node tree walk reached
-        ``var_declaration`` nodes inside function bodies (parent
-        ``statement_list``) and emitted them as ``kind="variable"``."""
+        variables. The all-node tree walk reaches ``var_declaration`` nodes
+        inside function bodies (parent ``statement_list``), which must not be
+        emitted as ``kind="variable"``."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -1138,8 +1138,8 @@ func main() {
         """r.Del("/path", handler) is detected as DELETE route.
 
         Chi router uses Del() as a shorthand for Delete(). Without this,
-        DEL /series → api.dropSeries is missing from routes.txt (DEEP
-        bakeoff cohort 16 finding on prometheus).
+        prometheus's DEL /series → api.dropSeries would be missing from
+        the routes.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -2743,20 +2743,19 @@ class TestParseGoModDependencies:
 
 
 class TestGoImportPathResolution:
-    """Tests for import path disambiguation (Bug #1 from bakeoff report)."""
+    """Tests for import path disambiguation."""
 
     def test_resolves_call_to_correct_file_by_import_path(self, tmp_path: Path) -> None:
         """When multiple files define same symbol, resolve by import path.
 
-        This tests Bug #1: Go import resolution ignores import paths.
         When multiple files declare the same package name, hypergumbo should
         use the import path to disambiguate, not pick arbitrarily.
 
         We use 'aaa_wrong' vs 'zzz_correct' naming to ensure alphabetical
         ordering would pick the WRONG file (aaa < zzz).
 
-        Fixed in INV-007: ListNameResolver now tries progressively shorter
-        path suffixes to find unique matches.
+        ListNameResolver tries progressively shorter path suffixes to find
+        a unique match (INV-007).
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -2814,7 +2813,7 @@ func main() {
 
 
 class TestGoReceiverMethodCalls:
-    """Tests for receiver.Method() call extraction (Bug #2 from bakeoff report)."""
+    """Tests for receiver.Method() call extraction."""
 
     def test_extracts_receiver_method_call_local(self, tmp_path: Path) -> None:
         """Extracts method calls where method IS defined locally.
@@ -2871,8 +2870,8 @@ func main() {
     def test_extracts_receiver_method_call_external(self, tmp_path: Path) -> None:
         """Extracts method calls where receiver type is EXTERNAL.
 
-        This tests Bug #2: Call extraction fails for receiver.Method() calls
-        when the method is defined externally (not in our symbol registry).
+        Call extraction must not drop receiver.Method() calls when the
+        method is defined externally (not in our symbol registry).
 
         In real gRPC code:
             func RegisterFooServer(s grpc.ServiceRegistrar, srv FooServer) {
@@ -3404,8 +3403,8 @@ class TestGoPackageQualifiedCallResolution:
     def test_package_call_not_hijacked_by_local_method(self, tmp_path: Path) -> None:
         """bug.AddComment() resolves to the imported package, not a local method.
 
-        Regression: the local-first check matched ``AddComment`` in local
-        symbols (from ``BugCache.AddComment``), ignoring the import alias.
+        The local-first check must not match ``AddComment`` in local
+        symbols (from ``BugCache.AddComment``) and ignore the import alias.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -4308,7 +4307,7 @@ class TestGoAmbiguousMethodCallGuard:
     receiver type and the method name has 2+ definitions across different
     types, the system must NOT produce a resolved call edge (which would
     be a false positive). Instead it should produce an unresolved edge
-    with evidence_type="ambiguous_method_call".
+    with evidence_type="ast_call" and meta resolution_quality="ambiguous".
 
     Invariant: Method calls with 2+ ambiguous receiver types must not
     produce resolved call edges.
@@ -4497,15 +4496,14 @@ func main() {
         local Set method, even when the local codebase defines an interface
         with the same method name.
 
-        This is the alertmanager Alerts.Set false-positive pattern: every
-        ``q.Set("k", "v")`` (where ``q`` is a ``url.Values``) was emitting
-        an ``interface_dispatch`` calls edge to a local ``Alerts.Set``
-        because the dispatch guard checks only the method short name and
-        ignores the receiver type tracked in ``var_types``. The fix uses
-        the existing ``var_types`` lookup at the dispatch site so that a
-        receiver of known type only dispatches to candidates owned by
-        that type — and emits an unresolved external edge when nothing
-        matches.
+        This is the alertmanager Alerts.Set false-positive pattern: a
+        dispatch guard that checked only the method short name and ignored
+        the receiver type tracked in ``var_types`` would emit an
+        ``interface_dispatch`` calls edge from every ``q.Set("k", "v")``
+        (where ``q`` is a ``url.Values``) to a local ``Alerts.Set``. The
+        ``var_types`` lookup at the dispatch site makes a receiver of known
+        type dispatch only to candidates owned by that type — and emit an
+        unresolved external edge when nothing matches.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -4692,8 +4690,8 @@ func handler() {
 
         # Should NOT be marked as chained_call_unresolved
         for edge in handler_calls:
-            # Post-Cluster-B fold: chained_call_unresolved → method_call_field_chain
-            # + is_resolved=False. Guard not firing means is_resolved is True.
+            # The chained-call guard's edge is a method ast_call with
+            # receiver="field_chain" and is_resolved=False; none may appear.
             assert not (
                 (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "field_chain")
                 and edge.is_resolved is False
@@ -4855,8 +4853,8 @@ func marshalLocal(m *MarshalEncoder, data interface{}) {
 
         When the inner callee (NewQuery) has a known receiver type (Engine)
         and the return-type registry maps Engine.NewQuery → Query, the outer
-        method (Exec) should resolve to Query.Exec instead of being marked
-        chained_call_unresolved.
+        method (Exec) should resolve to Query.Exec instead of getting the
+        chained-call guard's unresolved edge.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -4893,7 +4891,7 @@ func runQuery(e *Engine) {
             f"return-type registry, found: {[e.dst for e in exec_calls]}"
         )
 
-        # Should NOT be unresolved chained-call (post-Cluster-B fold)
+        # Should NOT be the chained-call guard's unresolved edge
         exec_unresolved = [
             e for e in exec_calls
             if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "field_chain") and e.is_resolved is False
@@ -5049,11 +5047,11 @@ func doWork(mu *sync.Mutex) {
                 f"mu.Lock() should NOT resolve to DirLocker.Lock, got {edge.dst}"
             )
             # With qualified-type parameter tracking, *sync.Mutex propagates
-            # the module hint through import_aliases, so the edge goes through
-            # the unresolved_method_call path (with correct module hint 'sync')
-            # instead of the stdlib_method_call guard.  Both are correct — the
+            # the module hint through import_aliases, so the edge may be the
+            # plain unresolved method edge (module hint 'sync') rather than
+            # the stdlib guard's (meta receiver='stdlib').  Both are correct —
+            # both are ast_call + meta['call_construct']='method' — and the
             # key invariant is that DirLocker.Lock is NOT chosen.
-            # Post-WI-nibis fold: stdlib_method_call / method_call → ast_call + meta['call_construct']='method'.
             assert (
                 edge.evidence_type == "ast_call"
                 and edge.meta.get("call_construct") == "method"
@@ -5188,10 +5186,9 @@ func saveData(m *sync.Map) {
                 f"m.Store() should NOT resolve to DownTrackSpreader.Store, got {edge.dst}"
             )
             # With qualified-type parameter tracking, *sync.Map propagates
-            # module hint, so the edge may go through unresolved method_call
-            # path (post-Cluster-B fold WI-nunal: unresolved_method_call →
-            # method_call + is_resolved=False) instead of stdlib_method_call.
-            # Both are correct. Post-WI-nibis fold: both → ast_call + meta['call_construct']='method'.
+            # the module hint, so the edge may be the plain unresolved method
+            # edge rather than the stdlib guard's. Both are correct, and both
+            # are ast_call + meta['call_construct']='method', is_resolved=False.
             assert (
                 edge.evidence_type == "ast_call"
                 and edge.meta.get("call_construct") == "method"
@@ -5247,7 +5244,7 @@ class TestGoPrivateMethodScope:
         """x.string() should NOT resolve to recalcRequest.string() across files.
 
         When only one type defines a lowercase method (e.g., `string`), the
-        ambiguity guard (which requires 3+ candidates) doesn't fire. But
+        ambiguity guard (which requires 2+ candidates) doesn't fire. But
         lowercase methods are package-private in Go, so resolving them
         globally without knowing the receiver type produces false positives.
         The analyzer should produce an unresolved edge instead.
@@ -5350,8 +5347,8 @@ class TestGoBuiltinTypeConversions:
     conversions, not function calls.  Tree-sitter parses them as
     ``call_expression`` with an ``identifier`` callee.  Without filtering,
     ``string(result["id"])`` resolves to any user-defined method named
-    ``string`` — e.g. ``recalcRequest.string`` had 577 false-positive
-    callers in forgejo because Go type conversions shadowed method names.
+    ``string`` — e.g. ``recalcRequest.string`` in forgejo would draw
+    hundreds of false-positive callers from Go type conversions.
     """
 
     def test_string_conversion_not_resolved(self, tmp_path: Path) -> None:
@@ -6237,13 +6234,13 @@ func (f *FakeCloser) Close(ctx context.Context) error { return nil }
         """Many packages declaring `type Notifier struct` must each be wired
         up as implementations of a cross-package `Notifier` interface.
 
-        Regression: alertmanager (and any Go repo with a cross-package
-        interface whose name collides with the implementing struct's
-        short name) lost 16 of 17 ``implements`` edges because the
-        cross-file structural matcher keyed both ``global_struct_methods``
-        and ``struct_syms`` by short name.  All same-named structs were
-        merged into one entry, and only the first struct symbol got the
-        ``base_classes`` annotation.  See INV-zomuk.
+        A cross-file structural matcher that keyed ``global_struct_methods``
+        and ``struct_syms`` by short name would merge all same-named structs
+        into one entry, so only the first struct symbol would get the
+        ``base_classes`` annotation and alertmanager (or any Go repo with a
+        cross-package interface whose name collides with the implementing
+        struct's short name) would lose almost all its ``implements`` edges.
+        See INV-zomuk.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -6300,13 +6297,13 @@ func (n *Notifier) Notify(msg string) (bool, error) {{
         """Methods on a struct declared in one file but defined in another
         file of the same package must still count toward structural matching.
 
-        WI-hobuk: prior to the per-package aggregation fix, the cross-file
-        structural matcher iterated per-file, so it only saw methods that
-        lived in the same file as the struct's type declaration.  When a Go
-        package idiomatically split a struct's type into ``foo.go`` and
+        The cross-file structural matcher aggregates method sets per
+        package (WI-hobuk). Iterating per file would see only methods that
+        live in the same file as the struct's type declaration, so when a
+        Go package idiomatically splits a struct's type into ``foo.go`` and
         its methods into ``foo_helpers.go`` (or any other file in the same
-        package), the matcher silently dropped those methods from the
-        struct's effective method set and the struct failed to satisfy any
+        package), those methods would silently drop out of the struct's
+        effective method set and the struct would fail to satisfy any
         interface that required them.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
@@ -6362,8 +6359,8 @@ func (s *Service) Close() error {
 
         Edge case for WI-hobuk: the type is declared in ``types.go`` with
         no methods at all in that file, while every method is defined in
-        ``methods.go``.  Per-file iteration would have seen Service's
-        type in types.go with an empty method set and given up.
+        ``methods.go``.  Per-file iteration would see Service's
+        type in types.go with an empty method set and give up.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -6408,8 +6405,8 @@ func (s *Service) Close() error {
 
         Two files declaring ``type Service struct`` in *different* packages
         must not have their method sets merged.  This guards the
-        per-package aggregation fix from over-merging into the
-        cross-package shadow that INV-zomuk warned about.
+        per-package aggregation from over-merging across packages
+        (the cross-package shadow of INV-zomuk).
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -6685,8 +6682,8 @@ type Any interface{}
 
         When Plugin.Eval, BlockPlugin.Eval, and AllowPlugin.Eval all exist
         in global_symbols, iterating over ``[]Plugin`` and calling
-        ``p.Eval()`` triggers the ambiguity guard (go.py:1871) which
-        produces ``go:external:0-0:Eval:unresolved``.  It should instead
+        ``p.Eval()`` reaches the ambiguity guard, which would otherwise
+        produce ``go:external:0-0:Eval:unresolved``.  It should instead
         prefer the interface method ``Plugin.Eval`` because dispatches_to
         edges will route the slice to concrete implementations.
         """
@@ -7186,9 +7183,8 @@ func main() {}
         prefix ("Stage.Exec", not "notify.Stage.Exec") because symbol names
         in global_symbols are unqualified.
 
-        This is the root cause of the deep bakeoff's interface dispatch gap:
-        alertmanager's Dispatcher.stage (type notify.Stage) produced unresolved
-        edges instead of linking to Stage.Exec.
+        Without the strip, alertmanager's Dispatcher.stage (type notify.Stage)
+        would produce unresolved edges instead of linking to Stage.Exec.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -7278,7 +7274,7 @@ func (d *Dispatcher) Run() string {
     ) -> None:
         """s.Exec() where s is param of type notify.Stage → typed_receiver_call.
 
-        Same bug as cross-package field, but via function parameter with
+        Same rule as the cross-package field case, but via function parameter with
         qualified type.  The receiver_type in var_types is "notify.Stage";
         stripping the package prefix gives "Stage" for the qualified name.
         """
@@ -7783,12 +7779,12 @@ func TaggedFunc() {}
         )
 
 
-# WI-lozug PR 1: wire emit_module_attribute_refs into _analyze_go_impl so
-# that attribute reads on imported packages (e.g. ``os.Stdout``) produce
-# ``module_attr_ref`` edges that io_boundary can tag against the
-# ``attributes:`` entries in ``io_primitives/go.yaml``.
+# The Go analyzer runs emit_module_attribute_refs so that attribute reads
+# on imported packages (e.g. ``os.Stdout``) produce ``module_attr_ref`` edges
+# that io_boundary can tag against the ``attributes:`` entries in
+# ``io_primitives/go.yaml`` (WI-lozug).
 class TestGoModuleAttrRefs:
-    """Tests for ``module_attr_ref`` emission in Go (WI-lozug PR 1)."""
+    """Tests for ``module_attr_ref`` emission in Go (WI-lozug)."""
 
     def test_emits_module_attr_ref_for_os_stdout_argument(
         self, tmp_path: Path,
@@ -8043,7 +8039,7 @@ func main() {
 
 
 class TestGoDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on Go callable symbols."""
+    """Symbol.docstring on Go callable symbols (INV-jahiv)."""
 
     def test_function_with_preceding_doc_comment(self, tmp_path: Path) -> None:
         """Function symbols populate docstring from preceding // comments."""
@@ -8079,7 +8075,7 @@ func Plain() {
 
 
 class TestGoQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Go symbols."""
+    """Symbol.qualified_name on Go symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
         """Methods carry package.Receiver.method qualified_name with '.' separator."""
@@ -8121,7 +8117,7 @@ class TestGoQualifiedName:
 
 
 class TestGoCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity is populated on Go callables."""
+    """cyclomatic_complexity is populated on Go callables."""
 
     def test_function_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.go import analyze_go
@@ -8174,9 +8170,9 @@ class TestGoBareMethodMagnetGate:
     ) -> None:
         """A bare ``Process()`` whose short name resolves only to methods on
         OTHER types (ambiguous match) is withheld, not bound — instead an
-        unresolved edge is emitted. (Until WI-bivin it carried the caller's
-        enclosing class for the inherited_calls Site-1 walker; Go has no
-        implicit receiver for that walker to recover.)
+        unresolved edge is emitted, with no enclosing-class stamp: Go has no
+        implicit receiver for the inherited_calls Site-1 walker to recover
+        (WI-bivin).
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -8234,11 +8230,11 @@ class TestGoBareMethodMagnetGate:
         # WI-bivin: and WITHOUT ``enclosing_class``. Go has no implicit
         # receiver -- a promoted method is reached only as ``c.Process()`` --
         # so a bare ``Process()`` is never a method of the caller's type, and
-        # the stamp only let the inherited_calls Site-1 walker bind it to an
-        # embedded type's method (live, dev 7a645c6c76: a compiling package
-        # with ``func Process()`` got ``Caller.Run -> TypeA.Process`` at 0.9).
-        # A bare name now resolves in the caller's own package, never to a
-        # method (test_go_bare_call_package_scope.py).
+        # the stamp would only let the inherited_calls Site-1 walker bind it
+        # to an embedded type's method (``Caller.Run -> TypeA.Process`` in a
+        # package whose ``func Process()`` is the real callee). A bare name
+        # resolves in the caller's own package, never to a method
+        # (test_go_bare_call_package_scope.py).
         assert deferred[0].meta is not None
         assert "enclosing_class" not in deferred[0].meta
 
@@ -8308,8 +8304,8 @@ class TestGoBareMethodMagnetGate:
 class TestGoDotImportCall:
     """Coverage for the ``import . "pkg"`` dot-import branch (WI-vovum): a bare
     call whose name was dot-imported is attributed to the first dot-imported
-    package as an unresolved edge (`meta.binding=="dot_import"`). Pre-existing
-    behavior; unit-covered here so it stays green under the changed-file gate."""
+    package as an unresolved edge (`meta.binding=="dot_import"`). Unit-covered
+    here so it stays green under the changed-file gate."""
 
     def test_dot_import_call_attributed_to_package(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.go import analyze_go
@@ -8334,7 +8330,7 @@ class TestGoDotImportCall:
 
 def test_interface_method_declarations_carry_stable_id(tmp_path: Path) -> None:
     """WI-vibad: interface-method declarations (kind="method") carry a typed
-    producer stable_id. They were None — deliberately excluded from the
+    producer stable_id. They are deliberately excluded from the
     WI-rihob name-scoped backstop, so the producer must mint the typed id
     (signature-bearing, so same-named methods across interfaces stay distinct).
     """

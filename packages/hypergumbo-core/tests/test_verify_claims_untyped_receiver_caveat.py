@@ -1,63 +1,51 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A clean boundary verdict must disclose the calls whose receiver it could not type.
 
-WHAT WAS BROKEN (INV-fibis), reproduced on the shipped CLI at dev 9e3bc55e5c with a
-two-arm control and nothing else in the file:
+THE TWO-ARM CASE (INV-fibis), stdlib only, no overlay and no opaque launch::
 
-    def control_fsread(p):
-        with open(p) as fh:
-            return fh.read()
-
-    def send_unannotated(sock, payload):     # ARM 1 -- the residual
+    def send_unannotated(sock, payload):     # ARM 1 -- untyped receiver
         return sock.sendall(payload)
 
     def send_annotated(sock: socket.socket, payload):   # ARM 2 -- otherwise identical
         return sock.sendall(payload)
 
-      ARM 1:  x [CONTROL-FSREAD] violated (2 chains)   <- the run WORKED
-              v [NET-SEND] "This service never sends data over the network."
-                           Verdict: CONFIRMED          <- FALSE
-      ARM 2:  x [CONTROL-FSREAD] violated (2 chains)
-              x [NET-SEND] violated (1 chain)          <- SEEN
+ARM 2 reports ``violated`` for "This service never sends data over the network."
+Without a disclosure, ARM 1 would read a bare ``confirmed`` -- a certified absence of
+network egress about a function whose entire body is a network send.
 
-Exactly one of the two spellings is visible, and the control fires in BOTH arms, so
-the null is not a broken run: a security tool certified absence of network egress
-about a function whose entire body is a network send.
-
-WHY THE EXISTING GATES MISSED IT. ``_adjudicate_external_modules`` counts only a dst
+WHY THIS IS NOT A COVERAGE FAILURE. ``_adjudicate_external_modules`` counts only a dst
 that NAMES a module. ARM 1's call edge is ``python:external:0-0:sendall:external_symbol``
 -- the bare placeholder for a receiver the analysis could not type -- which names none,
 so it is skipped by the ``if not module: continue`` residual that function documents.
-That skip is CORRECT and is unchanged here: the placeholder is the largest edge
-population in a Python repo and identifies no library to report, so counting it as an
-uncatalogued module would downgrade nearly every repo to ``inconclusive`` while telling
-the reader nothing. ``compute_boundary_coverage`` therefore still returns
-``complete=True``, and ``test_untyped_receiver_population_is_the_disclosed_residual``
-still pins that.
+That skip is deliberate: the placeholder is the largest edge population in a Python
+repo and identifies no library to report, so counting it as an uncatalogued module
+would downgrade nearly every repo to ``inconclusive`` while telling the reader
+nothing. ``compute_boundary_coverage`` therefore returns ``complete=True``, which
+``test_untyped_receiver_population_is_the_disclosed_residual`` pins.
 
-WHAT CHANGED IS THE VERDICT, NOT THE COVERAGE. The claim still HOLDS everywhere the
-analysis could see; what it stops doing is being SILENT about the calls it could not
-adjudicate. ``CAVEAT_UNTYPED_RECEIVER`` is the fourth member of an established family
-and reuses ADR-0016 s4's fourth verdict for exactly the distinction its sibling
-already argues -- a DISCLAIMER ("a whole language here has no catalogue, I am blind")
-versus a QUALIFIED OPINION ("I saw this call, I know ``sendall`` is a catalogued
-net_send method, and I could not determine the receiver's type").
+THE QUALIFICATION IS AT THE VERDICT, NOT THE COVERAGE. The claim HOLDS everywhere the
+analysis could see; the verdict is not SILENT about the calls it could not
+adjudicate. ``CAVEAT_UNTYPED_RECEIVER`` uses ADR-0016 s4's qualified verdict
+(``confirmed_with_caveats``) for the distinction its sibling
+``CAVEAT_OPAQUE_BOUNDARY`` already draws -- a DISCLAIMER ("a whole language here has
+no catalogue, I am blind") versus a QUALIFIED OPINION ("I saw this call, I know
+``sendall`` is a catalogued net_send method, and I could not determine the
+receiver's type").
 
-BOUNDARY SCOPING IS THE LOAD-BEARING PART, and it is what makes this survivable where
-the previously-proposed DOWNGRADE was not. That proposal was measured on 2026-08-11
-and recorded DO NOT BUILD IT: on poetry every boundary would downgrade (db_read 234,
-ipc_recv 160, fs_read 93, fs_write 67, db_write 40, net_send 37, net_recv 35,
-ipc_send 1), because the catalogued method names include ``close`` / ``get`` / ``read``
-/ ``write`` / ``send`` -- the most common method names in Python. Two things answer
-that: the verdict is QUALIFIED rather than WITHHELD, and a name is matched only
-against primitives catalogued for THE CLAIMED boundary, so the unrelated dict ``.get``
-from that measurement cannot touch a ``net_send`` verdict at all.
+BOUNDARY SCOPING IS THE LOAD-BEARING PART. A DOWNGRADE on this signal is unusable:
+on a real repository (poetry) every boundary would downgrade, because the catalogued
+method names include ``close`` / ``get`` / ``read`` / ``write`` / ``send`` -- the
+most common method names in Python. Two things answer that: the verdict is QUALIFIED
+rather than WITHHELD, and a name is matched only against primitives catalogued for
+THE CLAIMED boundary, so an unrelated dict ``.get`` cannot touch a ``net_send``
+verdict at all. ``sendall`` IS catalogued (python.yaml net_send, ``socket.socket``),
+which is why the fixture above is the discriminating case.
 
-THE OTHER HALF OF THAT REFUTATION DOES NOT SURVIVE AND IS NOT CITED HERE. It also
-argued the signal was "anti-correlated with the truth", from ``session.post`` -- a
-primitive absent from the catalogue entirely (INV-fotav's third-party gap), not one
-reached through an untyped receiver. ``sendall`` IS catalogued (python.yaml net_send,
-``socket.socket``), which is why the fixture above is the discriminating case.
+THE UNSCOPED HALF. A primitive absent from the catalogue entirely (``session.post``,
+INV-fotav's third-party gap) cannot be matched by name, so the boundary-scoped
+caveat never fires on it. ``CAVEAT_UNKNOWN_RECEIVER_SCOPE`` covers that case: it
+discloses, with a count and a denominator, that a clean verdict is closed-world over
+the receivers the analysis could type. ``TestUnknownReceiverScope`` pins it.
 """
 
 import json
@@ -90,9 +78,8 @@ def _py_catalog() -> IoBoundaryCatalog:
 
     - ``socket.socket.sendall`` is METHOD-kind and ``net_send``: the primitive the
       repro's untyped receiver actually reaches.
-    - ``dict.get`` stands in for the ``db_read`` collision the 2026-08-11
-      measurement caught -- a catalogued method name that is also the single most
-      common method name in Python.
+    - ``get`` stands in for a ``db_read`` collision -- a catalogued method name
+      that is also the single most common method name in Python.
     - ``builtins.open`` is FUNCTION-kind: a bare ``open()`` has no receiver at all,
       so it must never raise a caveat about one.
     """
@@ -159,7 +146,7 @@ class TestTheRepro:
         )
         assert verdict.verdict == "confirmed_with_caveats"
         kinds = [c["kind"] for c in verdict.caveats]
-        # The scope caveat rides alongside from INV-fibis's unscoped half: this
+        # The scope caveat rides alongside (INV-fibis, unscoped half): this
         # receiver is untyped, so the verdict is closed-world whether or not the
         # method it calls happens to be catalogued. The boundary-scoped
         # disclosure is the one that says something SPECIFIC about net_send.
@@ -179,33 +166,31 @@ class TestTheRepro:
         assert "sendall" in verdict.caveats[0]["detail"]
 
     def test_coverage_completeness_is_deliberately_unchanged(self) -> None:
-        """The residual in ``_adjudicate_external_modules`` is NOT reversed. This
-        item is closed at the VERDICT layer precisely so the blanket-inconclusive
-        outcome PR #251 rejected is not reintroduced."""
+        """The residual in ``_adjudicate_external_modules`` stays a residual. The
+        disclosure lives at the VERDICT layer precisely so that coverage does not
+        become a blanket ``inconclusive`` on every repo."""
         assert _coverage([_untyped("sendall")]).complete is True
 
 
 class TestBoundaryScoping:
-    """The 2026-08-11 mis-fire, inverted into an assertion."""
+    """A name catalogued for another boundary must not qualify this one."""
 
     def test_a_catalogued_name_for_another_boundary_cannot_touch_this_verdict(
         self,
     ) -> None:
-        """The measured example verbatim: an unrelated ``.get`` is catalogued
-        (db_read) and must leave a ``net_send`` verdict alone. Unscoped, this is
-        the branch that downgraded every boundary on poetry."""
+        """An unrelated ``.get`` is catalogued (db_read) and must leave a
+        ``net_send`` verdict alone. Unscoped, this match would qualify every
+        boundary on a real repo (poetry)."""
         coverage = _coverage([_untyped("get")])
         verdict = verify_claim(
             _claim("net_send", constraint_must_not_exist=True),
             BoundaryMap(), coverage,
         )
-        # NARROWED, NOT WEAKENED, when INV-fibis's unscoped half landed. The
-        # guarantee this test exists for is that an unrelated ``.get`` never
+        # The guarantee this test exists for is that an unrelated ``.get`` never
         # produces a NET_SEND-SPECIFIC claim -- "a method the net_send catalogue
-        # declares" is false of it, and asserting it was the 2026-08-11
-        # mis-fire. That still holds exactly. What the verdict now also carries
-        # is the boundary-AGNOSTIC fact that a receiver went untyped, which is
-        # true of this edge and says nothing about net_send.
+        # declares" is false of it. What the verdict does carry is the
+        # boundary-AGNOSTIC fact that a receiver went untyped (the scope
+        # caveat), which is true of this edge and says nothing about net_send.
         kinds = [c["kind"] for c in verdict.caveats]
         assert CAVEAT_UNTYPED_RECEIVER not in kinds
         assert kinds == [CAVEAT_UNKNOWN_RECEIVER_SCOPE]
@@ -237,7 +222,7 @@ class TestItDoesNotFireWhereThereIsNothingToDisclose:
         # Still no net_send-SPECIFIC claim -- that is what this test guards.
         # The closed-world scope caveat does fire, because the receiver's type
         # is unknown and ``frobnicate`` is therefore not evidence of ABSENCE
-        # either; see TestTheResidualNowClosed for why that changed.
+        # either; see TestTheResidualNowClosed.
         assert [c["kind"] for c in verdict.caveats] == [
             CAVEAT_UNKNOWN_RECEIVER_SCOPE
         ]
@@ -273,11 +258,11 @@ class TestItDoesNotFireWhereThereIsNothingToDisclose:
         assert verdict.verdict == "confirmed"
 
     def test_a_producer_stamped_launch_raises_nothing(self) -> None:
-        """INV-vokog, held to. A launch is an EXAMINED call reported by name
-        through ``CAVEAT_OPAQUE_BOUNDARY``; adding "and its receiver was untyped"
-        about the same edge is a second, contradictory statement about one call.
-        That disagreement between two consumers of the same population is what
-        made rc 3 unreachable in any repo containing a shell script."""
+        """A launch is an EXAMINED call reported by name through
+        ``CAVEAT_OPAQUE_BOUNDARY``; adding "and its receiver was untyped" about
+        the same edge would be a second, contradictory statement about one call.
+        Two consumers disagreeing over the same population would make rc 3
+        unreachable in any repo containing a shell script (INV-vokog)."""
         edge = _untyped("sendall")
         edge["meta"]["io_boundary"] = "command_launch"
         verdict = verify_claim(
@@ -285,9 +270,9 @@ class TestItDoesNotFireWhereThereIsNothingToDisclose:
             BoundaryMap(), _coverage([edge]),
         )
         # The verdict IS qualified — by the opaque channel, which is the one
-        # that owns this edge. Asserting ``confirmed`` here would have been
-        # asserting the launch away; what must hold is that the two channels
-        # stay disjoint over one call.
+        # that owns this edge. Asserting ``confirmed`` here would assert the
+        # launch away; what must hold is that the two channels stay disjoint
+        # over one call.
         assert [c["kind"] for c in verdict.caveats] == [CAVEAT_OPAQUE_BOUNDARY]
         assert untyped_receiver_sites([edge], {"python": _py_catalog()}) == {}
 
@@ -350,7 +335,8 @@ class TestItComposesWithTheSiblingCaveat:
     def test_both_kinds_ride_one_verdict(self) -> None:
         """A repo can both launch a program and call through an untyped receiver.
         ``_merge_caveat`` exists because a second writer erasing the first is this
-        module's documented failure (INV-virat); this is that path for the new kind."""
+        module's documented failure (INV-virat); this is that path for the
+        untyped-receiver kind."""
         coverage = BoundaryCoverage(
             complete=False,
             reason="the analysis launches an external program at 1 call site(s)",
@@ -377,8 +363,8 @@ class TestTheDisclosureScales:
         assert "distinct method" not in cav["detail"]
 
     def test_a_large_site_list_names_the_methods_and_keeps_every_entry(self) -> None:
-        """Measured shape: poetry's 306 ``fs_read`` sites are 16 names, and its
-        103 ``ipc_recv`` sites are ONE name (``get``). Five arbitrary line numbers
+        """On poetry, for example, 306 ``fs_read`` sites are 16 names, and 103
+        ``ipc_recv`` sites are ONE name (``get``). Five arbitrary line numbers
         out of three hundred is not a disclosure a reader can act on; the names
         are, because ``group`` is almost all ``re.Match`` and ``read_text`` is
         almost all ``pathlib``. ``entries`` keeps everything."""
@@ -422,48 +408,20 @@ class TestTheCaveatSurvivesAMerge:
 
 
 class TestTheResidualNowClosed:
-    """WAS ``TestTheResidualThisDoesNotClose``. Its assertion was that
-    ``session.post(...)`` through an untyped receiver "still confirms", carrying
-    the note: *a PR that changes it should be closing INV-fibis, not passing
-    by*. This is that PR, so the old argument is recorded here rather than
-    deleted -- it was right about the mechanism and wrong about the conclusion.
+    """An uncatalogued callee on an untyped receiver is disclosed, not silent.
 
-    WHAT IT ARGUED, verbatim in substance: ``post`` is declared for nothing, so
-    there is no signal distinguishing ``session.post(...)`` from
-    ``items.append(1)``; raising a caveat for every such call is "a caveat on
-    essentially every method call in a Python repo, which is the blanket outcome
-    PR #251 rejected wearing new clothes".
+    ``post`` is declared for nothing, so there is no signal distinguishing
+    ``session.post(...)`` from ``items.append(1)``. That is the finding, not an
+    objection to it: "no signal" is not grounds for SILENCE. A method call on an
+    object of unknown type is not evidence of absence, and a ``must_not_exist``
+    verdict is an assertion about absence. The boundary-scoped caveat cannot see
+    such calls (it matches names against the catalogue), and the coverage gaps
+    that otherwise happen to protect them are ones the project intends to close;
+    ``TestUnknownReceiverScope`` sets out the case.
 
-    WHY THE PREMISE SURVIVES AND THE CONCLUSION DOES NOT. There is indeed no
-    signal distinguishing the two -- that is precisely the finding, not an
-    objection to it. Where the argument fails is in treating "no signal" as
-    grounds for SILENCE. A method call on an object of unknown type is not
-    evidence of absence either, and a ``must_not_exist`` verdict is an assertion
-    about absence.
-
-    THE THREE THINGS THAT CHANGED THE ANSWER, all measured after that text was
-    written:
-
-    1. A corpus hunt over 32,593 non-test files found 90 real scopes whose
-       untyped receiver calls a genuine I/O verb outside the 120 catalogued
-       method-kind names (``post`` 56, ``upload_file`` 6, ``upload`` 6,
-       ``put_item``/``get_item`` 6, ``download_file`` 5, ``execute_command`` 3).
-       The boundary-scoped caveat fired on **zero** of them.
-    2. Not one of those 90 was protected by anything this module owns. All were
-       protected by a COVERAGE GAP -- 68 uncatalogued-module, 13 opaque-launch,
-       5 unsupported-language -- every one of which the project intends to
-       close. The protection is anti-correlated with the tool improving.
-    3. It is demonstrable end-to-end on unmodified real code. polis
-       ``deploy-static-assets.py`` uploads to S3 via ``s3_client.upload_file()``
-       on an unannotated parameter; with a realistic project overlay that audits
-       ``boto3`` but omits ``upload_file``, the shipped CLI returned **rc 0,
-       "never sends data over the network: confirmed"**. The documented remedy
-       for the other half of INV-fibis (overlays) is what REMOVES the accidental
-       protection for this half.
-
-    AND THE BLANKET COMPARISON DOES NOT HOLD. PR #251 rejected WITHHOLDING the
-    verdict -- ``inconclusive`` on every boundary of every repo, which tells the
-    reader nothing and destroys the exit-code ladder. This QUALIFIES it: the
+    THIS IS NOT THE BLANKET OUTCOME. WITHHOLDING the verdict -- ``inconclusive``
+    on every boundary of every repo -- would tell the reader nothing and destroy
+    the exit-code ladder. ``CAVEAT_UNKNOWN_RECEIVER_SCOPE`` QUALIFIES it: the
     verdict still reads clean, rc moves 0 -> 3 (documented as fail-closed), and
     the sentence carries a count and a denominator so the reader can size the
     unknown. The falsifiability control
@@ -474,8 +432,8 @@ class TestTheResidualNowClosed:
     def test_an_uncatalogued_callee_on_an_untyped_receiver_is_disclosed(
         self,
     ) -> None:
-        """``session.post(...)`` -- the exact fixture the old assertion pinned as
-        confirming silently."""
+        """``session.post(...)`` through an untyped receiver: the scope caveat
+        qualifies the verdict and names ``post``."""
         coverage = _coverage([_untyped("post")])
         verdict = verify_claim(
             _claim("net_send", constraint_must_not_exist=True),
@@ -489,9 +447,9 @@ class TestTheResidualNowClosed:
     def test_the_annotated_arm_is_still_handled_by_the_existing_gate(
         self,
     ) -> None:
-        """The discriminating control the old class shipped, unchanged in
-        meaning: type the receiver and the uncatalogued-module gate takes over,
-        so this class is not quietly duplicating that gate's job."""
+        """The discriminating control: type the receiver and the
+        uncatalogued-module gate takes over, so this class is not quietly
+        duplicating that gate's job."""
         coverage = _coverage(
             [_typed("python:requests.Session:0-0:post:external_symbol")]
         )
@@ -536,9 +494,9 @@ class TestEndToEndOnTheShippedCommand:
         return rc, capsys.readouterr().out
 
     def test_the_untyped_arm_exits_3_and_discloses(self, tmp_path, capsys) -> None:
-        """Was exit 0 with "Verdict: confirmed". Fail-closed is deliberate and
-        matches INV-pojib: a gate written ``verify-claims ... || exit 1`` now fails
-        where it silently passed."""
+        """Fail-closed is deliberate: a gate written ``verify-claims ... ||
+        exit 1`` fails on this arm rather than silently passing (the same rule
+        as INV-pojib)."""
         rc, out = self._run(tmp_path, capsys, [_untyped("sendall")])
         assert rc == 3
         assert "sendall" in out
@@ -547,13 +505,10 @@ class TestEndToEndOnTheShippedCommand:
         """ARM 2 at the CLI. The same call through a receiver the analysis CAN
         type is not qualified — it is FOUND.
 
-        THE FIRST DRAFT OF THIS TEST ASSERTED ``rc != 3`` AND WAS WORTHLESS. Run
-        against the shipped python catalogue this arm returns ``violated`` at rc
-        1, because ``socket.socket.sendall`` matches and produces a chain — so
-        ``rc != 3`` held for a reason that had nothing to do with this change and
-        would have held whether or not the fix worked. Measured before being
-        written down, which is how the first draft's other guess (rc 2,
-        ``inconclusive`` from the uncatalogued-module gate) was caught."""
+        The exact rc is asserted, not merely ``rc != 3``. Against the shipped
+        python catalogue this arm returns ``violated`` at rc 1, because
+        ``socket.socket.sendall`` matches and produces a chain -- so ``rc != 3``
+        would hold whether or not the untyped-receiver disclosure worked."""
         rc, out = self._run(
             tmp_path, capsys,
             [_typed("python:socket.socket:0-0:sendall:external_symbol")],
@@ -567,18 +522,17 @@ class TestUnknownReceiverScope:
     """INV-fibis, the unscoped half: a clean boundary verdict must disclose that
     it is CLOSED-WORLD over the receivers the analysis could type.
 
-    WHY THE BOUNDARY-SCOPED CAVEAT ABOVE IS NOT ENOUGH, measured rather than
-    argued. A corpus hunt over 32,593 non-test files found 90 real scopes whose
-    untyped receiver calls a genuine I/O verb that is NOT one of the 120
-    catalogued method-kind names (``post`` 56, ``upload_file`` 6, ``upload`` 6,
-    ``put_item``/``get_item`` 6, ``download_file`` 5, ``execute_command`` 3).
-    The boundary-scoped caveat fired on **ZERO** of them, because it matches the
-    method NAME against the catalogue -- and a name lookup is exactly what an
-    untyped receiver makes meaningless. All 90 were protected instead by a
-    COVERAGE GAP (68 uncatalogued-module, 13 opaque-launch, 5
-    unsupported-language), every one of which the project intends to close.
+    WHY THE BOUNDARY-SCOPED CAVEAT ABOVE IS NOT ENOUGH. Real code calls genuine
+    I/O verbs that are NOT catalogued method-kind names through untyped
+    receivers (``post``, ``upload_file``, ``upload``, ``put_item``/``get_item``,
+    ``download_file``, ``execute_command``), and the boundary-scoped caveat
+    cannot fire on any of them, because it matches the method NAME against the
+    catalogue -- and a name lookup is exactly what an untyped receiver makes
+    meaningless. Such scopes are otherwise protected only by a COVERAGE GAP
+    (uncatalogued module, opaque launch, unsupported language), every one of
+    which the project intends to close.
 
-    THE DEMONSTRATION, on unmodified real code
+    AN EXAMPLE, on unmodified real code
     (``polis/deploy/deploy-static-assets.py``, a CLI that uploads to S3)::
 
         def upload_file(s3_client, file_path, bucket, base_path):   # UNANNOTATED
@@ -586,24 +540,24 @@ class TestUnknownReceiverScope:
         s3_client = boto3.client("s3")
 
     With a realistic project overlay that audits ``boto3`` but omits
-    ``upload_file`` from its rows, the shipped CLI returned **rc 0, "never sends
-    data over the network: confirmed"**. The documented remedy for the
-    third-party half of INV-fibis (overlays) is what REMOVES the accidental
+    ``upload_file`` from its rows, the verdict without this caveat would be rc 0,
+    "never sends data over the network: confirmed". The documented remedy for
+    the third-party half of INV-fibis (overlays) is what REMOVES the accidental
     protection for this half.
 
-    WHAT KEEPS THIS FROM BEING THE REFUSED DOWNGRADE. The 2026-08-11 measurement
-    refused an unscoped signal that WITHHELD the verdict (``inconclusive`` on
-    every boundary of every repo). This one QUALIFIES it: the verdict still
-    reads clean, the exit code moves 0 -> 3, and the sentence carries a COUNT
-    AND A DENOMINATOR so a reader can size the unknown instead of being told
-    only that one exists. ``test_all_typed_receivers_stays_bare_confirmed``
-    is the falsifiability control: this caveat must be capable of NOT firing.
+    WHY THIS QUALIFIES RATHER THAN WITHHOLDS. Withholding on an unscoped signal
+    would make every boundary of every repo ``inconclusive``. This caveat
+    QUALIFIES the verdict: the verdict still reads clean, the exit code moves
+    0 -> 3, and the sentence carries a COUNT AND A DENOMINATOR so a reader can
+    size the unknown instead of being told only that one exists.
+    ``test_all_typed_receivers_stays_bare_confirmed`` is the falsifiability
+    control: this caveat must be capable of NOT firing.
     """
 
     def test_uncatalogued_method_on_untyped_receiver_is_disclosed(self) -> None:
         """THE HEADLINE. ``upload_file`` is not in the net_send catalogue, so the
-        boundary-scoped caveat cannot see it; before this class the verdict was a
-        bare ``confirmed`` at rc 0 for a live S3 upload."""
+        boundary-scoped caveat cannot see it; without the scope caveat the
+        verdict would be a bare ``confirmed`` at rc 0 for a live S3 upload."""
         coverage = _coverage([_untyped("upload_file")])
         verdict = verify_claim(
             _claim("net_send", constraint_must_not_exist=True),

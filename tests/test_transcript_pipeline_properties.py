@@ -113,19 +113,18 @@ def transcript_sequence(draw: st.DrawFn) -> list[dict]:
 # filter_new_lines tests
 # ---------------------------------------------------------------------------
 
-# Every property here runs under these settings (WI-lotig). Both relaxations
-# are about the MACHINE, not the hook code; neither changes a property or its
-# example count.
+# Every property here runs under these settings. Both relaxations are about
+# the MACHINE, not the hook code; neither changes a property or its example
+# count (WI-lotig).
 #   * deadline=None. Hypothesis times each EXAMPLE against 200 ms; one example
 #     stalled by a descheduled worker exceeds it, the replay runs fast, and the
 #     run fails with a FlakyFailure wrapping DeadlineExceeded.
 #   * HealthCheck.too_slow is suppressed. Its budget for drawing the first
 #     inputs is max(1 s, 5 x deadline), so deadline=None alone already widens it
 #     to 30 s (hypothesis 6.151.6, engine.py); the suppression removes it, so no
-#     stall length fails a property. test_output_never_exceeds_input failed
-#     it twice on 2026-10-03 under parallel load ("Hypothesis only generated 7
-#     valid inputs after 1.60 seconds"; alone: 51 passed in 8 s); the owner
-#     reported one more load failure in CI on 2026-11-11.
+#     stall length fails a property. Under parallel load, input generation
+#     (test_output_never_exceeds_input in particular) can stall past the
+#     budget even though the same property passes quickly when run alone.
 # TestPropertiesSurviveALoadedMachine pins both; the guard in
 # tests/test_hypothesis_properties_are_load_tolerant.py makes every property in
 # the repo carry them.
@@ -393,8 +392,8 @@ class TestRecentlyInjected:
 
     Per-session isolation (ADR-0018 amendment / Option 2): each test
     uses an explicit session_id and a per-session injection-state file
-    path. The legacy global session-token mechanism has been removed
-    because per-session paths already encode session identity.
+    path. No separate session token is involved, because the per-session
+    path already encodes session identity.
     """
 
     SESSION_ID = "test-session-12345"
@@ -765,7 +764,7 @@ class TestTruncateToBudget:
 
 
 # ---------------------------------------------------------------------------
-# Session token tests for filter-transcript.py
+# Per-session state tests for filter-transcript.py
 # ---------------------------------------------------------------------------
 
 class TestFilterPerSessionState:
@@ -773,9 +772,9 @@ class TestFilterPerSessionState:
 
     Under per-session isolation (ADR-0018 amendment / Option 2), each
     session has its own state file path keyed by session_id, so cross-
-    session state contamination is structurally impossible. The legacy
-    session_token validation has been removed because the per-session
-    path itself is the identity check.
+    session state contamination is structurally impossible. The state
+    carries no session token: the per-session path itself is the
+    identity check.
     """
 
     def test_load_returns_state_when_present(
@@ -836,13 +835,13 @@ class TestFilterPerSessionState:
 class TestInjectionHistory:
     """Verify on_transcript_change.py's log_injection_history sidecar writer.
 
-    The sidecar fixes ADR-0018's "retrospective blindness" gap: previously,
-    Claude Code's `additionalContext` injection mechanism never round-tripped
+    Claude Code's `additionalContext` injection mechanism does not round-trip
     playbook content into the session transcript JSONL, so a retrospective on
-    `.last_session_transcript.jsonl` could not see which playbooks were
-    injected, when, or why. The sidecar records every poll's metadata
-    (including dedup-skipped and zero-selection polls) so that retrospective
-    analysis has a real signal to compute precision against.
+    `.last_session_transcript.jsonl` alone cannot see which playbooks were
+    injected, when, or why (ADR-0018's "retrospective blindness" gap). The
+    sidecar records every poll's metadata (including dedup-skipped and
+    zero-selection polls) so that retrospective analysis has a real signal
+    to compute precision against.
 
     Per-session isolation (ADR-0018 amendment / Option 2): the sidecar
     file path is per-session, keyed by session_id. Rotation into the
@@ -1101,10 +1100,8 @@ class TestPerSessionNamingInvariants:
           (.last_*/.second_to_last_*) or be persistent (training data,
           archive directory).
 
-    There is NO glob-based session reset anymore: the previous global
-    .transcript-* glob in sync-transcript.sh's per-session reset block
-    has been removed because per-session paths make the reset
-    unnecessary by construction.
+    No glob-based session reset is needed: per-session paths keep each
+    session's files separate by construction.
     """
 
     # Per-session files are created with these stem patterns. Each must
@@ -1147,8 +1144,8 @@ class TestPerSessionNamingInvariants:
         """Global slot filenames don't accidentally encode a session id."""
         # A real session_id is a UUID-shaped string with hex+dashes. The
         # check is that no GLOBAL_FILE looks like it has a per-session
-        # tail. We approximate by ensuring no GLOBAL_FILE name contains a
-        # dot-separated component longer than 'second_to_last'.
+        # tail. We approximate by flagging any dot-separated component
+        # longer than 20 characters that contains a hyphen but no underscore.
         suspicious = []
         for name in self.GLOBAL_FILES:
             parts = name.split(".")
@@ -1173,9 +1170,9 @@ class TestPropertiesSurviveALoadedMachine:
     ``CI`` variable is set, Hypothesis loads its built-in ``ci`` profile, which
     already has ``deadline=None`` and suppresses ``too_slow`` (hypothesis
     6.151.6, ``_settings.py``), so an inherited "default" is tolerant there and
-    a control that inherits it cannot fail (it did not, in PR CI). The same
-    profile is why this flake shows up in LOCAL runs: smart-test and
-    check-package-coverage do not set ``CI``.
+    a control that inherits it cannot fail. Conversely, local runs get the
+    strict defaults, because smart-test and check-package-coverage do not set
+    ``CI``; that is where the load-induced failures appear.
     """
 
     _STRICT = {"deadline": timedelta(milliseconds=200), "suppress_health_check": ()}

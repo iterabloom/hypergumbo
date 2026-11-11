@@ -1,24 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for ``scripts/smart-test``'s TDD-mode test-file selection.
+"""Tests for ``scripts/smart-test``'s test selection and manifest handling.
 
 When a change contains no sliceable source (nothing under ``packages/*/src/``),
 smart-test falls back to "TDD mode": run the test files that changed, on the
 theory that a test written before its implementation still needs to execute.
-That fallback matched only ``packages/*/tests/`` and ignored root-level
-``tests/``, so a PR touching **only** root tests selected nothing, the manifest
-was written with ``Selected tests: 0``, and ``ci.yml`` skipped pytest entirely.
-A new top-level test could therefore merge having never run in CI — green
-locally, vacuous in the gate. The reverse-slice cannot rescue those either,
-because it walks ``packages/*/src/**``.
+That fallback must match root-level ``tests/`` as well as
+``packages/*/tests/``. Otherwise a change touching **only** root tests selects
+nothing, the manifest is written with ``Selected tests: 0``, and ``ci.yml``
+skips pytest entirely, so a new top-level test could merge having never run in
+CI. The reverse-slice cannot catch those either, because it walks
+``packages/*/src/**``. The later classes cover the other selection unions
+(top-level sources, fixtures, conftests, docs, catalogues, playbooks,
+citations), ``--full``, and the manifest guards.
 
-This file pins the selection pattern by **extracting the real regex out of the
-script** and running it through ``grep -E``, the same way the script does,
-rather than restating it here. A copy would be free to drift from what ships;
-an extract cannot. It is the same technique used in ``tests/test_auto_pr.py``.
+This file pins the selection by **extracting the real regexes and blocks out of
+the script** and running them through ``grep -E`` or bash, the same way the
+script does, rather than restating them here. A copy would be free to drift
+from what ships; an extract cannot. It is the same technique used in
+``tests/test_auto_pr.py``.
 
-``scripts/smart-test`` had no tests before this file. Its name is deliberate:
-the WI-jozan mapper resolves ``scripts/smart-test`` to ``tests/test_smart_test*``,
-so future changes to the script select these tests instead of nothing.
+The file name is deliberate: the test mapper (WI-jozan) resolves
+``scripts/smart-test`` to ``tests/test_smart_test*``, so changes to the script
+select these tests.
 """
 
 from __future__ import annotations
@@ -62,12 +65,12 @@ class TestTddModeSelection:
     """Which changed files count as "a test to run" when nothing is sliceable."""
 
     def test_root_level_test_is_selected(self) -> None:
-        """The regression this pattern was widened to fix."""
+        """Root-level tests are selected, not only package tests."""
         assert _selects("tests/test_auto_pr.py")
         assert _selects("tests/test_forge_github_harness.py")
 
     def test_package_test_is_still_selected(self) -> None:
-        """Widening must not cost the original behaviour."""
+        """Package tests are selected alongside root tests."""
         assert _selects("packages/hypergumbo-core/tests/test_finalize.py")
 
     def test_branches_test_prefix_is_still_selected(self) -> None:
@@ -111,11 +114,11 @@ def _extract_grep_pattern(var_name: str) -> str:
 def _catalogue_predicate_selects(path: str) -> bool:
     """Run smart-test's OWN catalogue line, both greps, over one path.
 
-    ``_extract_grep_pattern`` reads the first ``grep -E`` off the assignment,
-    which stopped being the whole predicate when the key widened from "is
-    YAML" to "is not Python" — the exclusion lives in a second grep down the
-    pipe. Testing only the first half would have certified a predicate that
-    selects every Python file under a package subdirectory.
+    The predicate is two greps: the first ``grep -E`` keeps paths in a
+    directory under a package's ``src/``, and a second grep down the pipe
+    excludes Python files. ``_extract_grep_pattern`` reads only the first, and
+    testing that half alone would certify a predicate that selects every
+    Python file under a package subdirectory.
     """
     line = None
     for raw in SMART_TEST.read_text().splitlines():
@@ -142,9 +145,9 @@ def _pattern_selects(pattern: str, path: str) -> bool:
 
 
 class TestTopLevelSurfacePattern:
-    """INV-lizor: the top-level executable surface the gate must never
-    silently skip — scripts/ (any depth), .githooks/, .agent/hooks/ — with
-    the unmapped remainder routed to the root-suite fallback."""
+    """The top-level executable surface the gate must never silently skip —
+    scripts/ (any depth), .githooks/, .agent/hooks/ — with the unmapped
+    remainder routed to the root-suite fallback (INV-lizor)."""
 
     def test_covers_the_verified_blind_spots(self) -> None:
         pattern = _extract_grep_pattern("CHANGED_TOP_LEVEL_SOURCES")
@@ -166,9 +169,10 @@ class TestTopLevelSurfacePattern:
         )
 
     def test_dead_variable_comment_is_gone(self) -> None:
-        """The pre-fix script defined CHANGED_TOP_LEVEL_SOURCES, read it
-        nowhere, and carried a comment describing a check that did not
-        exist. The variable must now be consumed."""
+        """CHANGED_TOP_LEVEL_SOURCES must be read after it is defined, and
+        the comment claiming it is "included via a separate check" must not
+        return: a defined-but-unread variable beside a comment describing a
+        check that does not exist leaves this surface unselected."""
         text = SMART_TEST.read_text()
         assert "included via a separate check" not in text
         assert text.count("CHANGED_TOP_LEVEL_SOURCES") >= 2, (
@@ -184,18 +188,18 @@ class TestTopLevelSurfacePattern:
         assert "tests/test_*.py" in text
 
     def test_skip_message_no_longer_lies(self) -> None:
-        """The 0-test manifest branch is only reachable for genuinely
-        non-executable changes now; its wording must not claim 'no Python
-        source files changed' (it printed that even when source DID
-        change)."""
+        """The 0-test manifest branch is reachable only for non-executable
+        changes, and its wording must say that rather than claim 'no Python
+        source files changed', which the branch does not establish."""
         text = SMART_TEST.read_text()
         assert "No Python source files changed - skipping tests" not in text
 
 
 class TestUntrackedEnumeration:
-    """INV-kinin route: change enumeration was three git-diff calls, none of
-    which report untracked files — a NEW test file was invisible until
-    committed, and its absence read as 'selected: everything relevant'."""
+    """Change enumeration includes untracked files (INV-kinin). ``git diff``
+    does not report them, so without ``ls-files --others`` a NEW test file is
+    invisible until committed, and its absence reads as 'selected: everything
+    relevant'."""
 
     def test_ls_files_others_is_used(self) -> None:
         text = SMART_TEST.read_text()
@@ -226,8 +230,8 @@ class TestUntrackedEnumeration:
 
 
 class TestFixturePattern:
-    """INV-kinin dominant route: a fixture edit changes a gate's inputs
-    without running the gate. Fixture changes select the owning suite."""
+    """A fixture edit changes a gate's inputs, so fixture changes select the
+    owning suite (INV-kinin)."""
 
     def test_fixture_paths_are_selected(self) -> None:
         pattern = _extract_grep_pattern("CHANGED_FIXTURE_FILES")
@@ -245,18 +249,16 @@ class TestFixturePattern:
 
 
 class TestConftestPattern:
-    """INV-kinin's sibling, one filename over.
+    """Conftest changes select tests, like fixture changes (INV-kinin).
 
     A ``conftest.py`` is neither a ``test_``-prefixed test file nor package
-    ``src/``, so a change confined to one matched NEITHER ``CHANGED_TEST_FILES``
-    nor ``CHANGED_SOURCE_FILES`` and selected NOTHING -- smart-test printed
-    "no test-relevant files changed (docs/config only)" and wrote a manifest
-    with 0 tests, so CI would skip pytest entirely.
+    ``src/``, so without its own pattern a change confined to one matches
+    NEITHER ``CHANGED_TEST_FILES`` nor ``CHANGED_SOURCE_FILES`` and selects
+    NOTHING -- smart-test prints "no test-relevant files changed (docs/config
+    only)" and writes a manifest with 0 tests, so CI skips pytest entirely.
 
-    That is strictly worse than the fixture case INV-kinin already fixed: an
-    ``autouse`` fixture declared in a conftest governs EVERY test beneath it.
-    Found when a conftest change that REPAIRED 13 failing tests produced a
-    0-test manifest -- the repair and the blindness in the same commit.
+    The stakes are higher than for fixtures: an ``autouse`` fixture declared
+    in a conftest governs EVERY test beneath it.
     """
 
     def test_package_conftests_are_selected(self) -> None:
@@ -326,13 +328,14 @@ def _root_tests_matching(needle: str) -> set[str]:
 
 
 class TestDocGateSelection:
-    """INV-kafak: the gates that GOVERN documents must run on document changes.
+    """The gates that GOVERN documents must run on document changes (INV-kafak).
 
-    Measured, not inferred. ``smart-test --manifest`` on a tree whose only
-    edits were under ``docs/`` wrote ``Selected tests: 0``, and measurement
-    0009 merged green while failing ``check-measurement-frame`` — the gate
-    ADR-0048 §A3 exists for. On the one change class those gates check, the
-    selector ran every test except them."""
+    Those gates live in the root suite, and neither the slice nor TDD mode
+    reaches them, so without this union a tree whose only edits are under
+    ``docs/`` writes ``Selected tests: 0``. A document could then merge green
+    while failing a gate such as ``check-measurement-frame`` (ADR-0048 §A3):
+    on the one change class those gates check, the selector would run every
+    test except them."""
 
     def test_the_docs_pattern_selects_a_document_and_nothing_else(self) -> None:
         pattern = _extract_grep_pattern("CHANGED_DOC_FILES")
@@ -346,15 +349,14 @@ class TestDocGateSelection:
 
     def test_the_gate_set_is_derived_from_the_tree(self) -> None:
         """A hardcoded roster would cover today's gates and leave the next one
-        green and unrun — the decay that put nine of fifteen languages in
-        ``F2_LANGS``. The selection must glob the root suite."""
+        green and unrun. The selection must glob the root suite."""
         text = SMART_TEST.read_text()
         assert "DOC_GATE_TESTS" in text
         head = text.split("DOC_GATE_TESTS=", 1)[1][:600]
         assert "tests/test_*.py" in head
 
     def test_the_regression_that_merged_is_now_selected(self) -> None:
-        """The specific gate a docs-only PR skipped while breaking it."""
+        """Named document gates, the measurement-frame check among them."""
         selected: set[str] = set()
         for needle in _doc_gate_greps():
             selected |= _root_tests_matching(needle)
@@ -365,13 +367,12 @@ class TestDocGateSelection:
     def test_the_union_is_a_superset_of_every_arm(self) -> None:
         """The three arms are not equally load-bearing and the script says so.
 
-        `docs/` alone currently reaches all thirteen gates; the two
+        `docs/` alone currently reaches every gate the union does; the two
         quoted-bareword arms are defensive, for a `Path("docs") / "adr"`
-        spelling no root test uses today. This asserted strict inequality
-        first and FAILED, which is how that was established rather than
-        assumed — the comment in the script was corrected to match. What is
-        pinned here is the property that actually matters: no arm reaches
-        outside the union, and the union is never smaller than the path arm."""
+        spelling no root test uses today. Strict inequality between the arms
+        is therefore false on the live tree. What is pinned here is the
+        property that actually matters: no arm reaches outside the union, and
+        the union is never smaller than the path arm."""
         greps = _doc_gate_greps()
         assert len(greps) >= 3, greps
         union: set[str] = set()
@@ -384,21 +385,21 @@ class TestDocGateSelection:
 
     def test_the_source_count_no_longer_writes_a_stray_zero(self) -> None:
         """``grep -c .`` PRINTS 0 and EXITS 1 on empty input, so ``|| echo 0``
-        fired in addition to grep's own count and made SOURCE_COUNT the
+        would fire in addition to grep's own count and make SOURCE_COUNT the
         two-line string ``0\\n0`` — a bare ``0`` in the manifest header between
-        two ``#`` comments. Latent until the doc-gate union made this writer
-        reachable with zero changed sources."""
+        two ``#`` comments. The doc-gate union makes this writer reachable with
+        zero changed sources, so the fallback must be ``|| true``."""
         text = SMART_TEST.read_text()
         assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || true)' in text
         assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)' not in text
 
 
-#: A real shipped YAML from the family the catalogue gate was built for.
+#: A real shipped YAML from the io_primitives catalogue family.
 IO_PRIMITIVES_YAML = (
     "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/go.yaml"
 )
-#: And from the family it was blind to — 107 files, selecting zero until
-#: INV-bigaz widened the key.
+#: And from the frameworks family (107 files), which a key naming only
+#: io_primitives would miss (INV-bigaz).
 FRAMEWORKS_YAML = (
     "packages/hypergumbo-core/src/hypergumbo_core/frameworks/fastapi.yaml"
 )
@@ -407,12 +408,11 @@ FRAMEWORKS_YAML = (
 def _catalogue_gate_greps(changed: str = IO_PRIMITIVES_YAML) -> list[str]:
     """The live catalogue-gate grep terms, asked of the helper that derives them.
 
-    These used to be three literals written into the script, and this function
-    read them back out of it. They are now derived per family from
-    ``YAML_CATALOGS`` (INV-bigaz), so the question "what does the gate grep
-    for" has moved from the script's text to a helper's output — and asking
-    the helper is what keeps these tests measuring the live mechanism rather
-    than a copy of it.
+    The terms are derived per family from ``YAML_CATALOGS`` by
+    ``scripts/catalogue_gate_terms.py`` rather than written into the script
+    (INV-bigaz), so "what does the gate grep for" is answered by the helper's
+    output — and asking the helper is what keeps these tests measuring the
+    live mechanism rather than a copy of it.
     """
     helper = REPO_ROOT / "scripts" / "catalogue_gate_terms.py"
     proc = subprocess.run(
@@ -437,16 +437,17 @@ def _tests_matching(needle: str) -> set[str]:
 
 
 class TestCatalogueGateSelection:
-    """INV-muvis: a catalogue YAML change must run the tests that read it.
+    """A catalogue YAML change must run the tests that read it (INV-muvis).
 
-    MEASURED, on the change that prompted it. Moving stdin readers between
-    boundaries in five ``io_primitives`` files produced
-    ``Targeted run (2 test files, 0 changed sources)`` — and both of those were
-    the tests that same commit added. CI runs the COMMITTED manifest, so the
-    io-boundary and taint suites the change could break would not have run.
+    The import slice keys on Python sources, and a catalogue YAML is not one.
+    Without this union, moving stdin readers between boundaries in
+    ``io_primitives`` files selects only the tests the same commit adds, and
+    since CI runs the COMMITTED manifest, the io-boundary and taint suites the
+    change could break never run.
 
-    This is INV-kafak's defect in a second change class, which is why the fix
-    is the same derived-from-the-tree shape rather than a list of file names.
+    This is the document gates' defect (INV-kafak) in a second change class,
+    which is why the fix has the same derived-from-the-tree shape rather than
+    a list of file names.
     """
 
     def test_the_catalogue_pattern_selects_a_catalogue_and_nothing_else(self) -> None:
@@ -516,7 +517,7 @@ class TestCatalogueGateSelection:
         assert selected <= names
 
     def test_the_change_that_prompted_this_is_now_selected(self) -> None:
-        """The regression, named. These read the catalogue and ran on neither arm."""
+        """Named catalogue readers that neither the slice nor TDD mode reaches."""
         selected: set[str] = set()
         for needle in _catalogue_gate_greps():
             selected |= _tests_matching(needle)
@@ -525,15 +526,14 @@ class TestCatalogueGateSelection:
         assert "test_deferred_crossing_boundary.py" in selected
 
     def test_the_loader_arm_is_load_bearing_and_not_decoration(self) -> None:
-        """The terms are derived now, so what needs pinning is WHY there are two.
+        """The terms are derived, so what needs pinning is WHY there are two.
 
-        This replaced an assertion that each of three hand-written arms earned
-        its place. With per-family derivation a term selecting nothing is not a
-        defect — it means no test names that loader entry point YET, and one
-        will. What stays falsifiable is the measurement that justified
-        grepping for the LOADER at all: on the live tree the directory name
-        alone reaches 58 test files and the union reaches 157, so a gate keyed
-        on the catalogue's own name would miss two thirds of what reads it.
+        With per-family derivation a term selecting nothing is not a defect —
+        it means no test names that loader entry point YET. What stays
+        falsifiable is the reason for grepping for the LOADER at all: the
+        directory name alone reaches a strict subset of what the union reaches
+        (58 of 157 test files when measured), so a gate keyed on the
+        catalogue's own name would miss most of what reads it.
         """
         union: set[str] = set()
         for term in _catalogue_gate_greps():
@@ -547,12 +547,13 @@ class TestCatalogueGateSelection:
         )
 
     def test_the_family_the_old_key_was_blind_to_now_selects(self) -> None:
-        """INV-bigaz/INV-dohoj, the residual: 107 framework YAMLs selecting zero.
+        """A frameworks/ YAML change selects tests (INV-bigaz, INV-dohoj).
 
-        The old key named io_primitives and its overlays. A change confined to
-        frameworks/ wrote a 0-test manifest and printed "no test-relevant files
-        changed (docs/config only)" — the green tick over a hole, with the
-        message asserting the opposite of what happened.
+        A key naming only io_primitives and its overlays leaves the framework
+        YAMLs selecting zero: a change confined to frameworks/ would write a
+        0-test manifest and print "no test-relevant files changed (docs/config
+        only)" — a green tick over a hole, with the message asserting the
+        opposite of what happened.
         """
         selected: set[str] = set()
         for term in _catalogue_gate_greps(FRAMEWORKS_YAML):
@@ -588,27 +589,25 @@ def _catalogue_block_selection(changed: str) -> set[str]:
     return {line for line in proc.stdout.splitlines() if line}
 
 
-#: The catalogue file PR #1162 changed.
+#: A catalogue ``test_measure_catalogue_exposure.py`` reads through a script.
 JAVA_YAML = "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/java.yaml"
 
 
 class TestCatalogueSelectsTheRootSuite:
-    """WI-juzoz: a root test that reads a catalogue through a SCRIPT names none
-    of the gate's terms, so the grep above cannot reach it.
+    """A catalogue change selects the whole root suite (WI-juzoz).
 
-    PR #1162 changed java.yaml alone. ``test_measure_catalogue_exposure.py``
-    pins a ratio that change moved (190/195 -> 156/195), and it loads the
-    catalogues through ``scripts/measure-catalogue-exposure.py``. The test was
-    not selected, and it first failed on the full-suite cron with dev already red.
+    A root test that reads a catalogue through a SCRIPT, the CLI or an import
+    names none of the gate's terms, so the grep above cannot reach it.
+    ``test_measure_catalogue_exposure.py``, for example, pins an exposure
+    ratio that a java.yaml change moves, and loads the catalogues through
+    ``scripts/measure-catalogue-exposure.py``.
 
-    ENUMERATED, NOT INFERRED. An audit hook logged every non-Python file under
-    ``packages/*/src/*/<dir>/`` that each root test opened, including from the
-    scripts it runs as subprocesses. 13 root test files opened one. The term grep
-    selected NONE of them. A second hop (terms -> the scripts that name them ->
-    the root tests that name those scripts) would have reached 4. The other 9
-    load the data through the CLI or an import. So a catalogue change now selects
-    the whole root suite: 1973 tests, 78s locally. That selects too many, which
-    is the direction a selector may err in.
+    A second hop does not close the gap. Enumerating the root tests that open
+    a non-Python file under ``packages/*/src/*/<dir>/`` (including from the
+    scripts they run as subprocesses) found 13; the term grep reaches none of
+    them, a hop through the scripts that name a term reaches 4, and the rest
+    load the data through the CLI or an import. Selecting the whole root suite
+    selects too many, which is the direction a selector may err in.
     """
 
     def test_the_change_that_went_red_on_the_cron_selects_its_test(self) -> None:
@@ -628,19 +627,17 @@ class TestCatalogueSelectsTheRootSuite:
 
 
 class TestFullMeansFull:
-    """WI-ginuj: a gate named for totality that is silently partial.
+    """``--full`` collects the repo-root ``tests/`` as well as ``packages/*``.
 
-    ``--full`` collected ``packages/*`` and never the repo-root ``tests/``,
-    while CI runs the manifest, which does include root tests. PR #890 went
-    green locally over 26,702 tests and red in CI on
-    ``test_adr_readme_index_sync.py`` — a test the local gate holds and simply
-    did not run.
+    CI runs the manifest, which includes root tests, so a ``--full`` that
+    skipped them could go green locally on a change CI rejects — for example
+    one breaking ``test_adr_readme_index_sync.py``, a root test (WI-ginuj).
 
-    The item filed three sites, found by grepping ``run_pytest``. There were
-    five: the background suite calls ``pytest`` directly and the full-suite
-    manifest writer enumerates with ``find``. That is why the fix is one
-    definition rather than five edits, and why the first test here is
-    structural — it is the one that would have found the two the grep missed.
+    Five sites run or enumerate the full suite, and a grep for ``run_pytest``
+    finds only three: the background suite calls ``pytest`` directly and the
+    full-suite manifest writer enumerates with ``find``. So the target is one
+    shared definition rather than five spellings, and the first tests here are
+    structural — they catch a site that spells the target out, wherever it is.
     """
 
     def _definition_lines(self) -> list[str]:
@@ -660,11 +657,11 @@ class TestFullMeansFull:
             assert "packages/*/tests" in line
 
     def test_no_site_names_a_packages_only_suite_target(self) -> None:
-        """The structural control: the grep the item ran found three of five.
+        """The structural control: a grep for ``run_pytest`` misses sites.
 
         Any line that RUNS or ENUMERATES the suite must go through the shared
-        definition. A new call site that spells the target out is exactly how
-        this defect half-survived its own first fix.
+        definition. A new call site that spells the target out makes
+        ``--full`` partial again.
         """
         offenders = []
         for number, line in enumerate(SMART_TEST.read_text().splitlines(), 1):
@@ -681,7 +678,8 @@ class TestFullMeansFull:
         assert not offenders, offenders
 
     def test_every_full_suite_entry_point_discloses_its_scope(self) -> None:
-        """Fix (b): a partial run must not be able to look like a total one."""
+        """Every full-suite entry point discloses its scope, so a partial run
+        cannot look like a total one."""
         text = SMART_TEST.read_text()
         assert "disclose_full_suite_scope() {" in text
         # The definition line ends in "() {", so only CALLS match this.
@@ -696,9 +694,9 @@ class TestFullMeansFull:
         The harness takes ``set -euo pipefail`` out of the script rather than
         writing it down: a copy goes stale the day a flag is added, and a
         harness missing production's flags is blind to whole defect classes.
-        The function is sliced out by text and driven from a file; the first
-        version of this test built a ``bash -c`` string with nested double
-        quotes and failed on its own quoting rather than on the code.
+        The function is sliced out by text and driven from a file rather than
+        a ``bash -c`` string, whose nested double quotes would make the test
+        fail on its own quoting rather than on the code.
         """
         text = SMART_TEST.read_text()
         flags = next(
@@ -727,28 +725,25 @@ class TestFullMeansFull:
         )
 
     def test_the_test_that_caught_this_is_a_root_test(self) -> None:
-        """The failure that filed the item, named."""
+        """A gate CI runs that exists only in the root suite."""
         assert (REPO_ROOT / "tests" / "test_adr_readme_index_sync.py").is_file()
         assert not list(
             REPO_ROOT.glob("packages/*/tests/test_adr_readme_index_sync.py")
         )
 
     def test_no_test_basename_is_shared_between_the_two_suites(self) -> None:
-        """What made "full" impossible to fix, found by trying it.
+        """The invariant that keeps `--full` possible: no shared basename.
 
         pytest's default `prepend` import mode names a module after its
         BASENAME, so collecting ``tests/test_generate_concepts.py`` and
         ``packages/hypergumbo-core/tests/test_generate_concepts.py`` in one run
         raises ``import file mismatch`` and INTERRUPTS COLLECTION — the run
-        stops, it does not merely skip a file. That is the real obstacle
-        behind this item's deferral of fix (a); the reason filed there was
-        COV_PATHS, and COV_PATHS turns out not to be a problem at all, since
-        more tests can only raise coverage over ``packages/*/src``.
+        stops, it does not merely skip a file. (Collecting the root suite does
+        not complicate ``COV_PATHS``: more tests can only raise coverage over
+        ``packages/*/src``.)
 
-        So this is the invariant that keeps `--full` possible: the two suites
-        must not share a basename. A collision is cheap to fix when the file
-        is added and expensive to find later, because the error names an
-        import, not a policy.
+        A collision is cheap to fix when the file is added and expensive to
+        find later, because the error names an import, not a policy.
         """
         root = {p.name for p in (REPO_ROOT / "tests").glob("test_*.py")}
         packaged = {p.name for p in REPO_ROOT.glob("packages/*/tests/test_*.py")}
@@ -758,14 +753,14 @@ class TestFullMeansFull:
 
 
 class TestExplicitModeLeavesTheManifestAlone:
-    """WI-duson: the documented dev loop destroyed the artifact CI runs.
+    """An explicit-targets run must not touch the manifest CI runs (WI-duson).
 
     AGENTS.md says two things, each correct on its own: "during development,
     run only relevant tests" and "commit .ci/affected-tests.txt with every PR".
-    Explicit mode used to overwrite the manifest with a zero-selection stub, so
-    following both shipped a manifest that selected NOTHING — and the live
-    Woodpecker gate keys on "did the manifest select any tests?", so it printed
-    "manifest selects no tests — skipping pytest" and reported green.
+    If explicit mode overwrote the manifest with a zero-selection stub,
+    following both would ship a manifest that selects NOTHING — and the CI
+    gate keys on "did the manifest select any tests?", so it would print
+    "manifest selects no tests — skipping pytest" and report green.
 
     An explicit run is not a selection computation. It has no answer about the
     diff, and the honest thing for a command with no answer is to say nothing
@@ -800,13 +795,13 @@ class TestExplicitModeLeavesTheManifestAlone:
 
 
 class TestTheManifestGuardAssertsTheGoodMode:
-    """L54 at the pre-commit hook: enumerate the permitted case, not the bad ones.
+    """The pre-commit manifest guard asserts the permitted mode (L54).
 
-    The guard rejected exactly `Mode: full-suite` and passed everything else
-    through the else arm with a green tick — so a zero-selection `Mode:
-    explicit` manifest committed cleanly past the very check that exists to
-    protect this artifact. full-suite runs too much and explicit runs nothing;
-    only the first was guarded.
+    Enumerate the permitted case, not the bad ones. A guard that rejects only
+    `Mode: full-suite` passes everything else through its else arm with a
+    green tick, including a zero-selection `Mode: explicit` manifest:
+    full-suite runs too much and explicit runs nothing. Requiring `targeted`
+    blocks both, and any mode nobody has thought of yet.
     """
 
     HOOK = REPO_ROOT / ".githooks" / "pre-commit"
@@ -838,15 +833,13 @@ class TestTheManifestGuardAssertsTheGoodMode:
         # STOP AT THE MATCHING `fi`, NOT THE FIRST ONE AT COLUMN 0. The check
         # is nested two levels inside the hook, so an unindented "\nfi\n"
         # search runs past it, swallows the enclosing else arms, and the probe
-        # then dies on its own extraction rather than on the code -- which is
-        # exactly what it did the first time.
+        # then dies on its own extraction rather than on the code.
         end = text.index("\n        fi\n", start) + len("\n        fi\n")
         body = text[start:end]
         # ASK BASH WHETHER THE SLICE IS A PROGRAM. Counting `if`/`fi`
-        # substrings was the first attempt and it counted the word "fi" out of
-        # the prose in the hook's own error messages -- a bad instrument
-        # guarding against a bad instrument. `bash -n` is the real check, and
-        # it is the one that would have failed on the over-long slice.
+        # substrings would count the word "fi" in the prose of the hook's own
+        # error messages. `bash -n` is the real check, and it fails on an
+        # over-long slice.
         syntax = tmp_path / "syntax.sh"
         syntax.write_text(body)
         check = subprocess.run(
@@ -882,12 +875,12 @@ class TestTheManifestGuardAssertsTheGoodMode:
 
 
 class TestCitationGateWiring:
-    """WI-lujon: the fourth derived union, and the one that keys backwards.
+    """The citation union, the one derived union that keys backwards (WI-lujon).
 
-    The other three ask "what directory did the change touch". This one asks
-    "who names this path in their text", so it cannot be folded into them and
-    it is worth pinning that smart-test actually calls it — a helper with no
-    caller is the same defect the convergence ledger had.
+    The doc, playbook and catalogue unions ask "what directory did the change
+    touch". This one asks "who names this path in their text", so it cannot be
+    folded into them, and it is worth pinning that smart-test actually calls
+    it — a helper with no caller selects nothing while looking wired.
     """
 
     def test_smart_test_calls_the_citation_helper(self) -> None:
@@ -909,19 +902,16 @@ class TestCitationGateWiring:
 
 
 class TestPlaybookGateSelection:
-    """INV-kafak, third change class: a PLAYBOOK edit selected nothing.
+    """A PLAYBOOK edit runs the gates that read playbooks (INV-kafak).
 
+    This is the document gates' defect in a third change class.
     ``.agent/hooks/`` is in the executable-surface union (INV-lizor) and the
     playbook directory beside it is not — yet playbooks are load-bearing input.
     AGENTS.md's "Creating a New Playbook" requires every playbook to be
     registered in the transcript hook's ``PLAYBOOKS`` list, and
     ``test_on_transcript_change.py`` is the gate that checks the registry and the
-    files agree. Renaming or deleting a playbook breaks that gate and, before
-    this, ran none of it.
-
-    Measured on the change that prompted it: editing
-    ``ci-debug-protocol.md`` selected two test files, neither of which reads a
-    playbook.
+    files agree. Renaming or deleting a playbook breaks that gate, so a
+    playbook change must select it.
     """
 
     def test_the_playbook_pattern_selects_a_playbook_and_nothing_else(self) -> None:
@@ -971,20 +961,19 @@ def _docs_only_skip_block() -> list[str]:
 
 
 class TestFullBypassesTheDocsOnlySkip:
-    """INV-sotam: ``--full`` must never be overridden by the selection's opinion.
+    """``--full`` must never be overridden by the selection's opinion (INV-sotam).
 
-    ``--full`` means "ignore the selection and run everything". The docs/config
-    -only short-circuit used to ``exit 0`` before the ``FULL_RUN`` branch was
-    ever consulted, so on a tree whose only changes were docs or config the
-    command printed a reassuring line, exited 0, and ran nothing. Verifying
-    merged work is exactly when a tree looks like that, so the failure mode was
-    "the gate cannot fire" wearing the costume of "the gate passed".
+    ``--full`` means "ignore the selection and run everything". If the
+    docs/config-only short-circuit ran ``exit 0`` before consulting
+    ``FULL_RUN``, then on a tree whose only changes are docs or config the
+    command would print a reassuring line, exit 0, and run nothing. Verifying
+    merged work is exactly when a tree looks like that, so the failure mode
+    would be "the gate cannot fire" wearing the costume of "the gate passed".
 
-    These are structural tests, and the reason is worth recording: the script
-    takes a non-blocking ``flock`` on ``.ci/.smart-test.lock`` and resolves its
-    own repo root from ``$0``, so a test that invoked it would either fail on
-    the lock held by the run executing the test, or operate on the live tree.
-    The behavioural repro is in the PR description instead.
+    These are structural tests because the script takes a non-blocking
+    ``flock`` on ``.ci/.smart-test.lock`` and resolves its own repo root from
+    ``$0``, so a test that invoked it would either fail on the lock held by
+    the run executing the test, or operate on the live tree.
     """
 
     def test_full_is_consulted_before_the_skip_exits(self) -> None:
@@ -1025,9 +1014,7 @@ class TestFullBypassesTheDocsOnlySkip:
 
         Comment lines are stripped before the check: this test's claim is that
         the branch does not CALL that function, and the comment explaining why
-        has to be free to name it. Grepping the raw block failed on exactly
-        that, which is the difference between matching a name and matching a
-        call.
+        has to be free to name it — matching a name is not matching a call.
         """
         code = [
             line for line in _docs_only_skip_block()

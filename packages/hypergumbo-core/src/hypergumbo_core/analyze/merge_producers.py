@@ -5,9 +5,9 @@ ADR-0057 §3, WI-kokiz.
 
 WHY A PASS, AND WHY HERE. When two backends analyse one language — the
 tree-sitter ``rust`` incumbent and the ``rust_analyzer`` SCIP arm — each
-emits its own Symbol for every declaration it sees, and until this pass
-nothing folded them: ``run_all_analyzers`` concatenated both lists and every
-Phase-C reader saw two records for one function. The merge key is
+emits its own Symbol for every declaration it sees, and
+``run_all_analyzers`` concatenates both lists, so without this pass every
+Phase-C reader would see two records for one function. The merge key is
 whole-table (per file, the item whose span contains the other producer's
 name token), it rewrites identity that hundreds of ``.src`` / ``.dst`` /
 ``.kind`` reads key on, and membership must be settled before serialize
@@ -34,9 +34,9 @@ WHAT IT READS, AND FROM WHERE. Nothing here is Rust-shaped:
 * WHICH producer's value the scalar slot keeps: the precedence of the
   ``policy`` argument (:class:`~..arbitration.ArbitrationPolicy`). The
   built-in, ``BUILTIN_POLICY``, is ADR-0057 §5's incumbent-first default
-  (:func:`~.registry.incumbent_first`). Since WI-hukuf, ``config.toml``'s
-  ``[merge] prefer`` / ``[merge.prefer_by_attribute]`` can change it, and
-  cli.py passes ``policy_from_config(...)``. Where the incumbent did not observe an
+  (:func:`~.registry.incumbent_first`). ``config.toml``'s
+  ``[merge] prefer`` / ``[merge.prefer_by_attribute]`` can change it
+  (WI-hukuf); cli.py passes ``policy_from_config(...)``. Where the incumbent did not observe an
   attribute and the other producer did (``signature``, ``docstring``,
   ``qualified_name``, ...), the merged record takes the value that exists —
   disjoint coverage is one value with one provenance (§1).
@@ -45,10 +45,9 @@ THE MERGED RECORD. A copy of the incumbent's, with: a NEW ``id`` minted from
 the merged attributes through ``make_symbol_id`` (ADR-0036: an id derives
 from attributes, so the merged attributes give the merged id — which
 coincides with the incumbent's exactly when incumbent-first arbitration
-leaves every identity attribute the incumbent's); the ITEM span (the
-INV-lodum cure for every merged record — a SCIP record spanned over its
-name token is folded into the item the incumbent spanned; a leftover is
-covered below); ``origin`` = both producers' pass ids,
+leaves every identity attribute the incumbent's); the ITEM span (a SCIP
+record spanned over its name token is folded into the item the incumbent
+spanned; a leftover is covered below; INV-lodum); ``origin`` = both producers' pass ids,
 incumbent first; ``meta`` = the union, the incumbent winning a key both
 set, so the SCIP moniker (``scip_symbol``) survives on the merged record;
 ``origin_run_id`` = this pass's run, since this pass emitted the record as
@@ -110,7 +109,7 @@ A LEFTOVER'S SPAN (INV-lodum). A token-anchored record the pass did not fold
 has no partner item to take, but its producer may have observed the item
 too: the SCIP shim carries the Definition's ``enclosing_range`` in
 ``meta["item_span"]`` when it differs from the token. After pairing — which
-ran on the token, so the declared anchor is undisturbed — such a record
+runs on the token, so the declared anchor is undisturbed — such a record
 takes that span, its id is re-minted from it (ADR-0036) and rewired like a
 fold (:attr:`MergeReport.respanned`), whether or not its language had a
 second producer. The carrier is dropped from every record, folded or not:
@@ -161,8 +160,8 @@ PASS_ID = "producer-merge"
 #: reached — ADR-0012's number for a type-resolved call. A declared level,
 #: not a formula: ``max`` would launder SCIP's 0.85 emitter constant into
 #: evidence and noisy-OR overstates producers reading the same text. The
-#: built-in policy's default; configurable since WI-hukuf as
-#: ``[merge] corroborated_confidence``.
+#: built-in policy's default; configurable as
+#: ``[merge] corroborated_confidence`` (WI-hukuf).
 
 #: Attributes whose candidates are recorded per merged record (ADR-0057 §1).
 TRACKED_ATTRIBUTES: Tuple[str, ...] = (
@@ -266,9 +265,9 @@ def abstention_blind_attributes(
     ``MergeAnchor.observes`` decides instead of the value (ADR-0057 §10).
 
     Kept as a function over a record type so the derivation itself is
-    testable: the live sets are empty today (INV-kubup made ``is_exported``
-    ``Optional[bool] = None``, which was the last one), and a guard that can
-    only be exercised by regressing the tree is not a guard.
+    testable: the live sets are empty (every tracked attribute's default is
+    absent, ``is_exported`` included; INV-kubup), and a guard that can only
+    be exercised by regressing the tree is not a guard.
     """
     declared = {f.name: f for f in fields(record_type)}
     blind = []
@@ -288,7 +287,7 @@ def abstention_blind_attributes(
 #: The live set, DERIVED not listed, so a tracked attribute that gains a
 #: concrete default appears here the day it is added and the registry
 #: contract test then demands that every anchored producer rule on it. Empty
-#: since INV-kubup: every tracked attribute's default is absent, so each
+#: (INV-kubup): every tracked attribute's default is absent, so each
 #: record says for itself, per record, whether its producer observed it —
 #: which is strictly better information than a per-producer declaration.
 ABSTENTION_BLIND_ATTRIBUTES: Tuple[str, ...] = abstention_blind_attributes(Symbol)
@@ -333,9 +332,9 @@ def arbitrate(candidates: Sequence[Candidate], precedence: Sequence[str]) -> Can
 
     Pure over the candidate set: the value held by the earliest producer in
     ``precedence`` wins; ties cannot arise because a producer holds one
-    value. ``precedence`` is the stamped default — incumbent first (§5) —
-    until WI-hukuf reads it from ``config.toml``; a caller with another
-    policy passes another order and reads the same candidates.
+    value. The built-in policy's ``precedence`` is incumbent first (§5);
+    ``config.toml`` can set another order (WI-hukuf), and a caller with
+    another policy passes another order and reads the same candidates.
     """
     rank = {producer: index for index, producer in enumerate(precedence)}
     return min(candidates, key=lambda c: min(rank.get(p, len(rank)) for p in c[1]))
@@ -406,7 +405,7 @@ def _merge_one(
     merged = replace(incumbent)
     members = [(incumbent_name, incumbent), (other_name, other)]
     precedence = [incumbent_name, other_name]
-    # The ITEM span: whichever member spans the item (INV-lodum cure) — the
+    # The ITEM span: whichever member spans the item (INV-lodum) — the
     # one attribute not decided by precedence. (A member with no span never
     # pairs — _spans_pair — so both spans exist here.)
     item_holder = other if (incumbent_role != SPAN_ROLE_ITEM and other_role == SPAN_ROLE_ITEM) else incumbent

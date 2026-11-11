@@ -94,7 +94,7 @@ def test_cmd_symbols_shows_tabular_output(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_symbols_kind_column_not_truncated(tmp_path: Path, capsys) -> None:
-    """WI-puroz: Kind column must show full kind names without ellipsis."""
+    """Kind column must show full kind names without ellipsis (WI-puroz)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -145,7 +145,7 @@ def test_cmd_symbols_kind_column_not_truncated(tmp_path: Path, capsys) -> None:
     assert "function" in out
     assert "class" in out
     assert "method" in out
-    # WI-puroz: no ellipsis in kind column
+    # No ellipsis in kind column (WI-puroz)
     assert "…" not in out, "Kind column must not contain ellipsis (…)"
     assert "functi…" not in out
 
@@ -153,9 +153,10 @@ def test_cmd_symbols_kind_column_not_truncated(tmp_path: Path, capsys) -> None:
 def test_cmd_symbols_numeric_columns_not_truncated(
     tmp_path: Path, capsys, monkeypatch
 ) -> None:
-    """INV-ripoh: the In/Out/Deg columns must render full multi-digit values
-    (no ellipsis) on a default ~120-col terminal. A connectivity hub with a
-    4-digit in-degree previously rendered Deg as '10…', destroying the rank."""
+    """The In/Out/Deg columns must render full multi-digit values (no
+    ellipsis) on a default ~120-col terminal: a connectivity hub with a
+    4-digit in-degree must not render Deg as '10…', which hides the rank
+    (INV-ripoh)."""
     import os
     import hypergumbo_core.cli as cli_mod
 
@@ -217,11 +218,11 @@ def test_cmd_symbols_numeric_columns_not_truncated(
 def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
     """Symbols are sorted by bidirectional centrality, not file total.
 
-    Regression test for the Django/NestJS bakeoff finding: a symbol with the
-    highest individual degree (e.g. QuerySet, degree=118) was buried at line 753
-    because expressions.py had higher *file total* degree. Sorting by bidirectional
-    centrality ``in_degree * (1 + ln(1 + out_degree))`` ensures the most connected
-    symbols always appear first.
+    A symbol with the highest individual degree (e.g. Django's QuerySet) must
+    not be buried just because another file (expressions.py) has a higher
+    *file total* degree. Sorting by bidirectional centrality
+    ``in_degree * (1 + ln(1 + out_degree))`` puts the most connected symbols
+    first.
     """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -712,10 +713,11 @@ def test_main_wrong_shape_input_exits_2_via_dispatch_guard(
 
 
 def test_main_non_directory_path_exits_2(tmp_path: Path, capsys) -> None:
-    """INV-jibof: a positional path that is a non-directory file (not a repo,
+    """A positional path that is a non-directory file (not a repo,
     no --input, no cached results) fails with rc=2 + guidance instead of
     silently running analysis on a non-repo and printing "No symbols found"
-    with rc=0. Exercises the _get_or_run_analysis directory guard end-to-end."""
+    with rc=0. Exercises the _get_or_run_analysis directory guard end-to-end
+    (INV-jibof)."""
     notadir = tmp_path / "notadir.txt"
     notadir.write_text("hello\n")
 
@@ -1292,8 +1294,8 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
                 "span": {"start_line": 40, "end_line": 45, "start_col": 0, "end_col": 10},
             },
             {
-                # Post-Phase-4b (ADR-0027 §6, PR #3633): npm packages
-                # are emitted as kind=package + meta.package_ecosystem.
+                # npm packages are emitted as kind=package +
+                # meta.package_ecosystem (ADR-0027 §6).
                 "id": "javascript:npm:vue:package",
                 "name": "vue",
                 "kind": "package",
@@ -1303,8 +1305,8 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
                 "meta": {"package_ecosystem": "npm"},
             },
             {
-                # Post-Phase-4b: synthetic module-file nodes are emitted
-                # as kind=file + meta.module_system.
+                # Synthetic module-file nodes are emitted as kind=file +
+                # meta.module_system.
                 "id": "javascript:src/utils.js:file:1:utils",
                 "name": "utils",
                 "kind": "file",
@@ -1342,7 +1344,7 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
     assert "mobile" not in out
     assert "CustomFont" not in out
     assert ".header" not in out
-    # npm_package and module_file should be filtered out
+    # npm package and module-file nodes should be filtered out
     assert "vue" not in out
     assert "utils" not in out
 
@@ -1398,7 +1400,7 @@ def _symbols_args(tmp_path: Path, **overrides) -> "FakeArgs":
 
 
 def test_cmd_symbols_kind_file_surfaces_file_nodes(tmp_path: Path, capsys) -> None:
-    """WI-sufuh: `--kind file` surfaces file nodes despite the default exclusion."""
+    """`--kind file` surfaces file nodes despite the default exclusion (WI-sufuh)."""
     (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
 
     result = cmd_symbols(_symbols_args(tmp_path, kind="file"))
@@ -1414,7 +1416,7 @@ def test_cmd_symbols_kind_file_surfaces_file_nodes(tmp_path: Path, capsys) -> No
 def test_cmd_symbols_kind_variable_surfaces_variable_nodes(
     tmp_path: Path, capsys
 ) -> None:
-    """WI-sufuh: `--kind variable` surfaces variable nodes (else hidden)."""
+    """`--kind variable` surfaces variable nodes (else hidden; WI-sufuh)."""
     (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
 
     result = cmd_symbols(_symbols_args(tmp_path, kind="variable"))
@@ -1428,9 +1430,9 @@ def test_cmd_symbols_kind_variable_surfaces_variable_nodes(
 def test_cmd_symbols_kind_function_still_excludes_low_value_kinds(
     tmp_path: Path, capsys
 ) -> None:
-    """WI-sufuh regression fence: asking for a non-excluded kind keeps the
-    silent exclusion active for the OTHER kinds (the bypass is scoped to the
-    exact kind requested)."""
+    """Asking for a non-excluded kind keeps the silent exclusion active for
+    the OTHER kinds: the bypass is scoped to the exact kind requested
+    (WI-sufuh)."""
     (tmp_path / "hypergumbo.results.json").write_text(json.dumps(_excluded_kind_map()))
 
     result = cmd_symbols(_symbols_args(tmp_path, kind="function"))
@@ -1445,12 +1447,11 @@ def test_cmd_symbols_kind_function_still_excludes_low_value_kinds(
 def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
     """Extreme pure sinks (in=100, out=0) rank below architectural connectors.
 
-    Regression test for DEEP bakeoff cohort 15-16 finding: noopMetric.Inc
-    (in=109, out=0, degree=109) and Timer.Duration (in=98, out=1, degree=99)
-    dominate the top-5 symbols despite being trivial stubs, while genuine
-    architectural hubs like evaluator.eval (in=10, out=78, degree=88) are
-    buried.  The raw formula ``in * (1 + ln(1 + out))`` doesn't sufficiently
-    penalize pure sinks when their in-degree is 10x higher.
+    Trivial stubs with very high in-degree (e.g. noopMetric.Inc, in=109,
+    out=0) must not crowd the top symbols ahead of genuine architectural hubs
+    like evaluator.eval (in=10, out=78).  The raw formula
+    ``in * (1 + ln(1 + out))`` doesn't sufficiently penalize pure sinks when
+    their in-degree is 10x higher.
 
     Sink dampening: symbols with out_degree/in_degree < 0.1 (near-pure sinks)
     get their effective in-degree reduced, so connectors with balanced in/out
@@ -1561,15 +1562,15 @@ def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
 def test_cmd_symbols_utility_symbol_dampened(tmp_path: Path, capsys) -> None:
     """Utility symbols (exceptions, loggers) rank below domain symbols.
 
-    Regression test for DEEP bakeoff cohort 8: GuacamoleServerException
-    (in=81, out=2, deg=83) ranked position 8, pushing domain-relevant
-    classes like ObjectPermission and UserService far below their
-    architectural importance.
+    A high in-degree exception class (e.g. GuacamoleServerException, in=81,
+    out=2) must not push domain-relevant classes like ObjectPermission and
+    UserService far below their architectural importance.
 
     Exception classes have non-zero out-degree (from extends/implements
     edges), so sink dampening alone doesn't sufficiently demote them.
-    The fix: apply is_utility_symbol() dampening in cmd_symbols() to
-    reduce the effective score of infrastructure symbols.
+    Utility dampening (is_utility_symbol(), applied by the rank_symbols()
+    pipeline that cmd_symbols() uses) reduces the effective score of
+    infrastructure symbols.
 
     Without utility dampening (sink dampening alone):
       SomeException:  in=80, out=2 → sink_factor ~0.35 → 28.2 * 2.099 = 59.2
@@ -1725,14 +1726,14 @@ def test_cmd_symbols_low_confidence_edges_excluded_from_ranking(
 ) -> None:
     """Low-confidence edges should not inflate ranking.
 
-    Reproduces the memSeries.labels bug: a symbol with 50 low-confidence
-    (0.49) in-edges was ranked #1 despite having negligible real
+    A symbol with many low-confidence in-edges (e.g. memSeries.labels, hit
+    by method-name collisions) must not rank #1 despite negligible real
     connectivity.  The ranking pipeline must filter low-confidence edges
     just like the display pipeline does.
 
     Setup:
     - ``FalsePositive``: 50 low-confidence (0.49) in-edges, 2 out
-      (non-trivial body so trivial-sink dampening doesn't mask the bug)
+      (non-trivial body so trivial-sink dampening doesn't mask the effect)
     - ``RealHub``: 10 high-confidence (0.9) in-edges, 5 out
     RealHub should outrank FalsePositive.
     """

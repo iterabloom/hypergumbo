@@ -357,7 +357,7 @@ class TestStructuralTaintPropagation:
                        "py:a.py:10-15:sink_func:function"),
             # io-boundary:F3 — write_text is a method-kind sink, so the edge
             # carries its receiver module (pathlib.Path); a bare unresolved
-            # method call would now be suppressed (INV-tapat).
+            # method call would be suppressed (INV-tapat).
             _make_edge("py:a.py:10-15:sink_func:function",
                        "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
@@ -378,20 +378,14 @@ class TestStructuralTaintPropagation:
     def test_sanitized_path_is_reported_as_sanitized(self) -> None:
         """Source → sanitizer → sink is REPORTED, labelled ``sanitized``.
 
-        THIS TEST WAS VACUOUS AND IS FIXED HERE (L17). It asserted
-        ``len(findings) == 0`` with a bare ``py:external:0-0:write_text``
-        sink — but the sink entry is ``kind="method"`` with module
+        The sink is module-qualified (``py:pathlib.Path:0-0:write_text``)
+        because the sink entry is ``kind="method"`` with module
         ``pathlib.Path``, and a bare unresolved method call carrying no module
-        context is suppressed outright (io-boundary:F3 / INV-tapat). Measured
-        on the pre-change code: the fixture yields **0 findings with the
-        sanitizer and 0 without it**, so the sanitizer barrier — the only
-        thing the test names — was never exercised. Its sibling
-        ``test_partial_sanitization_still_violates`` uses the module-qualified
-        ``py:pathlib.Path:0-0:write_text`` and does reach the sink; this
-        fixture now matches it.
+        context is suppressed outright (io-boundary:F3 / INV-tapat). A bare
+        ``py:external:0-0:write_text`` sink would yield zero findings with or
+        without the sanitizer, leaving the barrier unexercised (L17).
 
-        The behaviour it should have been pinning is also now different: a
-        sanitized flow is emitted with ``sanitized=True`` rather than pruned
+        A sanitized flow is emitted with ``sanitized=True`` rather than pruned
         into silence, because "no path exists" and "a path exists and your
         encrypt() call is what makes it safe" are different facts and only the
         second tells a reader what happens if they delete that call.
@@ -430,8 +424,7 @@ class TestStructuralTaintPropagation:
 
         The non-vacuity floor for the test above: without this, a fixture that
         cannot reach its sink at all would satisfy any assertion about what
-        the sanitizer does to it. This is the check whose absence let the
-        previous version pass for four months while testing nothing.
+        the sanitizer does to it.
         """
         edges = [
             _make_edge("py:a.py:1-5:handler:function",
@@ -492,13 +485,12 @@ class TestStructuralTaintPropagation:
         findings = propagate_taint_structural(
             edges, sources, sinks, sanitizers,
         )
-        # BOTH routes are now reported, distinguished by their label, where
-        # before only the unsanitized one survived. These are two distinct
-        # sink SITES (`encrypt_path` and `direct_path` each call write_text),
-        # so this is not the "unsanitized wins" case — it is the case where a
-        # reader needs to see that one route is protected and one is not.
-        # Reporting only the violation left them unable to tell "the other
-        # route is safe" from "there is no other route".
+        # BOTH routes are reported, distinguished by their label. These are
+        # two distinct sink SITES (`encrypt_path` and `direct_path` each call
+        # write_text), so this is not the "unsanitized wins" case — it is the
+        # case where a reader needs to see that one route is protected and one
+        # is not. Reporting only the violation would leave them unable to tell
+        # "the other route is safe" from "there is no other route".
         by_label = {f.sanitized: f for f in findings}
         assert len(findings) == 2 and set(by_label) == {True, False}
         assert "direct_path" in by_label[False].path[-1]
@@ -663,10 +655,10 @@ class TestSanitizerKindGate:
         findings = propagate_taint_structural(
             edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
         )
-        # The barrier fired, which is what this test is about. It now shows up
-        # as a LABELLED finding rather than as silence: `len(findings) == 0`
-        # was indistinguishable from "the fixture never reached the sink",
-        # which is exactly how the sibling test below came to be vacuous.
+        # The barrier fired, which is what this test is about. It shows up as
+        # a LABELLED finding rather than as silence, because
+        # `len(findings) == 0` is indistinguishable from "the fixture never
+        # reached the sink".
         assert len(findings) == 1
         assert findings[0].sanitized is True
 
@@ -676,15 +668,12 @@ class TestSanitizerKindGate:
         — never in the name slot the sibling test above uses.
 
         That is receiver evidence exactly as strong as the name-slot form, so
-        the untyped-method gate must let it through. It did not, because the
-        permit branch compared ``qualified_name`` against
-        ``_extract_callee_name``, which reads the NAME slot only. For a
-        method-shaped sanitizer the comparison is ``'Fernet.encrypt' ==
-        'encrypt'`` — false by construction — so the branch could never fire,
-        and every shipped sanitizer is method-shaped. The gate was therefore
-        unconditional in production and the barrier arm was dead at every
-        idiomatic call site (INV-finoh's bypass verified only on synthetic
-        name-slot edges).
+        the untyped-method gate must let it through. The permit branch
+        therefore reads the MODULE slot as well as the NAME slot: a name-slot
+        comparison alone is ``'Fernet.encrypt' == 'encrypt'`` for a
+        method-shaped sanitizer — false by construction — and every shipped
+        sanitizer is method-shaped, so the barrier would never fire at an
+        idiomatic call site (INV-finoh).
         """
         edges = [
             _make_edge("py:a.py:1-5:handler:function",
@@ -755,28 +744,19 @@ class TestSanitizerKindGate:
         assert len(findings) == 1
 
     def test_unresolved_free_function_sanitizer_does_NOT_register(self) -> None:
-        """REVERSED BY INV-fuduz, deliberately, and this is the one ruling in
-        the suite that INV-fuduz overturns rather than extends.
+        """A bare ``encrypt`` call stamped ``call_construct="function"`` does
+        NOT register ``Fernet.encrypt`` as a barrier.
 
-        This test used to assert the opposite — that a bare ``encrypt`` call
-        stamped ``call_construct="function"`` DOES register ``Fernet.encrypt``
-        as a barrier — on the stated grounds that "the reported bug is untyped
-        method / ambiguous collisions, not free-function barriers". That was a
-        description of the SCOPE OF THE BUG REPORT (INV-finoh), not an argument
-        that free-function binding is sound, and INV-fuduz's statement governs
-        this function explicitly: a barrier binds an unresolved call only on
-        receiver evidence, "for every call shape, including one with no
-        receiver token".
-
-        A bare ``encrypt`` is not ``Fernet.encrypt``. ``Fernet.encrypt`` is a
-        method ON Fernet; a free function named ``encrypt`` is a different
+        A barrier binds an unresolved call only on receiver evidence, "for
+        every call shape, including one with no receiver token" (INV-fuduz).
+        A bare ``encrypt`` is not ``Fernet.encrypt``: ``Fernet.encrypt`` is a
+        method ON Fernet, a free function named ``encrypt`` is a different
         callee, and the construct stamp says which SYNTAX was used, not which
-        callee was resolved. Binding it was the same category error as the java
-        bare call, one construct over.
+        callee was resolved.
 
-        DIRECTION, which is why the reversal is safe: refusing a barrier
-        un-suppresses a flow. The old behaviour could silently DELETE a real
-        finding; the new behaviour can only add one.
+        DIRECTION, which is why this is the safe ruling: refusing a barrier
+        un-suppresses a flow. Binding it could silently DELETE a real finding;
+        refusing it can only add one.
         """
         edges = [
             _make_edge("py:a.py:1-5:handler:function",
@@ -784,7 +764,7 @@ class TestSanitizerKindGate:
             _make_edge("py:a.py:1-5:handler:function",
                        "py:a.py:10-15:middle:function"),
             # Bare 'encrypt' as a plain function call (not a method), not
-            # ambiguous -> still treated as the sanitizer barrier.
+            # ambiguous -> still NOT a sanitizer barrier (no receiver evidence).
             _make_edge_cc("py:a.py:10-15:middle:function",
                           "py:external:0-0:encrypt:unresolved", "function"),
             _make_edge("py:a.py:10-15:middle:function",
@@ -1204,8 +1184,8 @@ def _ddg_index(edges, stmts=()):
 
     Mirrors production's construction deliberately rather than hand-writing
     the dicts: a hand-made index is consistent with several different source
-    programs, and a review panel refuted an earlier diagnosis that rested on
-    exactly that (the fixture proved nothing the code did not already assume).
+    programs, so a fixture built that way proves nothing the code does not
+    already assume.
     """
     ddg_uses: dict = {}
     defs_at: dict = {}
@@ -1237,9 +1217,8 @@ class TestDdgTaintReaches:
     - *lost track of it* — the value left the tracked definition chain into a
       container, field or closure that ADR-0017 §7b excludes → ``None``.
     - *was never given anything* — the construct is not modelled, so no use
-      was ever recorded → ``None``. Third cause, added after a review panel
-      found it returning ``False``; it is the dangerous one precisely because
-      it produces no escape and therefore no signal to classify.
+      was ever recorded → ``None``. This is the dangerous cause precisely
+      because it produces no escape and therefore no signal to classify.
     """
 
     def test_confirmed_dependence(self) -> None:
@@ -1271,7 +1250,7 @@ class TestDdgTaintReaches:
 
         Line 2 defines ``u`` from ``t`` AND ``v`` from something untracked;
         ``v`` reaches the sink at 3 and ``u`` goes nowhere near it. A
-        line-keyed index merged both under ``def_line 2`` and reported True.
+        line-keyed index would merge both under ``def_line 2`` and report True.
         The answer is "no dependence found, and the value escaped" — never
         True, because no tainted value reaches the sink call.
         """
@@ -1286,8 +1265,8 @@ class TestDdgTaintReaches:
     def test_escaped_value_is_unknown_not_absent(self) -> None:
         """A use that defines nothing means the value left tracked ground.
 
-        This is the pretix ``voucher_list.append(vouchers.pop(0))`` shape. It
-        must NOT report False: doing so is what deleted real flows.
+        This is the ``voucher_list.append(vouchers.pop(0))`` shape. It must
+        NOT report False: doing so deletes a real flow.
         """
         uses, defs, inh = _ddg_index([("t", 1, 5)])
         assert _ddg_taint_reaches(
@@ -1303,12 +1282,9 @@ class TestDdgTaintReaches:
         extractor never modelled leaves silence, and silence read as
         exhaustion is a confident negative built on no evidence at all.
 
-        Not hypothetical. ``cfg_nodes/go.yaml`` self-documented, until WI-losod
-        recorded header bindings, that ``if err := do(); err != nil``
-        initializers were invisible to def/use, and 700 of caddy's 6,596
-        ``if`` statements carried a call there. Every one of those definitions
-        arrived here as an empty index lookup; any construct the CFG still
-        does not record arrives the same way.
+        Any construct the CFG does not record arrives here as an empty index
+        lookup (Go's ``if err := do(); err != nil`` header initializers were
+        one such construct; WI-losod).
 
         The bare repro is the whole point: with an EMPTY index — the DDG
         holding nothing whatsoever — the walk must not return the value that
@@ -1319,14 +1295,12 @@ class TestDdgTaintReaches:
     def test_escape_sites_records_where_the_walk_lost_track(self) -> None:
         """The walk can name its own escape sites (INV-busis measurement).
 
-        WHY THIS IS IN PRODUCTION AND NOT IN AN INSTRUMENT. INV-busis's shape
-        split — which decides whether ~79% of its blockers are genuine escapes
-        or misclassified expression reads — needs to know WHICH line each walk
-        lost track at. The instrument that produced the filed split lives in a
-        session scratchpad, no longer matches this function's signature, and
-        the item records that as its own durability hazard. Re-deriving the
-        walk's escape logic outside the walk is how a measurement drifts from
-        the thing it measures (L2), so the walk reports its own sites instead.
+        WHY THIS IS IN PRODUCTION AND NOT IN AN INSTRUMENT. Splitting escapes
+        by shape — genuine escapes versus misclassified expression reads
+        (INV-busis) — needs to know WHICH line each walk lost track at.
+        Re-deriving the walk's escape logic outside the walk is how a
+        measurement drifts from the thing it measures (L2), so the walk
+        reports its own sites instead.
 
         Out-param rather than a return-shape change: every caller reads a
         three-valued verdict, and widening that to a tuple would touch call
@@ -1362,8 +1336,8 @@ class TestDdgTaintReaches:
         """A source call the DDG recorded no definition for names its own line.
 
         The seeding escape is a different branch from the use-site one and
-        reports a different line — the SOURCE call site, not a use. INV-lupav
-        exists because that case silently produced ``False``; the site record
+        reports a different line — the SOURCE call site, not a use. That case
+        must not silently produce ``False`` (INV-lupav); the site record
         is what lets a measurement tell "never given anything" apart from
         "followed it and lost it", which are the two facts L11 says share a
         surface.
@@ -1406,15 +1380,14 @@ class TestDdgTaintReaches:
     ) -> None:
         """The two causes that share a surface must not share a bucket.
 
-        This is the measurement that re-scoped ADR-0017 §7b's blocker
-        population, so it is pinned rather than trusted. A shape split taken
+        This discrimination scopes ADR-0017 §7b's blocker population, so it
+        is pinned rather than trusted. A shape split taken
         over ``(symbol_id, line)`` alone cannot tell "the DDG never gave the
         walk anything at the source call" (INV-lupav — an EXTRACTION gap)
         from "the walk followed the value and lost it at a use"
         (INV-busis — an ESCAPE-CLASSIFICATION question). They are different
         defects with different owners and OPPOSITE remedies, and a histogram
-        that folds them attributes extractor gaps to §7b's scope exclusion —
-        which is how the expression-read family was first priced at 78.6%.
+        that folds them attributes extractor gaps to §7b's scope exclusion.
 
         One walk, both branches, so the discrimination is demonstrated
         rather than assumed: line 7 is a source the DDG defined nothing at,
@@ -1436,9 +1409,9 @@ class TestDdgTaintReaches:
     def test_escape_site_is_tuple_compatible(self) -> None:
         """``EscapeSite`` stays a tuple so positional readers keep working.
 
-        The out-param landed as a plain ``(symbol_id, line)`` pair and the
-        reason is an ADDITION to it, not a replacement. Anything already
-        unpacking two elements would break loudly on a widened tuple, which
+        The reason is a third element appended to the ``(symbol_id, line)``
+        pair, not a replacement for it. Anything unpacking exactly two
+        elements breaks loudly on the widened tuple, which
         is correct — but indexing and iteration must not change shape
         beneath a reader that only wants the first two.
         """
@@ -1497,11 +1470,12 @@ class TestDdgTaintReaches:
         ) is None
 
     def test_forfeit_defaults_off_so_no_caller_changes_behaviour(self) -> None:
-        """Every existing call site keeps its verdict until wired deliberately.
+        """Forfeit is off by default; a caller opts in deliberately.
 
         The gate is only safe if turning it on is a decision. A default of
-        ``True`` would silently downgrade every ``False`` in the tree the
-        moment this lands, which is a behaviour change disguised as a guard.
+        ``True`` would silently downgrade every ``False`` at every call site
+        that does not pass it, which is a behaviour change disguised as a
+        guard.
         """
         uses, defs, inh = _ddg_index(
             [("a", 3, 4), ("b", 4, 3)],
@@ -1577,9 +1551,9 @@ class TestSummariesCollapseEscapes:
     returns ``param_to_return = {0..9: True}`` — everything propagates — so
     using it would make an empty catalogue *change* behaviour: every callee
     would read as passing taint through. Routing an uncatalogued callee to
-    "escaped" instead means a catalogue covering nothing reproduces today's
-    output exactly, and every behaviour change is attributable to an entry
-    somebody wrote.
+    "escaped" instead means a catalogue covering nothing reproduces the
+    summary-free output exactly, and every behaviour change is attributable to
+    an entry somebody wrote.
     """
 
     # line 5 uses the taint and defines nothing
@@ -1589,8 +1563,8 @@ class TestSummariesCollapseEscapes:
     def test_empty_catalogue_is_a_strict_no_op(self) -> None:
         """The safety property the whole design rests on.
 
-        With no summaries, the walk must return exactly what it returned
-        before §4 existed. If this is not true, every measurement of §4's
+        With no summaries, the walk must return exactly what a summary-free
+        walk returns. If this is not true, every measurement of §4's
         effect is confounded by a behaviour change nobody chose.
         """
         callees = {("f", 5): frozenset({"fmt.Printf"})}
@@ -1622,8 +1596,8 @@ class TestSummariesCollapseEscapes:
         ) is None
 
     def test_receiver_mutating_callee_still_escapes(self) -> None:
-        """``lst.append(x)`` puts the argument INTO the receiver — the exact
-        pretix shape that produced verified false negatives."""
+        """``lst.append(x)`` puts the argument INTO the receiver — the value
+        escapes rather than being consumed, so the branch stays open."""
         summaries = {"list.append": FunctionSummary(
             function="list.append", param_to_self={0: True}, mutates_self=True,
         )}
@@ -1729,22 +1703,22 @@ class TestFollowedHeirStillAsksTheEscapeQuestion:
 
     One statement can do two things at once. ``acc.append(x); y = x`` both
     hands ``x`` to a receiver the walk cannot follow AND derives a tracked
-    ``y``. The heir loop below sets ``followed`` from the second fact and
-    ``continue``d, skipping the ``_use_site_terminates`` escape check for the
-    first — so the walk reported "everything accounted for" while an escape on
-    that very statement went unasked. Following an heir accounts for the heir,
-    not for the statement.
+    ``y``. Following an heir accounts for the heir, not for the statement, so
+    setting ``followed`` from the second fact must not skip the
+    ``_use_site_terminates`` escape check for the first — otherwise the walk
+    reports "everything accounted for" while an escape on that very statement
+    goes unasked.
 
-    THE DIRECTION MATTERS AND IT IS THE SAFE ONE. Since PR #214 a ``False``
-    from this walk earns the ``sanitized`` label, and a sanitized flow is
-    dropped from a claim's violation set. So an unearned ``False`` DELETES a
-    real security finding. This fix produces strictly fewer ``False``s, i.e.
-    strictly more surviving violations; it can never suppress.
+    THE DIRECTION MATTERS AND IT IS THE SAFE ONE. A ``False`` from this walk
+    earns the ``sanitized`` label, and a sanitized flow is dropped from a
+    claim's violation set. So an unearned ``False`` DELETES a real security
+    finding. Asking the escape question produces strictly fewer ``False``s,
+    i.e. strictly more surviving violations; it can never suppress.
 
     Each test below isolates one arm. The second is the control: it is the
-    defect case with the heir removed, and it must already pass on the
-    unfixed walk — without it, a blanket ``None`` would satisfy the first test
-    and look like a fix.
+    defect case with the heir removed, and it escapes whether or not the heir
+    loop asks the escape question — without it, a blanket ``None`` would
+    satisfy the first test and look correct.
     """
 
     # `acc.append(x)` and `y = x` share line 2; `pkg.Print(y)` is at line 3.
@@ -1774,7 +1748,8 @@ class TestFollowedHeirStillAsksTheEscapeQuestion:
         ) is None
 
     def test_the_same_line_without_an_heir_already_escaped(self) -> None:
-        """CONTROL: identical minus the heir. Passes before AND after."""
+        """CONTROL: identical minus the heir. Escapes regardless of heir
+        handling."""
         assert _ddg_taint_reaches(
             "f", [1], [9], {("f", "x", 1): {2}},
             {("f", 2): frozenset({"pkg.Append"})},
@@ -1813,36 +1788,33 @@ class TestFollowedHeirStillAsksTheEscapeQuestion:
 class TestUnrecordedHeirIsNotVouchedForByASibling:
     """INV-lupav at HEIR granularity: a recorded sibling must not vouch.
 
-    WI-votom hole 2 closed the case where a followed heir suppressed the
-    escape question for a CALL on the same line. Its fix enumerated the
-    permitting cases, and one of them reads "no call at this line at all — a
-    pure rebinding, so the heir really is the value's only exit". That
-    reasoning is sound for ONE heir and unsound for several: ``followed`` is a
-    disjunction over heirs, and an heir the DDG holds no uses for is skipped
-    silently, so a RECORDED sibling closes the line on the UNRECORDED one's
-    behalf.
+    A followed heir must not suppress the escape question for a CALL on the
+    same line (WI-votom). One permitting case remains: "no call at this line
+    at all — a pure rebinding, so the heir really is the value's only exit".
+    That reasoning is sound for ONE heir and unsound for several:
+    ``followed`` is a disjunction over heirs, and an heir the DDG holds no
+    uses for would be skipped silently, letting a RECORDED sibling close the
+    line on the UNRECORDED one's behalf.
 
-    That is this project's ABSENT ≠ EMPTY defect one level below where
-    INV-lupav looks for it. The item's clause L2 is about a partially-recorded
-    DEFINITION; this is a partially-recorded SET OF HEIRS at a single
-    statement, and WI-joluk's coverage gate cannot see it — the gate keys on
-    CALL nodes, and the motivating statement has no call at all.
+    That is the ABSENT ≠ EMPTY defect one level below a partially-recorded
+    DEFINITION (INV-lupav): here it is a partially-recorded SET OF HEIRS at a
+    single statement. The CALL-node coverage gate (WI-joluk) cannot see it,
+    because the statement has no call at all.
 
-    THE RULING ALREADY EXISTS AND THIS ONLY MAKES IT CONSISTENT. When the
-    unrecorded heir is ALONE the walk already escapes (``followed`` stays
-    False, the ``no_heir`` branch runs, and a line with no callee does not
-    terminate). So "an heir with no recorded uses is unknown" is shipped
-    behaviour; the multi-heir path simply disagreed with it.
+    This keeps the multi-heir path consistent with the single-heir one. When
+    the unrecorded heir is ALONE the walk escapes (``followed`` stays False,
+    the ``no_heir`` branch runs, and a line with no callee does not
+    terminate), so "an heir with no recorded uses is unknown" holds for any
+    number of heirs.
 
-    DIRECTION, and it is the safe one: strictly FEWER ``False``s. Since
-    WI-kabif granted §3a removal authority a ``False`` DELETES a flow, so
-    fewer of them means strictly more surviving violations. This can never
-    suppress a finding.
+    DIRECTION, and it is the safe one: strictly FEWER ``False``s. A ``False``
+    from §3a can DELETE a flow (WI-kabif), so fewer of them means strictly
+    more surviving violations. This can never suppress a finding.
     """
 
     # L1 `cwd := src()`; L2 `a, b := cwd, cwd` — NO CALL; L3 `pkg.Print(a)`.
-    # `b`'s own use sits in a construct the extractor never recorded (Go's
-    # range clause was one until WI-losod), so the DDG holds no entry for it.
+    # `b`'s own use sits in a construct the extractor never recorded, so the
+    # DDG holds no entry for it.
     _DEFS: ClassVar[dict] = {("f", 1): {"cwd"}}
     _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
         function="pkg.Print", side_effect=True,
@@ -1865,10 +1837,9 @@ class TestUnrecordedHeirIsNotVouchedForByASibling:
         ) is None
 
     def test_the_unrecorded_heir_alone_already_escaped(self) -> None:
-        """CONTROL: identical minus the recorded sibling. This is the ruling
-        the defect case contradicts, and it passes BEFORE and after — without
-        it a blanket ``None`` would satisfy the test above and look like a
-        fix."""
+        """CONTROL: identical minus the recorded sibling. This is the
+        single-heir ruling the defect case must agree with — without it a
+        blanket ``None`` would satisfy the test above and look correct."""
         assert _ddg_taint_reaches(
             "f", [1], [9], {("f", "cwd", 1): {2}},
             self._CALLEES, self._SUMS,
@@ -1877,10 +1848,10 @@ class TestUnrecordedHeirIsNotVouchedForByASibling:
         ) is None
 
     def test_all_heirs_recorded_at_a_callless_line_still_closes(self) -> None:
-        """CONTROL, THE OTHER WAY: the permitting case WI-votom wrote down is
-        untouched. Every heir is recorded, so nothing is unaccounted for and
-        the walk still earns its ``False``. A fix that forfeits here would be
-        over-forfeiting, and this is what catches it."""
+        """CONTROL, THE OTHER WAY: the pure-rebinding permitting case
+        (WI-votom) still holds. Every heir is recorded, so nothing is
+        unaccounted for and the walk earns its ``False``. Forfeiting here
+        would be over-forfeiting, and this is what catches it."""
         assert _ddg_taint_reaches(
             "f", [1], [9],
             {("f", "cwd", 1): {2}, ("f", "a", 2): {3}, ("f", "b", 2): {3}},
@@ -1935,8 +1906,8 @@ class TestQualifiedCallee:
         Composing the raw slot with the name embeds ``.py`` / ``.go`` in the
         middle of the key, so no declared summary could ever equal it and no
         first-party callee is catalogueable at all.
-        ``_module_from_symbol_path`` exists precisely to normalise this (added
-        by WI-damir for the same class of bug) and must be what builds it.
+        ``_module_from_symbol_path`` exists precisely to normalise this
+        (WI-damir) and must be what builds it.
         """
         assert _qualified_callee(
             "python:src/app/views.py:10-20:handler:function",
@@ -1970,9 +1941,9 @@ class TestQualifiedCallee:
     def test_unresolved_placeholder_yields_no_key(self) -> None:
         """``external`` is not a module, and a key built from it is a fiction.
 
-        The old composition produced ``external.print`` — a well-formed string
-        naming nothing, which then sat in the callee index looking like
-        evidence. An empty key keeps the callee uncatalogued, which routes to
+        Composing the slots naively would produce ``external.print`` — a
+        well-formed string naming nothing, which would sit in the callee index
+        looking like evidence. An empty key keeps the callee uncatalogued, which routes to
         "unknown" and holds the branch open: the safe direction.
         """
         assert _qualified_callee("python:external:0-0:print:unresolved") == ""
@@ -1986,35 +1957,23 @@ class TestQualifiedCallee:
     ) -> None:
         """The KEY SHAPE, which is correct and stays correct (INV-rozaj).
 
-        The extension was an accidental barrier: ``net/http.go.Get`` could not
-        equal stdlib ``net/http.Get``, and stripping it removes that. A Go repo
-        with ``net/http.go`` at its root therefore produces a key equal to a
-        shipped stdlib summary.
+        Stripping the extension means ``net/http.go.Get`` becomes
+        ``net/http.Get``, so a Go repo with ``net/http.go`` at its root
+        produces a key equal to a shipped stdlib summary.
 
-        THE EXPOSURE THAT CREATED IS NOW CLOSED — elsewhere, and this test's own
-        prediction about itself was wrong (WI-zumud). It used to end "if a guard
-        lands, it should FAIL and be rewritten to assert the guard". The guard
-        landed and this test did NOT fail, because the guard is deliberately
-        NOT in ``_qualified_callee``: gating key construction would break
-        ``test_in_repo_callee_key_has_no_file_extension`` directly above, which
-        pins the INV-rozaj fix. The key shape was never the defect. Handing a
-        first-party key to a SHIPPED catalogue was, so the provenance decision
-        lives in ``_catalogue_key_for_edge`` and is asserted by
-        ``TestCatalogueKeyProvenanceGate``. This test keeps its original job:
-        pinning that an in-repo callee's key carries no file extension.
+        That exposure is closed elsewhere, deliberately NOT in
+        ``_qualified_callee``: gating key construction would break
+        ``test_in_repo_callee_key_has_no_file_extension`` directly above. The
+        key shape is not the defect; handing a first-party key to a SHIPPED
+        catalogue is, so the provenance decision lives in
+        ``_catalogue_key_for_edge`` and is asserted by
+        ``TestCatalogueKeyProvenanceGate`` (WI-zumud). This test pins only
+        that an in-repo callee's key carries no file extension.
 
-        Sizing, retained: zero collisions across 72,822 call edges on a
-        self-survey, while 42 of 69 shipped qualified keys are shadowable in
-        principle — never measured on the 9-repo cohort.
-
-        ONE STALE PREMISE CORRECTED. This used to say the risk was latent
-        because "§3a is confirm-only and nothing acts on ``False``". The first
-        half still holds — ``adjudicated = (walk is True)`` collapses ``False``
-        and ``None``. The second half does NOT: since PR #214 the same-function
-        sanitizer path runs a SECOND walk whose ``False`` earns ``sanitized``,
-        and a sanitized flow is dropped from a claim's violation set. So a
-        ``False`` does act today, which is why the guard was worth landing now
-        rather than deferring it to WI-kabif's removal authority.
+        The exposure matters because a ``False`` from the walk acts: the
+        same-function sanitizer path runs a walk whose ``False`` earns
+        ``sanitized``, and a sanitized flow is dropped from a claim's
+        violation set.
         """
         assert _qualified_callee(
             "go:net/http.go:1-5:Get:function") == "net/http.Get"
@@ -2024,13 +1983,11 @@ class TestQualifiedCallee:
 
         ``_use_site_terminates`` refuses to consult the alias index, and the
         justification for that refusal is a claim about the shipped
-        catalogues: they contain bare short names that would collide. That
-        claim used to be carried by a hardcoded count in a docstring, which
-        moved 33 → 108 → 113 across two catalogue edits in two days — a
-        rationale decaying with nobody deciding anything (L50). This asserts
-        the PROPERTY instead, so the argument fails loudly if a future
-        catalogue change ever makes it untrue rather than quietly becoming
-        wrong prose.
+        catalogues: they contain bare short names that would collide. This
+        asserts that PROPERTY rather than quoting a count in prose, which
+        decays as the catalogues change with nobody deciding anything (L50),
+        so the argument fails loudly if a future catalogue change ever makes
+        it untrue.
         """
         summaries = load_function_summaries()
         aliases = {k for k, v in summaries.items() if k != v.function}
@@ -2045,20 +2002,19 @@ class TestQualifiedCallee:
 class TestCatalogueKeyProvenanceGate:
     """WI-zumud. A FIRST-PARTY callee may not match a SHIPPED stdlib summary.
 
-    The INV-rozaj fix (PR #200) made ``_qualified_callee`` normalise an in-repo
-    callee's module slot with ``_module_from_symbol_path``, which strips the
-    source file extension. That is correct and is what makes a first-party
-    callee catalogueable at all — but the extension had also been an ACCIDENTAL
-    barrier::
+    ``_qualified_callee`` normalises an in-repo callee's module slot with
+    ``_module_from_symbol_path``, which strips the source file extension
+    (INV-rozaj). That is correct and is what makes a first-party callee
+    catalogueable at all — but a kept extension would also act as an
+    ACCIDENTAL barrier::
 
-        before:  go:net/http.go:1-5:Get:function  ->  'net/http.go.Get'  != 'net/http.Get'
-        after:   go:net/http.go:1-5:Get:function  ->  'net/http.Get'     == 'net/http.Get'
+        unstripped:  go:net/http.go:1-5:Get:function  ->  'net/http.go.Get'  != 'net/http.Get'
+        stripped:    go:net/http.go:1-5:Get:function  ->  'net/http.Get'     == 'net/http.Get'
 
     So a Go repo with a root-level ``net/http.go`` produces a key equal to a
-    shipped stdlib summary. This is the WI-damir shape — a first-party symbol
-    matching a catalogue primitive by NAME ALONE — reappearing in the §4 lookup
-    rather than in sink matching, and WI-damir's own comment already records
-    the verdict on that premise: resolution establishes WHICH IN-REPO SYMBOL is
+    shipped stdlib summary: a first-party symbol matching a catalogue
+    primitive by NAME ALONE, the same shape as in sink matching (WI-damir).
+    The same verdict applies: resolution establishes WHICH IN-REPO SYMBOL is
     called and says nothing about whether that symbol IS the catalogued
     primitive.
 
@@ -2107,7 +2063,7 @@ class TestCatalogueKeyProvenanceGate:
     ) -> None:
         """ADR-0037 ruling 4, and the reason a string check would be a bug.
 
-        WI-pubiv's boundary-id remap rewrites ``:unresolved`` to
+        The boundary-id remap (WI-pubiv) rewrites ``:unresolved`` to
         ``:external_symbol`` on the final graph, so a dst-suffix test would
         read every unresolved edge as resolved. Here the suffix says
         ``external_symbol`` while the field says resolved; the FIELD wins.
@@ -2213,14 +2169,12 @@ class TestPropagateTaintDdg:
     def test_source_to_sink_without_call_lines_is_not_precise(self) -> None:
         """DDG coverage alone does not earn "precise" — the walk must run.
 
-        Both endpoints are in ``analyzed``, which under the pre-§3a contract
-        was enough to stamp ``confidence="precise"``. It never should have
-        been: the DDG's result was discarded and inclusion was decided by
-        call-graph BFS, so the label asserted a precision the analysis had not
-        used (INV-sadah). Here the call edges carry no ``line`` and the DdgEdge
-        no ``symbol_id``, so the forward walk has nothing to key on and cannot
-        adjudicate — the finding is still reported, and is labelled for what
-        actually decided it.
+        Both endpoints are in ``analyzed``, but coverage is not adjudication:
+        stamping ``confidence="precise"`` on coverage alone would assert a
+        precision the analysis had not used (INV-sadah). Here the call edges
+        carry no ``line`` and the DdgEdge no ``symbol_id``, so the forward walk
+        has nothing to key on and cannot adjudicate — the finding is still
+        reported, and is labelled for what actually decided it.
         """
         ddg = [DdgEdge(
             variable="data", def_block="caller", def_line=1,
@@ -2275,12 +2229,12 @@ class TestPropagateTaintDdg:
         The value defined at the source call (line 1) is used at line 5 while
         the sink is called at line 2, so the walk finds no dependence. It still
         does not remove the flow, and that restraint is the design rather than
-        a shortfall: telling a use that TERMINATES the taint (``print(x)``)
-        from one that PROPAGATES it (``lst.append(x)``) needs ADR-0017 §4
-        function summaries, which §3a step 3 calls for and which have no
-        production caller. Without them "found no dependence" cannot be
+        a shortfall: line 5 defines nothing and calls nothing catalogued, and
+        telling a use that TERMINATES the taint (``print(x)``) from one that
+        PROPAGATES it (``lst.append(x)``) needs an ADR-0017 §4 function
+        summary for the callee. Without one, "found no dependence" cannot be
         distinguished from "lost track of it", and removing on that basis
-        produced verified false negatives on caddy and pretix.
+        deletes real flows.
 
         What the walk does earn is the label: inclusion stays with call-graph
         reachability, and the finding is reported as approximate rather than
@@ -2313,8 +2267,8 @@ class TestPropagateTaintDdg:
         3 directly, so a single-hop walk would drop this real flow — the
         expensive direction for a security tool.
 
-        ``stmt_defuse`` is now required for the hop, and that is the whole
-        INV-sadah change: the edge set says ``b`` is defined at line 2, but
+        ``stmt_defuse`` is required for the hop (INV-sadah): the edge set says
+        ``b`` is defined at line 2, but
         NOT that ``b`` derives from ``a`` rather than from something else the
         same line also touched. The statement row supplies exactly that.
         """
@@ -2348,11 +2302,11 @@ class TestPropagateTaintDdg:
         must report an unknown and the finding must fall back to
         ``approximate``.
 
-        THE FLOW IS STILL REPORTED. Only the label moves: §3a confirms and
-        never refutes, so a missing input costs precision, never recall. That
-        asymmetry is the point — the alternative reading, "no statement data
-        so assume the hop is fine", is what stamped an unearned ``precise`` in
-        the first place.
+        THE FLOW IS STILL REPORTED. Only the label moves: a missing input
+        yields an unknown, never a refutation, so it costs precision, never
+        recall. That asymmetry is the point — the alternative reading, "no
+        statement data so assume the hop is fine", would stamp an unearned
+        ``precise``.
         """
         ddg = [
             DdgEdge(variable="a", def_block="bb_0", def_line=1,
@@ -2378,14 +2332,13 @@ class TestPropagateTaintDdg:
     def test_untracked_source_definition_never_licenses_removal(self) -> None:
         """No DDG evidence about the source's value means no refutation.
 
-        Regression for a verified false negative on caddy. Its
-        ``printEnvironment`` binds ``for _, v := range os.Environ()`` and then
-        calls ``fmt.Println(v)`` on the next line — an unmistakable flow. The
-        Go CFG mapping's loop hook did not name the range clause (until
-        WI-losod), so ``v`` had no definition in the DDG at all, and a walk
-        that treats "found no uses" as "there are none" concluded the literal
-        next line was unreachable. The guard stays for every construct still
-        unrecorded.
+        The shape: ``for _, v := range os.Environ()`` followed by
+        ``fmt.Println(v)`` on the next line — an unmistakable flow. When the
+        CFG mapping does not record the binding construct (Go's range clause
+        was one; WI-losod), ``v`` has no definition in the DDG at all, and a
+        walk that treats "found no uses" as "there are none" concludes the
+        literal next line is unreachable. The guard covers every construct
+        still unrecorded.
 
         Absence of evidence is not evidence of absence: a source whose value
         the DDG never tracked must leave the flow to structural reachability.
@@ -2412,11 +2365,10 @@ class TestPropagateTaintDdg:
     def test_sink_recorded_before_source_never_licenses_removal(self) -> None:
         """One edge per (caller, callee) means ``line`` is not every call site.
 
-        Regression for the second half of the same caddy false negative.
-        ``printEnvironment`` calls ``fmt.Printf`` twelve times; the call graph
-        emits a single edge carrying the FIRST line (454), while the tainted
-        call sits at 469 and is invisible. Asking "does taint from 465 reach
-        454?" answers a question about the wrong call site.
+        A function may call the same sink many times; the call graph emits a
+        single edge carrying the FIRST line, while the tainted call can sit at
+        a later line and be invisible. Asking whether the taint reaches the
+        recorded line answers a question about the wrong call site.
 
         When the recorded sink line precedes the source, it cannot be the site
         that consumes the source's value, and later sites may exist that the
@@ -2447,14 +2399,12 @@ class TestPropagateTaintDdg:
     ) -> None:
         """``meta.call_lines`` supplies the later sink site ``line`` omitted.
 
-        The companion of the test above, and the reason it was written as a
-        limitation rather than a correctness claim: that caddy false negative
-        was never a walk defect, it was missing input. ``printEnvironment``
-        calls ``fmt.Printf`` twelve times and the edge carried the first line;
-        the tainted call sat at a later one. With every collapsed site
-        recorded, the walk can be asked about the right call site — and the
-        SAME shape that must stay ``approximate`` without the data becomes
-        ``precise`` with it.
+        The companion of the test above, which is a limitation rather than a
+        correctness claim: a sink called many times collapses to one edge
+        carrying the first line, so what is missing there is input, not a walk
+        defect. With every collapsed site recorded, the walk can be asked
+        about the right call site — and the SAME shape that must stay
+        ``approximate`` without the data becomes ``precise`` with it.
         """
         ddg = [DdgEdge(
             variable="data", def_block="bb_0", def_line=10,
@@ -2463,7 +2413,7 @@ class TestPropagateTaintDdg:
         call_edges = [
             {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10},
-            # Recorded line is 3 — before the source — but the dedup pass now
+            # Recorded line is 3 — before the source — but the dedup pass
             # preserves the site at 14, which is where the taint arrives.
             {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3,
@@ -2588,20 +2538,19 @@ class TestPropagateTaintDdg:
 
         The field's own docstring defines ``structural`` as "no reaching-def
         data for the language, so no walk was possible" and ``ddg_mixed`` as
-        "the walk ran and did not confirm". Those are different facts, and
-        only ``ddg_mixed`` was reachable from this propagator: the label was
-        chosen by which propagator the CLI dispatched to, and that dispatch
-        reads ``if ddg_edges:`` over the WHOLE repo. So a JavaScript flow —
-        JavaScript has no def/use extractor at all — came out ``ddg_mixed``
-        when the repo happened to contain a Python file and ``structural``
-        when it did not, with byte-identical JavaScript either way.
+        "the walk ran and did not confirm". Those are different facts, so the
+        label must follow whether THIS function has DDG coverage, not which
+        propagator the CLI dispatched to: that dispatch reads ``if
+        ddg_edges:`` over the WHOLE repo, so keying on it would make a
+        JavaScript flow — JavaScript has no def/use extractor at all — come
+        out ``ddg_mixed`` when the repo happens to contain a Python file and
+        ``structural`` when it does not, with byte-identical JavaScript.
 
-        That is INV-karud clause (a3) failing at its own premise: the clause
-        requires a reader to tell data-flow-adjudicated flows from
-        call-reachability-only ones *from the emitted record*, and the field
-        that carries the distinction was being set by an unrelated language's
-        presence. Here the DDG has edges but knows nothing about ``caller``,
-        which is exactly that shape.
+        INV-karud clause (a3) requires a reader to tell data-flow-adjudicated
+        flows from call-reachability-only ones *from the emitted record*, so
+        the field that carries the distinction cannot depend on an unrelated
+        language's presence. Here the DDG has edges but knows nothing about
+        ``caller``, which is exactly that shape.
         """
         ddg = [DdgEdge(
             variable="data", def_block="other_fn", def_line=1,
@@ -2624,19 +2573,14 @@ class TestPropagateTaintDdg:
     def test_sanitizer_labels_the_flow_instead_of_erasing_it(self) -> None:
         """A sanitized flow is REPORTED as sanitized, not silently dropped.
 
-        This test used to assert ``len(findings) == 0`` — it pinned the silent
-        filter. The barrier pruned the subtree beyond a sanitizer, so a flow
-        that a developer had deliberately protected produced *the same output
-        as a flow that does not exist*: nothing. A reader could not tell "no
-        path from source to sink" from "a path exists and your encrypt() call
-        is what makes it safe", and the second is the one they want to know
-        about before deleting that call.
-
-        ``TaintFlowFinding.sanitized`` was written ``False`` at both and only
-        construction sites, so ``verify_claims``' ``and not f.sanitized`` was a
-        tautology and the ``confirmed_safe`` branch of the ``verdict`` property
-        was unreachable in production. Owner ruling 2026-08-03: emit the flow
-        labelled.
+        Pruning the subtree beyond a sanitizer would make a flow that a
+        developer deliberately protected produce *the same output as a flow
+        that does not exist*: nothing. A reader could not tell "no path from
+        source to sink" from "a path exists and your encrypt() call is what
+        makes it safe", and the second is the one they want to know about
+        before deleting that call. So the flow is emitted labelled, which is
+        also what makes the ``confirmed_safe`` branch of ``verdict`` and
+        ``verify_claims``' ``and not f.sanitized`` filter meaningful.
         """
         ddg = [DdgEdge(
             variable="data", def_block="caller", def_line=1,
@@ -2777,7 +2721,7 @@ class TestPropagateTaintDdg:
     def test_diamond_graph_dedup(self) -> None:
         """Diamond-shaped graph shouldn't produce duplicate findings.
 
-        Also exercises the BFS deduplication (line 838) — when mid1 and
+        Also exercises the BFS deduplication — when mid1 and
         mid2 both point to sink_node, the BFS may encounter sink_node
         twice in the queue.
         """
@@ -2873,27 +2817,25 @@ class TestCrossLanguageTaint:
     """Test taint propagation across language boundaries via linker edges."""
 
     def test_taint_call_edge_types_post_phase4b(self) -> None:
-        """Post Phase 4b (WI-vomoj-suhaz) and post WI-vumum-juvil:
-        bridge / IPC / protocol-call endpoint_shape values are no
-        longer enumerated explicitly in TAINT_CALL_EDGE_TYPES. Bridges
-        fold to canonical 'calls' + meta['bridge_kind']; IPC and
-        protocol-call (HTTP/gRPC/GraphQL) fold to 'calls' +
-        meta['protocol']. After audit-findings 0016, implements_rpc
-        also folded (to 'implements' + meta['protocol']='grpc'); it is
-        no longer an explicit set member — the folded gRPC edge is matched
-        by the is_grpc_rpc_implementation predicate so taint still crosses
-        it, without wholesale-including every structural 'implements' edge.
-        The set keeps only canonicals."""
+        """Bridge / IPC / protocol-call endpoint_shape values are not
+        enumerated in TAINT_CALL_EDGE_TYPES. Bridges fold to canonical
+        'calls' + meta['bridge_kind']; IPC and protocol-call
+        (HTTP/gRPC/GraphQL) fold to 'calls' + meta['protocol']. A gRPC RPC
+        implementation folds to 'implements' + meta['protocol']='grpc' and
+        is matched by the is_grpc_rpc_implementation predicate, so taint
+        crosses it without wholesale-including every structural
+        'implements' edge. The set keeps only canonicals (Phase 4b /
+        WI-vomoj-suhaz, WI-vumum-juvil, audit-findings 0016)."""
         assert "calls" in TAINT_CALL_EDGE_TYPES
         assert "module_attr_ref" in TAINT_CALL_EDGE_TYPES
         # Folded (audit-findings 0016) — matched by predicate, not membership:
         assert "implements_rpc" not in TAINT_CALL_EDGE_TYPES
         assert "implements" not in TAINT_CALL_EDGE_TYPES
-        # Removed in Phase 4b — folded to 'calls' + meta:
+        # Folded to 'calls' + meta (Phase 4b):
         for removed in ("ffi_bridge", "wasm_bridge", "napi_bridge", "ipc_calls",
                         "native_bridge", "cgo_bridge", "bridge_invokes"):
             assert removed not in TAINT_CALL_EDGE_TYPES
-        # Removed in WI-vumum-juvil — folded to 'calls' + meta['protocol']:
+        # Folded to 'calls' + meta['protocol'] (WI-vumum-juvil):
         for removed in ("http_calls", "grpc_calls", "graphql_calls"):
             assert removed not in TAINT_CALL_EDGE_TYPES
 
@@ -2942,8 +2884,8 @@ class TestCrossLanguageTaint:
         assert no_findings == []
 
     def test_structural_taint_via_wasm_bridge(self) -> None:
-        """Taint propagates through wasm bridge edges. Post-Phase-3 these
-        emit as canonical 'calls' + meta['bridge_kind']='wasm'."""
+        """Taint propagates through wasm bridge edges. These emit as
+        canonical 'calls' + meta['bridge_kind']='wasm'."""
         sources = [TaintSource(
             taint_label="plaintext", module="crypto", name="decrypt",
             kind="function",
@@ -2963,8 +2905,8 @@ class TestCrossLanguageTaint:
         assert "wasm_func" in findings[0].path
 
     def test_structural_taint_via_ipc(self) -> None:
-        """Taint propagates through IPC call edges. Post-Phase-3 these emit
-        as canonical 'calls' + meta['protocol']='ipc'."""
+        """Taint propagates through IPC call edges. These emit as
+        canonical 'calls' + meta['protocol']='ipc'."""
         sources = [TaintSource(
             taint_label="plaintext", module="crypto", name="decrypt",
             kind="function",
@@ -2983,8 +2925,8 @@ class TestCrossLanguageTaint:
         assert len(findings) == 1
 
     def test_ddg_taint_via_ffi_bridge(self) -> None:
-        """DDG-backed taint propagates through FFI bridge edges. Post-Phase-3
-        these emit as canonical 'calls' + meta['bridge_kind']='ffi'."""
+        """DDG-backed taint propagates through FFI bridge edges. These emit
+        as canonical 'calls' + meta['bridge_kind']='ffi'."""
         ddg = [DdgEdge(
             variable="data", def_block="caller", def_line=1,
             use_block="caller", use_line=2,
@@ -3015,8 +2957,8 @@ class TestCrossLanguageTaint:
 class TestAutoImportFromIoPrimitives:
     """Auto-import derives TaintSource/TaintSink records from io_primitives.
 
-    Replaces the manual drift-guard baseline (WI-hizik) with a structural
-    guarantee: io_primitives is the single source of truth for primitive
+    This is a structural guarantee against catalog drift (WI-hizik):
+    io_primitives is the single source of truth for primitive
     enumeration; taint_sources/taint_sinks are derived from it under a
     default zone/label mapping, with user YAML entries overriding by
     (module, name, kind).
@@ -3061,9 +3003,8 @@ class TestAutoImportFromIoPrimitives:
         py_sinks = catalog.sinks_for_language("python")
         by_qname = {s.qualified_name: s for s in py_sinks}
         # urllib.request.urlopen is the canonical stdlib net_send entry.
-        # (Plan C, PR A: replaced the previous `requests.post` assertion —
-        # `requests` is no longer in the catalog under the strict-stdlib
-        # rule. urllib.request is stdlib so the test stays meaningful.)
+        # (Third-party `requests` is not in the catalog under the
+        # strict-stdlib rule; urllib.request is stdlib.)
         assert "urllib.request.urlopen" in by_qname
         assert by_qname["urllib.request.urlopen"].zone == "network"
 
@@ -3072,12 +3013,12 @@ class TestAutoImportFromIoPrimitives:
         boundary auto-derive into a dedicated ``subprocess`` zone, NOT
         into ``host_fs``.
 
-        Pre-fix, the AUTO_SINK_ZONE_MAP collapsed ``subprocess`` into
-        ``host_fs``, which made every legitimate ``subprocess.run(["pip",
-        "install", ...])`` in install-* / build-grammars surface as a
-        ``host_fs`` violation by construction. The zone collapse confused
-        "we shelled out to a trusted external program" with "we wrote to
-        arbitrary filesystem paths" — two different trust surfaces.
+        Collapsing ``subprocess`` into ``host_fs`` in AUTO_SINK_ZONE_MAP
+        would make every legitimate ``subprocess.run(["pip", "install",
+        ...])`` in install-* / build-grammars surface as a ``host_fs``
+        violation by construction, confusing "we shelled out to a trusted
+        external program" with "we wrote to arbitrary filesystem paths" —
+        two different trust surfaces.
         """
         from hypergumbo_core.taint import (
             AUTO_SINK_ZONE_MAP,
@@ -3099,8 +3040,8 @@ class TestAutoImportFromIoPrimitives:
         assert by_qname["subprocess.run"].zone == "subprocess"
         assert by_qname["subprocess.run"].trust_level == "untrusted"
 
-        # 3. fs_write sinks remain in zone=host_fs — the change is scoped
-        # to the subprocess boundary only.
+        # 3. fs_write sinks remain in zone=host_fs — the subprocess zone is
+        # scoped to the subprocess boundary only.
         assert "pathlib.Path.write_text" in by_qname
         assert by_qname["pathlib.Path.write_text"].zone == "host_fs"
 
@@ -3198,10 +3139,9 @@ class TestAutoImportFromIoPrimitives:
         ]
         assert len(matching) == 1
         # INV-faput: "replaced" is the operative word, and what was replaced is
-        # now reported rather than discarded. This test named the behaviour
-        # correctly all along — the shipped row leaves — but nothing downstream
-        # could see that it had, which is how a user row could silently delete
-        # a claim's only evidence.
+        # reported rather than discarded. The shipped row leaves, and the
+        # displaced set lets downstream see that it did — otherwise a user row
+        # could silently delete a claim's only evidence.
         assert [(s.qualified_name, s.trust_level)
                 for s in displaced["python"]] == [
             ("pathlib.Path.write_text", "untrusted"),
@@ -3326,12 +3266,11 @@ class TestAutoImportFromIoPrimitives:
         call via a module_attr_ref + calls edge chain should produce a
         TaintFlowFinding once auto-import populates both the source and sink.
 
-        This is the audit flow that motivated WI-lokuv in the first place:
+        This is the audit flow auto-import exists to catch (WI-lokuv):
         reading a host secret and writing it to the filesystem (where it
         persists into ``~/.cache/hypergumbo/``, gets rsynced, ends up in
-        log files, etc).  Prior to auto-import, the shipped catalog lacked
-        host_env sources entirely, so verify-claims was silent on this
-        pattern.
+        log files, etc). The env-read sources come from auto-import, so
+        without it verify-claims would be silent on this pattern.
         """
         from hypergumbo_core.taint import load_builtin_taint_catalog
         catalog = load_builtin_taint_catalog()
@@ -3343,7 +3282,7 @@ class TestAutoImportFromIoPrimitives:
         # catalog-known primitive (e.g. "writer" would false-match
         # csv.writer's short name).
         edges = [
-            # env_reader reads os.environ (the new WI-guhok edge)
+            # env_reader reads os.environ (a module_attr_ref edge, WI-guhok)
             {
                 "src": "python:/app/cfg.py:10-15:env_reader:function",
                 "dst": "python:os:0-0:os.environ:attribute",
@@ -3387,8 +3326,8 @@ class TestAnOverrideReplacesOnlyWhatItRestates:
     """WI-mozig: a user row that restates ONE of a function's labels (or
     zones) replaces that one; its siblings stay. A row naming a label the
     function does not carry still re-labels the whole function, which is the
-    override INV-hukug documents (16 ``cmd_*`` sources moved to a new label)
-    and INV-faput's re-zoned sink. The displaced set says exactly what left.
+    override INV-hukug documents (``cmd_*`` sources moved to a new label) and
+    INV-faput's re-zoned sink. The displaced set says exactly what left.
     """
 
     @staticmethod
@@ -3437,7 +3376,7 @@ class TestAnOverrideReplacesOnlyWhatItRestates:
 
     def test_a_sink_restating_one_zone_keeps_the_others(self) -> None:
         """The same rule for sinks, keyed on zone: C's unistd.write ships as
-        host_fs, ipc AND network, and trusting its network row used to drop
+        host_fs, ipc AND network, and trusting its network row must not drop
         the other two."""
         from hypergumbo_core.taint import _merge_with_user_override
 
@@ -3466,10 +3405,11 @@ class TestAnOverrideReplacesOnlyWhatItRestates:
         assert sorted(s.zone for s in displaced["c"]) == ["host_fs", "ipc"]
 
     def test_through_the_production_loader(self, tmp_path: Path) -> None:
-        """A user I/O overlay can give a function two labels today
+        """A user I/O overlay can give a function two labels
         (``simultaneous`` env_read + net_recv), and a user source file naming
-        only untrusted_input used to drop its host_secret source as well: a
-        host-secret claim read violated -> confirmed_with_caveats."""
+        only untrusted_input must not drop its host_secret source as well —
+        that would turn a host-secret claim from violated into
+        confirmed_with_caveats."""
         from hypergumbo_core.taint import load_full_taint_catalog
 
         overlay = tmp_path / "two-label-io.yaml"
@@ -3715,7 +3655,7 @@ class TestTaintSourceStartAt:
     """
 
     def test_default_is_caller(self) -> None:
-        """Backward compatibility — existing sources default to caller-seeded."""
+        """A source that does not declare start_at is caller-seeded."""
         src = TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
             name="Fernet.decrypt", kind="function",
@@ -3803,8 +3743,8 @@ class TestTaintSourceStartAt:
         findings = propagate_taint_structural(edges, sources, sinks, [])
         # No finding: write_b is in dev_zone but only reachable from
         # cmd_tracker_sync, NOT from cmd_sketch. Caller-seeded BFS
-        # (the legacy default) would have flagged this as a violation
-        # because dispatcher reaches both.
+        # (the default) would flag this as a violation because
+        # dispatcher reaches both.
         assert findings == []
 
     def test_callee_seed_still_reports_real_violations(self) -> None:
@@ -3839,8 +3779,8 @@ class TestTaintSourceStartAt:
     def test_caller_seed_preserves_legacy_overapproximation(self) -> None:
         """Sanity check: with default start_at=caller, BFS reaches
         everything from the dispatcher — including the sink reachable
-        only through a sibling cmd_*. This is the legacy behavior the
-        callee-seeded variant exists to refine.
+        only through a sibling cmd_*. This is the default
+        over-approximation the callee-seeded variant exists to refine.
         """
         edges = [
             _make_edge("py:cli.py:1-3:dispatcher:function",
@@ -3864,7 +3804,7 @@ class TestTaintSourceStartAt:
             module="external", name="dev_zone_sink", kind="function",
         )]
         findings = propagate_taint_structural(edges, sources, sinks, [])
-        # Legacy behavior: BFS from dispatcher reaches cmd_tracker_sync
+        # Default behavior: BFS from dispatcher reaches cmd_tracker_sync
         # and then dev_zone_sink. Reported as a violation even though
         # cmd_sketch_marker itself doesn't transitively call into it.
         assert len(findings) == 1
@@ -3888,9 +3828,9 @@ class TestTaintMultiLabelSanitizer:
         )
         from collections import defaultdict
 
-        # Two sanitizer entries point at the same qualified_name —
-        # under the old flat-dict indexing this would lose one. The
-        # list-indexed variant preserves both.
+        # Two sanitizer entries point at the same qualified_name — a
+        # flat dict keyed on the name would lose one. The list-valued
+        # index preserves both.
         sans = [
             TaintSanitizer(
                 input_taint="label_a", output_taint="ok",
@@ -3928,16 +3868,10 @@ class TestTaintMultiLabelSanitizer:
 class TestCalleeModuleExtraction:
     """The module-hint extractor that feeds sink matching.
 
-    Was ``TestSinkModuleCompatibility``, covering
-    ``_sink_module_compatible`` -- a predicate with ZERO production
-    callers, for which these tests were the SOLE reachability. That is
-    what kept it at 100% coverage and invisible. Retired (WI-jozah
-    records that hypergumbo's own dead-code-maybe did flag it). The live
-    module filter is ``_lookup_named_entry`` + ``_module_matches``,
-    covered by ``TestModuleMatchesIsComponentAware`` and
-    ``TestResolvedFirstPartyIsNotACatalogPrimitive``; the dead
-    predicate's ``<external>`` exemption was HARVESTED before deletion,
-    not discarded.
+    The module filter itself is ``_lookup_named_entry`` +
+    ``_module_matches``, covered by ``TestModuleMatchesIsComponentAware``
+    (test_io_boundary.py) and ``TestResolvedFirstPartyIsNotACatalogPrimitive``,
+    including the ``<external>`` exemption (WI-jozah).
     """
 
     def test_extract_callee_module(self) -> None:
@@ -3963,11 +3897,11 @@ class TestCalleeModuleExtraction:
 class TestMatchSinkModuleAndAmbiguous:
     """WI-razol: match_sink / match_source must honor the module qualifier and
     the catalog's ambiguous_names (mirroring io_boundary.lookup_with_module) so
-    taint analysis agrees with io-boundaries — instead of (a) returning the
+    taint analysis agrees with io-boundaries — rather than (a) returning the
     first sink for an ambiguous short name with no module hint (str.replace ->
-    Path.replace fs_write, the 5541-FP cascade) or (b) falling back to the
-    first sink when a module hint is present but matches nothing
-    (sys.stdout.write -> asyncio net_send, F156.A1)."""
+    Path.replace fs_write) or (b) falling back to the first sink when a module
+    hint is present but matches nothing (sys.stdout.write -> asyncio net_send,
+    F156.A1)."""
 
     def _sink(self, zone: str, module: str, name: str) -> TaintSink:
         return TaintSink(zone=zone, trust_level="untrusted",
@@ -3996,11 +3930,10 @@ class TestMatchSinkModuleAndAmbiguous:
         ) == sink
 
     def test_method_kind_non_ambiguous_name_no_hint_suppressed(self) -> None:
-        # io-boundary:F3 — a method-kind sink with no module context is now
-        # suppressed even when the short name is NOT in ambiguous_names (the
-        # WI-razol ambiguous_names band-aid is upgraded to a structural
-        # kind-aware gate: no receiver evidence → no method-kind match). With
-        # the receiver module it still matches.
+        # io-boundary:F3 — a method-kind sink with no module context is
+        # suppressed even when the short name is NOT in ambiguous_names: the
+        # kind-aware gate is structural (no receiver evidence → no method-kind
+        # match). With the receiver module it still matches.
         sink = self._sink("network", "urllib.request", "urlopen")
         cat = self._catalog([sink], ambiguous={"replace"})
         assert cat.match_sink("python", "urlopen") is None
@@ -4055,7 +3988,7 @@ class TestMatchSinkRealCatalog:
 
     def test_replace_is_ambiguous_no_false_fs_write(self) -> None:
         # str.replace / dict.replace -> no module hint -> None, NOT the
-        # Path.replace host-fs sink (the 5541-FP cascade root).
+        # Path.replace host-fs sink.
         cat = load_builtin_taint_catalog()
         assert cat.match_sink("python", "replace") is None
 
@@ -4087,11 +4020,11 @@ _DUMMY_DDG = [DdgEdge(variable="x", def_block="a", def_line=1,
 
 
 class TestPropagationAmbiguousAndModule:
-    """WI-razol (PR5b): the propagation source/sink indexes — the codepath that
-    actually produced the 5541-FP cascade (match_sink is never called during
-    propagation) — must honor the module qualifier and ambiguous_names, so
-    str.replace stops matching Path.replace and sys.stdout.write stops matching
-    the asyncio net_send sink (F156.A1)."""
+    """WI-razol: the propagation source/sink indexes — a separate codepath
+    from match_sink, which propagation does not call — must honor the module
+    qualifier and ambiguous_names, so str.replace does not match Path.replace
+    and sys.stdout.write does not match the asyncio net_send sink
+    (F156.A1)."""
 
     _SOURCE = TaintSource(taint_label="plaintext", module="cryptography.fernet",
                           name="Fernet.decrypt", kind="function")
@@ -4116,11 +4049,10 @@ class TestPropagationAmbiguousAndModule:
     def test_structural_ambiguous_external_suppressed(self) -> None:
         edges = self._edges_to_sink("py:external:0-0:replace:unresolved")
         # io-boundary:F3 — _PATH_REPLACE is a method-kind sink, so a bare
-        # `replace` with no module context is now suppressed by the kind-aware
-        # gate WITHOUT needing `replace` in ambiguous_names (the WI-razol
-        # band-aid is now a structural property: no receiver verification →
-        # no method-kind match). Both the empty-set and the ambiguous-set
-        # call suppress the false host_fs flow.
+        # `replace` with no module context is suppressed by the kind-aware
+        # gate WITHOUT needing `replace` in ambiguous_names (no receiver
+        # verification → no method-kind match). Both the empty-set and the
+        # ambiguous-set call suppress the false host_fs flow.
         assert propagate_taint_structural(
             edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
         assert propagate_taint_structural(
@@ -4128,12 +4060,12 @@ class TestPropagationAmbiguousAndModule:
             ambiguous_names=frozenset({"replace"})) == []
 
     def test_post_remap_external_symbol_sink_still_suppressed(self) -> None:
-        """ADR-0037 ruling 4 regression: WI-pubiv's boundary-id remap rewrites an
+        """ADR-0037 ruling 4: the boundary-id remap (WI-pubiv) rewrites an
         unresolved edge's dst suffix ``:unresolved`` → ``:external_symbol`` on the
         final graph. The taint router must decide resolution from
         ``Edge.is_resolved``, not the suffix — else the post-remap ambiguous sink
         looks 'resolved', bypasses the WI-razol/INV-tapat method-kind gate, and
-        yields a FALSE host_fs flow (the exact regression this pass fixes)."""
+        yields a FALSE host_fs flow."""
         edges = [
             _make_edge("py:a.py:1-5:source_func:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
@@ -4148,8 +4080,8 @@ class TestPropagationAmbiguousAndModule:
             edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
 
     def test_post_remap_external_symbol_sink_survives_scope_stack(self) -> None:
-        """identity:F1/F4a standing gate (armed by the WI-gulot/WI-noham
-        follow-ups): the scope-stack rewrite adds NEW resolved first-party
+        """identity:F1/F4a standing gate (WI-gulot/WI-noham): the
+        scope-stack rewrite adds resolved first-party
         ``calls`` edges (is_resolved=True, real in-repo dst) to the graph. Adding
         such an edge MUST NOT let the post-remap ambiguous external sink
         (``:external_symbol``, is_resolved=False) be mis-routed as resolved — the
@@ -4161,8 +4093,8 @@ class TestPropagationAmbiguousAndModule:
                        "py:external:0-0:Fernet.decrypt:unresolved"),
             _make_edge("py:a.py:1-5:source_func:function",
                        "py:a.py:10-15:sink_func:function"),
-            # NEW: a scope-stack-resolved first-party call edge (is_resolved=True,
-            # real dst) — the exact shape PR-0 produces. Must not perturb suppression.
+            # A scope-stack-resolved first-party call edge (is_resolved=True,
+            # real dst). Must not perturb suppression.
             {"src": "py:a.py:10-15:sink_func:function",
              "dst": "py:a.py:20-25:enclosing_helper:function",
              "type": "calls", "is_resolved": True},
@@ -4198,8 +4130,8 @@ class TestPropagationAmbiguousAndModule:
         assert findings[0].sink_zone == "network"
 
     def test_ddg_ambiguous_external_suppressed(self) -> None:
-        # io-boundary:F3 — same kind-aware suppression on the DDG path (the
-        # WI-razol PR2 lesson: fix BOTH structural and ddg loops). A bare
+        # io-boundary:F3 — same kind-aware suppression on the DDG path (both
+        # the structural and the ddg loops carry the gate; WI-razol). A bare
         # method-kind `replace` is suppressed with or without ambiguous_names.
         edges = self._edges_to_sink("py:external:0-0:replace:unresolved")
         assert propagate_taint_ddg(
@@ -4210,7 +4142,7 @@ class TestPropagationAmbiguousAndModule:
             ambiguous_names=frozenset({"replace"})) == []
 
     def test_source_ambiguous_external_suppressed(self) -> None:
-        # Symmetric source-side fix: a method-kind source short name with no
+        # Symmetric source side: a method-kind source short name with no
         # module must not seed taint. io-boundary:F3 — the source `get`
         # (method-kind) is suppressed by the kind-aware gate even without
         # `get` in ambiguous_names. (The sink `write_text` is also method-kind,
@@ -4238,7 +4170,7 @@ class TestPropagationKindAwareGate:
     from the raw edge ``meta`` through to the shared kind-aware gate
     (INV-tapat / INV-maluk). Mirrors io_boundary.lookup_with_module so taint
     agrees with io-boundaries on the no-receiver-evidence case. Both the
-    structural AND the ddg loops must be fixed (the WI-razol PR2 lesson)."""
+    structural AND the ddg loops carry the gate (WI-razol)."""
 
     _SOURCE = TaintSource(taint_label="plaintext", module="cryptography.fernet",
                           name="Fernet.decrypt", kind="function")
@@ -4300,9 +4232,10 @@ class TestPropagationKindAwareGate:
 class TestClaimsVsCliExtraLayers:
     """INV-hukug: a CLI ``--taint-sources`` override must REPLACE a
     claims-file ``extra_catalogs.sources`` entry on the same
-    (module, name, kind) — the two were previously collapsed into one user
-    layer with no intra-layer dedup, so the CLI flag only ADDED a duplicate
-    and the documented override never took effect."""
+    (module, name, kind). The two are separate layers, CLI over claims:
+    collapsing them into one user layer with no intra-layer dedup would make
+    the CLI flag merely ADD a duplicate, and the documented override would
+    never take effect."""
 
     def _src_yaml(self, label: str) -> str:
         return dedent(f"""\
@@ -4356,7 +4289,7 @@ class TestClaimsVsCliExtraLayers:
         assert matches[0].zone == "cli_zone"
 
     def test_claims_source_without_cli_still_applies(self, tmp_path: Path) -> None:
-        # Regression: a claims-only override (no CLI layer) behaves as before.
+        # A claims-only override (no CLI layer) still applies.
         from hypergumbo_core.taint import load_full_taint_catalog
         claims = tmp_path / "claims_src.yaml"
         claims.write_text(self._src_yaml("claims_label"))
@@ -4397,31 +4330,28 @@ class TestClaimsVsCliExtraLayers:
 class TestResolvedFirstPartyIsNotACatalogPrimitive:
     """WI-damir: resolution does not make an in-repo symbol an external primitive.
 
-    ``_match_propagation_entry`` short-circuited every *resolved* edge to
-    ``hits[0]`` -- an ungated exact-name match -- justified in a comment as
-    "the symbol is already disambiguated by resolution". That premise is false.
-    Resolution establishes WHICH IN-REPO SYMBOL is called; it says nothing about
-    whether that symbol IS the catalogued external primitive. The catalog
-    describes stdlib and third-party primitives, so a first-party definition
-    matching one by name alone is a category error.
+    ``_match_propagation_entry`` must not short-circuit a *resolved* edge to an
+    ungated exact-name match on the premise that "the symbol is already
+    disambiguated by resolution". Resolution establishes WHICH IN-REPO SYMBOL
+    is called; it says nothing about whether that symbol IS the catalogued
+    external primitive. The catalog describes stdlib and third-party
+    primitives, so a first-party definition matching one by name alone is a
+    category error. Two real shapes are pinned below:
 
-    Measured on the 9-repo fresh-substrate cohort: **30 of 30** sinks that
-    resolved to an in-repo definition were false matches. Two, verified against
-    the source:
-
-    * caddy ``logging.go:779`` -- ``func Log() *zap.Logger``, whose doc comment
+    * caddy ``logging.go`` -- ``func Log() *zap.Logger``, whose doc comment
       reads "Log returns the current default logger". It RETURNS a logger; it
-      writes nothing. Reported as a logging sink 18 times.
-    * pretix's vendored ``d3.v6.js:14596`` -- ``function log()``, which builds
-      ``d3.scaleLog``. The LOGARITHM. This is INV-karud's headline example, and
-      it survived WI-zazul because it was never a substring defect.
+      writes nothing.
+    * pretix's vendored ``d3.v6.js`` -- ``function log()``, which builds
+      ``d3.scaleLog``. The LOGARITHM (INV-karud). It is not a substring
+      defect, so the component-aware module predicate (WI-zazul) alone does
+      not remove it.
 
     The gate cannot simply be "resolved edges never match": a user-supplied
-    catalog may legitimately name a first-party symbol, which is the case the
-    original comment was protecting. So the symbol's PATH is normalised to a
-    module-shaped string and compared with the same component-aware predicate
-    WI-zazul installed -- whose suffix arm is what lets a catalog module of
-    ``hypergumbo_core.cli`` match a path of ``.../hypergumbo_core/cli.py``.
+    catalog may legitimately name a first-party symbol. So the symbol's PATH
+    is normalised to a module-shaped string and compared with the same
+    component-aware predicate (WI-zazul) -- whose suffix arm is what lets a
+    catalog module of ``hypergumbo_core.cli`` match a path of
+    ``.../hypergumbo_core/cli.py``.
     """
 
     def _sink(self, module: str, name: str) -> TaintSink:
@@ -4439,7 +4369,8 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
         ) is None
 
     def test_d3_logarithm_is_not_console_log(self) -> None:
-        """INV-karud's headline false positive, which WI-zazul did not remove."""
+        """INV-karud's headline false positive; component-aware module
+        matching (WI-zazul) alone does not remove it."""
         index = {"log": [self._sink("console", "log")]}
         assert _match_propagation_entry(
             index, "javascript:src/pretix/static/d3/d3.v6.js:14596-14606:log:function",
@@ -4447,10 +4378,10 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
         ) is None
 
     def test_first_party_catalog_entry_still_matches(self) -> None:
-        """Non-vacuity floor (L17), and the case the old comment defended.
+        """Non-vacuity floor (L17): a user catalog naming a first-party symbol.
 
         A catalog that names a first-party module must still match the resolved
-        symbol whose PATH corresponds to it -- otherwise this fix is
+        symbol whose PATH corresponds to it -- otherwise this gate is
         indistinguishable from "resolved edges never match", which would break
         every user-supplied catalog.
         """
@@ -4476,18 +4407,16 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
     def test_angle_bracket_external_degrades_to_short_name(self) -> None:
         """ADR-0017 §3a exempts BOTH `external` and `<external>`.
 
-        The live path tested only the bare spelling, so an ``<external>`` hint
-        fell into the module-FILTER branch and was compared as if it were a real
-        module name -- matching nothing and SUPPRESSING the finding, the exact
-        opposite of the ADR's "degrade to short-name matching, because rejecting
-        outright would suppress legitimate findings".
+        An ``<external>`` hint that fell into the module-FILTER branch would be
+        compared as if it were a real module name -- matching nothing and
+        SUPPRESSING the finding, the exact opposite of the ADR's "degrade to
+        short-name matching, because rejecting outright would suppress
+        legitimate findings".
 
-        ``<external>`` is not hypothetical: the pretix cohort emits
+        ``<external>`` is not hypothetical: pretix's JavaScript yields
         ``javascript:<external>:0-0:file:external_symbol`` for receivers no DDG
-        resolution can recover. The retired ``_sink_module_compatible`` had this
-        right; the behaviour was harvested from it before deleting it, so the
-        deletion loses nothing. Both spellings now live in one frozenset, which
-        is what stops the pair drifting apart again.
+        resolution can recover. Both spellings live in one frozenset, which is
+        what stops the pair drifting apart.
         """
         index = {"warn": [self._sink("console", "warn")]}
         assert _match_propagation_entry(
@@ -4496,7 +4425,7 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
         ) is not None
 
     def test_bare_external_exemption_still_works(self) -> None:
-        """Non-vacuity companion: the spelling that already worked must keep working."""
+        """Non-vacuity companion: the bare spelling must keep working too."""
         index = {"warn": [self._sink("console", "warn")]}
         assert _match_propagation_entry(
             index, "javascript:external:0-0:warn:external_symbol",
@@ -4506,10 +4435,10 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
     def test_short_module_component_is_not_an_extension(self) -> None:
         """`net.ws` must keep its trailing component.
 
-        The first draft stripped "a short alphanumeric segment after a dot" as
-        a file extension, which rewrote the real module `net.ws` to `net` and
-        broke a pre-existing test. Pinned here so the extension list cannot
-        quietly become a heuristic again.
+        Stripping "a short alphanumeric segment after a dot" as a file
+        extension would rewrite the real module `net.ws` to `net`. Only an
+        explicit list of source-file extensions is stripped, and this pins
+        that the list cannot quietly become a heuristic.
         """
         assert _module_from_symbol_path(
             "python:net.ws:0-0:send:unresolved",
@@ -4531,8 +4460,8 @@ class TestResolvedFirstPartyIsNotACatalogPrimitive:
 #
 # `verify-claims` routes Python through propagate_taint_ddg in production
 # (cli.py). Any place the DDG pass diverges from the structural pass is a
-# divergence on the path that actually runs, and these two both diverged in
-# the direction that LOSES findings — the expensive direction for a security
+# divergence on the path that actually runs, and the two divergences pinned
+# here would both LOSE findings — the expensive direction for a security
 # tool, because a suppressed flow looks exactly like a clean repo.
 # ---------------------------------------------------------------------------
 
@@ -4560,10 +4489,10 @@ class TestDdgSanitizerGateParity:
 
     A bare untyped method call ``x.encrypt()`` carries no receiver evidence
     and must not bind ``Fernet.encrypt``. The structural pass refuses it via
-    ``_register_sanitizer_callers``; the DDG pass had its own ungated copy,
-    so an unrelated call registered a phantom barrier and deleted a real
-    flow. The collision must sit on an INTERMEDIATE hop — the seed node is
-    exempt from the barrier check by design.
+    ``_register_sanitizer_callers``; the DDG pass must refuse it too, or an
+    unrelated call registers a phantom barrier and deletes a real flow. The
+    collision must sit on an INTERMEDIATE hop — the seed node is exempt from
+    the barrier check by design.
     """
 
     def _graph(self, poisoned: bool) -> list[dict]:
@@ -4618,17 +4547,16 @@ class TestDdgSanitizerGateParity:
 class TestSinkCallersDoesNotOverwrite:
     """One function calling two distinct sinks must report both.
 
-    ``sink_callers`` was a dict keyed on the CALLING symbol, so each sink
-    overwrote the previous one and only the last edge encountered survived.
-    Present in both passes; under-reports real findings.
+    A ``sink_callers`` dict keyed on the CALLING symbol alone would let each
+    sink overwrite the previous one, so only the last edge encountered would
+    survive — an under-report in either pass.
 
-    THE CONTRACT IS UNCHANGED AND THE CARRIER MOVED (INV-karud). Both sinks
-    are still reported; they are now reported as the ``sink_primitives`` set of
-    ONE situation-level finding rather than as two findings, because an
-    unadjudicated flow may not claim which source value reached which sink.
-    Asserting ``len(found) == 2`` would pin the pair shape rather than the
-    property this class exists for, so the assertion reads the set — which
-    still fails outright if a sink is overwritten.
+    Both sinks are reported as the ``sink_primitives`` set of ONE
+    situation-level finding rather than as two findings, because an
+    unadjudicated flow may not claim which source value reached which sink
+    (INV-karud). Asserting ``len(found) == 2`` would pin the pair shape rather
+    than the property this class exists for, so the assertion reads the set —
+    which fails outright if a sink is overwritten.
     """
 
     def _edges(self) -> list[dict]:
@@ -4668,14 +4596,14 @@ class TestSinkCallersDoesNotOverwrite:
 # ---------------------------------------------------------------------------
 # Tests — match provenance (WI-joruv)
 #
-# INV-karud's residual 13 are all `go net/http` + `Do`, where the match is
-# CORRECT (the catalog entry is net/http.Client and Client.Do performs
+# The motivating shape is `go net/http` + `Do` (INV-karud), where the match
+# is CORRECT (the catalog entry is net/http.Client and Client.Do performs
 # network IO) but the emitted symbol records the PACKAGE while the catalog
-# records PACKAGE.TYPE. Nothing in the output says which catalog entry
-# matched, so a reader cannot confirm a correct match without re-running the
-# matcher — which is the "verifiable by lookup" property the invariant asks
-# for. This is provenance, not matching: no assertion here changes which
-# flows are reported.
+# records PACKAGE.TYPE. Without the matched entry's module on the finding, a
+# reader cannot confirm a correct match without re-running the matcher —
+# which is the "verifiable by lookup" property the invariant asks for. This
+# is provenance, not matching: no assertion here changes which flows are
+# reported.
 # ---------------------------------------------------------------------------
 
 
@@ -4735,7 +4663,7 @@ class TestMatchProvenance:
         assert f.sink_symbol == "go:net/http:0-0:Do:external_symbol"
         assert f.sink_module == "net/http.Client"
         # The emitted module and the catalog module DIFFER, and that
-        # difference is the whole point: it is now legible instead of lost.
+        # difference is the whole point: it is legible on the finding.
         assert "net/http.Client" not in f.sink_symbol
 
 
@@ -4747,23 +4675,18 @@ class TestMatchProvenance:
 class TestPathDeterminism:
     """The reported path must not depend on ``PYTHONHASHSEED``.
 
-    Adjacency is set-valued, so BFS dequeue order followed ``str`` set
-    iteration, which varies per process. The BFS parent map recorded whichever
-    predecessor happened to arrive first, and ``_reconstruct_path`` walked that
-    map — so two runs of the identical binary on an unchanged repo reported
-    different paths for the same flow. Measured on kserve: 2 of 182 distinct
-    flows differed, same source / sink / label, different middle hop, both hops
-    genuine callers.
+    Adjacency is set-valued, so without a tie-break BFS dequeue order would
+    follow ``str`` set iteration, which varies per process. A parent map recording
+    whichever predecessor happened to arrive first, walked by
+    ``_reconstruct_path``, would make two runs of the identical binary on an
+    unchanged repo report different paths for the same flow — same source /
+    sink / label, different middle hop, both hops genuine callers. The BFS
+    therefore applies a declared tie-break.
 
-    Confirmed rather than assumed before fixing: the same probe under a FIXED
-    seed produced an identical path twice, and under five different seeds
-    produced four distinct witnesses (midA / midF / midE / midF / midC).
-
-    Not merely a cosmetic defect. A user diffing two hypergumbo runs on an
-    unchanged repo saw evidence churn with no cause, which trains them to
-    distrust the diff — and it made any path-level A/B between two builds
-    unreliable, which cost real time during the WI-kabif measurement (a first
-    reading of "30 flows appeared and disappeared" was entirely this artifact).
+    Not merely cosmetic. A user diffing two hypergumbo runs on an unchanged
+    repo would see evidence churn with no cause, which trains them to
+    distrust the diff — and any path-level A/B between two builds would be
+    unreliable.
     """
 
     @staticmethod
@@ -4917,8 +4840,9 @@ class TestAnUnaccountedMentionIsNotAnAbsence:
     """INV-lupav clause L4: the omission INSIDE a statement the CFG recorded.
 
     THE CLAUSE NO COVERAGE PREDICATE CAN REACH. Every other route to an
-    unearned ``False`` left an UNCOVERED region, which WI-joluk's gate —
-    widened to semantic leaves by WI-mugop — detects and forfeits. Here the
+    unearned ``False`` leaves an UNCOVERED region, which the coverage gate
+    (WI-joluk, widened to semantic leaves by WI-mugop) detects and forfeits.
+    Here the
     statement IS recorded and the extractor then fills it with nothing: Go's
     grouped ``var ( msg = cwd )``, Python's ``c[key] = 1``. There is no
     uncovered extent to find at any predicate width, so the gate is silent and
@@ -4985,8 +4909,7 @@ class TestAnUnaccountedMentionIsNotAnAbsence:
         An empty signal must leave ``False`` reachable. A predicate that can
         only ever withhold refutation is not a safety gate — it is refutation
         deleted, and it would read as a finding about the substrate rather
-        than as a broken instrument. This is the check that killed one
-        candidate spelling of the coverage predicate in WI-mugop phase 1.
+        than as a broken instrument.
         """
         assert self._walk(frozenset()) is False
 
@@ -5022,7 +4945,7 @@ class TestAnUnaccountedMentionIsNotAnAbsence:
         ``no_heir`` is the one bucket ADR-0017 §7b's alias exclusion can
         correctly be invoked for. This is an EXTRACTION failure with an
         entirely different owner and the opposite remedy, so it carries its
-        own reason — the misattribution ``EscapeSite`` was widened to a triple
+        own reason — the misattribution ``EscapeSite``'s reason field exists
         to prevent.
         """
         sites: list[EscapeSite] = []

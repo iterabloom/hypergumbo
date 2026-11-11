@@ -10,13 +10,12 @@ from hypergumbo_lang_mainstream import java as java_module
 def _run_inherited_calls_pipeline(analyzer_result):
     """Run inheritance + inherited_calls linkers on top of analyzer output.
 
-    WI-dukog (PR-3 of INV-nilud): the Java analyzer's Site-1 walk
-    (bare / ``this.method()`` ancestor traversal at ``java.py:1437-1461``)
-    was lifted into the ``inherited_calls`` Tier-2 linker
-    (``_walk_single_then_interfaces`` walker). Tests that previously
-    asserted ``ast_call_inherited`` edges directly from ``analyze_java``
-    output now compose the linker stack to recover them. Mirrors the
-    Ruby helper added in PR-2 (``test_ruby.py``).
+    The Site-1 ancestor walk for a bare / ``this.method()`` call lives in
+    the ``inherited_calls`` Tier-2 linker (``_walk_single_then_interfaces``
+    walker), not in the Java analyzer, so a test that asserts an
+    ``ast_call_inherited`` edge composes the linker stack over
+    ``analyze_java`` output. Mirrors the Ruby helper in ``test_ruby.py``.
+    (WI-dukog, INV-nilud)
     """
     from hypergumbo_core.linkers.inheritance import link_inheritance
     from hypergumbo_core.linkers.inherited_calls import link_inherited_calls
@@ -254,10 +253,9 @@ public class Service {
         The analyzer must use child_by_field_name("name") to extract the method
         name and child_by_field_name("object") for the receiver.
 
-        Without this fix, the identifier scanning loop misidentifies the method
-        name: it finds only one identifier (the method name) from child[2] and
-        treats it as the receiver, then sets method_name=receiver_name with no
-        actual method name to resolve.
+        Scanning for identifiers instead would misidentify the method name:
+        it finds only one identifier (the method name) from child[2] and
+        treats it as the receiver, leaving no actual method name to resolve.
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -291,8 +289,8 @@ class Service {
 
         # this.svc.process() should produce a call edge from doWork to
         # Service.process. The receiver is a field_access node ("this.svc"),
-        # and the method name is "process". WI-puvil PR-5: resolved by the
-        # inherited_calls linker via Site-2 (receiver_type_hint=Service).
+        # and the method name is "process". Resolved by the inherited_calls
+        # linker via Site-2 (receiver_type_hint=Service; WI-puvil).
         do_work_calls = [e for e in call_edges if e.src == do_work.id]
         assert len(do_work_calls) >= 1, (
             f"Expected call edges from doWork for this.svc.process(), "
@@ -404,7 +402,7 @@ class TestJavaInheritanceEdges:
     ) -> None:
         """When multiple classes share a name, extends resolves to the imported one.
 
-        INV-015: Same structural bug as Python/Kotlin. Two files define
+        Same rule as Python/Kotlin (INV-015). Two files define
         class 'Model'; child file imports the one from models package.
         Edge should resolve to the imported Model, not the test stub.
         """
@@ -2298,12 +2296,11 @@ public class Consumer {
 
 
 class TestJavaWildcardImports:
-    """WI-tuhok: ``import java.util.*`` resolves bare class usages.
+    """``import java.util.*`` resolves bare class usages (WI-tuhok).
 
-    Surfaced by the WI-mafik audit extension (2026-05-21). Pre-fix, a
-    bare type usage like ``Arrays.asList(...)`` after ``import java.util.*``
-    emitted an unresolved edge with dst ``java:external:0-0:Arrays.asList:unresolved``
-    instead of attributing ``Arrays`` to its source package ``java.util``.
+    A bare type usage like ``Arrays.asList(...)`` after ``import java.util.*``
+    attributes ``Arrays`` to its source package ``java.util`` rather than
+    emitting the placeholder dst ``java:external:0-0:Arrays.asList:unresolved``.
     """
 
     def test_extract_wildcard_imports_returns_package(self, tmp_path: Path) -> None:
@@ -2496,8 +2493,8 @@ public class Caller {
         assert caller_run is not None
         assert helper_dowork is not None
 
-        # WI-puvil (PR-5): the inherited_calls linker emits this edge via
-        # Site-2 (receiver_type_hint=Helper, direct method match).
+        # The inherited_calls linker emits this edge via Site-2
+        # (receiver_type_hint=Helper, direct method match; WI-puvil).
         call_edge = next(
             (
                 e
@@ -2546,7 +2543,7 @@ public class App {
         result = analyze_java(tmp_path)
         all_edges = _run_inherited_calls_pipeline(result)
 
-        # WI-puvil (PR-5): linker resolves c.send() via Site-2; the
+        # The linker resolves c.send() via Site-2 (WI-puvil); the
         # return-type-inference cascade in the analyzer populates
         # var_types[c]=Client from the f.createClient() return type, and
         # the unresolved emit threads receiver_type_hint=Client.
@@ -2671,10 +2668,10 @@ public class OwnerController {
         assert controller_method is not None, "Should find processCreation"
         assert repo_iface is not None, "Should find OwnerRepository interface"
 
-        # WI-puvil (PR-5): linker's Site-2 resolver falls back to the
-        # type symbol when the method isn't on the type or any ancestor.
-        # WI-jomik: as a ``uses`` edge -- the repository is a dependency,
-        # not the callee (``save`` is JpaRepository's).
+        # The linker's Site-2 resolver falls back to the type symbol when
+        # the method isn't on the type or any ancestor (WI-puvil), as a
+        # ``uses`` edge -- the repository is a dependency, not the callee
+        # (``save`` is JpaRepository's; WI-jomik).
         assert not [
             e for e in all_edges
             if e.src == controller_method.id and e.dst == repo_iface.id
@@ -2727,8 +2724,8 @@ public class OwnerController {
         assert controller_method is not None
         assert find_method is not None
 
-        # WI-puvil (PR-5): linker's Site-2 direct lookup resolves to the
-        # method on the interface (ast_call_type_inferred at 0.85).
+        # The linker's Site-2 direct lookup resolves to the method on the
+        # interface (ast_call_type_inferred at 0.85; WI-puvil).
         call_edges = [
             e for e in all_edges
             if e.src == controller_method.id
@@ -2847,8 +2844,8 @@ public class Handler {
         assert db_save is not None
         assert db_commit is not None
 
-        # WI-puvil (PR-5): linker resolves db.save()/db.commit() via
-        # Site-2 (receiver_type_hint=Database from param-type capture).
+        # The linker resolves db.save()/db.commit() via Site-2
+        # (receiver_type_hint=Database from param-type capture; WI-puvil).
         save_edge = next(
             (
                 e
@@ -3766,8 +3763,8 @@ class TestClassNameCollision:
 
     When a file imports an external library class (e.g., org.slf4j.Logger)
     and source code contains an inner class with the same simple name
-    (e.g., Config.Logger), the NameResolver's suffix matching incorrectly
-    resolves the simple name to the inner class. The fix checks file-level
+    (e.g., Config.Logger), the NameResolver's suffix matching would
+    resolve the simple name to the inner class. The analyzer checks file-level
     imports: if the import FQN doesn't match the resolved candidate's path,
     the edge is skipped (the developer intended the external class).
     """
@@ -3980,7 +3977,7 @@ class TestClassNameCollision:
         and the only matching symbol is a nested class (Log4jConfiguration.Properties),
         the edge should be skipped. In Java, you can't use a bare inner class name
         from outside the outer class — you'd need Log4jConfiguration.Properties.
-        This is the Kafka bakeoff false positive scenario (WI-bunul).
+        (WI-bunul)
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -4083,9 +4080,9 @@ class TestClassNameCollision:
         to a local Logger.info when the file imports org.slf4j.Logger.
 
         Covers `_process_java_method_calls` Case 2 (``ClassName.method()``
-        static call). Before the fix, Case 2 emitted an ``ast_call_static``
-        edge without consulting file imports, so any file with a local class
-        named ``Logger`` absorbed every ``Logger.xxx(...)`` static call across
+        static call). Case 2 consults file imports before emitting an
+        ``ast_call_static`` edge; otherwise any file with a local class named
+        ``Logger`` would absorb every ``Logger.xxx(...)`` static call across
         the repo regardless of whether the caller imported slf4j's ``Logger``
         or the local one.
         """
@@ -4139,14 +4136,14 @@ class TestClassNameCollision:
         """WI-fuhaj Case 3 fallback: log.trace() on a Logger field should NOT
         fall back to a local Logger class edge when the file imports slf4j.
 
-        Covers the Kafka bakeoff false-positive pattern: a local POJO named
-        ``Logger`` (e.g. Jackson config class) absorbs every ``log.trace/
+        Pins the false-positive pattern where a local POJO named ``Logger``
+        (e.g. Jackson config class) would absorb every ``log.trace/
         log.error/log.warn`` call in every file that imports ``org.slf4j.
-        Logger``, because ``resolver.lookup("Logger.trace")`` fails (the POJO
-        has no trace method), Case 3 falls through to its ``class_symbols.get
-        ("Logger")`` fallback, and emits a calls edge to the wrong Logger
-        class symbol. On Kafka this produced 2057+ bogus edges to a 50-line
-        POJO. Fix: the fallback must also consult ``_is_import_class_mismatch``.
+        Logger``: ``resolver.lookup("Logger.trace")`` fails (the POJO has no
+        trace method), Case 3 falls through to its ``class_symbols.get
+        ("Logger")`` fallback, and without an import check would emit a calls
+        edge to the wrong Logger class symbol. The fallback therefore also
+        consults ``_is_import_class_mismatch``.
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -4435,13 +4432,12 @@ class TestJavaInheritedMethodResolution:
 
     When a class extends a parent and calls a method defined in the parent
     (not overridden in the child), the call must resolve to the parent's
-    method. PR-3 of INV-nilud (WI-dukog) lifted this walk from the Java
-    analyzer (formerly ``java.py:1437-1461``) into the Tier-2
-    ``inherited_calls`` linker (``_walk_single_then_interfaces``). The
-    four Site-1 tests here drive the analyzer + the linker stack via the
-    module-level ``_run_inherited_calls_pipeline`` helper. The Site-3
-    (inherited field) tests below still call ``analyze_java`` directly —
-    they will be migrated when PR-5 lifts Site 3.
+    method. The walk lives in the Tier-2 ``inherited_calls`` linker
+    (``_walk_single_then_interfaces``), not in the Java analyzer, so the
+    Site-1 tests here, and the Site-3 (inherited field) tests below, drive
+    the analyzer + the linker stack via the module-level
+    ``_run_inherited_calls_pipeline`` helper. (WI-dukog, WI-puvil,
+    INV-nilud)
     """
 
     def test_bare_call_to_parent_method_resolves(self, tmp_path: Path) -> None:
@@ -4634,13 +4630,11 @@ public class Child extends Parent {
         """INV-zatug: a resolved direct call must sit inside the ADR-0039
         band for ``ast_call_direct``.
 
-        The producer scaled a hardcoded 0.95 by the resolver multiplier, so a
-        fully-resolved call published 0.95 — above the pathway's 0.85 ceiling.
-        The multiplier is meaningful and is kept; only its *base* moves to the
-        registry seed, so the value tracks the inference pathway instead of a
-        per-emitter literal. Asserted against ``confidence_within_band`` rather
-        than a golden number so the test follows the registry if the seed
-        changes.
+        The producer scales the registry seed for the pathway by the resolver
+        multiplier, not a hardcoded per-emitter base (which can sit above the
+        pathway's ceiling), so the value tracks the inference pathway.
+        Asserted against ``confidence_within_band`` rather than a golden
+        number so the test follows the registry if the seed changes.
         """
         from hypergumbo_core.confidence import confidence_within_band
         from hypergumbo_lang_mainstream.java import analyze_java
@@ -4700,7 +4694,7 @@ public class AccountResource extends BaseResource {
         assert create is not None, "Should find AccountResource.create"
         assert api_method is not None, "Should find AccountUserApi.createAccount"
 
-        # WI-puvil (PR-5): linker resolves the inherited-field call via
+        # The linker resolves the inherited-field call (WI-puvil) via
         # Site-3 (walks AccountResource's parent BaseResource, reads
         # meta['fields']['accountApi']='AccountUserApi', then looks up
         # createAccount on the interface).
@@ -4760,7 +4754,7 @@ public class Service extends MiddleBase {
         assert run_method is not None
         assert info_method is not None
 
-        # WI-puvil (PR-5): linker walks Service→MiddleBase→GrandBase
+        # The linker (WI-puvil) walks Service→MiddleBase→GrandBase
         # via extends edges, finds logger:Logger in GrandBase's
         # meta['fields'], resolves info() on Logger.
         call_edges = [
@@ -4891,13 +4885,13 @@ public class IO {
     ) -> None:
         """``File f = new File(p); f.createNewFile()`` names ``java.io.File``.
 
-        INV-linub. The analyzer already infers the receiver's type into
-        ``var_types`` and threads it out as ``meta["receiver_type_hint"]`` for
-        the Tier-2 ``inherited_calls`` / ``receiver_type_dispatch`` linkers,
-        which resolve to PROJECT-INTERNAL symbols. Nothing carried that type
-        into the dst's module slot, so the edge named the *variable* —
-        ``java:external:0-0:f.createNewFile:unresolved``. The type was computed
-        and then discarded for every external-surface consumer.
+        The analyzer infers the receiver's type into ``var_types`` and threads
+        it out as ``meta["receiver_type_hint"]`` for the Tier-2
+        ``inherited_calls`` / ``receiver_type_dispatch`` linkers, which resolve
+        to PROJECT-INTERNAL symbols. Every external-surface consumer reads the
+        dst's module slot instead, so the type must reach it too; otherwise
+        the edge names the *variable* —
+        ``java:external:0-0:f.createNewFile:unresolved``. (INV-linub)
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -4920,8 +4914,8 @@ public class Sites {
         assert edge.dst == (
             "java:java.io.File:0-0:createNewFile:unresolved"
         ), edge.dst
-        # The hint the Tier-2 linkers read must survive unchanged — this fix
-        # ADDS a consumer for the inferred type, it does not move it.
+        # The hint the Tier-2 linkers read must survive unchanged — the module
+        # slot is an ADDITIONAL consumer of the inferred type, not a move.
         assert (edge.meta or {}).get("receiver_type_hint") == "File"
 
     def test_typed_local_receiver_edge_reaches_the_taint_catalogue(
@@ -4934,8 +4928,7 @@ public class Sites {
         catalogue entry is. ``gate_named_entry`` refuses an untyped method call
         unconditionally (``if call_construct == "method": return None``), so an
         edge that merely EXISTS matches nothing; only one carrying a real module
-        hint can win. Measured 2026-08-06: java emitted for both the two-step
-        and chained shapes and matched on neither.
+        hint can win.
         """
         from hypergumbo_core.taint import (
             _build_callee_index,
@@ -4979,18 +4972,16 @@ public class Sites {
     ) -> None:
         """A wrong-typed receiver must not bind a catalogued barrier.
 
-        THE REGRESSION THIS EXISTS FOR. Putting the receiver type in the module
-        slot also SHORTENS the callee name from ``w.doFinal`` to ``doFinal``.
+        THE HAZARD THIS GUARDS. With the receiver type in the module slot, the
+        callee name is the bare ``doFinal``, not ``w.doFinal``.
         ``_register_sanitizer_callers`` matches sanitizers on the SHORT NAME and
-        never consults the module hint, so the shortening alone made
-        ``com.example.Widget.doFinal`` bind ``javax.crypto.Cipher.doFinal``.
-        Before the module-slot change the name was ``w.doFinal``, which is not
-        an index key, so the exposure did not exist — the fix would have traded
-        a recall win for a PHANTOM BARRIER.
+        never consults the module hint, so on the name alone
+        ``com.example.Widget.doFinal`` would bind ``javax.crypto.Cipher.doFinal``
+        — a PHANTOM BARRIER.
 
-        That trade is strictly bad and the direction is why: a phantom barrier
+        That is strictly bad, and the direction is why: a phantom barrier
         earns ``sanitized``, and a sanitized flow is DROPPED from the claim's
-        violation set (#214). Missing a barrier costs precision; inventing one
+        violation set. Missing a barrier costs precision; inventing one
         costs a real finding, silently. ``_register_sanitizer_callers``'s own
         docstring makes the same ruling (INV-finoh).
 
@@ -5036,10 +5027,10 @@ public class Wrong {
             "is_resolved": e.is_resolved, "meta": dict(e.meta or {}),
         } for e in result.edges]
         callers: dict = defaultdict(dict)
-        # INV-fuduz removed the ``ambiguous_names`` parameter: the guard no
-        # longer consults it (it never held a sanitizer short name in any
-        # language), so the registrar takes the barrier index and the output
-        # map, plus optional ``sanitizer_lines``.
+        # The registrar takes the barrier index and the output map, plus
+        # optional ``sanitizer_lines``; it has no ``ambiguous_names``
+        # parameter, which never held a sanitizer short name in any language
+        # (INV-fuduz).
         _register_sanitizer_callers(edge_dicts, index, callers, {})
         assert not callers, (
             f"phantom barrier registered from a non-Cipher receiver: {dict(callers)}"
@@ -5050,22 +5041,15 @@ public class Wrong {
     ) -> None:
         """No inferred type ⇒ the ``external`` placeholder, NOT an invented module.
 
-        The non-destructiveness half (L12): when the fix cannot do better it
-        must do exactly what it did before. A receiver with no entry in
-        ``var_types`` has no type evidence, and manufacturing one would be the
-        bare-name category error this whole area is trying to stop.
-
-        RE-TITLED at WI-nakut, which changed the other slot. This test was
-        called ``..._still_names_the_variable`` because the name slot then read
-        ``o.hashCode``; the variable is gone from it and the MODULE slot is what
-        this test was always about.
+        The non-destructiveness half (L12): with no type evidence the module
+        slot keeps the placeholder. A receiver with no entry in ``var_types``
+        has no type evidence, and manufacturing one would be the bare-name
+        category error this whole area is trying to stop.
 
         The receiver is a LAMBDA parameter: it is the one binding form in
-        valid Java that declares no type. (This fixture used ``Object o``,
-        which only looked untyped because ``Object`` was never in
-        ``imports``; INV-vugon reads the JLS 7.3 implicit import, so that
-        receiver now correctly names ``java.lang.Object`` -- see
-        ``test_java_declared_receiver_types``.)
+        valid Java that declares no type. (An ``Object o`` receiver is not
+        untyped: the JLS 7.3 implicit import names it ``java.lang.Object``,
+        INV-vugon -- see ``test_java_declared_receiver_types``.)
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -5141,12 +5125,12 @@ public class App {
         assert len(unresolved_helper) == 0
 
 
-# WI-lozug PR 3: wire emit_module_attribute_refs into _analyze_java_impl so
+# ``_analyze_java_impl`` runs emit_module_attribute_refs (WI-lozug) so
 # that attribute reads on java.lang.System (and imported classes) produce
 # ``module_attr_ref`` edges that io_boundary can tag against the
 # ``attributes:`` entries in ``io_primitives/java.yaml``.
 class TestJavaModuleAttrRefs:
-    """Tests for ``module_attr_ref`` emission in Java (WI-lozug PR 3)."""
+    """Tests for ``module_attr_ref`` emission in Java (WI-lozug)."""
 
     def test_emits_module_attr_ref_for_system_out_assignment(
         self, tmp_path: Path,
@@ -5249,13 +5233,13 @@ public class App {
 
 
 class TestJavaSite2Site3UnresolvedHints:
-    """WI-sivuk (PR-4 of INV-nilud): analyzer threads Site-2/3 hints into
-    the final unresolved emit (``java.py:1647-1727``) so the inherited_calls
-    linker (PR-5) can resolve typed-receiver and inherited-field calls.
+    """The analyzer threads Site-2/3 hints into the final unresolved emit
+    so the inherited_calls linker can resolve typed-receiver and
+    inherited-field calls (WI-sivuk, INV-nilud).
 
-    Also covers the WI-dukog (PR-3) follow-up: Case 1's ``else`` branch at
-    ``java.py:1459-1464`` must set ``edge_added = True`` so the final
-    fallback emit doesn't fire a second time for the same call site.
+    Also covers Case 1's ``else`` branch, which must set
+    ``edge_added = True`` so the final fallback emit doesn't fire a second
+    time for the same call site (WI-dukog).
     """
 
     def test_case1_else_emits_single_unresolved_edge(
@@ -5263,8 +5247,8 @@ class TestJavaSite2Site3UnresolvedHints:
     ) -> None:
         """bare ``method()`` whose name isn't in the current class must
         emit exactly ONE unresolved edge (with ``enclosing_class`` hint),
-        not two — pre-PR-4 the Case 1 ``else`` branch fell through to the
-        final unresolved emit, double-counting every inherited bare call.
+        not two — falling through from the Case 1 ``else`` branch to the
+        final unresolved emit would double-count every inherited bare call.
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -5334,12 +5318,12 @@ public class Sub extends Base {
         # ASSERTED KEY BY KEY, not as a whole-dict equality. This test's
         # subject is the Site-1 hint -- ONE unresolved edge carrying
         # ``enclosing_class`` so the inherited_calls linker can recover it --
-        # and a dict equality made it also assert the ABSENCE of every key
-        # anyone might add later. INV-pirot added one: ``this.format(null)``
-        # did not resolve, so the declaring type is not established here, and
+        # and a dict equality would also assert the ABSENCE of every other
+        # key. ``call_construct`` is one (INV-pirot): ``this.format(null)``
+        # does not resolve, so the declaring type is not established here, and
         # the two taint gates read ``call_construct`` to know that. The linker
         # reads ``enclosing_class``, never that key, so the recovery this test
-        # protects is unchanged.
+        # protects does not depend on it.
         meta = fmt_unresolved[0].meta or {}
         assert {k: meta.get(k) for k in ("callee_name", "enclosing_class")} == {
             "callee_name": "format", "enclosing_class": "Sub",
@@ -5369,8 +5353,8 @@ public class Reader {
 
         read_unresolved = [
             e for e in result.edges
-            # WI-nakut: the name slot is the CALLEE's name, so the
-            # receiver-qualified selector this used no longer matches.
+            # The name slot is the CALLEE's name, not receiver-qualified
+            # (WI-nakut).
             if not e.is_resolved and ":read:" in e.dst
         ]
         assert len(read_unresolved) == 1, (
@@ -5389,11 +5373,10 @@ public class Reader {
     def test_site2_resolved_fallback_through_linker(
         self, tmp_path: Path,
     ) -> None:
-        """WI-puvil (PR-5): the ``ast_call_inherited_method`` fallback
-        for ``var.method()`` now fires from the inherited_calls linker
-        (Site 2, Step 3 — a ``uses`` edge to the type symbol when neither
-        direct nor MRO walk resolves; WI-jomik made it ``uses``, not
-        ``calls``)."""
+        """The ``ast_call_inherited_method`` fallback for ``var.method()``
+        fires from the inherited_calls linker (Site 2, Step 3 — a ``uses``
+        edge, not ``calls``, to the type symbol when neither direct nor MRO
+        walk resolves; WI-puvil, WI-jomik)."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "OwnerRepository.java").write_text("""
@@ -5460,7 +5443,7 @@ public class MyService extends Parent {
 
         log_unresolved = [
             e for e in result.edges
-            # WI-nakut: selector on the callee's own name (was "log.info").
+            # Selector on the callee's own name (WI-nakut).
             if not e.is_resolved and ":info:" in e.dst
         ]
         assert len(log_unresolved) == 1, (
@@ -5500,8 +5483,8 @@ public class App {
 
         arr_unresolved = [
             e for e in result.edges
-            # WI-nakut: selector on the callee's own name (was
-            # "Arrays.asList"); the MODULE slot still carries java.util.Arrays.
+            # Selector on the callee's own name (WI-nakut); the MODULE slot
+            # carries java.util.Arrays.
             if not e.is_resolved and ":asList:" in e.dst
         ]
         assert len(arr_unresolved) == 1
@@ -5536,7 +5519,7 @@ class TestJavaLinesOfCode:
 
 
 class TestJavaDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on Java callable symbols."""
+    """Symbol.docstring on Java callable symbols (INV-jahiv)."""
 
     def test_method_with_javadoc(self, tmp_path: Path) -> None:
         """Method symbols populate docstring from preceding Javadoc."""
@@ -5576,7 +5559,7 @@ class TestJavaDocstring:
 
 
 class TestJavaQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Java symbols."""
+    """Symbol.qualified_name on Java symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
         """Methods carry package.Class.method qualified_name with '.' separator."""
@@ -5620,7 +5603,7 @@ class TestJavaQualifiedName:
 
 
 class TestJavaCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity populated on Java callables."""
+    """cyclomatic_complexity populated on Java callables."""
 
     def test_method_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.java import analyze_java
@@ -5649,14 +5632,12 @@ class TestJavaCyclomaticComplexity:
 class TestJavaImportEdges:
     """Imports-edge emission (INV-gojit).
 
-    The Java analyzer historically extracted import declarations only into
-    name-resolution dicts (``_extract_imports`` / ``_extract_static_imports``
-    / ``_extract_wildcard_imports`` build simple-name → FQN maps) and never
-    surfaced them as graph ``imports`` edges, leaving Java the lone mainstream
-    analyzer whose emission-parity ``(java, edge_imports)`` cell was a strict
-    xfail (``edge_types == [calls]``). These tests pin the closure: every
-    import declaration — regular, ``import static``, and wildcard — emits one
-    file → external-ref ``imports`` edge.
+    Besides feeding the name-resolution dicts (``_extract_imports`` /
+    ``_extract_static_imports`` / ``_extract_wildcard_imports`` build
+    simple-name → FQN maps), every import declaration — regular,
+    ``import static``, and wildcard — emits one file → external-ref
+    ``imports`` edge, which the emission-parity ``(java, edge_imports)`` cell
+    checks.
     """
 
     @staticmethod
@@ -5666,7 +5647,7 @@ class TestJavaImportEdges:
     def test_regular_and_stdlib_imports_emit_edges(self, tmp_path: Path) -> None:
         """INV-gojit filed repro: both a stdlib (``java.util.List``) and a
         non-stdlib (``com.example.helper.Formatter``) import emit an imports
-        edge — previously zero were produced (only ``calls`` edges)."""
+        edge, not only ``calls`` edges."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Main.java").write_text(

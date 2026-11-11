@@ -77,10 +77,9 @@ wrapper loads the cached survey.json, and on a cold cache runs
 installs a synthetic ``FileIndex`` built from the map's node paths for the
 duration of the call, so test counting, language detection, source-file
 discovery and the Structure tree summarize the map's files instead of
-re-walking the working tree. The survey used to run inside
-``_generate_sketch_impl``, after the wrapper had already looked for a map and
-found none, so a cold sketch re-walked the tree with no index at all: about a
-minute on this repository, all of it reported under the profile phase. A
+re-walking the working tree. The cold-cache survey runs in the wrapper, not
+in ``_generate_sketch_impl``, so a cold sketch gets the same map-scoped index
+as a warm one instead of re-walking the tree with no index. A
 ``CatalogueError`` propagates; other discovery errors fall back to direct
 profile detection and analysis. Profile, symbols and edges come from the map,
 and its ``sketch_precomputed`` block, when present, supplies the README
@@ -116,8 +115,7 @@ Symbol ranking flows through ``compute_dampened_centrality``, which
 applies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:
 tier, noise, utility, common_method, trivial_sink, generated, file_kind
 (Key Symbols skips file_kind, a no-op there since kind='file' symbols
-are pre-filtered).
-(The sibling-impl group weighting was removed by WI-karad.) The stack
+are pre-filtered). The stack
 order is invariant — ``_CANONICAL_DAMPENERS`` is defined in
 ``ranking.py`` and pinned by
 ``tests/test_ranking.py::test_canonical_dampener_order_pinned``.
@@ -353,9 +351,8 @@ def display_representativeness_table(
 
 # Canonical vocabulary of sketch section names (WI-furop / INV-fabov). The
 # single source of truth for what `--require-section` accepts and what the
-# `_has_required_analysis_section` gate below checks against -- the names were
-# previously duplicated across the CLI help text, this module's docstring, and
-# the gate set, so a typo in one drifted silently from the others. The renderer
+# `_has_required_analysis_section` gate below checks against, so the CLI help
+# text, this module's docstring and the gate set cannot drift apart. The renderer
 # compares section names by exact (case-sensitive) string, so this set is too.
 VALID_SKETCH_SECTIONS: frozenset[str] = frozenset({
     "Entry Points",
@@ -369,7 +366,7 @@ VALID_SKETCH_SECTIONS: frozenset[str] = frozenset({
 
 
 # Boilerplate patterns to exclude from Additional Files section (ADR-0004 Phase 4)
-# Binary files are now filtered by is_additional_file_candidate() which excludes
+# Binary files are filtered by is_additional_file_candidate(), which excludes
 # files without CONFIG or DOCUMENTATION role. This list catches low-value boilerplate
 # that would otherwise pass the role check.
 ADDITIONAL_FILES_EXCLUDES = [
@@ -435,8 +432,7 @@ class ConfigExtractionMode(Enum):
 class SketchProgress:
     """The sketch's phase names, reported into the shared ``run_status``.
 
-    The sketch used to keep its own clock and print ``[ 45%] ... ETA``
-    from a fixed percentage per phase. It now only names its phases.
+    The sketch only names its phases; it keeps no clock of its own.
     Timing, the heartbeat and the single ``Complete`` line belong to
     ``run_status``, which the survey nested inside a cold sketch reports
     into as well, so the two pipelines show as one timeline. Whether
@@ -572,7 +568,7 @@ ANSWER_PATTERNS = [
 ]
 
 # Open-ended questions for big-picture/architectural context
-# NOTE: License questions removed - ANSWER_PATTERNS already captures compact
+# There are no license questions: ANSWER_PATTERNS already captures compact
 # license declarations (e.g., 'license = "MIT"') without matching verbose
 # LICENSE file boilerplate.
 BIG_PICTURE_QUESTIONS = [
@@ -808,9 +804,10 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
 }
 
 # Flatten for backwards compatibility
-# Ordered dedup in declaration order. ``list({...})`` was per-process
-# str-hash order, so the Configuration section's root manifests (and, under
-# its line cap, WHICH of them were shown) changed between runs (WI-vosag).
+# Ordered dedup in declaration order, not ``list({...})``: set order is
+# per-process str-hash order, and the Configuration section's root manifests
+# (and, under its line cap, WHICH of them are shown) must not change between
+# runs (WI-vosag).
 CONFIG_FILES = list(dict.fromkeys(
     f for files in CONFIG_FILES_BY_LANG.values() for f in files
 ))
@@ -823,8 +820,8 @@ CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "
 # declaration order, NOT a frozenset: _collect_config_content iterates it to
 # build the embedding candidate list, and the 15-file cap and first-come
 # cross-file dedup downstream turn that order into WHICH files the
-# Configuration section shows, so set (str-hash) order made it vary with
-# PYTHONHASHSEED (INV-rikor).
+# Configuration section shows, and set (str-hash) order would make that vary
+# with PYTHONHASHSEED (INV-rikor).
 _MONOREPO_MANIFEST_NAMES: tuple[str, ...] = tuple(
     f for f in CONFIG_FILES if "*" not in f
 )
@@ -1596,9 +1593,9 @@ def _collect_config_content_with_discovery(
 
     # Discover additional config files using embeddings. sorted: a set, and
     # appended order decides which files survive the downstream file cap
-    # (INV-rikor). seen_paths holds RESOLVED paths, so compare resolved — the
-    # unresolved path never matched under a relative or symlinked repo_root,
-    # and a manifest already collected was appended a second time.
+    # (INV-rikor). seen_paths holds RESOLVED paths, so compare resolved — an
+    # unresolved path does not match under a relative or symlinked repo_root,
+    # and a manifest already collected would be appended a second time.
     discovered = _discover_config_files_embedding(repo_root)
 
     for path in sorted(discovered):  # pragma: no cover - discovery integration
@@ -2014,7 +2011,7 @@ def _extract_config_embedding(
     selected_embeddings_per_file: dict[str, list[np.ndarray]] = {
         source: [] for source in file_candidates
     }
-    # Global embedding list for cross-file deduplication (Change A from plan)
+    # Global embedding list for cross-file deduplication
     selected_embeddings_global: list[np.ndarray] = []
 
     # First: give each file its base allocation, skipping cross-file near-duplicates
@@ -2276,12 +2273,10 @@ def _warn_embedding_fallback_once(requested_mode: "ConfigExtractionMode") -> Non
     """Emit a one-shot stderr notice when the requested config-extraction
     mode requires sentence-transformers but the package is unavailable.
 
-    UAT 2026-04-13 DQ-07 / WI-fumap: ``--config-extraction embedding``
-    and ``--config-extraction hybrid`` would silently degrade to
-    heuristic on machines without sentence-transformers, producing
-    output identical to ``--config-extraction heuristic`` and giving
-    users no signal that the requested mode never ran. This warning
-    closes the ergonomics gap.
+    Without sentence-transformers, ``--config-extraction embedding`` and
+    ``--config-extraction hybrid`` degrade to heuristic and produce output
+    identical to ``--config-extraction heuristic``; this warning tells the
+    user the requested mode never ran (WI-fumap).
     """
     global _embedding_fallback_warned
     if _embedding_fallback_warned:
@@ -2472,11 +2467,11 @@ _MARKDOWN_HEADING_BLEED_EXTS = frozenset({".md", ".mdx", ".markdown", ".rst"})
 def _demote_markdown_headings(content: str, levels: int = 2) -> str:
     """Demote ATX-style markdown headings in *content* by *levels* levels.
 
-    WI-bilul (UAT BUG-06): markdown content embedded as Additional Files
-    Content reads as having H1/H2 headings that compete with hypergumbo's
+    Markdown content embedded as Additional Files Content would otherwise
+    read as having H1/H2 headings that compete with hypergumbo's
     own structural sections (``## Overview``, ``## Structure``, ...). A
     consumer treating the sketch as a structured document sees the
-    README's ``## Installation`` as a sibling of those sections.
+    README's ``## Installation`` as a sibling of those sections (WI-bilul).
 
     Demoting any ATX heading by 2 levels guarantees the embedded content
     cannot reach the structural-H2 namespace: ``# X`` becomes ``### X``
@@ -2535,14 +2530,13 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     end_marker = f"------------------- END of {rel_path} "
     end_marker += "-" * max(0, 60 - len(end_marker))
 
-    # WI-pubar: never embed binary/NUL content into rendered markdown. A file
+    # Never embed binary/NUL content into rendered markdown (WI-pubar). A file
     # with NUL bytes has no useful text to show, and read via
-    # ``read_text(errors="replace")`` it carries its NULs straight through — a
-    # cold-cache ``sketch -t 4000`` once emitted 12,792 raw NULs here, choking
-    # tokenizers and JSON wrappers. This is the single render chokepoint every
-    # content section (Additional Files, Source Files) funnels through, so
-    # guarding here omits binary content with an explanatory note across all of
-    # them, at any token budget.
+    # ``read_text(errors="replace")`` it carries its NULs straight through,
+    # which chokes tokenizers and JSON wrappers. This is the single render
+    # chokepoint every content section (Additional Files, Source Files)
+    # funnels through, so guarding here omits binary content with an
+    # explanatory note across all of them, at any token budget.
     if _content_is_binary(content):
         return [start_marker, "[binary content omitted]", end_marker, ""]
 
@@ -2642,8 +2636,8 @@ def _sample_test_files_for_frameworks(
     front, so one alphabetical corner does not stand for the whole directory.
 
     Why sort everything: the result must be a function of the SET of paths
-    only — never of walk order, which is what made WI-vosag's Tests line
-    differ between two runs on identical files.
+    only — never of walk order — so the Tests line is the same on every run
+    over identical files (WI-vosag).
 
     Args:
         test_files: Test file paths (any order, no duplicates).
@@ -2750,13 +2744,10 @@ def _analyze_test_files(
       evidence for runners used through globals (jest, rspec), whose test
       files import nothing.
 
-    It used to read the FIRST 20 test files in walk order, and the walk order
-    came from ``list(<set of globs>)`` — per-process string-hash order. On a
-    repo with 2 717 ExUnit files and a handful of vitest files, whether any
-    vitest file landed in those 20 changed from run to run, so the Tests line
-    named vitest on one run and nothing on the next; ExUnit was never named
-    because no pattern existed for it. The globs are now sorted, and the
-    sample no longer depends on walk order at all.
+    Neither source depends on walk order, so the Tests line names the same
+    frameworks on every run over identical files; a first-N sample in walk
+    order would let a minority framework appear on one run and vanish on the
+    next.
 
     Args:
         repo_root: Repository root path.
@@ -2780,7 +2771,8 @@ def _analyze_test_files(
         all_patterns.update(pattern_list)
     all_patterns.add("*.bats")  # Bash Automated Testing System (test-only)
     # Sorted (WI-vosag): ``list(<set>)`` is per-process str-hash order, and
-    # find_files yields pattern by pattern, so the walk order varied by run.
+    # find_files yields pattern by pattern, so unsorted the walk order would
+    # vary by run.
     patterns = sorted(all_patterns)
 
     test_loc = 0
@@ -3004,7 +2996,7 @@ def _kept_dir_children(
     (INV-jumim: a ``--input`` sketch must count the MAP's items, not the
     working tree's), else falls back to ``iterdir()``. When ``exclude_tests``
     is set, test source files are dropped but CONFIG/DOC test-adjacent files
-    are kept (mirroring the pre-existing Structure-section semantics).
+    are kept; test directories are dropped whole.
     """
     from fnmatch import fnmatch
 
@@ -3137,9 +3129,8 @@ _ROOT_LOC_COLUMN = " " * 5
 #: Printed under the tree when its universe is a behavior map's files (the
 #: normal case, INV-jumim): the map names only files that yielded a symbol,
 #: so data files and scripts no analyzer recognises are in neither the item
-#: counts nor the LOC. On hypergumbo itself that left out 132 tracked files,
-#: 394k lines, on 2026-10-16. Recording the survey's full discovered-file list
-#: would close the gap; the owner chose disclosure instead.
+#: counts nor the LOC. Recording the survey's full discovered-file list would
+#: close the gap; this note discloses it instead.
 _STRUCTURE_SCOPE_NOTE = (
     "Counts and LOC cover only files with at least one detected symbol; "
     "files with none, such as JSON data or extensionless scripts, are left out."
@@ -3346,7 +3337,6 @@ def _format_structure_tree(
     name_excludes = _normalize_name_excludes(excludes)
 
     # If no important files, show top-level directories in tree format
-    # (Don't fall back to deprecated bullet-list format)
     if not important_files:
         return _format_structure_tree_fallback(repo_root, excludes, exclude_tests)
 
@@ -4514,10 +4504,10 @@ def _format_source_files(
     density (sum of raw in-degrees of symbols / LOC) in descending order.
     Otherwise, files are displayed in their original order.
 
-    WI-kipod: when ``docstrings`` (a relative-path → module-summary map,
-    built by :func:`_file_docstrings` from the file-anchor Symbols) has an
-    entry for a file, its module docstring is rendered after the path so
-    the section reports what each file is for, not just a bare path list.
+    When ``docstrings`` (a relative-path → module-summary map, built by
+    :func:`_file_docstrings` from the file-anchor Symbols) has an entry for
+    a file, its module docstring is rendered after the path so the section
+    reports what each file is for, not just a bare path list (WI-kipod).
     """
     if not files:
         return ""
@@ -4551,9 +4541,9 @@ def _format_source_files(
 def _file_docstrings(symbols: list[Symbol], repo_root: Path) -> dict[str, str]:
     """Map relative file path → module docstring for ``kind="file"`` symbols.
 
-    WI-kipod: threads the module summary captured on file-anchor Symbols
-    (WI-kazob, which populates ``kind="file"`` docstrings — 845/908 file
-    nodes on the self-corpus) into the Source Files section. Keyed by the
+    Threads the module summary captured on file-anchor Symbols into the
+    Source Files section (WI-kipod; the docstrings are populated by
+    WI-kazob). Keyed by the
     same relative path :func:`_format_source_files` derives from its
     ``files`` list (``str(Path.relative_to(repo_root))``), so absolute
     file-node paths are relativized here to match. File nodes without a
@@ -4645,8 +4635,8 @@ def _select_additional_files(
             return True
 
         # Installed dependency source / content-conditioned build output
-        # (ADR-0004): no longer name-excluded, so the rglob fallback below
-        # must ask the content rules.
+        # (ADR-0004) is recognised by content, not by an exclude name, so the
+        # rglob fallback below must ask the content rules.
         if under_content_rule_dir(repo_root, rel_path.parts[:-1]):
             return True
 
@@ -5047,7 +5037,7 @@ TEST_FRAMEWORK_PATTERNS: list[tuple[str, str, tuple[str, ...] | None]] = [
     (r"from ['\"]node:test['\"]|require\(['\"]node:test['\"]\)", "node:test", None),
     (r"from ['\"]@playwright/test['\"]", "playwright", None),
     # Go (built-in testing package). Grouped ``import ( ... )`` blocks span
-    # lines, which ``import.*"testing"`` never matched (WI-vosag).
+    # lines, which a plain ``import.*"testing"`` would miss (WI-vosag).
     (r'\bimport\s*(?:\([^)]*)?"testing"', "go test", (".go",)),
     # Ruby
     (r"require ['\"]rspec['\"]|RSpec\.describe", "rspec", None),
@@ -5576,9 +5566,9 @@ def _run_analysis(
         all_edges = filtered_edges
 
     # Supply chain classification: the survey's own annotator, so this
-    # fallback tiers a dependency declaration as the survey does (INV-kutub;
-    # a per-path loop here tiered every declaration by its manifest's path,
-    # tier 1) and folds in the modifier-derived export signal the same way.
+    # fallback tiers a dependency declaration as the survey does rather than
+    # by its manifest's path (INV-kutub), and folds in the modifier-derived
+    # export signal the same way.
     from .cli import _classify_symbols
 
     _classify_symbols(all_symbols, repo_root, detect_package_roots(repo_root))
@@ -5718,10 +5708,10 @@ def _format_entrypoints(
 
     Within each group, entries are sorted by rank_score (highest first).
     ``max_entries`` is ONE budget shared by all groups (see
-    :func:`_share_entry_budget`), not a per-group cap: per group, a repo with
-    hundreds of routes and hundreds of library exports printed max_entries of
-    each and the section swallowed most of the sketch (thc: 22.7k of 31.7k
-    chars once its Phoenix routes were classified, INV-liraj).
+    :func:`_share_entry_budget`), not a per-group cap: with a per-group cap,
+    a repo with hundreds of routes and hundreds of library exports would
+    print max_entries of each and the section would swallow most of the
+    sketch (INV-liraj).
 
     A route marker (``meta.framework_role == "route"``) is named after its
     route, so its label would only repeat the name; its line names the
@@ -5780,8 +5770,8 @@ def _format_entrypoints(
                     head = f"- `{sym.name}` ({ep.label})"
                 # WI-kipod: prefer the captured docstring (what the entry
                 # point does) over the path (where it lives). The path is
-                # recoverable via `explain` / the Source Files section, but
-                # the human-written intent was previously never surfaced.
+                # recoverable via `explain` / the Source Files section; the
+                # human-written intent is not shown anywhere else.
                 if sym.docstring:
                     lines.append(f"{head} — {sym.docstring}")
                 else:
@@ -5974,7 +5964,7 @@ def _select_symbols_two_phase(
                     state["picks"] += 1
                     lang_selected += 1
     else:
-        # Original behavior: order files by file_score for round-robin
+        # Non-stratified Phase 1: order files by file_score for round-robin
         phase1_files = sorted(
             eligible_by_file.keys(),
             key=lambda f: -file_scores.get(f, 0)
@@ -6085,43 +6075,11 @@ def _format_symbols(
     if entrypoint_files is None:
         entrypoint_files = set()
 
-    # Filter to meaningful symbol kinds, exclude test files and derived artifacts
-    # Include OOP kinds (function, class, method) plus language-specific equivalents:
-    # - Nix: binding, derivation, input (core abstractions)
-    # - Terraform/HCL: resource, data, module, variable, output, provider, local
-    # - Elixir/Erlang: module, macro, record, type
-    # - Elm/F#: module, type, port, record, union, value
-    # - SQL: table, view, procedure, trigger
-    # - Dockerfile: stage
-    # - Lean: theorem, structure, inductive, instance
-    # - Agda: data (algebraic data types)
-    # - Fortran/COBOL: program, subroutine
-    # - VHDL: entity, architecture, component
-    # - Other: struct, enum, trait, interface, protocol, object
-    # ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
-    # - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``function``, ``class``,
-    #   ``method``, ``constructor``, ``struct``, ``enum``, ``type``,
-    #   ``union``, ``interface``, ``trait``, ``module``, ``namespace``,
-    #   ``object``, ``macro``, ``binding`` — stable across Phase 3.
-    # - AXIS_PENDING (Clusters B/G/H — domain long-tail): ``record``,
-    #   ``abstract``, ``protocol``, ``instance``, ``derivation``,
-    #   ``input``, ``resource``, ``data``, ``variable``, ``output``,
-    #   ``provider``, ``local``, ``port``, ``table``, ``view``,
-    #   ``procedure``, ``trigger``, ``stage``, ``value``, ``theorem``,
-    #   ``inductive``, ``program``, ``subroutine``, ``entity``,
-    #   ``architecture``, ``component``, ``structure``. Audit-findings
-    #   0006/0007 (Cluster G/H) recommend canonical promotions for many
-    #   of these; the registry update is Wave 6 follow-through per
-    #   WI-runod. Until then, none of these values is scheduled for
-    #   fold/rename in Phase 3, so this set is forward-compatible —
-    #   it captures the intent "key declaration kinds across all
-    #   languages" and Phase 3 doesn't change which values populate
-    #   that intent.
-    # WI-zulij: the kind set and the four filter clauses used to be declared
-    # here, in this function's body, reachable by nothing else — which is how
-    # compact's default came to advertise "important symbols" while filtering a
-    # different population. Both surfaces now read one definition in
-    # selection.filters; changing it moves them together.
+    # Filter to meaningful symbol kinds, excluding test code and derived
+    # artifacts, and drop edges that originate in test code. The kind set
+    # (KEY_SYMBOL_KINDS) and the filter clauses live in selection.filters,
+    # shared with compact's default so both surfaces select the same
+    # population; changing it moves them together (WI-zulij).
     key_symbols = select_key_symbols(symbols)
     production_edges = select_production_edges(symbols, edges)
 
@@ -6149,7 +6107,7 @@ def _format_symbols(
             rel_path = rel_path[len(str(repo_root)) + 1:]
         by_file.setdefault(rel_path, []).append(s)
 
-    # Compute file scores using sum-of-top-K (B3: density metric)
+    # Compute file scores using sum-of-top-K (density metric)
     file_scores = compute_file_scores(by_file, centrality, top_k=3)
 
     # Normalize entrypoint file paths
@@ -6161,7 +6119,7 @@ def _format_symbols(
         else:
             normalized_ep_files.add(ep_path)
 
-    # Two-phase selection (B1)
+    # Two-phase selection
     selected = _select_symbols_two_phase(
         by_file=by_file,
         centrality=centrality,
@@ -6184,7 +6142,7 @@ def _format_symbols(
     for file_path, sym in selected:
         selected_by_file.setdefault(file_path, []).append(sym)
 
-    # Order files by file_score (B3), then alphabetically for tie-breaking
+    # Order files by file_score, then alphabetically for tie-breaking
     sorted_files = sorted(
         selected_by_file.keys(),
         key=lambda f: (-file_scores.get(f, 0), f)
@@ -6212,7 +6170,7 @@ def _format_symbols(
 
         lines.append(f"### `{file_path}`")
 
-        # Render up to max_symbols_per_file (B2: compression)
+        # Render up to max_symbols_per_file (compression)
         rendered_count = 0
         deduped_count = 0  # Track skipped duplicates
         for sym in file_symbols[:max_symbols_per_file]:
@@ -6253,7 +6211,7 @@ def _format_symbols(
             lines.pop()
             continue
 
-        # Summary line for remaining symbols in this file (B2)
+        # Summary line for remaining symbols in this file
         # Don't count deduped symbols as "remaining" - they're intentionally hidden
         remaining_in_file = len(file_symbols) - rendered_count - deduped_count
         if remaining_in_file > 0:
@@ -6316,11 +6274,8 @@ def _map_source_paths(repo_root: Path, cached_results: Optional[dict[str, Any]])
     out: list[Path] = []
     for node in cached_results.get("nodes", []):
         path = node.get("path")
-        # INV-sarum: one home for "this node names no source file". The
-        # private prefix constant that used to live here is now
-        # ``paths.names_no_source_file``, shared with the taint language
-        # census, which needed the identical question and got it wrong by
-        # asking a different one.
+        # ``paths.names_no_source_file`` is the one home for "this node names
+        # no source file", shared with the taint language census (INV-sarum).
         if names_no_source_file(path):
             continue
         abs_path = repo_root / path
@@ -6364,7 +6319,7 @@ def _peek_cached_results(
     try:
         cache_dir = _get_results_cache_dir(repo_root, extra_excludes=extra_excludes)
         # ADR-0042: resolve the canonical survey.json (or any legacy alias) in
-        # the cache dir instead of hardcoding the pre-rename basename.
+        # the cache dir rather than a hardcoded basename.
         cached_path = find_survey_in_dir(cache_dir)
         if cached_path is not None:
             import json
@@ -6386,8 +6341,8 @@ def _discover_or_survey(
 
     A ``CatalogueError`` from the survey propagates: the analysis met a
     catalogue file that does not parse (a user's frameworks.d, say), and
-    swallowing it built the sketch from no analysis at all and exited 0; the
-    CLI reports the file with exit 2 instead. Any other failure returns None,
+    swallowing it would build the sketch from no analysis at all and exit 0;
+    the CLI reports the file with exit 2 instead. Any other failure returns None,
     and ``_generate_sketch_impl`` falls back to direct analysis.
     """
     cached = _peek_cached_results(repo_root, extra_excludes)
@@ -6433,8 +6388,8 @@ def generate_sketch(
     cold cache. A synthetic :class:`FileIndex` built from the map's node paths
     is installed for the duration of the call so test-file counting, language
     detection, source-file discovery, and the Structure tree summarize the
-    MAP — not a re-walk of the working tree (which hung 60+s and produced
-    whole-repo sketches from package-scoped maps). The cold-cache survey runs
+    MAP — not a re-walk of the working tree, which is slow and would
+    summarize the whole repo for a package-scoped map. The cold-cache survey runs
     here rather than inside the impl so a cold sketch gets the same index as
     a warm one. The prior global index is always restored. See :func:`_generate_sketch_impl` for the full
     section-by-section contract and argument docs.
@@ -6567,8 +6522,8 @@ def _generate_sketch_impl(
 
         Sections listed in ``require_sections`` render unconditionally:
         the whole purpose of the flag (WI-nakam) is to force inclusion
-        even when the budget is exhausted. Non-required sections keep
-        the original ``remaining > threshold`` gate.
+        even when the budget is exhausted. Non-required sections use
+        the ``remaining > threshold`` gate.
         """
         if name in _required:
             return True
@@ -6603,11 +6558,9 @@ def _generate_sketch_impl(
     prog.start_phase("files")
     source_files = _collect_source_files(repo_root, profile, exclude_tests=exclude_tests)
 
-    # Pre-compute test analysis once (shared by Overview and Tests sections).
-    # Previously _count_test_loc and _detect_test_summary each did their own
-    # full directory walk; this consolidates both into a single pass.
-    # LOC is now computed by detect_profile(count_loc=True) above, so no
-    # backfill is needed here.
+    # Pre-compute test analysis once (shared by Overview and Tests sections),
+    # so both are served by a single directory walk. Per-language LOC comes
+    # from the profile, so no backfill is needed here.
     test_analysis = _analyze_test_files(repo_root, extra_excludes)
 
     # Build base sections (always included)
@@ -6718,8 +6671,8 @@ def _generate_sketch_impl(
     if config_section:
         sections.append(config_section)
 
-    # NOTE: Domain Vocabulary section removed per ADR-0005
-    # TF-IDF terms were too generic to provide value
+    # No Domain Vocabulary section (ADR-0005): TF-IDF terms are too generic
+    # to provide value
 
     # Combine base sections
     base_sketch = "\n\n".join(sections)
@@ -6862,7 +6815,7 @@ def _generate_sketch_impl(
 
     # Section 4: Entry points (if we have analysis results and budget)
     # ADR-0005: Entry Points come before Source Files as high-signal section
-    # Track entrypoint files for B4: preserve in Key Symbols
+    # Track entrypoint files to preserve in Key Symbols
     entrypoint_files: set[str] = set()
     entrypoints: list[Entrypoint] = []
 
@@ -6872,7 +6825,7 @@ def _generate_sketch_impl(
             # Build symbol lookup for extracting file paths
             symbol_by_id = {s.id: s for s in symbols}
 
-            # Extract file paths from entrypoints (B4)
+            # Extract file paths from entrypoints
             for ep in entrypoints:
                 sym = symbol_by_id.get(ep.symbol_id)
                 if sym:
@@ -6976,7 +6929,7 @@ def _generate_sketch_impl(
             break
 
     # Section 6: Source files (if we have budget >= 50 tokens remaining)
-    # Files are now ordered by symbol importance density when scores available
+    # Files are ordered by symbol importance density when scores available
     if _section_ok("Source Files", remaining_tokens) and source_files:
         # ADR-0005: --with-source mode reduces file listing budget to prioritize code
         if with_source:
@@ -7027,9 +6980,8 @@ def _generate_sketch_impl(
 
     # Section 7: Key symbols
     # IMPORTANT: Minimum Key Symbols guarantee
-    # Always include at least MIN_KEY_SYMBOLS symbols when analysis produces results.
-    # This addresses the issue where some projects (qwix, marlin, guacamole-client)
-    # had 0 Key Symbols at 1k budget because budget was exhausted earlier.
+    # Always include at least MIN_KEY_SYMBOLS symbols when analysis produces results,
+    # so a small budget exhausted by earlier sections cannot leave it empty.
     # Key Symbols is the most valuable section for code understanding, so we
     # guarantee its presence even if it means slight budget overage.
     prog.start_phase("symbols")
@@ -7064,7 +7016,7 @@ def _generate_sketch_impl(
             repo_root,
             max_symbols=max_symbols,
             first_party_priority=first_party_priority,
-            entrypoint_files=entrypoint_files,  # B4: preserve entrypoint files
+            entrypoint_files=entrypoint_files,  # preserve entrypoint files
             docstrings=docstrings,
             signatures=signatures,
             language_proportional=language_proportional,

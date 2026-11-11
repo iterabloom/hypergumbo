@@ -7,11 +7,11 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Module declarations (module)
 - Method call relationships
 - Require/require_relative statements
-- Rails callback edges. The recognised set is ``RAILS_CALLBACK_METHODS``,
-  which is wider than the three action callbacks it started with: the
-  ``_filter`` spellings, the model lifecycle callbacks, the transaction
-  callbacks (``after_commit``, ``after_create_commit``, ...) and
-  ``validate``. Block-style callbacks are picked up too.
+- Rails callback edges. The recognised set is ``RAILS_CALLBACK_METHODS``:
+  the controller action callbacks and their ``_filter`` spellings, the
+  model lifecycle callbacks, the transaction callbacks (``after_commit``,
+  ``after_create_commit``, ...) and ``validate``. Block-style callbacks
+  are picked up too.
 - ActiveRecord association ``references`` edges (has_many, belongs_to,
   has_one, has_and_belongs_to_many; ``meta["ref_construct"] = "association"``)
 - Ruby delegate macro edges (delegate :method, to: :association)
@@ -73,8 +73,8 @@ How It Works
      ``params[:id]``) -- is a send to ``self`` unless Ruby's lexical rule
      makes it a LOCAL (a parameter, block parameter, rescue / ``for``
      variable or an earlier assignment in the scope; ``_is_ruby_local``),
-     and takes the same placeholder when unresolved (WI-misir). Also since
-     WI-misir: an untyped variable receiver gets the ``external``
+     and takes the same placeholder when unresolved (WI-misir). An untyped
+     variable receiver gets the ``external``
      placeholder with ``call_construct: method``; ``self.m(...)`` binds the
      enclosing class's method; a name 3+ method symbols share, and
      ``super``, are recorded with an ``enclosing_class`` (the superclass
@@ -84,8 +84,9 @@ How It Works
      emits its self edge. ``super``'s superclass is read off the class whose
      declaration contains it, by POSITION, and for a reopened ``class Foo``
      that names none, off the declaration of the same QUALIFIED name
-     (``A::Foo``) that does (``_superclass_of``, WI-gikuk): the bare name
-     drops the module nesting, so ``A::Foo`` and ``B::Foo`` had shared one.
+     (``A::Foo``) that does (``_superclass_of``, WI-gikuk), never by the bare
+     name, which drops the module nesting and would make ``A::Foo`` and
+     ``B::Foo`` share one.
      Each file's edges are then annotated with dataflow access modes
      (ADR-0015 Tier 1, ``_annotate_dataflow``).
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
@@ -158,14 +159,13 @@ PASS_ID = make_pass_id("ruby")
 #: ADR-0039 ruling 6 grades for the bare-call resolution cascade. A same-class
 #: match is exact; an unqualified match in this file is graded like a path
 #: hint; the global resolver fallback runs only after both failed, so its own
-#: grade is discounted to stay below them. Before ruling 6 the cascade set
-#: 0.90 / 0.75 / ``0.70 * grade``; 0.90 was over the ast_call ceiling of 0.85.
+#: grade is discounted to stay below them.
 _RUBY_SAME_CLASS_GRADE = 1.0
 _RUBY_LOCAL_GRADE = 0.90
 _RUBY_GLOBAL_GRADE = 0.85
 
-#: INV-bamij: scopes whose BODY anchors a call in no method (class-body
-#: ``include``, a Rails ``has_many``).
+#: Scopes whose BODY anchors a call in no method (class-body ``include``, a
+#: Rails ``has_many``; INV-bamij).
 _SCOPE_BODY_NODES: frozenset[str] = frozenset({"class", "module", "singleton_class"})
 
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
@@ -385,9 +385,9 @@ def _get_enclosing_method(
     """The method (instance or class method) whose ``def`` contains ``node``.
 
     Keyed by the declaration's POSITION, not its name (INV-midag). Ruby lets one
-    file define a method twice, in a reopened class or as a redefinition, and the
-    name lookup returned whichever registered last (postal's
-    MessageInspection#scan). The ``def`` node IS the symbol's node.
+    file define a method twice, in a reopened class or as a redefinition, and a
+    lookup by name would return whichever registered last. The ``def`` node IS
+    the symbol's node.
     """
     current = node.parent
     while current is not None:
@@ -414,12 +414,12 @@ def _is_nested_in_method(node: "tree_sitter.Node") -> bool:
     return False
 
 
-# WI-misir: Ruby's own rule for telling a local-variable read from a
-# no-argument implicit-self call, which tree-sitter-ruby parses as the same
-# bare ``identifier``: a name is a LOCAL iff a parameter, block parameter,
-# rescue / for variable or assignment binds it earlier in the same scope. A
-# ``def`` / ``class`` / ``module`` starts a fresh scope; a block sees its outer
-# scope, and what a block binds is visible only inside that block.
+# Ruby's own rule for telling a local-variable read from a no-argument
+# implicit-self call, which tree-sitter-ruby parses as the same bare
+# ``identifier``: a name is a LOCAL iff a parameter, block parameter, rescue /
+# for variable or assignment binds it earlier in the same scope. A ``def`` /
+# ``class`` / ``module`` starts a fresh scope; a block sees its outer scope,
+# and what a block binds is visible only inside that block (WI-misir).
 _RUBY_SCOPE_ROOTS = frozenset({
     "method", "singleton_method", "class", "module", "singleton_class", "program",
 })
@@ -515,11 +515,11 @@ def _superclass_of(
 ) -> Optional[str]:
     """The superclass of the class ``class_sym`` declares.
 
-    WI-gikuk. ``class_sym`` is the class whose declaration contains the
-    ``super``, found by POSITION. It was looked up by its bare name in the
-    run-wide registry, which drops the module nesting: ``module A; class Foo
-    < BaseA`` and ``module B; class Foo < BaseB`` are two classes, and both
-    ``super`` calls read whichever ``Foo`` registered last.
+    ``class_sym`` is the class whose declaration contains the ``super``,
+    found by POSITION, not by its bare name in the run-wide registry: the
+    bare name drops the module nesting, and ``module A; class Foo < BaseA``
+    and ``module B; class Foo < BaseB`` are two classes whose ``super`` calls
+    would both read whichever ``Foo`` registered last (WI-gikuk).
 
     Ruby REOPENS a class by its full constant path, so a ``class Foo`` that
     declares no superclass (``class Foo`` in another file, adding methods) is
@@ -2172,7 +2172,7 @@ def _extract_symbols_from_file(
         run_id: Execution ID for provenance
     """
     analysis = FileAnalysis()
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # File-identity anchor for this file's symbols (WI-bokab). ``file_path`` is
     # the repo-relative path (the analyze() override passes ``rel_path`` =
     # ``rb_file.relative_to(repo_root)``). Folded into compute_stable_id's
     # containing slot so same-name methods/classes/modules in different files hash
@@ -2301,9 +2301,9 @@ def _extract_symbols_from_file(
                             meta = {"base_classes": [superclass_name]}
                             break
 
-                # WI-hatip (PR-2 of INV-nilud): extract `include` / `extend`
-                # mixin declarations as `included_modules` so the linker
-                # stack can walk through them for inherited-call resolution.
+                # Extract `include` / `extend` mixin declarations as
+                # `included_modules` so the linker stack can walk through
+                # them for inherited-call resolution (WI-hatip).
                 body_node = _find_child_by_field(node, "body")
                 if body_node is not None:
                     included = _extract_included_modules(body_node, source)
@@ -2350,8 +2350,8 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                # WI-hatip (PR-2 of INV-nilud): modules can include other
-                # modules — same MRO contribution as on classes.
+                # Modules can include other modules — same MRO contribution
+                # as on classes (WI-hatip).
                 module_meta: dict[str, object] | None = None
                 body_node = _find_child_by_field(node, "body")
                 if body_node is not None:
@@ -2392,8 +2392,8 @@ def _extract_symbols_from_file(
     # Extract require hints for disambiguation (stored in import_aliases)
     analysis.import_aliases = _extract_require_hints(tree, source)
 
-    # WI-jusus: emit kind=field/variable data anchors (constants, attr_*
-    # attributes, class variables). Kept out of symbol_by_name / the call
+    # Emit kind=field/variable data anchors (constants, attr_* attributes,
+    # class variables; WI-jusus). Kept out of symbol_by_name / the call
     # registry (see _emit_ruby_data_symbols and register_symbol).
     _emit_ruby_data_symbols(
         analysis, tree, source, file_path, file_stable_id, run_id,
@@ -2415,11 +2415,11 @@ def _extract_included_modules(
     """Scan top-level body statements for ``include`` / ``extend`` declarations.
 
     Ruby's mixin idioms (`include Mod`, `extend Mod`) contribute to the
-    method-resolution order at runtime. WI-hatip (PR-2 of INV-nilud)
-    extracts them as ``meta["included_modules"]`` on the enclosing
-    class/module Symbol so the centralized ``inheritance.py`` linker can
-    emit ``includes`` edges and the new ``inherited_calls.py`` linker can
-    walk through them as part of the Ruby insertion-order MRO.
+    method-resolution order at runtime. They are extracted as
+    ``meta["included_modules"]`` on the enclosing class/module Symbol so the
+    centralized ``inheritance.py`` linker can emit ``includes`` edges and the
+    ``inherited_calls.py`` linker can walk through them as part of the Ruby
+    insertion-order MRO (WI-hatip).
 
     Only **literal constant** arguments are captured (``constant`` and
     ``scope_resolution`` AST shapes). Dynamic ``include some_method_call``
@@ -2550,19 +2550,18 @@ def _try_receiver_call(
     # Ruby constructor: SomeClass.new → SomeClass#initialize
     # In Ruby, .new is the class-level allocator that delegates to #initialize.
     # A Rails controller ``def new`` is an instance method (action), not the
-    # constructor.  Matching ``SomeClass.new`` to ``SomeClass#new`` would create
-    # massive false-positive edges (e.g. RoutesController#new with 130 false
-    # in-edges in chatwoot).  Redirect to #initialize instead.
+    # constructor.  Matching ``SomeClass.new`` to ``SomeClass#new`` would bind
+    # object construction to controller ``new`` actions, a large source of
+    # false-positive edges.  Redirect to #initialize instead.
     if method_name == "new":
-        # WI-vuton MessageBuilder diagnostic: ``::Foo::Bar.new(...)``
-        # extracts ``receiver_class = "::Foo::Bar"`` (preserving the leading
-        # ``::`` from the AST node text), but ``global_symbols`` is keyed by
-        # qualified name WITHOUT the prefix (``Foo::Bar``). Strip the
-        # leading ``::`` so the constant-receiver redirect (and the
-        # inheritance walk below) find the class symbol when the source
-        # uses the unambiguous root-namespace prefix idiom common in Rails
-        # background jobs (e.g. chatwoot's
-        # ``::Instagram::MessageText.new(...).perform``).
+        # ``::Foo::Bar.new(...)`` extracts ``receiver_class = "::Foo::Bar"``
+        # (preserving the leading ``::`` from the AST node text), but
+        # ``global_symbols`` is keyed by qualified name WITHOUT the prefix
+        # (``Foo::Bar``). Strip the leading ``::`` so the constant-receiver
+        # redirect (and the inheritance walk below) find the class symbol
+        # when the source uses the unambiguous root-namespace prefix idiom
+        # common in Rails background jobs
+        # (``::Instagram::MessageText.new(...).perform``; WI-vuton).
         candidates = [
             *_nested_candidates(receiver_node, receiver_class, source),
             receiver_class.lstrip(":"),
@@ -2577,17 +2576,14 @@ def _try_receiver_call(
                     edges.append(Edge.create(
                         src=current_method.id,
                         dst=callee.id,
-                        # INV-kahig: object creation is ``instantiates`` in every
-                        # other analyzer that emits it (dart/csharp/java/py/js_ts/
-                        # php/cpp/verilog); ruby emitted ``calls`` and NEVER
-                        # ``instantiates``, so a consumer asking for object
-                        # creation by edge_type silently omitted all of ruby.
-                        # The DST is deliberately unchanged -- ruby resolves
-                        # ``Klass.new`` to ``Klass#initialize``, the initializer
-                        # symbol, which is the choice WI-fagit independently
-                        # converged csharp onto (PR #689) because anchoring on the
-                        # class conflates "referenced as a type" with
-                        # "instantiated" and breaks reverse-slice.
+                        # Object creation is ``instantiates``, as in every other
+                        # analyzer that emits it (dart/csharp/java/py/js_ts/php/
+                        # cpp/verilog), so a consumer asking for object creation
+                        # by edge_type sees ruby too. The DST is the initializer
+                        # symbol (``Klass.new`` -> ``Klass#initialize``), as in
+                        # csharp: anchoring on the class would conflate
+                        # "referenced as a type" with "instantiated" and break
+                        # reverse-slice (INV-kahig, WI-fagit).
                         edge_type="instantiates",
                         line=line,
                         evidence_type="ast_call",
@@ -2596,21 +2592,18 @@ def _try_receiver_call(
                         meta={"call_construct": "constructor"},
                     ))
                     return True
-        # WI-hatip (PR-2 of INV-nilud): when ``Klass#initialize`` is
-        # absent on the named class but the receiver is a project
-        # symbol, emit an unresolved-call edge carrying the
-        # ``enclosing_class`` hint. The new ``inherited_calls`` linker
-        # (priority=18) walks the ancestor chain (extends + implements
-        # + includes) of the named class via the Ruby insertion-order
-        # MRO and emits the resolved ``ast_call_inherited`` edge if
-        # any ancestor defines ``#initialize``. Mixin contributions
-        # (Sidekiq::Worker, ActiveModel::Validations, ...) flow
-        # through ``included_modules`` metadata + ``includes`` edges
-        # from this PR, so the linker resolves through `include`'d
-        # modules too. Replaces the in-analyzer
-        # ``_find_inherited_initialize`` walk (deleted in this PR);
-        # see WI-vuton chatwoot diagnostic + WI-puluf mixin
-        # investigation under META INV-nilud.
+        # When ``Klass#initialize`` is absent on the named class but the
+        # receiver is a project symbol, emit an unresolved-call edge
+        # carrying the ``enclosing_class`` hint. The ``inherited_calls``
+        # linker (priority=18) walks the ancestor chain (extends +
+        # implements + includes) of the named class via the Ruby
+        # insertion-order MRO and emits the resolved
+        # ``ast_call_inherited`` edge if any ancestor defines
+        # ``#initialize``. Mixin contributions (Sidekiq::Worker,
+        # ActiveModel::Validations, ...) flow through
+        # ``included_modules`` metadata + ``includes`` edges, so the
+        # linker resolves through `include`'d modules too (WI-hatip;
+        # see INV-nilud).
         receiver_is_project_candidates = [
             candidate for candidate in candidates
             if candidate in global_symbols
@@ -2636,24 +2629,22 @@ def _try_receiver_call(
                     enclosing_class=candidate,
                 ))
             return True
-        # WI-rijij / WI-mafik: ``Set.new(...)`` where the receiver is
-        # external (e.g. ``require "set"``). Fall through to the
-        # constant-external fallback so the call gets attributed to
-        # the receiver constant (``Set``, ``JSON``, ...).
+        # ``Set.new(...)`` where the receiver is external (e.g.
+        # ``require "set"``). Fall through to the constant-external
+        # fallback so the call gets attributed to the receiver constant
+        # (``Set``, ``JSON``, ...; WI-rijij, WI-mafik).
 
     # Build list of candidate class names to try
     # For scope_resolution: try full name first, then short name as fallback.
-    # WI-johib: the root-namespace prefix is stripped here too, as the ``new``
-    # path above does -- ``::Redis::Alfred.delete`` is keyed
-    # ``Redis::Alfred.delete``. The receiver-blind short-name fallback this
-    # function used to end with had been resolving that shape by accident.
-    # A class DECLARED with the prefix (``class ::Foo::Bar``) keeps it in its
+    # The root-namespace prefix is stripped here too, as the ``new`` path
+    # above does -- ``::Redis::Alfred.delete`` is keyed
+    # ``Redis::Alfred.delete`` (WI-johib). A class DECLARED with the prefix (``class ::Foo::Bar``) keeps it in its
     # symbol names, so the literal spelling is still tried second.
-    # WI-gomup: a RELATIVE constant is tried through the call site's lexical
-    # nesting first, innermost out (``Orchestrator`` inside ``module TestData``
-    # is ``TestData::Orchestrator`` when that is declared), as Ruby's
+    # A RELATIVE constant is tried through the call site's lexical nesting
+    # first, innermost out (``Orchestrator`` inside ``module TestData`` is
+    # ``TestData::Orchestrator`` when that is declared), as Ruby's
     # ``Module.nesting`` lookup does. Only exact registered keys match, so a
-    # nesting level that declares no such constant falls through.
+    # nesting level that declares no such constant falls through (WI-gomup).
     candidates = [
         *_nested_candidates(receiver_node, receiver_class, source),
         receiver_class.lstrip(":"),
@@ -2682,13 +2673,11 @@ def _try_receiver_call(
                     ))
                     return True
 
-    # WI-johib: the receiver NAMES its owner, so the method is that owner's or
-    # an ancestor's, never whichever class happens to declare a method of the
-    # same short name. The resolver lookup this replaced was receiver-blind:
-    # ``Rails.root`` bound ``HealthServer#root``, ``File.read(p)`` bound a
-    # project's own ``#read`` (defeating a user's overlay row for it), and on
-    # postal 54 of 160 constant-receiver calls into in-repo methods landed on a
-    # DIFFERENT class. A project constant that does not declare the method
+    # The receiver NAMES its owner, so the method is that owner's or an
+    # ancestor's, never whichever class happens to declare a method of the
+    # same short name. A receiver-blind lookup would bind ``Rails.root`` to
+    # ``HealthServer#root`` and ``File.read(p)`` to a project's own ``#read``
+    # (defeating a user's overlay row for it) (WI-johib). A project constant that does not declare the method
     # keeps an unresolved edge whose receiver type names it, and the
     # inherited-calls linker walks its ancestors (``Kid.make`` -> ``Base.make``).
     # A constant the project does not declare falls through to the
@@ -2716,22 +2705,20 @@ def _try_receiver_call(
         ))
         return True
 
-    # WI-rijij / WI-mafik: constant-receiver call (``JSON.parse``,
-    # ``Set.new``) that didn't resolve to a project symbol. It gets an
-    # unresolved edge whose module slot names the receiver constant, so
-    # io-boundary catalogues and user overlays can match the call against
-    # ruby stdlib / gem primitives.
+    # Constant-receiver call (``JSON.parse``, ``Set.new``) that didn't
+    # resolve to a project symbol. It gets an unresolved edge whose module
+    # slot names the receiver constant, so io-boundary catalogues and user
+    # overlays can match the call against ruby stdlib / gem primitives
+    # (WI-rijij, WI-mafik).
     #
-    # WI-surar: the slot is the constant AS WRITTEN, less a root ``::`` --
+    # The slot is the constant AS WRITTEN, less a root ``::`` --
     # ``Net::HTTP``, ``File``, ``JSON``. ADR-0051 says the slot names the
     # OWNER PATH of the called symbol, and in ruby that is the constant the
-    # call is made on. This used to cut a namespaced constant to its last
-    # segment, look that up in the file's require hints, and otherwise
-    # lowercase it, so ``Net::HTTP.get`` emitted ``http``: neither the owner
-    # nor the require path. An overlay row spelled as ruby writes it
-    # (``module: Net::HTTP``) could not match, because a component-suffix
-    # match must agree in case (INV-dijor), and the dropped namespace was the
-    # only thing telling ``Net::HTTP`` from ``Faraday::HTTP``.
+    # call is made on. It is not cut to its last segment or lowercased: an
+    # overlay row spelled as ruby writes it (``module: Net::HTTP``) must
+    # match, a component-suffix match must agree in case (INV-dijor), and
+    # the namespace is the only thing telling ``Net::HTTP`` from
+    # ``Faraday::HTTP`` (WI-surar).
     #
     # THE REQUIRE HINT IS DELIBERATELY NOT CONSULTED HERE. It maps a require
     # path's PascalCased basename to that path (``require 'set'`` gives
@@ -2793,10 +2780,10 @@ def _try_job_enqueue(
             if qualified in global_symbols:
                 callee = global_symbols[qualified]
                 if callee.id != current_method.id:
-                    # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # ActiveJob perform_later enqueues a job (queue
                     # is the channel kind). Canonical 'event_publishes'
-                    # + meta['channel_kind']='queue'.
+                    # + meta['channel_kind']='queue' (ADR-0023 §6 Phase 3;
+                    # audit-findings 0001).
                     edges.append(Edge.create(
                         src=current_method.id,
                         dst=callee.id,
@@ -2954,8 +2941,9 @@ def _extract_edges_from_file(
 
             if method_node:
                 callee_name = node_text(method_node, source)
-                # WI-pusan: error recovery's zero-width MISSING method (`foo.`)
-                # names nothing; an edge to it was `ruby:external:0-0::`.
+                # Error recovery's zero-width MISSING method (`foo.`) names
+                # nothing; an edge to it would be `ruby:external:0-0::`
+                # (WI-pusan).
                 if not callee_name:
                     continue
 
@@ -2988,10 +2976,10 @@ def _extract_edges_from_file(
                         sym_node = find_child_by_type(args_node, "simple_symbol")
                         if sym_node is not None:
                             ref_name = node_text(sym_node, source).lstrip(":")
-                            # META-mino: a reference in no method (a constant
-                            # at top level or in a class body) is anchored as
-                            # a call there is (INV-bamij): the class or module
-                            # whose body holds it, else the file.
+                            # A reference in no method (a constant at top
+                            # level or in a class body) is anchored as a call
+                            # there is: the class or module whose body holds
+                            # it, else the file (META-mino, INV-bamij).
                             current_method: Optional[Symbol] = (
                                 _get_enclosing_method(node, source, decl_index)
                                 or enclosing_declared_symbol(
@@ -3039,11 +3027,10 @@ def _extract_edges_from_file(
 
                 # Handle regular method calls
                 else:
-                    # INV-bamij: a call in no method is anchored on the class
-                    # or module whose body holds it, else on the FILE, as
-                    # python and php anchor module-level code. It used to be
-                    # dropped, and top-level code is the norm in Ruby scripts,
-                    # Rakefiles and config/*.rb.
+                    # A call in no method is anchored on the class or module
+                    # whose body holds it, else on the FILE, as python and php
+                    # anchor module-level code. Top-level code is the norm in
+                    # Ruby scripts, Rakefiles and config/*.rb (INV-bamij).
                     current_method = (
                         _get_enclosing_method(node, source, decl_index)
                         or enclosing_declared_symbol(node, decl_index, _SCOPE_BODY_NODES)
@@ -3134,7 +3121,7 @@ def _extract_edges_from_file(
                         # AMB-METHOD guard: when 3+ classes define the name, only
                         # the enclosing class's own method may bind; otherwise the
                         # call is recorded with its enclosing class, which the
-                        # inherited-calls linker walks (WI-misir: it was silent).
+                        # inherited-calls linker walks (WI-misir).
                         elif len(_mc.get(callee_name, ())) >= 3:
                             _emit_self_send(
                                 callee_name, current_method, enc_class,
@@ -3144,11 +3131,11 @@ def _extract_edges_from_file(
                         # Check local symbols (bare calls only, no receiver)
                         elif callee_name in local_symbols:
                             callee = local_symbols[callee_name]
-                            # WI-misir: a receiverless send naming the enclosing
-                            # method is direct recursion -- a real call, emitted
-                            # as python and java emit it. (The receiver case this
-                            # guard once covered, ``Postal.logger`` inside
-                            # ``logger``, goes through _try_receiver_call.)
+                            # A receiverless send naming the enclosing method is
+                            # direct recursion -- a real call, emitted as python
+                            # and java emit it (WI-misir). A receiver-qualified
+                            # send such as ``Postal.logger`` inside ``logger``
+                            # goes through _try_receiver_call instead.
                             edges.append(Edge.create(
                                 src=current_method.id,
                                 dst=callee.id,
@@ -3177,17 +3164,18 @@ def _extract_edges_from_file(
                                     meta={"call_construct": "method"},
                                 ))
                             elif method_node.type in ("identifier", "constant"):
-                                # WI-napaf: a receiverless call to a name no
-                                # project symbol carries -- ``puts``, ``raise``,
-                                # ``system``, ``include``, every Rails class-body
-                                # DSL (``has_many``, ``validates``,
-                                # ``before_action``) -- emitted NOTHING, so the
-                                # method read as calling nothing and the ADR-0017
-                                # walk saw an escape where a call stood. It is
-                                # INV-foluz's shape (python's residual arm) and
-                                # WI-fahod's (javascript), and takes their
-                                # ``external`` placeholder: the owner is genuinely
-                                # unknown (Kernel, or an ancestor a gem supplies).
+                                # A receiverless call to a name no project symbol
+                                # carries -- ``puts``, ``raise``, ``system``,
+                                # ``include``, every Rails class-body DSL
+                                # (``has_many``, ``validates``, ``before_action``)
+                                # -- still gets an edge; without one the method
+                                # would read as calling nothing and the ADR-0017
+                                # walk would see an escape where a call stands.
+                                # It takes the ``external`` placeholder python's
+                                # residual arm and javascript use for the same
+                                # shape: the owner is genuinely unknown (Kernel,
+                                # or an ancestor a gem supplies). (WI-napaf;
+                                # INV-foluz, WI-fahod.)
                                 #
                                 # NO LOCAL-BINDING REFUSAL, unlike python's LEGB
                                 # check: ruby's syntax already made the choice. A
@@ -3196,7 +3184,7 @@ def _extract_edges_from_file(
                                 # to ``self`` even when a local of the name is in
                                 # scope (``x = 1; x(2)`` raises NoMethodError).
                                 # The ambiguous form, a bare ``identifier``, is
-                                # the arm below and is unchanged.
+                                # handled by the identifier arm below.
                                 #
                                 # THE CATALOGUE REACH IS WANTED HERE (WI-javaf's
                                 # hazard does not transfer): ``external`` lets a
@@ -3218,8 +3206,9 @@ def _extract_edges_from_file(
                                     run_id=run_id,
                                 ))
 
-        # WI-misir: a bare ``super`` (no parentheses) is its own node; the
-        # parenthesised form is a ``call`` whose method is ``super`` (above).
+        # A bare ``super`` (no parentheses) is its own node; the
+        # parenthesised form is a ``call`` whose method is ``super`` (above;
+        # WI-misir).
         elif node.type == "super":
             parent = node.parent
             if parent is not None and parent.type == "call" and (
@@ -3255,10 +3244,9 @@ def _extract_edges_from_file(
             if current_method is not None:
                 callee_name = node_text(node, source)
 
-                # WI-misir: a LOCAL (a parameter, block parameter, rescue
-                # variable or an earlier assignment in the scope) is a read,
-                # not a send. This replaces the parameters-only guard, which
-                # left every other local free to bind a same-named method.
+                # A LOCAL (a parameter, block parameter, rescue variable or
+                # an earlier assignment in the scope) is a read, not a send,
+                # so it never binds a same-named method (WI-misir).
                 if _is_ruby_local(node, source, local_scope_cache):
                     continue
 
@@ -3281,8 +3269,8 @@ def _extract_edges_from_file(
                 )
 
                 if callee is not None:
-                    # WI-misir: ``callee == current_method`` is direct
-                    # recursion, a real call (python and java emit it).
+                    # ``callee == current_method`` is direct recursion, a
+                    # real call (python and java emit it; WI-misir).
                     if callee.kind == "method":
                         # Same-class match gets higher confidence
                         same_class = (
@@ -3340,10 +3328,11 @@ def _extract_edges_from_file(
                                 meta={"call_construct": "method", "receiver": "bare"},
                             ))
                     elif not lookup_result.found:
-                        # WI-misir: a non-local bare name no project symbol
-                        # carries is an implicit-self send to an unknown owner
-                        # (``params``, ``current_user``, ``puts``): WI-napaf's
-                        # ``external`` placeholder, as for the call form.
+                        # A non-local bare name no project symbol carries is
+                        # an implicit-self send to an unknown owner
+                        # (``params``, ``current_user``, ``puts``): it takes
+                        # the ``external`` placeholder, as for the call form
+                        # (WI-misir, WI-napaf).
                         edges.append(make_unresolved_edge(
                             lang="ruby",
                             src_id=current_method.id,
@@ -3647,7 +3636,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                     short = short.split(".")[-1] if "." in short else short
                     method_candidates.setdefault(short, []).append(symbol)
 
-        # WI-gikuk: a reopened class's superclass, by its QUALIFIED name.
+        # A reopened class's superclass, by its QUALIFIED name (WI-gikuk).
         superclass_by_qualified = superclasses_by_qualified_name(
             sym for analysis in file_analyses.values() for sym in analysis.symbols
         )

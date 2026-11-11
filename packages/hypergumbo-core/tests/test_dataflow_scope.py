@@ -76,10 +76,10 @@ class TestCapability:
     def test_any_missing_bit_disqualifies(self, missing: str) -> None:
         """Each bit is independently sufficient to keep the walk inert.
 
-        This is not defensive parametrisation. Rust shipped an extractor in
-        March and produced zero DDG edges for months against THREE of these
-        four simultaneously; a table that treated any one of them as optional
-        would have reported it capable the whole time.
+        This is not defensive parametrisation. A language can ship a def/use
+        extractor while other bits are missing and emit zero DDG edges; a
+        table that treated any one of them as optional would report such a
+        language capable while its walk is inert.
         """
         row = _row(**{missing: False})
         assert not row.dataflow_capable
@@ -91,7 +91,7 @@ class TestCapability:
 
 class TestComputeFromProduction:
     def test_production_path_reports_the_capable_languages(self) -> None:
-        """NON-VACUITY FLOOR. The four registered languages must read capable.
+        """NON-VACUITY FLOOR. The registered languages must read capable.
 
         If this fails with everything incapable, the def/use registry was
         empty when the scope was computed — the scope function is responsible
@@ -108,13 +108,12 @@ class TestComputeFromProduction:
             assert by_lang[lang].dataflow_capable, lang
 
     def test_java_is_covered_since_wi_gotun(self) -> None:
-        """WI-gotun wired java; this used to assert the opposite.
+        """Java is fully wired: capable, no blockers, catalog sinks behind it (WI-gotun).
 
-        java was the one half-wired language: ``cfg_nodes/java.yaml`` shipped
-        with no ``atomic_statement`` and no extractor behind it, 69 sinks
-        behind a language that looked supported. The inversion is recorded,
-        as javascript's was, and the half-wired case it exercised moves to the
-        test below, since no shipped language is in that state any more.
+        A half-wired language — a CFG mapping with no ``atomic_statement`` or
+        no extractor behind it — puts catalog sinks behind a language that
+        looks supported. No shipped language is in that state, so the
+        half-wired case is exercised by the test below.
         """
         catalog = load_builtin_taint_catalog()
         (java,) = compute_dataflow_scope(catalog, ["java"])
@@ -144,12 +143,11 @@ class TestComputeFromProduction:
     def test_javascript_is_covered_via_the_shared_typescript_grammar(
         self,
     ) -> None:
-        """WI-nonad wired JavaScript; this used to assert the opposite.
+        """JavaScript is capable through TypeScript's CFG mapping and extractor (WI-nonad).
 
-        The inversion is the point, so it is recorded rather than quietly
-        rewritten: JavaScript carries the larger catalog of the pair (>50 sinks
-        against TypeScript's zero) and was the only unwired language whose CFG
-        mapping and def/use extractor already existed under another key.
+        JavaScript carries a large sink catalog (>50 sinks), and its CFG
+        mapping and def/use extractor are shared with TypeScript under
+        another key.
 
         ``cfg_mapping`` is asserted true THROUGH ``compute_dataflow_scope``,
         which reads ``load_cfg_mapping`` — so this also pins that the
@@ -189,20 +187,17 @@ class TestEmittedShape:
     def test_dict_states_what_decides_inclusion(self) -> None:
         """The a2 fact must be machine-readable, not left to prose.
 
-        **THIS TEST HAS ALREADY FIRED ONCE, WHICH IS THE POINT OF IT.** It used
-        to assert ``call_graph_reachability`` on the grounds that §3a was
-        confirm-only, and it says so here rather than being quietly rewritten:
-        WI-kabif granted §3a removal authority on 2026-09-02, and this test —
-        the R16 trigger — caught two production constants and a rendered
-        disclosure that would otherwise have gone on publishing a false claim
-        to consumers.
+        This test is the R16 trigger for the claim: a declared constant with a
+        test on it, so a change to what decides inclusion (such as granting
+        the §3a walk removal authority, WI-kabif) cannot reach consumers
+        without coming back through here.
 
-        Re-pointed, not relaxed. The value now names BOTH halves because both
-        are true, and the asymmetry is asserted separately below: a flow is
-        still INCLUDED by reachability and the walk can only SUBTRACT. Reading
-        ``analysis_method == "ddg"`` as "this flow's inclusion was decided by
-        data flow" is therefore still the INV-sadah misreading — a surviving
-        ``ddg`` flow was included by reachability and merely corroborated.
+        The value names BOTH halves because both are true, and the asymmetry
+        is asserted separately below: a flow is INCLUDED by reachability and
+        the walk can only SUBTRACT. Reading ``analysis_method == "ddg"`` as
+        "this flow's inclusion was decided by data flow" is therefore the
+        INV-sadah misreading — a surviving ``ddg`` flow was included by
+        reachability and merely corroborated.
         """
         out = dataflow_scope_dict([_row(language="python")], {"ddg": 3})
         assert out["inclusion_decided_by"] == INCLUSION_DECIDED_BY
@@ -216,32 +211,28 @@ class TestEmittedShape:
         assert "minus" in INCLUSION_DECIDED_BY
 
     def test_dict_states_what_capability_does_NOT_claim(self) -> None:
-        """Capability is per language; it is not per-function coverage.
+        """Capability is per language; coverage is decided per function.
 
-        Go's ``if err := do(); err != nil`` initializers were invisible to
-        def/use until WI-losod, and constructs the CFG still does not record
-        keep it true: Go reads ``dataflow_capable`` while holding functions
-        the walk cannot see into. A reader who took the
-        bit for coverage would be making exactly the assumption clause (a3)
-        forbids, so the granularity is emitted rather than left implicit.
+        Constructs the CFG does not record mean a language such as Go reads
+        ``dataflow_capable`` while holding functions the walk cannot see into.
+        A reader who took the bit for coverage would be making exactly the
+        assumption clause (a3) forbids, so the granularity is emitted rather
+        than left implicit: ``function``, because WI-joluk's per-function
+        coverage gate decides coverage function by function.
 
         Like ``inclusion_decided_by`` this is a declared constant with a test
-        on it, which is what stops the claim outliving its truth. Its own
-        trigger read "when WI-joluk's per-function coverage gate lands, this
-        must become ``function``". The gate landed 2026-08-26 and was wired to
-        both walk arms; the constant said ``language`` for nineteen more days,
-        because the test guards a change to the CONSTANT and nothing was
-        watching for the arrival of the CONDITION. Worth knowing before
-        writing the next trigger of this shape.
+        on it, which is what stops the claim outliving its truth. Such a test
+        guards a change to the CONSTANT, not the arrival of the CONDITION that
+        makes it false, so a trigger phrased "becomes X when Y lands" needs
+        something that notices Y.
         """
         out = dataflow_scope_dict([_row(language="go")], {"ddg": 1})
         assert out["coverage_granularity"] == COVERAGE_GRANULARITY
         assert COVERAGE_GRANULARITY == "function"
 
     def test_forfeit_disclosure_is_a_pair_and_always_present(self) -> None:
-        """WI-mugop. Per-function granularity is only honest if the cost is
-        published: on the measured cohort 18.8-51.6% of walkable functions may
-        not refute. A bare count cannot be read — 400 of 800 and 400 of 40,000
+        """Per-function granularity is only honest if the cost is published:
+        a function that forfeits may not refute (WI-mugop). A bare count cannot be read — 400 of 800 and 400 of 40,000
         are different facts — so both halves are emitted, zero-filled like
         every other key, so their absence never has to be interpreted."""
         out = dataflow_scope_dict(
@@ -304,23 +295,21 @@ class TestEmittedShape:
 
 
 class TestWalkVerdictDisclosure:
-    """INV-busis / ADR (c): make ``flows_removed_by_walk: 0`` readable.
+    """Make ``flows_removed_by_walk: 0`` readable (INV-busis, option (c)).
 
     This module's founding argument is that "0 precise findings" is unreadable
     without scope, because "looked everywhere and found nothing" and "was
     structurally incapable of looking" have opposite consequences for a
-    security reader on identical evidence. That argument was never applied to
-    this module's OWN removal count. ``flows_removed_by_walk: 0`` sits beside a
+    security reader on identical evidence. The same holds for the module's
+    OWN removal count. ``flows_removed_by_walk: 0`` sits beside a
     ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
-    THREE walk verdicts -- ``taint.py`` records a production split of 0
-    ``refuted`` / 14 ``escaped`` / 139 ``not_attempted`` -- so a reader
-    cannot tell a walk that adjudicated and refuted nothing from a walk that
-    never got to look. Only ``refuted`` can remove a flow.
+    THREE walk verdicts, so without a per-verdict breakdown a reader cannot
+    tell a walk that adjudicated and refuted nothing from a walk that never
+    got to look. Only ``refuted`` can remove a flow.
 
-    The owner retired the removal GOAL on 2026-09-09 (INV-busis option (c)):
-    escapes will not be chased until refutation fires at scale. Retiring a goal
-    without disclosing its consequence is how a limitation becomes a silent
-    one, so the breakdown ships as the user-visible half of that decision.
+    Escapes are not chased until refutation fires at scale. Accepting that
+    limit without disclosing its consequence would make it a silent
+    limitation, so the breakdown is the user-visible half of that decision.
     """
 
     def test_a_unanimous_row_is_counted_under_its_verdict(self) -> None:
@@ -350,9 +339,9 @@ class TestWalkVerdictDisclosure:
     def test_a_MIXED_row_is_not_attributed_to_its_first_member(self) -> None:
         """The whole reason ``walk_verdict_values`` exists (INV-muhij A).
 
-        On a collapsed row the scalar is ``grp[0]``'s, and measured on beads
-        63.9% of groups holding a ``sink_before_source`` member are NOT
-        unanimous. Counting the scalar would publish a clean, plausible,
+        On a collapsed row the scalar is ``grp[0]``'s, and groups are not
+        reliably unanimous (on one measured repo, 63.9% of groups holding a
+        ``sink_before_source`` member were not). Counting the scalar would publish a clean, plausible,
         entirely wrong breakdown -- and would do it in the direction that
         flatters the tool, since a row standing for one confirmed and three
         escaped members would read as fully adjudicated.

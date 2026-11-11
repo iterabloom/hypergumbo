@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bounded cache: evict LRU entries, but never carelessly (WI-sidin).
 
-The cache grew to 5.3 GB in 27 entries for ONE repo in a single day, because the
-state hash is whole-tree — so every edit misses and mints a fresh ~200 MB entry
-— and nothing ever evicted. The only automatic behaviour was a warning at 1.0 GB
-that handed the user a chore.
+The state hash is whole-tree, so every edit misses and mints a fresh entry
+(~200 MB for a large repo). Without eviction one repo's cache grows by gigabytes
+a day, and a size warning alone only hands the user a chore.
 
 The counter-pressure, and it is the whole reason this file is long: eviction
 DELETES FILES FROM THE USER'S HOME DIRECTORY. That is not something to do
@@ -19,16 +18,16 @@ refuse to touch:
   * never without saying what it took
 
 SOFT DELETE, NOT ``rm``. Eviction zips the entry into a soft-delete folder and
-removes the original, so the act is reversible. Measured on a real 210.9 MB
-entry: deflate-6 gives 12.7 MB in 1.0s — 6% of the original, 16x — so
-reversibility costs almost nothing and the 1s sits inside a run that already
-took minutes.
+removes the original, so the act is reversible. A real ~211 MB entry
+compresses to 12.7 MB with deflate-6 in about 1s — 6% of the original, 16x —
+so reversibility costs almost nothing and the 1s sits inside a run that
+already takes minutes.
 
-TWO FOLDERS, because the two artifact classes are nothing alike. Measured
-across the six largest entries: ``survey.json`` is 1,259.9 MB of 1,264 MB
-(99.6%), while sketches, tier previews and handler slices together are 0.4%.
-Keeping every sketch ever evicted is nearly free; keeping every survey is the
-original disk problem again. So each folder carries its own cap.
+TWO FOLDERS, because the two artifact classes are nothing alike. Across large
+real entries ``survey.json`` is ~99.6% of the bytes, while sketches, tier
+previews and handler slices together are ~0.4%. Keeping every sketch ever
+evicted is nearly free; keeping every survey would reproduce the disk problem
+eviction exists to solve. So each folder carries its own cap.
 
 The archives are bounded too. Soft delete buys a window in which an eviction
 can be undone, not immortality — an archive nobody ever removes is still
@@ -419,8 +418,8 @@ def test_the_run_path_actually_calls_eviction():
 
     src = inspect.getsource(cli.cmd_run)
     assert "_housekeep_cache" in src, "cmd_run no longer houskeeps the cache"
-    # INV-durin: the two helpers sit behind the guard that keeps a housekeeping
-    # failure from failing the finished run; the order lives there now.
+    # The two helpers sit behind the guard that keeps a housekeeping failure
+    # from failing the finished run, so the order is checked there (INV-durin).
     guard = inspect.getsource(cli._housekeep_cache)
     assert "_maybe_evict_cache" in guard, "the guard no longer evicts"
     assert guard.index("_maybe_evict_cache") < guard.index("_maybe_honk_cache"), (
@@ -787,9 +786,9 @@ def _the_other_run_archives(monkeypatch, victim):
 
 
 def test_an_entry_another_run_moved_is_not_reported_as_ours(monkeypatch, capsys, cache_dir):
-    """The summary says what THIS run moved. Measured before the fix: four runs
-    racing over seven entries each printed 'Soft-deleted 133.5 MB (7 stale
-    entries)'."""
+    """The summary says what THIS run moved. Counting an entry a concurrent run
+    archived would let several racing runs each report the same entries as
+    their own."""
     old = _two_entries_over_cap(monkeypatch, cache_dir)
     _the_other_run_archives(monkeypatch, old)
     assert cli._maybe_evict_cache(cache_dir) == 0
@@ -810,9 +809,9 @@ def test_an_entry_another_run_moved_still_counts_toward_the_cap(monkeypatch, cac
 
 
 def test_a_scratch_dir_a_peer_removes_first_is_still_our_eviction(monkeypatch, capsys, cache_dir):
-    """Measured on the live race: a peer that sees our ``.evicting-`` dir
-    removes it as residue, and our own rmtree then met a missing path, so the
-    pass ended in a housekeeping warning and our summary was never printed."""
+    """A peer that sees our ``.evicting-`` dir may remove it as residue. Our own
+    rmtree then meets a missing path; that must not end the pass in a
+    housekeeping warning that suppresses our summary."""
     import shutil
 
     old = _two_entries_over_cap(monkeypatch, cache_dir)
@@ -831,8 +830,8 @@ def test_a_scratch_dir_a_peer_removes_first_is_still_our_eviction(monkeypatch, c
 
 def test_residue_is_reclaimed_but_not_reported_as_soft_deleted(monkeypatch, capsys, cache_dir):
     """Residue is hard-deleted, never zipped, and may be a peer's in-flight
-    scratch whose eviction that peer reports. Claiming it as 'Soft-deleted ...
-    Recoverable (zipped)' was false on both counts."""
+    scratch whose eviction that peer reports. Reporting it as 'Soft-deleted ...
+    Recoverable (zipped)' would be false on both counts."""
     monkeypatch.setenv("HYPERGUMBO_CACHE_MAX_GB", str(10 / (1024 ** 3)))
     _make_entry(cache_dir, "r", "newest", size=10, age_seconds=10)
     scratch = _make_entry(cache_dir, "r", "s1", size=5000, age_seconds=99_000)
@@ -855,8 +854,8 @@ def test_housekeeping_failure_is_a_warning_not_a_failed_run(monkeypatch, capsys,
 
 
 def test_run_exits_zero_when_eviction_raises(monkeypatch, tmp_path, capsys):
-    """The filed symptom: every artifact written, then exit 1 with
-    'internal error: FileNotFoundError ... .evicting-...'."""
+    """A housekeeping failure after every artifact is written must not become
+    exit 1 with 'internal error: FileNotFoundError ... .evicting-...'."""
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     repo.mkdir()

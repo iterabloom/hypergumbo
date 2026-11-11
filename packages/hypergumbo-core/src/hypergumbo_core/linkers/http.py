@@ -82,7 +82,7 @@ Identifier URL Detection
   unresolved.
 - fetch(API_URL) with API_URL imported, a parameter or dotted
   (``config.apiUrl``) -> url_type="unresolved": a client symbol, no route edge.
-  Before WI-luhod the identifier TEXT was route-matched.
+  The identifier text is never route-matched.
 - A template literal folded to a prefix -> url_type="variable", 0.65.
 
 Server Route Matching
@@ -100,12 +100,12 @@ How It Works
 ------------
 1. Collect route symbols from language analyzers, identified by
    ``meta['framework_role']=='route'`` or ``concept: route`` — not by
-   ``kind``, which is ``function`` after the ADR-0027 fold
+   ``kind``, which is ``function`` for a route handler (ADR-0027)
 2. Scan source files for HTTP client calls
 3. Extract URL and method from each call (literal or variable)
 4. Match to route symbols by method + path pattern
 5. Create canonical 'calls' edges with meta['protocol']='http' linking
-   client to server (post WI-vumum-juvil; pre-fold name was http_calls)
+   client to server (WI-vumum-juvil)
 
 Why This Design
 ---------------
@@ -316,10 +316,10 @@ JS_MODULE_CONST_PATTERN = re.compile(
     re.VERBOSE | re.MULTILINE,
 )
 
-# WI-mugog (Phase A): per-language URL-folding config is sourced from the
-# YAML registry under ``hypergumbo_core/url_folding/`` so a new language's
-# placeholder syntax or separator can be added by editing YAML rather than
-# Python. The lookups are dict-indexed (not ``.get(...)``) — a missing
+# Per-language URL-folding config is sourced from the YAML registry under
+# ``hypergumbo_core/url_folding/`` so a new language's placeholder syntax or
+# separator can be added by editing YAML rather than Python (WI-mugog). The
+# lookups are dict-indexed (not ``.get(...)``) — a missing
 # language key is a registry / YAML bug we want to surface loud at import,
 # not silently fall back to a default.
 _URL_FOLDING_CONFIG_BY_LANGUAGE: dict[str, dict[str, str]] = {
@@ -355,12 +355,9 @@ _ELM_ARRAY_JOIN_SEPARATOR: str = (
 # route table (e.g. `/api/v2/alerts`). url_type is always "literal"
 # because the string after `++` is a literal.
 #
-# Note: the function-definition forms with `let`-bound URLs (e.g.
-# `fetchAlerts` in Alerts/Api.elm uses `String.join "/"` over a list)
-# are harder to resolve without a proper Elm analyzer and are deferred
-# to a follow-up. The majority of routes (`fetchReceivers`,
-# `fetchSilences`, `fetchStatus`, etc. in the Alertmanager corpus) use
-# the direct `apiUrl ++ "/path"` form and are captured here.
+# URLs bound in a `let` via `String.join "/"` over a list (e.g.
+# `fetchAlerts` in Alerts/Api.elm) are not matched by these patterns; the
+# let-bound fold below handles them.
 ELM_UTILS_API_PATTERN = re.compile(
     r"""Utils\.Api\.(get|post|put|patch|delete|head|options)
         \s*\(\s*
@@ -417,8 +414,8 @@ ELM_HTTP_REQUEST_URL_FIRST_PATTERN = re.compile(
 #         in
 #         Utils.Api.send (Utils.Api.get url decoder)
 #
-# These calls are invisible to the Phase-1 regex scanner because the URL is
-# indirected through a variable. This two-pass fold captures them:
+# These calls are invisible to the direct-call Elm patterns above because the
+# URL is indirected through a variable. This two-pass fold captures them:
 #
 #   1. Match every ``let <name> = String.join "/" [ <parts> ]`` binding.
 #   2. Scan forward (bounded window) for a ``Utils.Api.<method> <name>``
@@ -472,10 +469,10 @@ def _extract_url_from_match(
     - Group literal_group: string literal (e.g., '/api/users')
     - Group var_group: identifier (e.g., API_URL, config.apiUrl)
 
-    WI-luhod: an identifier is resolved by the shared ``_name_args`` resolver
+    An identifier is resolved by the shared ``_name_args`` resolver
     (same-file module-scope string constant -> ``constant``, its value as the
     URL); anything else is ``unresolved`` and keeps the identifier text, which
-    ``link_http`` never route-matches.
+    ``link_http`` never route-matches (WI-luhod).
 
     Returns:
         Tuple of (url, url_type): ``literal``, ``constant`` or ``unresolved``.
@@ -496,12 +493,12 @@ def _extract_module_constants(content: str) -> dict[str, str]:
     Numeric, object, array, and function-call RHS values are ignored — only
     plain string literals can be safely folded into URL templates.
 
-    Deliberately NOT replaced by ``_name_args.ConstantResolver`` (considered in
-    WI-luhod, which moved bare-identifier URLs onto it): template folding needs
-    a name -> value map for every slot at once, and this extractor's rule (any
-    top-level single-line string binding) is the one WI-sijoh measured. The
-    resolver also rejects names rebound anywhere in the file; adopting it here
-    would change template matching without a measurement behind the change.
+    Deliberately separate from ``_name_args.ConstantResolver``, which resolves
+    bare-identifier URLs: template folding needs a name -> value map for every
+    slot at once, and this extractor's rule (any top-level single-line string
+    binding) is the measured one. The resolver also rejects names rebound
+    anywhere in the file, so using it here would change template matching
+    without a measurement behind the change (WI-sijoh, WI-luhod).
     """
     return {
         m.group(1): m.group(2)
@@ -1265,7 +1262,7 @@ def _find_elm_let_bound_url_calls(
 def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan an Elm file for HTTP client calls.
 
-    Detects three idioms (WI-tinip):
+    Detects four idioms (WI-tinip):
 
     1. ``Utils.Api.get (apiUrl ++ "/path") ...`` — the Alertmanager-style
        wrapper-module pattern where a base-URL parameter is concatenated
@@ -1362,30 +1359,23 @@ def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
 def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     """Create a Symbol for an HTTP client call site.
 
-    INV-mopif / audit-findings 0013 amendment
-    -----------------------------------------
-    Emits ``kind="call_site"`` rather than ``kind="function"``. The
-    original Wave 5 fold (audit-findings 0013) mapped the deprecated
-    ``kind="http_client"`` to ``kind="function" + meta["framework_role"]``,
-    but the producer is naming a **call site**, not a function definition
-    — a fold-target inconsistency with sister audit-findings 0010
-    sub-case (a), which had already added ``call_site`` to
-    ``AXIS_LANGUAGE_CONSTRUCT`` precisely for this shape and migrated
-    ``abi_call`` / ``function_call`` / ``subprocess_call`` / ``db_query``
-    onto it. The harmonised fold preserves both audit's residue keys:
+    Emits ``kind="call_site"`` rather than ``kind="function"``: the
+    producer names a **call site**, not a function definition, the same
+    shape as ``abi_call`` / ``function_call`` / ``subprocess_call`` /
+    ``db_query``, which share the ``call_site`` kind in
+    ``AXIS_LANGUAGE_CONSTRUCT``. Two meta keys carry orthogonal
+    information:
 
-    * ``meta["call_kind"]="http"`` — audit-0010 precedent, names the
-      call-site specialisation (sibling of ``"db_query"`` /
-      ``"subprocess"`` / ``"abi"``).
-    * ``meta["framework_role"]="http_client"`` — audit-0013 precedent,
-      names the framework-participation role. The two meta keys carry
-      orthogonal information.
+    * ``meta["call_kind"]="http"`` names the call-site specialisation
+      (sibling of ``"db_query"`` / ``"subprocess"`` / ``"abi"``).
+    * ``meta["framework_role"]="http_client"`` names the
+      framework-participation role.
 
-    Downstream consequences of the harmonisation: ``hypergumbo
-    dead-code-maybe`` no longer flags the production
-    ``service-worker.js:54`` fetch as a "dead function"; consumers
-    enumerating callable kinds (``{"function", "method"}``) stop
-    encountering pseudo-function names like ``"GET event.request"``.
+    Because the symbol is not a function, ``hypergumbo dead-code-maybe``
+    does not flag a client fetch as a "dead function", and consumers
+    enumerating callable kinds (``{"function", "method"}``) never see
+    pseudo-function names like ``"GET event.request"``. (INV-mopif;
+    audit-findings 0010 and 0013.)
     """
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
     call_name = f"{call.method} {call.url}"
@@ -1405,10 +1395,10 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
         language=None,
         discovery_language=call.language,
         protocol_origin="http",
-        # ADR-0035 §3 / WI-napoh (v8): the HTTP client call_site is a SITE-axis
-        # node — its identity folds the declaring file's repo-relative path so two
-        # files issuing the same request do not collide cross-file. (Pre-v8 this
-        # borrowed the LOGICAL make_route_stable_id, which is file-blind.)
+        # The HTTP client call_site is a SITE-axis node: its identity folds the
+        # declaring file's repo-relative path so two files issuing the same
+        # request do not collide cross-file, which the file-blind LOGICAL
+        # make_route_stable_id would cause. See ADR-0035 §3 (WI-napoh).
         stable_id=make_site_stable_id(
             "http", str(rel_path),
             f"{call.method}:{_extract_path_from_url(call.url) or call.url}",
@@ -1497,9 +1487,9 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
         client_symbol.origin_run_id = run.execution_id
         symbols.append(client_symbol)
 
-        # WI-luhod: an unresolved identifier's URL is not known, and its text
-        # is not a path; matching it against routes is what joined
-        # ``fetch(API_URL)`` to a route literally named ``API_URL``.
+        # An unresolved identifier's URL is not known, and its text is not a
+        # path; matching it against routes would join ``fetch(API_URL)`` to a
+        # route literally named ``API_URL`` (WI-luhod).
         if call.url_type == KIND_UNRESOLVED:
             continue
 
@@ -1553,9 +1543,9 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
         if matched_route is not None:
             # ADR-0031: read discovery_language for synthetic stand-ins
             # emitted by Class-B linker producers; fall back to language for
-            # real-source declarations. The HTTP client symbol is now Class
-            # B (language=None, discovery_language=<host>) so this fallback
-            # is what makes cross-language detection work post-migration.
+            # real-source declarations. The HTTP client symbol is Class B
+            # (language=None, discovery_language=<host>), so this fallback
+            # is what makes cross-language detection work.
             _client_lang = client_symbol.discovery_language or client_symbol.language
             _route_lang = matched_route.discovery_language or matched_route.language
             is_cross_language = _client_lang != _route_lang
@@ -1569,13 +1559,12 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             else:
                 base_confidence = 0.9
 
-            # ADR-0023 §6 Phase 3 (WI-vumum-juvil): HTTP is a wire
-            # protocol, not a relationship. The fold target is
-            # canonical 'calls' + meta['protocol']='http'.
-            # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak.
-            # http_url_match is a pattern shape (URL string match), not a
-            # framework — fold uses meta["detection_pattern"] not
-            # meta["framework_dispatch"].
+            # HTTP is a wire protocol, not a relationship, so the edge is
+            # canonical 'calls' + meta['protocol']='http' (ADR-0023 §6,
+            # WI-vumum-juvil). URL string matching is a detection pattern,
+            # not a framework, so it is recorded in meta["detection_pattern"]
+            # rather than meta["framework_dispatch"] (ADR-0028;
+            # audit-findings 0014).
             edge = Edge.create(
                 src=client_symbol.id,
                 dst=matched_route.id,
@@ -1616,11 +1605,10 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
     """Extract ``(route_path, http_method)`` for HTTP client->route matching.
 
-    Delegates to the canonical MARKER-FIRST ``routes.route_of`` (WI-tosul
-    Phase-1b-alpha). This replaces a concept-first duplicate that silently
-    dropped routes (BUG-2): a marker carrying a path-less ``concept == 'route'``
-    (Rails/Laravel/Phoenix/Sinatra dual-carry) used to return ``(None, None)``
-    and its route was dropped from client->route matching. The ``'WS'`` sentinel
+    Delegates to the canonical MARKER-FIRST ``routes.route_of``, so a marker
+    that also carries a path-less ``concept == 'route'`` (Rails/Laravel/
+    Phoenix/Sinatra dual-carry) still yields its path and stays in
+    client->route matching (WI-tosul). The ``'WS'`` sentinel
     is reconstructed from ``route_of``'s normalized ``protocol`` so the method-key
     bucketing below (which treats WS like any non-ANY method) is preserved.
     """
@@ -1634,8 +1622,8 @@ def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
     """Extract route symbols (marker OR ``concept == 'route'``) from context.
 
-    Exactly ``routes.is_route``'s disjunction, folded onto the canonical
-    accessor (WI-tosul Phase-1b-alpha).
+    Exactly ``routes.is_route``'s disjunction, via the canonical accessor
+    (WI-tosul).
     """
     return [s for s in ctx.symbols if is_route(s)]
 
@@ -1665,9 +1653,9 @@ HTTP_REQUIREMENTS = [
     # arms trace to a HOST analyzer: markers minted via ``make_route_symbol``,
     # and framework-YAML concepts enriched onto a host record's
     # decorators/annotations or UsageContext (the enrichment is not a pass).
-    # Derived, not restated: test_depends_on_producer_sets.py. ``elm`` was
-    # here because .elm files are scanned for CLIENT calls; no elm pass emits
-    # a route.
+    # Derived, not restated: test_depends_on_producer_sets.py. ``elm`` is
+    # absent although .elm files are scanned for CLIENT calls: no elm pass
+    # emits a route.
     depends_on=[[
         "clojure", "csharp", "elixir", "go", "groovy", "java", "javascript",
         "kotlin", "php", "play-routes", "python", "ruby", "rust", "scala",

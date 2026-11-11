@@ -10,14 +10,13 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Method declarations (inside classes/structs)
 - Computed properties and subscripts, whose stable_id is the ADR-0035
   producer formula (``make_typed_stable_id`` over the type or, for a
-  subscript, the parameter types; WI-tusad: they rode the backstop floor key)
+  subscript, the parameter types; WI-tusad)
 - Every stable_id except an initialiser's or a deinitialiser's hashes the
-  FULL chain of enclosing types and functions (``_swift_scope``; INV-fabih):
-  methods hashed their emitted nearest-owner name (``Inner.go``) and types
-  the backstop's bare-name table key, so two nested ``class Inner`` tied and
-  deleting the first outer type moved the second's ids; types now mint
-  ``overload_arity.scoped_table_stable_id``. Top-level types and their
-  members keep their values. An ``init`` / ``deinit`` id hashes only the
+  FULL chain of enclosing types and functions (``_swift_scope``), so two
+  nested ``class Inner`` in different outer types do not tie, and deleting
+  one outer type does not move the other's ids; types mint
+  ``overload_arity.scoped_table_stable_id`` (INV-fabih). An ``init`` /
+  ``deinit`` id hashes only the
   enclosing TYPE chain (``_get_swift_type_ancestors``), so two function-local
   types of one name in one file tie on it
 - Initialisers (``constructor``, ``Type.init``, with ``meta["arg_labels"]`` and
@@ -29,8 +28,8 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   named without being called. A subscript (``xs[0]``, ``r.headers["age"]``)
   is also a ``call_expression`` to the grammar, with ``value_arguments``
   opened by ``[``; it is a member access, so it emits no call and types no
-  receiver (WI-dimad: it used to be a call edge to a field, to a parameter,
-  or a resolved phantom call to a same-named free function)
+  receiver -- as a call it would land on a field, on a parameter, or on a
+  same-named free function (WI-dimad)
 - Import statements
 - Usage contexts for Vapor/Hummingbird route registrations
 
@@ -100,8 +99,8 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      init. Several in the deciding tier is core
      ``overload_arity.choose_overload``'s ambiguous record
      (``resolution_quality="ambiguous"``, confidence 1/sqrt(N)). None -- a
-     memberwise, inherited or library init, which has no symbol -- keeps the
-     old landing: the type for ``T(...)``, an unresolved edge for ``.init``.
+     memberwise, inherited or library init, which has no symbol -- lands
+     on the type for ``T(...)``, and is an unresolved edge for ``.init``.
      A type the run does not declare (an extension of ``OperationQueue``)
      takes only an exact binding, since its own inits are unseen.
 
@@ -110,9 +109,7 @@ and result assembly. This module provides only the Swift-specific extraction
 logic -- plus one override of ``parse_source``, which gives a backtick raw
 identifier containing spaces (Swift 6.1's spelling for a test name) one
 canonical, underscored spelling, so a symbol's name and id do not depend on
-the grammar release (INV-bisok; tree-sitter-swift 0.7.3 could not parse that
-spelling, nor ``try`` in an ``if`` / ``guard`` / ``while`` condition, and its
-files were retried through a rewrite; 0.7.4 parses both).
+the grammar release (INV-bisok).
 
 Why This Design
 ---------------
@@ -402,10 +399,10 @@ def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
     ``class_declaration``. Read the grammar's ``name`` field rather than
     scanning direct children for a ``type_identifier``: an ``extension``'s
     extended type is wrapped in a ``user_type`` node, so a direct-child
-    ``type_identifier`` search returns None (WI-kudir) — which silently demoted
-    every extension member to a bare file-level symbol (method->function, and
-    names/qualified-names lost their ``Type.`` prefix). The ``name`` field
-    points at the right node for both plain types and extensions.
+    ``type_identifier`` search returns None, which would demote every
+    extension member to a bare file-level symbol (method->function, and
+    names/qualified-names without their ``Type.`` prefix). The ``name`` field
+    points at the right node for both plain types and extensions (WI-kudir).
     """
     current = node.parent
     while current is not None:
@@ -452,11 +449,10 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     first: what every Swift stable_id except an init's or a deinit's hashes
     beside the symbol's own name (INV-fabih).
 
-    A method hashed its emitted nearest-owner name (``Inner.go``), which two
-    nested ``class Inner`` in ``A`` and ``B`` share, and a type had only the
-    backstop's bare-name table key; members hashed the type chain but not an
-    enclosing function, which two function-local ``struct Inner`` share. The
-    emitted ``qualified_name`` stays the type chain
+    The full chain is needed because a nearest-owner name (``Inner.go``) is
+    shared by two nested ``class Inner`` in ``A`` and ``B``, a bare type name
+    by every same-named type, and a type-only chain by two function-local
+    ``struct Inner``. The emitted ``qualified_name`` stays the type chain
     (:func:`_make_swift_qualified_name`). ``_swift_lifecycle_symbol`` still
     hashes only the type chain, so two function-local ``struct Inner`` in one
     file share their ``init`` / ``deinit`` ids.
@@ -513,16 +509,13 @@ def _get_enclosing_function(
     """The function, initialiser, deinitialiser, subscript or property accessor
     whose declaration contains ``node``.
 
-    Keyed by the declaration's POSITION, not its name (INV-midag). The key was
-    the qualified name, which every overload of a method shares: Alamofire's
-    ``Session.webSocketRequest``, ``HTTPHeaders.add`` and
-    ``DataRequest.serializingResponse``. So 261 of 8,343 swift call edges on a
-    26-repo run were anchored to an overload that does not contain the call.
-    A declaration with no symbol is walked past.
-
-    WI-sogof added ``init`` / ``deinit`` (which had no symbol, so their calls
-    fell through to the type) and a stored property's observers, whose owning
-    property already had one.
+    Keyed by the declaration's POSITION, not its name: every overload of a
+    method shares its qualified name (Alamofire's ``Session.webSocketRequest``,
+    ``HTTPHeaders.add``), so a name key would anchor a call to an overload
+    that does not contain it (INV-midag). A declaration with no symbol is
+    walked past. An ``init`` / ``deinit`` and a stored property's
+    ``willSet`` / ``didSet`` observers count, so their calls are not credited
+    to the enclosing type (WI-sogof).
     """
     current = node.parent
     while current is not None:
@@ -563,10 +556,11 @@ def _swift_is_type_spelling(name: str) -> bool:
 
     WI-hojib. Swift spells types capitalised and values lowercase, and a leading
     underscore marks an implementation-private name of EITHER kind: hummingbird's
-    ``_URLEncodedFormDecoder`` is a type, Kingfisher's ``_config`` a value. Reading
-    the first character alone made every underscored name neither -- a
-    constructor ``_URLEncodedFormDecoder(...)`` typed nothing, and a value head
-    ``_storage.p.m()`` was not recognised as a value chain. This is the one rule;
+    ``_URLEncodedFormDecoder`` is a type, Kingfisher's ``_config`` a value, so the
+    underscore is skipped: read by its first character alone, an underscored name
+    would be neither -- a constructor ``_URLEncodedFormDecoder(...)`` would type
+    nothing, and a value head ``_storage.p.m()`` would not be recognised as a
+    value chain. This is the one rule;
     :func:`_swift_is_value_spelling` is its counterpart.
     """
     return name.lstrip("_")[:1].isupper()
@@ -642,11 +636,11 @@ def _swift_return_type_name(node: "tree_sitter.Node", source: bytes) -> str | No
     keeps only what :func:`_swift_bare_type` admits, so the registry never
     carries ``[String]`` or ``() -> Void`` as a receiver type.
 
-    Two spellings name a type only from INSIDE the declaration and were
-    measured putting a meaningless module in the slot once slice 2 let a chained
-    receiver read this registry: ``Self`` (76 sites on Alamofire, every one a
-    fluent ``-> Self`` builder) resolves to the enclosing type, which is what it
-    means; a generic PARAMETER (2 sites) resolves to nothing and is refused.
+    Two spellings name a type only from INSIDE the declaration, and taken
+    literally would put a meaningless module in the slot when a chained
+    receiver reads this registry: ``Self`` (every fluent ``-> Self`` builder,
+    common on Alamofire) resolves to the enclosing type, which is what it
+    means; a generic PARAMETER resolves to nothing and is refused.
     """
     found_closing_paren = False
     for child in node.children:
@@ -666,11 +660,11 @@ def _swift_member_declaration(node: "tree_sitter.Node") -> "tree_sitter.Node | N
 
     The first ``class_declaration`` (class / struct / enum / actor / extension)
     or ``protocol_declaration`` up the parent chain, provided no callable body
-    (``_SWIFT_SCOPE_NODES``) and no ERROR node comes first. WI-tagir: the walk
-    used to stop only at ``function_declaration``, so a ``let`` inside an
-    ``init``, a closure or an accessor registered as a FIELD of the enclosing
-    type; error recovery re-parents declarations arbitrarily (INV-bisok), so a
-    chain through an ERROR is not trusted either.
+    (``_SWIFT_SCOPE_NODES``) and no ERROR node comes first. Every callable body
+    stops the walk, not only ``function_declaration``: a ``let`` inside an
+    ``init``, a closure or an accessor is a local, never a FIELD of the
+    enclosing type (WI-tagir). Error recovery re-parents declarations
+    arbitrarily (INV-bisok), so a chain through an ERROR is not trusted either.
     """
     cur = node.parent
     while cur is not None:
@@ -688,9 +682,9 @@ def _swift_member_type(
     """A member's type as a TYPE, or ``None`` when it is a generic parameter.
 
     WI-hojib. ``class Box<T> { var value: T }`` declares ``value`` of whatever
-    ``T`` is bound to at the use; ``T`` names no type, and registering it put
-    ``T`` in the module slot once a member chain (``box.value.m()``) read the
-    member. The same refusal ``_swift_return_type_name`` makes for a return
+    ``T`` is bound to at the use; ``T`` names no type, and registering it would
+    put ``T`` in the module slot when a member chain (``box.value.m()``) reads
+    the member. The same refusal ``_swift_return_type_name`` makes for a return
     type. A parameter of an EXTERNAL generic type an extension adds members to
     (``extension Result { var success: Success? }``) is not declared in the
     file and is not caught here.
@@ -764,7 +758,7 @@ def _is_subscript(call: "tree_sitter.Node", source: bytes) -> bool:
 
 #: The node types a parameter's declared TYPE parses as. ``some P``, ``any P``
 #: and ``P & Q`` are read too: a parameter whose type is not read is assumed
-#: able to take a trailing closure, which admitted ``init(_ r: some Reducer)``
+#: able to take a trailing closure, which would admit ``init(_ r: some Reducer)``
 #: beside the closure inits for TCA's ``Reduce { ... }``.
 _SWIFT_TYPE_NODES: frozenset[str] = frozenset({
     "user_type", "array_type", "dictionary_type",
@@ -959,8 +953,8 @@ def _swift_labels_admit_call(
     ``removeItem(atPath:)`` are different methods and a bare-name match is not
     evidence of the callee. The question is asked of every OVERLOAD, not of the one
     that survived ``local_symbols[Type.method]``: keyed by bare name, a second
-    declaration overwrites the first, and refusing on the survivor alone withdrew
-    291 TRUE binds on Alamofire against 49 false ones.
+    declaration overwrites the first, and refusing on the survivor alone would
+    withdraw several times more TRUE binds than false ones (on Alamofire).
 
     Refuses only on positive evidence -- a label the call supplies that no
     declaration has. Everything else is admitted deliberately, because the
@@ -1313,12 +1307,10 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
-        # WI-duguk: enum CASES. The analyzer already emitted an enum's methods
-        # and computed properties, so an enum carrying one method looked healthy
-        # on any "does this container have a member" probe while every case was
-        # invisible — and a reverse slice from the enum returned it alone.
-        # Emitted as kind="field" (a case is a named value of the type), the
-        # same choice the D and Nim analyzers made.
+        # Enum CASES, emitted as kind="field" (a case is a named value of the
+        # type), the same choice the D and Nim analyzers make. Without them an
+        # enum's only members are its methods and computed properties, and a
+        # reverse slice from the enum returns it alone (WI-duguk).
         #
         # ``case green, blue`` is a SINGLE enum_entry carrying TWO
         # simple_identifier children, so this emits per IDENTIFIER, not per
@@ -1376,8 +1368,8 @@ def _extract_symbols_from_file(
                     analysis.node_for_symbol[sym.id] = child
                     analysis.symbol_by_name[full_name] = sym
 
-        # WI-duguk: protocol REQUIREMENTS. A protocol body emitted nothing at
-        # all, so a reverse slice from a protocol found only the container.
+        # Protocol REQUIREMENTS, so a reverse slice from a protocol finds more
+        # than the container (WI-duguk).
         # A function requirement is a method; a property requirement is a
         # ``kind="property"`` rather than a ``field`` because ``{ get }`` is a
         # computed-access contract and never storage.
@@ -1500,7 +1492,7 @@ def _extract_symbols_from_file(
                         origin_run_id=run_id,
                         signature=signature,
                         modifiers=modifiers,
-                        # WI-tusad: the producer formula (rode the floor key).
+                        # The ADR-0035 producer formula (WI-tusad).
                         stable_id=make_typed_stable_id(
                             "property", signature or "",
                             visibility_from_modifiers(modifiers),
@@ -1518,7 +1510,7 @@ def _extract_symbols_from_file(
 
         # WI-jusus (emission-parity F5): STORED properties / top-level bindings.
         # A non-computed property_declaration (no computed_property child; those
-        # matched the branch above as kind="property") is either a STORED
+        # match the branch above as kind="property") is either a STORED
         # property of a type body -> kind="field", or a top-level let/var ->
         # kind="variable". Swift reuses one property_declaration node for both AND
         # for method-/init-/closure-local bindings; the DIRECT parent
@@ -1632,8 +1624,8 @@ def _extract_symbols_from_file(
                 origin_run_id=run_id,
                 signature=signature,
                 modifiers=modifiers,
-                # WI-tusad: the producer formula over the parameter types, so
-                # two subscript overloads stay apart (they rode the floor key).
+                # The producer formula over the parameter types, so two
+                # subscript overloads stay apart (WI-tusad).
                 stable_id=make_typed_stable_id(
                     "subscript", normalize_swift_signature(signature) or signature or "",
                     visibility_from_modifiers(modifiers),
@@ -1650,9 +1642,9 @@ def _extract_symbols_from_file(
             analysis.node_for_symbol[symbol.id] = node
             analysis.symbol_by_name[full_name] = symbol
 
-        # WI-sogof: initialisers and deinitialisers. Neither had a symbol, so
-        # their bodies' calls were credited to the type (INV-bamij's fallback)
-        # and a construction could not land on the init it runs.
+        # Initialisers and deinitialisers get symbols of their own, so their
+        # bodies' calls are not credited to the type (INV-bamij's fallback) and
+        # a construction can land on the init it runs (WI-sogof).
         elif node.type in ("init_declaration", "deinit_declaration"):
             lifecycle = _swift_lifecycle_symbol(node, source, file_path, run_id, file_stable_id)
             if lifecycle is not None:
@@ -1693,7 +1685,7 @@ def _swift_lifecycle_symbol(
     signature = _extract_swift_signature(node, source)
     qualified = _make_swift_qualified_name(_get_swift_type_ancestors(node, source), member)
     # A protocol's requirement carries no access modifier of its own and is as
-    # reachable as the protocol (the WI-duguk rule for the other requirements).
+    # reachable as the protocol, like the other requirements (WI-duguk).
     is_requirement = node.parent is not None and node.parent.type == "protocol_body"
     return Symbol(
         id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, kind),
@@ -1734,11 +1726,11 @@ def _static_member_on_instance(
 ) -> bool:
     """True when ``callee`` is a ``static`` / ``class`` member but the receiver is an INSTANCE.
 
-    INV-kotob pass-3 read-back: once ``let fileManager = FileManager.default``
-    was typed, ``fileManager.removeItem(at:)`` bound by bare name to a test-only
+    With ``let fileManager = FileManager.default`` typed,
+    ``fileManager.removeItem(at:)`` could bind by bare name to a test-only
     ``static func removeItem(at:)`` in an extension of ``FileManager`` -- a
-    member an instance cannot call -- and the catalogued Foundation boundary
-    vanished behind a resolved edge. The receiver is an instance when it is a
+    member an instance cannot call -- hiding the catalogued Foundation boundary
+    behind a resolved edge (INV-kotob). The receiver is an instance when it is a
     declared variable or parameter, or spelled lowercase; a capitalised head
     that is not declared (``FileManager.removeItem(atPath:)``) is the type
     itself and may bind the static member.
@@ -1786,9 +1778,9 @@ def _extract_call_target(
     is an EXPRESSION contributes none: ``(o as! T).createFile(...)``,
     ``make().createFile(...)``, ``T(x).createFile(...)`` all walk to
     ``("createFile", None, True)``. Reading a ``None`` hint as "no receiver"
-    made every one of those a bare call, which is the shape that reaches the
-    unresolved emit with no ``call_construct`` and lets a bare short name bind
-    a catalogued sanitizer as a phantom barrier.
+    would make every one of those a bare call, which is the shape that reaches
+    the unresolved emit with no ``call_construct`` and lets a bare short name
+    bind a catalogued sanitizer as a phantom barrier.
 
     Returns:
         (callee_name, receiver_hint, has_receiver) — callee_name is empty
@@ -1829,17 +1821,15 @@ def _extract_call_target(
         # receiver_hint is the first identifier in the chain
         # (e.g. "URLSession" from URLSession.shared.dataTask)
         receiver_hint = receiver_parts[0] if receiver_parts else None
-        # WI-sulas: A VALUE CHAIN IS NOT TYPED BY ITS HEAD. For ``v.p.m()`` the
-        # receiver is ``v.p``, and naming ``v`` made the emit site stamp
-        # typeof(v): ``ch.pipeline.addHandler`` landed in the module slot as
-        # ``Channel`` (the receiver is a ChannelPipeline), and ``s.db.save()``
-        # with ``s: Store`` resolved to ``Store.save``. 1,020 such sites on four
-        # repositories, 20 of 20 sampled wrong. With no hint the receiver
-        # EXPRESSION is typed by the walker that already types expression
-        # receivers, which answers or stays silent. Left as they were: a
-        # single hop (``v.m()``), a ``self`` head (WI-sizas types ``self.a``
-        # itself) and a TYPE head (``URLSession.shared.dataTask``), which was
-        # not read back.
+        # A VALUE CHAIN IS NOT TYPED BY ITS HEAD (WI-sulas). For ``v.p.m()``
+        # the receiver is ``v.p``, and naming ``v`` would make the emit site
+        # stamp typeof(v): ``ch.pipeline.addHandler`` would put ``Channel`` in
+        # the module slot (the receiver is a ChannelPipeline), and
+        # ``s.db.save()`` with ``s: Store`` would resolve to ``Store.save``.
+        # With no hint the receiver EXPRESSION is typed by the walker that
+        # types expression receivers, which answers or stays silent. Not
+        # affected: a single hop (``v.m()``), a ``self`` head (WI-sizas types
+        # ``self.a`` itself) and a TYPE head (``URLSession.shared.dataTask``).
         if receiver_hint is not None and _swift_call_is_value_chain(call_node, source):
             receiver_hint = None
         # ``nav_node`` exists, so there IS a receiver expression -- whether or
@@ -1859,7 +1849,7 @@ def _swift_nav_receiver(
 ) -> "tree_sitter.Node | None":
     """The receiver EXPRESSION node of a navigation call, or ``None``.
 
-    WI-higob slice 2. ``_extract_call_target`` reports the receiver's first
+    WI-higob. ``_extract_call_target`` reports the receiver's first
     *simple_identifier*, which a receiver that is an expression does not have.
     This returns the node itself so its type can be computed rather than named.
     """
@@ -1875,12 +1865,10 @@ def _swift_nav_receiver(
 class _SwiftTyping(NamedTuple):
     """What the expression walker may ask about names, bound to ONE position.
 
-    WI-hojib. The walker used to take a name resolver, the return-type registry
-    and a field resolver separately, and could therefore answer only what those
-    three could: it typed a bare name, ``self.<property>`` and ``<owner>.<method>``
-    on the enclosing type, and nothing reached through a base class or a second
-    hop. The four lookups below are the whole of what an expression's type
-    depends on, each walking base classes:
+    The four lookups below are the whole of what an expression's type depends
+    on, each walking base classes, so the walker types what is reached through
+    a base class or a second hop, not only a bare name, ``self.<property>`` and
+    ``<owner>.<method>`` on the enclosing type (WI-hojib):
 
     * ``name``: a bare name -- the innermost visible binding, then the enclosing
       type's members, then the file's globals (``_type_of``);
@@ -1903,7 +1891,7 @@ def _swift_receiver_expr_type(
 ) -> str | None:
     """The TYPE an expression evaluates to, or ``None`` when nothing names it.
 
-    WI-higob slice 2. The wrappers that carry no type of their own -- ``try``,
+    WI-higob. The wrappers that carry no type of their own -- ``try``,
     ``await``, parentheses -- are stripped; a cast names its type outright; a
     call is typed by :func:`_swift_call_type`, which recurses back here for its
     own receiver, so ``a.b().c().d()`` is walked rather than one level being
@@ -1914,12 +1902,12 @@ def _swift_receiver_expr_type(
     collection (``o as! [String]``) -- ``_swift_bare_type`` is the one rule for
     which spellings are receiver types.
 
-    WI-dodop adds the ``self.<property>`` head. ``self`` parses as
+    A ``self.<property>`` head is typed here too (WI-dodop). ``self`` parses as
     ``self_expression`` rather than ``simple_identifier``, so
     ``_extract_call_target`` collects nothing into ``receiver_parts`` and
-    reports ``receiver_hint=None`` -- writing ``self.`` in front of a property
-    destroyed the hint for the IDENTICAL call (``db.write(x)`` typed,
-    ``self.db.write(x)`` not). 393 of 1,913 classified untyped vapor sites.
+    reports ``receiver_hint=None`` -- without this, writing ``self.`` in front
+    of a property would lose the type for the IDENTICAL call (``db.write(x)``
+    typed, ``self.db.write(x)`` not); vapor writes ``self.`` often.
 
     ``env.field`` and NOT ``env.name`` for that case, and the distinction
     is load-bearing: ``name`` consults scoped locals BEFORE the enclosing type's
@@ -1929,7 +1917,7 @@ def _swift_receiver_expr_type(
     ``receiver_type_hint`` as grounds to REFUTE a class hint, so a wrong stamp
     does not merely fail to help, it DELETES a correct recovery.
 
-    WI-hojib types the rest by what each expression evaluates to:
+    The rest is typed by what each expression evaluates to (WI-hojib):
 
     * a member chain on a value (``config.fileManager``, ``self.inner.session``)
       is the head's type, then that type's DECLARED member (``env.member``,
@@ -1972,7 +1960,7 @@ def _swift_receiver_expr_type(
         if node.type == "constructor_expression":
             # WI-mofil: a GENERIC constructor (``ManagedAtomic<Bool>(false)``)
             # parses as ``constructor_expression``, not ``call_expression``, so
-            # it was untyped while ``Store()`` was typed. Its ``user_type``
+            # it needs this arm to be typed as ``Store()`` is. Its ``user_type``
             # names the type; a collection (``[String](...)``) has none and
             # stays a refusal, through the same ``_swift_bare_type`` rule.
             built = find_child_by_type(node, "user_type")
@@ -2035,7 +2023,7 @@ def _swift_call_type(
     WI-hojib. ``env.returns`` walks the owner's BASES: Alamofire's test
     subclasses call ``stored(Session())``, declared on ``BaseTestCase``, and
     XCTest's ``expectation(description:)`` is declared on ``XCTestCase`` (a
-    library row), so the enclosing type's own key missed both. A ``self``
+    library row), and the enclosing type's own key would miss both. A ``self``
     receiver is the implicit self -- ``self.m()`` is the call ``m()`` -- and
     ``init`` constructs its owner (``self.init()`` in a static method,
     ``T.init(...)``). A constructor spelled ``_T(...)`` is a constructor
@@ -2087,11 +2075,10 @@ def _swift_call_result_type(
     WI-higob. ``let s = store.session()`` looks up ``<type of store>.session``;
     ``let s = Store.make()`` looks up ``Store.make``; a bare ``let s =
     makeSession()`` inside a type looks up ``<enclosing type>.makeSession`` and
-    then the free function. Slice 2 replaced this function's own three-level
-    ``try``/``await`` unwrapping and its single-level receiver lookup with the
-    shared expression walker, so a chained initialiser (``let s =
-    Store().session()``) and a cast (``let fm = o as! FileManager``) are typed
-    by the same rule that types a chained RECEIVER. Anything the registry does
+    then the free function. The initialiser is typed by the shared expression
+    walker, so a chained initialiser (``let s = Store().session()``) and a cast
+    (``let fm = o as! FileManager``) are typed by the same rule that types a
+    chained RECEIVER. Anything the registry does
     not hold yields ``None`` -- the local stays untyped, which is what an
     unknown result means.
 
@@ -2118,11 +2105,11 @@ def _swift_condition_bindings(
 
     WI-mofil. The grammar lays a condition out FLAT -- clauses are runs of
     siblings separated by top-level ``,`` tokens, ending at the body's
-    ``statements`` (or ``{`` / ``else``). The arm this replaces took the
-    condition's FIRST ``simple_identifier`` and its FIRST ``=``: in ``if flag,
-    let s = f()`` it typed ``flag`` as ``f()``'s result, in ``if let a = f(),
-    let b = g()`` it never bound ``b``, and in ``if case let .some(x) = y`` it
-    bound the case NAME ``some``. A clause is read here only when it OPENS
+    ``statements`` (or ``{`` / ``else``). Taking the condition's FIRST
+    ``simple_identifier`` and its FIRST ``=`` would go wrong: in ``if flag, let
+    s = f()`` it would type ``flag`` as ``f()``'s result, in ``if let a = f(),
+    let b = g()`` it would never bind ``b``, and in ``if case let .some(x) = y``
+    it would bind the case NAME ``some``. A clause is read here only when it OPENS
     with ``let`` / ``var`` followed by a name; a ``case`` clause (an enum
     payload, typed by nothing here) and a boolean clause bind nothing.
     """
@@ -2219,8 +2206,9 @@ def _swift_declaration_clauses(node: "tree_sitter.Node") -> list[list["tree_sitt
 
     WI-silos. ``let a = FileManager(), b = bar()`` is ONE declaration node whose
     children run ``pattern = expr , pattern = expr``. Read whole, the
-    declaration reader took the LAST pattern's name and the FIRST constructor's
-    type, stamping ``FileManager`` on ``b`` and leaving ``a`` unbound. A comma
+    declaration reader would take the LAST pattern's name and the FIRST
+    constructor's type, stamping ``FileManager`` on ``b`` and leaving ``a``
+    unbound. A comma
     inside an initialiser is nested in its expression, so a top-level ``,``
     separates clauses. A single-clause declaration yields its children
     unchanged.
@@ -2328,7 +2316,7 @@ def _extract_edges_from_file(
 
     ``method_return_type_registry`` (WI-higob): ``<Owner>.<method>`` -> the
     bare type the method returns, aggregated over the repo in Pass 1 and
-    later fed with library rows by WI-lalot's loader. Read when a local is
+    also fed with library rows (WI-lalot's loader). Read when a local is
     bound to a call result so ``let s = store.session()`` types ``s``.
     ``field_type_registry`` (WI-higob): ``<Type>`` -> ``{property: type}`` for
     every class-level property in the repo, read for a bare receiver inside
@@ -2362,35 +2350,33 @@ def _extract_edges_from_file(
 
     # Build variable → type mapping for receiver type tracking (ADR-0017 §1c)
     var_types: dict[str, str] = {}
-    # WI-higob: receiver types are SCOPED to the function that declares them
-    # -- one map per ``function_declaration`` body, file-level declarations in
-    # ``var_types`` -- so a later ``let s`` in another function no longer
-    # overwrites this function's ``s`` (the file-scoped map typed
-    # ``s.fileExists`` in one method from a ``let s`` in the next; kotlin had
-    # the same bug and got a scope stack under WI-nasuf, objc keys by body
-    # span). Lookups walk innermost-first, then the file level.
-    # One map per function, keyed by the function node's start byte. Scope
-    # membership follows the exact PARENT CHAIN, never byte-span containment:
-    # in a file tree-sitter recovers with ERROR nodes (Alamofire's
-    # Session.swift, INV-bisok) a function_declaration's span swallowed the
-    # class body, so a class property bound by span landed in that function
-    # and every method outside it lost the property. A declaration whose
-    # chain reaches a class / protocol / ERROR before any function is
-    # file-level; a lookup walks its own function ancestors innermost-first,
-    # then the file level.
-    # WI-mofil: a scoped binding is VISIBLE FROM a byte offset -- the end of
-    # its declaration -- and a lookup takes the latest binding visible at the
-    # use. Keyed by name alone, a later ``let container = KDC<K>(...)`` retyped
-    # the field ``container`` two lines above it (hummingbird), and ``let s =
-    # s.session()`` read its own initialiser's ``s`` as the local. File-level
-    # declarations stay position-free: a global is visible throughout.
-    # WI-silos: a binding is ``(visible_from, visible_to, type)`` and its TYPE
-    # MAY BE ``None``. A declaration the pass cannot type -- an unannotated
+    # Receiver types are SCOPED: one map per scope (``_is_scope``: every
+    # callable body and block, ``_SWIFT_SCOPE_NODES`` / ``_SWIFT_BLOCK_NODES``),
+    # true globals in ``var_types``, so a ``let s`` in one method never types
+    # ``s.fileExists`` in the next (WI-higob; kotlin keeps a scope stack for
+    # the same reason, objc keys by body span). Lookups walk innermost-first,
+    # then the enclosing type's members, then the file level.
+    # Scope membership follows the exact PARENT CHAIN, never byte-span
+    # containment: in a file tree-sitter recovers with ERROR nodes (Alamofire's
+    # Session.swift, INV-bisok) a function_declaration's span can swallow the
+    # class body, and a class property bound by span would land in that
+    # function, hidden from every method outside it. A declaration whose chain
+    # reaches a class / protocol / ERROR before any scope is a type member or
+    # a global (``_bind``).
+    # A scoped binding is VISIBLE FROM a byte offset -- the end of its
+    # declaration -- and a lookup takes the latest binding visible at the use
+    # (WI-mofil). Keyed by name alone, a later ``let container = KDC<K>(...)``
+    # would retype the field ``container`` two lines above it (hummingbird),
+    # and ``let s = s.session()`` would read its own initialiser's ``s`` as the
+    # local. File-level declarations stay position-free: a global is visible
+    # throughout.
+    # A binding is ``(visible_from, visible_to, type)`` and its TYPE MAY BE
+    # ``None`` (WI-silos). A declaration the pass cannot type -- an unannotated
     # closure parameter, a local no registry types, a loop variable, a
     # ``catch`` / ``case let`` / tuple name -- is still a declaration: it
-    # SHADOWS, and the innermost visible binding answers, typed or not. Recorded
-    # only when typed, it left no entry, and the lookup fell THROUGH it to the
-    # outer binding or the field and stamped that type on a different variable.
+    # SHADOWS, and the innermost visible binding answers, typed or not. With no
+    # entry for it, the lookup would fall THROUGH to the outer binding or the
+    # field and stamp that type on a different variable.
     # ``visible_to`` closes an ``if`` clause's binding at the ``else``. Keys are
     # ``(type, start, end)``: a block and the ``if`` that is its only statement
     # share a span, and a closure called as a block's first statement shares
@@ -2424,12 +2410,11 @@ def _extract_edges_from_file(
         chain: list[_ScopeKey] = []
         cur = n.parent
         while cur is not None:
-            # WI-mofil: every callable BODY is a scope -- its parameters and
-            # locals are invisible outside it. Only ``function_declaration``
-            # was one: a closure-local ``let`` landed in the enclosing
-            # function's map, and an init / subscript / accessor body's
-            # landed in the FILE-level map, typing that name in every method.
-            # WI-silos: and every BLOCK (``_SWIFT_BLOCK_NODES``).
+            # Every callable BODY is a scope -- its parameters and locals are
+            # invisible outside it, so a closure-local ``let`` stays out of the
+            # enclosing function's map and an init / subscript / accessor
+            # local never types that name across the file (WI-mofil). So is
+            # every BLOCK (``_SWIFT_BLOCK_NODES``; WI-silos).
             if _is_scope(cur):
                 chain.append((cur.type, cur.start_byte, cur.end_byte))
             elif cur.type in ("class_declaration", "protocol_declaration"):
@@ -2444,8 +2429,8 @@ def _extract_edges_from_file(
         visible_to: int = _forever,
     ) -> None:
         # The binding lands in the innermost scope enclosing ``n``.
-        # WI-tagir: a declaration in no scope is a type's MEMBER or a true
-        # global, and the two no longer share one map. A member is recorded
+        # A declaration in no scope is a type's MEMBER or a true global, kept
+        # in separate maps (WI-tagir). A member is recorded
         # under its declaration (``_decl_members``) and its owner's name
         # (``_file_members``), typed or not -- an untyped member is still that
         # type's member and shadows a same-named global inside it -- first
@@ -2542,8 +2527,8 @@ def _extract_edges_from_file(
     def _type_of(name: str, n: "tree_sitter.Node") -> str | None:
         # Swift's unqualified lookup order: the innermost visible local, then
         # the enclosing type's members (and its bases'), then the file's
-        # globals. WI-tagir: the globals used to come SECOND, from a map that
-        # also held every type's properties, so type A's ``store`` typed B's.
+        # globals. Members are kept apart from globals and looked up by the
+        # enclosing type, so type A's ``store`` never types B's (WI-tagir).
         at = n.start_byte
         for key in _function_ancestors(n, through_errors=True):
             visible = [
@@ -2608,7 +2593,8 @@ def _extract_edges_from_file(
         # Several in the deciding tier is core's ambiguous record
         # (``choose_overload``: the first by position, confidence 1/sqrt(N));
         # none -- a memberwise, inherited or library init, which has no
-        # symbol -- is ``None`` and the caller keeps its old landing.
+        # symbol -- is ``None`` and the caller falls back to its default
+        # landing (the type, or an unresolved edge).
         args = _swift_call_arguments(call, source)
         short = owner.rsplit(".", 1)[-1]
         exact: list[Symbol] = []
@@ -2702,7 +2688,7 @@ def _extract_edges_from_file(
                 _bind(node, vname, vtype, clause[-1].end_byte)
         elif node.type in ("if_statement", "guard_statement", "while_statement"):
             # WI-higob: `if let x = <expr>` / `guard let x = <expr>` bind a name
-            # to an expression whose type slice 2's walker already computes.
+            # to an expression whose type the expression walker computes.
             # WI-mofil: EVERY `let`/`var` clause binds, a clause annotation
             # names the type outright, and `while let` binds the same way. A
             # shorthand clause (`if let s`) has no RHS and re-binds `s` to
@@ -2736,7 +2722,8 @@ def _extract_edges_from_file(
         elif node.type == "for_statement":
             # WI-silos: the loop variable binds the `where` clause and the body,
             # NOT the sequence after `in` (`for s in s.tasks` reads the outer
-            # `s`). Its element type is WI-bodav's; here it only shadows.
+            # `s`). Its element type is not tracked here (WI-bodav); it only
+            # shadows.
             _kids = node.children
             _in = next((i for i, c in enumerate(_kids) if c.type == "in"), None)
             _pat = next((c for c in _kids if c.type == "pattern"), None)
@@ -2759,11 +2746,11 @@ def _extract_edges_from_file(
             # WI-mofil: an ANNOTATED closure parameter (`{ (fm: FileManager)
             # in ... }`) has the parameter's layout and binds the same way,
             # into the closure's own scope.
-            # INV-fahub / WI-votar recall recovery: thread function/method
-            # parameter types (previously dropped) into the receiver map so a
+            # Function/method parameter types join the receiver map, so a
             # param-typed receiver (`func handle(client: Client)` → its
             # ``client.foo()`` calls) resolves via the type-qualified path
-            # instead of misbinding to an arbitrary same-named def below.
+            # instead of misbinding to an arbitrary same-named def below
+            # (INV-fahub, WI-votar).
             # WI-silos: an UNANNOTATED closure parameter, or a parameter whose
             # type the reader does not extract (`[String]`, a function type),
             # binds too, untyped: it is not the outer name it shadows.
@@ -2812,7 +2799,7 @@ def _extract_edges_from_file(
                     # type's by labels. ``T.init`` is never bound by its NAME
                     # below: every init of ``T`` shares it, and the registry
                     # keeps one. Unchosen, the receiver path's unresolved edge
-                    # stands, as before.
+                    # stands.
                     _is_init_call = has_receiver and callee_name == "init"
                     _init_choice = None
                     if _is_init_call:
@@ -2854,10 +2841,10 @@ def _extract_edges_from_file(
                         qualified_name = f"{type_name.split('<', 1)[0]}.{callee_name}"
                         # INV-fatap: a bare-name match is not evidence of the
                         # callee. A project extension declaring
-                        # ``removeItem(atPath:)`` captured
+                        # ``removeItem(atPath:)`` would capture
                         # ``fileManager.removeItem(at:)`` -- a call it cannot
-                        # compile against -- and the catalogued Foundation
-                        # boundary vanished behind a resolved edge.
+                        # compile against -- hiding the catalogued Foundation
+                        # boundary behind a resolved edge.
                         _labels_ok = _swift_labels_admit_call(
                             qualified_name,
                             _swift_call_argument_labels(node, source),
@@ -2917,17 +2904,17 @@ def _extract_edges_from_file(
                         # can recover it (Site-2 Step-1); an untyped/duck
                         # receiver gets no hint (bias to unresolved). The linker
                         # is the sole minter of the resolved edge (INV-nilud).
-                        # INV-pirot widened the guard from "the receiver has
-                        # a NAME" to "there is a receiver", so a nameless
-                        # receiver expression reaches this branch too -- which
-                        # is the branch's own purpose, and more true of a
-                        # nameless receiver rather than less: ``make().m()``
-                        # cannot be a call on the enclosing type.
+                        # The guard is "there is a receiver", not "the
+                        # receiver has a NAME", so a nameless receiver
+                        # expression reaches this branch too -- which is the
+                        # branch's own purpose, and more true of a nameless
+                        # receiver rather than less: ``make().m()`` cannot be
+                        # a call on the enclosing type (INV-pirot).
                         gate_meta: dict = {"call_construct": "method"}
                         # WI-sulas: say the receiver is a member chain, so the
                         # method-call-recovery linker does not read a class the
-                        # caller instantiates as this call's receiver (it guessed
-                        # ``router.middlewares.add`` into ``Router.add``).
+                        # caller instantiates as this call's receiver (it would
+                        # guess ``router.middlewares.add`` into ``Router.add``).
                         if receiver_hint is None and _swift_call_is_value_chain(node, source):
                             gate_meta["receiver"] = "field_chain"
                         receiver_type = (
@@ -2944,18 +2931,16 @@ def _extract_edges_from_file(
                             and receiver_hint not in declared_names
                         ):
                             receiver_type = receiver_hint
-                        # WI-higob slice 2: the receiver is an EXPRESSION and
-                        # names nothing -- ``store.session().resume()``,
+                        # WI-higob: the receiver is an EXPRESSION and names
+                        # nothing -- ``store.session().resume()``,
                         # ``Store().session()``, ``(o as! FileManager).x()``,
-                        # any of them under ``try`` / ``await``. Until now every
-                        # such site took the ``external`` placeholder while the
-                        # SAME call one binding apart (``let s =
-                        # store.session(); s.resume()``) was typed through the
-                        # return-type registry, so one catalogued sink was
-                        # reachable in one spelling and unmatchable in the
-                        # other. ``receiver_hint`` is None for exactly this
-                        # family (INV-pirot established that a nameless
-                        # receiver still HAS a receiver), which is the gate.
+                        # any of them under ``try`` / ``await``. The walker
+                        # types it as the SAME call one binding apart (``let s
+                        # = store.session(); s.resume()``) is typed, so a
+                        # catalogued sink matches in either spelling.
+                        # ``receiver_hint`` is None for exactly this family (a
+                        # nameless receiver still HAS a receiver, INV-pirot),
+                        # which is the gate.
                         if receiver_type is None and receiver_hint is None:
                             receiver_type = _swift_receiver_expr_type(
                                 _swift_nav_receiver(node, source), source,
@@ -2969,13 +2954,12 @@ def _extract_edges_from_file(
                         # module candidate at all, so INV-finoh's refusal is
                         # preserved rather than widened (INV-pirot: a receiver
                         # EXPRESSION has no spelling and lands here too).
-                        # INV-kotob. The old chain here ended in ``receiver_hint``
-                        # -- the receiver's VARIABLE NAME -- so ``fm.fileExists``
-                        # shipped ``dst_ref.module_path == "fm"``: on Alamofire
-                        # 42% of unresolved method edges carried such a name, a
+                        # INV-kotob. The module is never ``receiver_hint`` --
+                        # the receiver's VARIABLE NAME: ``fm.fileExists`` would
+                        # ship ``dst_ref.module_path == "fm"``, a
                         # present-but-wrong hint that every consumer refuses
-                        # outright, while the dst id said ``external`` at the
-                        # same site. One answer now, written to both: the
+                        # outright, disagreeing with the dst id's ``external``
+                        # at the same site. One answer, written to both: the
                         # receiver's TYPE when it is external (the catalogue keys
                         # swift rows by bare type, ``FileManager``), an import
                         # alias for a module-qualified call, else the ``external``
@@ -3440,9 +3424,8 @@ def _extract_vapor_usage_contexts(
             span=span,
             method=http_method,
             # Vapor route components arrive without the leading slash; the
-            # factory normalizes an EMPTY path to "/", so the leading slash is
-            # supplied here to keep the name and route_path byte-identical to
-            # what this producer emitted before the migration.
+            # factory normalizes only an EMPTY path to "/", so the leading
+            # slash is supplied here for the name and route_path to carry it.
             route_path=f"/{route_path}" if route_path else "/",
             origin=PASS_ID,
             origin_run_id=run_id,
@@ -3584,12 +3567,11 @@ def _swift_canonical_raw_identifiers(
     INV-bisok. A backtick RAW IDENTIFIER containing spaces is Swift 6.1's spelling
     for a test name: ``func `posts are returned for an anonymous user`()``.
     tree-sitter-swift 0.7.4 parses it as a ``simple_identifier`` whose text keeps
-    the spaces; 0.7.3 could not parse it at all, and its file was retried through
-    a rewrite that turned each such space into an underscore. That rewrite is gone
-    with the 0.7.3 lag, but the NAME it produced is kept, so a symbol's name and
-    id do not depend on which grammar release is installed: every space inside a
-    ``simple_identifier`` that starts with a backtick becomes an underscore,
-    byte for byte, so every span still points at the real file.
+    the spaces; 0.7.3 cannot parse it at all. The underscored NAME is canonical,
+    so a symbol's name and id do not depend on which grammar release is
+    installed: every space inside a ``simple_identifier`` that starts with a
+    backtick becomes an underscore, byte for byte, so every span still points at
+    the real file.
 
     Only identifier leaves are touched, never string contents (a string's
     ``line_str_text`` is another node type), so ``"use `a b` here"`` survives.
@@ -3676,8 +3658,8 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         line below then overwrites by ``Type.method`` -- so by Pass 2 the label
         sets of all but one declaration are gone. Accumulating them here lets the
         label check ask "does ANY overload admit this call" rather than only
-        asking about whichever one survived, which is the difference between 49
-        correct refusals and 340 withdrawn binds on Alamofire.
+        asking about whichever one survived, which would withdraw many true
+        binds (on Alamofire, several times more than it correctly refuses).
         """
         labels = (symbol.meta or {}).get("arg_labels")
         if labels is not None:

@@ -428,9 +428,10 @@ class TestSelectByCoverage:
     def test_generated_dampener_demotes_openapi_models(self):
         """select_by_coverage applies apply_generated_code_weights (WI-lidum).
 
-        kserve's V1beta1 OpenAPI model classes — flagged is_generated_file —
-        accounted for 22 of the top-100 select_by_coverage entries before
-        this dampener was applied. This test pins the fix.
+        Generated OpenAPI model classes (flagged is_generated_file) gather
+        many callers and would otherwise crowd the top of the selection; a
+        heavily-called generated class must lose to a less-called
+        first-party domain class.
         """
         long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
         generated_sym = Symbol(
@@ -557,9 +558,9 @@ class TestSelectByCoverage:
     def test_noise_dampener_demotes_migrations(self):
         """select_by_coverage applies apply_noise_weights (WI-lidum).
 
-        django's ProjectState / ModelState from db/migrations/ accounted
-        for 8 of the top-100 select_by_coverage entries before this
-        dampener was applied.
+        Migration-state classes under db/migrations/ (django's ModelState)
+        are noise for a repo overview; a heavily-called one must lose to a
+        less-called domain class.
         """
         long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
         migration_sym = Symbol(
@@ -738,8 +739,8 @@ class TestFormatCompactBehaviorMap:
             assert edge["src"] in included_ids and edge["dst"] in included_ids
 
     def test_output_closure_preserves_parallel_induced_edges(self):
-        """WI-hakom output-closure: compact edges == the induced subgraph,
-        including parallel edges, in the connectivity-aware path.
+        """Output closure: compact edges == the induced subgraph, including
+        parallel edges, in the connectivity-aware path (WI-hakom).
 
         For every source edge whose both endpoints survive into the compact
         view, that exact edge (by id) must appear in the compact edge array —
@@ -784,8 +785,8 @@ class TestFormatCompactBehaviorMap:
         assert expected == got, f"induced edges dropped: {expected - got}"
 
     def test_strips_heavy_keys_but_keeps_provenance_and_quality(self):
-        """WI-judun: compact drops the heavy, view-irrelevant blocks but KEEPS
-        the finalize provenance/quality signals.
+        """Compact drops the heavy, view-irrelevant blocks but KEEPS the
+        finalize provenance/quality signals (WI-judun).
 
         ``usage_contexts`` is spec-mandated stripped from compact/tiered views
         (spec §usage_contexts), ``sketch_precomputed`` is an internal cache
@@ -831,8 +832,8 @@ class TestFormatCompactBehaviorMap:
                 )
 
     def test_metrics_describe_projection_not_source(self):
-        """WI-pizat: compact recomputes its metrics block from the PROJECTED
-        arrays instead of echoing the source (full-repo) totals.
+        """Compact recomputes its metrics block from the PROJECTED arrays
+        instead of echoing the source (full-repo) totals (WI-pizat).
 
         ``analysis_incomplete`` is left untouched — per spec §726 it is an
         analyzer-scope flag (early termination / errors / resource limits),
@@ -875,10 +876,11 @@ class TestFormatCompactBehaviorMap:
             assert result["analysis_incomplete"] is False
 
     def test_per_node_centrality_edge_count_and_summary_companions(self):
-        """WI-zotam + WI-kulan: compact annotates each node with its centrality,
-        reports included_edges_count in BOTH selection modes, and emits
+        """Compact annotates each node with its centrality, reports
+        included_edges_count in BOTH selection modes, and emits
         entrypoints_summary / features_summary companions for the truncated
         arrays. Invariant assertions, robust to selection nondeterminism.
+        (WI-zotam, WI-kulan)
         """
         symbols = [make_symbol(f"s{i}") for i in range(8)]
         edges = [
@@ -907,16 +909,16 @@ class TestFormatCompactBehaviorMap:
                 connectivity_aware=connectivity_aware,
                 force_include_entrypoints=False,
             )
-            # WI-zotam (a): every retained node carries a centrality score
+            # every retained node carries a centrality score (WI-zotam)
             for n in result["nodes"]:
                 assert isinstance(n["centrality"], float)
-            # WI-zotam (b): included_edges_count present in BOTH modes == array
+            # included_edges_count present in BOTH modes == array (WI-zotam)
             assert (
                 result["nodes_summary"]["included_edges_count"]
                 == len(result["edges"])
             )
-            # WI-kulan: companion summaries mirror nodes_summary's shape and
-            # reconcile with the emitted/source arrays
+            # companion summaries mirror nodes_summary's shape and
+            # reconcile with the emitted/source arrays (WI-kulan)
             for skey, akey in (("entrypoints_summary", "entrypoints"),
                                ("features_summary", "features")):
                 summ = result[skey]
@@ -928,11 +930,11 @@ class TestFormatCompactBehaviorMap:
             assert result["entrypoints_summary"]["omitted"]["count"] > 0
 
     def test_default_selection_containment_monotonic_multilang(self):
-        """WI-kolal: with the centrality-ranked default (connectivity_aware=False),
-        a smaller --max-symbols budget selects a SUBSET of a larger budget's
-        selection — including across languages. The language_proportional budget
-        allocation must not let a language's slice SHRINK as the global budget
-        grows (which would break nodes(B1) ⊆ nodes(B2))."""
+        """With centrality-ranked selection (connectivity_aware=False), a
+        smaller --max-symbols budget selects a SUBSET of a larger budget's
+        selection — including across languages. No language's slice may SHRINK
+        as the global budget grows (which would break nodes(B1) ⊆ nodes(B2)).
+        (WI-kolal)"""
         # UNEQUAL language sizes + budgets that are NOT multiples of the language
         # count, so int(budget * proportion) truncates and the remainder is
         # redistributed — the exact case that can make a language's slice shrink
@@ -957,8 +959,9 @@ class TestFormatCompactBehaviorMap:
         }
         prev_ids = None
         for budget in range(2, len(symbols) + 1):
-            # Matches the compact CLI default: a GLOBAL centrality-ranked prefix
-            # (language_proportional disabled), which is monotonic by construction
+            # Matches the compact CLI's centrality path (--no-connectivity): a
+            # GLOBAL centrality-ranked prefix (language_proportional disabled),
+            # which is monotonic by construction
             # — unlike the language-stratified allocation, whose remainder
             # redistribution can be non-monotonic (WI-kolal).
             config = CompactConfig(
@@ -977,11 +980,11 @@ class TestFormatCompactBehaviorMap:
             prev_ids = ids
 
     def test_output_closure_all_projected_views(self):
-        """INV-fanur (G4): every compact projected view (both selection modes)
-        is self-consistent — edges reference only included nodes, entrypoints
+        """Every compact projected view (both selection modes) is
+        self-consistent — edges reference only included nodes, entrypoints
         and features reference only included nodes/edges, and every summary
         count matches its array length. The output-closure guardrail for the
-        whole projection-finalize block.
+        whole projection-finalize block (INV-fanur, G4).
         """
         symbols = [make_symbol(f"s{i}") for i in range(12)]
         edges = [make_edge(symbols[i + 1].id, symbols[0].id) for i in range(5)]
@@ -1039,15 +1042,16 @@ class TestFormatCompactBehaviorMap:
                     == len(view["features"]))
 
     def test_connectivity_selection_deterministic_across_hash_seeds(self):
-        """WI-nivuj: connectivity selection is PYTHONHASHSEED-independent.
+        """Connectivity selection is PYTHONHASHSEED-independent (WI-nivuj).
 
-        The seed/frontier iteration was over sets, so a connectivity-score TIE
-        resolved to an arbitrary (hash-seed-dependent) node. This runs an
-        identical selection with a deliberate tie under several hash seeds and
-        asserts the output is identical. A subprocess test (the fix's sorted()
-        lines are covered by the many in-process select_by_connectivity tests);
-        it is what makes the determinism reliably testable — an in-process test
-        cannot vary PYTHONHASHSEED, which is fixed per interpreter.
+        Seed/frontier iteration over an unsorted set would resolve a
+        connectivity-score TIE to an arbitrary (hash-seed-dependent) node, so
+        select_by_connectivity iterates in sorted order. This runs an identical
+        selection with a deliberate tie under several hash seeds and asserts the
+        output is identical. It is a subprocess test (the sorted() lines are
+        covered by the many in-process select_by_connectivity tests) because an
+        in-process test cannot vary PYTHONHASHSEED, which is fixed per
+        interpreter.
         """
         import os
         import subprocess
@@ -1387,14 +1391,15 @@ class TestFormatTieredBehaviorMap:
             assert edge["src"] in included_ids and edge["dst"] in included_ids
 
     def test_nodes_summary_reconciled_after_shrink(self):
-        """INV-pazur: after the post-selection shrink loop prunes nodes/edges to fit the
-        budget, nodes_summary must report the POST-shrink reality — included.count ==
-        len(nodes) and included_edges_count == len(edges) — not the pre-shrink selection.
+        """After the post-selection shrink loop prunes nodes/edges to fit the budget,
+        nodes_summary must report the POST-shrink reality — included.count ==
+        len(nodes) and included_edges_count == len(edges) — not the pre-shrink selection
+        (INV-pazur).
 
-        Two oversized signatures make each node cost ~3000 tokens, far above the loop's
-        250-token/node estimate, so the assembled tier blows the 4k budget and the shrink
-        loop fires, evicting a node. Before the fix nodes_summary kept the pre-shrink
-        counts (2 nodes / 1 edge) while the on-disk arrays held 1 node / 0 edges.
+        Two oversized signatures make each node cost ~3000 tokens, far above the
+        selection's ~80-token/node estimate, so the assembled tier blows the 4k budget and
+        the shrink loop fires, evicting a node. A summary carried over from selection
+        would still say 2 nodes / 1 edge while the on-disk arrays hold 1 node / 0 edges.
         """
         big = "x" * 12000  # ~3000 tokens once serialized -> forces the shrink loop
         a = make_symbol("alpha", path="src/a.py")
@@ -1444,7 +1449,7 @@ class TestRecomputeViewSummary:
         recompute_view_summary(view_map, pop, centrality, emit_edge_count=True)
 
         s = view_map["nodes_summary"]
-        # INV-pazur: counts read straight off the on-disk arrays.
+        # Counts read straight off the on-disk arrays (INV-pazur).
         assert s["included"]["count"] == len(view_map["nodes"]) == 2
         assert s["included_edges_count"] == len(view_map["edges"]) == 1
         # Pruned nodes migrate into omitted; included + omitted partition the population.
@@ -1560,9 +1565,9 @@ class TestExcludedKinds:
     """Tests for EXCLUDED_KINDS constant."""
 
     def test_dependency_excluded(self):
-        """Dependency kinds are excluded. Post-Phase-4b: dev-dependency
-        is the ``dependency`` canonical + ``meta['dependency_scope']``
-        rather than a separate kind."""
+        """Dependency kinds are excluded. A dev-dependency is a
+        ``dependency`` symbol with ``meta['dependency_scope']``, not a
+        separate kind, so this one entry covers both."""
         assert "dependency" in EXCLUDED_KINDS
 
     def test_file_excluded(self):
@@ -1727,8 +1732,8 @@ class TestSelectByTokensFiltering:
         assert "dependency" not in included_kinds
 
     def test_keeps_a_cobol_section_but_drops_a_markdown_heading(self):
-        """INV-siza: a COBOL section is a PERFORM target, a markdown section is
-        a heading. Both are ``kind="section"``; only the heading is excluded."""
+        """A COBOL section is a PERFORM target, a markdown section is a heading.
+        Both are ``kind="section"``; only the heading is excluded (INV-siza)."""
         cobol = make_symbol("REPORT-SECTION", path="src/bank.cob", kind="section",
                             language="cobol")
         heading = make_symbol("Usage", path="README.md", kind="section",
@@ -2040,10 +2045,10 @@ class TestFeatureReprojection:
     slices in the source behavior map carry full-graph node/edge references;
     without re-projection the great majority of those references dangle in the
     compact output (the feature claims to describe a slice of the compact
-    graph but points at pruned content). These tests pin the twin contract to
-    INV-tarol's slice fix: a compact feature must be self-contained — every id
-    it references exists in the compact's own nodes/edges — and a feature whose
-    anchor was pruned is dropped, mirroring entrypoint filtering.
+    graph but points at pruned content). These tests pin the same contract the
+    slice output obeys (INV-tarol): a compact feature must be self-contained —
+    every id it references exists in the compact's own nodes/edges — and a
+    feature whose anchor was pruned is dropped, mirroring entrypoint filtering.
     """
 
     @pytest.mark.parametrize("connectivity_aware", [False, True])
@@ -2263,8 +2268,9 @@ class TestForceIncludeEntrypoints:
             assert ep_sym.id in included_ids, f"Entrypoint {ep_sym.name} should be included"
 
     def test_entrypoints_capped_when_exceeding_budget(self):
-        """When entrypoints far exceed max_symbols, they are capped aggressively
-        to leave room for bridge nodes."""
+        """When entrypoints far exceed max_symbols, forced entrypoints are
+        capped (at half the budget on this centrality path) to leave room for
+        other nodes."""
         # Create 20 entrypoint symbols (simulating many main() functions)
         entrypoint_syms = [make_symbol(f"main_{i}") for i in range(20)]
         helper_syms = [make_symbol(f"helper_{i}") for i in range(30)]
@@ -2279,8 +2285,8 @@ class TestForceIncludeEntrypoints:
             ],
         }
 
-        # With max_symbols=10 and 20 entrypoints (> max_symbols), adaptive cap
-        # kicks in: max_symbols // 3 = 3 forced entrypoints.
+        # With max_symbols=10, the seed quota is max_symbols // 2 = 5 forced
+        # entrypoints, taken in confidence order.
         config = CompactConfig(min_symbols=10, max_symbols=10)
         result = format_compact_behavior_map(
             behavior_map,
@@ -2293,8 +2299,7 @@ class TestForceIncludeEntrypoints:
         included_ids = {n["id"] for n in result["nodes"]}
         entrypoints_included = [s for s in entrypoint_syms if s.id in included_ids]
 
-        # Should have capped entrypoints to 3 (max_symbols // 3) since
-        # 20 entrypoints > max_symbols (10)
+        # Forced entrypoints are capped at the seed quota (max_symbols // 2)
         assert len(entrypoints_included) <= 5, (
             f"Expected at most 5 entrypoints, got {len(entrypoints_included)}"
         )
@@ -2348,7 +2353,7 @@ class TestSelectByCoverageForceInclude:
 
     def test_force_include_skips_in_centrality_loop(self):
         """Force-included symbols are skipped when iterating by centrality."""
-        # This tests the 'continue' branch on line 810-812
+        # This tests the 'continue' branch that skips already-included symbols
         # We need force-included symbols to appear in sorted_symbols too
         # Use language_proportional=False so all symbols are in sorted_symbols
         symbols = [make_symbol(f"sym_{i}") for i in range(5)]
@@ -2747,7 +2752,7 @@ class TestConnectivityAwareSelection:
         assert result.included_edges[0].dst == sym_b.id
 
     def test_preserves_parallel_edges(self):
-        """WI-hakom: parallel edges between the same node pair are ALL retained.
+        """Parallel edges between the same node pair are ALL retained (WI-hakom).
 
         The induced subgraph must be derived from the edge LIST, not a
         (src, dst)-keyed dict — the latter collapses parallel edges (e.g. a
@@ -2841,15 +2846,14 @@ class TestConnectivityAwareSelection:
 
 
 class TestSelectByConnectivityDampening:
-    """Tests for the WI-lidum dampener-stack backfill in select_by_connectivity.
+    """Tests for the dampener stack in select_by_connectivity's own centrality.
 
-    With empty seed_ids, the function selects the highest-centrality
-    symbol as the starting node (compact.py line ~620 fallback). Its
-    internally-computed centrality previously skipped all 8 dampeners
-    that rank_symbols applies — so a high-raw-centrality logger / file-
-    kind / generated symbol would dominate the seed pick, propagating
-    into the connectivity expansion. Patch wires the full dampener
-    stack into the centrality-is-None branch.
+    With empty seed_ids, the function bootstraps from the highest-centrality
+    symbol. When no centrality is passed in, it computes one with the same
+    canonical dampener stack rank_symbols applies; otherwise a
+    high-raw-centrality logger / file-kind / generated symbol would dominate
+    the seed pick and propagate into the connectivity expansion. Each test
+    pins one dampener on that centrality-is-None path. (WI-lidum)
     """
 
     def test_utility_dampener_applied_to_internal_centrality(self):
@@ -3053,10 +3057,8 @@ class TestSelectByConnectivityDampening:
     def test_tier_dampener_applied_to_internal_centrality(self):
         """Empty-seeds seed pick uses tier-weighted centrality.
 
-        WI-lidum's 6-repo audit found tier-by-select_by_connectivity is
-        the largest-evidence dampener cell at this surface (7-22 of
-        top-100 across all 6 repos): without tier weighting, external/
-        tier-3 symbols leak into the seed pick.
+        Without tier weighting, external/tier-3 symbols with many callers
+        leak into the seed pick ahead of first-party code. (WI-lidum)
         """
         from hypergumbo_core.compact import select_by_connectivity
 
@@ -3127,7 +3129,7 @@ class TestSelectByConnectivityIntegration:
         result = format_compact_behavior_map(
             behavior_map, symbols, edges, config,
             force_include_entrypoints=True,
-            connectivity_aware=True,  # Enable new algorithm
+            connectivity_aware=True,  # Enable connectivity-aware selection
         )
 
         # Should have edges (utilities connect entrypoints)
@@ -3143,10 +3145,11 @@ class TestSelectByConnectivityIntegration:
 class TestTieredTokenBudget:
     """Tests for token budget compliance in tiered behavior maps.
 
-    Tiered output must fit within the target token budget. Two fixes:
-    1. Force-included entrypoints must be capped (like compact mode does).
+    Tiered output must fit within the target token budget. Among the
+    mechanisms that keep it there:
+    1. Force-included entrypoints are capped (like compact mode does).
     2. Non-essential fields (analysis_runs, usage_contexts, sketch_precomputed)
-       must be stripped from tiered output.
+       are stripped from tiered output.
     """
 
     def test_tiered_entrypoints_capped(self):
@@ -3185,9 +3188,9 @@ class TestTieredTokenBudget:
     def test_tiered_many_entrypoints_still_produces_nodes(self):
         """With 500+ entrypoints, tiered mode should still include nodes.
 
-        Regression: entrypoint reserve was ep_count * 30 + 400 which for
-        500 entrypoints = 15,400 tokens — exceeding the 4K budget entirely,
-        leaving 0 tokens for nodes. The reserve must be capped.
+        Budget set aside for entrypoints must not grow with the entrypoint
+        count: at ~30 tokens each, 500 entrypoints alone exceed a 4K budget and
+        would leave nothing for nodes. The force-included set is capped instead.
         """
         entrypoint_syms = [make_symbol(f"route_{i}") for i in range(500)]
         other_syms = [make_symbol(f"util_{i}") for i in range(50)]
@@ -3286,8 +3289,8 @@ class TestTieredTokenBudget:
         )
 
     def test_tiered_metrics_describe_projection_not_source(self):
-        """WI-pizat: tiered recomputes its metrics block from the projected
-        arrays instead of echoing the source (full-repo) totals."""
+        """Tiered recomputes its metrics block from the projected arrays
+        instead of echoing the source (full-repo) totals (WI-pizat)."""
         symbols = [make_symbol("a"), make_symbol("b")]
         edges = [make_edge(symbols[1].id, symbols[0].id)]
         behavior_map = {
@@ -3313,15 +3316,15 @@ class TestTieredTokenBudget:
     def test_tiered_low_confidence_entrypoints_dont_crowd_bridge_nodes(self):
         """Low-confidence entrypoints should not crowd out bridge nodes.
 
-        Regression: DMD bakeoff found 64k tiered view had 226 nodes but 0 edges.
-        Root cause: 1790 test main() functions were all force-included, filling
-        the budget before bridge nodes that provide edges could be selected.
+        A repo with many test main() functions would otherwise force-include
+        all of them, filling the budget before the bridge nodes that provide
+        edges can be selected, and leaving a view with many nodes but 0 edges.
         Test mains have confidence ~0.65 (0.9 base * 0.5 test penalty + 0.2
         connectivity boost), so the threshold must be >= 0.7 to filter them.
 
-        Fix: format_tiered_behavior_map filters force_include_ids by confidence
-        (>= 0.7) and caps count. Low-confidence entrypoints compete on centrality
-        with bridge nodes in the regular fill phase.
+        format_tiered_behavior_map therefore force-includes only entrypoints
+        with confidence >= 0.7, capped in count. Low-confidence entrypoints
+        compete on centrality with bridge nodes in the regular fill phase.
         """
         # Real entrypoints (high confidence, like actual main functions)
         real_eps = [make_symbol(f"real_ep_{i}") for i in range(3)]
@@ -3343,7 +3346,7 @@ class TestTieredTokenBudget:
             {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9}
             for ep in real_eps
         ] + [
-            # 0.65 matches real DMD scenario: test penalty (0.5x) + connectivity
+            # 0.65 models a test main: test penalty (0.5x) + connectivity
             {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.65}
             for ep in test_eps
         ]
@@ -3354,8 +3357,9 @@ class TestTieredTokenBudget:
             "entrypoints": entrypoints,
         }
 
-        # 4k budget: ~35-40 symbols fit. Without the fix, 80 test mains
-        # fill the force-include phase, leaving no room for bridge nodes.
+        # 4k budget: ~35-40 symbols fit. Without the confidence filter, 80
+        # test mains would fill the force-include phase, leaving no room for
+        # bridge nodes.
         result = format_tiered_behavior_map(
             behavior_map, all_symbols, edge_list,
             target_tokens=4000,
@@ -3402,10 +3406,9 @@ class TestTieredTokenBudget:
     def test_tiered_self_loop_edges_excluded(self):
         """Self-loop edges (src==dst) are excluded from tiered output.
 
-        Regression: DMD bakeoff iter-002 found 28% of 64k view edges were
-        self-loops (visitor pattern self-references where src==dst). These
-        waste token budget and inflate edge counts without adding useful
-        connectivity information.
+        Self-loops (e.g. visitor-pattern self-references) can make up a large
+        share of a view's edges. They waste token budget and inflate edge
+        counts without adding useful connectivity information.
         """
         sym_a = make_symbol("process")
         sym_b = make_symbol("handle")
@@ -3474,16 +3477,11 @@ class TestTieredTokenBudget:
     def test_tiered_output_respects_token_budget_with_edges(self):
         """Tiered output must not exceed the target token budget.
 
-        Regression: DMD bakeoff iter-002 showed 64k tiered view at 175K tokens
-        (2.7x over budget) because induced edges were added without any budget
-        accounting. DMD 16k was 3.4x over budget (54K tokens for 16K target).
-
-        The root cause: format_tiered_behavior_map selects nodes within budget,
-        then adds ALL induced edges and entrypoints without checking if the
-        total output fits. With dense graphs (DMD has 130K edges for 76K nodes),
-        the induced edge set can dwarf the node budget.
-
-        Fix: Post-selection budget validation with node shrinking to fit edges.
+        format_tiered_behavior_map selects nodes against an estimated node
+        budget, then adds the induced edges and entrypoints. In a dense graph
+        the induced edge set can dwarf the node budget and push the output
+        several times over target, so a post-selection check measures the
+        assembled output and shrinks the node set until it fits.
         """
         # Create a dense graph: 50 nodes, each connected to ~10 others
         all_symbols = [make_symbol(f"func_{i}") for i in range(50)]
@@ -3532,11 +3530,11 @@ class TestTieredTokenBudget:
         )
 
     def test_tiered_budget_compliance_edge_heavy_graph(self):
-        """Edge-heavy graph (like DMD visitor pattern) must still comply.
+        """Edge-heavy graph (like visitor-pattern code) must still comply.
 
-        DMD has ~1.7 edges per node. Many nodes have high fan-out to
-        the same targets. The induced edge set for the selected nodes
-        should be truncated when it would blow the budget.
+        Many nodes have high fan-out to the same targets. When the induced
+        edge set for the selected nodes would blow the budget, the output is
+        shrunk until it fits.
         """
         # 30 nodes, high fan-out: each calls 15 others
         syms = [make_symbol(f"visit_{i}") for i in range(30)]
@@ -3567,13 +3565,11 @@ class TestTieredTokenBudget:
     def test_tiered_4k_produces_edges_when_graph_has_connectivity(self):
         """4k tiered view should include edges when the graph is connected.
 
-        Regression: All three bakeoff repos (Django, DMD, NestJS) produced
-        0 edges in their 4k views despite having dense graphs. The 4k view
-        selected 7-12 high-centrality nodes independently, without considering
-        whether they were adjacent. A connected subgraph of 5 nodes with
-        edges is more useful than 12 disconnected nodes.
-
-        Fix: Use connectivity-aware selection in format_tiered_behavior_map.
+        Picking a handful of high-centrality nodes independently, without
+        regard to adjacency, yields a small view with 0 edges even on a dense
+        graph. A connected subgraph of 5 nodes with edges is more useful than
+        12 disconnected nodes, so format_tiered_behavior_map uses
+        connectivity-aware selection.
         """
         # Create a graph with clear connected components
         # Component 1: entrypoint -> service -> repository
@@ -3628,18 +3624,16 @@ class TestTieredTokenBudget:
     def test_shrink_loop_preserves_edges_with_disconnected_seeds(self):
         """Shrink loop must preserve edges when seeds don't share edges.
 
-        Regression: DEEP bakeoff cohort #5 (iceberg) showed 64k tiered view
-        with 169 nodes but 0 edges, despite select_by_connectivity returning
-        362 nodes with 1056 induced edges. Root cause: the shrink loop sorted
-        removal candidates by (force_include, global_centrality). Force-included
-        seeds (test entrypoints) were protected, but frontier-expanded production
-        nodes (which provided all the edges) had LOW global centrality and were
-        removed first. After shrinking, only disconnected seeds remained.
+        Ranking removal candidates by (force_include, global_centrality) alone
+        protects force-included seeds (e.g. test entrypoints) while removing
+        the frontier-expanded production nodes first, because those have LOW
+        global centrality even though they provide all the edges. The shrunk
+        view is then only disconnected seeds with 0 edges.
 
-        Fix: Shrink loop considers local edge degree when choosing victims.
-        Nodes with zero local edges are removed first (they add no connectivity
-        value), and among nodes with edges, those with fewer local edges are
-        preferred for removal.
+        So the shrink loop considers local edge degree when choosing victims:
+        nodes with zero local edges are removed first (they add no
+        connectivity value), then non-forced nodes, then the lowest
+        centrality.
         """
         # 60 entrypoint seeds in integration test paths — each tests a
         # different subsystem. They don't directly call each other.
@@ -3701,9 +3695,9 @@ class TestTieredTokenBudget:
         }
 
         # 4k budget: forces aggressive shrinking.
-        # Without the fix, the shrink loop removes all prod nodes (low global
-        # centrality, not force-included) leaving only disconnected seeds
-        # with 0 edges.
+        # A shrink loop ranking by global centrality alone would remove all
+        # prod nodes (low global centrality, not force-included), leaving only
+        # disconnected seeds with 0 edges.
         result = format_tiered_behavior_map(
             behavior_map, all_symbols, all_edges,
             target_tokens=4000,
@@ -3721,17 +3715,16 @@ class TestTieredTokenBudget:
     def test_language_proportional_sketch(self):
         """Dominant language must be represented in budget views.
 
-        Regression: DEEP bakeoff cohort #6 (git) showed 64k tiered view
-        with 99 Python nodes and 0 C nodes, despite git being 99%+ C code.
-        Root cause: Python entrypoints (git-p4.py main) had 33 frontier
-        edges while C entrypoints (common-main.c main) had only 3. BFS
-        frontier was 88% Python, so greedy selection picked Python nodes
-        exclusively.
+        When the dominant language's entrypoints have few or no resolvable
+        outgoing edges (e.g. a C main() dispatching through a function-pointer
+        table) while a minor language's entrypoints have many, the BFS
+        frontier is almost entirely the minor language and greedy selection
+        picks only its nodes.
 
-        Fix: After building the seed set from entrypoints, check language
-        distribution of the frontier. For any language with >10% of total
-        edges but underrepresented in the frontier, inject top-centrality
-        nodes from that language as additional seeds.
+        So after building the seed set from entrypoints, any language with
+        >= 10% of edge mentions but no node in the seeds' frontier gets its
+        highest-degree node injected as an additional seed
+        (find_underrepresented_language_seeds).
         """
         # 100 C nodes forming a dense call graph (the dominant language)
         c_funcs = [
@@ -3800,10 +3793,9 @@ class TestTieredTokenBudget:
         py_nodes = [n for n in result_nodes if n.get("language") == "python"]
 
         # C has ~200 edges (87% of total) and 100 nodes.
-        # Without the fix: BFS from seeds finds no C frontier (c_main is
-        # isolated), so only Python nodes are selected.
-        # With the fix: top-centrality C nodes are injected as seeds,
-        # letting BFS expand into the C subgraph.
+        # BFS from the entrypoint seeds finds no C frontier (c_main is
+        # isolated), so without language seeding only Python nodes would be
+        # selected. The injected C seed lets BFS expand into the C subgraph.
         assert len(c_nodes) >= len(py_nodes), (
             f"C has {len(c_nodes)} nodes vs Python {len(py_nodes)}. "
             f"C is the dominant language (100 nodes, {len(c_edges)} edges) "
@@ -3815,11 +3807,11 @@ class TestTieredTokenBudget:
     def test_tiered_excludes_boundary_nodes(self):
         """Boundary nodes (external_symbol) should not appear in tiered output.
 
-        Boundary nodes exist in all_symbols for slice traversal but are filtered
-        from the full behavior_map["nodes"]. The tiered view should also exclude
-        them. Without this fix, when no high-confidence entrypoints exist, the
-        connectivity selection picks boundary nodes (high in-degree from imports)
-        instead of first-party code nodes.
+        Boundary nodes exist in the symbol list so slice and other consumers
+        can reason about external edges, but they have no source code, so the
+        tiered view excludes them. Otherwise, when no high-confidence
+        entrypoints exist, the connectivity selection picks boundary nodes
+        (high in-degree from imports) instead of first-party code nodes.
         """
         # First-party function nodes
         func_a = make_symbol("processData", path="src/process.js", language="javascript")
@@ -3976,8 +3968,8 @@ class TestCrossCuttingEdgeSeeding:
 
     Compact mode must retain cross-cutting edge types (calls,
     dispatches_to, event_publishes) by pre-seeding their endpoints
-    into the node selection. Post WI-vumum-juvil, HTTP/gRPC/GraphQL
-    edges fold to canonical 'calls' and survive via that membership.
+    into the node selection. HTTP/gRPC/GraphQL edges are canonical
+    'calls' edges (protocol in meta) and survive via that membership.
     """
 
     def test_routes_to_edges_preserved(self):
@@ -4049,7 +4041,7 @@ class TestCrossCuttingEdgeSeeding:
     def test_http_calls_edges_preserved(self):
         """HTTP-protocol calls survive compact when endpoints are seeded.
 
-        Post WI-vumum-juvil, HTTP edges emit as canonical 'calls' with
+        HTTP edges are emitted as canonical 'calls' with
         meta['protocol']='http'; cross-cutting seeding picks them up
         via the canonical name.
         """
@@ -4088,7 +4080,7 @@ class TestCrossCuttingEdgeSeeding:
         )
 
     def test_cross_cutting_seeds_capped(self):
-        """Cross-cutting seeds don't exceed 25% of max_symbols budget."""
+        """Many cross-cutting seeds stay within the max_symbols budget."""
         from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
 
         # Create many dispatch targets (more than budget allows)
@@ -4110,7 +4102,7 @@ class TestCrossCuttingEdgeSeeding:
             "entrypoints": [],
         }
 
-        # max_symbols=20, so cross-cutting cap = 20//4 = 5
+        # max_symbols=20; with no entrypoints the seed quota is 20//2 = 10
         config = CompactConfig(min_symbols=5, max_symbols=20)
         result = format_compact_behavior_map(
             behavior_map, all_symbols, edges, config,
@@ -4150,29 +4142,26 @@ class TestCrossCuttingEdgeSeeding:
     def test_cross_cutting_constant_values(self):
         """CROSS_CUTTING_EDGE_TYPES contains the expected edge types.
 
-        Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv / WI-mifor-vabul /
-        WI-hahap-farid / WI-vumum-juvil), bridge / IPC / protocol-call
-        / route / DI / annotation edges all fold to canonical 'calls' /
-        'dispatches_to' / 'event_publishes' (with mechanism in meta).
-        The set includes 'calls' and 'event_publishes' so cross-cutting
-        endpoint seeding picks up FFI/IPC/HTTP/gRPC/GraphQL/queue/CRDT/MQ
-        endpoints after each rename. Phase 4b (WI-vomoj-suhaz) pruned the
-        bridge/IPC entries; WI-vumum-juvil pruned the protocol-call
-        entry (http_calls); the canonical members transparently cover
-        the folds.
+        Bridge / IPC / protocol-call / route / DI / annotation edges are
+        emitted as canonical 'calls' / 'dispatches_to' / 'event_publishes'
+        (with the mechanism in meta), per ADR-0023 §6. The set holds those
+        canonical names, so cross-cutting endpoint seeding picks up
+        FFI/IPC/HTTP/gRPC/GraphQL/queue/CRDT/MQ endpoints through them, and
+        the pre-fold names (routes_to, di_resolves, http_calls) are not
+        members.
         """
         from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
 
-        # Canonical relationship-axis values (post-Phase-3 fold targets):
+        # Canonical relationship-axis values (the fold targets):
         assert "calls" in CROSS_CUTTING_EDGE_TYPES
         assert "dispatches_to" in CROSS_CUTTING_EDGE_TYPES
         assert "event_publishes" in CROSS_CUTTING_EDGE_TYPES
-        # Phase 4b / WI-vumum-juvil pruned the deprecated entries:
+        # Pre-fold names are not members:
         assert "routes_to" not in CROSS_CUTTING_EDGE_TYPES
         assert "di_resolves" not in CROSS_CUTTING_EDGE_TYPES
         assert "http_calls" not in CROSS_CUTTING_EDGE_TYPES
-        # "ffi_calls" was removed: it's the name of a Python local variable
-        # in the FFI linkers, not an emitted Edge.edge_type value.
+        # "ffi_calls" is the name of a Python local variable in the FFI
+        # linkers, not an emitted Edge.edge_type value.
         assert "ffi_calls" not in CROSS_CUTTING_EDGE_TYPES
         # Pure structural edges should NOT be in the set:
         assert "imports" not in CROSS_CUTTING_EDGE_TYPES
@@ -4182,11 +4171,12 @@ class TestCrossCuttingEdgeSeeding:
 class TestCompactSeedBudget:
     """Tests for seed budget management in compact mode.
 
-    Large repos (keycloak: 79k nodes, 500 entrypoints) produce fragmented
-    compact output when forced seeds consume most of the node budget, leaving
-    insufficient room for bridge nodes.  The fix caps total forced seeds
-    (entrypoints + cross-cutting endpoints) to at most 1/3 of max_symbols,
-    reserving 2/3 for frontier expansion.
+    Large repos with hundreds of entrypoints (e.g. keycloak's JAX-RS handlers)
+    produce fragmented compact output when forced seeds consume most of the
+    node budget, leaving insufficient room for bridge nodes. In connectivity
+    mode, seeds (entrypoints + cross-cutting endpoints) are metered into the
+    selection stream with ``bridges_per_seed`` (2) greedy picks after each
+    seed, so bridges always get budget.
     """
 
     def test_many_entrypoints_limited_for_bridging(self):
@@ -4247,24 +4237,20 @@ class TestCompactSeedBudget:
         # Key assertion: essentially zero singletons — every seed has room for
         # its helper to be pulled in by the frontier, so no node is disconnected.
         #
-        # WI-zulij relaxed this from `== 0` to "at most the final emitted node",
-        # and the relaxation is a real (small) weakening that deserves its
-        # reasoning in place rather than a silent edit. Seeds are no longer
-        # preloaded; they are metered into a budget-independent stream so that a
-        # smaller budget's node list is an ordered prefix of a larger one's
-        # (containment went 55/120 -> 120/120 budget pairs on the eight
-        # 2026-07-17 maps). Truncating any such stream can land on a seed, and
-        # the node in the LAST slot has no remaining budget for a bridge to
-        # serve it. Measured here: exactly one singleton, at index 99 of 100.
+        # The bound is "at most the final emitted node", not zero. Seeds are
+        # metered into a budget-independent stream so that a smaller budget's
+        # node list is an ordered prefix of a larger one's (WI-zulij
+        # containment). Truncating any such stream can land on a seed, and the
+        # node in the LAST slot has no remaining budget for a bridge to serve
+        # it; this fixture ends with exactly one such singleton.
         #
         # It cannot be special-cased away: "don't take a seed in the final slot"
-        # is a budget-DEPENDENT decision, and reintroducing budget-dependence
-        # into the stream is exactly what broke containment in the first place.
+        # is a budget-DEPENDENT decision, and budget-dependence in the stream
+        # is exactly what breaks containment.
         #
-        # The bound still catches the regression it was written for: at a 1:1
-        # seed:bridge ratio this fixture strands 14 of 100 (a seed's neighbours
-        # get out-scored globally right after it is admitted), which is why the
-        # shipped ratio is 1:2.
+        # The bound still catches seed stranding: at a 1:1 seed:bridge ratio
+        # this fixture strands 14 of 100 (a seed's neighbours get out-scored
+        # globally right after it is admitted), which is why the ratio is 1:2.
         assert singletons <= 1, (
             f"Singletons: {singletons}/{len(nodes)} = "
             f"{singletons / len(nodes):.0%}. "
@@ -4279,8 +4265,9 @@ class TestCompactSeedBudget:
             )
 
     def test_total_forced_seeds_capped(self):
-        """Total forced seeds (entrypoints + cross-cutting) don't exceed
-        1/3 of max_symbols, leaving 2/3 for frontier expansion."""
+        """With more seeds (entrypoints + cross-cutting endpoints) than
+        max_symbols, forced seeds do not consume the whole budget: some
+        bridge nodes are still reached by frontier expansion."""
         from hypergumbo_core.compact import (
             format_compact_behavior_map,
             CompactConfig,
@@ -4344,8 +4331,8 @@ class TestCompactSeedBudget:
 
 
 class TestCompactNodeSlimProjection:
-    """WI-pohuf: compact/tiered views emit a slim node projection, not the full
-    ~24-field Symbol.to_dict(), so token budgets fit many symbols instead of ~1.
+    """Compact/tiered views emit a slim node projection, not the full ~24-field
+    Symbol.to_dict(), so token budgets fit many symbols instead of ~1 (WI-pohuf).
     """
 
     _HEAVY_FIELDS = (
@@ -4401,8 +4388,8 @@ class TestCompactNodeSlimProjection:
             assert "id" in n and "centrality" in n
 
     def test_tiered_reprojects_features_not_wholesale(self):
-        # A feature referencing every node — pre-fix this was copied wholesale
-        # into the tier (WI-pohuf); now it is re-projected onto the retained set.
+        # A feature referencing every node must be re-projected onto the
+        # retained set, not copied wholesale into the tier (WI-pohuf).
         symbols = [make_symbol(f"s{i}") for i in range(20)]
         edges = [make_edge(symbols[i + 1].id, symbols[i].id) for i in range(19)]
         entrypoints = [{"symbol_id": symbols[0].id, "kind": "function",
@@ -4428,9 +4415,9 @@ class TestCompactNodeSlimProjection:
         assert "features_summary" in tiered
 
     def test_tiered_does_not_collapse_under_feature_overhead(self):
-        # WI-pohuf core: a large feature + full nodes used to make the shrink
-        # loop trim the tier to a single node. With slim nodes + feature
-        # re-projection, many nodes survive a modest budget.
+        # A large feature + full nodes would make the shrink loop trim the
+        # tier to a single node. With slim nodes + feature re-projection,
+        # many nodes survive a modest budget (WI-pohuf).
         symbols = [make_symbol(f"s{i}") for i in range(40)]
         edges = [make_edge(symbols[i + 1].id, symbols[i].id) for i in range(39)]
         entrypoints = [{"symbol_id": symbols[0].id, "kind": "function",
@@ -4448,7 +4435,7 @@ class TestCompactNodeSlimProjection:
             "features": features,
         }
         tiered = format_tiered_behavior_map(bm, symbols, edges, 3000)
-        # Well above the pre-fix collapse-to-1; the exact count depends on the
+        # Well above a collapse-to-1; the exact count depends on the
         # connectivity selection, but the tier must not degenerate.
         assert len(tiered["nodes"]) > 3
         # and the emitted nodes are slim
@@ -4458,25 +4445,28 @@ class TestCompactNodeSlimProjection:
 
 
 class TestSeededContainment:
-    """WI-vofud (WI-kolal regression): the SEED machinery must not break
-    --max-symbols containment monotonicity.
+    """The SEED machinery must not break --max-symbols containment
+    monotonicity on the centrality path (WI-vofud, WI-kolal).
 
-    The prior containment test passed with ``entrypoints: []`` and
-    ``force_include_entrypoints=False`` — it never exercised the seeds, and
-    the seeds were exactly where the budget-dependence lived (measured
-    2026-08-01: containment violated on 6 of 8 real bakeoff maps). Three
-    mechanisms, all covered here:
+    A containment test with ``entrypoints: []`` and
+    ``force_include_entrypoints=False`` never exercises the seeds, and the
+    seeds are where budget-dependence can enter. These tests run with seeds
+    present and cover three ways a seed policy can break containment:
 
-    1. The entrypoint cap switched REGIMES on ``len(eps) > max_symbols``
-       (1/3 vs 1/2), so growing the budget past the entrypoint count jumped
-       the forced set discontinuously.
-    2. The cross-cutting seed budget was ``max//2 - len(forced)``, which
-       SHRINKS as the forced set grows — at a larger budget the
-       cross-cutting seeds could vanish entirely (caddy 50->100 dropped
-       fmt.Errorf and the Dispenser dispatch endpoints).
-    3. The coverage stop counted seed centrality, so a larger budget's
-       bigger seed set inflated start coverage and stopped the centrality
-       fill EARLIER.
+    1. A cap that switches REGIMES with the budget (e.g. on
+       ``len(eps) > max_symbols``) makes the forced set jump discontinuously
+       as the budget grows past the entrypoint count.
+    2. A cross-cutting seed budget derived as ``max//2 - len(forced)``
+       SHRINKS as the forced set grows, so at a larger budget the
+       cross-cutting seeds can vanish entirely.
+    3. A coverage stop that counts seed centrality lets a larger budget's
+       bigger seed set inflate start coverage and stop the centrality fill
+       EARLIER.
+
+    The seed policy under test avoids all three: one fixed-order seed list
+    (entrypoints by confidence, then cross-cutting endpoints by edge count)
+    under one quota that only grows with the budget, and a coverage stop
+    computed from the fixed global order alone.
     """
 
     def _seeded_map(self):
@@ -4505,8 +4495,7 @@ class TestSeededContainment:
         # The ladder uses a NON-cross-cutting edge type deliberately:
         # "calls" is in CROSS_CUTTING_EDGE_TYPES, so a calls-ladder would
         # make every core node a seed candidate and swamp the isolation
-        # this fixture exists for (the first draft of this test passed
-        # vacuously for exactly that reason).
+        # this fixture exists for, and the test would pass vacuously.
         for i, s in enumerate(core):
             for j in range(min(i, 12)):
                 edges.append(make_edge(core[(i + j + 1) % 40].id, s.id,
@@ -4528,9 +4517,9 @@ class TestSeededContainment:
 
     @pytest.mark.parametrize("coverage", [0.8, 0.3])
     def test_containment_across_budgets_with_seeds(self, coverage):
-        """Budgets straddle the entrypoint count (12), so the old regime
-        switch fires between 8 and 16; the low coverage target exercises
-        the coverage-stop interaction."""
+        """Budgets straddle the entrypoint count (12), so a regime switch on
+        ``len(eps) > max_symbols`` would fire between 8 and 16; the low
+        coverage target exercises the coverage-stop interaction."""
         behavior_map, symbols, edges = self._seeded_map()
         prev_ids: set[str] | None = None
         for budget in (4, 8, 16, 24, 40, 62):
@@ -4551,9 +4540,9 @@ class TestSeededContainment:
             prev_ids = ids
 
     def test_seeds_still_present_at_generous_budget(self):
-        """The fix must not win containment by deleting the seed features:
-        at a budget covering everything, entrypoints and cross-cutting
-        endpoints are all included."""
+        """Containment must not be won by deleting the seed features: at a
+        budget covering everything, entrypoints and cross-cutting endpoints
+        are all included."""
         behavior_map, symbols, edges = self._seeded_map()
         config = CompactConfig(
             min_symbols=1, max_symbols=62, target_coverage=1.0,
@@ -4584,17 +4573,17 @@ class TestSeededContainment:
 
 
 class TestDefaultSelectionSharesSketchPopulation:
-    """WI-zulij: compact's default and sketch advertise the same thing —
-    "the important symbols" — so they must rank the same POPULATION.
+    """Compact's centrality path (``connectivity_aware=False``, the function
+    default; ``--no-connectivity`` on the CLI) and sketch advertise the same
+    thing — "the important symbols" — so they must rank the same POPULATION.
+    (WI-zulij)
 
-    They did not. Both surfaces already rank with ``compute_dampened_centrality``
-    (the 2026-07-09 default flip landed), but sketch filtered to key symbols over
-    test-source-free edges while compact's default filtered nothing at all. On
-    the eight 2026-07-17 bakeoff maps their top-10 agreed 5.6/10 on average.
-    Measured per clause, adopting sketch's symbol filter alone took that to
-    7.1/10 and the edge filter alone to 8.4/10; both together reach 10/10 on
-    all eight. These tests pin the population, which is the part that can
-    regress silently — the agreement number itself is a property of the corpus.
+    Both rank with ``compute_dampened_centrality``; on top of that, both
+    filter to key symbols (``key_symbols``) over edges that do not originate
+    in test files (``production_edges``). Of the two filters, the edge filter
+    contributes more to the two surfaces agreeing on their top symbols. These
+    tests pin the population, which is the part that can regress silently —
+    the agreement rate itself is a property of the corpus.
     """
 
     def _map(self, symbols):
@@ -4608,10 +4597,9 @@ class TestDefaultSelectionSharesSketchPopulation:
     def test_default_selection_excludes_non_key_kinds(self):
         """A high-degree ``file`` node must not reach compact's default output.
 
-        ``file`` is the shape that actually leads compact today: sherpa-csharp's
-        top five emitted nodes were all ``run*.sh`` file nodes, and zoxide led
-        with a shell completion script and install.sh. They outrank real code
-        because every symbol in a file points at its file node.
+        Unfiltered, ``file`` nodes (shell scripts, install.sh and the like) lead
+        the output: they outrank real code because every symbol in a file
+        points at its file node.
         """
         real = [make_symbol(f"handler_{i}", path=f"src/h{i}.py") for i in range(4)]
         file_node = make_symbol("src/main.py", path="src/main.py", kind="file")
@@ -4662,7 +4650,7 @@ class TestDefaultSelectionSharesSketchPopulation:
         )
 
     def test_default_centrality_ignores_edges_from_test_files(self):
-        """The edge filter is the dominant clause — measured 8.4/10 alone.
+        """The edge filter: edges from test files do not count toward centrality.
 
         A symbol called only by its own test suite must not outrank a symbol
         called by production code. Without the edge filter it does, because
@@ -4671,8 +4659,7 @@ class TestDefaultSelectionSharesSketchPopulation:
         Edges are ``references``, NOT ``calls``: ``calls`` is a member of
         ``CROSS_CUTTING_EDGE_TYPES``, so every endpoint becomes a seed
         candidate, force-inclusion swamps the budget, and the ranking under
-        test is never exercised. That is the exact vacuity that made the first
-        draft of WI-vofud's containment test pass for the wrong reason.
+        test is never exercised.
         """
         well_tested = make_symbol("well_tested", path="src/a.py")
         genuinely_central = make_symbol("genuinely_central", path="src/b.py")
@@ -4705,12 +4692,13 @@ class TestDefaultSelectionSharesSketchPopulation:
         )
 
     def test_connectivity_mode_keeps_its_own_population(self):
-        """``--connectivity`` is deliberately NOT narrowed.
+        """``--connectivity`` deliberately does NOT narrow its population to
+        key symbols.
 
-        Its contract is bridging disconnected components (WI-vofud records why
-        it keeps the adaptive seed policy), and a file node is often the only
-        thing joining two islands. Narrowing it would remove the bridges the
-        mode exists to find.
+        Its contract is bridging disconnected components, and a file node is
+        often the only thing joining two islands. Narrowing it would remove the
+        bridges the mode exists to find. (Only its seeds are restricted to key
+        symbols; see TestConnectivityDefaultPopulation.)
         """
         real = [make_symbol(f"h_{i}", path=f"src/h{i}.py") for i in range(3)]
         file_node = make_symbol("src/main.py", path="src/main.py", kind="file")
@@ -4742,25 +4730,23 @@ def _boundary_symbol(name: str, language: str = "python") -> Symbol:
 
 
 class TestConnectivityDefaultPopulation:
-    """WI-fadab: the DEFAULT (connectivity) path narrows its SEEDS, not its bridges.
+    """The DEFAULT (connectivity) path narrows its SEEDS, not its bridges (WI-fadab).
 
-    WI-zulij made connectivity compact's default and exempted it from the
-    key-symbol narrowing, because a file node is often the only thing joining
-    two islands. That exemption was written for BRIDGE picks, but it also left
-    the SEED list (entrypoints, cross-cutting endpoints, the no-seed bootstrap)
-    and the external-boundary placeholders unfiltered. Measured on the
-    self-analysis map: at ``--max-symbols 10`` four of ten emitted nodes were
-    ``pyproject.toml`` [project.scripts] ``file`` nodes (entrypoint SEEDS) and
-    four were ``external_symbol`` nodes at ``<external>`` — the noise sat at the
-    head of what compact advertises as the most important symbols.
+    Connectivity mode is exempt from the key-symbol narrowing for BRIDGE picks,
+    because a file node is often the only thing joining two islands. The SEED
+    list (entrypoints, cross-cutting endpoints, the no-seed bootstrap) and the
+    external-boundary placeholders get no such exemption: unfiltered, non-key
+    seeds such as ``pyproject.toml`` [project.scripts] ``file`` nodes and
+    ``external_symbol`` placeholders at ``<external>`` sit at the head of what
+    compact advertises as the most important symbols.
 
     The policy these tests pin: a seed is a key symbol (seeds are not bridges);
     boundary nodes are not in the population at all (they have no source, and a
     shared stdlib callee is not a structural bridge — the tiered view already
     drops them); a non-key node reached as a real bridge is still admitted; and
     a seed that lands outside every selected component is anchored to its own
-    best neighbour, since nothing glues it on admission once the boundary
-    placeholders are gone.
+    best neighbour, since with the boundary placeholders out of the population
+    nothing glues it on admission.
     """
 
     def _map(self, symbols, eps=()):
@@ -4782,8 +4768,8 @@ class TestConnectivityDefaultPopulation:
         """The self-map shape: a pyproject [project.scripts] ``file`` entrypoint
         pointing at an unresolved console-script target.
 
-        Before the fix the stream opened with the file seed and spent its first
-        bridge pick on the boundary node next to it.
+        Unfiltered, the stream would open with the file seed and spend its
+        first bridge pick on the boundary node next to it.
         """
         script_entry = make_symbol("pyproject.toml", path="pyproject.toml", kind="file")
         target = _boundary_symbol("pkg.cli:main")
@@ -4812,8 +4798,9 @@ class TestConnectivityDefaultPopulation:
         """Two functions that both call ``time.monotonic`` are not connected.
 
         A shared external callee scores as a perfect bridge (component growth
-        2), so before the fix it won the first pick; joining two islands through
-        a stdlib placeholder manufactures structure the code does not have.
+        2), so if it were in the population it would win the first pick; joining
+        two islands through a stdlib placeholder manufactures structure the code
+        does not have.
         """
         a = make_symbol("ep_a", path="src/a.py")
         b = make_symbol("ep_b", path="src/b.py")
@@ -4839,10 +4826,10 @@ class TestConnectivityDefaultPopulation:
         )
 
     def test_a_test_file_symbol_is_not_a_bridge(self):
-        """WI-zitag: a test that exercises two entrypoints joins them in the
-        call graph but not in the production code. Before the fix it won the
-        first pick as a perfect bridge (express: 248 of 400 emitted nodes were
-        test-path at K=400)."""
+        """A test that exercises two entrypoints joins them in the call graph
+        but not in the production code. If it were in the population it would
+        win the first pick as a perfect bridge, so test-path symbols are kept
+        out of connectivity mode's population (WI-zitag)."""
         a = make_symbol("ep_a", path="src/a.py")
         b = make_symbol("ep_b", path="src/b.py")
         t = make_symbol("exercise_both", path="tests/test_ab.py")
@@ -4884,7 +4871,7 @@ class TestConnectivityDefaultPopulation:
 
         The hub is a Makefile ``target``, NOT a ``file``: the dampener stack's
         file-kind stage already demotes a ``file`` hub below its callers, so a
-        ``file`` fixture passes on the unfixed code and tests nothing. Edges are
+        ``file`` fixture would pass even without the seed filter and test nothing. Edges are
         ``references`` (not ``calls``) so no cross-cutting seed exists and the
         bootstrap branch is what actually runs.
         """
@@ -4910,12 +4897,11 @@ class TestConnectivityDefaultPopulation:
         The scorer's primary key is growth of the LARGEST component, so a lone
         seed's neighbour scores the minimum and loses to any node touching the
         main component. With boundary placeholders out of the population nothing
-        glues the seed on admission any more: measured on the self-analysis map,
-        every third emitted node (each a ``scripts/*.py:main`` seed) was isolated
-        at K=100. Here ``ep_z`` is that seed and the ``c*`` fan is the main
-        component's cheaper growth; without the anchor both picks after ``ep_z``
-        go to the fan and ``ep_z`` ends with no edge, though it is not the last
-        emitted node.
+        glues the seed on admission, so without the anchor such seeds (e.g. a
+        repo's many ``scripts/*.py:main`` entrypoints) end up isolated. Here
+        ``ep_z`` is that seed and the ``c*`` fan is the main component's cheaper
+        growth; without the anchor both picks after ``ep_z`` go to the fan and
+        ``ep_z`` ends with no edge, though it is not the last emitted node.
         """
         ep_a = make_symbol("ep_a", path="src/a.py")
         ep_z = make_symbol("ep_z", path="src/z.py")
@@ -4971,26 +4957,22 @@ class TestConnectivityDefaultPopulation:
 
 
 class TestConnectivityContainmentMonotonicity:
-    """WI-vofud's containment property, for CONNECTIVITY mode.
+    """The --max-symbols containment property, for CONNECTIVITY mode.
 
-    ``nodes(K1) subset-of nodes(K2)`` for ``K1 <= K2``. WI-vofud established this
-    on the centrality path and recorded that connectivity could not have it:
-    "bridge expansion is not a ranked prefix, so budget-containment was never
-    that mode's contract."
+    ``nodes(K1) subset-of nodes(K2)`` for ``K1 <= K2``, the same property the
+    centrality path holds (WI-vofud). ``select_by_connectivity``'s greedy loop
+    never reads the budget — ``max_additional`` appears only in the ``while``
+    guard — so with a budget-independent seed stream the K1 node list is a
+    literal ordered PREFIX of the K2 list.
 
-    Measured, that justification is false. ``select_by_connectivity``'s greedy
-    loop never reads the budget — ``max_additional`` appears only in the ``while``
-    guard — so with a budget-independent seed set the K1 node list is a literal
-    ordered PREFIX of the K2 list: 120/120 pairs contained across the eight
-    2026-07-17 bakeoff maps, pretix included, versus 55/120 today.
-
-    The break is the en-bloc, budget-SIZED seed preload. Every seed is admitted
-    before the first greedy pick, so a larger budget hands the scorer a different
-    union-find state and produces a different SEQUENCE of picks rather than a
-    longer one — a node the small budget spent a pick on gets displaced by a
-    bridge that only scores well because an extra seed exists. Porting WI-vofud's
-    monotone seed QUOTA does not help (measured 65 -> 66 violations on the real
-    corpus): the order was never the problem, the en-bloc admission was.
+    What breaks it is an en-bloc, budget-SIZED seed preload. If every seed is
+    admitted before the first greedy pick, a larger budget hands the scorer a
+    different union-find state and produces a different SEQUENCE of picks
+    rather than a longer one — a node the small budget spent a pick on gets
+    displaced by a bridge that only scores well because an extra seed exists.
+    A monotone seed quota does not fix that; the en-bloc admission is the
+    problem. Compact therefore interleaves seeds with greedy picks
+    (``interleave=True``) against the total budget. (WI-zulij)
     """
 
     def _map(self, symbols, eps):
@@ -5004,9 +4986,10 @@ class TestConnectivityContainmentMonotonicity:
     def _fixture(self):
         """Two entrypoints joined only by ``zbridge``, plus a higher-centrality cluster.
 
-        Tuned so the displacement actually fires — an untuned version of this
-        shape does NOT reproduce it, which is worth stating because it is the
-        difference between a red test and a green one that proves nothing:
+        Tuned so the displacement actually fires under a budget-sized seed
+        preload — an untuned version of this shape does NOT reproduce it, which
+        is worth stating because it is the difference between a red test and a
+        green one that proves nothing:
 
         * ``zbridge`` must LOSE while one seed is present. Score order is
           (component_growth, edges_added, centrality); with a single seed every
@@ -5015,12 +4998,13 @@ class TestConnectivityContainmentMonotonicity:
           solely to lift the cluster's centrality above the bridge's.
         * ``zbridge`` must WIN once both are seeded, which it does on the PRIMARY
           key: joining ``ep_a``'s and ``ep_z``'s components scores growth 2.
-        * The entrypoint cap ``max(1, K // 2)`` must cross 1 -> 2 inside the budget
-          range, which is why 3 and 4 are adjacent budgets here.
+        * A preload cap of ``max(1, K // 2)`` entrypoints must cross 1 -> 2
+          inside the budget range, which is why 3 and 4 are adjacent budgets
+          here.
 
-        Result: at K=3 the seed set is ``{ep_a}`` and both picks go to leaves; at
-        K=4 ``ep_z`` joins, ``zbridge`` takes the first pick, and ``leaf_1`` is
-        displaced by a LARGER budget.
+        Under such a preload: at K=3 the seed set is ``{ep_a}`` and both picks
+        go to leaves; at K=4 ``ep_z`` joins, ``zbridge`` takes the first pick,
+        and ``leaf_1`` is displaced by a LARGER budget.
         """
         ep_a = make_symbol("ep_a", path="src/aaa.py")
         ep_z = make_symbol("ep_z", path="src/aaz.py")
@@ -5071,16 +5055,14 @@ class TestConnectivityContainmentMonotonicity:
 
 
 class TestConnectivityDefaultFlip:
-    """WI-zulij: `compact`'s default selection is the CONNECTED CORE.
+    """`compact`'s default selection is the CONNECTED CORE (WI-zulij).
 
-    This reverses the 2026-06-10 D12 reading ("centrality-ranked everywhere")
-    for compact only, on measured grounds: compact's output is consumed as a
-    graph — it emits induced-subgraph edges, and its one in-tree diagnostic
-    (`hypergumbo_diag.analyze_compact`) scores it on connected components — and a
-    centrality-ranked prefix of a graph is frequently not connected. Measured
-    across the eight 2026-07-17 maps: centrality shipped 42% isolated nodes at a
-    25-symbol budget and got MORE fragmented as the budget grew (12.6 -> 42.1
-    components), against 3-4 components and <=8.5% isolated for connectivity.
+    Compact's output is consumed as a graph — it emits induced-subgraph edges,
+    and its one in-tree diagnostic (`hypergumbo_diag.analyze_compact`) scores it
+    on connected components — and a centrality-ranked prefix of a graph is
+    frequently not connected. On bakeoff maps, centrality selection leaves a
+    large share of nodes isolated and fragments further as the budget grows,
+    while connectivity selection stays at a few components.
 
     `sketch` keeps centrality-ranked. The two surfaces therefore disagree on
     their top symbols BY DESIGN — different jobs, not a defect.

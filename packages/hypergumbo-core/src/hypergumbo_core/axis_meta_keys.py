@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 
-Per WI-runod Wave 9 and the four-part axis-declaration template in
-[ADR-0024](../../../../docs/adr/0024-axis-declaration-template.md), a
-*meta key* is declared once here with its axis (``symbol_meta``,
+Following the four-part axis-declaration template in
+[ADR-0024](../../../../docs/adr/0024-axis-declaration-template.md)
+(WI-runod), a *meta key* is declared once here with its axis (``symbol_meta``,
 ``edge_meta``, or ``entrypoint_meta``) and a short description of what the
 key encodes. Which writes are CHECKED against this registry, and which are
 not yet, is stated under "Coverage scope" below.
@@ -19,18 +19,16 @@ Axis taxonomy
 -------------
 
 - ``symbol_meta`` — the key appears on ``Symbol.meta``. Example:
-  ``framework_role`` (Wave 5 fold residue per
-  audit-findings 0013 — the post-fold home of values that used to
-  smuggle through ``Symbol.kind``).
+  ``framework_role`` (the home of framework-role values folded out of
+  ``Symbol.kind``; audit-findings 0013).
 - ``edge_meta`` — the key appears on ``Edge.meta``. Example:
-  ``framework_dispatch`` (Wave 5 fold residue per audit-findings 0014
-  — the post-fold home of framework-specific
-  ``Edge.evidence_type`` values).
+  ``framework_dispatch`` (the home of framework-specific values folded
+  out of ``Edge.evidence_type``; audit-findings 0014).
 - ``entrypoint_meta`` — the key appears on ``Entrypoint.meta``
   (``entrypoints.Entrypoint``, not an ``ir.py`` dataclass). Example:
-  ``evidence_type`` (WI-rukam — the Entrypoint analog of the
+  ``evidence_type`` (the Entrypoint analog of the
   ``Edge.evidence_type`` inference-pathway axis, nested under ``meta``
-  rather than added as a typed field on ``Entrypoint``). The value
+  rather than added as a typed field on ``Entrypoint``; WI-rukam). The value
   vocabularies live as single-source frozensets in ``entrypoints.py``
   (``ENTRYPOINT_SOURCES`` / ``ENTRYPOINT_EVIDENCE_TYPES``).
 
@@ -51,10 +49,9 @@ Three structural problems the registry solves, mirroring the
    ``meta.get("framework_role")``, the consumer silently gets
    ``None``. A registry plus an AST-walking drift linter catches this
    shape at commit time.
-2. **Fold-residue discoverability.** The Wave 5/6 producer
-   migrations moved ~30 distinct values from ``Symbol.kind`` and
-   ``Edge.evidence_type`` into meta keys. Without a registry, a
-   consumer trying to "list every framework role we recognise" has
+2. **Fold-residue discoverability.** About 30 distinct values
+   folded out of ``Symbol.kind`` and ``Edge.evidence_type`` live in
+   meta keys. Without a registry, a consumer trying to "list every framework role we recognise" has
    no canonical place to look — the answer is scattered across
    ~25 linker files.
 3. **Promotion gating per
@@ -111,7 +108,7 @@ documentation, ADR cross-references, and the audit / fold trail.
 Coverage scope
 --------------
 
-Checked (WI-lijaz): the ``Edge.meta key`` axis of the shrink-only ratchet in
+Checked: the ``Edge.meta key`` axis of the shrink-only ratchet in
 ``scripts/check-producer-axis-coherence`` (and
 ``test_producer_coherence.py::test_live_tree_producer_axis_ratchet``), fed by
 :func:`hypergumbo_core.meta_key_coherence.unregistered_edge_meta_keys`:
@@ -123,10 +120,10 @@ Checked (WI-lijaz): the ``Edge.meta key`` axis of the shrink-only ratchet in
 
 Its baseline holds one key, ``route_path``, written on openapi edges while
 registered on ``symbol_meta``: a key cannot be declared on two axes.
+(WI-lijaz)
 
 Not checked: keys passed to ``Symbol(...)`` / ``Symbol.create(meta=...)``
-(by the same enumeration on 2026-10-03: 206 keys, 137 of them unregistered
-and 31 registered only on ``edge_meta``), keys passed to an ``Entrypoint``
+(many of which are unregistered or registered only on ``edge_meta``), keys passed to an ``Entrypoint``
 constructor, the axis of a post-hoc write, and reads. The writes the gate
 cannot enumerate are pinned by equality in
 ``tests/test_meta_key_coherence.py``.
@@ -155,10 +152,9 @@ VALID_AXES: Final[frozenset[str]] = frozenset({
 # what happens when a second one does.
 #
 # The axis above answers "which keys may exist" and "what vocabulary do
-# their values draw from". It is blind to ARITY by construction, which is
-# why it could not catch any of the seven last-writer-wins instances: the
-# offending write in INV-virat was a correctly-spelled assignment of a
-# registered key. This second declaration is the arity answer.
+# their values draw from". It is blind to ARITY by construction: a
+# last-writer-wins overwrite is a correctly spelled assignment of a
+# registered key (INV-virat). This second declaration is the arity answer.
 # ----------------------------------------------------------------------
 
 #: Exactly one writer can reach this key on any given record. A second
@@ -175,14 +171,14 @@ DISCIPLINE_SINGLE_WRITER: Final[str] = "single_writer"
 DISCIPLINE_MERGE_UNION: Final[str] = "merge_union"
 
 #: A producer stamps a fact a later consumer-time pass must not displace
-#: (INV-virat: a catalogue row erasing bash's ``command_launch`` opacity
-#: stamp). First writer wins; the chokepoint refuses the overwrite.
+#: (e.g. a catalogue row must not erase bash's ``command_launch`` opacity
+#: stamp; INV-virat). First writer wins; the chokepoint refuses the overwrite.
 DISCIPLINE_PRODUCER_PRIMARY: Final[str] = "producer_primary"
 
 #: No claim has been made. This is the DEFAULT on purpose: declaring
 #: ``single_writer`` wrongly buys a false assurance, which is worse than
-#: no assurance (the INV-faput lesson — a mislabelled row buys a
-#: ``confirmed``). ``unaudited`` keys are counted as visible debt by
+#: no assurance (a mislabelled row buys a ``confirmed``; INV-faput).
+#: ``unaudited`` keys are counted as visible debt by
 #: ``check-meta-write-discipline`` rather than hidden behind a permissive
 #: default, and a key that a second writer can DEMONSTRABLY reach is
 #: refused this state by the static check.
@@ -225,9 +221,9 @@ class MetaKeySpec:
     # ``Edge.edge_type``, declare the two edge-type sets — ``applicable`` (a
     # ``None`` value means "missing data, fix the emitter") and ``na`` (a
     # ``None`` value means "the question does not arise"). Both stay ``None``
-    # for keys that apply uniformly. ``access_mode`` populated these first
-    # (its 17-type census, INV-tibob); the census is now COMPLETE (WI-pusuv) —
-    # every canonical edge type is classified, applicable plus na == 25.
+    # for keys that apply uniformly. ``access_mode`` declares a COMPLETE
+    # census: every canonical edge type is classified, applicable plus
+    # na == 25 (INV-tibob, WI-pusuv).
     applicable_edge_types: frozenset[str] | None = None
     na_edge_types: frozenset[str] | None = None
     # INV-hazov: the arity answer. Defaults to ``unaudited`` so an omitted
@@ -254,8 +250,8 @@ class MetaKeySpec:
 # ``instantiates`` is a member because a constructor call IS a call: data
 # passed to it crosses into a callable exactly as through ``calls``. Declared
 # ONCE here and read by both ``call_construct``'s ``applicable_edge_types``
-# and :func:`call_family_edge_types`, so consumers stop keeping private copies
-# — the disagreeing-copies defect INV-nosoz names for the inheritance family.
+# and :func:`call_family_edge_types`, so consumers do not keep private copies
+# that can disagree (the defect INV-nosoz names for the inheritance family).
 #
 # NOT a general-purpose "taint cares about this" set: consumers legitimately
 # add their own extras (taint carries ``module_attr_ref`` per WI-lokuv and
@@ -273,15 +269,12 @@ _CALL_FAMILY_EDGE_TYPES: Final[frozenset[str]] = frozenset({
 # dataflow annotate passes skip these; a constructor call ``instantiates`` is
 # not an access).
 #
-# CENSUS COMPLETE (WI-pusuv, 2026-07-21). The matrix originally covered only
-# INV-tibob's 17-type census; the ADR-0023 endpoint_shape fold-tail (WI-pumav)
-# AND the resolver/OpenAPI/RPC pending_classification fold (WI-sumik) drained
-# both non-relationship axes to empty, so ``edge_types.all_edge_type_names()``
-# is now a 25-wide single ``relationship`` axis and EVERY value is classified
-# here (applicable XOR N/A) — enforced by
-# ``test_access_mode_matrix_total_census_complete``. Per the 2026-07-08 owner
-# ruling the census resolved N/A-now for the residual (no new applicable type
-# is silently 0%-populated, honoring the WI-nibis close-check discipline):
+# CENSUS COMPLETE: every value of ``edge_types.all_edge_type_names()`` (25,
+# all on the ``relationship`` axis) is classified here, applicable XOR N/A —
+# enforced by ``test_access_mode_matrix_total_census_complete`` (INV-tibob,
+# WI-pusuv). Per an owner ruling the residual types below are N/A-now, so no
+# applicable type is silently 0%-populated (the WI-nibis close-check
+# discipline):
 #   * ``subprocess_calls`` — a subprocess invocation IS a call whose access the
 #     question COULD arise for, but no emitter stamps access_mode on it today,
 #     so it is N/A-now. RE-EVAL TRIGGER: reclassify to APPLICABLE if/when the
@@ -290,11 +283,11 @@ _CALL_FAMILY_EDGE_TYPES: Final[frozenset[str]] = frozenset({
 #   * ``data_flows_to`` — the ADR-0015 dataflow relationship carries value
 #     PROPAGATION + DIRECTION (the ``data_direction`` key, ADR-0038 ruling 3),
 #     not state access; the access question does not arise → N/A. (``crypto_flow``
-#     folded into it in Batch 7 and is no longer a registry type.)
+#     is folded into it and is not a registry type.)
 #   * ``constrains`` / ``defines_target`` / ``includes`` / ``links`` /
 #     ``module_exports`` / ``sources`` / ``wraps`` — structural / dependency /
 #     export / inclusion relationships, not accesses → N/A (same shape as the
-#     original 12 structural N/A types).
+#     structural N/A types listed first in the set below).
 # Keeping these sets axis-pure still matters for the ``check-edge-type-drift``
 # strict linter — they are named ``*_EDGE_TYPES`` on purpose so the linter DOES
 # watch them, so every member must be a relationship (or pending) axis value.
@@ -302,12 +295,13 @@ _ACCESS_MODE_APPLICABLE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
     "calls", "references", "module_attr_ref", "event_publishes",
 })
 _ACCESS_MODE_NA_EDGE_TYPES: Final[frozenset[str]] = frozenset({
-    # INV-tibob's original 17-type census (ADR-0038 ruling 2):
+    # Structural, dependency and constructor edge types (ADR-0038 ruling 2;
+    # INV-tibob):
     "contains", "decorated_by", "depends_on", "depends_on_manifest",
     "dispatches_to", "extends", "implements", "imports", "inherits",
     "overrides", "uses", "instantiates",
-    # WI-pusuv census completion (2026-07-21): the residual relationship tail,
-    # all N/A-now (subprocess_calls carries a re-eval trigger; see above):
+    # The residual relationship types, all N/A-now (subprocess_calls carries
+    # a re-eval trigger; see above; WI-pusuv):
     "constrains", "data_flows_to", "defines_target", "includes", "links",
     "module_exports", "sources", "subprocess_calls", "wraps",
 })
@@ -548,9 +542,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "so a CLEAN security verdict stays qualified instead of going "
                 "silent about calls whose typing rests on a name."),
     # ------------------------------------------------------------------
-    # Edge.meta — protocol / bridge / dispatch vocabularies (predates
-    # the axis-registry pattern; PROTOCOL_KINDS and BRIDGE_KINDS in
-    # edge_types.py enumerate the value vocabularies).
+    # Edge.meta — protocol / bridge / dispatch vocabularies
+    # (PROTOCOL_KINDS and BRIDGE_KINDS in edge_types.py enumerate the
+    # value vocabularies).
     # ------------------------------------------------------------------
     MetaKeySpec("protocol", AXIS_EDGE_META,
                 "Wire-level protocol on ``calls`` edges that absorb "
@@ -614,10 +608,10 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "whether a crossing is opaque."
                 )),
     # ------------------------------------------------------------------
-    # Edge.meta — bash's synthesized redirection / expansion edges.
-    # Registered as part of INV-vukiv: all three vary PER CALL SITE, and two
-    # of them were emitted by bash.py while unregistered, so nothing could
-    # have known to union them on collapse.
+    # Edge.meta — call-site annotations: bash's synthesized redirection /
+    # expansion edges, plus other analyzers' per-site I/O and escape stamps.
+    # Keys that vary PER CALL SITE are declared ``per_call_site`` so the
+    # edge-dedup collapse keeps every site's value (INV-vukiv).
     # ------------------------------------------------------------------
     MetaKeySpec("unfollowed_construct", AXIS_EDGE_META,
                 "INV-nohob: the construct at this call site through which "
@@ -916,9 +910,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "(calls / dispatches_to / references / module_exports) "
                 "tracked under INV-zuhub items 1-3."),
     # ------------------------------------------------------------------
-    # Symbol.meta — Wave 5 framework-role fold residue (ADR-0027).
-    # Audit-findings 0013 folded 29 framework-role Symbol.kind values
-    # to canonical + this key.
+    # Symbol.meta — framework-role fold residue (ADR-0027). Framework-role
+    # Symbol.kind values fold to a canonical kind plus this key
+    # (audit-findings 0013).
     # ------------------------------------------------------------------
     MetaKeySpec("constructed_from", AXIS_SYMBOL_META,
                 "The callee whose result a variable is bound to — the "
@@ -985,13 +979,11 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # ------------------------------------------------------------------
     # Symbol.meta — ADR-0027 route-marker payload (WI-tosul target-D).
     # These sit on a ``framework_role == 'route'`` marker; the canonical
-    # accessor is ``routes.route_of`` / ``routes.is_route``. The 2026-07-07
-    # route-surfacing concept audit found route_path / http_method read as
-    # the authoritative payload at ~12 consumer sites yet unregistered —
-    # closed here; route_framework / route_protocol are the additive homes
-    # target-D(ii) mandated — producer emission has since landed (route_framework
-    # via the framework-pattern route enrichment, INV-vokak; route_protocol via
-    # ``routes.transport_meta``, INV-tibap).
+    # accessor is ``routes.route_of`` / ``routes.is_route``. route_path /
+    # http_method are the authoritative payload consumers read;
+    # route_framework / route_protocol are additive homes (route_framework
+    # written by the framework-pattern route enrichment, INV-vokak;
+    # route_protocol by ``routes.transport_meta``, INV-tibap).
     # ------------------------------------------------------------------
     MetaKeySpec("route_path", AXIS_SYMBOL_META,
                 "URL path a ``framework_role == 'route'`` marker handler is "
@@ -1028,9 +1020,8 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "``Symbol.kind``, so the reference syntax that used to live "
                 "there moves to this registered home. WI-pubiv."),
     # ------------------------------------------------------------------
-    # Symbol.meta — Wave 6 file/build-shape fold residues.
-    # Audit-findings 0005, 0006, 0007 + Wave 6 PR 1-6 introduced
-    # these keys as canonical homes for fold-target metadata.
+    # Symbol.meta — file/build-shape fold residues: canonical homes for
+    # fold-target metadata (audit-findings 0005, 0006, 0007).
     # ------------------------------------------------------------------
     MetaKeySpec("module_system", AXIS_SYMBOL_META,
                 "Module system on synthetic file-shape Symbols "
@@ -1267,8 +1258,8 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Inferred return type for Symbols whose declared "
                 "type is missing. Set by the limited type-inference "
                 "passes (Python ``typing.get_type_hints``, etc.)."),
-    # ADR-0032 Phase 2 PR2: ``qualified_name`` retired from the meta axis
-    # in favour of the typed ``Symbol.qualified_name`` field. See
+    # ``qualified_name`` is not a meta key: it is the typed
+    # ``Symbol.qualified_name`` field (ADR-0032). See
     # :mod:`hypergumbo_core.qualified_name_axis`.
     MetaKeySpec("display_name", AXIS_SYMBOL_META,
                 "Human-readable display name overriding the "
@@ -1347,8 +1338,8 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # Edge.meta — cross-language / framework linker vocabularies (WI-mulub).
     # WebSocket / message-queue / database-query / route linkers plus the
     # analyzer receiver-inference and the ir.py edge-dedup pass stamp these;
-    # they were emitted but unregistered, so the writer-contract and
-    # registry-drift checks could not police them.
+    # registering them lets the writer-contract and registry-drift checks
+    # police them.
     # ------------------------------------------------------------------
     MetaKeySpec("client_framework", AXIS_EDGE_META,
                 "Client-side framework of a WebSocket edge, from the websocket "
@@ -1450,12 +1441,10 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "named in ``superseded_by`` — which producer saw the site as "
                 "first-party. Present only beside ``superseded_by``."),
     # ------------------------------------------------------------------
-    # WI-lijaz: keys that producers wrote while the registry did not know
-    # them. Found by the meta-key gate (``meta_key_coherence``), which reads
-    # every ``Edge(...)`` / ``Edge.create(meta=...)`` and every post-hoc
-    # ``.meta`` write; the 2026-08-27 survey count (35 keys on 42 surveys) is
-    # a subset of what it enumerates. Registered AS EMITTED: no producer was
-    # changed, and none of these has had the ADR-0024 fold-residue checks
+    # Keys found in producer writes by the meta-key gate
+    # (``meta_key_coherence``), which reads every ``Edge(...)`` /
+    # ``Edge.create(meta=...)`` and every post-hoc ``.meta`` write (WI-lijaz).
+    # Registered AS EMITTED: none of these has had the ADR-0024 fold-residue checks
     # (endpoint-property, axis-leakage, recurrence) applied -- several are
     # obvious candidates (the ``scip_*`` symbols repeat the endpoints;
     # ``call_type`` and ``method`` each carry unrelated meanings from
@@ -1837,12 +1826,12 @@ def per_call_site_keys() -> frozenset[str]:
     ``ir.deduplicate_edges`` keeps one edge per ``(src, dst, edge_type)``. For
     every key named here the survivor may carry the value only if EVERY
     collapsed site agreed on it; otherwise the singular key is dropped and the
-    distinct values move to ``<name>_values``. The rule is not new — INV-fubag
-    gave ``call_arg_shape`` exactly this treatment, hardcoded, because a
-    "every argument here is a literal" proof asserted from one of several sites
-    silences real flows. What was missing was any way to DECLARE a second key,
-    which is why ``io_mode`` (one producer, many sites) quietly deleted real
-    ``fs_write`` boundaries for as long as it did.
+    distinct values move to ``<name>_values``. This generalizes the
+    ``call_arg_shape`` rule: an "every argument here is a literal" proof
+    asserted from one of several sites silences real flows (INV-fubag).
+    Declaring a key here is what keeps a key like ``io_mode`` (one producer,
+    many sites) from reporting one site's mode for the whole edge and so
+    dropping real ``fs_write`` boundaries.
 
     Read by ir.py rather than owned by it: the registry is where a key's
     contract lives, and putting the list in the dedup function would make the
@@ -1875,8 +1864,8 @@ def access_mode_applicable_edge_types() -> frozenset[str]:
     """ADR-0038 ruling 2: edge types where ``access_mode`` APPLIES.
 
     A ``None`` value on one of these edges means missing data (fix the
-    emitter), not "not applicable". The applicable half of the access_mode
-    census (INV-tibob's 17 types, completed to all 25 by WI-pusuv).
+    emitter), not "not applicable". The applicable half of the complete
+    access_mode census (INV-tibob, WI-pusuv).
     """
     return _ACCESS_MODE_APPLICABLE_EDGE_TYPES
 
@@ -1893,7 +1882,7 @@ def call_family_edge_types() -> frozenset[str]:
     never replace: ``taint.TAINT_CALL_EDGE_TYPES`` also carries
     ``module_attr_ref`` (WI-lokuv) and ``dispatches_to`` (INV-zuhig), and
     neither is a call construct. Replacing rather than unioning deletes them
-    — the mistake INV-lalad's fix design flags because it reads as a cleanup.
+    — an easy mistake, because it reads as a cleanup (INV-lalad).
     """
     return _CALL_FAMILY_EDGE_TYPES
 
@@ -1915,7 +1904,7 @@ def is_access_mode_not_applicable(edge_type: str) -> bool:
     The dataflow annotate passes call this to skip stamping ``access_mode`` on
     N/A edge types. The census is complete (WI-pusuv): every canonical edge
     type is applicable XOR N/A, so ``data_flows_to`` and the other residual
-    relationship types now return ``True``. A name outside the registry
+    relationship types return ``True``. A name outside the registry
     returns ``False``.
     """
     return edge_type in _ACCESS_MODE_NA_EDGE_TYPES
@@ -1963,11 +1952,10 @@ def write_meta_key(meta: dict[str, object], key: str, value: object) -> None:
 
     INV-hazov. This is the single place a meta key with more than one
     writer may be written; ``check-meta-write-discipline`` fails the build
-    on a direct subscript assignment that bypasses it. The point is that
-    the fold lives ONE place rather than being re-derived (and re-forgotten)
-    at each call site — the previous seven instances of this class were
-    each fixed correctly and locally, which is precisely why the eighth was
-    still possible.
+    on a direct subscript assignment that bypasses it. The fold lives in
+    ONE place rather than being re-derived at each call site, because a
+    local fix at one write site does nothing to stop the next write site
+    from repeating the mistake.
 
     Raises:
         ValueError: if *key* is not registered, or if a ``single_writer``
@@ -2022,31 +2010,27 @@ def filter_meta_key(
 
     Returns the number of entries removed.
 
-    INV-hazov (b). The write-discipline vocabulary had add / refine / replace
-    and NO REMOVE, and the gap was not academic: ``strip_test_file_only_concepts``
-    removes concepts a later-computed fact invalidates, and it could not be
-    routed through :func:`write_meta_key` because ``concepts`` is declared
-    ``merge_union`` — the chokepoint would have UNIONED the stripped entries
-    straight back in. So the one legitimate remover in the tree had to bypass
-    the chokepoint, and the linter could not tell that bypass from a careless
-    direct assignment.
+    INV-hazov (b). The write disciplines add, refine or replace; this is the
+    REMOVE verb. ``strip_test_file_only_concepts`` removes concepts a
+    later-computed fact invalidates, and it cannot go through
+    :func:`write_meta_key` because ``concepts`` is declared ``merge_union`` —
+    the chokepoint would UNION the stripped entries straight back in. Without
+    this function the remover would have to bypass the chokepoint, and the
+    linter could not tell that bypass from a careless direct assignment.
 
-    WHY THIS IS AN OPERATION AND NOT A NEW DISCIPLINE, which is the actual
-    question the residual left open. A ``write_discipline`` describes how
+    WHY THIS IS AN OPERATION AND NOT A NEW DISCIPLINE. A ``write_discipline`` describes how
     several WRITERS COMBINE, and ``concepts`` genuinely is ``merge_union`` for
     its writers — two enrichment passes each contributing concepts must keep
     both. Declaring the key "removal-shaped" would be false about those writers
-    and would forfeit the union guarantee INV-virat and INV-zumin were fixed to
-    get. A curator is not a competing writer: it runs after the writers and
+    and would forfeit the union guarantee (INV-virat, INV-zumin). A curator is not a competing writer: it runs after the writers and
     narrows their agreed result. That is a second verb on the same key, not a
     different discipline for it.
 
-    The two rejected alternatives, recorded so this is not re-litigated:
-    adding a ``removal`` discipline value (false about the writers, as above);
-    and declaring the site an audited exception in the module (leaves the
-    bypass invisible to the linter, which is exactly the "silent bypass" the
-    residual objected to — an exception list cannot distinguish "removes
-    deliberately" from "assigned directly and nobody noticed").
+    Two alternatives do not work: adding a ``removal`` discipline value
+    (false about the writers, as above); and declaring the site an audited
+    exception in the module (leaves the bypass invisible to the linter — an
+    exception list cannot distinguish "removes deliberately" from "assigned
+    directly and nobody noticed").
 
     Removal is restricted to ``merge_union`` keys because that is the only
     discipline where narrowing is meaningful: a ``single_writer`` or

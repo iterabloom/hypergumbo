@@ -332,24 +332,23 @@ class TestAnalyzerVersionSemantic:
     def test_version_fallback_when_no_pass_version(self, tmp_path: Path) -> None:
         """run.version still equals PASS_VERSION when pass_version is empty.
 
-        INV-gizik / Phase 6 PR2 closure: ``pass_version`` is now auto-stamped
-        from the concrete analyzer subclass's module hash when the subclass
-        leaves it empty (mirrors the linker-side stamping). The empty-string
-        default is therefore observable only briefly, replaced with a
-        ``sha256:<hex>`` code-hash by the time ``analyze`` returns. The
+        ``pass_version`` is auto-stamped from the concrete analyzer subclass's
+        module hash when the subclass leaves it empty (mirrors the linker-side
+        stamping; INV-gizik). The empty-string default is therefore replaced
+        with a ``sha256:<hex>`` code-hash by the time ``analyze`` returns. The
         ``version`` field stays anchored to ``PASS_VERSION`` per INV-kohat.
         """
         analyzer = StubAnalyzer()
         analyzer.pass_version = ""
         result = analyzer.analyze(tmp_path)
         assert result.run.version == PASS_VERSION
-        # INV-gizik: pass_version is now auto-stamped from the subclass
+        # INV-gizik: pass_version is auto-stamped from the subclass
         # module hash when not set explicitly.
         assert result.run.pass_version.startswith("sha256:")
 
 
 class TestPhase6PR2WriterContractWiring:
-    """Phase 6 PR2: TreeSitterAnalyzer wires INV-lidul (config_fingerprint),
+    """TreeSitterAnalyzer wires INV-lidul (config_fingerprint),
     INV-gizik (pass_version), INV-nihug (toolchain extension), and INV-pitab
     (warnings capture) at the base-class level."""
 
@@ -427,8 +426,8 @@ class TestPhase6PR2WriterContractWiring:
         """WI-gidid: the warning names the distribution (WI-pakof's
         ``grammar_distribution``), not "the required tree-sitter grammar
         package". It is not written to ``run.warnings``: a skipped pass's run
-        is discarded by ``collect_analyzer_result``, so INV-pitab's write
-        reached no consumer, and the skip entry carries the reason."""
+        is discarded by ``collect_analyzer_result``, so a write there would
+        reach no consumer; the skip entry carries the reason."""
         import pytest as _pytest
 
         class UnavailableStubAnalyzer(StubAnalyzer):
@@ -533,8 +532,8 @@ class TestTreeSitterAnalyzerFileSymbols:
 
     def test_file_symbol_spans_full_file_not_line_one(self, tmp_path: Path) -> None:
         """WI-sijug: the inline file node spans the whole file (parsed ``end_point``),
-        not the degenerate line-1-only ``Span(1,0,1,0)`` that fingerprinted just a
-        shebang/comment and yielded a needless null."""
+        not a degenerate line-1-only ``Span(1,0,1,0)``, which would fingerprint
+        just a shebang/comment and yield a needless null."""
 
         class _MultiLineFileSymbolAnalyzer(FileSymbolAnalyzer):
             def _create_parser(self) -> object:
@@ -1247,17 +1246,16 @@ class TestComputeStableId:
         assert sid == f"sha256:{expected_hash}"
 
     def test_name_disambiguates_same_shape(self) -> None:
-        """Phase 6 PR3 (INV-bazij): two same-shape symbols with different
-        names produce different stable_ids when name is passed."""
+        """Two same-shape symbols with different names produce different
+        stable_ids when name is passed (INV-bazij)."""
         node = self._make_function_node()
         sid_a = self.analyzer.compute_stable_id(node, kind="function", name="poll_ci")
         sid_b = self.analyzer.compute_stable_id(node, kind="function", name="do_merge")
         assert sid_a != sid_b
 
     def test_qualified_name_disambiguates(self) -> None:
-        """Phase 6 PR3 (INV-bazij): same name, different qualified_name
-        (e.g., same method name in two different classes) produces
-        different stable_ids."""
+        """Same name, different qualified_name (e.g., same method name in
+        two different classes) produces different stable_ids (INV-bazij)."""
         node = self._make_function_node()
         sid_a = self.analyzer.compute_stable_id(
             node, kind="method", name="run", qualified_name="ClassA.run",

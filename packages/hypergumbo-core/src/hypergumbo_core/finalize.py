@@ -20,61 +20,54 @@ Entry precondition (R1): the node/edge set is final on entry (Phase D filtering 
 boundary synthesis already ran; see ``cli.run_survey``). finalize never changes set
 membership; it reconciles fields and commits the reconciled view into ``behavior_map``.
 
-What this carrier (run-lifecycle:F1) implements vs. defers
-----------------------------------------------------------
-* **Fully implemented:** re-relativize backstop (1); pass_version backfill (2, the WI-mipul
-  pass_version closure); run_signature recompute (3, the META-hufaz/WI-luzud headline —
-  re-hash each AR from its *final* config_fingerprint/toolchain); repo_fingerprint stamp
-  (4); skipped→limits (6); **edge-resolution verdict (7, ADR-0037 rulings 1/2** — classify
-  every ``edge.dst`` against the final node set and derive ``is_resolved`` + ``dst_ref`` from
-  one verdict; closes WI-kukuk/WI-zuhon/WI-ninuv/WI-mutuk. This slot is NOT a §6.1 stub fill;
-  it is an ADR-0037 addition that postdates the §6.1 plan, placed before commit so the
-  serialized edges carry the verdict and before referential-integrity so the FK predicate
-  validates it; it also re-derives an ``evidence_derived`` confidence from the verdict,
-  INV-fazim**); receiver-blind magnet demotion (6c, INV-fahub, before 7); stub demotion
-  (7a, ADR-0057 §14: first the stubs a resolved edge names in ``derived_from``,
-  then same-site stubs); the visibility fold (7b, INV-jusot); repro-grammar pruning
-  (7c); the inherited-owner stamp (7d, ``owner_ancestry`` — a call on an in-repo type that
-  does not define the member names the type's external ancestors); commit-dicts (8); referential-integrity validate_ir lift (10, now also carrying the
-  ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate). Violations are sorted
-  before the validation report is built, so the serialized order is stable.
-* **Two §6.1 stub slots stayed empty.** ADR-0043 §6.1 planned three Phase-2 families each
-  filling a named finalize stub with zero orchestrator change; none did. ``projection-finalize``
-  became a downstream consumer (``compact.recompute_view_summary``), not a sub-step; and the
-  ``confidence`` (the former slot 7, now hosting edge-resolution) and ``declared-fields`` (9)
-  stubs were both **removed** (not stubbed) once recons showed their work lands outside
-  finalize:
+Sub-steps, in call order
+------------------------
+The numbers follow the ADR-0043 §6.1 slot plan; slots 5 and 9 have no sub-step.
 
-  - ``confidence`` (7): the confidence:F1/F2 IDs denote per-edge derivation / ranking-detection
-    separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps out of
-    finalize. The one exception is sub-step 7 re-deriving an ``evidence_derived`` confidence
-    once the verdict flips ``is_resolved`` (INV-fazim): that corrects a construction-time
-    number, and is not a finalize-time confidence tenant. The behavior_map confidence aggregate this slot
-    described already exists over the final set — ``metrics.avg_confidence`` (computed *after*
-    finalize) and ``sketch.confidence_mass`` (EP/datamodel) — so there is no reconcile gap and
-    no consumer for a finalize-time tenant.
-  - ``declared-fields`` (9): its writer-contract half already runs in sub-step 10's
-    ``validate_ir`` (declared-fields:F1(a) / INV-zotip), and its population-contract half lands
-    in the writer-contract *validator* (WI-libib) and producers (declared-fields:F5 / INV-dubam);
-    a finalize-time population re-check would grow the shrink-only validation ratchet.
-* **Other deliberately-absent run-lifecycle work:** an ``emission_counts`` sub-step was removed
-  (not stubbed) — the ratified "recompute files_analyzed by origin_run_id" mechanism is unsound
-  (files_analyzed is contractually a file count == profile.files; the recompute yields a
-  node/path count and does not close INV-gizik, whose real fix is a new provenance field). The
-  config_fingerprint backstop-with-violation landed in WI-mipul's producer-side work (done). Of
-  the tracked work, INV-gizik (satisfied — closed by the new nodes_emitted/edges_emitted
-  provenance field), WI-mipul (done), INV-zotip (satisfied), WI-libib (per-(kind,field)
-  writer-contract validator, done) and INV-suvil (evidence-derived confidence, satisfied) are
-  resolved. git carries the history.
-  See the ADR-0043 §6.1 amendment chain (#4/#5/#7/#9).
+* 1 re-relativize backstop; 2 pass_version backfill (WI-mipul); 3 run_signature recompute
+  (re-hash each AR from its *final* config_fingerprint/toolchain); 4 repo_fingerprint stamp;
+  6 skipped files and unanalyzed languages → limits.
+* 6c receiver-blind magnet demotion (INV-fahub), before 7.
+* 7 edge-resolution verdict (ADR-0037 rulings 1/2): classify every ``edge.dst`` against the
+  final node set, derive ``is_resolved`` + ``dst_ref`` from that one verdict, and re-derive
+  an ``evidence_derived`` confidence from it (INV-fazim). It runs before commit so the
+  serialized edges carry the verdict, and before referential integrity so the FK predicate
+  validates it. This slot comes from ADR-0037, not from the §6.1 plan.
+* 7a stub demotion (ADR-0057 §14: first the stubs a resolved edge names in
+  ``derived_from``, then same-site stubs); 7b visibility fold (INV-jusot); 7c repro-grammar
+  pruning; 7d inherited-owner stamp (``owner_ancestry`` — a call on an in-repo type that
+  does not define the member names the type's external ancestors).
+* 8 commit-dicts; 10 referential integrity — the ``validate_ir`` aggregator, including the
+  ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate. Violations are sorted before
+  the validation report is built, so the serialized order is stable.
 
-`FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field
+Work deliberately kept out of finalize
+--------------------------------------
+* ``projection-finalize`` is a downstream consumer (``compact.recompute_view_summary``),
+  not a sub-step.
+* No finalize-time ``confidence`` sub-step: per-edge confidence derivation and the
+  ranking/detection separation are producer-side (ADR-0039). Sub-step 7's re-derivation
+  (INV-fazim) only corrects a construction-time number to match the verdict. The
+  behavior_map confidence aggregates already cover the final set — ``metrics.avg_confidence``
+  (computed *after* finalize) and ``sketch.confidence_mass`` — so there is no reconcile gap.
+* No ``declared-fields`` sub-step (slot 9): the writer contract is already checked by
+  sub-step 10's ``validate_ir`` (INV-zotip), and the population contract lives in the
+  writer-contract validator and the producers (WI-libib, INV-dubam); a finalize-time
+  population re-check would grow the shrink-only validation ratchet.
+* No ``emission_counts`` sub-step: recomputing ``files_analyzed`` by ``origin_run_id`` is
+  unsound, because ``files_analyzed`` is contractually a file count equal to
+  ``profile.files`` and that recompute yields a node/path count. Per-run emission counts
+  are the ``nodes_emitted`` / ``edges_emitted`` provenance fields instead (INV-gizik).
+* The ``config_fingerprint`` backstop lives producer-side (WI-mipul).
+
+See ADR-0043 §6.1 and its amendments.
+
+`FinalizedMap` is a shallow ``frozen=True`` handle (ADR-0043 §6): rebinding a field
 raises, but the inner dicts remain mutable so the downstream budget-tier/compact
-projections (still in ``cli`` for the carrier) can run after finalize returns. The tiered
-projection re-derives its ``nodes_summary`` from the final post-shrink arrays via
-``compact.recompute_view_summary`` (projection:F1 / INV-pazur — a summary-only re-derive,
-narrower than the design-time ``re_derive_view``). Consumers must honor a no-mutation
-contract.
+projections in ``cli`` can run after finalize returns. The tiered projection re-derives
+its ``nodes_summary`` from the final post-shrink arrays via
+``compact.recompute_view_summary`` (a summary-only re-derive; INV-pazur). Consumers must
+honor a no-mutation contract.
 """
 from __future__ import annotations
 
@@ -120,9 +113,9 @@ def _relativize_ir_paths(
 ) -> None:
     """Rewrite absolute paths under ``repo_root`` to repo-relative in IR objects in place.
 
-    WI-hopug: the behavior map JSON output embeds each Symbol's absolute file path in its
-    ``id`` and Edge endpoints, which makes the output non-portable across machines and
-    branches that hold the same repo under different checkout roots. Stripping the
+    Analyzers embed each Symbol's absolute file path in its ``id`` and in Edge endpoints,
+    which would make the behavior map non-portable across machines and branches that hold
+    the same repo under different checkout roots (WI-hopug). Stripping the
     ``str(repo_root) + "/"`` prefix from every id-bearing string collapses those IDs to
     repo-relative form so two runs of the same commit on two machines produce
     byte-identical behavior maps (modulo analyzer nondeterminism).
@@ -133,20 +126,22 @@ def _relativize_ir_paths(
     ``path:start_line:context_name:position``; because ``path`` is part of the preimage we
     recompute the id from the relativized path so the hash is stable across machines.
 
-    ID-embedding values in ``Symbol.meta`` AND ``Edge.meta`` are relativized the same way
-    (dispatch:F1 / INV-pohik symptom 2), covering both string values and one level of
-    ``dict`` values. The original case is a route symbol's ``handler_ref`` (a string):
-    the route_handler linker runs *after* this pass and resolves the direct case by ID
-    against the relativized id index, so an un-relativized ``handler_ref`` misses every
-    lookup and the route → handler ``dispatches_to`` edge never lands. WI-supat adds two
-    more shapes with the SAME failure mode: the concrete-class ids threaded for
-    inherited-call resolution — ``enclosing_class_id`` / ``receiver_type_id`` on **Edge**
-    meta (which was formerly not relativized at all — only ``src``/``dst`` were), and
-    ``field_type_ids`` (a ``{field: id}`` **dict**) on a class Symbol's meta — are compared
-    against the relativized ``class_symbols`` index by the inherited_calls linker (also run
-    after this pass), so an un-relativized id silently falls back to the name path and the
-    concrete-id collision-recovery never fires. Short-name refs (Express ``handler_ref``,
-    ``view_name``) and values that don't carry the prefix are left untouched.
+    ID-embedding values in ``Symbol.meta`` AND ``Edge.meta`` are relativized the same way,
+    covering both string values and one level of ``dict`` values, because linkers that run
+    *after* this pass look them up against the relativized id index:
+
+    * a route symbol's ``handler_ref`` (a string) — the route_handler linker resolves the
+      direct case by ID, so an un-relativized ``handler_ref`` misses every lookup and the
+      route → handler ``dispatches_to`` edge never lands (INV-pohik);
+    * the concrete-class ids threaded for inherited-call resolution —
+      ``enclosing_class_id`` / ``receiver_type_id`` on **Edge** meta, and
+      ``field_type_ids`` (a ``{field: id}`` **dict**) on a class Symbol's meta — which the
+      inherited_calls linker compares against the relativized ``class_symbols`` index; an
+      un-relativized id silently falls back to the name path and the concrete-id
+      collision-recovery never fires (WI-supat).
+
+    Short-name refs (Express ``handler_ref``, ``view_name``) and values that don't carry
+    the prefix are left untouched.
 
     Runs once at Phase B (``cli``) and again as finalize sub-step 1 — the second call is an
     idempotent backstop (the prefix-guarded ``str.replace`` is a no-op on already-relative
@@ -172,7 +167,7 @@ def _relativize_ir_paths(
         add a concrete symbol id to meta as a list element or a two-level dict,
         this helper will SILENTLY SKIP it — the stale absolute id then misses the
         relativized ``class_symbols`` index and the consumer inertly falls back
-        (the exact name-path masking that hid the original WI-supat bug). So:
+        to the name path, which masks the miss (WI-supat). So:
         extend this helper to that shape AND add a POSITIVE end-to-end assertion
         (a resolved edge, not just "no wrong edge") that fails on revert.
         Non-string / non-dict values and short-name refs are untouched (they never
@@ -309,11 +304,11 @@ def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
     ``limits.skipped_passes`` instead), so its language falls out of this set and
     surfaces as skipped. The pass_id→languages map is the registry's DECLARED
     ``languages`` — the taxonomy's vocabulary, gated at registration (WI-juzig).
-    The old ``set(languages) if languages else {name}`` fallback is gone: it
-    re-inflated a ``no_language`` pass into a phantom language, and the
-    ``[name]`` default it mirrored is what made the ``make`` pass language
-    ``make`` while the profile said ``makefile`` — a FALSE "skipped" verdict on
-    a language whose pass ran (INV-nidul). Non-analyzer passes (linkers,
+    There is deliberately no fallback to the pass name for a pass that declares
+    no languages: it would turn a ``no_language`` pass into a phantom language,
+    and a pass named differently from its profile language (``make`` vs
+    ``makefile``) would yield a FALSE "skipped" verdict on a language whose pass
+    ran (INV-nidul). Non-analyzer passes (linkers,
     synthesis) simply don't appear in the map and contribute nothing. The
     difference is returned sorted for deterministic output.
     """
@@ -337,34 +332,25 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
 
     Two honesty signals are reconciled at this single pre-serialization chokepoint:
 
-    * ``partial_results_reason`` — set from EITHER soft file-drop channel, never
-      clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
-      a crashed pass is the more severe signal; the file-drop note only fills an
-      otherwise-empty summary.
+    * ``partial_results_reason`` — set from EITHER soft file-drop channel: a run's
+      ``files_skipped`` count (parse-error drops) or ``limits.truncated_files``
+      (oversize drops, which ``add_truncated_file`` records without touching
+      ``files_skipped``). Both are the same user-visible outcome, so both must
+      signal it (WI-zafid). It never clobbers a reason already set by
+      ``record_crashed_pass`` (WI-madal L3): a crashed pass is the more severe
+      signal; the file-drop note only fills an otherwise-empty summary.
 
-      WI-zafid: it used to key on a run's ``files_skipped`` count alone, so the two
-      equivalent soft drops were asymmetric — a parse-error drop increments
-      ``files_skipped`` and set the reason, while an oversize drop lands only in
-      ``limits.truncated_files`` (``add_truncated_file`` never touches
-      ``files_skipped``) and set nothing. Same user-visible outcome, one signalled
-      and one silent. Both now trigger it.
-
-      NOTE on ``analysis_incomplete``, which WI-zafid also flagged as never
-      tripping: that is CORRECT and is deliberately not changed here. §735 defines
-      it as "analysis terminated *early*", and every drop reaching this function is
-      fail-open — analysis ran to completion over the remaining files, and even the
-      crash path is specified to "continue" (§ Analyzer crashes). The genuine defect
-      the item found on that side is a SPEC self-contradiction, fixed in the spec
-      rather than the code: §1078 claimed the reason is "present only when
-      ``analysis_incomplete: true``", which the 🟩 crash behaviour directly
-      contradicts by prescribing a reason with the flag unset.
-    * ``skipped_languages`` (WI-nihir) — the ``add_skipped_language`` setter had zero
-      callers, so a language the profile DETECTED but for which no analyzer pass ran
-      (grammar unavailable / unsupported / crashed) was silently absent. This is the
-      one stage holding both the detected set (profile) and the analyzed set
-      (analysis_runs), so the "detected minus analyzed" diff is drained here once —
-      covering every cause without any per-analyzer edit. See
-      ``_detected_unanalyzed_languages``.
+      ``analysis_incomplete`` is deliberately NOT set here. The spec defines it as
+      "analysis terminated early", and every drop reaching this function is
+      fail-open — analysis ran to completion over the remaining files, and even
+      the crash path is specified to "continue". The spec therefore allows
+      ``partial_results_reason`` with the flag unset.
+    * ``skipped_languages`` (WI-nihir) — a language the profile DETECTED but for
+      which no analyzer pass ran (grammar unavailable / unsupported / crashed)
+      would otherwise be silently absent. This is the one stage holding both the
+      detected set (profile) and the analyzed set (analysis_runs), so the
+      "detected minus analyzed" diff is drained here once — covering every cause
+      without any per-analyzer code. See ``_detected_unanalyzed_languages``.
     """
     dropped_files = any(
         run.get("files_skipped", 0) > 0 for run in ctx.analysis_runs
@@ -380,7 +366,7 @@ def _derive_dst_ref_from_id(dst_id: str) -> Optional[ExternalRef]:
     """Reconstruct an ``ExternalRef`` from a placeholder dst id (ADR-0037 ruling 2 backstop).
 
     The edge-resolution verdict needs a structured ``dst_ref`` on every external edge, but
-    ~68% of producers stamp the legacy ``dst`` string without one (WI-zuhon). When the dst
+    many producers stamp only the ``dst`` string (WI-zuhon). When the dst
     id is well-formed (``{lang}:{path}:{span}:{name}:{kind}``) we recover the ref from it.
     Two ids yield ``None`` — the legitimate "unidentified reference" cell
     (``is_resolved=False, dst_ref=None``): a malformed/short id (``_parse_dangling_id``
@@ -435,9 +421,8 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
     ``_finalize_referential_integrity`` (10) so the ADR-0037 FK predicate validates exactly
     this verdict. R1-safe: only mutates fields, never adds/removes a node or edge — appends
     no violations, so R3 holds. Because no surface is written independently of this verdict,
-    WI-kukuk's flag/suffix contradiction (4,507 edges ``is_resolved=True`` at an external
-    placeholder) becomes structurally impossible, and external ``dst_ref`` coverage reaches
-    100% (WI-zuhon).
+    an edge cannot be ``is_resolved=True`` at an external placeholder (WI-kukuk), and every
+    external edge whose dst id parses carries a ``dst_ref`` (WI-zuhon).
     """
     node_kind_by_id = {s.id: s.kind for s in ctx.symbols}
     for edge in ctx.edges:
@@ -452,18 +437,19 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
         _rederive_confidence_from_verdict(edge)
 
 
-#: ADR-0057 §14 (WI-lihis): how far a superseded external stub's ``rank_score``
+#: ADR-0057 §14 (WI-lihis): ``SUPERSEDED_STUB_RANK_FACTOR`` (re-exported above
+#: from ``arbitration``) is how far a superseded external stub's ``rank_score``
 #: falls — a multiplicative dampener, the ADR-0039 ruling-3 shape the
 #: type-hierarchy fan-out already uses, never a change to ``confidence``. A
-#: declared level rather than a formula; it joins the per-attribute table
-#: WI-hukuf makes configurable.
+#: declared level rather than a formula; the active value is the arbitration
+#: policy's ``superseded_stub_rank_factor``, which is configurable (WI-hukuf).
 
 
 def _stub_callee_name(edge: "Edge") -> str:
     """The name the stub claims to call — :func:`ir.callee_name_of`, which is
-    the one home for this read (INV-difud). This used to skip
-    ``meta['callee_name']`` and parse the id positionally, so an escaped name
-    failed §14's key comparison and the demotion was silently missed."""
+    the one home for this read (INV-difud). Parsing the id positionally instead
+    would skip ``meta['callee_name']``, so an escaped name would fail §14's key
+    comparison and the demotion would be silently missed."""
     from .ir import callee_name_of
 
     ref = edge.dst_ref
@@ -496,8 +482,8 @@ def _demote_stubs_named_as_consumed(
 
     The stated half of §14. Where the same-site rule reconstructs the relation
     downstream from (src, line, edge_type, callee name key) — and cannot tell a
-    refinement from a collision, which is how Open question 4's 45 false
-    demotions arose — this reads it off ``Edge.derived_from``, where the pass
+    refinement from a collision (ADR-0057 Open question 4) — this reads it off
+    ``Edge.derived_from``, where the pass
     that consumed the stub recorded which one. No key, no line, no candidate
     set, so no ambiguity to resolve.
 
@@ -544,29 +530,23 @@ def demote_superseded_stubs(
     stub ABSTAINED on its target's module, and the resolved edge carries an
     ANCHORED PRODUCER of the language that the stub's own ``origin`` lacks —
     the syntactic backend said "outside the repo", the type-aware one "this
-    item, here". On the recorded aardvark-dns fixture 27 stub call sites share
-    a line and type with a resolved call, and only 3 name the same callee; the
-    other 24 are different calls on one line (``a.b(c.d())``), and a
-    producer's own two calls on a line are not a contradiction either.
+    item, here". The callee name key matters because one line often holds
+    several different calls (``a.b(c.d())``), and a producer's own two calls
+    on a line are not a contradiction either.
 
-    The last two conditions were added when Open question 4 was ruled
-    (2026-09-20). The origin condition as first landed tested PASS-ID
-    INEQUALITY and stood in for a test on INDEPENDENT OBSERVATION; a
-    single-backend Python run of this repository demoted 419 stubs, every
-    superseder a LINKER, and those 419 superseders were 419 of the 421 edges
-    the two linkers emitted — each the linker's own resolution of the very
-    stub it superseded, built from that stub's ``src``, ``line`` and parsed
-    callee, so the key matched BY CONSTRUCTION. 45 of the 419 were wrong, 28
-    of them stubs whose external key was COMPLETE and CORRECT
-    (``tree_sitter_rust.language``, ``builtins.id``) ranked below a
+    The last two conditions require INDEPENDENT OBSERVATION, not merely a
+    different pass id. A linker that resolves a stub builds its edge from that
+    stub's ``src``, ``line`` and parsed callee, so the same-site key matches
+    BY CONSTRUCTION; without these conditions a linker would supersede its own
+    input, including stubs whose external key is COMPLETE and CORRECT
+    (``tree_sitter_rust.language``, ``builtins.id``), ranked below a
     same-short-name in-repo FIELD. A refinement of one observation is not a
     second observation (§13 case 2), and a stub that STATES its module
     contradicts rather than abstains, which §11 makes two edges (§15.1).
-    Under both conditions a single-backend run is byte-identical here, as it
-    already was through §3 — the ``merge_participants`` gate is now redundant
-    rather than load-bearing, and stays because what it reads from the
-    registry is a DECLARATION (the incumbent's ``name_key``), not an
-    observation.
+    Under both conditions a single-backend run is byte-identical here, so the
+    ``merge_participants`` gate is redundant rather than load-bearing; it stays
+    because what it reads from the registry is a DECLARATION (the incumbent's
+    ``name_key``), not an observation. (ADR-0057 Open question 4.)
 
     The stub's ``rank_score`` is multiplied by :data:`SUPERSEDED_STUB_RANK_FACTOR`
     (``confidence`` untouched — ADR-0039 ruling 3), and ``meta["superseded_by"]``
@@ -619,8 +599,7 @@ def demote_superseded_stubs(
         if stated_module_of(stub) is not None:
             # §15.1: a COMPLETE external key STATES a module, so an in-repo
             # answer contradicts it rather than filling it, and §11 keeps both
-            # edges. Only a key that abstained is superseded. Measured: 28 of
-            # the 419 stated a module and all 28 were correct.
+            # edges. Only a key that abstained is superseded.
             continue
         candidates = [
             resolved
@@ -672,19 +651,14 @@ def _finalize_stamp_external_owner_ancestors(ctx: FinalizeContext) -> None:
 def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     """INV-fazim: re-derive ``evidence_derived`` confidence from the verdict above.
 
-    confidence:F1 (ADR-0039) derives ``Edge.confidence`` from
-    ``(evidence_type, is_resolved)`` inside ``Edge.create`` — at CONSTRUCTION time,
-    against a value ADR-0037 ruling 1 declares advisory. ``Edge.create`` defaults
-    ``is_resolved=True``, so every producer that does not pass the flag derives the
-    RESOLVED base; the loop above then flips the flag for external dsts and, until
-    now, left the stale number behind. ``ast_call`` shipped at 0.85 where the verdict
-    says 0.40, ``ast_call_direct`` at 0.85 where it says 0.50.
-
-    Measured before the fix, on production's own ``create_boundary_nodes`` +
-    resolution sub-step: caddy 6,167, mitmproxy 8,880, poetry 4,074,
-    alertmanager 3,922 — 23,043 edges over four repos and two languages. Not a Go
-    producer defect, which is why it is corrected here at the one place that knows
-    the verdict rather than at each analyzer's emit site.
+    ``Edge.create`` derives ``Edge.confidence`` from ``(evidence_type, is_resolved)``
+    (ADR-0039) — at CONSTRUCTION time, against a value ADR-0037 ruling 1 declares
+    advisory. ``Edge.create`` defaults ``is_resolved=True``, so every producer that
+    does not pass the flag derives the RESOLVED base; when the loop above flips the
+    flag for an external dst, the confidence must follow it to the unresolved base.
+    The stale base is not one producer's or one language's defect, which is why it is
+    corrected here, at the one place that knows the verdict, rather than at each
+    analyzer's emit site.
 
     Two things are deliberately NOT touched. An explicit producer confidence keeps
     its value (ADR-0039: re-deriving it would replace a considered judgement with a
@@ -695,9 +669,9 @@ def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     A resolver-graded edge (ADR-0039 ruling 6, ``Edge.resolution_score``) is
     re-derived WITH its grade while it stays resolved, and loses the grade when
     the verdict makes it unresolved -- ruling 6: a grade on an unresolved edge is
-    meaningless. Before WI-sakum the table lookup ignored the grade and reset every
-    graded bind to its pathway's base, so the interpolation reached no published
-    edge (C ``fp = f1; if (c) fp = f2; fp(1)``: created 0.575, published 0.85).
+    meaningless. A plain table lookup that ignored the grade would reset every
+    graded bind to its pathway's base, so the interpolation would reach no
+    published edge (WI-sakum).
 
     Idempotent: re-deriving from the same verdict yields the same value, so the
     sub-step is safe to re-enter.
@@ -731,8 +705,7 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
     default. The legacy ``meta['visibility']`` key is removed once folded — the
     typed field is its canonical home.
 
-    Reconciliation of the two remaining visibility encodings (INV-jusot
-    follow-up):
+    Reconciliation with the two other visibility encodings:
 
     - ``is_exported`` — a public API cannot be non-public, so language
       visibility is a **necessary but not sufficient** condition:
@@ -740,16 +713,15 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
       level is always a language signal's verdict, never the default, so
       this is an observation — INV-kubup), but is
       NOT set True merely because a symbol is language-public. (A pure
-      ``is_exported = visibility=='public'`` alias would flip 58% of the
-      self-corpus — 19k of them test-file symbols — from not-exported to
-      exported, redefining ``is_exported`` from "public API member" (29%) to
-      "language-public" (87%) and turning every public test function into an
-      exported dead-code root. The `and`-with-visibility keeps ``is_exported``'s
-      public-API-membership meaning and only resolves the real disagreement:
-      the 5 self-corpus ``src/_foo`` symbols the path heuristic marked exported
-      despite being private.) The publishedness/test-penalty inputs remain on
-      ``supply_chain`` (``is_test_file`` / ``tier``).
-    - ``modifiers`` — the visibility terms (now on the ``visibility`` field)
+      ``is_exported = visibility=='public'`` alias would redefine
+      ``is_exported`` from "public API member" to "language-public" and turn
+      every public test function into an exported dead-code root. The
+      `and`-with-visibility keeps ``is_exported``'s public-API-membership
+      meaning and only resolves the real disagreement: a ``src/_foo`` symbol
+      the path heuristic marked exported despite being private.) The
+      publishedness/test-penalty inputs remain on ``supply_chain``
+      (``is_test_file`` / ``tier``).
+    - ``modifiers`` — the visibility terms (held by the ``visibility`` field)
       are stripped, so ``modifiers`` keeps only non-visibility terms
       (``static`` / ``native`` / ``abstract`` / …).
     """
@@ -782,11 +754,12 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
 
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     """Sub-step 8 — commit the reconciled IR into behavior_map as one view."""
-    # WI-haguz: serialize analysis_runs in a documented, deterministic order —
-    # ascending started_at, ties broken by pass id — rather than the accidental
-    # pass-completion order, so the array has a stable ordering contract. Sort
-    # in place so behavior_map["analysis_runs"] stays the same list object as
-    # ctx.analysis_runs (an identity other sub-steps and tests rely on).
+    # Serialize analysis_runs in a documented, deterministic order — ascending
+    # started_at, ties broken by pass id — rather than the accidental
+    # pass-completion order, so the array has a stable ordering contract
+    # (WI-haguz). Sort in place so behavior_map["analysis_runs"] stays the same
+    # list object as ctx.analysis_runs (an identity other sub-steps and tests
+    # rely on).
     ctx.analysis_runs.sort(key=lambda r: (r.get("started_at") or "", r.get("pass") or ""))
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
     ctx.behavior_map["nodes"] = [s.to_dict() for s in ctx.symbols]
@@ -804,11 +777,10 @@ def _finalize_referential_integrity(ctx: FinalizeContext) -> None:
     """Sub-step 10 — validate the emitted substrate (§7). STRUCTURALLY LAST (R3).
 
     Runs the full ``validate_ir`` aggregator (axis/writer-contract/cross-field/verdict/
-    id-format/stable-id/round-trip, the ADR-0037 is_resolved<->dst FK, and the
-    validator:F2 origin_run_id->analysis_runs FK). Lives in its structurally-last home so
-    it sees exactly the substrate that serializes. The remaining endpoint-closure predicate
-    (dangling src/dst) lands with its producer-side src-placeholder synthesis (WI-mujor),
-    not here.
+    id-format/stable-id/round-trip, the ADR-0037 is_resolved<->dst FK, the
+    origin_run_id->analysis_runs FK, and the dangling src/dst endpoint-closure predicate,
+    WI-mujor). Lives in its structurally-last home so it sees exactly the substrate that
+    serializes.
     """
     ctx.violations.extend(validate_ir(ctx.symbols, ctx.edges, ctx.analysis_runs))
 

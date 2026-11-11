@@ -44,11 +44,10 @@ Spans and identity
 tree-sitter-twig attaches the whitespace before a directive to its opening
 ``{%`` / ``{{`` token, so a directive's node starts where the previous one
 ended; ``_directive_span`` starts every symbol (and the line of every edge)
-at the delimiter itself. Before the WI-tusad scheme bump a macro on line 2
-reported line 1. Each symbol's stable_id (``make_doc_symbol_ids``) hashes the
-chain of ``block`` / ``macro`` / ``for`` / ``if`` directives open around it
-(``_Scopes``: the grammar keeps a directive's body as its siblings, so the walk
-tracks open and end tags itself), so the same ``{{ greet(user) }}`` in two
+at the delimiter itself. Each symbol's stable_id (``make_doc_symbol_ids``)
+hashes the chain of ``block`` / ``macro`` / ``for`` / ``if`` directives open
+around it (``_Scopes``: the grammar keeps a directive's body as its siblings,
+so the walk tracks open and end tags itself), so the same ``{{ greet(user) }}`` in two
 blocks is two identities and deleting one moves nothing; two identical ones in
 one scope are a same-scope tie the per-file split pass orders (ADR-0035 §1).
 
@@ -105,9 +104,9 @@ def _directive_span(node: "tree_sitter.Node") -> Span:
 
     tree-sitter-twig folds the whitespace BEFORE a directive into its opening
     ``{%`` / ``{{`` token, so the directive node starts where the previous one
-    ended: a macro on line 2 reported line 1, and every directive opening a
-    line reported the line above. The real start is where the delimiter text
-    begins, on the token's last row (the delimiter holds no newline).
+    ended: read from the node, a macro on line 2 would sit on line 1, and
+    every directive opening a line on the line above. The real start is
+    where the delimiter text begins, on the token's last row (the delimiter holds no newline).
     """
     start_row, start_col = node.start_point
     opener = node.children[0] if node.children else None
@@ -165,9 +164,10 @@ def _create_extends_edges(
 ) -> list[Edge]:
     """Create edge for extends statement.
 
-    Cluster E sub-case (b) per audit-findings 0010: per-extends Symbol
-    was redundant. Edge src is the using template file id; dst is the
-    parent template's dangling id (handled by IR boundary materialization).
+    No per-extends Symbol is emitted: it would only duplicate this edge
+    (audit-findings 0010, Cluster E sub-case (b)). Edge src is the using
+    template file id; dst is the parent template's dangling id (handled by
+    IR boundary materialization).
     """
     line = _directive_span(node).start_line
     edges: list[Edge] = []
@@ -193,8 +193,7 @@ def _create_block_symbol(
 ) -> Symbol:
     """Create a symbol for block definition."""
     span = _directive_span(node)
-    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
-    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah).
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "block", block_name,
         span.start_line, span.end_line, scope=scope,
@@ -249,8 +248,7 @@ def _create_macro_symbol(
 ) -> Symbol:
     """Create a symbol for macro definition."""
     span = _directive_span(node)
-    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
-    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah).
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "macro", macro_name,
         span.start_line, span.end_line, scope=scope,
@@ -303,8 +301,8 @@ def _extract_tag_statement(
 
     A block's name is the FIRST variable after ``block``. Anything after it
     is the shorthand ``{% block title "Hi" %}`` / ``{% block t page_title %}``,
-    which has no ``endblock`` and so opens no scope (the last argument was
-    read as the name until the WI-tusad scheme bump: ``Hi``, ``page_title``).
+    which has no ``endblock`` and so opens no scope; its trailing argument
+    (``Hi``, ``page_title``) is the block's content, not its name.
     """
     tag_name = ""
     arg_value = ""
@@ -374,8 +372,7 @@ def _extract_for_statement(
 
     name = f"for {loop_var} in {iterable}" if iterable else f"for {loop_var}"
     span = _directive_span(parent_node)
-    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
-    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah).
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "for_loop", name,
         span.start_line, span.end_line, scope=scopes.chain(),
@@ -402,9 +399,8 @@ def _extract_if_statement(
     rel_path: str, symbols_out: list[Symbol], scopes: _Scopes,
 ) -> None:
     """Extract a conditional: ``if a`` and ``elseif b`` each yield one, named by
-    their own keyword; only ``if`` opens a scope. ``else`` tests nothing and
-    yields none: it was emitted as a symbol named ``"if "``, and ``elseif b``
-    as ``if b``, indistinguishable from an ``if``."""
+    their own keyword, so ``elseif b`` stays distinguishable from ``if b``;
+    only ``if`` opens a scope. ``else`` tests nothing and yields none."""
     condition = ""
     keyword = ""
 
@@ -419,8 +415,7 @@ def _extract_if_statement(
         return
     name = f"{keyword} {condition}"
     span = _directive_span(parent_node)
-    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
-    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah).
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "conditional", name,
         span.start_line, span.end_line, scope=scopes.chain(),
@@ -488,8 +483,7 @@ def _extract_function_call(
         return
 
     span = _directive_span(parent_node)
-    # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
-    # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah).
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "function_call", func_name,
         span.start_line, span.end_line, scope=scopes.chain(),
@@ -555,14 +549,14 @@ class TwigAnalyzer(TreeSitterAnalyzer):
         AST in Pass 2.
         """
         analysis = FileAnalysis()
-        # Collect edges during symbol extraction; will be added in post_process
+        # The shared walker also collects edges; they are not used from here
+        # (Pass 2 re-walks the AST, see the docstring).
         edges: list[Edge] = []
         _extract_twig_symbols(
             tree.root_node, rel_path, run.execution_id,
             analysis.symbols, edges, _Scopes(),
         )
-        # Encode edge count so we can retrieve edges later
-        # Store edges in import_aliases using JSON-serializable representation
+        # Serialise the collected edges into import_aliases (unread).
         for i, edge in enumerate(edges):
             analysis.import_aliases[f"__edge_{i}__"] = (
                 f"{edge.src}|{edge.dst}|{edge.edge_type}|{edge.line}|"
