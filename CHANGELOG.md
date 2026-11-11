@@ -149,6 +149,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`scripts/smart-test-bed`**: scores smart-test's test selection on a small repo.
 - **`smart-test --full` on an unchanged tree now updates the selection index.**
 - **The pre-commit hook says when a check could not run, rather than calling the doc stale.**
+- **Signature-axis line citations are checked, and two stale ones fixed.**
 - **New CI checks**: declared axioms against real output, io-boundaries and taint classifying each call alike, a test run where every test skipped fails.
 - **Fixes for the twice-daily run's failing steps**: the test-only reachability and self-tree id checks; the I/O allowlist trace, which now checks `install-rust-analyzer` and `add-extras`; the readability tests, which run where hypergumbo is installed.
 - **`depends_on` must name earlier passes.**

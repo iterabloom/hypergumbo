@@ -224,7 +224,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
                     "packages/hypergumbo-core/src/hypergumbo_core/"
                     "linkers/method_call_recovery.py"
                 ),
-                line=207,
+                line=199,
                 anchor="HOLDS BOTH A VALUE TYPE AND A CALL SIGNATURE",
                 note=(
                     "The consumer that found the conflation, and the reason "
@@ -395,7 +395,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-core/src/hypergumbo_core/"
             "linkers/method_call_recovery.py"
         ),
-        line=218,
+        line=210,
         anchor='signature = (member.signature or "").strip()',
         fact="value_type",
         note=(

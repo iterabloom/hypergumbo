@@ -99,6 +99,23 @@ class TestConformanceIsDerived:
             )
 
 
+def test_every_cited_emission_site_still_says_what_it_claimed() -> None:
+    """A notion's ``file:line`` citation is checked, like a legacy parser's.
+
+    Nothing read these. The method_call_recovery citation pointed eight lines
+    below its anchor after a comment-only edit, and no test noticed, because
+    the only checker was the one for ``LEGACY_VALUE_PARSERS``.
+    """
+    sites = [site for notion in SIGNATURE_NOTIONS for site in notion.emission_sites]
+    assert sites, "no emission site is cited, so this test checks nothing"
+    for site in sites:
+        lines = (REPO_ROOT / site.path).read_text(encoding="utf-8").splitlines()
+        assert site.anchor in lines[site.line - 1], (
+            f"{site.path}:{site.line} no longer contains "
+            f"{site.anchor!r} — it says {lines[site.line - 1].strip()!r}"
+        )
+
+
 class TestFactHomes:
     def test_every_fact_names_a_home_that_exists(self) -> None:
         for fact, home in FACT_HOMES.items():
