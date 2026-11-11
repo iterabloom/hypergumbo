@@ -183,7 +183,7 @@ class Assessment:
 
 
 #: What ``--kind`` may select: comment blocks, docstrings, or both.
-KINDS = ("comments", "docstrings", "all")
+BLOCK_SELECTIONS = ("comments", "docstrings", "all")
 #: Blocks shorter than this many words are skipped unless ``--min-words`` says otherwise.
 DEFAULT_MIN_WORDS = 10
 
@@ -315,7 +315,7 @@ def without_short_blocks(source: str, min_words: int) -> str:
 
 
 def blocks_of(source: str, kind: str) -> list[Block]:
-    """The blocks of ``source`` that ``kind`` (one of :data:`KINDS`) selects, in line order.
+    """The blocks of ``source`` that ``kind`` (one of :data:`BLOCK_SELECTIONS`) selects, in line order.
 
     ``all`` lists both kinds side by side, each scored on its own: merging a
     docstring with the comments around it would dilute a historical paragraph
@@ -400,7 +400,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--blocks", action="store_true",
                         help="treat each file as Python and score its blocks one by one "
                              "(comment blocks unless --kind says otherwise)")
-    parser.add_argument("--kind", choices=KINDS,
+    parser.add_argument("--kind", choices=BLOCK_SELECTIONS,
                         help="which blocks to score: comments, docstrings or all; implies --blocks")
     parser.add_argument("--min-words", type=_non_negative, default=DEFAULT_MIN_WORDS,
                         help="skip comment blocks and docstrings of fewer words, counted as the "
