@@ -1,0 +1,22 @@
+- op: create  # 9e17
+  at: '2026-11-11T05:57:41Z'  # 9e17
+  by: agent  # 9e17
+  actor: jgstern_agent  # 9e17
+  clock: 1  # 9e17
+  nonce: '9e17'  # 9e17
+  data:  # 9e17
+    kind: work_item  # 9e17
+    title: "Test workers oversubscribe CPU: each xdist worker runs torch inference with an all-cores OpenMP pool; OMP_NUM_THREADS=1 cuts the full suite 45:49 -> 35:16"  # 9e17
+    status: todo_soft  # 9e17
+    priority: 2  # 9e17
+    parent:  # 9e17
+    tags:  # 9e17
+    - smart_test  # 9e17
+    - ci_infrastructure  # 9e17
+    - performance  # 9e17
+    isbefore: []  # 9e17
+    duplicate_of: []  # 9e17
+    not_duplicate_of: []  # 9e17
+    pr_ref:  # 9e17
+    description: "MEASURED 2026-11-11, not yet fixed. When the embedding model is in the local HF cache, every pipeline run inside a test (run_behavior_map / run_survey) performs real torch inference, and torch's OpenMP pool is sized to all cores. Under pytest-xdist each worker starts its own pool, so six workers put up to 36 compute threads on six cores and each worker's pipeline work slows about eightfold.\n\nEVIDENCE (dev at bce3e09043 + #2132, 6 CPUs):\n- packages/hypergumbo-core/tests/test_route_concept_parity.py: -n 0: 45 s. -n 6: 401-418 s wall, 2351 CPU-s (same with --no-cov, so coverage is not the cause; coverage itself measured 1.6x on the 17 pipeline runs). -n 6 with OMP_NUM_THREADS=1: 61 s wall, 344 CPU-s. OPENBLAS_NUM_THREADS=1 alone: no change (408 s).\n- Six plain python processes running the same 17 pipeline runs with an EMPTY cache (model unavailable): 21 s each, no collapse. With the real cache, one process: 25.8 s; with OMP_NUM_THREADS=1: 44.4 s (a single uncontended process is slower capped).\n- FULL SUITE, same commit, same machine: uncapped 2749 s (45:49); OMP_NUM_THREADS=1 2117 s (35:16). 632 s saved, 23 percent. Both 37,766 passed.\n\nPROPOSED FIX: smart-test exports OMP_NUM_THREADS=1 for pytest when it runs with more than one xdist worker (and leaves a caller's own value alone). One line plus a test. Per-PR CI probably does not hit this (its containers do not install sentence-transformers), not confirmed.\n\nSEPARATE QUESTION this exposes, for the owner: tests run model inference when the model happens to be cached and skip it when it is not, so local and CI runs exercise different code. Whether tests should pin embeddings off (or on) is a consistency decision, not a speed one.\n\nRELATED LEADS: test_route_concept_parity, test_import_dst_ids_are_canonical (140 s alone) and test_doc_family_id_parity each build one module-scoped fixture per xdist worker; build_once (PR #2130) fits all three."  # 9e17
+    fields: {}  # 9e17
