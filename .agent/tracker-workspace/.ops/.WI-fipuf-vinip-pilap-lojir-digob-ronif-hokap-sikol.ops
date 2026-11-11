@@ -1,0 +1,21 @@
+- op: create  # 94ca
+  at: '2026-11-11T01:10:36Z'  # 94ca
+  by: agent  # 94ca
+  actor: jgstern_agent  # 94ca
+  clock: 1  # 94ca
+  nonce: 94ca  # 94ca
+  data:  # 94ca
+    kind: work_item  # 94ca
+    title: "smart-test: order the local run failure-first (coverage-directed tests first) instead of dropping tests"  # 94ca
+    status: todo_soft  # 94ca
+    priority: 3  # 94ca
+    parent:  # 94ca
+    tags:  # 94ca
+    - smart_test  # 94ca
+    - ci_infrastructure  # 94ca
+    isbefore: []  # 94ca
+    duplicate_of: []  # 94ca
+    not_duplicate_of: []  # 94ca
+    pr_ref:  # 94ca
+    description: "Idea (owner-approved to file, 2026-11-10; not measured): instead of REMOVING tests from the local run (--narrow), ORDER them. Run first the tests the coverage index saw executing the changed blocks, then the citation-gate tests, then the rest of the selection. Nothing is dropped, so neither the whole-tree text readers (WI-zajuv measurement: 69 test files) nor import-time code (WI-zunug) can cause a miss, and the CI manifest is untouched.\n\nLimit, stated up front: a green run takes as long as today. The gain is time-to-first-failure only.\n\nOpen questions to measure before building: how pytest-xdist distributes an ordered list (ordering may be lost across workers); how often a failing local run's first failure is in the coverage-directed set (the smart-test bed, scripts/smart-test-bed, can score this: for each edit, the rank of the first MUST test).\n\nDone when: measured on the bed, and either shipped with the rank numbers or closed with the reason it does not help."  # 94ca
+    fields: {}  # 94ca

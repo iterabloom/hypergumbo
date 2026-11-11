@@ -37,3 +37,18 @@
   clock: 3  # 8511
   nonce: '8511'  # 8511
   message: "Re-scoped: the local half (a comment-only change runs seconds of tests locally) moved to WI-gapos-nubuz-vokod-jajul-magid-zajis-nakud-lomit, block-level --narrow, which needs this item's text-reader set first. This item keeps the text-reader set and the CI-manifest half; the latter narrows the merge gate and needs owner sign-off."  # 8511
+- op: update  # cbd3
+  at: '2026-11-11T00:58:46Z'  # cbd3
+  by: agent  # cbd3
+  actor: jgstern_agent  # cbd3
+  clock: 4  # cbd3
+  nonce: cbd3  # cbd3
+  set:  # cbd3
+    pr_ref: '#2127'  # cbd3
+- op: discuss  # a88c
+  at: '2026-11-11T00:58:55Z'  # a88c
+  by: agent  # a88c
+  actor: jgstern_agent  # a88c
+  clock: 5  # a88c
+  nonce: a88c  # a88c
+  message: "Part A, path-naming half: shipped in PR #2127. Whole-tree half: NOT shipped, per this item's own bar (if the set cannot be built reliably, nothing ships). Part B: not started (needs owner sign-off, and depends on the whole-tree half).\n\nMEASURED (full suite with an audit hook recording every non-import file open per test file, all Python processes incl. subprocesses; instrument + data in ~/hypergumbo_lab_notebook/text_reader_measurement_11102026/):\n- 106 test files read package source as text. 69 read more than 50 sources (whole-tree gates: confidence sites, id construction, edge/evidence types, producer coherence, field-axis, generate-architecture ...), about 1450 serial s of the suite's 23,084.\n- Specific readers (1-5 sources): 48 (test, file) pairs. The citation gate reached 7 before #2127 and 12 after. Most of the 36 it still misses read via inspect.getsource() of an imported module, or by running hypergumbo; the import slice selects most of those today.\n- The measurement found a live defect: dev was red after #2121 (signature_axis cited method_call_recovery.py by line, split across two adjacent literals, so the citation gate missed it). Fixed in #2126; #2127 makes the gate see adjacent literals, constant `/` chains and extensionless scripts/, and stops it selecting conftest.py.\n\nWHY THE WHOLE-TREE HALF CANNOT BE BUILT RELIABLY YET:\n- Static: about 25 of the 69 show nothing in their own text (they read through a helper, a CLI run, or a cached scan). Glob literals do not help: only 'packages/*/src/**/*.py' (14 files) names its base; '*.py' (56) and '**/*.py' (12) depend on a computed base.\n- Dynamic: a cached scan is credited only to the first test in a worker that triggers it, so the measured attribution is incomplete in a way that depends on scheduling.\n- Cost: keeping all 69 on every narrowed run is about 4 min wall on 6 CPUs, most of WI-gapos's gain.\n\nOPTIONS FOR THE OWNER: (1) `# reads:` header markers on the whole-tree gates, seeded from this measurement and verified per test, the measurement re-run as the guard; (2) keep --narrow opt-in and drop WI-gapos's default-on goal; (3) narrow keeps every measured whole-tree reader, accepting the ~4 min floor."  # a88c

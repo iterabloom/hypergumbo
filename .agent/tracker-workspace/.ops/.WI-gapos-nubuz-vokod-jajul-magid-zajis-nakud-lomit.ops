@@ -28,3 +28,10 @@
   set: {}  # 7b30
   add:  # 7b30
     isbefore: [WI-linug-tazos-lujud-gihof-dosih-dahug-mofap-zojul]  # 7b30
+- op: discuss  # b542
+  at: '2026-11-11T01:10:57Z'  # b542
+  by: agent  # b542
+  actor: jgstern_agent  # b542
+  clock: 3  # b542
+  nonce: b542  # b542
+  message: "Owner decision 2026-11-10: PARKED. Local narrowing stays opt-in; the goal of making it the default is dropped. Reasons, measured (details on WI-zajuv): with the WI-zunug fix (a), narrowing applies to about 18 percent of commits that touch package source (20 of 113; the rest change import-time code, where every importer must run); and 69 test files read the whole tree as text, about 50 of which match any one source file, a floor of roughly 3 minutes wall on 6 CPUs for any selector narrower than the import graph. Not reopened unless the whole-tree reader set gets built (option 1 on WI-zajuv: reads markers, verified per test). Alternatives filed: WI-fipuf (failure-first ordering), WI-nupit (four slow whole-tree tests)."  # b542
