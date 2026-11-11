@@ -104,7 +104,7 @@ steps:
         else
           WORKERS=$(nproc)
         fi
-        pytest -n "$WORKERS" --tb=short \
+        pytest -n "$WORKERS" --dist=loadgroup --tb=short \
           --cov=packages/hypergumbo-core/src \
           --cov=packages/hypergumbo-lang-mainstream/src \
           --cov=packages/hypergumbo-lang-common/src \
@@ -307,6 +307,6 @@ steps:
         #   test_smart_test_bed — scripts/smart-test-bed imports
         #           hypergumbo_core and drives smart-test, whose slice needs an
         #           installed hypergumbo.
-        pytest tests/ -o addopts="" -n "$WORKERS" --tb=short \
+        pytest tests/ -o addopts="" -n "$WORKERS" --dist=loadgroup --tb=short \
           --ignore=tests/test_score_readability.py \
           --ignore=tests/test_smart_test_bed.py

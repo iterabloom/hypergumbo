@@ -17,6 +17,12 @@ THE RESULT IS JSON, FOR THE BUILDER TOO. The builder returns what it reads
 back, not what it built, so a test cannot pass in the worker that built (a
 tuple, a ``defaultdict``, an int key) and fail in one that loaded.
 
+A worker that arrives mid-build is not running other tests while it waits. A
+module whose fixture is the expensive part should ALSO mark itself
+``pytestmark = pytest.mark.xdist_group("<its own file stem>")``: under
+``--dist=loadgroup``, which smart-test and CI pass, all its tests then run on one
+worker and nobody waits (``dist_args_for_run`` in ``scripts/smart-test``).
+
 A failed build writes nothing, so the next caller builds again and the failure
 is reported by each test that needed the result.
 

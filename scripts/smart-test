@@ -779,24 +779,10 @@ fold_selection_index() {
         "${full_flag[@]}" || true
 }
 
-# ONE OpenMP THREAD PER PARALLEL WORKER (WI-zuzoz). Prints 1 when this run
-# should be capped, nothing when it should not.
-#
-# When the embedding model is in the local cache, a pipeline run inside a test
-# performs torch inference, and torch sizes its OpenMP pool to every core. Each
-# xdist worker starts its own pool, so six workers put up to 36 compute threads
-# on six cores and each worker's pipeline work slows about eightfold. Measured
-# on one commit and machine: the full suite 45:49 as it was, 35:16 capped;
-# test_route_concept_parity.py alone 401 s and 61 s. OPENBLAS_NUM_THREADS did
-# nothing; the pool is OpenMP's.
-#
-# PARALLEL RUNS ONLY: one uncontended process is SLOWER capped (17 pipeline
-# runs: 26 s with the pool, 44 s without). The last -n / --numprocesses wins,
-# as it does for pytest, and a value the caller exported is left alone.
-omp_threads_for_run() {
-    if [[ -n "${OMP_NUM_THREADS:-}" ]]; then
-        return 0
-    fi
+# THE WORKER COUNT THIS RUN ASKS FOR: the value of the last -n /
+# --numprocesses in the arguments, as pytest reads it, or nothing when there is
+# none. smart-test adds its own -n before the caller's, so the caller's wins.
+xdist_workers_of() {
     local workers="" expect_value=false arg
     for arg in "$@"; do
         if [[ "$expect_value" == "true" ]]; then
@@ -810,8 +796,61 @@ omp_threads_for_run() {
             workers="${arg#-n}"
         fi
     done
+    echo "$workers"
+}
+
+# ONE OpenMP THREAD PER PARALLEL WORKER (WI-zuzoz). Prints 1 when this run
+# should be capped, nothing when it should not.
+#
+# When the embedding model is in the local cache, a pipeline run inside a test
+# performs torch inference, and torch sizes its OpenMP pool to every core. Each
+# xdist worker starts its own pool, so six workers put up to 36 compute threads
+# on six cores and each worker's pipeline work slows about eightfold. Measured
+# on one commit and machine: the full suite 45:49 as it was, 35:16 capped;
+# test_route_concept_parity.py alone 401 s and 61 s. OPENBLAS_NUM_THREADS did
+# nothing; the pool is OpenMP's.
+#
+# PARALLEL RUNS ONLY: one uncontended process is SLOWER capped (17 pipeline
+# runs: 26 s with the pool, 44 s without). A value the caller exported is
+# left alone.
+omp_threads_for_run() {
+    if [[ -n "${OMP_NUM_THREADS:-}" ]]; then
+        return 0
+    fi
+    local workers
+    workers=$(xdist_workers_of "$@")
     if [[ -n "$workers" ]] && [[ "$workers" != "0" ]] && [[ "$workers" != "1" ]]; then
         echo 1
+    fi
+}
+
+# ONE WORKER PER EXPENSIVE MODULE FIXTURE. Prints `--dist=loadgroup` for a run
+# that uses xdist at all, nothing otherwise.
+#
+# xdist's default `load` mode hands tests out one at a time, so one module's
+# tests land on several workers and each of those builds the module's fixture
+# again. Measured: test_route_concept_parity.py's fixture (one full pipeline run
+# per case, 57-84 s) was built in all six workers when the file ran alone, and
+# in two in a full suite. A module that marks itself
+# `pytestmark = pytest.mark.xdist_group("<its own name>")` is sent to ONE worker
+# under `loadgroup`, which builds once while the other workers keep running
+# other tests; unmarked tests are scheduled exactly as under `load`. That last
+# part is why this is not the build_once fixture's job alone: build_once also
+# builds once, but a second worker that needs the result waits on its lock
+# instead of working. Measured on the three marked pipeline modules plus 18
+# other core test files, -n 6, twice each: 99 s / 99 s with load, 65 s / 67 s
+# with loadgroup, 1827 passed both ways.
+#
+# Grouped tests carry an `@<group>` suffix on their node id. Selection keys on
+# the FILE part of an id, which the suffix does not touch.
+#
+# Given before the caller's arguments, so a --dist the caller passes wins.
+# -n 0 needs nothing; without any -n, xdist may not even be installed.
+dist_args_for_run() {
+    local workers
+    workers=$(xdist_workers_of "$@")
+    if [[ -n "$workers" ]] && [[ "$workers" != "0" ]]; then
+        echo "--dist=loadgroup"
     fi
 }
 
@@ -824,8 +863,12 @@ run_pytest() {
     # always understood; whether a run USES it is the caller's choice (see
     # FAIL_GRACE_ARGS). The plugin directory goes on PYTHONPATH for pytest
     # alone. ${…:-} because tests extract this function and drive it bare.
-    local omp_cap
+    local omp_cap dist_arg
     omp_cap=$(omp_threads_for_run "${extra_args[@]}")
+    dist_arg=$(dist_args_for_run "${extra_args[@]}")
+    if [[ -n "$dist_arg" ]]; then
+        extra_args=("$dist_arg" "${extra_args[@]}")
+    fi
     local plugin_dir="${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/pytest_plugins"
     local plugin_path="${PYTHONPATH:-}"
     if [[ -f "$plugin_dir/pytest_fail_grace.py" ]]; then

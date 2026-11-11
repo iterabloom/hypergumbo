@@ -92,6 +92,11 @@ from hypergumbo_core.analyze.registry import ensure_discovered
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
+# Every test here runs on ONE xdist worker, so the module fixture is built
+# once per run (smart-test and CI pass --dist=loadgroup; see
+# dist_args_for_run in scripts/smart-test).
+pytestmark = pytest.mark.xdist_group("test_doc_family_id_parity")
+
 # The analyzers that mint through ``make_doc_symbol_ids``. One fixture case
 # each, named for the language, carrying that language's canonical declaration
 # idioms.

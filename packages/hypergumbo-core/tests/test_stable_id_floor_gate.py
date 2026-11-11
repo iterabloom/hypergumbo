@@ -149,6 +149,11 @@ from hypergumbo_core.analyze.registry import ensure_discovered, get_all_analyzer
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
 
+# Every test here runs on ONE xdist worker, so the module fixture is built
+# once per run (smart-test and CI pass --dist=loadgroup; see
+# dist_args_for_run in scripts/smart-test).
+pytestmark = pytest.mark.xdist_group("test_stable_id_floor_gate")
+
 # -- the gate ------------------------------------------------------------------
 
 #: Census cell names, in report order.
