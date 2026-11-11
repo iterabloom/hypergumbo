@@ -147,6 +147,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`scripts/show-site`**: shows a reviewer the code around one I/O allowlist site, with its callers.
 - **`scripts/archaeology_heuristic.py`**: scores how likely a comment is history, not rule.
 - **`archaeology_heuristic.py --kind`** also scores docstrings, separately or with comments.
+- **Archaeology corpus: 240 blind-labelled docstrings of 100+ words replace 60.**
 - **`scripts/smart-test-bed`**: scores smart-test's test selection on a small repo.
 - **`smart-test --full` on an unchanged tree now updates the selection index.**
 - **The pre-commit hook says when a check could not run, rather than calling the doc stale.**

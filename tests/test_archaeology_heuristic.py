@@ -128,15 +128,17 @@ def test_the_fitted_weights_still_separate_the_labelled_comments() -> None:
     assert sum(history) / len(history) - sum(rules) / len(rules) >= 0.4
 
 
-def test_the_labelled_docstrings_are_a_held_out_sample_of_both_labels() -> None:
+def test_the_labelled_docstrings_are_the_held_out_100_word_sample() -> None:
     """No accuracy floor: the weights are not fitted to docstrings, and the
-    module docstring says their scores are a ranking, not a probability. What
-    is pinned is that the sample exists, is all docstrings, and holds both
-    labels, so a refit that claims to calibrate docstrings has data to show it."""
+    module docstring says their score is weak evidence. What is pinned is the
+    sample the module docstring describes -- docstrings of 100 or more words,
+    from hypergumbo_core, holding both labels -- so a refit or a claim about
+    docstrings is measured against data that is what it says it is."""
     blocks = _corpus("docstring")
-    assert len(blocks) >= 60
+    assert len(blocks) >= 240
     assert {b["label"] for b in blocks} == {0, 1}
     assert all(str(b["origin"]).startswith("hypergumbo_core/") for b in blocks)
+    assert min(len(str(b["text"]).split()) for b in blocks) >= 100
 
 
 SOURCE = '''\

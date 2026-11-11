@@ -43,15 +43,19 @@ corpus, not a judgement: read a high-scoring block before cutting it. When the
 families change, refit against the comment rows and update :data:`WEIGHTS`
 and :data:`BIAS`; the corpus test fails if the fit no longer separates them.
 
-A DOCSTRING SCORE IS A RANKING, NOT A PROBABILITY. The corpus's docstring
-rows, a random sample labelled blind to these scores, are held out of the fit.
-History is rare in docstrings, and the comment fit over-reads them: one word
-that is history in a comment and vocabulary in a docstring ("found", a
-version number, an array's dimension) saturates a short docstring's density,
-so about one rule-stating docstring in four scores over 0.5. Sort docstrings
-by score and read from the top; do not read 0.5 as even odds. Too few of the
-labelled docstrings are history to fit a docstring bias that does better than
-calling none of them history.
+A DOCSTRING SCORE IS WEAK EVIDENCE: USE IT TO PICK WHAT TO READ. The
+corpus's docstring rows, a random sample of docstrings of 100 or more words
+labelled blind to these scores, are held out of the fit. History is the
+minority there, about one docstring in seven, and it is usually woven into a
+present-tense rule ("the previous code did X, measured on Y" as the reason
+for the rule) rather than set apart, so the densities over-read rules and
+under-read that history: about one rule-stating docstring in five scores
+over 0.5, and a cutoff high enough to be mostly right finds few of the
+historical ones. The limit is the families, not the weights: refitting on
+the docstring rows themselves ranks them barely better (cross-validated AUC
+0.85 against these weights' 0.83). The sample has no docstring under 100 words, so a short
+docstring's score is unmeasured, and there one word ("found", a version
+number, an array's dimension) can saturate it.
 
 BLOCKS. Score a Python file one block at a time, not as one text: a whole
 file's score is diluted by its code and by the rules around a historical
