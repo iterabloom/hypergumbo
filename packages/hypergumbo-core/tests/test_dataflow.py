@@ -102,7 +102,7 @@ library_patterns:
             load_dataflow_config(yaml_file)
 
     def test_a_calls_section_is_refused(self, tmp_path: Path) -> None:
-        """WI-hapon: ``calls:`` was read into a field no shipped file produced."""
+        """A ``calls:`` section is an unknown key and is refused, not silently read (WI-hapon)."""
         yaml_file = tmp_path / "python.yaml"
         yaml_file.write_text("language: python\ncalls:\n  - node_type: call\n")
         with pytest.raises(ValueError, match="'calls'"):
@@ -670,11 +670,9 @@ returns:
 
         Go method calls like ``s.Set(x)`` live inside expression statements
         with no assignment parent, so the AST walk in ``annotate_dataflow``
-        finds nothing.  The Go go.yaml documents library_patterns as
-        filling exactly this gap, but until this test was written the
-        patterns were never applied — ``scan_library_patterns`` had no
-        production callers and the Go YAML's 30 patterns were dead code.
-        See INV-halar.
+        finds nothing.  go.yaml's library_patterns exist to fill exactly
+        this gap, so this test pins that ``annotate_dataflow`` actually
+        applies them (otherwise the patterns are dead code). See INV-halar.
         """
         yaml_content = """\
 language: go
@@ -941,8 +939,8 @@ assignments:
         parent.child_by_field_name = lambda name: {"left": left, "right": right}.get(name)
 
         # SIBLING comment on the same line. Its byte range is to the right
-        # of the short_var_declaration. Without the fix, this comment
-        # overwrites the line index and the positional walk fails.
+        # of the short_var_declaration. If comments are not skipped, this
+        # comment overwrites the line index and the positional walk fails.
         comment = MagicMock(spec=[])
         comment.type = "comment"
         comment.start_point = (line0, 17)
@@ -1542,10 +1540,9 @@ class TestGoLibraryPatterns:
     def test_expanded_write_verbs_match(self) -> None:
         """Go writers like Expire/GC/Truncate/Drop/Init/Reload should be tagged.
 
-        These are state-mutating verbs surfaced by the deep-20260406-233120
-        alertmanager reflect agent: Silences.Expire (9 calls in alertmanager)
-        and similar GC/Reset/Init/Reload patterns were unannotated despite
-        being clear writers.  WI-supih.
+        These are state-mutating verbs (e.g. alertmanager's
+        ``Silences.Expire``) that are clear writers and must be annotated as
+        such. (WI-supih)
         """
         config = self._load_go_config()
         content = (
@@ -1573,10 +1570,8 @@ class TestGoLibraryPatterns:
 class TestPythonLibraryPatterns:
     """Tests for python.yaml library_patterns extensions (WI-fogis).
 
-    The base python.yaml ships with list/dict/set/file primitives. The
-    deep-20260407-030917 kserve reflect agent flagged additional Python
-    serialization and file-position primitives that should also be
-    annotated for richer dataflow coverage.
+    Beyond the list/dict/set/file primitives, python.yaml annotates Python
+    serialization and file-position primitives for richer dataflow coverage.
     """
 
     def _load_python_config(self):
@@ -1683,9 +1678,8 @@ class TestRustLibraryPatterns:
     """Tests for Rust name-based dataflow heuristics.
 
     Rust methods like .write_all(), .push(), .insert() on &mut self are
-    state-mutating operations. Without library_patterns, these edges have
-    no access_mode (the bakeoff-deep assessment of pyo3-file showed all
-    26 access_mode annotations as 'read' — this was a gap in rust.yaml).
+    state-mutating operations. Without library_patterns in rust.yaml, these
+    edges get no access_mode.
     """
 
     def _load_rust_config(self):
@@ -2134,10 +2128,10 @@ class TestAnnotateDataflowAst:
     def test_library_pattern_fallback_for_python_call(self) -> None:
         """library_patterns from python.yaml fall back when AST walk misses.
 
-        Regression: PR #2733 wired scan_library_patterns into the
-        tree-sitter ``annotate_dataflow`` but py.py uses ``annotate_dataflow_ast``
-        which had no library_patterns awareness — so .append/.write/.send
-        method calls in pure Python code never received an access_mode.
+        py.py annotates through ``annotate_dataflow_ast``, not the tree-sitter
+        ``annotate_dataflow``, so the AST path must apply library_patterns
+        too — otherwise .append/.write/.send method calls in pure Python code
+        never receive an access_mode.
         """
         import ast
         from hypergumbo_core.dataflow import (
@@ -2457,7 +2451,7 @@ class TestMutatorAccessModePythonYaml:
 
 
 class TestAccessModeApplicabilityGateAst:
-    """ADR-0038 ruling 2 / WI-hapab (INV-tibob PR 1): the Python-AST Tier-1
+    """ADR-0038 ruling 2 / WI-hapab (INV-tibob): the Python-AST Tier-1
     classifier must skip Declared-N/A edge types (``instantiates`` + the 12
     structural types) so a constructor call never gets a spurious ``write``,
     while applicable edge types (``calls``) are unaffected."""

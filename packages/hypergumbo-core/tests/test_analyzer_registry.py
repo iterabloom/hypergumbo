@@ -90,11 +90,12 @@ class TestRegisteredAnalyzer:
         assert ra.depends_on == []
 
     def test_no_requires_symbols_field(self) -> None:
-        """WI-burin: the dead requires_symbols field has been removed.
+        """``RegisteredAnalyzer`` has no ``requires_symbols`` field (WI-burin).
 
-        It was a never-passed, never-consumed multi-pass-symbol-consumption
-        stub superseded by ``depends_on`` (INV-hujog), which carries CNF
-        pass-id dependencies that are actually validated.
+        Inter-pass dependencies are declared through ``depends_on``
+        (INV-hujog), which carries CNF pass-id dependencies that are actually
+        validated; a second, unconsumed channel for the same thing must not
+        come back.
         """
         import dataclasses
         field_names = {f.name for f in dataclasses.fields(RegisteredAnalyzer)}
@@ -352,13 +353,12 @@ class TestRegisterAnalyzer:
 class TestLanguageDeclarationGate:
     """WI-juzig: an analyzer's languages are the taxonomy's vocabulary, or a declaration.
 
-    ``register_analyzer`` used to default ``languages`` to ``[name]`` and check
-    nothing, so a pass named ``make`` was language ``make`` while the taxonomy,
-    the profile and every file-anchored ``Symbol.language`` said ``makefile``
-    (INV-nidul: a FALSE ``limits.skipped_languages`` verdict), and two names
+    Defaulting ``languages`` to ``[name]`` unchecked would make a pass named
+    ``make`` language ``make`` while the taxonomy, the profile and every
+    file-anchored ``Symbol.language`` say ``makefile`` (a FALSE
+    ``limits.skipped_languages`` verdict, INV-nidul), and would turn names
     that are not languages at all (``rust_analyzer``, ``manifest_targets``)
-    became languages the spec validator would accept. It also conflated absent
-    with empty: an explicit ``languages=[]`` became ``[name]``.
+    into languages the spec validator accepts.
 
     The gate: every effective language is a taxonomy key (aliases
     canonicalised) unless the registration DECLARES otherwise, and the
@@ -398,9 +398,9 @@ class TestLanguageDeclarationGate:
         assert reg.language_state == LANGUAGE_STATE_TAXONOMY
 
     def test_explicit_empty_list_is_not_absent(self) -> None:
-        """ABSENT != EMPTY: ``languages=[]`` used to be silently rewritten to
-        ``[name]``. It is now an error — the caller meant something and the
-        registry must not guess which."""
+        """ABSENT != EMPTY: ``languages=[]`` is an error, not a request for
+        the ``[name]`` default — the caller meant something and the registry
+        must not guess which."""
         with pytest.raises(LanguageDeclarationError) as exc:
 
             @register_analyzer("go", languages=[])
@@ -1206,9 +1206,9 @@ class TestCollectAnalyzerResult:
         This is the taxonomy-bypass cohort (matlab/meson/puppet/racket/robot/
         scheme/scss): their languages are absent from the taxonomy, so the
         file-presence pre-filter dispatches them; with no matching files each
-        returns a bare ``AnalysisResult()`` (``run=None``). Before this fix the
-        orchestrator dropped them, producing neither an AnalysisRun nor a skip
-        record — violating the "every catalog pass → AR or skip" invariant."""
+        returns a bare ``AnalysisResult()`` (``run=None``). Dropping them would
+        produce neither an AnalysisRun nor a skip record — violating the
+        "every catalog pass → AR or skip" invariant."""
         from hypergumbo_core.ir import Symbol
         from hypergumbo_core.limits import Limits
 
@@ -1237,8 +1237,7 @@ class TestCollectAnalyzerResult:
         ``skip_reason``, the recorded skip uses that reason verbatim — not the
         generic "no files matched". Covers rust_analyzer (opt-in SCIP backend
         disabled: it self-declares "rust-analyzer backend not enabled") and the
-        latent grammar-unavailable path (a skipped result whose ``run`` is None
-        was formerly dropped by the same silent early-return)."""
+        grammar-unavailable path (a skipped result whose ``run`` is None)."""
         from hypergumbo_core.ir import Symbol
         from hypergumbo_core.limits import Limits
 
@@ -1268,8 +1267,7 @@ class TestCollectAnalyzerResult:
 
         The live rust_analyzer does declare one; this pins the plumbing that
         carries a self-declared code from AnalysisResult through to
-        limits.skipped_passes, which is what makes the migration real rather
-        than a field nothing fills.
+        limits.skipped_passes, so the code is not a field nothing fills.
         """
         from hypergumbo_core.ir import Symbol
         from hypergumbo_core.limits import Limits
@@ -1954,10 +1952,9 @@ class TestRunAllAnalyzersFilePresencePreFilter:
         self,
     ) -> None:
         """WI-juzig: a pass declared ``no_language`` has ``languages == []``.
-        The dispatcher used to re-inflate an empty list into ``{name}`` — a
-        phantom the profile never counted, retained by accident. Now the
-        empty declaration is retained on purpose: the profile has no opinion
-        about a pass that reads no language's files."""
+        The dispatcher keeps the empty declaration rather than re-inflating it
+        into ``{name}`` — a phantom the profile never counted: the profile has
+        no opinion about a pass that reads no language's files."""
         from hypergumbo_core.analyze.all_analyzers import (
             run_all_analyzers as facade_run_all,
         )
@@ -1987,18 +1984,14 @@ class TestRunAllAnalyzersFilePresencePreFilter:
 
 
 class TestProductiveRunlessResultIsNotSilentlyDropped:
-    """WI-didag: a producer that emits output without a run VANISHES.
+    """A producer that emits output without a run must not VANISH (WI-didag).
 
     ``collect_analyzer_result``'s run-is-None branch records a
-    ``skipped_passes`` entry only when the result produced nothing. A
-    producer that emitted symbols/edges but no run is drained and then
-    dropped from the accounting entirely — so it lands in NEITHER
-    ``analysis_runs`` NOR ``limits.skipped_passes``, breaking the WI-didil
-    completeness contract precisely when the pass SUCCEEDED.
-
-    Measured with the rust-analyzer backend enabled on aardvark-dns: 669
-    nodes + 637 edges from a pass appearing in neither bucket, the only one
-    of 118 registered analyzers for which that was true.
+    ``skipped_passes`` entry only when the result produced nothing. Without
+    the synthesized run, a producer that emitted symbols/edges but no run
+    would be drained and then dropped from the accounting entirely — landing
+    in NEITHER ``analysis_runs`` NOR ``limits.skipped_passes``, breaking the
+    WI-didil completeness contract precisely when the pass SUCCEEDED.
 
     The output must still be kept — that part of the branch is correct and
     deliberate — so this pins the accounting, not the drain.
@@ -2035,7 +2028,7 @@ class TestProductiveRunlessResultIsNotSilentlyDropped:
         )
 
     def test_its_output_is_still_kept(self) -> None:
-        """The drain is correct and must not regress while fixing accounting."""
+        """The drain is correct; accounting for the pass must not cost its output."""
         from hypergumbo_core.analyze.all_analyzers import collect_analyzer_result
         from hypergumbo_core.limits import Limits
         result, sym, edge = self._productive_runless()

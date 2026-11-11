@@ -36,10 +36,10 @@ extraction logic.
 
 Both passes take the REPO-RELATIVE path. It is an identity input (the file
 anchor folded into every callable and field stable_id, a file-level
-constant's ``make_variable_stable_id``); the absolute path these passes took
-until the WI-tusad scheme bump made every Solidity id differ between two
-checkouts of the same repository. A ``library``, which is no backstop table
-kind, mints ``overload_arity.scoped_stable_id``; it rode the floor key.
+constant's ``make_variable_stable_id``), so an absolute path would make every
+Solidity id differ between two checkouts of the same repository. A
+``library``, which is no backstop table kind, mints
+``overload_arity.scoped_stable_id`` rather than falling to the floor key.
 
 Why This Design
 ---------------
@@ -86,9 +86,9 @@ PASS_ID = make_pass_id("solidity")
 # (rather than via the WI-rihob name-scoped backstop, which would collide on
 # overloads). Container kinds (contract / interface / library) are NOT here.
 # ``contract`` and ``interface`` are backstop table kinds and take their table
-# value; ``library`` is not, so with no producer value it rode the WI-motiz
-# floor key (WI-tusad): it mints ``overload_arity.scoped_stable_id`` instead
-# (a library cannot nest, so its scope is empty).
+# value; ``library`` is not, so rather than fall to the floor key (WI-motiz)
+# it mints ``overload_arity.scoped_stable_id`` (WI-tusad; a library cannot
+# nest, so its scope is empty).
 _CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
     {"function", "method", "constructor", "modifier", "event"}
 )
@@ -99,12 +99,13 @@ _CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
 # analyzer in the fleet; a file-scope function (legal since Solidity 0.7)
 # stays a ``function``.
 #
-# This constant exists because the module previously held FOUR separate
-# ``kind == "function"`` literals — the enclosing-symbol span index, the
+# One name, four readers: the enclosing-symbol span index, the
 # ``using X for Y`` library-call resolver, and both halves of the
-# ``overrides`` walker. Renaming the emitted kind while updating three of
-# the four would have silently dropped edges, and openzeppelin-contracts
-# carries 545 ``overrides`` edges to lose. One name, four readers.
+# ``overrides`` walker all test against this set rather than a
+# ``kind == "function"`` literal each, so they cannot fall out of step with
+# the emitted kinds. A reader left on the old kind would silently drop edges
+# (``overrides`` edges are numerous on inheritance-heavy code such as
+# openzeppelin-contracts).
 _FUNCTION_DECLARATION_KINDS: frozenset[str] = (
     SOLIDITY_CALLABLE_DECLARATION_KINDS - frozenset({"constructor"})
 )
@@ -334,10 +335,11 @@ def _extract_symbols_from_tree(
         # backstop (``_KIND_STABLE_ID_FACTORIES``) because a name-only key
         # collides on overloads (two ``Token.mint(...)`` bind to one id). They
         # must carry the typed producer stable_id — the signature keeps overloads
-        # distinct — exactly as the field path (``add_value_symbol``) already
+        # distinct — exactly as the field path (``add_value_symbol``)
         # does. ``contract`` / ``interface`` leave ``stable_id=None`` here and
         # receive their table value from the backstop; ``library``, no table
-        # kind, mints its producer id here (it rode the floor).
+        # kind, mints its producer id here rather than falling to the floor
+        # key.
         callable_stable_id: Optional[str] = None
         if kind == "library":
             callable_stable_id = scoped_stable_id(
@@ -536,9 +538,10 @@ def _extract_symbols_from_tree(
                 owner = _get_enclosing_struct(node, source) or ""
                 vtype = _solidity_value_type(node, source)
                 full_name = f"{owner}.{name}" if owner else name
-                # INV-fabih: a struct declared in a contract hashes the contract
-                # too; ``struct Inner`` in contracts ``A`` and ``B`` shared
-                # ``Inner.v`` and deleting ``A`` moved ``B``'s field id.
+                # A struct declared in a contract hashes the contract too, so
+                # ``struct Inner`` in contracts ``A`` and ``B`` yields two
+                # ``Inner.v`` identities and deleting ``A`` does not move
+                # ``B``'s field id (INV-fabih).
                 contract = _get_enclosing_contract(node, source)
                 add_value_symbol(
                     node, name, "field", full_name, vtype, [], True,
@@ -600,8 +603,7 @@ def _extract_edges_from_tree(
                         using_libraries.setdefault(contract_name, set()).add(lib_name)
 
     # First pass: extract import aliases.
-    # Phase 6 PR7 (Solidity "Not owner" leak): gate on the
-    # ``import_directive`` node type — _extract_import_aliases scans
+    # Gate on the ``import_directive`` node type: _extract_import_aliases scans
     # children for the first ``string`` node, which would otherwise
     # match the string argument of any call (e.g.,
     # ``require(cond, "Not owner")``) and synthesize a bogus
@@ -611,9 +613,9 @@ def _extract_edges_from_tree(
                 continue
             import_path, aliases = _extract_import_aliases(node, source)
             if import_path:
-                # INV-dulah (lang-slot limb): the bare import path is not an
-                # id -- finalize's 4-part fallback put it in the LANG slot.
-                # Same shape as the js/ts import edge.
+                # A well-formed id, not the bare import path: finalize's
+                # 4-part fallback would put a bare path in the LANG slot.
+                # Same shape as the js/ts import edge (INV-dulah).
                 edge = Edge.create(
                     src=file_id,
                     dst=f"solidity:{import_path}:0-0:module:module",
@@ -720,10 +722,9 @@ def _extract_edges_from_tree(
                         # enclosing contract (contract-scoped using) AND
                         # the file-level ``""`` bucket so file-level
                         # directives still dispatch calls that occur
-                        # inside contracts. Closes UAT BUG-13: the
-                        # shellcheck-style pattern where ``Memory.load``
-                        # is invoked via ``s.load(0)`` with a
-                        # file-level ``using Memory for Slice;``.
+                        # inside contracts — e.g. ``Memory.load``
+                        # invoked via ``s.load(0)`` under a file-level
+                        # ``using Memory for Slice;`` (UAT BUG-13).
                         enclosing_contract = _get_enclosing_contract(
                             node, source,
                         ) or ""
@@ -905,9 +906,8 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         """Extract symbols from a single Solidity file."""
         analysis = FileAnalysis()
         # The REPO-RELATIVE path: it is an identity input (the file anchor,
-        # a constant's make_variable_stable_id). Passing str(file_path) made
-        # every Solidity stable_id depend on where the repo was checked out
-        # (WI-tusad scheme bump).
+        # a constant's make_variable_stable_id). An absolute path would make
+        # every Solidity stable_id depend on where the repo is checked out.
         _extract_symbols_from_tree(
             tree, source, rel_path, run.execution_id, analysis,
         )

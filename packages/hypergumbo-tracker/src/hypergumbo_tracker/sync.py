@@ -44,7 +44,7 @@ Design:
   is never switched to another branch.  The one working-tree write: after a
   successful merge while on the base branch, the ops dirs are reset to HEAD
   (untracked ops files removed), local dev is fast-forwarded, and the
-  INV-dalup snapshot is union-restored.  try/finally ensures gate file and
+  pre-cleanup ops snapshot is union-restored.  try/finally ensures gate file and
   temp index cleanup.
 - Data-loss safeguards and retry paths in ``do_sync()``: ops are staged
   additively (``git add --ignore-removal``, INV-lovih) so a stale working
@@ -90,14 +90,12 @@ from hypergumbo_tracker.validation import validate_all
 # Sync gate (fcntl-based mutual exclusion)
 # ---------------------------------------------------------------------------
 #
-# Pre-WI-nutin design: ``.git/TRACKER_SYNC_PENDING`` was a marker whose
-# *existence* meant "sync in progress".  Cleanup ran in ``do_sync``'s
-# ``finally`` block — but a SIGKILL bypasses ``finally``, so the marker
-# could leak and silently block every subsequent operation until manual
-# ``rm`` cleanup hours later.
+# ``.git/TRACKER_SYNC_PENDING`` is an OS-managed lock file, not a marker
+# whose mere existence means "sync in progress": a SIGKILL bypasses
+# ``do_sync``'s ``finally`` block, so an existence-based marker could leak
+# and block every subsequent operation until removed by hand (WI-nutin).
 #
-# Post-WI-nutin design: the same path is now an OS-managed lock file.  A
-# holder opens it, calls ``fcntl.flock(LOCK_EX | LOCK_NB)``, and writes
+# A holder opens the file, calls ``fcntl.flock(LOCK_EX | LOCK_NB)``, and writes
 # its PID + start-time + (later) PR number into the body for diagnostic
 # messaging.  The OS releases the lock unconditionally on process exit,
 # regardless of cause, so a stale lock file is automatically reusable —
@@ -179,9 +177,8 @@ def _format_gate_holder_message(content: str) -> str:
 class SyncGate:
     """fcntl-based exclusive lock for the tracker sync workflow.
 
-    Replaces the marker-file-existence pattern.  The OS releases the
-    flock when the holding process exits — even on SIGKILL — so the
-    gate cannot leak across process lifetimes.
+    The OS releases the flock when the holding process exits — even on
+    SIGKILL — so the gate cannot leak across process lifetimes.
 
     The lock file at ``self.lock_path`` is created on ``try_acquire``
     and removed on ``release``; its body records ``pid``, ``started``
@@ -358,7 +355,7 @@ class SyncResult:
 
     Attributes:
         success: True if sync completed and PR was merged.
-        pr_number: Forgejo PR number (0 if not created).
+        pr_number: Forge PR number (0 if not created).
         pr_url: Full URL to the merged PR.
         files_synced: Number of tracker files committed.
         error: Human-readable error if success is False.
@@ -423,8 +420,7 @@ def _api_base_for(host: str, owner: str, repo: str) -> str:
 #: The credential ``htrac sync`` presents to each forge backend. The two are
 #: NOT interchangeable (the Codeberg token 401s against github.com), so every
 #: reader picks by the origin's backend from this one table: preflight, the
-#: superseded-branch prune, and ``htrac setup`` check 22 (INV-zulin, whose
-#: check once looked for FORGEJO_TOKEN only).
+#: superseded-branch prune, and ``htrac setup`` check 22 (INV-zulin).
 FORGE_TOKEN_VARS: dict[str, str] = {
     "github": "HG_GITHUB_TOKEN",
     "forgejo": "FORGEJO_TOKEN",
@@ -532,7 +528,7 @@ def _api_call(
     data: dict[str, Any] | None = None,
     timeout: int = 15,
 ) -> tuple[int, dict[str, Any] | list[Any] | None]:
-    """Make a Forgejo API call via ``urllib.request``.
+    """Make a forge (GitHub or Forgejo) API call via ``urllib.request``.
 
     Args:
         method: HTTP method (GET, POST, PATCH, etc.).
@@ -593,7 +589,7 @@ def _find_open_pr(
     To handle this, we also match by title when provided.
 
     Args:
-        api_base: Forgejo API base URL for the repo.
+        api_base: Forge API base URL for the repo.
         token: API bearer token.
         branch: Head branch name to search for.
         title: PR title to match as fallback (for AGit flow PRs).
@@ -702,7 +698,7 @@ def _poll_ci(
     failure.
 
     Args:
-        api_base: Forgejo API base URL.
+        api_base: Forge API base URL.
         token: API bearer token.
         head_sha: Commit SHA to poll status for.
         poll_interval: Seconds between polls.
@@ -751,7 +747,7 @@ def _poll_ci(
         # entire build, so "no element has left pending" is normal rather than
         # a hung runner — treat a non-empty statuses list as "started" and let
         # the overall timeout catch a genuinely stuck build.  (Forgejo Actions
-        # emits multiple jobs that flip quickly, so its heuristic still holds.)
+        # emits multiple jobs that flip quickly, so the heuristic holds there.)
         if not any_job_started:
             if backend == "github" or any(
                 _elem_state(s) != "pending" for s in statuses
@@ -970,13 +966,11 @@ def _union_restore_ops(snapshot: dict[Path, str]) -> None:
     Uses the op-BLOCK union (:func:`journal._union_op_blocks`), the single
     canonical restore primitive shared with the journal. It dedups whole ops
     (the semantic unit of an append-only ``.ops`` log) rather than individual
-    lines. For the current format this is *equivalent* to the former line-level
-    union (``_union_lines``): ``_serialize_op`` stamps a per-op ``# <nonce>``
-    comment on every non-empty line (width set to ``sys.maxsize`` so no scalar
-    folds), so no line is shared across ops and a line-level dedup never
-    collides. Op-block is preferred only so that one primitive serves both the
-    journal restore and this sync restore — not because line-union corrupts the
-    real format (it does not).
+    lines. For the current format that gives the same result as a line-level
+    union: ``_serialize_op`` stamps a per-op ``# <nonce>`` comment on every
+    non-empty line (width set to ``sys.maxsize`` so no scalar folds), so no
+    line is shared across ops. Op-block granularity is used so that one
+    primitive serves both the journal restore and this sync restore.
     """
     for path, backup_content in snapshot.items():
         if path.exists():
@@ -998,10 +992,10 @@ def _stage_tracker_ops_additive(
     item's append-only op-log), then stages the working-tree ops on top.  A
     plain ``git add -- <ops dirs>`` reconciles the index to the working tree,
     which means it stages a *deletion* for any op-log file present in the
-    seeded base tree but absent from the working tree.  That is exactly how a
-    stale/incomplete working tree (local dev behind origin, or files dropped by
-    an intervening ``git checkout``) silently turns into a sync commit that
-    DELETES items from the corpus (INV-lovih).
+    seeded base tree but absent from the working tree.  A stale/incomplete
+    working tree (local dev behind origin, or files dropped by an intervening
+    ``git checkout``) would then silently become a sync commit that DELETES
+    items from the corpus (INV-lovih).
 
     ``--ignore-removal`` (a.k.a. ``--no-all``) stages additions and
     modifications only, never removals — so the sync can never delete an op-log
@@ -1085,14 +1079,12 @@ def _format_sync_title(
     """Build a rich, varied PR title for a tracker auto-sync.
 
     A tracker sync runs frequently and unattended, so its PR title should be
-    both informative and distinct from the previous sync's.  The legacy
-    template ``tracker: sync N file(s)`` differed only by a small integer, so
-    consecutive syncs looked near-identical; a forge-side title-similarity
-    check then flagged them as duplicate submissions — a false positive on
-    legitimately-templated automation that rejected the PR and opened the
-    auto-sync circuit breaker.  Naming the op count and the most-touched item
-    IDs makes each title genuinely distinct and useful when browsing the PR
-    list, so the duplicate-detection misfire no longer triggers.
+    both informative and distinct from the previous sync's.  Titles that
+    differ only by a small integer (e.g. ``tracker: sync N file(s)``) trip a
+    forge-side title-similarity check that flags them as duplicate
+    submissions, rejecting the PR and opening the auto-sync circuit breaker.
+    Naming the op count and the most-touched item IDs makes each title
+    genuinely distinct and useful when browsing the PR list.
 
     Args:
         file_count: Number of ops files in this sync.
@@ -1121,10 +1113,10 @@ def pending_sync_lines(repo_root: Path) -> int:
     """Count pending tracker ops lines (not yet synced to origin/dev).
 
     Diffs working tree ops against ``origin/dev`` (the sync target) rather
-    than ``HEAD``.  This prevents re-syncing ops that were already merged
-    to ``origin/dev`` by a previous ``do_sync()`` call — the plumbing
-    approach leaves ops dirty relative to the local branch HEAD, which
-    caused duplicate sync PRs when the function diffed against HEAD.
+    than ``HEAD``.  The plumbing approach leaves synced ops dirty relative to
+    the local branch HEAD, so diffing against HEAD would re-count ops a
+    previous ``do_sync()`` already merged to ``origin/dev`` and trigger
+    duplicate sync PRs.
 
     Falls back to ``HEAD`` when ``origin/dev`` doesn't exist (fresh clone,
     disconnected state, or non-standard remote setup).
@@ -1136,7 +1128,7 @@ def pending_sync_lines(repo_root: Path) -> int:
     total = 0
 
     # 0. Determine diff base: origin/dev is the only authoritative remote
-    #    (WI-hajif retired the CI failover remote).
+    #    (WI-hajif).
     diff_base = "HEAD"
     remotes = ["origin/dev"]
     for remote_ref in remotes:
@@ -1282,7 +1274,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     #    push/API credential is selected by backend at step 9 (once the origin
     #    host — hence the backend — is known).  The GitHub maintainer credential
     #    is the LOCAL .env PAT ``HG_GITHUB_TOKEN`` (NOT the Actions-reserved
-    #    ``GITHUB_TOKEN`` name; see AGENTS.md §Secrets / PR-D), and it is NOT
+    #    ``GITHUB_TOKEN`` name; see AGENTS.md §Secrets), and it is NOT
     #    interchangeable with FORGEJO_TOKEN — presenting the Codeberg token to
     #    github.com would 401, so the two are kept distinct.
     env_vars = _load_env(repo_root)
@@ -1338,9 +1330,9 @@ def preflight_check(repo_root: Path) -> PreflightResult:
 
     # Select the effective push/API credential by backend.  For GitHub, the PAT
     # authenticates as the password and the username is ignored, so the
-    # conventional token-auth placeholder ``x-access-token`` is used.  The result
-    # keeps its ``forgejo_*`` field names (they now carry "the resolved forge
-    # credential" for either backend; a rename is a possible follow-up).
+    # conventional token-auth placeholder ``x-access-token`` is used.  The
+    # result's ``forgejo_*`` fields carry the resolved forge credential for
+    # either backend (the names are kept for backwards compatibility).
     if backend == "github":
         token = github_token
         forge_user = "x-access-token"
@@ -1541,18 +1533,18 @@ def do_sync(
     tmp_index = str(preflight.git_dir / "tmp-sync-index")
     idx_env = {"GIT_INDEX_FILE": tmp_index}
 
-    # WI-lufal: gate the destructive post-sync cleanup on whether the
-    # PR actually merged.  When sync fails (push fails, CI fails, merge
-    # fails), the local ops files in the working tree have NOT been
-    # propagated to remote — running the ``checkout HEAD --`` reset and
-    # the untracked-ops ``unlink`` would silently wipe every mutation
-    # in the in-flight batch (including new-item ADD ops).  Set true
-    # only after the merge call succeeds.
+    # Gate the destructive post-sync cleanup on whether the PR actually
+    # merged.  When sync fails (push fails, CI fails, merge fails), the
+    # local ops files in the working tree have NOT been propagated to
+    # remote — running the ``checkout HEAD --`` reset and the
+    # untracked-ops ``unlink`` would silently wipe every mutation in the
+    # in-flight batch (including new-item ADD ops).  Set true only after
+    # the merge call succeeds (WI-lufal).
     merge_succeeded = False
 
     # 0a. Acquire the sync gate atomically.  fcntl.flock on an open fd
-    # closes the race window between preflight and do_sync (concurrent
-    # _maybe_auto_sync calls used to all pass preflight and push
+    # closes the race window between preflight and do_sync (otherwise
+    # concurrent _maybe_auto_sync calls could all pass preflight and push
     # duplicate PRs); the OS releases the lock unconditionally on
     # process exit so the gate can never leak across crashes.
     acquired, holder_msg = gate.try_acquire()
@@ -1560,9 +1552,8 @@ def do_sync(
         return SyncResult(success=False, error=holder_msg, exit_code=1)
 
     # Suppress the reference-transaction recovery hook for the span of THIS
-    # WHOLE SYNC -- not merely its fetch, which is what this comment used to say
-    # and what WI-pohir then read as a fifteen-minute bound. The span reaches
-    # from here to the ``finally`` below and contains the CI poll.
+    # WHOLE SYNC, not merely its fetch: the span reaches from here to the
+    # ``finally`` below and contains the CI poll (WI-pohir).
     #
     # The hook restores journalled-but-uncommitted ops as UNTRACKED files on ref
     # updates; during the fetch + ``merge --ff-only`` cleanup that collides with
@@ -1570,10 +1561,10 @@ def do_sync(
     # its ORIG_HEAD write right before the overwrite check, so the restored
     # untracked file aborts the ff).
     #
-    # WI-gokuv made this a LOCK rather than a marker file, so it cannot outlive
-    # this process. ``try_acquire`` returning False means an outer ``auto-pr``
-    # already holds it -- we then own nothing and ``release`` is a no-op, which
-    # is the nesting the old ``recover_marker_created`` flag hand-rolled.
+    # This is a LOCK rather than a marker file, so it cannot outlive this
+    # process (WI-gokuv). ``try_acquire`` returning False means an outer
+    # ``auto-pr`` already holds it -- we then own nothing and ``release`` is a
+    # no-op, so nesting inside ``auto-pr`` needs no extra bookkeeping.
     recover_lock = RecoverSuppressionLock(preflight.git_dir)
     recover_lock.try_acquire()
 
@@ -1630,12 +1621,9 @@ def do_sync(
 
         # 4a. Compose the PR/commit title.  Counting the synced op-lines and
         #     naming the most-touched item IDs makes each sync's title
-        #     distinct and informative.  The legacy template differed only by
-        #     a small integer, so consecutive syncs looked near-identical and
-        #     a forge-side title-similarity check flagged them as duplicate
-        #     submissions — a false positive on legitimately-templated
-        #     automation that rejected the PR and tripped the auto-sync
-        #     circuit breaker.  Distinct, descriptive titles avoid that.
+        #     distinct and informative, so a forge-side title-similarity check
+        #     does not reject consecutive syncs as duplicate submissions (see
+        #     _format_sync_title).
         numstat_result = _git(
             repo_root, "diff", "--numstat", base_sha, tree_sha, "--",
             *_TRACKER_PATHS, check=False,
@@ -1789,7 +1777,7 @@ def do_sync(
             # Repush (force) to trigger a new CI run on a fresh PR.  This
             # stale-pending retry only runs on the Forgejo backend — GitHub
             # posts one long-lived ``pending`` commit-status, so ``_poll_ci``
-            # never returns ``"stale_pending"`` there (see PR-A) and this loop
+            # never returns ``"stale_pending"`` there and this loop
             # body is inert.  ``push_opts`` therefore carries the AGit ``-o``
             # options here.
             push_result = _git(
@@ -1921,7 +1909,7 @@ def do_sync(
         repo_slug = slug_match.group(1) if slug_match else ""
 
         # The 6-attempt loop also absorbs GitHub's async ``mergeable``
-        # computation (C10): a merge attempted while ``mergeable`` is still
+        # computation: a merge attempted while ``mergeable`` is still
         # null returns 405, which _merge_pr reports as "not merged" and this
         # loop retries — treating null as "unknown, retry" rather than
         # "not mergeable".
@@ -2001,8 +1989,8 @@ def do_sync(
         # If we're sitting on the base branch itself, fast-forward it to
         # origin/dev so the synced ops files become tracked.  Without this the
         # ops files remain "untracked" in the working tree and
-        # pending_sync_lines() counts them again on the next call, growing the
-        # pending-line count by ~22 per sync cycle.
+        # pending_sync_lines() counts them again on the next call, so the
+        # pending-line count grows with every sync cycle.
         #
         # ff-only is correct on BOTH backends, INCLUDING GitHub's rebase-merge.
         # It fast-forwards local dev onto origin/dev, and origin/dev is always a
@@ -2012,18 +2000,17 @@ def do_sync(
         # Forgejo's (which ALSO rebases these PRs: its ff-only silently no-ops
         # on the branchless AGit PR and _merge_pr falls through to rebase) —
         # replays the sync commit onto origin/dev's tip, which itself descends
-        # from ``base``.  So the merge rewriting the sync-commit SHA is
-        # irrelevant here (the earlier "reset --hard for github" plan misread
-        # this as a sibling/divergence): base → origin/dev is a fast-forward on
-        # both forges.  ff-only is also the SAFE choice — it aborts non-
+        # from ``base``.  So the merge rewriting the sync-commit SHA does not
+        # make local dev diverge: base → origin/dev is a fast-forward on both
+        # forges.  ff-only is also the SAFE choice — it aborts non-
         # destructively on genuine divergence (e.g. real local commits on dev),
         # whereas ``reset --hard`` would silently discard both those commits and
         # any unstaged edit to a tracked NON-ops file (preflight only rejects
         # STAGED non-tracker files), which the ops-only INV-dalup snapshot does
         # not restore.
         #
-        # Both are safe IFF the synced PR actually merged — that's the only
-        # state where origin/dev contains the ops content this overwrites
+        # The cleanup is safe IFF the synced PR actually merged — that's the
+        # only state where origin/dev contains the ops content this overwrites
         # locally with.  When sync failed (``merge_succeeded`` is False) the
         # ``checkout HEAD --`` reset and the untracked ``unlink`` would silently
         # wipe local-only mutations that never made it to remote (WI-lufal).
@@ -2037,9 +2024,10 @@ def do_sync(
         # Both resets are path-scoped to the ops dirs, so unrelated non-ops
         # working-tree edits are untouched and ff-only carries them forward.
         if preflight.original_branch == base_branch and merge_succeeded:
-            # INV-dalup: snapshot every ops file on disk BEFORE the destructive
+            # Snapshot every ops file on disk BEFORE the destructive
             # reset/unlink so mutations written in the ``git add`` → cleanup
-            # race window survive the merge (see _union_restore_ops below).
+            # race window survive the merge (see _union_restore_ops below;
+            # INV-dalup).
             ops_snapshot = _snapshot_ops_files(repo_root)
 
             # Reset tracked ops files to HEAD (handles modified files).
@@ -2085,9 +2073,9 @@ def do_sync(
                     f"ff-only merge failed during cleanup: "
                     f"{ff_result.stderr.strip()}"
                 )
-            # INV-dalup: re-apply any post-snapshot ops the reset/unlink/merge
-            # discarded — lossless op-block union for modified files, recreate
-            # for new items that never reached the sync commit.
+            # Re-apply any post-snapshot ops the reset/unlink/merge discarded
+            # — lossless op-block union for modified files, recreate for new
+            # items that never reached the sync commit (INV-dalup).
             _union_restore_ops(ops_snapshot)
 
         # Delete sync branch ref (non-fatal)

@@ -150,9 +150,10 @@ CHARS_PER_TOKEN = 4.4
 # Set TRANSCRIPT_TRAINING_LOG to a path to enable. Default: .agent/.training-data.jsonl
 TRAINING_LOG = os.environ.get("TRANSCRIPT_TRAINING_LOG", "")
 
-# Parse outcome sidecar: dormant since migration from parse_ratings to
-# parse_selection.  parse_selection uses exact ID matching, making parse
-# misses structurally impossible.  Kept for backward compatibility.
+# Parse-outcome sidecar path.  Dormant: nothing in the pipeline calls
+# log_parse_outcome, because parse_selection returns only the IDs it finds
+# in the response, so there are no parse misses to record.  Kept for
+# backward compatibility.
 PARSE_OUTCOME_LOG = os.environ.get("TRANSCRIPT_PARSE_OUTCOME_LOG", "")
 
 # Playbook registry: (id, path relative to repo root, one-line summary)
@@ -757,19 +758,19 @@ def log_training_example(
     *extra* is an optional dict of additional metadata fields merged into the
     top-level JSON object (e.g. ``{"parse_misses": ["id1", "id2"]}``).
 
-    **Cohort metadata (v2, WI-tatuh / INV-gajap / WI-nadud):**
+    **Cohort metadata** (WI-tatuh / INV-gajap / WI-nadud):
 
     Every entry carries top-level cohort metadata so distribution shifts are
     discoverable from the corpus alone:
 
-    * ``pipeline_version`` — forward marker (``"v2"`` since WI-nadud normalization)
+    * ``pipeline_version`` — schema marker, ``"v2"``
     * ``infra_sha`` — commit SHA of this file at write time
     * ``playbook_registry_sha`` — commit SHA of the PLAYBOOKS registry file
     * ``main_llm`` — the LLM whose transcript is being analyzed
     * ``vendor`` — always ``"claude-code"`` (the only adapter currently)
     * ``vendor_version`` — Claude Code version from the session JSONL
-    * ``scoring_model`` — alias for the legacy *model* parameter; *model* is
-      kept as a backward-compat key for existing data loaders
+    * ``scoring_model`` — same value as *model*; the ``model`` key is also
+      written because existing data loaders read it
     """
     prompt, response = _truncate_to_budget(prompt, response, MAX_TOKENS)
     log_path = TRAINING_LOG
@@ -823,11 +824,11 @@ def log_injection_history(
 ) -> None:
     """Append an injection-event record to the per-session rotated sidecar.
 
-    Fixes ADR-0018's "retrospective blindness" gap. Claude Code's
-    ``additionalContext`` mechanism does not write hook-injected text back
-    into the session transcript JSONL, so a retrospective on
-    ``.last_session_transcript.jsonl`` cannot see which playbooks were
-    injected, when, or whether they were relevant. The sidecar at
+    Claude Code's ``additionalContext`` mechanism does not write
+    hook-injected text back into the session transcript JSONL, so a
+    retrospective on ``.last_session_transcript.jsonl`` cannot see which
+    playbooks were injected, when, or whether they were relevant (ADR-0018's
+    "retrospective blindness" gap). The sidecar at
     ``<repo>/.agent/.current_injection_history.<session_id>.jsonl`` is the
     durable record of every poll the LLM-driven selector made: the
     distilled goal, what it picked, what was actually injected (after
@@ -873,7 +874,8 @@ def log_injection_history(
         with open(log_path, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
         # Owner-only (INV-todig): injection history quotes transcript
-        # content. chmod on every write also heals pre-contract 664 files.
+        # content. chmod runs on every write, not only on creation, so an
+        # existing file with looser permissions is tightened too.
         os.chmod(log_path, 0o600)
     except OSError:
         pass  # Best-effort — never break the pipeline for logging failures
@@ -885,9 +887,10 @@ def log_parse_outcome(
     """Append a parse-outcome record to the sidecar log.
 
     Each line is a JSON object with the *event_id* (shared with the
-    corresponding training-data entry) and the list of playbook IDs whose
-    scores could not be extracted from the LLM response.  Only called when
-    *parse_misses* is non-empty.
+    corresponding training-data entry) and the list of playbook IDs that
+    could not be extracted from the LLM response.  Meant to be called only
+    when *parse_misses* is non-empty; the current pipeline does not call it
+    (see ``PARSE_OUTCOME_LOG``).
     """
     log_path = PARSE_OUTCOME_LOG
     if not log_path:
@@ -945,18 +948,13 @@ def read_playbook(repo_root: str, rel_path: str) -> str:
     return ""
 
 
-# WI-bodog: presentation helpers for the injection output block.
+# Presentation helpers for the injection output block (WI-bodog).
 #
-# Pre-WI-bodog format used a bare-id divider (``--- <pb_id> ---``)
-# wrapped under ``[Transcript Analysis — N relevant playbook(s)]`` with
-# raw file content immediately after.  Empirical signal from
-# scripts/measure-playbook-overlap.py (WI-fusak) showed the agent
-# re-Read injected playbooks within a few turns of receiving them — the
-# block didn't *look* like a reference document, so the agent didn't
-# recognize it as one.  These helpers reshape the output so each entry
-# leads with a natural-language title plus a repo-relative path
-# (matching the surfaces the agent actually grepped/spoke about) and so
-# the leading SPDX HTML comment doesn't dominate the first visual line.
+# Each entry leads with a natural-language title plus a repo-relative
+# path (the names the agent greps for and speaks of) and has its leading
+# SPDX HTML comment stripped, so the block reads as a reference document.
+# A block that does not look like one gets re-Read by the agent within a
+# few turns of injection (scripts/measure-playbook-overlap.py, WI-fusak).
 
 _SPDX_HEADER_RE = re.compile(
     r"^<!--\s*SPDX-License-Identifier:[^>]*-->\s*\n", re.IGNORECASE,
@@ -970,8 +968,7 @@ def strip_spdx_header(content: str) -> str:
     comment and the trailing blank line that follows it.
 
     Conditional — applies only when the comment is on line 1.  Files
-    that already have a heading on line 1 (9 of 21 playbooks) are
-    unaffected.  Returns the stripped content with no leading
+    that already have a heading on line 1 are unaffected.  Returns the stripped content with no leading
     whitespace; ``read_playbook`` already produces a stripped body, so
     skipping the strip here would still leave the SPDX marker as the
     first visible line.
@@ -990,9 +987,9 @@ def extract_natural_title(content: str) -> str:
     Scans the content (post-SPDX-strip) line by line, skipping blank
     lines and HTML comments, returning the first markdown heading
     text.  Used to give injected playbooks a human-recognizable label
-    in the divider — sampling of the WI-fusak overlap data showed the
-    agent referred to playbooks by their natural-language title (e.g.
-    "the priorities playbook"), never by the bare kebab-case id.
+    in the divider, because the agent refers to playbooks by their
+    natural-language title (e.g. "the priorities playbook"), not by the
+    bare kebab-case id (WI-fusak).
     """
     if not content:
         return ""
@@ -1271,9 +1268,9 @@ def _run_injection_pipeline(
 ) -> None:
     """Load → decide → inject → save. Must run under injection_state_lock.
 
-    Extracted from ``main`` so the critical-section boundary is explicit
-    and the lock wrapping in ``main`` stays a single ``with`` statement
-    instead of a 150-line indent.
+    Kept separate from ``main`` so the critical-section boundary is
+    explicit and the lock wrapping in ``main`` is a single ``with``
+    statement.
     """
     # Step 0a: Check if all playbooks are recently injected (skip LLM calls entirely)
     all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
@@ -1461,8 +1458,9 @@ def _run_injection_pipeline(
         )
 
     # Output: injected into the agent's conversation.
-    # WI-bodog: header uses a neutral noun ("document(s)") rather than
-    # "playbook(s)" because 9 of 21 entries are protocols/guides/SOPs.
+    # The header uses a neutral noun ("document(s)") rather than
+    # "playbook(s)" because many registry entries are protocols, guides or
+    # SOPs (WI-bodog).
     # Each block is rendered via ``format_playbook_block`` so the
     # divider leads with a natural title + repo-relative path and a
     # one-line framing hint, and the leading SPDX HTML comment is

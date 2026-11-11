@@ -2,11 +2,10 @@
 """Permission contract for the transcript pipeline (INV-todig).
 
 A secret's copy is never more readable than its origin. ``.env`` is mode
-0600; transcripts republish command output (``git remote -v`` was the live
-case, 138 credential occurrences measured 2026-07-29), so every
-transcript-content file must be 0600 and every archive directory 0700 —
-regardless of the process umask (002 in this environment, which is exactly
-how the 664 files happened).
+0600; transcripts republish command output (``git remote -v`` output, for
+example, can carry credentials), so every transcript-content file must be
+0600 and every archive directory 0700 — regardless of the process umask
+(002 in this environment, which would otherwise yield 664 files).
 
 The contract has one home per language layer:
 
@@ -14,8 +13,8 @@ The contract has one home per language layer:
   hardening helpers), sourced by every shell writer;
 * python — ``os.chmod(..., 0o600)`` at the two python write sites
   (``filter-transcript.py`` dest, ``on_transcript_change.py`` injection
-  history), self-healing on every write so files created 664 by the
-  pre-fix pipeline tighten on next touch.
+  history), self-healing on every write so an existing 664 file tightens
+  on its next touch.
 
 Tests drive the REAL scripts under ``umask 002`` (the failure condition),
 never a mocked one. Subprocess-driven like the sibling hook tests
@@ -62,7 +61,7 @@ def _transcript_line() -> str:
 
 def _run_filter(src: Path, dest: Path, state: Path) -> None:
     """Run filter-transcript.py exactly as sync-transcript.sh does, but
-    under the permissive umask that produced the 664 files."""
+    under a permissive umask (002) that would yield 664 files."""
     subprocess.run(
         [
             "bash",
@@ -90,10 +89,9 @@ class TestFilterTranscriptCreatesOwnerOnly:
         )
 
     def test_preexisting_664_dest_is_healed_on_next_write(self, tmp_path: Path):
-        """Files created by the pre-fix pipeline are 664 on disk today; the
-        writer must tighten them rather than faithfully preserve the
-        downgrade (the scrubber's mode-preservation made this the only
-        self-healing layer available)."""
+        """An existing 664 dest must be tightened by the writer rather than
+        faithfully preserved (the scrubber preserves modes, so the writer
+        is the only layer that can heal it)."""
         src = tmp_path / "vendor.jsonl"
         src.write_text(_transcript_line() + "\n")
         dest = tmp_path / f".current_session_transcript.{SID}.jsonl"
@@ -107,7 +105,7 @@ class TestFilterTranscriptCreatesOwnerOnly:
 class TestRotationHardensSlotsAndArchive:
     @pytest.fixture()
     def seeded_root(self, tmp_path: Path) -> Path:
-        """A fake REPO_ROOT whose .agent/ holds a full 664-era population:
+        """A fake REPO_ROOT whose .agent/ holds a full population of 664 files:
         a current pair to promote, a last pair to demote, and a
         second-to-last pair that rotation must archive."""
         agent = tmp_path / ".agent"
@@ -127,8 +125,8 @@ class TestRotationHardensSlotsAndArchive:
         return tmp_path
 
     def test_legacy_setgid_archive_root_is_fully_stripped(self, seeded_root: Path):
-        """The live archive dir was created 2775 (setgid). GNU chmod keeps
-        setgid on directories under numeric modes, so a plain chmod 700
+        """An archive dir created 2775 (setgid) must end up 0700. GNU chmod
+        keeps setgid on directories under numeric modes, so a plain chmod 700
         leaves 2700 — group propagation intact for every future subdir.
         Rotation must strip it explicitly."""
         archive_root = seeded_root / ".agent" / ".archived-transcripts"
@@ -272,7 +270,8 @@ class TestEveryShellWriterIsWiredToTheOneHome:
     """Parity guard in the style of test_touch_heartbeat: the permission
     contract lives in transcript_perms.sh, and every shell script that
     creates transcript-content files must source it and set the umask.
-    A writer added without this wiring recreates INV-todig silently."""
+    A writer added without this wiring silently creates group-readable
+    transcripts again (INV-todig)."""
 
     WRITERS = (
         "sync-transcript.sh",

@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-kutal: ``self.method()`` resolves through the CLASS ``self`` denotes,
-never through the file-wide bare-name table.
+"""``self.method()`` resolves through the CLASS ``self`` denotes, never
+through the file-wide bare-name table (WI-kutal).
 
-Before this item, ``_process_call`` Case 2a answered ``self.<m>()`` with
-``local_symbols.get(m)`` -- the flat, last-write-wins ``symbol_by_name`` dict
-that holds every method of every class in the file under its SHORT name, next
-to every module-level function. So the LAST ``def m`` in the file answered for
-every ``self.m()`` in it: a class's own ``save`` lost to a later unrelated
-class's ``save``, a class with no ``save`` at all bound to one, a nested class
-bound to its outer class's method, and a module-level ``def save()`` answered
-an instance call.
+That table, ``local_symbols`` -- the flat, last-write-wins ``symbol_by_name``
+dict -- holds every method of every class in the file under its SHORT name,
+next to every module-level function. Answering ``self.<m>()`` from it
+(``_process_call`` Case 2a) would let the LAST ``def m`` in the file answer
+every ``self.m()`` in it: a class's own ``save`` would lose to a later
+unrelated class's ``save``, a class with no ``save`` at all would bind to one,
+a nested class would bind to its outer class's method, and a module-level
+``def save()`` would answer an instance call.
 
-The rule now, by POSITION (LIVE.md §3, INV-mozas / INV-midag):
+The rule, by POSITION (LIVE.md §3, INV-mozas / INV-midag):
 
 * the class is the one lexically enclosing the method whose ``self`` the call
   reads -- the innermost function frame that BINDS ``self`` (so a closure
@@ -76,8 +76,8 @@ def _single(edges):
 
 class TestOwnClassWins:
     def test_own_method_beats_later_same_named_method(self, tmp_path: Path) -> None:
-        # Order defines save; a LATER class Fee also defines save. Pre-fix the
-        # last write (Fee.save) answered Order.finish's self.save().
+        # Order defines save; a LATER class Fee also defines save. The last
+        # write (Fee.save) must not answer Order.finish's self.save().
         src = (
             "class Order:\n"
             "    def save(self):\n"
@@ -227,7 +227,7 @@ class TestNestedClassThroughSelf:
     ) -> None:
         # ``self.Result()`` reads the class attribute ``Result`` -- the class
         # nested in the caller's own class body -- not a same-named class
-        # elsewhere in the file (pre-fix: the LAST ``Result`` in the file).
+        # elsewhere in the file (such as the LAST ``Result`` in the file).
         src = (
             "class Manager:\n"
             "    class Result:\n"
@@ -272,7 +272,7 @@ class TestNestedClassThroughSelf:
 
 class TestUnderDeterminedSelf:
     """A ``self`` that does not denote an instance of the enclosing class
-    resolves nothing (INV-fahub) -- pre-fix each bound the LAST ``helper`` in
+    resolves nothing (INV-fahub) -- in particular, not the LAST ``helper`` in
     the file."""
 
     _TAIL = (
@@ -347,7 +347,7 @@ def _resolved_calls(data: dict, src: str, dst: str) -> list[dict]:
 
 
 class TestInheritedThroughTheLinker:
-    """A same-file INHERITED method now reaches the ``inherited_calls``
+    """A same-file INHERITED method reaches the ``inherited_calls``
     linker's MRO walk instead of being claimed by name in the analyzer."""
 
     def test_same_file_ancestor_resolves_via_mro_walk(self, tmp_path: Path) -> None:
@@ -369,8 +369,8 @@ class TestInheritedThroughTheLinker:
         self, tmp_path: Path
     ) -> None:
         # INV-guviv, same-file shape: Sub's real MRO is [Sub, dict, Base], so
-        # self.pop() is dict.pop. Pre-fix Case 2a bound Base.pop by name before
-        # the linker's builtin-base gate could see the call. The positive
+        # self.pop() is dict.pop. Case 2a must not bind Base.pop by name, or
+        # the linker's builtin-base gate never sees the call. The positive
         # control (Sub2, in-tree base only) proves the walk is reachable.
         data = _behavior_map(tmp_path, {"m.py": (
             "class Base:\n"
@@ -403,12 +403,12 @@ _DJANGO_MODELS = (
 
 
 class TestDjangoInstanceWriteAfterClassScoping:
-    """``Plain.go``'s ``self.save()`` used to bind ``Base.save`` -- an
-    unrelated model's override -- by bare name, so it never reached the ORM
-    instance-write re-key. ``Child.go``'s reached the override correctly, and
-    that bare-name bind was also what kept it from being re-keyed a second time
-    (its write is typed at ``Base.save``'s ``super()`` call). Both sides are
-    asserted: the write re-key fires for Plain and is refused for Child."""
+    """``Plain.go``'s ``self.save()`` must not bind ``Base.save`` -- an
+    unrelated model's override -- by bare name: it is the ORM instance write
+    and takes the instance-write re-key. ``Child.go``'s reaches the override
+    through the linker and must not be re-keyed a second time (its write is
+    typed at ``Base.save``'s ``super()`` call). Both sides are asserted: the
+    write re-key fires for Plain and is refused for Child."""
 
     def test_plain_model_save_is_the_orm_write(self, tmp_path: Path) -> None:
         res = _analyze(tmp_path, _DJANGO_MODELS)
@@ -437,8 +437,8 @@ class TestDjangoInstanceWriteAfterClassScoping:
 class TestModuleLevelBlock:
     def test_file_without_functions_is_analyzed(self, tmp_path: Path) -> None:
         # The module-level block has no frame binding ``self`` and, in a file
-        # with no function at all, runs before any per-function state exists.
-        # A first cut computed the self-method table in the per-function loop
-        # and crashed the whole Python pass here (NameError) on Django.
+        # with no function at all, runs before any per-function state exists,
+        # so the self-method table must not depend on the per-function loop:
+        # a NameError here would crash the whole Python pass.
         res = _analyze(tmp_path, "import os\nos.getcwd()\nprint(1)\n")
         assert [e for e in res.edges if e.edge_type == "calls"]

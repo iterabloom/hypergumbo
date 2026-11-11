@@ -130,7 +130,7 @@ class TestJavaScriptEventPatterns:
         assert len(subscribers) == 1
 
     def test_typescript_events_tagged_typescript(self, tmp_path: Path):
-        """INV-tofun: .ts event patterns carry language=typescript, not javascript."""
+        """.ts event patterns carry language=typescript, not javascript (INV-tofun)."""
         code = "emitter.emit('user:created', user);\n"
         file = tmp_path / "events.ts"
         file.write_text(code)
@@ -208,8 +208,8 @@ class TestPythonEventPatterns:
         assert subscribers[1].event_name == "pre_delete"
 
     def test_django_signals_gated_on_framework_detection(self, tmp_path: Path):
-        """WI-pitit: the Django-signal sub-scans only fire when Django is
-        detected. On a repo where Django is NOT in detected_frameworks, a
+        """The Django-signal sub-scans only fire when Django is detected
+        (WI-pitit). On a repo where Django is NOT in detected_frameworks, a
         framework-blind sqlite3.connect / socket.send call must not produce
         phantom framework='django' event symbols."""
         (tmp_path / "db.py").write_text(
@@ -234,8 +234,8 @@ class TestPythonEventPatterns:
         )
 
     def test_django_signals_fire_when_django_detected(self, tmp_path: Path):
-        """WI-pitit: with Django in detected_frameworks the gate is not
-        over-tight — genuine Django signals still produce django symbols."""
+        """With Django in detected_frameworks the gate is not over-tight —
+        genuine Django signals still produce django symbols (WI-pitit)."""
         (tmp_path / "handlers.py").write_text(
             "from django.db.models.signals import post_save\n"
             "post_save.connect(on_user_saved, sender=User)\n"
@@ -402,16 +402,16 @@ class TestEventSourcingLinker:
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "event_publishes"
         assert result.edges[0].meta["event_name"] == "user:created"
-        # INV-forim: dataflow annotations must persist through the linker.
-        # Historically edge.meta was reassigned after Edge.create, wiping
-        # the access_mode set by the kwargs (dest_access_mode was removed, ADR-0038).
+        # Dataflow annotations set by Edge.create's kwargs must persist
+        # alongside the linker's own meta (INV-forim). dest_access_mode is
+        # not an edge field (ADR-0038), so it must be absent.
         assert result.edges[0].meta["access_mode"] == "write"
         assert result.edges[0].meta.get("dest_access_mode") is None
         assert result.edges[0].meta["channel"] == "user:created"
 
     def test_typescript_symbol_discovery_language_and_id(self, tmp_path: Path):
-        """INV-tofun: a synthetic stand-in discovered in a .ts file carries
-        discovery_language=typescript and a typescript-prefixed id (was javascript).
+        """A synthetic stand-in discovered in a .ts file carries
+        discovery_language=typescript and a typescript-prefixed id (INV-tofun).
 
         Symbol.language stays None (ADR-0031 Class B); the host-language signal
         lives in discovery_language, which feeds the id's first segment.
@@ -510,11 +510,11 @@ class TestEventSourcingLinker:
         assert (symbol.meta or {}).get("framework_role") == "event_publisher"
         assert symbol.meta["event_name"] == "user:created"
         assert symbol.meta["framework"] == "event_bus"
-        # Phase 6 PR1 (INV-hunup): stable_id now uses the canonical
-        # ``sha256:<16hex>`` shape from ``make_protocol_stable_id``. The
-        # event_name remains addressable via ``meta["event_name"]`` (asserted
-        # above) for any downstream consumer that needs the human-readable
-        # identity component.
+        # stable_id uses the canonical ``sha256:<16hex>`` shape from
+        # ``make_protocol_stable_id`` (INV-hunup). The event_name stays
+        # addressable via ``meta["event_name"]`` (asserted above) for any
+        # downstream consumer that needs the human-readable identity
+        # component.
         from hypergumbo_core.analyze.base import make_protocol_stable_id
         assert symbol.stable_id == make_protocol_stable_id(
             "event_sourcing", "event_bus", "publish", "user:created"
@@ -757,8 +757,8 @@ class TestVariableEventPatterns:
     def test_identifier_text_does_not_join_an_equal_string(self, tmp_path: Path):
         """An unresolved identifier MYEVENT is not the event 'myevent' (WI-misod).
 
-        Before WI-misod this test pinned the defect: the identifier's text was
-        case-folded and joined to the literal at confidence 0.65.
+        The identifier's text must not be case-folded and joined to the
+        literal as an identifier match.
         """
         pub = tmp_path / "publisher.js"
         pub.write_text("emitter.emit('myevent', data);")
@@ -771,8 +771,8 @@ class TestVariableEventPatterns:
         assert result.edges == []
 
     def test_constant_joins_its_value_not_its_name(self, tmp_path: Path):
-        """WI-misod: emit(CREATED) with CREATED = 'user:created' joins
-        on('user:created'), not on('created') (the pre-fix wrong edge)."""
+        """emit(CREATED) with CREATED = 'user:created' joins on('user:created'),
+        not on('created') -- the constant's value, not its name (WI-misod)."""
         (tmp_path / "pub.js").write_text(
             "const CREATED = 'user:created';\nemitter.emit(CREATED, data);\n"
         )
@@ -824,11 +824,11 @@ class TestEventSymbolFormat:
     Event symbol IDs must follow the standard format:
       {language}:{path}:{start}-{end}:{name}:{kind}
 
-    Regression: DEEP bakeoff cohort #6 (forgejo) showed malformed IDs using
-    file paths as language prefixes (e.g., 'web_src/js/utils/dom.js::event_publisher::42'
-    instead of 'javascript:web_src/js/utils/dom.js:42-42:user_created:function'
-    — kind-slot is "function" per ADR-0036 Ruling 2; the role is on
-    meta.framework_role).
+    The first segment must be a language, never a file path (a malformed id
+    looks like 'web_src/js/utils/dom.js::event_publisher::42' where
+    'javascript:web_src/js/utils/dom.js:42-42:user_created:function' is
+    expected). The kind-slot is "function" per ADR-0036 Ruling 2; the role is
+    on meta.framework_role.
     """
 
     def test_event_publisher_id_format(self, tmp_path: Path):
@@ -985,10 +985,10 @@ class TestFindSourceFiles:
     def test_skips_test_files(self, tmp_path: Path):
         """Test files are excluded from scanning.
 
-        Regression: openzeppelin-contracts had 535 orphan event_publisher
-        nodes from Hardhat/Chai test assertions like `expect(...).to.emit()`
-        matching the JS_EMIT_PATTERN regex. Test files should be skipped
-        because event patterns in tests are assertions, not real event wiring.
+        Hardhat/Chai test assertions like `expect(...).to.emit()` match the
+        JS_EMIT_PATTERN regex and would mint orphan event_publisher nodes.
+        Test files are skipped because event patterns in tests are
+        assertions, not real event wiring.
         """
         # Source file — should be included
         src = tmp_path / "events.js"
@@ -1043,23 +1043,18 @@ class TestFindSourceFiles:
 
 class TestEventSubscriberToMethodEdges:
     """Tests asserting that subscriber→enclosing-method edges are NOT
-    emitted (post-audit-findings 0001 / audit-findings 0002 / WI-vasik-jofiv).
+    emitted (audit-findings 0001; WI-vasik-jofiv).
 
-    Originally the event sourcing linker emitted an ``event_subscribes``
-    edge from subscriber → enclosing method to enable forward-slice
-    traversal. audit-findings 0001 verdicted that emit pattern as DEPRECATE-NO-FOLD
-    (the production emit shape was structural-containment under a name
-    that suggested pub-sub semantics; mismatched name vs. shape).
+    An ``event_subscribes`` edge from subscriber → enclosing method would
+    express structural containment under a name suggesting pub-sub
+    semantics, so it is DEPRECATE-NO-FOLD (audit-findings 0001). The
+    subscriber-is-enclosed-by-method information is recoverable from
+    Symbol.span (the subscriber's span fits inside the method's span), so
+    the edge would be a denormalization no downstream consumer needs.
+    Same verdict pattern as message_receive (audit-findings 0002).
 
-    The Phase-3 decision (this WI) was to drop the producer entirely:
-    the subscriber-is-enclosed-by-method information is recoverable from
-    Symbol.span (subscriber's span fits inside the method's span), so
-    the explicit edge was a denormalization with no downstream consumer
-    that needed the materialized form. Same verdict pattern as
-    message_receive (audit-findings 0002).
-
-    These tests now assert the producer-side decision sticks: no
-    event_subscribes edges at all, regardless of input shape.
+    These tests pin that no event_subscribes edge is emitted, regardless
+    of input shape.
     """
 
     def test_no_event_subscribes_edge_emitted_with_enclosing_method(
@@ -1095,7 +1090,7 @@ class TestEventSubscriberToMethodEdges:
         pub_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(pub_edges) == 1
 
-        # event_subscribes edges are NOT emitted post-WI-vasik-jofiv.
+        # event_subscribes edges are NOT emitted (WI-vasik-jofiv).
         sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
         assert sub_edges == []
 
@@ -1147,14 +1142,12 @@ class TestEventSubscriberToMethodEdges:
         self, tmp_path: Path
     ) -> None:
         """No event_subscribes edge regardless of context-symbol path
-        format (post-WI-vasik-jofiv producer drop).
+        format.
 
-        Originally this test verified the suffix-matching fallback that
-        bridged absolute-vs-relative path mismatches between the CLI's
-        normalized analyzer symbol paths and the linker's absolute
-        scan paths. After the producer drop the path-handling code is
-        still exercised (the linker still walks the same files for
-        publisher detection), but no event_subscribes edge is emitted
+        A context symbol with a relative path (as the CLI pipeline
+        normalizes) against the linker's absolute scan paths drives the
+        tombstone's suffix-matching path fallback, which bridges the
+        absolute-vs-relative mismatch; no event_subscribes edge is emitted
         at the end.
         """
         pub_file = tmp_path / "emitter.js"

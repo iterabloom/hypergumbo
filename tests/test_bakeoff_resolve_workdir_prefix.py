@@ -1,22 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for INV-fogat: ``resolve_workdir`` must prefix-isolate its session scan.
+"""Tests that ``resolve_workdir`` prefix-isolates its session scan.
 
 Both ``scripts/bakeoff-broad`` and ``scripts/bakeoff-deep`` share one
 artifacts directory (``~/hypergumbo_lab_notebook/bakeoff_artifacts``), so
-``broad-*`` and ``deep-*`` session directories intermingle. The original
-``resolve_workdir`` auto-discover branch scanned for *both* prefixes and
-sorted the full directory names lexicographically. Because ``d`` > ``b`` in
-ASCII, any ``deep-*`` directory always out-sorted any ``broad-*`` directory
-regardless of the timestamp suffix — so a freshly initialized
-``broad-20260531-022124`` session was silently superseded by a three-week-old
-``deep-20260510-054430`` session (and symmetrically, ``bakeoff-deep`` would
-happily auto-discover a ``broad-*`` session that doesn't belong to it).
+``broad-*`` and ``deep-*`` session directories intermingle. Sorting the full
+directory names lexicographically would be wrong: because ``d`` > ``b`` in
+ASCII, any ``deep-*`` directory out-sorts any ``broad-*`` directory regardless
+of the timestamp suffix, so ``bakeoff-broad`` would pick up a stale deep
+session and ``bakeoff-deep`` would pick up a broad session that doesn't
+belong to it.
 
-The fix: each script's ``resolve_workdir`` filters auto-discovered sessions to
-its own mode prefix (``broad-`` / ``deep-``) before taking the most recent —
-delegating to the already-correct ``_find_latest_session`` helper. These tests
-exercise the pure helper directly so they don't depend on subprocess/stdout
-scraping.
+Each script's ``resolve_workdir`` therefore filters auto-discovered sessions
+to its own mode prefix (``broad-`` / ``deep-``) before taking the most recent,
+by delegating to the ``_find_latest_session`` helper. These tests call
+``resolve_workdir`` directly so they don't depend on subprocess/stdout
+scraping. (INV-fogat)
 """
 
 # covers: scripts/bakeoff-broad, scripts/bakeoff-deep

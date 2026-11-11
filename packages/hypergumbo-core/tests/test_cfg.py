@@ -2168,13 +2168,11 @@ def _MockTaintFinding(
 ) -> TaintFlowFinding:
     """Build a real ``TaintFlowFinding`` for the DDG-target selector tests.
 
-    THIS WAS A HAND-WRITTEN MOCK CLASS that re-declared nine of the dataclass's
-    fields, and it drifted the moment the dataclass gained a field the selector
-    reads: INV-karud added ``sink_symbols`` (a finding now stands for every
-    sink symbol it reached, not just the witness one) and every test here
-    raised ``AttributeError`` on a mock that could not have been wrong about
-    anything else. A stand-in that restates a type's shape is a second home for
-    it; constructing the real dataclass costs nothing here — it is a plain
+    Deliberately the real dataclass rather than a hand-written mock: a stand-in
+    that restates a type's shape is a second home for it, and it breaks with
+    ``AttributeError`` whenever the dataclass gains a field the selector reads
+    (such as ``sink_symbols``, every sink symbol a finding reached; INV-karud).
+    Constructing the real dataclass costs nothing here — it is a plain
     dataclass with no I/O — and ``__post_init__`` keeps the derived tuples
     correct without this file knowing they exist.
     """
@@ -2463,22 +2461,22 @@ class TestPopulateDefUseForCfg:
         body = self._get_body(tree)
         cfg = build_function_cfg(body, src, mapping, "p:t.py:1-3:f:function")
         # The CfgStatement for the assignment line should be of type
-        # 'assignment' (not 'identifier' / 'integer' as would happen if
-        # atomic-statement classification were absent).
+        # 'assignment' (not 'identifier' / 'integer' as happens without
+        # atomic-statement classification).
         node_types = {
             stmt.node_type
             for block in cfg.blocks.values()
             for stmt in block.statements
         }
         assert "assignment" in node_types
-        # And NOT bare identifiers — those are the pre-atomic-classification
-        # symptoms.
+        # And NOT bare identifiers — those are the symptoms of missing
+        # atomic-statement classification.
         assert "identifier" not in node_types
         assert "integer" not in node_types
 
 
 class TestUncoveredCallLines:
-    """WI-joluk: does the CFG's recorded coverage reach every call site?
+    """Does the CFG's recorded coverage reach every call site? (WI-joluk)
 
     The gate behind INV-lupav. If the def/use extractor never saw part of a
     function, the §3a walk can still exhaust its (incomplete) graph and report
@@ -2487,18 +2485,17 @@ class TestUncoveredCallLines:
     """
 
     def test_go_if_initializer_call_is_uncovered(self) -> None:
-        """The motivating case, and the reason the test is on BYTE EXTENTS.
+        """An unrecorded ``if`` initializer, and the reason the test is on BYTE EXTENTS.
 
-        Until WI-losod ``CfgBuilder._process_conditional`` recorded only the
-        condition child of an ``if``. For ``if n := sink(v); n > 0`` that was
-        ``n > 0``; the initializer became no CfgStatement at all. Both sit on
-        the SAME LINE, so a line-based coverage test reports the call as
-        covered and the gate was vacuous precisely where the gap was (700 of
-        caddy's 6,596 ``if`` statements carried a call there).
+        In ``if n := sink(v); n > 0`` a conditional that records only its
+        condition child (``n > 0``) leaves the initializer in no CfgStatement.
+        Both sit on the SAME LINE, so a line-based coverage test would report
+        the call as covered and the gate would be vacuous precisely where the
+        gap is.
 
-        go.yaml now records the initializer, so the unrecorded shape is
-        reproduced with a mapping that lacks ``initializer_child``; the real
-        mapping is the control.
+        go.yaml records the initializer, so the unrecorded shape is reproduced
+        with a mapping that lacks ``initializer_child``; the real mapping is
+        the control. (WI-losod)
         """
         import dataclasses
 
@@ -2542,20 +2539,17 @@ class TestUncoveredCallLines:
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_go_range_clause_binding_is_uncovered(self) -> None:
-        """WI-mugop: THE SHAPE THE CALLS-ONLY PREDICATE COULD NOT SEE.
+        """An unrecorded binding that holds NO CALL is still uncovered.
 
         ``for _, c := range v`` binds ``c`` from ``v`` in a range clause, and
-        the clause contains NO CALL. While the loop hook did not record it
-        (until WI-losod), the original predicate returned an empty frozenset
-        for a function whose taint chain the extractor demonstrably had not
-        followed, leaving the §3a walk free to exhaust and refute; measured on
-        this exact source, calls-only reported ``frozenset()`` and the widened
-        predicate reported line 4.
+        the clause contains no call. A predicate that looked only at call
+        nodes would return an empty frozenset for a function whose taint chain
+        the extractor demonstrably had not followed, leaving the §3a walk free
+        to exhaust and refute. (WI-mugop)
 
-        go.yaml now records the clause, so the shape is reproduced with a
-        mapping that lacks the ``header_child`` key: the predicate must still
-        see an unrecorded binding that holds no call. The real mapping is the
-        control.
+        go.yaml records the clause, so the shape is reproduced with a mapping
+        that lacks the ``header_child`` key: the predicate must still report
+        line 4. The real mapping is the control.
         """
         import dataclasses
 
@@ -2605,8 +2599,8 @@ class TestUncoveredCallLines:
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_interior_nodes_are_not_counted(self) -> None:
-        """The spelling that was measured and REJECTED. Counting any uncovered
-        NAMED node rather than named leaves forfeits every function on every
+        """Counting named LEAVES, not every named node. Counting any uncovered
+        NAMED node rather than named leaves would forfeit every function on every
         repository, because the function body is contained in no statement
         extent by construction — a clean-looking 100% that says nothing about
         coverage. Pinned here so nobody widens it that far by accident."""
@@ -2634,9 +2628,8 @@ class TestUncoveredCallLines:
         unconfigured language look fully covered — failing open, in the
         direction that deletes findings.
 
-        Java was the live example (it declared no ``call_node_types``) until
-        WI-gotun wired it, and every shipped mapping now declares the key. So
-        the undeclared mapping is java.yaml with the key removed.
+        Every shipped mapping declares ``call_node_types``, so the undeclared
+        mapping is java.yaml with the key removed.
         """
         import yaml
 
@@ -2696,12 +2689,11 @@ class TestUnaccountedNames:
     whether code sits OUTSIDE every recorded statement. These constructs are
     recorded, so there is no uncovered extent at any predicate width — and the
     extractor then fills the statement with nothing. Both failures produce the
-    same downstream lie: the §3a walk exhausts, returns ``False``, and since
-    2026-09-02 that ``False`` REMOVES the reported flow.
+    same downstream lie: the §3a walk exhausts, returns ``False``, and that
+    ``False`` REMOVES the reported flow.
 
-    EVERY CASE HERE WAS READ BACK AGAINST A FOUR-LANGUAGE SWEEP, not guessed —
-    one earlier guess at this clause's shape (a use captured inside a Go func
-    literal) does not reproduce, and nearly got the clause recorded as unreal.
+    Every case here is a shape observed on real code, not a guessed one; a
+    guessed shape that does not reproduce would make the clause look unreal.
     """
 
     @pytest.fixture(autouse=True)
@@ -2716,11 +2708,11 @@ class TestUnaccountedNames:
         input — the shape ``test_a_cfg_with_no_definitions_answers_empty``
         pins deliberately, reached here by accident.
 
-        So these cases silently depended on whether some earlier test in the
-        same process had imported ``go_def_use``: green alone, green after
-        ``test_go_def_use.py``, and RED on an xdist worker that drew neither
-        (which is how CI saw it). Establish the production configuration
-        instead of inheriting whatever the worker happened to import.
+        Relying on import order would make these cases depend on whether some
+        earlier test in the same process had imported ``go_def_use`` — green
+        alone or after ``test_go_def_use.py``, red on an xdist worker that drew
+        neither. Establish the production configuration instead of inheriting
+        whatever the worker happened to import.
         """
         from hypergumbo_core import cfg as _cfg
         from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
@@ -2732,7 +2724,7 @@ class TestUnaccountedNames:
         )
 
     def test_go_grouped_var_declaration_hides_its_value(self) -> None:
-        """The motivating shape, live in alertmanager (api/v2/api.go:251).
+        """A grouped ``var ( ... )`` declaration, a shape found in real Go code.
 
         The grammar nests grouped specs one level deeper — inside a
         ``var_spec_list`` — than ``_handle_spec_declaration`` descends, so the
@@ -2765,8 +2757,8 @@ class TestUnaccountedNames:
 
         Without this the predicate could pass its own test by reporting every
         name, which would withhold ``False`` from every walk on every
-        repository — the spelling a floor check already killed once (WI-mugop
-        phase 1). A gate that cannot return "accounted for" is not a gate.
+        repository (the same floor check as WI-mugop's). A gate that cannot
+        return "accounted for" is not a gate.
         """
         tree, src = _parse_go(
             "package main\n"
@@ -2786,8 +2778,7 @@ class TestUnaccountedNames:
     def test_python_subscript_index_is_never_read(self) -> None:
         """``c[key] = 1`` records ``defines=['c'] uses=[]``.
 
-        The dominant shape in the Python half of the sweep, and a DIFFERENT
-        construct from Go's — which is the argument against closing this clause
+        The dominant Python shape, and a DIFFERENT construct from Go's — which is the argument against closing this clause
         with a per-language list of gaps. A list written from either language
         ships the other one invisible.
         """
@@ -2812,8 +2803,7 @@ class TestUnaccountedNames:
         inside it records nothing. Attributing each leaf to its INNERMOST
         recorded statement — the obvious implementation — reports the empty
         inner one and flags a variable the extractor demonstrably did follow.
-        This is a false positive the filed item asserted was a real one, and
-        it is the reason the accumulated ancestor set exists.
+        That false positive is the reason the accumulated ancestor set exists.
         """
         tree, src = _parse_go(
             "package main\n"
@@ -2840,7 +2830,7 @@ class TestUnaccountedNames:
         ``defines`` — ``defs_at`` and ``inherits`` are both built from them —
         so reporting ``fmt``, ``sink`` or a type name would be noise no
         consumer can act on. Restricting to defined names is what keeps the
-        measured floor at 12.6% of functions instead of all of them.
+        predicate from flagging every function.
         """
         tree, src = _parse_go(
             "package main\n"
@@ -2904,11 +2894,12 @@ class TestIfElifChain:
 
     tree-sitter-python lays the chain flat: every ``elif_clause`` and the
     ``else_clause`` sit under the ``if_statement``'s REPEATED ``alternative``
-    field. Reading that field once kept the ``if`` arm and the first ``elif``
-    (as straight-line code, no branch) and dropped every later arm from the
-    CFG, so their definitions and uses never reached the DDG and the taint
-    walk forfeited the function. The other five grammars nest ``else if`` as
-    an ``if`` inside a single alternative, which the last test pins.
+    field. Reading that field only once would keep the ``if`` arm and the
+    first ``elif`` (as straight-line code, no branch) and drop every later
+    arm from the CFG, so their definitions and uses would never reach the DDG
+    and the taint walk would forfeit the function. The other five grammars
+    nest ``else if`` as an ``if`` inside a single alternative, which the last
+    test pins.
     """
 
     @pytest.fixture(autouse=True)
@@ -2974,8 +2965,8 @@ class TestIfElifChain:
         reaching = sorted(
             e.def_line for e in result.ddg_edges if e.variable == "x" and e.use_line == 9
         )
-        # Before the fix: [4, 6]. Line 2 was killed on the false path because the
-        # first elif's body ran unconditionally there, and line 8 was not in the CFG.
+        # Line 2 survives the all-false path, and line 8 (the last elif's body)
+        # is in the CFG; reading only one alternative would yield [4, 6].
         assert reaching == [2, 4, 6, 8]
 
     @pytest.mark.parametrize(
@@ -3034,7 +3025,7 @@ class TestIfElifChain:
     def test_a_nesting_grammar_keeps_its_chain(
         self, language: str, source: str, get_body: Any,
     ) -> None:
-        """One alternative per ``if``: the nested ``else if`` is processed as before."""
+        """One alternative per ``if``: the nested ``else if`` is an ``if`` in its own right."""
         mapping = load_cfg_mapping(language)
         assert mapping is not None
         tree_src = {
@@ -3061,10 +3052,10 @@ class TestElseClause:
     """INV-rotol: the ``else`` clause of a Python try/for/while is a CFG branch.
 
     Python alone among the shipped grammars hangs an ``else_clause`` off
-    ``try``, ``for`` and ``while``. No mapping named it and no handler had a
-    slot for it, so the clause was skipped whole: its statements were in no
-    block, ``uncovered_semantic_lines`` listed them, and the function
-    forfeited taint refutation. The try-else body runs on the no-exception
+    ``try``, ``for`` and ``while``. The mappings name it as ``else_child`` so
+    the handlers place it; a skipped clause would leave its statements in no
+    block, ``uncovered_semantic_lines`` would list them, and the function
+    would forfeit taint refutation. The try-else body runs on the no-exception
     path, between the try body and ``finally``; the loop-else body runs on
     the loop's normal exit and never after a ``break``. A ``break`` INSIDE a
     loop's else clause belongs to the enclosing loop.
@@ -3135,7 +3126,7 @@ class TestElseClause:
 
     @pytest.mark.parametrize("language", ["c", "go", "java", "rust", "typescript"])
     def test_other_grammars_name_no_else_clause(self, language: str) -> None:
-        """No other shipped grammar has the clause; their mappings take today's path."""
+        """No other shipped grammar has the clause; their mappings leave ``else_child`` unset."""
         mapping = load_cfg_mapping(language)
         assert mapping is not None
         assert all(lo.else_child is None for lo in mapping.loops)
@@ -3164,8 +3155,7 @@ class TestElseClause:
         reaching = sorted(
             e.def_line for e in result.ddg_edges if e.variable == "v" and e.use_line == 7
         )
-        # Before the fix: [] (line 7 was not in the CFG). The handler's
-        # ``v = None`` at line 5 must not reach the else body.
+        # The handler's ``v = None`` at line 5 must not reach the else body.
         assert reaching == [3]
 
     def test_for_else_runs_on_exhaustion_and_not_after_break(self) -> None:

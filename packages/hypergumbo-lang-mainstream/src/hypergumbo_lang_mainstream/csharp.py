@@ -4,8 +4,8 @@
 This analyzer uses tree-sitter to parse C# files and extract:
 - Class declarations, and record declarations (``record``, ``record class``,
   ``record struct``) as kind ``record`` through the same branch: bases,
-  attributes and members like a class's (WI-zukat: they emitted no symbol,
-  so their members were bare names)
+  attributes and members like a class's, so their members are not bare
+  names (WI-zukat)
 - Interface declarations
 - Struct declarations
 - Enum declarations
@@ -13,21 +13,21 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Constructor declarations
 - Property declarations, whose stable_id is the ADR-0035 producer formula
   (``make_typed_stable_id`` over the declared type and the namespace/type
-  chain; WI-tusad: they rode the backstop floor key). Methods, constructors,
+  chain), not the backstop floor key (WI-tusad). Methods, constructors,
   fields, enum members and the WI-binap members hash the FULL chain of block
-  namespaces and types (``_csharp_scope``: ``A.Inner.Go``, where they hashed
-  the emitted nearest-owner name ``Inner.Go``), and classes, interfaces,
-  structs and enums mint ``overload_arity.scoped_table_stable_id`` over it
-  (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
-  shared one bare-name table key, so deleting the first moved the second's
-  ids). A file-scoped namespace is single per file and not in the chain.
+  namespaces and types (``_csharp_scope``: ``A.Inner.Go``, not the emitted
+  nearest-owner name ``Inner.Go``), and classes, interfaces, structs and
+  enums mint ``overload_arity.scoped_table_stable_id`` over it, so two nested
+  ``class Inner``, or two in sibling namespace blocks, do not share one
+  bare-name table key and deleting the first does not move the second's ids
+  (INV-fabih). A file-scoped namespace is single per file and not in the
+  chain.
 - A class, record, struct or interface records its base list in
   ``meta["base_classes"]``; the inheritance linker turns it into ``extends``
-  / ``implements`` edges (WI-ruzid: interfaces recorded none, so
-  ``interface IChild : IBase`` produced no edge at all).
+  / ``implements`` edges; an interface records its bases too, so
+  ``interface IChild : IBase`` gets its edge (WI-ruzid).
   The emitted ``qualified_name`` carries every enclosing namespace, the
-  file-scoped one included (``A.B.C.Go``, ``N.M.K``; it kept the innermost
-  block namespace only).
+  file-scoped one included (``A.B.C.Go``, ``N.M.K``).
 - Indexers (``subscript``, named ``Type.this[]``), operators and conversion
   operators (``method``, ``Type.operator+`` / ``Type.operator int``),
   destructors (``method``, ``Type.~Type``) and events declared with
@@ -180,10 +180,10 @@ def _extract_annotations(
                                 # Named argument detection. In tree-sitter-c-sharp
                                 # 0.23.5 (the pinned version), `Name = "Get"` is
                                 # a flat sequence of `identifier`, `=`, <value>
-                                # children directly under `attribute_argument` —
-                                # the older `assignment_expression` wrapper was
-                                # dropped. Detect by presence of the `=` token
-                                # as a direct child.
+                                # children directly under `attribute_argument`,
+                                # with no `assignment_expression` wrapper.
+                                # Detect by presence of the `=` token as a
+                                # direct child.
                                 if find_child_by_type(arg, "=") is not None:
                                     # Named argument: name = value
                                     name_node = find_child_by_type(
@@ -667,10 +667,9 @@ def _get_csharp_enclosing_namespace(
 
     Handles both block-style ``namespace Foo.Bar { ... }`` and the C# 10
     file-scoped ``namespace Foo.Bar;``, which the grammar parses as an
-    earlier SIBLING of the declarations it covers, not their ancestor. It
-    returned the innermost block namespace only, and never a file-scoped
-    one, so ``qualified_name`` read ``B.C.Go`` for ``A.B.C.Go`` and ``K``
-    for ``N.M.K`` (WI-tusad scheme bump).
+    earlier SIBLING of the declarations it covers, not their ancestor. Both
+    are joined, so ``qualified_name`` reads ``A.B.C.Go`` (not ``B.C.Go``)
+    and ``N.M.K`` (not ``K``) (WI-tusad).
     """
     def name_of(n: "tree_sitter.Node") -> Optional[str]:
         # The name child can be an identifier or qualified_name
@@ -893,8 +892,8 @@ def _extract_symbols_from_file(
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     ``rel_path`` is the repo-relative path of ``file_path`` (computed by the
-    ``analyze()`` override, which holds ``repo_root``). It is the WI-bokab (v7)
-    file-identity input — folded into ``make_typed_stable_id``'s
+    ``analyze()`` override, which holds ``repo_root``). It is the
+    file-identity input (WI-bokab, v7) — folded into ``make_typed_stable_id``'s
     ``containing_stable_id`` slot so same-``(kind, name, qualified_name)`` methods
     and constructors in different files hash distinctly. ``file_path`` itself is
     ABSOLUTE here (it comes from ``find_csharp_files(repo_root)``), so it must NOT
@@ -909,7 +908,7 @@ def _extract_symbols_from_file(
         return FileAnalysis()
     record_partial_parse(run, rel_path, tree)  # WI-bulaz
 
-    # WI-bokab (v7): file-identity anchor for this file's symbols. Built from the
+    # File-identity anchor for this file's symbols (WI-bokab, v7). Built from the
     # repo-relative ``rel_path`` (NOT the absolute ``file_path``) so it byte-matches
     # the file Symbol's own stable_id (``populate_kind_stable_ids`` computes the same
     # value from the normalized repo-relative path). Folded into
@@ -944,8 +943,8 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         # Class or record declaration. A record (``record``, ``record class``,
         # ``record struct``) is a type with a class's bases, attributes and
-        # members, emitted as kind "record" (WI-zukat: it had no symbol, so its
-        # members were bare and their calls bound to other classes).
+        # members, emitted as kind "record", so its members are not bare and
+        # their calls do not bind to other classes (WI-zukat).
         if node.type in ("class_declaration", "record_declaration"):
             type_kind = "record" if node.type == "record_declaration" else "class"
             name = extract_name_from_declaration(node)
@@ -1356,9 +1355,9 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # WI-binap: indexer / operator / conversion operator / destructor / event
-        # with accessors -- the member forms with a body that had no symbol, so
-        # their calls went to the class.
+        # Indexer / operator / conversion operator / destructor / event with
+        # accessors -- member forms with a body, given a symbol so their calls
+        # are not credited to the class (WI-binap).
         elif node.type in _CSHARP_BODY_MEMBER_DECLS:
             body_member = _csharp_body_member(node, source)
             if body_member is not None:
@@ -1499,7 +1498,7 @@ def _extract_symbols_from_file(
                                 analysis.class_field_types[enclosing] = {}
                             analysis.class_field_types[enclosing][field_name] = type_name
 
-    # INV-jahiv Phase 4 PR3: post-pass to populate docstrings on any
+    # Post-pass (INV-jahiv) to populate docstrings on any
     # symbols (e.g. class/interface/struct/enum/property) whose emit
     # site does not call extract_preceding_doc_comment inline. CSharp
     # overrides analyze() and bypasses the base run_pipeline path, so
@@ -1516,8 +1515,8 @@ def _enclosing_member(node: "tree_sitter.Node", decl_index: SymbolsAt) -> Option
     Keyed by the declaration's POSITION, not its name (INV-midag). The short
     name is shared by overloads, by two indexers (both ``this[]``), and by one
     method name in two classes of one file: livebook's ElixirKit.cs defines
-    ``Stop`` / ``Subscribe`` in both ``API`` and ``Release`` / ``Client``. The
-    name lookup returned whichever registered last.
+    ``Stop`` / ``Subscribe`` in both ``API`` and ``Release`` / ``Client``. A
+    name lookup would return whichever registered last.
     """
     return enclosing_declared_symbol(node, decl_index, _CSHARP_MEMBER_BODY_NODES)
 
@@ -1915,8 +1914,8 @@ def _extract_edges_from_file(
                     if method_resolver is not None:
                         if method_resolver.too_ambiguous(callee_name):
                             # 3+ method candidates: no BINDING (the guard is
-                            # right), but the call still happened (INV-bamij:
-                            # this used to be a bare ``continue``).
+                            # right), but the call still happened, so it is
+                            # emitted unresolved (INV-bamij).
                             edges.append(make_unresolved_edge(
                                 "csharp", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID,
@@ -1932,8 +1931,8 @@ def _extract_edges_from_file(
                     # winning, so prefer the scope's own ``Type.callee``; a bare
                     # call's short-name hit on another type's method is the
                     # INV-fahub magnet and goes to the guarded resolver path
-                    # below (WI-zukat: ``Helper()`` in a record bound to
-                    # ``Other.Helper`` declared after it).
+                    # below (WI-zukat: otherwise ``Helper()`` in a record would
+                    # bind to an ``Other.Helper`` declared after it).
                     _local_scope = receiver_name or _get_enclosing_class(node, source)
                     local_callee: Optional[Symbol] = (
                         local_symbols.get(f"{_local_scope}.{callee_name}")
@@ -2021,8 +2020,8 @@ def _extract_edges_from_file(
                         else:
                             # INV-bamij (csharp): the resolver placed the
                             # name nowhere -- a framework call such as
-                            # ``File.ReadAllText`` -- and this used to emit
-                            # NOTHING, so every external call vanished.
+                            # ``File.ReadAllText`` -- and it is still emitted,
+                            # unresolved, so external calls do not vanish.
                             edges.append(make_unresolved_edge(
                                 "csharp", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID,
@@ -2031,8 +2030,8 @@ def _extract_edges_from_file(
                                 call_construct=(
                                     "method" if receiver_name else None
                                 ),
-                                # A tie among methods (WI-jomik: no guess) is
-                                # deferred exactly as a weak pick was.
+                                # A tie among methods is not guessed (WI-jomik):
+                                # it is deferred exactly as a weak pick is.
                                 enclosing_class=(
                                     _get_enclosing_class(node, source)
                                     if defer_unresolved_tie(lookup_result) else None
@@ -2308,15 +2307,14 @@ def _extract_attribute_edges(
 def _stamp_shape_ids(
     analyzer: TreeSitterAnalyzer, analysis: "_BaseFileAnalysis",
 ) -> None:
-    """WI-lutob: fill ``shape_id`` from ``node_for_symbol`` for the C#
-    ``analyze()`` override.
+    """Fill ``shape_id`` from ``node_for_symbol`` for the C# ``analyze()``
+    override (WI-lutob).
 
     The base ``TreeSitterAnalyzer.analyze()`` auto-stamps ``shape_id`` (and
     docstrings) from ``analysis.node_for_symbol`` after extraction, but
     ``CSharpAnalyzer.analyze()`` reimplements the pipeline and never runs that
-    loop — so every body-bearing C# symbol shipped ``shape_id=None`` and the
-    structural-clone key (ADR-0014 §1) the spec marks done for C# silently did
-    not exist. This replays just the shape_id half over the C# analysis's
+    loop — without this every body-bearing C# symbol would have
+    ``shape_id=None`` and no structural-clone key (ADR-0014 §1). This replays just the shape_id half over the C# analysis's
     already-populated ``node_for_symbol`` (docstrings are handled in the C#
     extraction path). Never clobbers an existing value.
     """
@@ -2397,8 +2395,8 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             if max_files is not None and len(file_analyses) >= max_files:
                 break  # pragma: no cover
 
-            # WI-bokab (v7): compute the repo-relative path here (where repo_root
-            # is in scope) and thread it down. ``cs_file`` from
+            # Compute the repo-relative path here (where repo_root is in scope)
+            # and thread it down (WI-bokab, v7). ``cs_file`` from
             # find_csharp_files(repo_root) is ABSOLUTE; folding it would make
             # stable_ids location-dependent (the absolute-path regression trap).
             rel_path = str(cs_file.relative_to(repo_root))

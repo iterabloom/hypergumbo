@@ -106,9 +106,9 @@ class TestSchemaValidation:
         assert "evidence_lang" in meta_props
 
     def test_view_enum_accepts_all_projected_views(self):
-        """WI-tagaj: the published schema pins ``view`` to an enum of all
-        projected view names, so compact/tiered outputs validate (it was a
-        ``const`` of 'behavior_map', which rejected the projections)."""
+        """The published schema pins ``view`` to an enum of all projected
+        view names (not a ``const`` of 'behavior_map'), so compact/tiered
+        outputs validate too (WI-tagaj)."""
         from hypergumbo_core.schema import VIEW_NAMES
 
         schema = load_schema()
@@ -197,9 +197,8 @@ class TestSchemaValidation:
     def test_external_boundary_symbol_validates(self):
         """A synthetic external boundary Symbol (kind=external_symbol,
         path=<external>, meta.external_boundary=True) validates against
-        the schema. Stop-stripping plan PR1 starts emitting these in
-        behavior_map['nodes']; without external_symbol in the kind enum,
-        any consumer JSON-schema-validating the output would fail.
+        the schema. These nodes appear in behavior_map['nodes'], so any
+        consumer JSON-schema-validating the output must accept them.
         """
         from hypergumbo_core.ir import Span, Symbol
 
@@ -241,9 +240,9 @@ class TestSchemaValidation:
         validator.validate(edge.to_dict())
 
     def test_edge_with_empty_derived_from_validates(self):
-        """INV-rukor: ``derived_from=[]`` is a linker's positive "consumed no
-        graph record" (both ends minted from a file scan), distinct from
-        ``null``. The schema had ``minItems: 1`` and rejected it."""
+        """``derived_from=[]`` is a linker's positive "consumed no graph
+        record" (both ends minted from a file scan), distinct from ``null``,
+        so the schema must accept an empty list (INV-rukor)."""
         from hypergumbo_core.ir import Edge
 
         edge = Edge.create(
@@ -290,10 +289,9 @@ class TestSchemaValidation:
         """Per ADR-0028 §"Path B", Symbol.kind's schema enum is OPEN
         (`type: "string"` without enum constraint) until per-cluster
         Phase 4b producer migrations land. While the L3 producer-
-        coherence linter at runtime gates registry membership at the
-        producer side, the JSON Schema itself accepts arbitrary
-        strings — that's the honest representation of what Phase 1
-        actually delivers.
+        coherence linter gates registry membership at the producer
+        side, the JSON Schema itself accepts arbitrary strings, so it
+        claims no constraint it does not enforce.
 
         When Phase 4b ships and the enum closes per cluster, replace
         this test with one that verifies a known-invalid value is
@@ -362,22 +360,22 @@ class TestSchemaUpToDate:
         schema = load_schema()
         edge_types_in_schema = set(schema["$defs"]["Edge"]["properties"]["type"]["enum"])
 
-        # Known edge types from linkers and analyzers (post Phase 4b —
-        # WI-vomoj-suhaz removed bridge / IPC / route / DI / publish-family
-        # endpoint_shape values whose producers Phase 3 migrated to
-        # canonical 'calls' / 'dispatches_to' / 'event_publishes' edges).
+        # Known edge types from linkers and analyzers. Bridge / IPC / route /
+        # DI / publish-family linkers emit canonical 'calls' / 'dispatches_to'
+        # / 'event_publishes' edges rather than per-shape types
+        # (WI-vomoj-suhaz).
         known_edge_types = {
             # From analyzers
             "calls", "imports", "instantiates", "extends", "implements",
             "references", "depends_on", "links", "sources",
-            # Canonical Phase-3 fold targets (endpoint_shape fully drained by
-            # WI-pumav Batches 1a-7; the long-tail values fold onto these)
+            # Canonical fold targets for long-tail linker relationships
+            # (WI-pumav)
             "event_publishes",  # async producer→consumer
             "dispatches_to",   # runtime dispatch indirection
             "includes", "contains", "data_flows_to",
-            # The resolver/OpenAPI/RPC family (the last pending_classification
-            # values) folded to canonical implements/references + meta and was
-            # pruned per audit-findings 0016 (WI-sumik / WI-pusuv Option B).
+            # Resolver/OpenAPI/RPC relationships use canonical
+            # implements/references + meta, so they need no types of their
+            # own (audit-findings 0016; WI-sumik / WI-pusuv).
         }
 
         missing = known_edge_types - edge_types_in_schema
@@ -390,16 +388,9 @@ class TestSchemaUpToDate:
         """Per ADR-0028 §"Path B", the Symbol.kind schema enum is
         intentionally OPEN (`type: "string"` without an `enum`
         constraint) until per-cluster Phase 4b producer migrations
-        land. Current production includes dynamic ``kind=f"ipc_..."``
-        emits at ``ipc.py`` / ``phoenix_ipc.py`` that produce values
-        outside the static registry; closing the enum prematurely
-        would canonize the leak the ADR is fixing.
-
-        ADR-0027 Phase 1 originally shipped a closed enum; ADR-0028
-        Phase 1 retroactively reopened it for honesty (the L3
-        producer-coherence linter at
-        ``scripts/check-producer-axis-coherence`` is what now actually
-        gates registry membership at the producer side).
+        land. Registry membership is gated at the producer side by the
+        L3 producer-coherence linter
+        (``scripts/check-producer-axis-coherence``), not by the schema.
         """
         schema = load_schema()
         kind_node = schema["$defs"]["Symbol"]["properties"]["kind"]
@@ -414,8 +405,8 @@ class TestSchemaUpToDate:
 
     def test_schema_kind_carries_axis_annotations(self):
         """Per ADR-0024, the registry's x-axis-of-values annotation
-        documents every Symbol.kind value's axis classification.
-        Replaces the closed-enum constraint per ADR-0028 §"Path B"."""
+        documents every Symbol.kind value's axis classification, in
+        place of a closed-enum constraint (ADR-0028 §"Path B")."""
         from hypergumbo_core.symbol_kinds import (
             VALID_AXES,
             all_symbol_kind_names,
@@ -439,10 +430,8 @@ class TestSchemaUpToDate:
     def test_schema_evidence_type_is_open_string_until_phase_4b(self):
         """Per ADR-0028 §"Path B", the Edge.evidence_type schema is
         OPEN (`type: "string"` without enum) until per-cluster Phase
-        4b producer migrations land. Current production includes a
-        dynamic f-string emit at ``inheritance.py`` (``evidence_type=
-        f"ast_{edge_type}"``) that produces values outside the static
-        registry."""
+        4b producer migrations land; as with Symbol.kind, registry
+        membership is gated at the producer side, not by the schema."""
         schema = load_schema()
         evidence_node = (
             schema["$defs"]["Edge"]["properties"]["meta"]
@@ -479,9 +468,9 @@ class TestSchemaUpToDate:
             )
 
     def test_schema_edge_is_resolved_present(self):
-        """Per ADR-0028 §"Sibling-field design call-out", the new
-        sibling field appears at the top level of Edge with default
-        True."""
+        """Per ADR-0028 §"Sibling-field design call-out", the
+        ``is_resolved`` sibling field appears at the top level of Edge
+        with default True."""
         schema = load_schema()
         is_resolved = schema["$defs"]["Edge"]["properties"]["is_resolved"]
         assert is_resolved["type"] == "boolean"
@@ -489,7 +478,7 @@ class TestSchemaUpToDate:
 
 
 class TestSchemaDataclassSync:
-    """WI-kufib / WI-kutas: the $defs must track the dataclasses.
+    """The $defs must track the dataclasses (WI-kufib / WI-kutas).
 
     These tests pin the introspection-driven generator contract: every
     $def's property set, nullability, and required-ness derive from the
@@ -499,7 +488,7 @@ class TestSchemaDataclassSync:
 
     def test_symbol_language_nullable(self):
         """ADR-0031 Class B stand-ins emit language=None; the schema
-        must tolerate null (WI-kufib: 262 self-analysis nodes)."""
+        must tolerate null (WI-kufib)."""
         schema = load_schema()
         symbol_def = schema["$defs"]["Symbol"]
         validator = make_validator(schema, "Symbol")
@@ -518,14 +507,14 @@ class TestSchemaDataclassSync:
         assert "language" not in symbol_def.get("required", [])
 
     def test_symbol_canonical_name_absent(self):
-        """ADR-0032 removed Symbol.canonical_name from the dataclass at
-        SCHEMA_VERSION 0.13.0; the hand-coded schema kept it (stale)."""
+        """Symbol.canonical_name is not a dataclass field (ADR-0032), so
+        the schema must not declare it."""
         schema = load_schema()
         assert "canonical_name" not in schema["$defs"]["Symbol"]["properties"]
 
     def test_symbol_axis_sibling_fields_present(self):
         """The four ADR-0031/0032 typed sibling fields are emitted on
-        every node (34396/34396 in self-analysis) and must be declared."""
+        every node and must be declared."""
         schema = load_schema()
         props = schema["$defs"]["Symbol"]["properties"]
         for field_name in (
@@ -535,8 +524,8 @@ class TestSchemaDataclassSync:
             assert field_name in props, f"missing {field_name}"
 
     def test_analysis_run_failed_files_and_pass_version_present(self):
-        """AnalysisRun emits failed_files and pass_version on every run
-        (84/84 in self-analysis); the schema must declare them."""
+        """AnalysisRun emits failed_files and pass_version on every run;
+        the schema must declare them."""
         schema = load_schema()
         props = schema["$defs"]["AnalysisRun"]["properties"]
         assert "failed_files" in props
@@ -549,26 +538,26 @@ class TestSchemaDataclassSync:
 
         schema = load_schema()
         span = Span(start_line=1, end_line=2, start_col=0, end_col=1)
-        # INV-virik: the AnalysisRun reporting lists are conditional (omitted when
-        # empty), so populate them for the fully-populated key-set comparison.
+        # The AnalysisRun reporting lists are conditional (omitted when empty),
+        # so populate them for the fully-populated key-set comparison (INV-virik).
         run_sample = AnalysisRun.create(pass_id="python", version="1.0")
         run_sample.skipped_passes = [{"pass": "p", "reason": "r"}]
         run_sample.failed_files = [{"path": "x.py", "reason": "boom"}]
         run_sample.warnings = ["w"]
-        # INV-bikaj: silence_reason is conditional too — omitted when the pass
-        # emitted something (NOT APPLICABLE), so a productive sample would not
-        # carry the key. Populate it for the fully-populated comparison.
+        # silence_reason is conditional too — omitted when the pass emitted
+        # something (NOT APPLICABLE), so a productive sample would not carry
+        # the key. Populate it for the fully-populated comparison (INV-bikaj).
         run_sample.silence_reason = "unreported"
-        # INV-nuzal: node.quality is conditional (omitted when None), so populate
-        # it for the fully-populated key-set comparison.
+        # node.quality is conditional (omitted when None), so populate it for
+        # the fully-populated key-set comparison (INV-nuzal).
         symbol_sample = Symbol(
             id="python:a.py:1-2:f:function", name="f", kind="function",
             language="python", path="a.py", span=span,
             origin=["python"], origin_run_id="uuid:1",
         )
         symbol_sample.quality = {"score": 0.9, "reason": "sample"}
-        # ADR-0057 §6 (WI-binis): the provenance slot is conditional on both
-        # Symbol and Edge — present only on a record the merge pass folded.
+        # The provenance slot is conditional on both Symbol and Edge — present
+        # only on a record the merge pass folded (ADR-0057 §6; WI-binis).
         symbol_sample.attribution = {"kind": ["python"]}
         symbol_sample.alternatives = {"kind": [{"value": "method", "origin": ["pyscip"]}]}
         edge_sample = Edge.create(
@@ -596,8 +585,8 @@ class TestSchemaDataclassSync:
             )
 
     def test_generator_rejects_stale_decoration(self):
-        """A decoration for a field the dataclass no longer has must
-        fail generation (the canonical_name failure mode)."""
+        """A decoration for a field the dataclass does not have must
+        fail generation, so a removed field cannot linger in the schema."""
         sys.path.insert(0, str(REPO_ROOT / "scripts"))
         gen = __import__("generate_schema_lib")
         spec = gen.spec_for("Symbol")
@@ -607,7 +596,8 @@ class TestSchemaDataclassSync:
 
     def test_generator_rejects_undecorated_field(self):
         """A dataclass field with no decoration / override / composite
-        must fail generation (the discovery_language failure mode)."""
+        must fail generation, so a new field cannot be silently omitted
+        from the schema."""
         sys.path.insert(0, str(REPO_ROOT / "scripts"))
         gen = __import__("generate_schema_lib")
         spec = gen.spec_for("Symbol")
@@ -622,9 +612,9 @@ class TestSchemaDataclassSync:
     def test_linker_synthetic_output_validates(self, tmp_path: Path):
         """End-to-end fixture-blindness closure: an analysis whose input
         triggers a protocol linker (Class B language=None stand-ins)
-        validates whole-document. The prior conformance fixture was
-        single-file pure Python, so no linker ever fired and the
-        WI-kufib drift was invisible to CI.
+        validates whole-document. A single-file pure-Python fixture
+        fires no linker, so it cannot catch schema drift in
+        linker-emitted nodes (WI-kufib).
         """
         (tmp_path / "schema.sql").write_text(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n"
@@ -660,17 +650,17 @@ class TestSchemaDataclassSync:
 
 
 class TestTopLevelBlockTyping:
-    """WI-kutas PR2: top-level blocks typed, missing keys declared.
+    """Top-level blocks are typed and every emitted key is declared (WI-kutas).
 
-    Each previously-opaque block (metrics / limits / features) gets a
-    real schema, and each test pins the schema's key set to the actual
-    producer's output so the block cannot silently drift again.
+    Each block (metrics / limits / features) has a real schema, and each
+    test pins the schema's key set to the actual producer's output so the
+    block cannot silently drift.
     """
 
     def test_missing_top_level_keys_declared(self):
         """reproducibility_context / symbol_fingerprint_scheme /
-        validation_report are emitted on every run but were absent from
-        the schema's top-level properties."""
+        validation_report are emitted on every run, so they must be
+        declared in the schema's top-level properties."""
         schema = load_schema()
         for key in (
             "reproducibility_context",
@@ -700,8 +690,9 @@ class TestTopLevelBlockTyping:
             max_files_per_analyzer=10,
             test_files_excluded=True,
             partial_results_reason="one or more passes crashed; results are partial",
-            # INV-virik: the diagnostic reporting lists are conditional (omitted
-            # when empty), so populate them for the fully-populated comparison.
+            # The diagnostic reporting lists are conditional (omitted when
+            # empty), so populate them for the fully-populated comparison
+            # (INV-virik).
             truncated_files=["big.py"],
             skipped_languages=["haskell"],
         )
@@ -728,11 +719,11 @@ class TestTopLevelBlockTyping:
         validator.validate(lim.to_dict())
 
     def test_supply_chain_summary_has_no_phantom_by_tier(self):
-        """WI-vafid: supply_chain_summary must not declare a `by_tier` wrapper the
+        """supply_chain_summary must not declare a `by_tier` wrapper the
         producer never emits — `_compute_supply_chain_summary` keys tiers
         (first_party / internal_dep / external_dep, plus derived_skipped) at the
         top level, each carrying {files, symbols} (external_dep also an
-        `ecosystem` sub-bucket)."""
+        `ecosystem` sub-bucket). (WI-vafid)"""
         schema = load_schema()
         scs = schema["properties"]["supply_chain_summary"]
         assert "by_tier" not in scs.get("properties", {}), (
@@ -777,9 +768,9 @@ class TestTopLevelBlockTyping:
             jsonschema.Draft202012Validator(scs).validate(real)
 
     def test_metrics_edge_confidence_validates_and_states_scope(self):
-        """WI-zimor: the edge-confidence distribution block validates against
-        its declared schema (populated and empty), and both confidence
-        summaries say they are over EDGES (nodes carry no confidence)."""
+        """The edge-confidence distribution block validates against its
+        declared schema (populated and empty), and both confidence summaries
+        say they are over EDGES (nodes carry no confidence). (WI-zimor)"""
         from hypergumbo_core.metrics import compute_metrics
 
         schema = load_schema()
@@ -840,7 +831,7 @@ class TestTopLevelBlockTyping:
                 dataflow=True,
             ),
             limits_hit=["hop_limit"],
-            # WI-mibuj: slice_graph sizes every limit it names.
+            # slice_graph sizes every limit it names (WI-mibuj).
             limits_detail={"hop_limit": {"cap": 1, "nodes_omitted": 1}},
             node_depths={"n1": 0},
             node_tiers={"n1": 1},
@@ -906,8 +897,8 @@ class TestTopLevelBlockTyping:
     def test_repro_implications_reference_capturable_fields(self):
         """The implications text must only direct consumers at fields the
         behavior map actually carries: captured.* keys or the explicit
-        analysis_runs[].pass_version pointer. Previously it named a
-        captured.pass_versions key that was never captured."""
+        analysis_runs[].pass_version pointer -- never a
+        captured.pass_versions key, which captured does not carry."""
         from hypergumbo_core.schema import build_reproducibility_context
 
         rc = build_reproducibility_context()
@@ -922,18 +913,16 @@ class TestTopLevelBlockTyping:
 
 
 class TestRegisteredMetaKeysAreDocumented:
-    """WI-zisig / WI-zamum: the schema documents its own registered vocabulary.
+    """The schema documents its own registered vocabulary (WI-zisig / WI-zamum).
 
     ``axis_meta_keys.META_KEYS`` is the registry of every meta key hypergumbo
-    emits. The schema's ``meta`` blocks used to hand-list their documented keys
-    and drifted immediately — of 32 registered edge-axis keys it described 2,
-    and of 47 symbol-axis keys it described 0. So keys that are registered,
-    emitted and spec-documented (``resolution_quality`` on 1076 self-corpus
-    edges, ``channel`` on 145) were absent from ``docs/schema.json``, and a
-    consumer reading the schema could not learn they exist.
+    emits. The schema's ``meta`` blocks derive their documented keys from that
+    registry rather than hand-listing them, which drifts; otherwise a consumer
+    reading ``docs/schema.json`` could not learn that registered, emitted keys
+    such as ``resolution_quality`` or ``channel`` exist.
 
     These are ratchets, not one-off assertions: registering a new key without
-    regenerating the schema fails here rather than becoming the next filed item.
+    regenerating the schema fails here.
     """
 
     def _meta_props(self, schema: dict, defn: str) -> dict:
@@ -973,10 +962,10 @@ class TestRegisteredMetaKeysAreDocumented:
         closing the object — would turn a documentation fix into a wrong
         constraint that rejects valid maps.
         """
-        # Hand-curated entries predate the registry derivation and carry real
-        # per-key knowledge (evidence_type ships the ADR-0028 axiom plus the
-        # x-axis-of-values map). They are allowed to constrain; the point of
-        # this guard is that the 79 REGISTRY-DERIVED entries must not.
+        # Hand-curated entries carry real per-key knowledge (evidence_type
+        # ships the ADR-0028 axiom plus the x-axis-of-values map). They are
+        # allowed to constrain; the point of this guard is that the
+        # REGISTRY-DERIVED entries must not.
         curated = {"evidence_type", "evidence_lang"}
         schema = load_schema()
         for defn in ("Edge", "Symbol"):

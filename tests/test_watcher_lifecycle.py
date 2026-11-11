@@ -27,10 +27,8 @@ launcher's and the kill script's ``pgrep`` fallbacks kill any
 ``sync-transcript.sh`` ON THE MACHINE whose session-id argument matches,
 whatever repo it belongs to, so a unique tmp_path protects nothing. Two
 tests sharing a literal id can run at once on two xdist workers, and then
-one test's launch kills the other's watcher (WI-zomif: the two
-TestLauncherNamesTheOwner tests both used ``"launch-owner"``, and
-"launcher did not start a watcher" reproduced 8/8 with the launches 50 ms
-apart). The random suffix also keeps the sweeps off the user's real watcher.
+one test's launch kills the other's watcher (WI-zomif). The random suffix
+also keeps the sweeps off the user's real watcher.
 """
 
 # covers: .agent/hooks/_shared/*transcript*
@@ -153,15 +151,14 @@ def _isolate_shared_scripts(tmp_path: Path) -> Path:
         "poll-transcript-change.sh",
         "session_id_helpers.sh",
         # Required by launch-transcript-sync.sh and rotate-on-session-end.sh,
-        # which source archive_scrubbed.sh and invoke scrub_secrets.py. Omitting
-        # them made this sandbox a repo where the scrubber is MISSING, which is
-        # one of the demonstrated data-loss modes -- that is how
-        # test_orphan_sweep_archives_dead_session_files went red.
+        # which source archive_scrubbed.sh and invoke scrub_secrets.py. Without
+        # them the sandbox is a repo where the scrubber is MISSING, which is
+        # a different (degraded) code path from the one a real repo takes.
         "archive_scrubbed.sh",
         "scrub_secrets.py",
-        # Required since INV-todig: every shell writer sources the
-        # permission-contract helper; a sandbox without it is a repo where
-        # the scripts die at the source line under set -e.
+        # Every shell writer sources the permission-contract helper; a
+        # sandbox without it is a repo where the scripts die at the source
+        # line under set -e (INV-todig).
         "transcript_perms.sh",
     ):
         src_file = SHARED_DIR / name
@@ -241,10 +238,9 @@ class TestKillScript:
         self, tmp_path: Path,
     ) -> None:
         """A watcher in the SAME repo with a DIFFERENT session_id must NOT
-        be killed. This is the structural fix for the watcher-leak bug:
-        the prior DEST-matching loop killed siblings because they shared a
-        global DEST. Per-session pgrep matching makes siblings invisible
-        to each other's kill events.
+        be killed. pgrep matches on SESSION_ID rather than on a DEST shared
+        across sessions, so siblings are invisible to each other's kill
+        events.
         """
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
@@ -381,9 +377,8 @@ class TestLaunchScript:
         self, tmp_path: Path,
     ) -> None:
         """launch-transcript-sync.sh starting session B must NOT kill a
-        live sibling session A in the same repo. This is the structural
-        fix for the watcher-leak failure documented in the 2026-04-08
-        manual lifecycle test (Step 5)."""
+        live sibling session A in the same repo: each launch only touches
+        watchers and PID files carrying its own session id."""
         shared = _isolate_shared_scripts(tmp_path)
         launch_script = shared / "launch-transcript-sync.sh"
         kill_script = shared / "kill-transcript-sync.sh"
@@ -450,13 +445,11 @@ class TestLaunchScript:
         for a SESSION_ID that already has a live watcher must kill the prior
         watcher before launching a new one.
 
-        Without this guard, Claude Code's SessionStart hook fires on
-        every lifecycle event (startup, resume, clear, compact) and
-        unconditionally calls launch-transcript-sync.sh — so a /compact
-        mid-session would leave two watchers tailing the same source and
-        each event would be filtered+appended twice consecutively. That
-        produced the uniform 2x doubling pattern observed in fb7b3494
-        and 3 other archived sessions (4/132 = ~3% HIT rate before fix).
+        Claude Code's SessionStart hook fires on every lifecycle event
+        (startup, resume, clear, compact) and unconditionally calls
+        launch-transcript-sync.sh. Without this guard a /compact mid-session
+        leaves two watchers tailing the same source, and each event is
+        filtered+appended twice consecutively.
         """
         shared = _isolate_shared_scripts(tmp_path)
         launch_script = shared / "launch-transcript-sync.sh"
@@ -570,9 +563,9 @@ class TestCrashedSessionOrphan:
     ``.agent/.archived-transcripts/crashed-<stamp>-<sid>/`` and removes
     the stale PID file.
 
-    These tests use a fake "dead session" — a PID file pointing to PID 1
-    is fine because PID 1 is alive (init). Instead we use a known-dead
-    PID by spawning a process and waiting for it to exit.
+    These tests fake a "dead session" with a known-dead PID, obtained by
+    spawning a process and waiting for it to exit. (PID 1 would not do:
+    init is always alive.)
     """
 
     def _make_dead_pid(self) -> int:
@@ -870,7 +863,8 @@ class TestRotateOnSessionEnd:
     def test_rotate_skips_empty_current(self, tmp_path: Path) -> None:
         """If the per-session current file is empty (or missing), the
         rotation runs but does NOT promote an empty file into .last_*.
-        The prior .last_* survives unchanged."""
+        The prior .last_* is still demoted to .second_to_last_*, so .last_*
+        is left absent."""
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
 
@@ -892,10 +886,9 @@ class TestRotateOnSessionEnd:
         )
         assert result.returncode == 0, result.stderr
 
-        # .last_* should now hold an EMPTY file (because the empty current
-        # was demoted-then-promoted)... wait, no — the empty current file
-        # was rejected, so the old .last was demoted to .second_to_last
-        # and .last_* is empty/missing. Verify the actual behavior:
+        # The empty current file is rejected rather than promoted, while the
+        # old .last is still demoted to .second_to_last, so .last_* ends up
+        # missing.
         last_tr = agent_dir / ".last_session_transcript.jsonl"
         second_tr = agent_dir / ".second_to_last_transcript.jsonl"
 
@@ -1086,7 +1079,7 @@ class TestSyncTranscript:
     def _fake_inotifywait(self, tmp_path: Path, counter: Path) -> Path:
         """A stand-in ``inotifywait`` that always fails to initialise.
 
-        Reproduces the production failure exactly:
+        Mimics inotify instance exhaustion:
         ``Couldn't initialize inotify: Too many open files`` — exit 1,
         immediately, with no event and no delay.
         """
@@ -1107,12 +1100,10 @@ class TestSyncTranscript:
     ) -> None:
         """When ``inotifywait`` cannot start, the watcher must BACK OFF.
 
-        Observed in production: 128/128 ``fs.inotify.max_user_instances``
-        were held by unrelated processes (369 stray ``dbus-daemon``s), so
-        every ``inotifywait`` failed instantly. The watch loop's error path
-        ran ``continue`` with NO delay, so watchers spun at ~16% CPU each —
-        one logged 114 million voluntary context switches and 13.9 hours of
-        CPU. A resource shortage has to degrade, not melt down.
+        When unrelated processes hold every ``fs.inotify.max_user_instances``
+        slot, each ``inotifywait`` fails instantly; an error path that
+        retries with no delay turns every watcher into a CPU-burning busy
+        loop. A resource shortage has to degrade, not melt down.
 
         Bounded by INVOCATION COUNT rather than by CPU%, because a CPU
         threshold is a race on a loaded box; the count is the mechanism.
@@ -1150,10 +1141,9 @@ class TestSyncTranscript:
     ) -> None:
         """Backing off must not mean going deaf.
 
-        The pre-fix error path ``continue``d without calling ``do_sync``, so
-        while inotify was exhausted the mirror silently stopped updating —
-        the watcher burned CPU AND published nothing. Degraded mode has to
-        keep mirroring, just less promptly.
+        An error path that retries without calling ``do_sync`` leaves the
+        mirror silently frozen for as long as inotify is exhausted. Degraded
+        mode has to keep mirroring (by polling), just less promptly.
         """
         shared = _isolate_shared_scripts(tmp_path)
         sync_script = shared / "sync-transcript.sh"
@@ -1198,16 +1188,15 @@ class TestSyncTranscript:
 
 
 # ---------------------------------------------------------------------------
-# A watcher must not outlive the session that launched it (2026-09-05).
+# A watcher must not outlive the session that launched it.
 #
-# Two orphans were found live on the production box after a session crash:
-# an ``inotifywait -e close_write`` with PPID 1, 50 hours old, waiting on a
-# transcript that would never be written again (its bash parent had been
-# killed and, having no ``-t``, the child never returned); and a whole
-# sync-transcript.sh, 26 hours old, looping in Phase 1 for a source file that
-# never appeared, because the session-end hook that would have killed it
-# never ran. Each held one of the 128 per-user inotify instances. The fix has
-# three parts and each is pinned below: every watch is time-bounded, a
+# Two orphan shapes are possible after a session crash: an
+# ``inotifywait -e close_write`` reparented to PID 1 whose bash parent was
+# killed, which without ``-t`` waits forever on a transcript nobody writes
+# again; and a whole sync-transcript.sh looping in Phase 1 for a source file
+# that never appears, because the session-end hook that would kill it never
+# runs. Each holds one of the limited per-user inotify instances. Three
+# defences prevent them, each pinned below: every watch is time-bounded, a
 # trapped signal reaps the child before exiting, and the watcher checks that
 # its OWNER process is still alive on every loop iteration.
 # ---------------------------------------------------------------------------
@@ -1246,10 +1235,8 @@ def _fake_inotifywait_blocking(tmp_path: Path, child_pid_file: Path) -> Path:
 
 def _wait_for_file(path: Path, timeout: float = 20.0) -> bool:
     # Every caller expects the file to APPEAR, and this returns as soon as it
-    # does, so the budget costs nothing on a pass. 5 s was too short for a
-    # detached launch on a loaded CI runner: PR #1213's run failed one launch
-    # while sibling launches in the same run succeeded, and it did not
-    # reproduce locally (3 of 3 runs green).
+    # does, so the budget costs nothing on a pass. It is generous because a
+    # detached launch on a loaded CI runner can take several seconds.
     deadline = time.time() + timeout
     while time.time() < deadline:
         if path.exists() and path.read_text().strip():
@@ -1308,8 +1295,9 @@ class TestWatcherOutlivesSession:
 
     def test_sigterm_reaps_the_child_watch(self, tmp_path: Path) -> None:
         """SIGTERM to the watcher must take the blocked ``inotifywait`` down
-        with it, promptly. The 50-hour orphan was exactly a child that
-        survived its parent's SIGTERM."""
+        with it, promptly. A child that survives its parent's SIGTERM is
+        reparented to PID 1 and becomes an orphan holding an inotify
+        instance."""
         child_pid_file = tmp_path / "child.pid"
         bindir = _fake_inotifywait_blocking(tmp_path, child_pid_file)
         proc, _ = self._start_watcher(tmp_path, bindir)
@@ -1333,7 +1321,8 @@ class TestWatcherOutlivesSession:
     def test_exits_when_owner_dies_in_phase2(self, tmp_path: Path) -> None:
         """With TRANSCRIPT_OWNER_PID set, the watcher exits on its own within
         one watch timeout of the owner disappearing — no session-end hook
-        required. This is the case the crash left behind."""
+        required. This covers a session that crashes before its session-end
+        hook can run."""
         owner = subprocess.Popen(["sleep", "30"])
         log = tmp_path / "argv.log"
         log.write_text("")
@@ -1356,8 +1345,9 @@ class TestWatcherOutlivesSession:
             _cleanup_proc(owner)
 
     def test_exits_when_owner_dies_in_phase1(self, tmp_path: Path) -> None:
-        """Phase 1 (source not yet created) must also watch the owner. The
-        26-hour orphan was a Phase-1 loop for a file that never appeared."""
+        """Phase 1 (source not yet created) must also watch the owner;
+        otherwise a Phase-1 loop waits forever for a source file that never
+        appears."""
         owner = subprocess.Popen(["sleep", "30"])
         log = tmp_path / "argv.log"
         log.write_text("")
@@ -1471,7 +1461,8 @@ class TestLauncherNamesTheOwner:
 
 class TestKillScriptReapsChildren:
     def test_kill_script_takes_the_child_watch_down_too(self, tmp_path: Path) -> None:
-        """A pre-fix watcher whose bash parent is killed leaves its foreground
+        """Killing a watcher that does not reap its own children (the fake
+        here, or one predating the reaping trap) leaves its foreground
         ``inotifywait`` alive with PPID 1. The kill script must signal the
         watcher's children BEFORE the watcher, while they are still its
         children."""
@@ -1522,7 +1513,7 @@ def test_no_session_id_in_this_file_is_a_bare_literal() -> None:
 
     Assignments to ``sid`` / ``session_id`` / ``*_sid``, and parameter
     defaults with those names, may not be string literals: a literal shared
-    by two tests is what let one test's launcher kill the other's watcher.
+    by two tests lets one test's launcher kill the other's watcher.
     """
     tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
     offenders = []

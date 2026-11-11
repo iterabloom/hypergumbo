@@ -77,13 +77,13 @@ def test_detects_html_language(tmp_path: Path) -> None:
 
 
 def test_detects_blade_language(tmp_path: Path) -> None:
-    """WI-navaf: .blade.php files should enrol both 'blade' and 'php' in
-    detected languages.
+    """.blade.php files should enrol both 'blade' and 'php' in detected
+    languages (WI-navaf).
 
-    Pre-fix, FileIndex.match_pattern misclassified '*.blade.php' as a
-    pure-extension lookup (keyed by Path.suffix which only retains '.php')
-    so the 'blade' entry had zero files and was dropped, causing the
-    blade analyzer to never enroll in the producer-routing layer.
+    '*.blade.php' is a multi-dot pattern, so FileIndex.match_pattern must not
+    treat it as a pure-extension lookup keyed by Path.suffix (which keeps only
+    '.php'); otherwise 'blade' gets zero files, is dropped, and the blade
+    analyzer never enrolls in the producer-routing layer.
     """
     (tmp_path / "resources").mkdir()
     (tmp_path / "resources" / "views").mkdir()
@@ -130,9 +130,9 @@ def test_inv_hokig_bash_includes_extensionless_shebang(tmp_path: Path) -> None:
     """INV-hokig: profile.languages.bash.files must agree with the analyzer.
 
     The bash analyzer detects extensionless executables by shebang line
-    (e.g., .githooks/pre-commit, scripts/auto-pr). Before this fix, profile
-    only counted *.sh / *.bash by extension and reported a lower number
-    than the analyzer's files_analyzed — making
+    (e.g., .githooks/pre-commit, scripts/auto-pr), so the profile must count
+    them too; counting only *.sh / *.bash by extension would report fewer
+    files than the analyzer's files_analyzed and make
     profile.languages.bash.files unsafe to use for "how many bash files
     does this repo have?".
 
@@ -161,8 +161,8 @@ def test_inv_hokig_bash_includes_extensionless_shebang(tmp_path: Path) -> None:
 def test_inv_tosum_bash_not_double_counted(tmp_path: Path) -> None:
     """INV-tosum: shell scripts must surface exactly once under the canonical 'bash' key.
 
-    Pre-fix, alias keys (e.g., 'shell' → 'bash') were injected into
-    LANGUAGE_EXTENSIONS, causing profile.detect_languages to enumerate
+    Alias keys (e.g., 'shell' → 'bash') must not appear in
+    LANGUAGE_EXTENSIONS; if they did, profile.detect_languages would enumerate
     the same .sh files twice and emit two entries with identical stats.
     """
     (tmp_path / "deploy.sh").write_text("#!/bin/bash\necho hi\n")
@@ -317,7 +317,7 @@ def test_detects_scala_play_from_import_namespace(tmp_path: Path) -> None:
     """Play promotes from the ``play.api`` import namespace, NO manifest (WI-nizuv).
 
     The build coordinate ``com.typesafe.play`` never matches the real
-    ``play.api.*`` import namespace, so import promotion was dark.
+    ``play.api.*`` import namespace, so promotion must key on the namespace.
     """
     assert _import_promotes(
         tmp_path, "Routes.scala", "import play.api.mvc._\nimport play.api.routing.Router\n", "play"
@@ -360,7 +360,8 @@ def test_detects_haskell_scotty_from_import_namespace(tmp_path: Path) -> None:
 
 def test_akka_http_not_promoted_from_base_akka_import(tmp_path: Path) -> None:
     """The ``akka.http`` namespace must NOT fire on base-akka (``akka.actor``)
-    imports — the specificity guard the WI-nizuv fix relies on (WI-tolap lesson)."""
+    imports — the namespace pattern must be specific enough to skip the base
+    library (WI-nizuv, WI-tolap)."""
     assert not _import_promotes(
         tmp_path, "Actor.scala", "import akka.actor.Actor\nimport akka.actor.Props\n", "akka-http"
     )
@@ -461,8 +462,8 @@ def test_wi_himas_requirements_under_venv_is_skipped(tmp_path: Path) -> None:
     vendor/ etc. are NOT part of the project manifest set. Shadowed deps in
     an installed virtualenv would otherwise create framework-detection FPs.
     """
-    # App code imports a stdlib module, NOT django: WI-tosul Phase 2 promotes an
-    # allowlisted framework on a bare import, which would mask the manifest-skip
+    # App code imports a stdlib module, NOT django: an allowlisted framework is
+    # promoted on a bare import (WI-tosul), which would mask the manifest-skip
     # this test verifies. Django can only enter via the (skipped) manifest here.
     (tmp_path / "manage.py").write_text("import os\n")
     # Real project layout: no Django in any project-level manifest.
@@ -484,8 +485,9 @@ def test_wi_himas_dash_r_outside_repo_does_not_escape(tmp_path: Path) -> None:
     Bounding the resolution at repo_root prevents directory traversal that
     would parse arbitrary host files.
     """
-    # App code imports stdlib, NOT django (WI-tosul Phase 2 would import-promote
-    # an allowlisted framework and mask the dash-r escape this test verifies).
+    # App code imports stdlib, NOT django (bare-import promotion of an
+    # allowlisted framework would mask the dash-r escape this test verifies;
+    # WI-tosul).
     (tmp_path / "manage.py").write_text("import os\n")
     # -r ../outside.txt — would escape repo if followed.
     (tmp_path / "requirements.txt").write_text("-r ../outside.txt\n")
@@ -567,8 +569,8 @@ def test_handles_non_dict_package_json(tmp_path: Path) -> None:
     """Should gracefully handle package.json with non-dict top-level value.
 
     Some repos have package.json files that are valid JSON but contain a
-    string or array at the top level instead of an object. This was found
-    in the grpc repo during bakeoff testing.
+    string or array at the top level instead of an object (the grpc repo
+    is one example).
     """
     (tmp_path / "app.js").write_text("console.log('hi');\n")
     # Valid JSON, but a string instead of an object
@@ -1283,8 +1285,8 @@ def test_detects_scala_http4s_from_project_dependencies(tmp_path: Path) -> None:
     Real-world SBT projects (docspell is the canonical example) put all
     library coordinates in ``project/Dependencies.scala`` and only
     reference scala variables in ``build.sbt``
-    (e.g. ``Dependencies.http4sClient``). Before WI-piban the detector
-    only scanned ``build.sbt`` and missed these cases.
+    (e.g. ``Dependencies.http4sClient``), so the detector must scan
+    ``project/*.scala`` as well as ``build.sbt`` (WI-piban).
     """
     # Production code imports http4s — required so framework-validation
     # (which moves non-imported candidates to dev_frameworks) keeps http4s
@@ -1798,9 +1800,9 @@ def test_detect_languages_counts_test_files_per_language(tmp_path: Path) -> None
     """WI-ritaf: each language carries how many of its ``files`` are test paths.
 
     A fixture-only language (go under tests/fixtures/) must be visibly
-    test-only, while ``files`` itself is NOT shrunk -- the WI-jadig
-    pre-filter skips an analyzer whose languages read ``files == 0``, so the
-    fixture's analyzer must keep running.
+    test-only, while ``files`` itself is NOT shrunk -- the analyzer
+    pre-filter (WI-jadig) skips an analyzer whose languages read
+    ``files == 0``, so the fixture's analyzer must keep running.
     """
     from hypergumbo_core.profile import _detect_languages
 
@@ -1818,7 +1820,7 @@ def test_detect_languages_counts_test_files_per_language(tmp_path: Path) -> None
     # Reach first: both languages detected, with the enumerated counts.
     assert langs["python"].files == 3
     assert langs["go"].files == 1  # NOT 0: the pre-filter must still fire go
-    # The new positive claim.
+    # The per-language test-file counts.
     assert langs["python"].test_files == 1
     assert langs["go"].test_files == 1
     assert langs["go"].test_files == langs["go"].files  # test-only language
@@ -2139,9 +2141,9 @@ dependencies:
 def test_detects_haskell_yesod_framework_from_cabal(tmp_path: Path) -> None:
     """WI-vabiv: detect Yesod from *.cabal dependency.
 
-    Yesod (UAT BUG-16 / haskellers) is the Rails-inspired Haskell web
-    framework; detection wires it up like Servant / Scotty so the new
-    yesod.yaml patterns are loaded when a repo declares the dependency.
+    Yesod is the Rails-inspired Haskell web framework; detection wires it
+    up like Servant / Scotty so the yesod.yaml patterns are loaded when a
+    repo declares the dependency.
     """
     (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
     (tmp_path / "myapp.cabal").write_text("""name: myapp
@@ -2180,7 +2182,7 @@ dependencies:
 def test_yesod_framework_yaml_loads(tmp_path: Path) -> None:
     """WI-vabiv: yesod.yaml loads via load_framework_patterns and declares
     the expected concepts (application, router, route, auth, model, etc.).
-    Guards against typos or schema drift in the new file.
+    Guards against typos or schema drift in that file.
     """
     from hypergumbo_core.framework_patterns import load_framework_patterns
 
@@ -3116,13 +3118,13 @@ def test_refine_frameworks_no_imports_moves_to_dev() -> None:
     assert "transformers" in result.dev_frameworks
 
 
-# --- WI-tosul Phase 2: bare-exact-import promotion for allowlisted route frameworks ---
+# --- Bare-exact-import promotion for allowlisted route frameworks (WI-tosul) ---
 
 def test_refine_frameworks_bare_exact_import_promotes_allowlisted() -> None:
     """A manifest-silent web app (`from flask import Flask` → bare EXACT import edge
-    ``python:flask``) now promotes an allowlisted route framework. Before Phase 2
-    the bare arm required a compound submodule (require_prefix_arm) and this stayed
-    dark — the dead-code route-monoculture root."""
+    ``python:flask``) promotes an allowlisted route framework. Requiring a compound
+    submodule import here would leave the framework's YAML unloaded and its routes
+    looking dead, since a top-level exact import is the canonical usage."""
     from hypergumbo_core.profile import refine_frameworks
 
     profile = _make_profile([])  # manifest-silent: nothing detected
@@ -3155,7 +3157,7 @@ def test_refine_frameworks_bare_exact_import_non_allowlisted_stays_gated() -> No
 
 def test_bare_exact_promote_allowlist_membership() -> None:
     """The allowlist covers the high-confidence dedicated web frameworks and excludes
-    every FP-prone bare name (WI-tosul Phase-2 scout tiers)."""
+    every FP-prone bare name (WI-tosul)."""
     from hypergumbo_core.profile import (
         LANGUAGE_FRAMEWORKS,
         _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS,
@@ -3217,13 +3219,10 @@ def test_refine_frameworks_java_no_import_edges_stays() -> None:
 
 def test_refine_frameworks_rails_autoloaded_stays_in_prod(tmp_path) -> None:
     """WI-lohok: Rails (Ruby) is loaded by Bundler at boot; production Ruby
-    code never has explicit `require 'rails'` import edges. The previous
-    behavior demoted Rails to dev_frameworks even on real Rails apps,
-    which prevented rails.yaml from loading and starved the controller /
-    route / form / serializer concept linkers of Rails inputs (observed
-    on chatwoot in cohort cohort-001/iter-001). The fix exempts Rails
-    from the import-edge demotion check so the framework-pattern dispatch
-    actually fires on Rails apps.
+    code never has explicit `require 'rails'` import edges. Rails is
+    therefore exempt from the import-edge demotion check: demoting it to
+    dev_frameworks would keep rails.yaml from loading and starve the
+    controller / route / form / serializer concept linkers of Rails inputs.
     """
     from hypergumbo_core.profile import refine_frameworks
 
@@ -3382,15 +3381,14 @@ def test_refine_frameworks_mixed_prod_and_dev() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WI-palol / INV-rojip: promote-phase tests.
+# Promote-phase tests (WI-palol, INV-rojip).
 #
-# refine_frameworks gains a second decision phase that promotes a framework
-# into ``profile.frameworks`` when prod-non-test source files import a
-# module matching the framework's registered import-module patterns, even
-# if the manifest is silent. A specificity gate ("pattern is scoped, slash-
-# compound, or dot-compound") protects against bare-name FPs (`react`,
-# `flask`) that were the motivation for WI-rofiz. See INV-rojip for the
-# full prior-occurrence history.
+# refine_frameworks promotes a framework into ``profile.frameworks`` when
+# prod-non-test source files import a module matching the framework's
+# registered import-module patterns, even if the manifest is silent. A
+# specificity gate ("pattern is scoped, slash-compound, or dot-compound")
+# protects against bare-name FPs such as `react` (WI-rofiz); bare names
+# promote only through their own arms, tested further below.
 # ---------------------------------------------------------------------------
 
 
@@ -3421,7 +3419,7 @@ def test_is_specific_pattern_bare_name_not_specific() -> None:
 
 
 def test_refine_frameworks_promotes_apollo_from_workspace_import() -> None:
-    """WI-palol motivating case: apollo-server smoke-test consumer.
+    """Apollo imported through an npm workspace promotes from the import (WI-palol).
 
     The local package.json declares only graphql + make-fetch-happen;
     Apollo is imported via npm workspace from @apollo/server/standalone.
@@ -3488,7 +3486,7 @@ def test_refine_frameworks_does_not_promote_bare_name_react() -> None:
     A prod file importing the bare 'react' module is too weak a signal
     on its own — many non-React tools depend on react for build/codegen.
     Without a manifest declaration, the framework must NOT be promoted.
-    This mirrors the WI-rofiz lesson (bare 'graphql' was an FP trigger).
+    Bare 'graphql' is the same FP class (WI-rofiz).
     """
     from hypergumbo_core.profile import refine_frameworks
 
@@ -3623,17 +3621,17 @@ def test_refine_frameworks_promote_skips_already_in_dev_frameworks() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WI-pusad / INV-rojip cohorts 2+3: bare-name promotion via
-# compound-import-required gate (Mechanism B).
+# Bare-name promotion via the compound-import-required gate (Mechanism B;
+# WI-pusad, INV-rojip).
 #
-# WI-palol gated promotion on _is_specific_pattern (scoped / `/` / `.`).
-# Bare names (django, flask, rails) stayed out. WI-pusad extends the
-# promote phase to bare-name patterns under one condition: at least one
-# prod-non-test importer matched via the PREFIX arm of _module_matches
-# (e.g., `django.db` matched `django` via `.db` suffix; `rails/generators`
-# matched `rails` via `/generators` suffix). Exact bare imports alone
-# (just `import graphql`, no submodule) do NOT promote — preserving
-# WI-rofiz's lesson.
+# _is_specific_pattern (scoped / `/` / `.`) does not admit bare names
+# (django, flask, rails). The bare-name arm promotes them under one
+# condition: at least one prod-non-test importer matched via the PREFIX arm
+# of _module_matches (e.g., `django.db` matches `django` via `.db` suffix;
+# `rails/generators` matches `rails` via `/generators` suffix). Exact bare
+# imports alone (just `import graphql`, no submodule) do NOT promote, which
+# guards against the bare-name FPs of WI-rofiz; the one exception is the
+# route-framework allowlist ``_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS``.
 # ---------------------------------------------------------------------------
 
 
@@ -3671,14 +3669,14 @@ def test_module_match_kind_case_insensitive() -> None:
 
 
 def test_refine_frameworks_promotes_bare_django_via_compound_submodule() -> None:
-    """WI-pusad motivating case: bakerydemo Django with manifest silent.
+    """Manifest-silent Django (bakerydemo layout) promotes via a submodule import (WI-pusad).
 
     A prod source file imports `django.db.models` — `_module_matches`
     fires via the prefix arm (the import is a compound submodule of
     `django`). The bare pattern `django` is not specific (no `@`, no
-    `/`, no `.` in the pattern itself), so WI-palol would not promote.
-    WI-pusad extends the promote phase with a bare-name arm gated on
-    the prefix-match condition.
+    `/`, no `.` in the pattern itself), so the specificity gate alone
+    would not promote; the bare-name arm promotes it because the match
+    is a prefix match.
     """
     from hypergumbo_core.profile import refine_frameworks
 
@@ -3703,13 +3701,12 @@ def test_refine_frameworks_promotes_bare_django_via_compound_submodule() -> None
 
 
 def test_refine_frameworks_does_not_promote_react_on_exact_only_imports() -> None:
-    """WI-rofiz regression: bare `import react` (exact-only) must NOT
-    promote.
+    """Bare `import react` (exact-only) must NOT promote (WI-rofiz).
 
-    `react` is the canonical bare-name FP risk identified by WI-rofiz
-    (build tooling and codegen import `react` without using it as a
-    framework). Under WI-pusad's compound-import-required gate, the
-    bare exact import alone does not satisfy promotion.
+    `react` is the canonical bare-name FP risk (build tooling and codegen
+    import `react` without using it as a framework). Under the
+    compound-import-required gate (WI-pusad), the bare exact import alone
+    does not satisfy promotion.
     """
     from hypergumbo_core.profile import refine_frameworks
 
@@ -3863,8 +3860,7 @@ def test_refine_frameworks_promote_does_not_cross_ecosystem_for_bare() -> None:
     Both `http` (Julia framework, bare pattern `http`) and Python's
     `http.client` import would otherwise match via the prefix arm of
     _module_match_kind. The allowed_langs gate restricts promotion to
-    edges whose language matches the framework's language. Surfaced
-    by the WI-pusad bakeoff on Django source code.
+    edges whose language matches the framework's language (WI-pusad).
     """
     from hypergumbo_core.profile import refine_frameworks
 
@@ -4984,11 +4980,12 @@ def test_refine_frameworks_promotes_laravel_from_php_use_edge() -> None:
 
 
 def test_profile_finds_an_analyzer_enumerator_by_language_not_by_pass_name(tmp_path: Path) -> None:
-    """WI-juzig / INV-hokig: the profile used to call ``get_analyzer(<language>)``,
-    a lookup by pass NAME, so the ``find_files`` cure fired only for the six
-    analyzers whose name equals their language and never for ``make`` (language
+    """The profile finds an analyzer's ``find_files`` enumerator by language:
+    a lookup by pass NAME (``get_analyzer(<language>)``) would miss analyzers
+    whose name differs from their language, such as ``make`` (language
     ``makefile``). A repo whose only makefile is ``GNUmakefile`` — which the
-    taxonomy's ``Makefile``/``*.mk`` globs cannot see — must still count 1."""
+    taxonomy's ``Makefile``/``*.mk`` globs cannot see — must still count 1
+    (WI-juzig, INV-hokig)."""
     (tmp_path / "GNUmakefile").write_text("all:\n\techo hi\n")
     out_path = tmp_path / "out.json"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
@@ -4999,8 +4996,9 @@ def test_profile_finds_an_analyzer_enumerator_by_language_not_by_pass_name(tmp_p
 def test_all_mode_frameworks_are_sorted(tmp_path: Path) -> None:
     """``--frameworks all`` emits a stable framework order (WI-vosag analogue).
 
-    The ALL-mode list was ``list(<set>)`` — per-process hash order — so the
-    serialised profile differed between two runs on the same repo.
+    Building the ALL-mode list as ``list(<set>)`` would use per-process hash
+    order, so the serialised profile would differ between two runs on the
+    same repo.
     """
     from hypergumbo_core.profile import detect_profile
 
@@ -5013,7 +5011,7 @@ def test_all_mode_frameworks_are_sorted(tmp_path: Path) -> None:
 
 def _write_two_ecosystem_repo(root: Path) -> None:
     """A repo where hardhat (JS + Solidity) and ktor (Kotlin + Java/Gradle) are
-    each detected by two ecosystem scanners (INV-vapov's filed repro)."""
+    each detected by two ecosystem scanners (INV-vapov)."""
     (root / "package.json").write_text(
         '{"name": "x", "dependencies": {"hardhat": "^2.0.0", "ethers": "^6.0.0"}}'
     )
@@ -5029,7 +5027,7 @@ def _write_two_ecosystem_repo(root: Path) -> None:
 def test_framework_detected_by_two_ecosystems_listed_once(tmp_path: Path) -> None:
     """INV-vapov: ``_detect_frameworks`` concatenates per-ecosystem results, so a
     name two scanners both detect (hardhat: JS + Solidity; ktor: Kotlin + Gradle)
-    appeared twice in ``profile.frameworks`` and in survey.json."""
+    must still appear once in ``profile.frameworks`` and in survey.json."""
     from hypergumbo_core.profile import detect_profile
 
     _write_two_ecosystem_repo(tmp_path)
@@ -5039,8 +5037,8 @@ def test_framework_detected_by_two_ecosystems_listed_once(tmp_path: Path) -> Non
 
 
 def test_explicit_frameworks_repeated_on_the_command_line_listed_once(tmp_path: Path) -> None:
-    """INV-vapov analogue: ``--frameworks flask,flask`` echoed both copies into
-    ``frameworks`` and ``requested_frameworks``."""
+    """``--frameworks flask,flask`` lists flask once in ``frameworks`` and
+    ``requested_frameworks`` (INV-vapov analogue)."""
     from hypergumbo_core.profile import detect_profile
 
     (tmp_path / "app.py").write_text("x = 1\n")

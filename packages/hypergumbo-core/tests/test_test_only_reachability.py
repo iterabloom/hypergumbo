@@ -1,23 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-ratuv's gate: a production function reachable only from its own tests.
+"""Tests for the gate on a production function reachable only from its own tests.
 
-THE TESTS THAT MATTER MOST HERE ARE THE DEMOTION ONES, because every false
-positive this gate has produced so far came from a reference mechanism the call
-graph does not model, and each was found by reading a flagged row back against
-source rather than by any assertion:
+THE TESTS THAT MATTER MOST HERE ARE THE DEMOTION ONES. The gate's false
+positives come from reference mechanisms the call graph does not model, and
+nothing but a demotion rule keeps each one out of the cohort:
 
     cmd_slice              ``p_slice.set_defaults(func=cmd_slice)`` — a VALUE
                            BINDING, and cmd_slice is the entry point of
                            ``hypergumbo slice``
-    link_decorator_dispatch  carries ``@register_linker(...)``; the first cut
-                           indexed the DECORATOR's name and left the
-                           REGISTERED function gated
+    link_decorator_dispatch  carries ``@register_linker(...)``; indexing only
+                           the DECORATOR's name would leave the REGISTERED
+                           function gated
     _install_rust_analyzer_with_bug06_gate
                            referenced as ``cli_mod._install_…`` in its OWN
-                           module, which the first cut excluded
+                           module, so same-module references must count
 
-Each of those is pinned below, so a future simplification of the demotion arm
-fails here instead of failing CI on a user-facing command.
+Each of those is pinned below, so a simplification of the demotion arm fails
+here instead of failing CI on a user-facing command. (WI-ratuv)
 """
 from __future__ import annotations
 
@@ -65,7 +64,7 @@ def _call(src: str, dst: str) -> dict:
 
 
 class TestTheCohortQuestion:
-    """Callers, not seeds — the distinction the whole item turns on."""
+    """Callers, not seeds — the distinction the whole gate turns on."""
 
     def test_a_function_called_only_from_tests_is_found(self) -> None:
         nodes = [_node("f", "target", PROD), _node("t", "test_it", TEST)]
@@ -88,8 +87,8 @@ class TestTheCohortQuestion:
 
         A registry-dispatched analyzer method has no direct callers at all, so
         dynamic dispatch separates itself into the zero-caller population
-        instead of drowning this one. That is measured, not assumed: under the
-        seed-based question dispatch was 96.6% of the cohort.
+        instead of drowning this one. Under a seed-based question, dispatch
+        made up 96.6% of the cohort (measured).
         """
         found = find_test_only_symbols([_node("f", "target", PROD)], [])
         assert found == []
@@ -153,7 +152,8 @@ class TestTheBaselineKeyIsStableUnderEdits:
 
 
 class TestDemotion:
-    """Every case here was a live false positive before it was a test."""
+    """Each case here is a reference mechanism that, undemoted, flags live
+    production code as test-only."""
 
     def test_a_dispatch_bound_function_is_demoted(self) -> None:
         """``set_defaults(func=cmd_slice)`` — the CLI entry-point shape."""
@@ -162,11 +162,11 @@ class TestDemotion:
         assert demotion_reason(sym, refs) == DEMOTION_DISPATCH
 
     def test_a_function_CARRYING_a_decorator_is_demoted(self) -> None:
-        """The bug that made this a separate index from ``decorated``.
+        """Why ``carries_decorator`` is a separate index from ``decorated``.
 
-        ``@register_linker`` put ``register_linker`` in ``decorated`` and left
-        ``link_decorator_dispatch`` — the REGISTERED function, and the real
-        production path — sitting in the gated cohort.
+        ``@register_linker`` puts ``register_linker`` in ``decorated``; without
+        the second index ``link_decorator_dispatch`` — the REGISTERED function,
+        and the real production path — would stay in the gated cohort.
         """
         refs = ProductionReferences(
             decorated={"register_linker": {"linkers/x.py"}},
@@ -176,11 +176,12 @@ class TestDemotion:
         assert demotion_reason(sym, refs) == DEMOTION_REGISTERED
 
     def test_a_function_USED_AS_a_decorator_is_demoted(self) -> None:
-        """``register_linker`` itself was in the live cohort.
+        """``register_linker`` itself must be demoted too.
 
         Every ``@register_linker(...)`` is an APPLICATION, not a call edge, so
-        the decorator's own definition looked test-only. Distinct from the
-        case below it: this is the decorator, that is the decorated.
+        the decorator's own definition looks test-only to the call graph.
+        Distinct from the case above it: this is the decorator, that is the
+        decorated.
         """
         refs = ProductionReferences(
             decorated={"register_linker": {"linkers/a.py", "linkers/b.py"}},
@@ -192,8 +193,8 @@ class TestDemotion:
         """``cli.py`` passes ``cli_mod._install_…`` as a value.
 
         A ``def`` is not a ``Load``, so the only way a module mentions its own
-        function is a real reference. Excluding same-module hits — the first
-        cut did — leaves a production value-binding flagged.
+        function is a real reference. Excluding same-module hits would leave a
+        production value-binding flagged.
         """
         refs = ProductionReferences(loads={"helper": {PROD}})
         sym = TestOnlySymbol("i", "helper", "function", PROD)
@@ -214,8 +215,9 @@ class TestGatedCohort:
     def test_methods_are_gated_only_on_a_map_with_receiver_typing(self) -> None:
         """Without types a method's identity is its SHORT name, so
         ``Store.add`` cannot be told from ``set.add``: gating it then would
-        put unadjudicable rows in the baseline, the rubber stamp WI-ratuv's
-        ruling forbids. Given a typed map (WI-mifag) the method is judged.
+        put unadjudicable rows in the baseline, and a rubber-stamped ratchet is
+        worse than none (WI-ratuv). Given a typed map (WI-mifag) the method is
+        judged.
         """
         symbols = [
             TestOnlySymbol("a", "fn", "function", PROD),
@@ -270,16 +272,17 @@ STORE_ADD = TestOnlySymbol("store_add", "Store.add", "method", PROD)
 
 
 class TestMethodsOnATypedMap:
-    """WI-mifag: a method is judged by the TYPE its references resolve to.
+    """A method is judged by the TYPE its references resolve to (WI-mifag).
 
-    The bare-name demotion arm put ``set.add`` and ``Store.add`` in one bucket,
-    so every ``.add`` anywhere kept ``Store.add`` out of the cohort. On a map
-    the scip-python backend typed, an attribute site inside a production
-    callable resolves through that callable's typed edges instead.
+    The bare-name indexes put ``set.add`` and ``Store.add`` in one bucket, so
+    consulting them would let every ``.add`` anywhere keep ``Store.add`` out of
+    the cohort. On a map the scip-python backend typed, an attribute site
+    inside a production callable resolves through that callable's typed edges
+    instead.
     """
 
     def test_a_site_typed_to_another_receiver_does_not_demote(self) -> None:
-        """The item's own example: ``s.add(x)`` on a set is not ``Store.add``."""
+        """The canonical example: ``s.add(x)`` on a set is not ``Store.add``."""
         typed = typed_references(STORE_NODES, [_edge("user", SET_ADD, line=5)])
         refs = ProductionReferences(member_sites={"add": {(USE, 5)}})
         assert demotion_reason(STORE_ADD, refs, typed) is None
@@ -305,7 +308,7 @@ class TestMethodsOnATypedMap:
 
     def test_a_syntax_arm_edge_types_nothing(self) -> None:
         """Only the typed producer's edges count: the syntax arm's ``.add``
-        resolution is the bare-name guess this replaces."""
+        resolution is a bare-name guess."""
         typed = typed_references(
             STORE_NODES, [_edge("user", SET_ADD, line=5, origin=("python",))],
         )
@@ -431,7 +434,7 @@ class TestMethodsOnATypedMap:
 
     def test_the_bare_name_indexes_do_not_vote_for_a_typed_method(self) -> None:
         """``loads`` / ``carries_decorator`` are keyed by bare name -- the
-        ambiguity this arm replaces -- so a typed method ignores them."""
+        ambiguity typed resolution avoids -- so a typed method ignores them."""
         refs = ProductionReferences(
             loads={"add": {USE}}, carries_decorator={"add": {USE}},
             dispatch_bound={"add": {USE}}, decorated={"add": {USE}},
@@ -510,11 +513,11 @@ class TestAstScanning:
     """Parsed, never grepped — prose must not vote."""
 
     def test_a_name_in_a_comment_is_not_a_reference(self, tmp_path: Path) -> None:
-        """The exact failure this replaces.
+        """Why the scan parses rather than greps.
 
-        A grep proxy once scored ``infer_summary`` as having one production
-        reference; the reference was a COMMENT reading "``infer_summary`` still
-        has zero production callers".
+        A grep proxy would count a COMMENT reading "``infer_summary`` still has
+        zero production callers" as a production reference to
+        ``infer_summary`` -- prose about deadness as evidence of life.
         """
         mod = tmp_path / "packages/p/src/p/m.py"
         mod.parent.mkdir(parents=True)
@@ -548,8 +551,9 @@ class TestAstScanning:
 
     def test_a_local_name_is_never_a_member_site(self, tmp_path: Path) -> None:
         """A method is reached through an attribute. A bare ``ancestors`` in a
-        function body is a local -- 42 of them once demoted ``Store.ancestors``
-        -- so only a CLASS-BODY name (``x = property(_get)``) is a member site.
+        function body is a local -- counting locals would let every variable of
+        that name demote ``Store.ancestors`` -- so only a CLASS-BODY name
+        (``x = property(_get)``) is a member site.
         """
         mod = tmp_path / "m.py"
         mod.write_text(
@@ -629,16 +633,16 @@ class TestAstScanning:
 
 
 class TestRepositoryScriptsAreProductionCallers:
-    """WI-famub: a ``scripts/`` gate is a production caller the map cannot see.
+    """A ``scripts/`` gate is a production caller the map cannot see (WI-famub).
 
     ``scripts/check-confidence-sites`` imports and calls four functions of
-    ``confidence_sites``; the cron full-suite failed all four as test-only,
-    because ``production_source_files`` globbed ``packages/*/src`` alone and
-    repository scripts are extensionless. ``check_id_construction`` sat in the
-    baseline for the same reason, and any future ``scripts/check-*`` backed by
-    a core module would have tripped the gate on its first cron. Scripts VOTE
-    as referencers; they are not themselves gated (``_is_production`` still
-    admits only ``packages/*/src`` symbols to the cohort).
+    ``confidence_sites`` that nothing under ``packages/*/src`` calls, so a scan
+    of ``packages/*/src`` alone would flag all four as test-only -- as it would
+    any ``scripts/check-*`` backed by a core module. Repository scripts are
+    extensionless, so ``production_source_files`` also picks them up by Python
+    shebang. Scripts VOTE as referencers; they are not themselves gated
+    (``_is_production`` still admits only ``packages/*/src`` symbols to the
+    cohort).
     """
 
     @staticmethod
@@ -724,9 +728,10 @@ class TestAgainstTheLiveTree:
 
     def test_the_ADR_0017_family_is_in_the_baseline(self) -> None:
         """``infer_summary`` / ``is_field_tainted`` / ``select_ddg_targets``
-        are the three members the SEED-based question missed. If a future
+        are ADR-0017 artifacts with no production caller that a SEED-based
+        reachability question cannot flag (as public API they are seeds). If a
         change stops flagging them, this gate has lost the signal it exists
-        for — and the seed-based version was refused for exactly that.
+        for.
         """
         root = Path(__file__).resolve().parents[3]
         keys = load_baseline(root / ".ci/test-only-reachability-baseline.json")
@@ -735,9 +740,9 @@ class TestAgainstTheLiveTree:
                 "select_ddg_targets"} <= names
 
     def test_the_control_is_NOT_in_the_baseline(self) -> None:
-        """``load_function_summaries`` is the one family member genuinely fixed
-        (PR #197 gave it production call sites). A gate that flagged it too
-        would be flagging the family wholesale rather than discriminating.
+        """``load_function_summaries`` is the ADR-0017 family member that has
+        production call sites. A gate that flagged it too would be flagging the
+        family wholesale rather than discriminating.
         """
         root = Path(__file__).resolve().parents[3]
         keys = load_baseline(root / ".ci/test-only-reachability-baseline.json")
@@ -745,12 +750,11 @@ class TestAgainstTheLiveTree:
         assert "load_function_summaries" not in names
 
     def test_registered_analyzers_are_NOT_in_the_baseline(self) -> None:
-        """``analyze_scheme`` and its 124 peers carry ``@register_analyzer``.
+        """``analyze_scheme`` and its peers carry ``@register_analyzer``.
 
-        A 2026-08-30 measurement called this family "*** DEAD ***" on the
-        strength of "nothing in production NAMES it" — true, and irrelevant,
-        because the registration is a decorator on the line above the ``def``.
-        Pinned so the claim cannot come back.
+        Nothing in production NAMES them, but that does not make them dead:
+        the registration is a decorator on the line above the ``def``. Pinned
+        so they are never reported as test-only.
         """
         root = Path(__file__).resolve().parents[3]
         keys = load_baseline(root / ".ci/test-only-reachability-baseline.json")
@@ -758,11 +762,11 @@ class TestAgainstTheLiveTree:
         assert not {n for n in names if n.startswith("analyze_")}
 
     def test_the_method_half_is_baselined_and_discriminates(self) -> None:
-        """WI-mifag's adjudicated rows, asserted on this repository.
+        """The adjudicated method rows, asserted on this repository (WI-mifag).
 
-        ``Pattern.matches`` is the item's own example: it once scored 497
-        production "references" off regex ``.matches``, and production in fact
-        calls ``matches_all``. ``DuressHandler.filter_response`` is a Protocol
+        ``Pattern.matches``: a bare-name index credits it with every regex
+        ``.matches`` in production, but production in fact calls
+        ``matches_all``. ``DuressHandler.filter_response`` is a Protocol
         hook nothing in production calls. The controls: Textual's ``action_*``
         handlers are dispatched by the framework, and ``CDefUseExtractor.
         extract`` is reached through the ``DefUseExtractor`` Protocol.
@@ -784,13 +788,13 @@ class TestAgainstTheLiveTree:
         assert not any("/tests/" in r for r in rel)
 
     def test_the_scripts_gates_are_production_callers(self) -> None:
-        """WI-famub's motivating examples, asserted on this repository.
+        """The scripts-as-callers examples, asserted on this repository
+        (WI-famub).
 
         ``confidence_sites.scan_tree`` and ``check_id_construction.
         find_id_construction_drift`` have no caller under ``packages/*/src``:
         their production callers are ``scripts/check-confidence-sites`` and
-        ``scripts/check-id-construction``. The cron failed the first as newly
-        test-only (2026-10-16) and the baseline had carried the second.
+        ``scripts/check-id-construction``.
         """
         root = Path(__file__).resolve().parents[3]
         files = production_source_files(root)
@@ -809,10 +813,11 @@ class TestAgainstTheLiveTree:
 
 
 class TestTheMapCarriesReceiverTyping:
-    """WI-losig: the CI self-map is built with the scip-python backend so a
-    method reference resolves to its owning type (WI-mifag's prerequisite).
-    An opt-in that silently falls back to the plain map would leave the gate
-    reading a map the step claims is typed, so the gate can REQUIRE the pass."""
+    """The CI self-map is built with the scip-python backend so a method
+    reference resolves to its owning type, which method gating depends on
+    (WI-losig, WI-mifag). The backend's opt-in falls back silently to the plain
+    map, which would leave the gate reading a map the step claims is typed, so
+    the gate can REQUIRE the pass."""
 
     def test_a_pass_that_ran_and_emitted_is_no_problem(self) -> None:
         data = {"analysis_runs": [{"pass": "scip_python", "nodes_emitted": 5}]}

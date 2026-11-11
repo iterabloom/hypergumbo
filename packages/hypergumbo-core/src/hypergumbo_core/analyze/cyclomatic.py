@@ -3,19 +3,16 @@
 
 Why this lives in ``hypergumbo-core``
 -------------------------------------
-The cyclomatic-complexity machinery began life inside
-``hypergumbo_lang_mainstream.symbol_introspection`` (alongside the
-signature/docstring dispatchers). That was fine while only mainstream
-analyzers populated ``Symbol.cyclomatic_complexity`` — but ``Symbol.kind``
-callables are emitted by analyzers in *other* packages too (``solidity`` in
+Every function-kind Symbol must carry a non-null ``cyclomatic_complexity``
+and ``line_span`` regardless of language (INV-loguk). Callables are emitted
+by analyzers in every language package (e.g. ``solidity`` in
 ``hypergumbo-lang-extended1``, ``wgsl`` in ``hypergumbo-lang-common``), and
-those packages depend only on ``hypergumbo-core`` — they CANNOT import the
-mainstream module. Per INV-loguk ("every function-kind Symbol carries
-non-null ``cyclomatic_complexity`` and ``line_span``, regardless of
-language"), the walker had to move to the one package every analyzer can
-reach. ``symbol_introspection`` re-exports the names defined here, so the
-12 mainstream analyzer modules that ``from ...symbol_introspection import
-compute_cyclomatic_complexity`` keep working unchanged.
+those packages depend only on ``hypergumbo-core`` — they cannot import
+``hypergumbo-lang-mainstream``. So the walker lives in the one package every
+analyzer can reach. ``hypergumbo_lang_mainstream.symbol_introspection``
+re-exports the names defined here, so mainstream analyzer modules can
+``from ...symbol_introspection import compute_cyclomatic_complexity``
+alongside the signature/docstring dispatchers.
 
 The walker is deliberately decoupled from any specific grammar: it touches
 only ``node.type`` / ``node.children`` / ``node.is_named`` / ``node.text``,
@@ -35,8 +32,10 @@ Decision points are:
   ``switch``-case / ``try``-catch / ternary / loop / match-arm). The
   ``else`` arm of an ``if`` is deliberately NOT a decision point (it is the
   alternative path of an already-counted ``if``); an ``else if`` *is*
-  counted because every grammar here represents it as a nested ``if``
-  node, mirroring ``py.py`` treating each ``elif`` as its own ``ast.If``.
+  counted where the grammar exposes it as a nested ``if`` node or a
+  dedicated ``elif``-style clause carrying its own condition, mirroring
+  ``py.py`` treating each ``elif`` as its own ``ast.If`` (per-language
+  exceptions, such as flat if-chains, are noted in ``BRANCH_NODE_TYPES``).
 - Each short-circuit logical operator (``&&`` / ``||`` / ``??`` / language
   word-forms) listed in ``SHORT_CIRCUIT_OPS[language]``, mirroring the
   ``ast.BoolOp`` rule ``py.py`` uses (each ``and``/``or`` opens a new path).
@@ -127,12 +126,12 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "case_statement", "catch_block", "ternary_expression",
         "guard_statement",
     }),
-    # CC-only languages (INV-loguk): a cyclomatic-complexity table but no
+    # CC-only languages: a cyclomatic-complexity table but no
     # signature/docstring extractor in symbol_introspection, so they appear
     # here without being in SUPPORTED_LANGUAGES. ``else_clause`` is NOT
     # counted (alternative path of an already-counted ``if``); ``elif_clause``
     # (bash) IS counted, mirroring py.py treating each ``elif`` as an
-    # ``ast.If``.
+    # ``ast.If``. (INV-loguk)
     "bash": frozenset({
         "if_statement", "elif_clause", "for_statement", "while_statement",
         "case_item",
@@ -146,9 +145,9 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "do_statement", "case_statement", "conditional_expression",
         "catch_clause",
     }),
-    # INV-loguk slice B (relocated-here additions). Node-type names verified
-    # against tree-sitter-solidity / tree-sitter-wgsl (see the owning
-    # packages' test_solidity.py / test_wgsl.py). Solidity ``else if`` is a
+    # Node-type names verified against tree-sitter-solidity /
+    # tree-sitter-wgsl (see the owning packages' test_solidity.py /
+    # test_wgsl.py). Solidity ``else if`` is a
     # nested ``if_statement`` (``else`` is a bare keyword, no node), so each
     # branch counts once; Solidity has no ``switch``. WGSL ``else if`` is a
     # nested ``if_statement`` inside an ``else_statement`` wrapper (the
@@ -163,8 +162,8 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "if_statement", "for_statement", "while_statement", "loop_statement",
         "case_compound_statement",
     }),
-    # INV-loguk slice C (common-package batch 1). Node-type names verified by
-    # dumping each real grammar (see each owning analyzer's package tests).
+    # Common-package languages. Node-type names verified by dumping each real
+    # grammar (see each owning analyzer's package tests).
     # Haskell: `conditional` = if/then/else (else is a bare keyword, else-if is
     # a nested `conditional`); `alternative` = one per case-of arm (NOT `case`,
     # which collides with the anonymous `case` keyword token); `guards` = one
@@ -215,8 +214,8 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "conditional_expression", "logical_and_expression",
         "logical_or_expression",
     }),
-    # INV-loguk slice C (mainstream-package batch 2). Node-type names verified
-    # by dumping each real grammar (see test_symbol_introspection.py).
+    # Mainstream-package languages. Node-type names verified by dumping each
+    # real grammar (see test_symbol_introspection.py).
     # Scala is expression-oriented: control flow ends in _expression; do-while
     # is a distinct `do_while_expression`. `case_clause` = each match arm AND
     # each try/catch handler arm (catch_clause wraps a case_block of
@@ -273,8 +272,8 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "if_statement", "for_statement", "while_statement", "do_statement",
         "case_statement", "conditional_expression", "catch_clause",
     }),
-    # INV-loguk slice C (extended1-package batch 3). Node-type names verified by
-    # dumping each real grammar (see each owning analyzer's package tests).
+    # Extended1-package languages. Node-type names verified by dumping each
+    # real grammar (see each owning analyzer's package tests).
     # Zig: `switch_case` = each arm incl. `else =>` default; else-if is a nested
     # if_statement (else_clause wrapper not counted). and/or short-circuit via
     # binary_expression.
@@ -340,9 +339,8 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     "odin": frozenset({
         "if_statement", "else_if_clause", "for_statement", "switch_case",
     }),
-    # INV-loguk slice C (batch 4, common-package programming languages). Node-type
-    # names verified by dumping each real grammar (see each owning analyzer's
-    # package tests).
+    # More common-package programming languages. Node-type names verified by
+    # dumping each real grammar (see each owning analyzer's package tests).
     # Fortran: `elseif_clause` carries its own condition (counted); `else_clause`
     # excluded. BOTH the counting `do` loop and the `do while` loop parse to
     # `do_loop_statement` (count that, NOT the do-while's inner `while_statement`
@@ -392,9 +390,8 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     "r": frozenset({
         "if_statement", "for_statement", "while_statement", "repeat_statement",
     }),
-    # INV-loguk slice C (batch 5, extended1-package programming languages).
-    # Node-type names verified by dumping each real grammar (see each owning
-    # analyzer's package tests).
+    # More extended1-package programming languages. Node-type names verified
+    # by dumping each real grammar (see each owning analyzer's package tests).
     # Ada: `elsif_statement_item` carries its own condition (counted); `else`
     # is a bare keyword. ONE `loop_statement` covers for/while/infinite loops.
     # `case_statement_alternative` = each `when` arm incl. `when others`. No
@@ -463,12 +460,12 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     # `case_of_` / `&&` / `||` are ordinary mixfix identifiers (atom>qid nodes),
     # indistinguishable from any function application — there is NO decision-point
     # node type to count, and no binary-expr node for short-circuit. The empty
-    # set yields base CC=1 for every callable (non-null, satisfying INV-loguk).
+    # set yields base CC=1 for every callable (non-null, as INV-loguk requires).
     # Also: the analyzer emits the type-signature node (single line), not the
     # clause body, so CC is structurally base-1 regardless.
     "agda": frozenset(),
-    # INV-loguk slice C (batch 6, shader/GPU + functional/config languages).
-    # Node-type names verified by dumping each real grammar.
+    # Shader/GPU and functional/config languages. Node-type names verified by
+    # dumping each real grammar.
     # CUDA/GLSL/HLSL are C-family (same decision-point set as `c`): if/for/while/
     # do/case-arm/ternary + &&/|| via binary_expression.
     "cuda": frozenset({
@@ -529,10 +526,10 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     # Assembly: DEGENERATE flat grammar — conditional/unconditional jumps are all
     # `instruction` nodes distinguished only by opcode text (which the walker
     # can't inspect), so no decision-point node type. Empty set -> base CC=1 for
-    # every label (non-null, satisfying INV-loguk).
+    # every label (non-null, as INV-loguk requires).
     "asm": frozenset(),
-    # INV-loguk residual gap: CMake `function()`/`macro()` blocks are real
-    # callables whose bodies carry control flow. `if_command` = each if() (one
+    # CMake: `function()`/`macro()` blocks are real callables whose bodies
+    # carry control flow. `if_command` = each if() (one
     # per if); `elseif_command` carries its own condition (counted, like bash
     # `elif_clause`); `foreach_command`/`while_command` are the two loop forms.
     # `else_command` (alternative path) and all closers (`endif_command`/… )
@@ -573,10 +570,10 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     # Erlang's short-circuiting ``andalso``/``orelse`` live as unnamed children
     # of ``binary_op_expr`` (added to _BINARY_EXPR_NODE_TYPES below). The
     # non-short-circuiting ``and``/``or`` always evaluate both operands (no extra
-    # path) and are deliberately excluded. (INV-loguk slice C.)
+    # path) and are deliberately excluded.
     "erlang": frozenset({"andalso", "orelse"}),
-    # INV-loguk slice C batch 2. Lua/Perl/Groovy/Obj-C short-circuit operators
-    # live as unnamed children of ``binary_expression`` (already in the set).
+    # Lua/Perl/Groovy/Obj-C short-circuit operators live as unnamed children
+    # of ``binary_expression`` (already in the set).
     # Lua's word-forms ``and``/``or`` ARE short-circuiting. Perl counts the
     # symbolic ``&&``/``||``/``//`` (defined-or); its word-forms ``and``/``or``
     # live in a different node and are not counted.
@@ -588,8 +585,8 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     # ``logical_expression`` (added to _BINARY_EXPR_NODE_TYPES below). The
     # non-short-circuiting ``-xor`` is excluded by omission.
     "powershell": frozenset({"-and", "-or"}),
-    # INV-loguk slice C batch 3 (extended1). Zig/V/Odin/Hack short-circuit live
-    # as unnamed children of ``binary_expression``; Zig uses word-forms
+    # Zig/V/Odin/Hack short-circuit operators live as unnamed children of
+    # ``binary_expression``; Zig uses word-forms
     # ``and``/``or``. Gleam uses symbolic ``&&``/``||``. Hack adds ``??``
     # (null-coalesce, short-circuiting). Nim's ``and``/``or`` live in
     # ``infix_expression`` (added to _BINARY_EXPR_NODE_TYPES below). (D and Haxe
@@ -601,8 +598,8 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "v": frozenset({"&&", "||"}),
     "hack": frozenset({"&&", "||", "??"}),
     "odin": frozenset({"&&", "||"}),
-    # INV-loguk slice C batch 4 (common). Fortran's ``.and.``/``.or.`` live in
-    # ``logical_expression`` (already a member); MATLAB's short-circuit
+    # Fortran's ``.and.``/``.or.`` live in ``logical_expression`` (already a
+    # member); MATLAB's short-circuit
     # ``&&``/``||`` live in ``boolean_operator`` (already a member; the
     # element-wise ``&``/``|`` go to a different node and are excluded); R's
     # ``&&``/``||`` live in ``binary_operator`` (added below; the vectorized
@@ -611,8 +608,7 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "fortran": frozenset({".and.", ".or."}),
     "matlab": frozenset({"&&", "||"}),
     "r": frozenset({"&&", "||"}),
-    # INV-loguk slice C batch 5 (extended1). Pony/Luau use word-forms and/or
-    # (binary_expression, already a member). GDScript supports BOTH word-forms
+    # Pony/Luau use word-forms and/or (binary_expression, already a member). GDScript supports BOTH word-forms
     # and symbolic (binary_operator, already a member). Tcl uses symbolic &&/||
     # in `binop_expr` (added below). Apex uses &&/|| in binary_expression. Lean
     # uses &&/|| in `binary_op` (added below). Ada (and-then/or-else token pairs),
@@ -624,8 +620,7 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "luau": frozenset({"and", "or"}),
     "apex": frozenset({"&&", "||"}),
     "lean": frozenset({"&&", "||"}),
-    # INV-loguk slice C batch 6. CUDA/GLSL/HLSL/Circom &&/|| live in
-    # binary_expression (already a member). Nix &&/|| in binary_expression.
+    # CUDA/GLSL/HLSL/Circom &&/|| live in binary_expression (already a member). Nix &&/|| in binary_expression.
     # Wolfram &&/|| live in `infix` (added to _BINARY_EXPR_NODE_TYPES below).
     # SCSS (and/or unreachable), SQL (named keyword children), Jsonnet (and/or
     # counted as branch nodes), LLVM IR / Asm (no short-circuit ops) get no entry.
@@ -648,10 +643,10 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "boolean_operator",   # MATLAB (&&/|| live here; element-wise &/| use a
                           #   different node).
     "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
-    "binary_op_expr",     # Erlang (andalso / orelse live here, INV-loguk slice C)
-    "logical_expression", # PowerShell -and/-or, Fortran .and./.or. (INV-loguk
-                          #   slice C)
-    "infix_expression",   # Nim (and / or live here, INV-loguk slice C batch 3).
+    "binary_op_expr",     # Erlang (andalso / orelse live here)
+    "logical_expression", # PowerShell -and/-or, Fortran .and./.or. live
+                          #   here
+    "infix_expression",   # Nim (and / or live here).
                           #   Scala/F#/PureScript also produce *infix* nodes but
                           #   their operators are NAMED children and they are
                           #   absent from SHORT_CIRCUIT_OPS, so the scan never
@@ -659,9 +654,9 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "binary_operator",    # R (&&/|| live here; vectorized &/| excluded).
                           #   Elixir also uses binary_operator but is routed to
                           #   _HOMOICONIC_SPECS first, so the scan never runs.
-    "binop_expr",         # Tcl (&&/|| live here, INV-loguk slice C batch 5)
-    "binary_op",          # Lean (&&/|| live here, INV-loguk slice C batch 5)
-    "infix",              # Wolfram (&&/|| live here, INV-loguk slice C batch 6).
+    "binop_expr",         # Tcl (&&/|| live here)
+    "binary_op",          # Lean (&&/|| live here)
+    "infix",              # Wolfram (&&/|| live here).
                           #   Haskell/Scala/F#/PureScript also produce `infix`-
                           #   family nodes but are absent from SHORT_CIRCUIT_OPS,
                           #   so the scan never runs for them.

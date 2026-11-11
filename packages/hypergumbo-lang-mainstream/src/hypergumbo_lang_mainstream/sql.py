@@ -27,8 +27,8 @@ logic.
 
 A CREATE FUNCTION records its arguments in ``meta["parameters"]``
 (``_sql_parameters``) and its stable_id hashes them
-(``overload_arity.node_declared_arity_stable_id``, WI-tusad): the overloads
-``run(integer)`` / ``run(integer, integer)`` tied on ``param_count 0``.
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad), so the
+overloads ``run(integer)`` / ``run(integer, integer)`` do not tie.
 
 Why This Design
 ---------------
@@ -262,7 +262,7 @@ def _extract_sql_symbols(
     Optionally populates *node_for_symbol* to enable base-class shape_id
     auto-wiring (ADR-0014 §1).
     """
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+    # File-identity anchor for this file's symbols (WI-bokab). ``rel_path``
     # is the repo-relative path threaded down from ``extract_symbols_from_file``.
     # Folded into compute_stable_id's containing slot so same-(kind, name)
     # symbols in different files hash distinctly. Computed once and reused.
@@ -278,7 +278,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="table", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="table",
                     name=name,
                     path=rel_path,
@@ -306,7 +306,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="view", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="view",
                     name=name,
                     path=rel_path,
@@ -333,15 +333,15 @@ def _extract_sql_symbols(
                 fn_meta = {PARAMETERS_KEY: _sql_parameters(node, source)}
                 sym = Symbol(
                     id=symbol_id,
-                    # WI-tusad: arity (with types) from meta["parameters"], so
-                    # the overloads run(int) / run(int, int) stop tying.
+                    # Arity (with types) from meta["parameters"], so the
+                    # overloads run(int) / run(int, int) do not tie (WI-tusad).
                     stable_id=node_declared_arity_stable_id(
                         _analyzer, node, kind="function", name=name, meta=fn_meta,
                         file_stable_id=file_stable_id,
                     ),
                     meta=fn_meta,
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="function",
                     name=name,
                     path=rel_path,
@@ -372,7 +372,7 @@ def _extract_sql_symbols(
                     id=symbol_id,  # pragma: no cover
                     stable_id=_analyzer.compute_stable_id(node, kind="procedure", name=name, file_stable_id=file_stable_id),  # pragma: no cover
                     shape_id=None,  # pragma: no cover
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="procedure",  # pragma: no cover
                     name=name,  # pragma: no cover
                     path=rel_path,  # pragma: no cover
@@ -402,7 +402,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="trigger", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="trigger",
                     name=name,
                     path=rel_path,
@@ -430,7 +430,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="index", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="index",
                     name=name,
                     path=rel_path,

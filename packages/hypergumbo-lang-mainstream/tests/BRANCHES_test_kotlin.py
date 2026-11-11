@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Branch coverage tests for Kotlin analyzer.
 
-These tests specifically target uncovered branches in kotlin.py.
+These tests target specific branches in kotlin.py.
 They are in a separate file to allow easy management if they impact CI speed.
 
 Strategy:
@@ -21,7 +21,7 @@ from hypergumbo_core.cli import run_behavior_map
 
 
 def test_kotlin_function_with_nullable_param(tmp_path: Path) -> None:
-    """Cover branch: nullable type parameter extraction (line 172->173).
+    """Cover branch: nullable type parameter extraction.
 
     Kotlin function with nullable parameter: fun foo(name: String?).
     """
@@ -49,7 +49,7 @@ def test_kotlin_function_with_nullable_param(tmp_path: Path) -> None:
 
 
 def test_kotlin_function_with_function_type_param(tmp_path: Path) -> None:
-    """Cover branch: function type parameter extraction (line 172->173).
+    """Cover branch: function type parameter extraction.
 
     Kotlin function with lambda parameter: fun foo(callback: () -> Unit).
     """
@@ -77,7 +77,7 @@ def test_kotlin_function_with_function_type_param(tmp_path: Path) -> None:
 
 
 def test_kotlin_function_with_return_type(tmp_path: Path) -> None:
-    """Cover branch: return type extraction (line 177->178).
+    """Cover branch: return type extraction.
 
     Kotlin function with explicit return type.
     """
@@ -110,7 +110,7 @@ def test_kotlin_function_with_return_type(tmp_path: Path) -> None:
 
 
 def test_kotlin_interface_declaration(tmp_path: Path) -> None:
-    """Cover branch: interface detection (line 405).
+    """Cover branch: interface detection.
 
     Kotlin interface declaration.
     """
@@ -137,7 +137,7 @@ def test_kotlin_interface_declaration(tmp_path: Path) -> None:
 
 
 def test_kotlin_class_with_inheritance(tmp_path: Path) -> None:
-    """Cover branch: delegation specifiers extraction (line 420->422).
+    """Cover branch: delegation specifiers extraction.
 
     Kotlin class with base class: class Dog : Animal().
     """
@@ -167,7 +167,7 @@ def test_kotlin_class_with_inheritance(tmp_path: Path) -> None:
 
 
 def test_kotlin_class_with_interface(tmp_path: Path) -> None:
-    """Cover branch: interface implementation extraction (line 307->311).
+    """Cover branch: interface implementation extraction.
 
     Kotlin class implementing interface: class Handler : RequestHandler.
     """
@@ -195,7 +195,7 @@ def test_kotlin_class_with_interface(tmp_path: Path) -> None:
 
 
 def test_kotlin_class_with_multiple_inheritance(tmp_path: Path) -> None:
-    """Cover branch: multiple delegation specifiers (line 301->303).
+    """Cover branch: multiple delegation specifiers.
 
     Kotlin class with class and multiple interfaces.
     """
@@ -232,7 +232,7 @@ def test_kotlin_class_with_multiple_inheritance(tmp_path: Path) -> None:
 
 
 def test_kotlin_object_declaration(tmp_path: Path) -> None:
-    """Cover branch: object declaration (line 444->470).
+    """Cover branch: object declaration.
 
     Kotlin object (singleton) declaration.
     """
@@ -289,7 +289,7 @@ def test_kotlin_companion_object(tmp_path: Path) -> None:
 
 
 def test_kotlin_import_qualified(tmp_path: Path) -> None:
-    """Cover branch: qualified import extraction (line 262->263).
+    """Cover branch: qualified import extraction.
 
     Kotlin import with qualified identifier.
     """
@@ -314,7 +314,7 @@ def test_kotlin_import_qualified(tmp_path: Path) -> None:
 
 
 def test_kotlin_import_simple(tmp_path: Path) -> None:
-    """Cover branch: simple import extraction (line 264).
+    """Cover branch: simple import extraction.
 
     Kotlin import with simple identifier.
     """
@@ -343,7 +343,7 @@ def test_kotlin_import_simple(tmp_path: Path) -> None:
 
 
 def test_kotlin_this_method_call(tmp_path: Path) -> None:
-    """Cover branch: this.method() call (line 584->601).
+    """Cover branch: this.method() call.
 
     Kotlin method call with explicit this.
     """
@@ -371,7 +371,7 @@ def test_kotlin_this_method_call(tmp_path: Path) -> None:
 
 
 def test_kotlin_static_object_call(tmp_path: Path) -> None:
-    """Cover branch: Object.method() call (line 608->624).
+    """Cover branch: Object.method() call.
 
     Kotlin call on singleton object.
     """
@@ -401,7 +401,7 @@ def test_kotlin_static_object_call(tmp_path: Path) -> None:
 
 
 def test_kotlin_type_inferred_call(tmp_path: Path) -> None:
-    """Cover branch: instance.method() with type inference (line 627->644).
+    """Cover branch: instance.method() with type inference.
 
     Kotlin call using type inference from constructor.
     """
@@ -432,7 +432,7 @@ def test_kotlin_type_inferred_call(tmp_path: Path) -> None:
 
 
 def test_kotlin_simple_function_call(tmp_path: Path) -> None:
-    """Cover branch: simple function call (line 664->681).
+    """Cover branch: simple function call.
 
     Kotlin direct function call without receiver.
     """
@@ -458,7 +458,7 @@ def test_kotlin_simple_function_call(tmp_path: Path) -> None:
 
 
 def test_kotlin_top_level_function(tmp_path: Path) -> None:
-    """Cover branch: top-level function (line 372->374).
+    """Cover branch: top-level function.
 
     Kotlin function outside of class.
     """
@@ -489,7 +489,7 @@ def test_kotlin_top_level_function(tmp_path: Path) -> None:
 
 
 def test_kotlin_property_type_tracking(tmp_path: Path) -> None:
-    """Cover branch: property type tracking from constructor (line 544->545).
+    """Cover branch: property type tracking from constructor.
 
     Kotlin val with constructor call for type inference.
     """
@@ -550,7 +550,7 @@ def test_kotlin_data_class(tmp_path: Path) -> None:
 
 
 def test_kotlin_parameter_type_inference(tmp_path: Path) -> None:
-    """Cover branch: parameter type extraction (line 549->552).
+    """Cover branch: parameter type extraction.
 
     Kotlin function with typed parameters for type inference.
     """

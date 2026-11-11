@@ -2,12 +2,12 @@
 """End-to-end taint RECALL corpus — source on disk, verdict out.
 
 WHY THIS EXISTS. Every other taint test in the tree hands ``verify-claims`` a
-hand-written behavior map via ``--input``; the analyzers never run. The result
-is that nothing in the suite would fail if the pipeline stopped reporting an
-entire class of real flows — which is how ten ADR-0017 capabilities came to sit
-inert at 100% coverage, each closed ``done`` on that coverage. Component tests
-measure components; this module measures the *pipeline*, from Python/Go source
-files on disk through analysis, propagation and claim verification to a verdict.
+hand-written behavior map via ``--input``; the analyzers never run. So nothing
+in those tests would fail if the pipeline stopped reporting an entire class of
+real flows — a capability can sit inert in the pipeline at 100% coverage.
+Component tests measure components; this module measures the *pipeline*, from
+source files on disk through analysis, propagation and claim verification to a
+verdict.
 
 HOW IT DEFENDS AGAINST ITS OWN VACUITY. A corpus of "this must NOT be reported"
 assertions passes trivially when the pipeline reports nothing at all (L17), and
@@ -27,24 +27,22 @@ FIXTURE SHAPES, and why each is what it is:
   no_sink.py   a source with nothing downstream.  MUST NOT be found. Catches a
                propagator that reports on source presence alone.
 
-  diamond      caller -> source_fn and caller -> sink_fn as *siblings*. This is
-               a real flow that the forward-only walk cannot connect, because
-               ``reverse_adj`` is built (taint.py) and never read. Recorded as
-               ``xfail(strict=True)`` rather than as an assertion of the wrong
-               behaviour, so it XPASSes and demands attention the moment
-               source-side propagation lands (L19).
+  diamond      caller -> source_fn and caller -> sink_fn as *siblings*. A real
+               flow a forward walk from the source's caller alone cannot
+               connect; it is found because a source a function returns is
+               lifted into its callers' call sites (INV-komoj).  MUST be found.
 
 CATALOG ENTRIES ARE CHOSEN, NOT ASSUMED. Every source and sink below is
 module-qualified and absent from its language's ``ambiguous_names``, verified
-against ``load_builtin_taint_catalog()`` before being written here. The first
-positive control for this subsystem failed because it used a bare ambiguous
-name (``recv``) and a chained call the analyzer does not emit — a clean zero
-that looked like a clean bill of health.
+against ``load_builtin_taint_catalog()`` before being written here. A source
+or sink the analyzer cannot match — a bare ambiguous name such as ``recv``, or a
+call shape the analyzer does not emit — produces a clean zero that looks like a
+clean bill of health.
 
 PATHS. The corpus is generated into ``tmp_path`` rather than committed under
 ``tests/fixtures/``. Two independent reasons: a fixture corpus analyzed in
 place measures the pipeline's own test-path heuristics rather than the producer
-(L20/L21), and ``verify-claims`` now excludes test-sourced flows by default, so
+(L20/L21), and ``verify-claims`` excludes test-sourced flows by default, so
 a corpus under a directory named ``fixtures`` would be excluded from its own
 verdicts. Symbol-id path slots are repo-relative, so the tmp prefix never
 reaches the classifier.
@@ -216,15 +214,15 @@ def test_python_source_without_any_sink_confirms(
 def test_python_sibling_calls_under_one_caller_are_connected(
     tmp_path: Path, capsys,
 ) -> None:
-    """A real flow the forward-only walk could not see, now followed.
+    """A flow between sibling calls under one caller is followed.
 
     ``handle`` calls the source and then calls the writer; the tainted value
-    genuinely reaches the filesystem. Neither callee calls the other, so the
-    forward walk from the source's caller (``obtain``) never reached the
-    sink's caller. ``obtain`` RETURNS the received bytes, and since INV-komoj
-    a source a function returns is lifted into its callers' call sites, so
-    ``handle`` is a source caller and the walk from it reaches ``persist``.
-    This was a strict xfail naming WI-sirod until that landed.
+    genuinely reaches the filesystem. Neither callee calls the other, so a
+    forward walk from the source's caller (``obtain``) alone never reaches the
+    sink's caller. ``obtain`` RETURNS the received bytes, and a source a
+    function returns is lifted into its callers' call sites (INV-komoj), so
+    ``handle`` is a source caller and the walk from it reaches ``persist``
+    (WI-sirod).
     """
     src = tmp_path / "src"
     src.mkdir()
@@ -257,12 +255,11 @@ def test_python_sibling_calls_under_one_caller_are_connected(
 # --------------------------------------------------------------------------
 
 def test_go_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
-    """Same two properties for Go, the other language with a CFG mapping.
+    """Same two properties for Go, a second language with a CFG mapping.
 
-    Go carries 132 catalogued sinks and is one of only two languages whose CFG
-    node mapping declares ``atomic_statement``, so it is the second language
-    where data-flow work can have any effect at all. Asserting recall here
-    keeps a Python-only regression from reading as a whole-pipeline pass.
+    Go's CFG node mapping declares ``atomic_statement``, so data-flow work has
+    effect there as well as in Python. Asserting recall here keeps a
+    Python-only regression from reading as a whole-pipeline pass.
     """
     (tmp_path / "go.mod").write_text(
         "module example.com/corpus\n\ngo 1.21\n", encoding="utf-8",
@@ -330,9 +327,8 @@ def _source_names(verdict: dict) -> set:
 def _confidence_by_source(verdict: dict) -> dict:
     """``{source function name: (confidence, analysis_method)}``.
 
-    The label is the whole subject of INV-sadah, and until this helper existed
-    no test in the corpus read it — the one test named for the ``precise``
-    label asserted only recall.
+    Lets a test assert the adjudication label itself, not only recall — an
+    unearned ``precise`` is invisible to a recall-only assertion (INV-sadah).
     """
     return {
         row["source_symbol"].split(":")[-2]: (
@@ -349,9 +345,9 @@ def test_ddg_labels_a_data_connected_flow_as_precise(
 
     ``connected`` passes the source's return value to the sink; ``disconnected``
     passes an unrelated parameter. Only the first has a data dependence, and
-    the walk finds it — but NEITHER is removed, because a sound refutation
-    needs ADR-0017 §4 function summaries (§3a step 3) and those have no
-    production caller. See ``_ddg_taint_reaches``.
+    the walk finds it. The walk can remove a flow it refutes (WI-kabif), but
+    it refutes neither of these, so BOTH stay reported. See
+    ``_ddg_taint_reaches``.
 
     Both cases live in one repo deliberately: an implementation that stopped
     reporting would satisfy any precision claim while failing recall here.
@@ -386,14 +382,12 @@ def test_ddg_labels_a_data_connected_flow_as_precise(
     result = _run(tmp_path, capsys)
     verdict = _verdict(result["envelope"], "no-untrusted-to-fs")
 
-    # RECALL — both flows are still reported. Inclusion remains call-graph
-    # reachability; §3a confirms, it does not refute.
+    # RECALL — both flows are still reported. Inclusion is call-graph
+    # reachability, and the walk refutes neither flow here.
     assert _source_names(verdict) == {"connected", "disconnected"}
 
-    # AND THE LABEL ITSELF, which this test was named for and did not check.
-    # "precise" appeared only in the function name and the docstring; the sole
-    # assertion was recall, so the label §3a exists to earn had no test
-    # anywhere in the corpus. That is why an unearned one shipped (INV-sadah).
+    # AND THE LABEL ITSELF, which §3a exists to earn. A recall-only assertion
+    # cannot catch an unearned ``precise`` (INV-sadah).
     labels = _confidence_by_source(verdict)
     assert labels["connected"] == ("precise", "ddg"), labels
     assert labels["disconnected"] == ("approximate", "ddg_mixed"), labels
@@ -404,10 +398,10 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
 ) -> None:
     """A shared def_line must not launder taint between unrelated variables.
 
-    THE DEFECT (INV-sadah, found by a review panel). The walk's index was keyed
-    ``(symbol_id, def_line)`` with ``DdgEdge.variable`` discarded, so every
-    variable defined on one line shared a single entry and their use-sets were
-    merged. ``conflated`` below is the minimal real shape::
+    THE HAZARD (INV-sadah). A walk index keyed ``(symbol_id, def_line)`` with
+    ``DdgEdge.variable`` discarded makes every variable defined on one line
+    share a single entry, merging their use-sets. ``conflated`` below is the
+    minimal real shape::
 
         6   server = socket.socket().recv(1024)        # the SOURCE
         7   keep = str(server); path = name            # uses server, defines path
@@ -417,8 +411,8 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
     is no data dependence from source to sink. But the production DDG emits
     ``server def@6 -> use@7``, ``keep def@7 -> use@9`` and
     ``path def@7 -> use@8``, and a line-keyed index collapses the last two into
-    ``def_line 7 -> {8, 9}``. The walk steps 6 -> 7 -> 8, finds the sink line,
-    and stamps ``precise``/``ddg`` on a dependence that does not exist.
+    ``def_line 7 -> {8, 9}``. Such a walk steps 6 -> 7 -> 8, finds the sink
+    line, and stamps ``precise``/``ddg`` on a dependence that does not exist.
 
     WHY VARIABLE-KEYING ALONE IS NOT THE FIX, stated because it looks like it
     should be: ``path`` genuinely IS defined at line 7. Separating the entries
@@ -430,7 +424,8 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
     THE OTHER TWO ARMS ARE CONTROLS, and they are what stops a fix from
     passing by simply labelling nothing (L57): ``connected`` has a real
     dependence and must KEEP ``precise``; ``disconnected`` has none and must
-    stay ``approximate``, which it already did. Exactly one cell may move.
+    stay ``approximate``. Only ``conflated`` separates a variable-aware walk
+    from a line-keyed one.
     """
     src = tmp_path / "src"
     src.mkdir()
@@ -472,16 +467,17 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
 
     verdict = _verdict(_run(tmp_path, capsys)["envelope"], "no-untrusted-to-fs")
 
-    # RECALL FIRST — nothing may stop being reported. §3a confirms, it does
-    # not refute, so all three flows survive whatever the label says.
+    # RECALL FIRST — nothing may stop being reported. The walk refutes none of
+    # these three flows, so all three survive whatever the label says.
     assert _source_names(verdict) == {"connected", "disconnected", "conflated"}
 
     labels = _confidence_by_source(verdict)
     # The control that must not move.
     assert labels["connected"] == ("precise", "ddg"), labels
-    # Already correct, and must stay correct.
+    # No dependence, and none claimed.
     assert labels["disconnected"] == ("approximate", "ddg_mixed"), labels
-    # THE DEFECT: no data dependence exists, so no precision may be claimed.
+    # THE CASE UNDER TEST: no data dependence exists, so no precision may be
+    # claimed.
     assert labels["conflated"] == ("approximate", "ddg_mixed"), labels
 
 
@@ -522,14 +518,13 @@ _UNRELATED_PYTHON = (
 #: scope table. It reads no source, so it contributes no flow to any claim.
 #:
 #: That is exactly what these tests need: a test that distinguishes capable
-#: from incapable is vacuous once every language in its fixture is capable.
-#: JavaScript held this role until WI-nonad wired it, then Java until WI-gotun
-#: did, then C until WI-himob did. C++ is the replacement: it serves the C
-#: catalogue (through ``_CATALOG_PARENTS``) and has no part of the data-flow
-#: machinery -- ``cfg_nodes/c.yaml`` is deliberately not aliased to it, because
-#: its grammar adds try/catch, range-for and lambdas nobody has mapped. The
-#: PARTIAL case Java used to exercise (some blockers, not all) is pinned at unit
-#: level in ``test_dataflow_scope.py``.
+#: from incapable is vacuous once every language in its fixture is capable, so
+#: the exemplar has to be replaced whenever its language gets wired. C++ fits:
+#: it serves the C catalogue (through ``_CATALOG_PARENTS``) and has no part of
+#: the data-flow machinery -- ``cfg_nodes/c.yaml`` is deliberately not aliased
+#: to it, because its grammar adds try/catch, range-for and lambdas nobody has
+#: mapped. The PARTIAL case (some blockers, not all) is pinned at unit level in
+#: ``test_dataflow_scope.py``.
 _CPP_INCAPABLE = (
     "#include <stdio.h>\n"
     "#include <stdlib.h>\n"
@@ -550,27 +545,27 @@ def test_adjudication_label_does_not_depend_on_another_language(
     data flow from flows resting on call reachability alone, *from the emitted
     record*. The field carrying that distinction is ``analysis_method``.
 
-    It was not a property of the flow. ``cmd_verify_claims`` builds one DDG for
-    the whole repo and then dispatches per language on ``if ddg_edges:`` — a
-    repo-global truthiness test — so every language went through
-    ``propagate_taint_ddg`` whenever ANY language produced DDG edges. A
-    JavaScript function is never in ``ddg_symbols`` (JavaScript has no def/use
-    extractor), so the walk could not run and the finding still came out
-    ``ddg_mixed``, whose documented meaning is "the walk ran and did not
-    confirm". Drop the Python file and the identical JavaScript came out
-    ``structural``.
+    The label must be a property of the flow, not of the repo.
+    ``cmd_verify_claims`` builds one DDG for the whole repo; dispatching per
+    language on a repo-global truthiness test (``if ddg_edges:``) would send
+    every language through ``propagate_taint_ddg`` whenever ANY language
+    produced DDG edges. A function in a language with no def/use extractor is
+    never in ``ddg_symbols``, so the walk could not run and the finding would
+    still come out ``ddg_mixed``, whose documented meaning is "the walk ran and
+    did not confirm" — while without the Python file the identical flow would
+    come out ``structural``.
 
     Two arms differing by one file nobody's claim mentions. This asserts the
     whole record is identical, not just the label, because a relabelling bug
     and a flow-loss bug are both invisible in a single-field comparison (L57:
     when the correct result is "no change", the broken arm can look better).
 
-    WHAT THIS TEST LOST WHEN JAVASCRIPT WAS WIRED (WI-nonad), stated rather
-    than quietly absorbed. Its discriminating power came from the flow's own
-    language being INCAPABLE — only then does "the label was set by another
-    language's presence" produce a visible difference between the arms.
-    JavaScript is now capable, so both arms are legitimately ``ddg``, and a
-    reintroduced repo-global dispatch would no longer show up here.
+    WHAT THIS TEST CANNOT CATCH, stated rather than quietly absorbed. Its
+    discriminating power comes from the flow's own language being INCAPABLE —
+    only then does "the label was set by another language's presence" produce
+    a visible difference between the arms. JavaScript is data-flow capable
+    (WI-nonad), so both arms are legitimately ``ddg``, and a reintroduced
+    repo-global dispatch would not show up here.
 
     The invariant itself is NOT left unguarded. It is pinned at unit level by
     ``test_taint.py::test_function_the_ddg_never_saw_is_structural_not_mixed``,
@@ -581,13 +576,12 @@ def test_adjudication_label_does_not_depend_on_another_language(
     property than a fixture whose validity depended on a language staying
     unwired.
 
-    What is genuinely gone is the END-TO-END confirmation through a real
-    incapable language. JavaScript was the only one that both produced a
-    fixture flow and lacked an extractor; java, c, php and ruby were each tried
-    as replacements and every one yields ZERO evidence rows, so there is no
-    drop-in substitute. This test therefore keeps the cross-arm identity
+    What this test does not give is an END-TO-END confirmation through a real
+    incapable language: there is no incapable-language fixture that also
+    produces an evidence row for this claim (php and ruby fixtures yield ZERO
+    evidence rows). This test therefore keeps the cross-arm identity
     assertion — which still catches flow loss and any relabelling driven by
-    another language's presence — and the scope tests below now carry a real
+    another language's presence — and the scope tests below carry a real
     incapable language so that half stays exercised end to end.
     """
     js_only = tmp_path / "js_only"
@@ -615,21 +609,19 @@ def test_adjudication_label_does_not_depend_on_another_language(
     # test rests on it.
     assert alone["evidence_count"] == mixed["evidence_count"] == 1
 
-    # JavaScript IS data-flow capable since WI-nonad, so the walk runs on this
-    # flow and confirms it in BOTH arms. These constants used to read
-    # ("approximate", "structural") / {"structural": 1}; see the docstring for
-    # what that change costs and where the cost is paid.
+    # JavaScript is data-flow capable (WI-nonad), so the walk runs on this
+    # flow and confirms it in BOTH arms; see the docstring for what that costs
+    # this test and where the cost is paid.
     assert _confidence_by_source(alone) == {"leak": ("precise", "ddg")}
     assert _confidence_by_source(mixed) == _confidence_by_source(alone)
     assert alone["analysis_methods"] == {"ddg": 1}
     assert mixed["analysis_methods"] == alone["analysis_methods"]
 
-    # POSITIVE CONTROL, and the point of the fix. The two repos DO differ, and
-    # that difference must still be visible — it has moved from a field where
-    # it was a lie (this flow's adjudication label) to one where it is a fact
-    # (which languages were analyzed and what each is capable of). A test that
-    # only asserted "nothing changed" would also pass if the scope block had
-    # been dropped entirely.
+    # POSITIVE CONTROL. The two repos DO differ, and that difference must be
+    # visible — not in this flow's adjudication label, where it would be a lie,
+    # but in the scope block, where it is a fact (which languages were analyzed
+    # and what each is capable of). A test that only asserted "nothing changed"
+    # would also pass if the scope block had been dropped entirely.
     def _langs(env: dict) -> set:
         return {r["language"] for r in env["dataflow_coverage"]["languages"]}
 
@@ -662,12 +654,11 @@ def test_published_scope_distinguishes_capable_from_incapable(
     one repo come out on opposite sides, so a table that hardcoded either
     answer fails.
 
-    THE INCAPABLE EXEMPLAR IS C++. JavaScript held that role until WI-nonad
-    wired it, then Java until WI-gotun did, then C until WI-himob did, and each
-    swap is deliberate rather than cosmetic: a test that distinguishes capable
-    from incapable is vacuous the moment every language in its fixture is
-    capable, and flipping an assertion to ``True`` without adding a replacement
-    would have left exactly that. See ``_CPP_INCAPABLE`` for why C++.
+    THE INCAPABLE EXEMPLAR IS C++, and it must remain an incapable language: a
+    test that distinguishes capable from incapable is vacuous the moment every
+    language in its fixture is capable, so when an exemplar's language gets
+    wired, flipping its assertion to ``True`` without adding a replacement
+    would leave exactly that. See ``_CPP_INCAPABLE`` for why C++.
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
@@ -681,8 +672,8 @@ def test_published_scope_distinguishes_capable_from_incapable(
 
     assert by_lang["python"]["dataflow_capable"] is True
     assert by_lang["python"]["blockers"] == []
-    # WI-nonad: javascript moved to this side of the line, and pinning it here
-    # is what stops the wiring from silently regressing.
+    # JavaScript is wired (WI-nonad); pinning it here stops the wiring from
+    # silently regressing.
     assert by_lang["javascript"]["dataflow_capable"] is True
     assert by_lang["javascript"]["blockers"] == []
     assert by_lang["cpp"]["dataflow_capable"] is False
@@ -696,10 +687,10 @@ def test_published_scope_distinguishes_capable_from_incapable(
     # that matters.
     assert by_lang["cpp"]["catalog_sinks"] > 0
 
-    # The a2 fact, machine-readable rather than prose (R16). Re-pointed
-    # 2026-09-02 when WI-kabif granted §3a removal authority: no flow's
-    # INCLUSION is decided by data flow (reachability still decides that, and
-    # the walk mints nothing), but the walk may now SUBTRACT a flow it refutes.
+    # The a2 fact, machine-readable rather than prose (R16): no flow's
+    # INCLUSION is decided by data flow (reachability decides that, and the
+    # walk mints nothing), but the walk may SUBTRACT a flow it refutes
+    # (WI-kabif).
     assert scope["inclusion_decided_by"] == (
         "call_graph_reachability_minus_ddg_refutation"
     )
@@ -711,9 +702,9 @@ def test_published_scope_distinguishes_capable_from_incapable(
 def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
     """A disclosure that exists only under ``--json`` is half shipped.
 
-    WI-bifob's exclusion bucket reached the dataclass and never the text
-    renderer, so a text reader of a violated claim never learned flows had
-    been set aside. This is the same disclosure on the same surface, pinned.
+    A disclosure that reaches the dataclass but never the text renderer leaves
+    a text reader of a violated claim uninformed (WI-bifob). This pins the
+    scope disclosure on the text surface.
 
     Carries the C++ file for the same reason the test above does: the
     ``def_use_extractor`` assertion is about a BLOCKER string reaching the text

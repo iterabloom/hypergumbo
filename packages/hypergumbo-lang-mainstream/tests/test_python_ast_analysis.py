@@ -102,12 +102,11 @@ def test_run_skips_unreadable_permission_error_file(
     denied, transient I/O error) must be skipped and recorded — not crash
     the whole run.
 
-    The narrow ``except (SyntaxError, UnicodeDecodeError)`` let a
-    ``PermissionError`` raised by ``read_text()`` escape and abort the
-    entire analysis (the WI-madal P0). Broadening it to ``OSError`` routes
-    the failure into ``limits.failed_files`` like any other unparseable
-    file, so the run fails *open* — partial valid output rather than a
-    traceback.
+    The per-file handler catches ``OSError`` alongside ``SyntaxError`` and
+    ``UnicodeDecodeError``, so a ``PermissionError`` raised by ``read_text()``
+    is routed into ``limits.failed_files`` like any other unparseable file
+    instead of aborting the entire analysis. The run fails *open* — partial
+    valid output rather than a traceback.
 
     Uses monkeypatch rather than ``chmod(0o000)`` so the test is
     deterministic regardless of euid — ``chmod`` does not deny root and CI
@@ -152,9 +151,9 @@ def test_run_analyzes_bom_prefixed_python_file(tmp_path: Path) -> None:
     """INV-kitot: a Python file with a UTF-8 BOM must be analyzed normally.
 
     Python's own interpreter accepts BOM-prefixed source; the analyzer must
-    not be stricter than Python itself. Previously, read_text() without
-    encoding='utf-8-sig' left U+FEFF in the source, ast.parse() raised
-    SyntaxError, and the file was silently dropped.
+    not be stricter than Python itself. The analyzer reads source with
+    encoding='utf-8-sig'; without it U+FEFF stays in the source, ast.parse()
+    raises SyntaxError, and the file is silently dropped.
     """
     py_file = tmp_path / "bom.py"
     py_file.write_bytes(b"\xef\xbb\xbfdef boom():\n    pass\n")
@@ -378,8 +377,8 @@ def test_run_import_submodule_resolves_to_in_tree_file_node(tmp_path: Path) -> N
     in-tree workspace-sibling module must resolve to the real first-party file
     node, not collapse to an ``external_symbol`` boundary node.
 
-    Before F4, ``ast.Import`` did no symbol lookup at all — every ``import X``
-    dst was an unconditional ExternalRef, so workspace siblings became phantom
+    ``ast.Import`` therefore needs an in-tree lookup: an unconditional
+    ExternalRef dst for every ``import X`` turns workspace siblings into phantom
     tier-3 externals with ``path='<external>'``.
     """
     _build_nuzas_monorepo(tmp_path)
@@ -411,8 +410,8 @@ def test_run_from_import_submodule_resolves_to_in_tree_file_node(tmp_path: Path)
     ``helpers`` is a SUBMODULE (not a symbol re-exported from ``__init__``) must
     resolve to the submodule's file node.
 
-    Before F4 the symbol lookup for ``helpers`` in ``authpkg`` failed and the
-    edge dangled to ``python:authpkg:0-0:helpers:unresolved`` → external.
+    A symbol-only lookup for ``helpers`` in ``authpkg`` finds nothing, and the
+    edge would dangle to ``python:authpkg:0-0:helpers:unresolved`` → external.
     """
     _build_nuzas_monorepo(tmp_path)
     (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
@@ -465,17 +464,16 @@ def test_run_workspace_sibling_import_is_first_party_not_external(
 
 
 # ---------------------------------------------------------------------------
-# WI-jubag: extends edges to EXTERNAL bases must be emitted (not dropped).
-# The relationship-edge producer previously emitted an ``extends`` edge only when
-# the base resolved to a first-party class; external/stdlib bases (``Enum``,
-# ``Exception``, ...) yielded ``base_sym is None`` and the loop dropped them —
-# so 24.8% of base-bearing Python classes appeared base-less BY OMISSION. This
-# slice adds the unresolved-external fallback (mirroring the landed JS/TS A2
-# change, WI-dutov) for from-imported and builtin bases, with an in-tree guard
-# that keeps a not-yet-extracted in-tree base from leaking as a workspace-
-# prefixed phantom (INV-nuzas). A dotted base whose root is an import
+# extends edges to EXTERNAL bases are emitted, not dropped (WI-jubag).
+# A base that does not resolve to a first-party class (``Enum``, ``Exception``,
+# ...) has ``base_sym is None``; dropping it would make the class look base-less
+# by omission. py.py instead emits an unresolved-external ``extends`` edge for
+# from-imported and builtin bases (the same fallback JS/TS uses, WI-dutov), with
+# an in-tree guard that keeps a not-yet-extracted in-tree base from leaking as a
+# workspace-prefixed phantom (INV-nuzas). A dotted base whose root is an import
 # (``argparse.X``) is module-qualified by py.py too (WI-ratid); a dotted base
-# whose root no import binds is deferred to the Approach-C core-linker chokepoint.
+# whose root no import binds is left to the core inheritance-linker chokepoint
+# (Approach C).
 # ---------------------------------------------------------------------------
 
 
@@ -619,9 +617,9 @@ def test_run_extends_dotted_imported_base_is_module_qualified(tmp_path: Path) ->
     """A dotted base whose root is an import (``import argparse; class
     C(argparse.RawDescriptionHelpFormatter)``) is classified by py.py itself
     through the import (WI-ratid): a module-qualified unresolved ``extends``
-    edge, the same shape a from-imported external base gets. It used to be
-    deferred to the core-linker chokepoint, which named only the last segment
-    (``python:external:0-0:RawDescriptionHelpFormatter``) -- and bound that
+    edge, the same shape a from-imported external base gets. The core-linker
+    chokepoint would name only the last segment
+    (``python:external:0-0:RawDescriptionHelpFormatter``) -- and could bind that
     segment to any in-repo class of the same name."""
     (tmp_path / "m.py").write_text(
         "import argparse\n"
@@ -766,10 +764,10 @@ def test_run_namespace_package_bare_import_stays_external(tmp_path: Path) -> Non
 def test_run_stdlib_submodule_import_stamped_ecosystem_stdlib(tmp_path: Path) -> None:
     """WI-bifih behavioral closure: a stdlib *submodule* import
     (``from unittest.mock import patch``) resolves to an ``external_symbol``
-    boundary node stamped ``ecosystem=stdlib`` — not the ``third_party``
-    mis-stamp it got when ``is_stdlib_module`` was exact-match-only (python.yaml
-    enumerates ``unittest`` but not the submodule ``unittest.mock``, the largest
-    slice of the 355-edge mis-stamp population). The node stays external / tier 3
+    boundary node stamped ``ecosystem=stdlib``, not ``third_party``. python.yaml
+    enumerates ``unittest`` but not the submodule ``unittest.mock``, so an
+    exact-match-only ``is_stdlib_module`` would mis-stamp it; the top-level-package
+    fallback recognises it. The node stays external / tier 3
     (ADR-0041 §3: stdlib is external to the project; ``is_resolved`` stays False).
     """
     (tmp_path / "main.py").write_text(
@@ -786,7 +784,7 @@ def test_run_stdlib_submodule_import_stamped_ecosystem_stdlib(tmp_path: Path) ->
     ]
     assert mock_nodes, "unittest.mock boundary node missing"
     mock_node = mock_nodes[0]
-    # The dotted stdlib submodule is now recognised as stdlib...
+    # The dotted stdlib submodule is recognised as stdlib...
     assert (mock_node.get("meta") or {}).get("ecosystem") == "stdlib"
     # ...while staying an external / tier-3 boundary node (NOT "resolved").
     assert mock_node["supply_chain"]["tier_name"] == "external_dep"
@@ -807,10 +805,9 @@ def test_run_resolves_call_to_function_defined_in_package_init(
     package's ``__init__.py`` resolves to the in-tree symbol instead of leaking
     to an ``external_symbol`` twin. ``_module_name_from_path`` keys an
     ``__init__.py``'s symbols under ``pkg.__init__``, but callers/imports
-    reference ``pkg`` — so the ``(module, name)`` lookup missed every symbol
-    defined directly in a package ``__init__`` (342 first-party ``calls`` edges
-    on the self-corpus leaked to external twins). The registry now also aliases
-    ``__init__``-defined symbols under the importable package name.
+    reference ``pkg``, so the registry also aliases ``__init__``-defined symbols
+    under the importable package name; without that alias the ``(module, name)``
+    lookup misses every symbol defined directly in a package ``__init__``.
     """
     pkg = tmp_path / "mypkg"
     pkg.mkdir()
@@ -853,12 +850,10 @@ def test_run_resolves_call_to_function_defined_in_package_init(
 def test_run_detects_module_attr_ref_edges_for_env_read(tmp_path: Path) -> None:
     """WI-guhok: attribute-style reads of imported modules emit module_attr_ref edges.
 
-    Before this fix, ``os.environ[\"HOME\"]`` and ``sys.argv`` produced no edges
-    — the io_primitives YAML catalog declared them under ``attributes:`` but
-    the analyzer never emitted anything for the read, so ``io-boundaries``
-    silently under-reported env_read chains. This test pins the emission of
-    the new ``module_attr_ref`` edge type for both subscript and bare-attribute
-    forms.
+    The io_primitives YAML catalog declares ``os.environ[\"HOME\"]``-style and
+    ``sys.argv`` reads under ``attributes:``; without an edge for the read,
+    ``io-boundaries`` silently under-reports env_read chains. This test pins
+    the ``module_attr_ref`` edge for both subscript and bare-attribute forms.
     """
     py_file = tmp_path / "cfg.py"
     py_file.write_text(
@@ -1007,10 +1002,9 @@ def test_run_detects_submodule_import_calls(tmp_path: Path) -> None:
 def test_run_detects_dotted_submodule_from_import_call(tmp_path: Path) -> None:
     """`from pkg.subpkg import X` then bare `X(...)` must emit a calls edge.
 
-    WI-zigah-fanob regression test. Prior to the fix, the analyzer dropped
-    the edge entirely because _lookup_symbol_by_module returned None for
-    stdlib/external targets and no unresolved fallback existed for bare
-    Name calls.
+    _lookup_symbol_by_module returns None for stdlib/external targets, so a
+    bare Name call relies on the unresolved fallback; without it the edge is
+    dropped entirely (WI-zigah-fanob).
     """
     main_file = tmp_path / "client.py"
     main_file.write_text(
@@ -1040,11 +1034,10 @@ def test_run_detects_dotted_submodule_from_import_call(tmp_path: Path) -> None:
 def test_run_detects_dotted_submodule_attribute_chain_call(tmp_path: Path) -> None:
     """`import pkg.subpkg` then `pkg.subpkg.X(...)` must emit a calls edge.
 
-    WI-zigah-fanob regression test. Prior to the fix, the analyzer dropped
-    the edge because _process_call only handled ast.Attribute with an
-    ast.Name receiver — a multi-segment chain where func.value is itself
-    an ast.Attribute (e.g., `urllib.request.urlretrieve(...)`) matched
-    no case.
+    Pins the multi-segment chain, where func.value is itself an
+    ast.Attribute (e.g., `urllib.request.urlretrieve(...)`) rather than an
+    ast.Name receiver; _process_call must handle it or the edge is dropped
+    (WI-zigah-fanob).
     """
     main_file = tmp_path / "client.py"
     main_file.write_text(
@@ -1138,9 +1131,8 @@ def test_extract_nodes_handles_syntax_error(tmp_path: Path) -> None:
 
 def test_module_level_constant_emits_symbol(tmp_path: Path) -> None:
     """WI-gafog E2: a module-level `NAME = ...` assignment must emit a Symbol
-    so that `from <mod> import NAME` can resolve cross-file. Before the fix,
-    only classes/functions/methods were extracted; constants fell through
-    to external boundary synthesis.
+    so that `from <mod> import NAME` can resolve cross-file. Without the
+    Symbol, an imported constant falls through to external boundary synthesis.
     """
     py_file = tmp_path / "consts.py"
     py_file.write_text(
@@ -1372,8 +1364,7 @@ def test_resolved_method_call_uses_ast_call_apex_with_call_construct_meta(
 ) -> None:
     """vocab:F1 / WI-nibis: a RESOLVED method call folds to the ``ast_call``
     apex + ``meta['call_construct']='method'`` (Cluster 28D, audit-findings
-    0012), not the parked peer ``ast_call_method`` (the py.py:3811 default
-    leak that survived the original 0012 fold)."""
+    0012), not the parked peer ``ast_call_method``."""
     py_file = tmp_path / "service.py"
     py_file.write_text(
         "class Service:\n"
@@ -1483,7 +1474,7 @@ def test_method_symbols_include_class_prefix(tmp_path: Path) -> None:
 # ============================================================================
 # Decorator Metadata Extraction Tests (Route decorators)
 # ============================================================================
-# Route detection is now handled by FRAMEWORK_PATTERNS phase.
+# Route detection is handled by the FRAMEWORK_PATTERNS phase.
 # These tests verify the analyzer extracts correct decorator metadata.
 
 
@@ -1506,14 +1497,14 @@ def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
 
     # Find the route handler function
-    # WI-tosul Phase 2: fastapi now promotes on the bare import even without a
+    # WI-tosul Phase 2: fastapi promotes on the bare import even without a
     # manifest, so a route symbol is materialized alongside the handler — exclude it.
     functions = [n for n in data["nodes"] if n["kind"] == "function" and (n.get("meta") or {}).get("framework_role") != "route"]
     assert len(functions) == 1
 
     func = functions[0]
     assert func["name"] == "get_users"
-    # stable_id is now always a hash
+    # stable_id is always a hash
     assert func["stable_id"].startswith("sha256:")
     # Decorator metadata should be extracted
     decorators = func.get("meta", {}).get("decorators", [])
@@ -1839,7 +1830,7 @@ def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
 
 
 # ============================================================================
-# Flask add_url_rule UsageContext Tests (v1.1.x)
+# Flask add_url_rule UsageContext Tests
 # ============================================================================
 
 
@@ -2326,16 +2317,17 @@ def test_fastapi_apirouter_prefix_composition_imported_constant(tmp_path: Path) 
 def test_fastapi_apirouter_prefix_resolves_imported_constant_from_bom_file(tmp_path: Path) -> None:
     """INV-kitot: cross-file import resolution must read BOM-prefixed files.
 
-    The constants file (where V2_ROUTE_PREFIX lives) is BOM-prefixed. Without
-    encoding='utf-8-sig' at py.py:1081, ast.parse() raised SyntaxError, the
-    candidate was skipped, and the route prefix fell back to empty.
+    The constants file (where V2_ROUTE_PREFIX lives) is BOM-prefixed. The
+    cross-file constant lookup reads candidates with encoding='utf-8-sig';
+    without it ast.parse() raises SyntaxError, the candidate is skipped, and
+    the route prefix falls back to empty.
     """
     from hypergumbo_lang_mainstream.py import analyze_python
 
     pkg_dir = tmp_path / "myapp"
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("")
-    # BOM-prefixed constants file — the path that hit py.py:1081.
+    # BOM-prefixed constants file, read by the cross-file constant lookup.
     (pkg_dir / "constants.py").write_bytes(
         b"\xef\xbb\xbfV2_ROUTE_PREFIX = '/v2'\n"
     )
@@ -2845,9 +2837,9 @@ def test_django_path_with_local_cbv_as_view(tmp_path: Path) -> None:
 def test_django_re_path_cbv_method_introspection(tmp_path: Path) -> None:
     """re_path(CBV.as_view()) emits one route per HTTP method on the view class.
 
-    WI-lojoh: the route extractor previously labeled every CBV route as GET
-    regardless of declared methods. After introspection, a class with .post()
-    should produce a POST route, .delete() a DELETE route, etc.
+    The route extractor introspects the view class rather than labeling every
+    CBV route GET: a class with .post() produces a POST route, .delete() a
+    DELETE route, etc. (WI-lojoh)
     """
     (tmp_path / "urls.py").write_text(
         "from django.urls import re_path\n"
@@ -2928,8 +2920,7 @@ def test_django_cbv_unresolved_view_class_keeps_any_method(tmp_path: Path) -> No
     assert (meta.get("http_method") or "").upper() == "ANY"
 
 
-# NOTE: Router prefix combination tests were removed.
-# Router prefix functionality is now handled by FRAMEWORK_PATTERNS phase.
+# NOTE: Router prefix combination is handled by the FRAMEWORK_PATTERNS phase.
 # See test_framework_patterns.py for pattern matching tests.
 
 
@@ -3293,8 +3284,8 @@ def test_detect_source_roots_skips_excluded_and_dot_dirs(tmp_path: Path) -> None
 def test_module_name_from_path_monorepo_packages_layout(tmp_path: Path) -> None:
     """WI-davan E1: a file under packages/<pkg>/src/<mod>/ produces the
     real Python module name (e.g. 'pkg_a.helper'), NOT the path-shaped
-    'packages.pkg-a.src.pkg_a.helper' that the previous single-root
-    detector produced.
+    'packages.pkg-a.src.pkg_a.helper' that a single-root detector would
+    produce.
     """
     pkg_a_src = tmp_path / "packages" / "pkg-a" / "src"
     (pkg_a_src / "pkg_a").mkdir(parents=True)
@@ -3567,14 +3558,11 @@ def with_exceptions():
 def test_cyclomatic_complexity_with_context_managers() -> None:
     """WI-gapir: `with` is NOT a decision point, so context managers add nothing.
 
-    This assertion is inverted from its original form, which pinned "with
-    statements add 1 each" and encoded the defect as expected behaviour. A
-    context manager introduces no alternative path through the function — it is
-    setup/teardown, not a branch — so counting it inflates the score above the
-    McCabe definition that this function's docstring, the spec and the schema
-    all name, and above what the reference implementations of that definition
-    (flake8's ``mccabe``, radon) report. On the self-corpus it inflated 7.9% of
-    Python functions.
+    A context manager introduces no alternative path through the function — it
+    is setup/teardown, not a branch — so counting it would inflate the score
+    above the McCabe definition that the complexity function's docstring, the
+    spec and the schema all name, and above what the reference implementations
+    of that definition (flake8's ``mccabe``, radon) report.
 
     Two nested `with` blocks and no branch of any kind, so complexity is the
     straight-line base of 1.
@@ -3964,7 +3952,7 @@ class TestPythonSignatureExtraction:
         assert funcs[0]["signature"] == "(x: typing.Optional[int]) -> typing.Optional[str]"
 
     def test_signature_truncated_for_long_signature(self, tmp_path: Path) -> None:
-        """Long signatures should be truncated."""
+        """Long signatures are rendered in full, not truncated at 60 chars."""
         py_file = tmp_path / "test.py"
         # Create a function with many parameters
         py_file.write_text(
@@ -3980,8 +3968,8 @@ class TestPythonSignatureExtraction:
         funcs = [n for n in data["nodes"] if n["kind"] == "function"]
         assert len(funcs) == 1
         sig = funcs[0]["signature"]
-        # WI-hopiz: the display signature is no longer capped at 60 — the full
-        # 7-param list and the return type are rendered.
+        # The display signature is not capped at 60 chars: the full 7-param
+        # list and the return type are rendered (WI-hopiz).
         assert len(sig) > 60
         assert not sig.endswith("…")
         assert "param_seven: str" in sig
@@ -3990,12 +3978,12 @@ class TestPythonSignatureExtraction:
     def test_method_long_signature_untyped_fallback(self, tmp_path: Path) -> None:
         """Long class method: display signature is full, stable_id still falls back.
 
-        WI-hopiz decoupling — the DISPLAY ``Symbol.signature`` is now rendered in
-        full (wide cap), while the stable_id path keeps the legacy ``max_len=60``
-        identity signature. That identity signature truncates (no closing paren),
-        so ``normalize_python_signature`` returns None and the analyzer falls back
-        to the untyped ``_compute_stable_id`` (ADR-0014 §2) — unchanged, so no
-        identity churn.
+        The DISPLAY ``Symbol.signature`` is rendered in full (wide cap), while
+        the stable_id path uses a separate ``max_len=60`` identity signature so
+        stable_ids do not churn with the display width (WI-hopiz). That identity
+        signature truncates (no closing paren), so ``normalize_python_signature``
+        returns None and the analyzer falls back to the untyped
+        ``_compute_stable_id`` (ADR-0014 §2).
         """
         py_file = tmp_path / "test.py"
         py_file.write_text(
@@ -4012,11 +4000,11 @@ class TestPythonSignatureExtraction:
         methods = [n for n in data["nodes"] if n["kind"] == "method"]
         assert len(methods) == 1
         method = methods[0]
-        # WI-hopiz: the display signature is now rendered in full (not truncated)
+        # WI-hopiz: the display signature is rendered in full (not truncated)
         assert not method["signature"].endswith("…")
         assert "param_f: str" in method["signature"]
-        # …while the stable_id is still the untyped fallback (identity signature
-        # is max_len=60 → truncated → normalize returns None). No churn.
+        # …while the stable_id is the untyped fallback (identity signature
+        # is max_len=60 → truncated → normalize returns None).
         assert method["stable_id"].startswith("sha256:")
 
     def test_signature_graceful_truncation_preserves_return_type(self) -> None:
@@ -4024,8 +4012,8 @@ class TestPythonSignatureExtraction:
         list but preserves the return type + a marker (not a blind mid-content cut).
 
         Exercised as a direct unit call because routing a >240-char signature
-        through the full analyzer would hit a *separate*, pre-existing "long
-        signature drops the whole file" limitation, tracked apart from WI-hopiz.
+        through the full analyzer would hit a *separate* "long signature drops
+        the whole file" limitation, tracked apart from WI-hopiz.
         """
         from hypergumbo_lang_mainstream.py import (
             _DISPLAY_SIGNATURE_MAX_LEN,
@@ -4099,9 +4087,8 @@ class TestModulePseudoNode:
     """Tests for the file pseudo-node emission for script-only files.
 
     INV-hojus: the Python analyzer emits kind="file" Symbols for files
-    with module-level executable code (collapsed from the previous
-    kind="module" double-representation). The kind="module" kind no
-    longer appears for any Python path.
+    with module-level executable code. kind="module" is never emitted for
+    any Python path.
     """
 
     def test_file_node_created_for_script_with_calls(self, tmp_path: Path) -> None:
@@ -4122,7 +4109,7 @@ class TestModulePseudoNode:
         assert files[0]["name"] == "script.py"
         assert files[0]["span"]["start_line"] == 1
         assert files[0]["span"]["end_line"] == 3
-        # INV-hojus invariant: kind="module" is no longer emitted for Python.
+        # INV-hojus invariant: kind="module" is never emitted for Python.
         modules = [n for n in data["nodes"] if n["kind"] == "module" and n["language"] == "python"]
         assert len(modules) == 0
 
@@ -4198,11 +4185,10 @@ class TestModulePseudoNode:
 
     def test_analyzer_emits_file_node_for_docstring_carrying_summary(self, tmp_path: Path) -> None:
         """WI-kazob: a file whose only module-level content is a docstring (no
-        executable code) NOW gets an analyzer-emitted file node — so the file
-        node can carry the module's one-line summary. Before WI-kazob this
-        file produced no analyzer file node (the docstring was dropped); the
-        emission condition is now ``code OR docstring``. Integration-level
-        complement to test_wi_kazob_module_docstring.py's unit coverage."""
+        executable code) gets an analyzer-emitted file node, so the file node
+        can carry the module's one-line summary — the emission condition is
+        ``code OR docstring``. Integration-level complement to
+        test_wi_kazob_module_docstring.py's unit coverage."""
         py_file = tmp_path / "empty.py"
         py_file.write_text(
             '"""This module does nothing."""\n'
@@ -4279,15 +4265,15 @@ class TestInvHojusFileCanonicalKind:
     """INV-hojus: Python files are represented by kind="file" Symbols only.
 
     Invariant: no Python source path emits kind="module" Symbols, and any
-    file pseudo-node uses the file-canonical id shape — collapsing the
-    pre-INV-hojus dual-representation where every script-style Python file
-    got BOTH a kind="module" anchor and a kind="file" synthesized node.
+    file pseudo-node uses the file-canonical id shape, so a script-style
+    Python file is never represented twice (a kind="module" anchor plus a
+    kind="file" synthesized node).
     """
 
     def test_no_module_kind_for_any_python_path(self, tmp_path: Path) -> None:
         """Across a small mixed-content repo, no Python path receives a
         kind="module" Symbol from any producer."""
-        # Cover every emission branch that previously produced module-kind:
+        # Cover each file-shape emission branch:
         # script-with-calls, script-with-main-guard, library-style (no
         # module-level code), pure-import file.
         (tmp_path / "script_with_calls.py").write_text(
@@ -4316,7 +4302,7 @@ class TestInvHojusFileCanonicalKind:
 
     def test_no_double_representation_for_any_python_path(self, tmp_path: Path) -> None:
         """No Python path may have both a kind='file' and a kind='module'
-        Symbol — the double-representation case that motivated INV-hojus."""
+        Symbol — the double-representation case INV-hojus rules out."""
         (tmp_path / "executable.py").write_text(
             "import os\nprint('side effect')\nCONFIG = os.environ\n"
         )
@@ -4779,7 +4765,7 @@ class TestVariableMethodCalls:
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
         """Module-level code with module.func() calls should emit edges
-        from the file pseudo-node (INV-hojus collapsed module→file)."""
+        from the file pseudo-node (the module-level anchor, INV-hojus)."""
         # Create a utility module
         utils_file = tmp_path / "utils.py"
         utils_file.write_text(
@@ -4889,12 +4875,9 @@ class TestVariableMethodCalls:
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
         unresolved_calls = [e for e in call_edges if "external_symbol" in e["dst"]]
-        # RE-POINTED (INV-foluz), NOT RELAXED. This assertion counted the FILE
-        # TOTAL and used it as a proxy for "do_something emitted one edge"; the
-        # proxy held only while `unknown_factory()` — an unresolvable bare name —
-        # emitted nothing at all, which was the defect. Both calls now emit, so
-        # the total is 2 and the original requirement is asserted directly on the
-        # callee it was always about.
+        # Assert per callee, not on the file total: `unknown_factory()` — an
+        # unresolvable bare name — also emits an unresolved edge (INV-foluz), so
+        # the total is 2 and only one of those is the do_something edge.
         do_something = [e for e in unresolved_calls if "do_something" in e["dst"]]
         assert len(do_something) == 1, "Should have 1 unresolved call edge for do_something"
         factory = [e for e in unresolved_calls if "unknown_factory" in e["dst"]]
@@ -5042,7 +5025,7 @@ class TestVariableMethodCalls:
         """self.field.method() should resolve when field is assigned from typed param.
 
         Pattern: class Controller(__init__(self, svc: Service)) assigns self.svc = svc,
-        then handle() calls self.svc.process(). INV-014 structural fix for Python.
+        then handle() calls self.svc.process(). (INV-014)
         """
         service_file = tmp_path / "service.py"
         service_file.write_text(
@@ -5914,10 +5897,8 @@ class TestInvMofavNestedFunctionEmissionAndCallResolution:
     """INV-mofav: every nested FunctionDef must be emitted as a Symbol, and
     bare-name calls to nested functions must emit `calls` edges to them.
 
-    Found via self-analysis dogfood round 10. Validation case:
-    `sketch._collect_important_files` defines 4 inner functions and calls
-    them ~12 times; pre-INV-mofav, 0 inner functions were Symbols and 0 of
-    those calls were edges.
+    Validation case: `sketch._collect_important_files`, which defines 4
+    inner functions and calls them repeatedly.
 
     Naming convention: nested functions use a qualified `.name` of the form
     `outer.inner` (and `outer.middle.inner` for deeper nesting), mirroring
@@ -6159,9 +6140,7 @@ class TestNestedFunctionExtraction:
 
     def test_undecorated_nested_function_is_extracted_with_qualified_name(self, tmp_path: Path) -> None:
         """INV-mofav: undecorated nested functions ARE extracted (with a
-        qualified `outer.inner` name). Pre-INV-mofav, undecorated nested
-        functions were silently dropped; this test pinned the old behavior
-        and now pins the new invariant.
+        qualified `outer.inner` name), not silently dropped.
         """
         py_file = tmp_path / "utils.py"
         py_file.write_text(
@@ -6212,9 +6191,8 @@ class TestNestedFunctionExtraction:
 
     def test_deeply_nested_function_is_extracted_with_full_qualifier(self, tmp_path: Path) -> None:
         """INV-mofav: at any nesting depth, the qualified name is the
-        full chain `outermost.middle.inner`. Every level is extracted —
-        the pre-INV-mofav rule "undecorated middle layer is dropped" no
-        longer applies.
+        full chain `outermost.middle.inner`. Every level is extracted,
+        including an undecorated middle layer.
         """
         py_file = tmp_path / "deep.py"
         py_file.write_text(
@@ -6534,15 +6512,12 @@ class TestPythonInheritanceEdges:
     ) -> None:
         """When multiple classes share a name, extends resolves to the imported one.
 
-        Regression test for the Django bakeoff finding: 238 classes named 'Model'
-        exist across Django's codebase (1 real in db/models/base.py + 237 test stubs).
-        All 2376 extends edges were pointing to a single test stub because
-        class_symbols used last-writer-wins dict semantics.
-
-        The fix: use import information to disambiguate.  When test_app.py has
-        ``from db.models import Model`` and defines ``class Article(Model):``,
-        the extends edge should resolve to db/models.py::Model, not to
-        tests/test_other.py::Model.
+        A name-only lookup with last-writer-wins semantics would bind every
+        ``Model`` subclass to whichever same-named class was seen last (Django
+        has one real ``Model`` and many test stubs). Import information
+        disambiguates: when app.py has ``from db.models import Model`` and
+        defines ``class Article(Model):``, the extends edge resolves to
+        db/models.py::Model, not to tests/test_helpers.py::Model.
         """
         from hypergumbo_lang_mainstream.py import analyze_python
 
@@ -6685,10 +6660,8 @@ class TestPythonInheritanceEdges:
 
 class TestPythonInstantiatesExternal:
     """WI-jubag (instantiates half): external constructor calls must type as
-    ``instantiates``, not misfile as plain ``calls``. Previously ``instantiates``
-    recorded 0 external constructions out of thousands, while ~2,333 external
-    constructor calls (``Path``, ``MagicMock``, ``argparse.ArgumentParser`` …)
-    were emitted as ``calls`` to an external placeholder. An unresolved imported
+    ``instantiates``, not misfile as plain ``calls`` to an external placeholder
+    (``Path``, ``MagicMock``, ``argparse.ArgumentParser`` …). An unresolved imported
     name whose original name is PascalCase (Python's strong class-naming
     convention) is treated as a construction (``evidence_type='ast_new'``);
     snake_case callables stay ``calls``."""
@@ -7364,19 +7337,15 @@ class TestWiFagabQualifiedNameField:
     """WI-fagab: py.py must populate ``Symbol.qualified_name`` (ADR-0032), not
     only ``Symbol.name``.
 
-    Pre-fix, py.py routed the container-qualified name into the ``name=``
-    kwarg and left ``qualified_name=None`` for 100% of Python symbols, while
-    every other mainstream analyzer (js_ts/csharp/java/go/rust/swift) populates
-    the field — the emission-parity matrix locked ``('python','qualified_name')``
-    as a strict-xfail hole.
+    Every other mainstream analyzer (js_ts/csharp/java/go/rust/swift) populates
+    the field too.
 
-    The T0 fix is **additive**: it passes the SAME container-qualified value
-    through a separate ``qualified_name=`` kwarg while KEEPING ``name=`` as the
-    dotted/qualified value (load-bearing for ``Symbol.id`` / ``stable_id`` and
-    the INV-mofav nested-name tests). The bare-name swap (``name`` → short
-    name, matching js_ts) is the v6/T1 identity payload, NOT this PR — so for
-    every kind here ``name`` MUST still equal ``qualified_name`` (the
-    identity-neutrality contract of the additive change).
+    py.py passes the container-qualified value through ``qualified_name=``
+    while KEEPING ``name=`` as the same dotted/qualified value, because
+    ``name`` is load-bearing for ``Symbol.id`` / ``stable_id`` and the
+    INV-mofav nested-name tests. So for every kind here ``name`` MUST equal
+    ``qualified_name`` (identity neutrality); switching ``name`` to the bare
+    short name, as js_ts does, is a separate identity change (v6/T1).
     """
 
     def test_top_level_function_populates_qualified_name(self, tmp_path: Path) -> None:
@@ -7389,7 +7358,7 @@ class TestWiFagabQualifiedNameField:
             if s.kind == "function" and s.name == "greet"
         )
         assert fn.qualified_name == "greet"
-        # T0 identity-neutrality: name is unchanged (still the qualified value).
+        # Identity neutrality: name is still the qualified value.
         assert fn.name == fn.qualified_name
 
     def test_nested_function_populates_dotted_qualified_name(self, tmp_path: Path) -> None:
@@ -7445,7 +7414,7 @@ class TestExternalConstructorReceiverTypeInference:
     the right boundary bucket instead of the undifferentiated
     ``external_potential`` bucket.
 
-    The fix emits a MODULE-QUALIFIED dst (``python:{module}:0-0:{name}:
+    The analyzer emits a MODULE-QUALIFIED dst (``python:{module}:0-0:{name}:
     unresolved``) plus a structured ``dst_ref`` so both the dst_ref path and
     the dst-id-parse fallback (the io-boundaries CLI drops dst_ref on
     serialize/reload) satisfy the module-filter match.
@@ -7513,8 +7482,8 @@ class TestExternalConstructorReceiverTypeInference:
     def test_open_builtin_call_emits_builtins_edge(self, tmp_path: Path) -> None:
         """WI-mitul: a bare ``open()`` call emits a ``calls`` edge to
         ``builtins.open`` in every syntactic form, so the io_primitives/
-        python.yaml ``builtins`` rows (fs_read/fs_write functions=[open]) — which
-        were dead because no edge ever targeted them — receive an edge. The
+        python.yaml ``builtins`` rows (fs_read/fs_write functions=[open]) receive
+        an edge; without it nothing targets those rows. The
         receiver ``.read()``/``.write()`` edges (WI-fuvuj, module=file) are
         orthogonal to this ``open()``-call edge."""
         from hypergumbo_core.ir import ExternalRef
@@ -7556,7 +7525,7 @@ class TestExternalConstructorReceiverTypeInference:
         self, tmp_path: Path
     ) -> None:
         """NEGATIVE: a method call on a variable not typed by a recognized
-        constructor must keep the old ``external`` dst with NO dst_ref."""
+        constructor must keep the plain ``external`` dst with NO dst_ref."""
         (tmp_path / "m.py").write_text(
             "def run(x):\n"
             "    x.frobnicate()\n"
@@ -7714,7 +7683,7 @@ def test_run_imported_external_const_method_stays_unresolved(
 ) -> None:
     """WI-hotug CASE B negative: an imported const method call whose receiver is
     NOT in-tree (a stdlib/external symbol) must NOT emit a references edge — it
-    falls through to the unchanged unresolved-external behavior. Locks that the
+    falls through to the unresolved-external behavior. Locks that the
     kind=='variable' guard is import-anchored (allow_ambiguous=False) and never
     fabricates a resolution."""
     _build_nuzas_monorepo(tmp_path)
@@ -7744,8 +7713,7 @@ def test_run_imported_const_shadowed_by_param_no_references(tmp_path: Path) -> N
     """WI-hotug CASE B INV-fahub guard: a function PARAMETER that shadows a
     same-named imported constant must NOT mint a resolved references edge to the
     module constant — the receiver is the parameter (unknown type), so the call
-    stays honestly unresolved. Reproduces the review-caught scope-shadow false
-    resolution."""
+    stays honestly unresolved. Pins the scope-shadow false resolution."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "config.py").write_text("settings = {'a': 1}\n")
@@ -7823,7 +7791,7 @@ def test_run_imported_class_unresolved_method_stays_phantom(
     """WI-hotug CASE B: the ``kind == 'variable'`` guard is load-bearing. An
     in-tree imported CLASS with an unresolved method (``from x import User;
     User.nonexistent()``) must NOT emit a references edge — it stays the
-    unchanged unresolved/phantom calls edge (references is only for a variable
+    unresolved/phantom calls edge (references is only for a variable
     receiver, never a class). Pins the guard against a drop-mutation."""
     _build_nuzas_monorepo(tmp_path)  # authpkg.models defines class User
     (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
@@ -7847,7 +7815,7 @@ def test_run_imported_class_unresolved_method_stays_phantom(
     assert refs == [], (
         f"class receiver must not emit a references edge (kind guard), got {refs}"
     )
-    # The unresolved phantom calls edge is preserved (unchanged behavior).
+    # The unresolved phantom calls edge is preserved.
     calls = [
         e for e in data["edges"]
         if e["type"] == "calls" and e["src"] == use_fn
@@ -7865,10 +7833,10 @@ def test_run_imported_function_via_nonpackage_reexport_resolves(
     first-party ``compute`` node, not dead-end at a phantom workspace
     ``external_symbol`` (``python:authpkg.facade:0-0:compute:external_symbol``).
 
-    The ``__init__.py``-only re-export alias pass left non-package re-export
-    facades unaliased, so the direct imported-function call missed. This test
-    fails RED on current dev (the calls edge points to the phantom facade
-    external and no resolved edge to the real ``impl.compute`` exists).
+    The re-export alias pass covers non-package facade modules, not only
+    ``__init__.py``; without that, the direct imported-function call misses and
+    the calls edge points to the phantom facade external, with no resolved edge
+    to the real ``impl.compute``.
     """
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
@@ -8001,7 +7969,7 @@ def test_run_nonpackage_reexport_multihop_chain_resolves_bounded(
 def test_run_nonpackage_reexport_does_not_mark_re_exported_modifier(
     tmp_path: Path,
 ) -> None:
-    """WI-hotug CASE A decouple: generalizing the alias pass to all modules must
+    """WI-hotug CASE A decouple: the alias pass covers all modules, but must
     NOT extend the ``re_exported`` modifier to non-package re-exports — that
     modifier stays ``__init__.py``-only (visibility.py / library-exports.yaml
     consume it as a package-surface signal). The alias still RESOLVES the call
@@ -8053,8 +8021,8 @@ def test_run_nonpackage_reexport_external_module_shadow_not_aliased(
     stdlib/third-party name (``from json import dumps``) must NOT bind to a
     coincidentally same-suffixed in-tree module (``authpkg/json.py`` defining a
     local ``dumps``). Binding it would mint a confidently-wrong resolved edge to
-    the wrong symbol (the defect the adversarial review flagged). This test fails
-    RED under a suffix-matching alias pass and passes under exact match."""
+    the wrong symbol. This test fails RED under a suffix-matching alias pass and
+    passes under exact match."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     # An in-tree module whose name coincidentally matches the stdlib ``json``.
@@ -8095,12 +8063,11 @@ def test_run_module_attr_ref_const_references_in_tree_variable(
     tmp_path: Path,
 ) -> None:
     """WI-huhum / INV-nuzas: a NON-call attribute read on an imported in-tree
-    module constant (``import authpkg.config as cfg; cfg.CONFIG``) now emits a
+    module constant (``import authpkg.config as cfg; cfg.CONFIG``) emits a
     ``references`` edge to the in-tree ``kind=variable`` instead of a phantom
-    workspace-prefixed ``module_attr_ref`` external. Uses EXACT module match
-    (INV-fahub-safe, mirroring WI-hotug CASE A). Fails RED on current dev (the
-    read minted ``python:authpkg.config:0-0:authpkg.config.CONFIG:external_symbol``
-    and no references edge)."""
+    workspace-prefixed ``module_attr_ref`` external
+    (``python:authpkg.config:0-0:authpkg.config.CONFIG:external_symbol``). Uses
+    EXACT module match (INV-fahub-safe, mirroring WI-hotug CASE A)."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
@@ -8145,12 +8112,12 @@ def test_run_module_attr_ref_function_references_in_tree_function(
 ) -> None:
     """INV-nuzas category A: a NON-call attribute read on an imported
     in-tree module FUNCTION (``import authpkg.helpers as h; h.compute`` used as a
-    value, not called) now emits a ``references`` edge to the in-tree
+    value, not called) emits a ``references`` edge to the in-tree
     ``kind=function`` instead of a phantom workspace-prefixed ``module_attr_ref``
-    external. Extends WI-huhum's ``kind=variable`` retarget to ``kind=function``,
-    reusing its EXACT-module-match (INV-fahub), ``references`` edge (taint-safe),
-    and scope-shadow guards. Fails RED on current dev (the read minted
-    ``python:authpkg.helpers:0-0:authpkg.helpers.compute:external_symbol``)."""
+    external (``python:authpkg.helpers:0-0:authpkg.helpers.compute:external_symbol``).
+    The ``kind=function`` retarget shares the ``kind=variable`` one's
+    EXACT-module-match (INV-fahub), ``references`` edge (taint-safe), and
+    scope-shadow guards."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "helpers.py").write_text("def compute():\n    return 1\n")
@@ -8196,7 +8163,7 @@ def test_run_module_attr_ref_external_module_stays_phantom(
 ) -> None:
     """WI-huhum negative: a module-attr read on an EXTERNAL module
     (``import os as o; o.getcwd``) must NOT emit a references edge — os is not
-    in-tree, so exact lookup misses and the read falls through to the unchanged
+    in-tree, so exact lookup misses and the read falls through to the
     phantom. Locks that the retarget is import-anchored, never fabricated."""
     _build_nuzas_monorepo(tmp_path)
     (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
@@ -8304,14 +8271,12 @@ def test_run_module_attr_ref_alias_shadowed_by_param_no_references(
 def test_run_module_attr_ref_function_target_resolves(
     tmp_path: Path,
 ) -> None:
-    """INV-nuzas category A (2026-07-08 human ruling): the module-attr
-    retarget now covers ``kind=function`` in addition to WI-huhum's ``kind=
-    variable``. A module-attr read whose target is an in-tree ``kind=function``
-    (``import authpkg.helpers as h; h.hash_pw`` used as a value) resolves to the
-    real function via a ``references`` edge. This deliberately supersedes
-    WI-huhum's earlier variable-only pin (that scope was residual-driven — the 52
-    it closed were variables — not a function-specific safety exclusion; the
-    ruling authorizes the widening)."""
+    """INV-nuzas category A: the module-attr retarget covers ``kind=function``
+    as well as ``kind=variable``. A module-attr read whose target is an in-tree
+    ``kind=function`` (``import authpkg.helpers as h; h.hash_pw`` used as a value)
+    resolves to the real function via a ``references`` edge. Functions are
+    deliberately in scope: no safety concern specific to functions excludes
+    them."""
     _build_nuzas_monorepo(tmp_path)  # authpkg.helpers defines hash_pw()
     (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
         "import authpkg.helpers as h\n"
@@ -8347,12 +8312,11 @@ def test_run_module_attr_ref_function_local_import_resolves(
     tmp_path: Path,
 ) -> None:
     """WI-huhum: a FUNCTION-LOCAL module import (``def use(): import
-    authpkg.config as cfg; return cfg.CONFIG``) — the dominant self-corpus shape
+    authpkg.config as cfg; return cfg.CONFIG``) — a common self-corpus shape
     (a test method importing a module then reading its constant) — must resolve.
     The local ``import X as Y`` is the module ALIAS, not a shadow, so the shadow
     guard excludes plain import aliases (only params / assignments / from-import
-    value rebinds shadow). Without the exclusion ~46 of the 52 residual stay
-    phantom (the initial implementation closed only 3)."""
+    value rebinds shadow)."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
@@ -8397,17 +8361,15 @@ def test_run_module_attr_ref_coreferent_from_import_alias_resolves(
     ``m.CONST`` must retarget to the real in-tree variable via a ``references``
     edge, not mint a workspace-prefixed phantom ``external_symbol``.
 
-    Root cause of the phantom (pre-fix): ``module_imports`` is FILE-scoped (built
-    by an ``ast.walk`` over the whole tree), so a plain ``import authpkg.config
-    as cfg`` in ``pollute()`` makes ``cfg`` a resolvable module alias in
-    ``read()`` too; but ``_collect_local_bindings`` added ``read()``'s own
-    ``from authpkg import config as cfg`` to the INV-fahub shadow set
-    unconditionally, so the retarget guard suppressed the (correct) resolution
-    and emitted ``python:authpkg.config:0-0:authpkg.config.CONFIG:attribute``
-    (later remapped to a workspace-prefixed ``external_symbol``). This is the
-    self-corpus ``rust._analyzer`` / ``prisma._analyzer`` shape (a test method
-    plain-imports the analyzer module while a sibling method from-imports it).
-    Fails RED before the co-referent exclusion in ``_collect_local_bindings``."""
+    ``module_imports`` is FILE-scoped (built by an ``ast.walk`` over the whole
+    tree), so a plain ``import authpkg.config as cfg`` in ``pollute()`` makes
+    ``cfg`` a resolvable module alias in ``read()`` too. ``_collect_local_bindings``
+    therefore excludes ``read()``'s own co-referent ``from authpkg import config
+    as cfg`` from the INV-fahub shadow set; adding it unconditionally would make
+    the retarget guard suppress the correct resolution and emit
+    ``python:authpkg.config:0-0:authpkg.config.CONFIG:attribute`` (remapped to a
+    workspace-prefixed ``external_symbol``). The shape arises when a test method
+    plain-imports an analyzer module while a sibling method from-imports it."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
@@ -8508,8 +8470,8 @@ def test_run_module_attr_ref_enclosing_param_shadow_no_references(
     captured by closure, NOT the module alias — so the module-attr retarget must
     NOT mint a resolved references edge from ``inner`` to the module CONFIG.
     ``inner``'s immediate local_bindings exclude ``outer``'s param, so the guard
-    needs the enclosing-scope binding union. Fails RED before the union (inner ->
-    CONFIG confidently-wrong resolved edge)."""
+    needs the enclosing-scope binding union; without it ``inner -> CONFIG``
+    resolves confidently wrong."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
@@ -8555,10 +8517,10 @@ def test_run_module_attr_ref_module_scope_rebind_no_references(
     authpkg.config as cfg; cfg = make_cfg(); X = cfg.CONFIG`` at MODULE scope, the
     module-level reassignment rebinds ``cfg`` off the import alias, so the read
     ``cfg.CONFIG`` must NOT retarget to the module CONFIG. The module-scope
-    _emit_module_attr_refs caller passes EMPTY local_bindings, so a module-level
-    reassignment of the import alias is unguarded. Fails RED before the
-    module-scope shadow set (<module> -> CONFIG confidently-wrong resolved
-    edge)."""
+    _emit_module_attr_refs caller guards this with the module-level rebound-name
+    set (``_collect_module_rebound_names``); with EMPTY local_bindings the
+    reassignment would be unguarded and ``<module> -> CONFIG`` would resolve
+    confidently wrong."""
     _build_nuzas_monorepo(tmp_path)
     auth = tmp_path / "packages" / "auth" / "src" / "authpkg"
     (auth / "config.py").write_text("CONFIG = {'a': 1}\n")
@@ -8641,9 +8603,10 @@ def test_run_variable_ref_module_scope_import_over_var_no_references(
     """WI-luhah (2) sibling _emit_variable_refs: a module-level ``import`` (plain
     or ``from``) that rebinds a name off a same-named module-level VARIABLE must
     suppress the bare-name references retarget — the read is the import, not the
-    variable. The module-scope caller passes EMPTY local_bindings, leaving the
-    import-over-variable shadow unguarded. Covers both plain and ``from`` import
-    aliases. Fails RED before the module-scope import-alias shadow."""
+    variable. The module-scope caller guards this with the module-level
+    import-alias set (``_collect_module_import_aliases``); with EMPTY
+    local_bindings the import-over-variable shadow would be unguarded. Covers
+    both plain and ``from`` import aliases."""
     _build_nuzas_monorepo(tmp_path)  # authpkg.helpers exists
     (tmp_path / "packages" / "api" / "src" / "apipkg" / "u.py").write_text(
         "PLAINV = 1\n"
@@ -8945,9 +8908,9 @@ def test_run_module_attr_ref_module_def_shadow_no_references(
 ) -> None:
     """WI-luhah residual: a module-level ``def cfg`` shadows the import alias.
 
-    ``def``/``class`` bind their name without an ``ast.Store`` target, so the
-    module-scope rebind walk never saw them and the read stayed
-    confidently-wrong-RESOLVED against the real ``CONFIG`` node.
+    ``def``/``class`` bind their name without an ``ast.Store`` target, so a
+    Store-only module-scope rebind walk misses them and the read would resolve
+    confidently wrong against the real ``CONFIG`` node.
     """
     _assert_no_resolved_config_ref(
         tmp_path,
@@ -8975,7 +8938,7 @@ def test_run_module_attr_ref_except_as_shadow_no_references(
     tmp_path: Path,
 ) -> None:
     """WI-luhah residual: ``except E as cfg`` binds via ``ExceptHandler.name``,
-    a bare ``str`` rather than a ``Name`` node, so the Store-walk missed it."""
+    a bare ``str`` rather than a ``Name`` node, so a Store-walk misses it."""
     _assert_no_resolved_config_ref(
         tmp_path,
         "import authpkg.config as cfg\n"
@@ -8994,8 +8957,8 @@ def test_run_module_attr_ref_enclosing_nested_def_shadow_no_references(
     function shadows the alias for the inner read.
 
     The LEGB ``local_names_by_func_id`` set deliberately omits def/class names
-    (the lookup resolves them as ``NestedDef`` bindings), so this needed the
-    dedicated statement-shadow collector the item called for.
+    (the lookup resolves them as ``NestedDef`` bindings), so a dedicated
+    statement-shadow collector handles this case.
     """
     _assert_no_resolved_config_ref(
         tmp_path,
@@ -9068,7 +9031,7 @@ def test_run_stdlib_removed_after_3_10_is_stamped_ecosystem_stdlib(
     """WI-gisan: the stdlib line is the union over every supported Python.
     ``distutils`` ships with the 3.10/3.11 runtime (removed in 3.12, PEP 632),
     so a call into it is ``ecosystem=stdlib``, not the ``third_party`` a
-    3.12-only list stamped. Still an external / tier-3 boundary node."""
+    3.12-only list would stamp. Still an external / tier-3 boundary node."""
     (tmp_path / "setup.py").write_text(
         "from distutils.spawn import spawn\n"
         "spawn(['true'])\n"

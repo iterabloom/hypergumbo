@@ -66,13 +66,13 @@ a shebang line (#!/bin/bash), requiring special detection beyond glob patterns.
 
 Alias identity (WI-tusad): an ``alias`` mints
 ``overload_arity.scoped_stable_id`` with the functions enclosing it as the
-scope chain, so the same alias defined in two functions is two symbols (the
-floor key ``(kind, path, name)`` nulled both). A function nested in another
-hashes the same chain in ``compute_stable_id``'s qualified-name slot
-(``overload_arity.nested_qualified_name``: ``outer_a/run``), so ``run`` inside
-``outer_a`` and ``run`` inside ``outer_b`` no longer tie and deleting
-``outer_a`` no longer renumbers the other (the stable_id scheme bump); a
-top-level function hashes an empty qualified name, as it always did.
+scope chain, so the same alias defined in two functions is two symbols
+rather than two that tie on the floor key ``(kind, path, name)``. A function
+nested in another hashes the same chain in ``compute_stable_id``'s
+qualified-name slot (``overload_arity.nested_qualified_name``:
+``outer_a/run``), so ``run`` inside ``outer_a`` and ``run`` inside
+``outer_b`` do not tie and deleting ``outer_a`` does not renumber the other;
+a top-level function hashes an empty qualified name.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ PASS_ID = make_pass_id("bash")
 # gate (launch vs builtin), NOT an I/O-relevance curation: every launch is a
 # subprocess crossing per ADR-0016 §1's "all launches risky" invariant, so the
 # gate must not try to distinguish curl from git (no clean invariant separates
-# them — the same hand-curation the high_risk retirement / WI-tijos closed). The
+# them, and hand-curating "risky" programs is ruled out; see WI-tijos). The
 # high VOLUME of low-signal launches (git/grep/sed) is handled downstream as a
 # COUNT question: ``command_launch`` is a DISCLOSED cohort excluded from
 # ``total_io_edges`` (io_boundary.py), mirroring ``external_potential`` — the
@@ -173,9 +173,9 @@ def shell_text(data: bytes) -> bytes:
     WI-fisoh. A self-executing archive is a short shell prefix with a binary
     appended -- coursier's launcher and ``java -jar "$0"`` stubs are a ZIP
     after one or two lines of ``sh``, and makeself installers append a tarball.
-    The shebang makes the file a bash file, tree-sitter parses the payload as
-    commands, and ``command_launch`` then reported control-character blobs and
-    an EMPTY STRING as launched programs (sbt: 7 of 52 primitives). The
+    The shebang makes the file a bash file, and parsed whole, tree-sitter
+    reads the payload as commands, so ``command_launch`` would report
+    control-character blobs and an EMPTY STRING as launched programs. The
     prefix is real shell (``exec java -jar "$0"`` is a real launch), so the
     file is not skipped whole as js_ts skips a NUL-bearing ``.ts``; the payload
     is.
@@ -344,7 +344,7 @@ def _exported_variable_names(
 # INV-nular. Variables BASH ITSELF assigns, from the shell manual's "Shell
 # Variables" section. A parameter expansion of one of these is not a read of
 # anything the caller supplied, so it is not an environment read — the same
-# reason INV-jurif already excludes a name the SCRIPT assigns. Splitting them
+# reason a name the SCRIPT assigns is excluded (INV-jurif). Splitting them
 # by SETTER rather than by apparent sensitivity is deliberate: a
 # "which names are secrets" list is exactly the curated enumeration the
 # env_read row refuses, wrong the moment a repo invents a name and wrong
@@ -369,13 +369,13 @@ _SHELL_STATE_NAMES: frozenset[str] = frozenset({
 })
 
 # The bash-assigned names that describe the HOST or the USER rather than the
-# shell's own bookkeeping. INV-tutar split `host_info_read` out of `env_read`
-# in exactly this situation one language over: env_read auto-derives the
-# `host_secret` taint label, so a host DESCRIPTION read counted as a credential
-# flow and made every host-secret-* claim fire on it. Python's catalogue puts
-# the syscall equivalents of every one of these under host_info_read already
-# (`getcwd`, `getuid`, `uname`), so this is the shipped classification reached
-# through bash's syntax rather than a new judgement.
+# shell's own bookkeeping. They are read as `host_info_read`, not `env_read`:
+# env_read auto-derives the `host_secret` taint label, so a host DESCRIPTION
+# read would count as a credential flow and make every host-secret-* claim
+# fire on it. Python's catalogue puts the syscall equivalents of every one of
+# these under host_info_read (`getcwd`, `getuid`, `uname`), so this is the
+# same classification reached through bash's syntax rather than a new
+# judgement (INV-tutar).
 _HOST_DESCRIPTION_NAMES: frozenset[str] = frozenset({
     "EUID", "HOSTNAME", "HOSTTYPE", "MACHTYPE", "OLDPWD", "OSTYPE", "PWD",
     "UID",
@@ -389,8 +389,9 @@ _HOST_DESCRIPTION_NAMES: frozenset[str] = frozenset({
 #: this call hand back a value whose content is chosen by the party on the far
 #: side of the boundary? For `curl -L "$URL"` it plainly does — the bytes are
 #: the HTTP response body — so a redirect capturing that stdout writes nothing
-#: this program held, and INV-fumod shape (b) is the finding that says
-#: otherwise. It is ADR-0016's own prohibition stated positively: that ADR
+#: this program held, and crediting curl's arguments to that write would be a
+#: false finding (INV-fumod shape (b)). It is ADR-0016's own prohibition
+#: stated positively: that ADR
 #: forbids attributing a launched program's I/O TO the shell, and this
 #: declines, on the same grounds, to attribute the child's BYTES to it.
 #:
@@ -398,9 +399,9 @@ _HOST_DESCRIPTION_NAMES: frozenset[str] = frozenset({
 #: scoped to "the shell's REDIRECTION surface" — the primitives the SHELL
 #: performs — and these are properties of other programs, so the catalogue is
 #: the wrong home rather than merely an unused one. Every other external
-#: command stays creditable, which is the fail-closed direction: measured,
+#: command stays creditable, which is the fail-closed direction:
 #: `sed -E "s#x#${v}#" f > out` really does interpolate an in-process value
-#: through an external command, so a broad "external writer" rule was refuted.
+#: through an external command, so a broad "external writer" rule is wrong.
 #: An addition here needs the same measured argument curl and wget have.
 _FAR_SIDE_FETCH_COMMANDS: frozenset[str] = frozenset({"curl", "wget"})
 
@@ -484,7 +485,8 @@ def _source_command_arg(
 ) -> Optional[str]:
     """The raw first-argument text of a ``source``/``.`` command node.
 
-    Deliberately WIDER than the ``sources`` edge emitter above, which takes
+    Deliberately WIDER than the ``sources`` edge emitter in
+    ``BashAnalyzer.extract_edges_from_file``, which takes
     only children of type ``word``: a quoted or substituted target is a
     ``string`` / ``command_substitution`` node, and those are 82.5% of the
     cohort's population.
@@ -511,9 +513,9 @@ def _for_loop_words(
 ) -> list[str]:
     """The iteration words of an enclosing ``for <var> in ...`` around *node*.
 
-    INV-pujob's own instance is ``for SCRIPT in /opt/guacamole/build.d/*.sh; do
+    The shape this serves is ``for SCRIPT in /opt/guacamole/build.d/*.sh; do
     source "$SCRIPT"; done`` -- the argument names a loop variable, so the
-    target is whatever the loop iterates.
+    target is whatever the loop iterates (INV-pujob).
     """
     current = node.parent
     while current is not None:
@@ -627,7 +629,7 @@ class _RepoBashIndex:
         Fail-closed at every branch: this removes taint sources, so an
         ambiguous or unrecognised target must contribute nothing rather than
         guess. Ambiguity is not hypothetical -- two ``common.sh`` in different
-        directories is ordinary, the cohort merely happens not to contain one.
+        directories is ordinary.
         """
         raw = _strip_quotes(arg)
         # A bare variable: the only binding this understands is an enclosing
@@ -728,12 +730,10 @@ def _externally_defaulted_names(
 
         if [[ -z ${TMPDIR:-} ]]; then TMPDIR=/var/tmp; fi
 
-    Read through the whole-file assignment rule alone, the fallback at line 2
-    is proof ``TMPDIR`` is a local. It is the opposite: it is the script
-    saying the value MAY come from outside. Measured cost of getting this
-    wrong -- three of the seven adjudicated USEFUL true positives that
-    measurement 0006 recorded and the tool later stopped reporting, including
-    ``gocryptfs#2``, which 0006's own panel had already reversed once by hand.
+    Read through the whole-file assignment rule alone, the fallback
+    assignment is proof ``TMPDIR`` is a local. It is the opposite: it is the
+    script saying the value MAY come from outside, and treating it as a
+    definition drops real environment reads.
 
     Read off ``expansion`` NODES rather than the raw file so a ``${VAR:-}``
     inside a comment cannot mint a source. String interiors are deliberately
@@ -773,13 +773,12 @@ def _redirect_origin_names(
 ) -> dict[int, tuple[str, ...]]:
     """Per write redirect, the EXTERNALLY-DERIVED names the shell can put there.
 
-    WI-zovuz. bash carries no dataflow (``dataflow_capable=False``), so a taint
-    finding in a shell script was call-graph reachability alone: "this file
-    reads the environment somewhere AND reaches a function that writes
-    somewhere". Measured over 15 cohort repos, 186 environment names are read
-    in the 69 files that also carry a write redirect and only 28 of them can
-    reach what the shell writes — 48 of those files have NO name that reaches
-    any redirect, so their redirect-sink findings rested on nothing.
+    bash carries no dataflow (``dataflow_capable=False``), so without this
+    map a taint finding in a shell script is call-graph reachability alone:
+    "this file reads the environment somewhere AND reaches a function that
+    writes somewhere". Most environment names a file reads cannot reach what
+    the shell writes (28 of 186 across the files measured), so a redirect
+    sink is narrowed to the names that can (WI-zovuz).
 
     WHAT THE SHELL CONTRIBUTES, and it is exactly three things:
 
@@ -792,7 +791,7 @@ def _redirect_origin_names(
        (``<<'EOF'``) suppresses expansion, and the grammar already reflects
        that by emitting no expansion node;
     3. the ARGUMENTS of every producing stage. Deliberately every stage, not
-       only shell builtins: measured, ``sed -E "s#x#${v}#" f > out``
+       only shell builtins: ``sed -E "s#x#${v}#" f > out``
        interpolates an in-process value THROUGH an external command, and
        ``echo "$SECRET" | base64 -d > cert`` carries a real signing
        certificate from stage one while the stage feeding the redirect is
@@ -800,8 +799,8 @@ def _redirect_origin_names(
        external?") is the WRONG one; this asks whether a NAME can reach.
 
     Returns a mapping keyed by the ``file_redirect`` node's start byte, which
-    is unique per site — deliberately not by line, because INV-vukiv is the
-    measurement that two redirects on one line must not collapse.
+    is unique per site — deliberately not by line, because two redirects on
+    one line must not collapse (INV-vukiv).
     """
     # A PARSE FAILURE IS NOT A PROOF OF EMPTINESS, and the damage is not
     # local. tree-sitter recovers from a shape it cannot model with an ERROR
@@ -837,8 +836,7 @@ def _redirect_origin_names(
         # and the env-read rule one level up already treats `f` as ASSIGNED
         # (``for_statement`` is in its own set), so without this clause `f`
         # would be neither an external name nor derived from one, and the
-        # redirect would report reaching nothing. Found by reading a removed
-        # row back against source, which is the only reason it is here.
+        # redirect would report reaching nothing.
         if node.type not in ("variable_assignment", "for_statement"):
             continue
         target = find_child_by_type(node, "variable_name")
@@ -1002,19 +1000,18 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """
         analysis = FileAnalysis()
 
-        # WI-bokab (v7): file-identity anchor for this file's symbols.
+        # File-identity anchor for this file's symbols (WI-bokab).
         # ``rel_path`` is the repo-relative path (the base-class extract
         # contract passes it). Folded into compute_stable_id's
         # containing_stable_id slot so same-name functions in different files
         # hash distinctly. Computed once and reused across this file's symbols.
         file_anchor = self._file_anchor(rel_path)
 
-        # INV-kokaj: emit the file pseudo-node as kind="file" with the
-        # canonical file-id shape so the orchestrator file-symbol synthesizer
-        # dedups against it (existing_ids check). Before this fix, every
-        # bash file emitted TWO Symbols for the same path — kind="module"
-        # here AND kind="file" from the synthesizer when any edge targeted
-        # the file id. File-kind is the cross-language canonical for
+        # Emit the file pseudo-node as kind="file" with the canonical file-id
+        # shape so the orchestrator file-symbol synthesizer dedups against it
+        # (existing_ids check) rather than adding a second Symbol for the
+        # same path when an edge targets the file id (INV-kokaj). File-kind
+        # is the cross-language canonical for
         # "this file" (see analyze.base.make_file_id); this Symbol provides
         # an enclosing scope for module-level edges (function calls outside
         # any function definition) so the script remains reachable in slice
@@ -1067,10 +1064,10 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         signature="()",
-                        # WI-pulor: end_line - start_line + 1 matches the
-                        # convention documented at ir.py:349. Without this,
+                        # end_line - start_line + 1, the convention in the
+                        # ``Symbol.line_span`` docstring (ir.py). Without it,
                         # bash function symbols render as ``? LOC`` in
-                        # dead-code-maybe output.
+                        # dead-code-maybe output (WI-pulor).
                         line_span=end_line - start_line + 1,
                         # INV-loguk: McCabe complexity over the bash grammar's
                         # if/elif/for/while/case decision points.
@@ -1096,9 +1093,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 # re-assigns it and a bare `export X` re-sets the attribute;
                 # neither makes a second exported variable -- and the
                 # kind's identity factory (`make_export_stable_id`) is
-                # `(language, path, name)`. One Symbol per STATEMENT gave a
-                # re-exported name several same-(path, name, kind) nodes that
-                # only the `:occ:<n>` re-hash told apart.
+                # `(language, path, name)`. One Symbol per STATEMENT would give
+                # a re-exported name several same-(path, name, kind) nodes that
+                # only the `:occ:<n>` re-hash tells apart.
                 for var_name in _exported_variable_names(node, source):
                     if var_name in exported_names:
                         continue
@@ -1172,10 +1169,10 @@ class BashAnalyzer(TreeSitterAnalyzer):
         Exports and aliases are file-local; only functions can be called
         from other files via 'source' + function-name invocation.
 
-        INV-kokaj: ``file`` joins ``function`` so the file pseudo-node
-        (formerly ``kind="module"``) remains reachable from the global
-        registry — Pass 2 looks up the file Symbol by name to attribute
-        top-level calls (calls outside any function definition) to it.
+        ``file`` is registered alongside ``function`` so the file pseudo-node
+        is reachable from the global registry — Pass 2 looks up the file
+        Symbol by name to attribute top-level calls (calls outside any
+        function definition) to it (INV-kokaj).
         """
         if symbol.kind in ("function", "file"):
             global_symbols[symbol.name] = symbol
@@ -1230,9 +1227,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
         _caller_path = str(file_path)
         file_id = make_file_id("bash", rel_path)
 
-        # INV-kokaj: look up the file pseudo-node by its new canonical
-        # name (the rel_path the Pass 1 emitter stamped) for top-level
-        # call attribution.
+        # Look up the file pseudo-node by its canonical name (the rel_path
+        # the Pass 1 emitter stamped) for top-level call attribution
+        # (INV-kokaj).
         module_symbol: Symbol | None = global_symbols.get(rel_path)
 
         def _get_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
@@ -1253,25 +1250,24 @@ class BashAnalyzer(TreeSitterAnalyzer):
         # not a distinct boundary each time).
         seen_launches: set[tuple[str, str]] = set()
 
-        # INV-jurif: names ASSIGNED anywhere in this file. A name that is
-        # expanded but never assigned here came from the environment — the
-        # conservative discriminator available without cross-file analysis.
-        # Deliberately whole-file rather than per-scope: bash assignment is
-        # dynamically scoped and a name assigned in one function is visible in
-        # another it calls, so a per-scope rule would call an assigned name an
-        # env read and over-report. Erring toward FEWER sources is the right
+        # Names ASSIGNED anywhere in this file (INV-jurif). A name that is
+        # expanded but never assigned here (or in a file joined by `source`,
+        # below) came from the environment. Deliberately whole-file rather
+        # than per-scope: bash assignment is dynamically scoped and a name
+        # assigned in one function is visible in another it calls, so a
+        # per-scope rule would call an assigned name an env read and
+        # over-report. Erring toward FEWER sources is the right
         # direction for a taint SOURCE — a missed source under-reports, an
         # invented one manufactures findings that do not exist.
         assigned_names = _assigned_names(tree, source)
 
-        # INV-pujob: and names assigned in any file joined to this one by
-        # `source`. bash is dynamically scoped in BOTH directions -- the
+        # Plus names assigned in any file joined to this one by `source`
+        # (INV-pujob). bash is dynamically scoped in BOTH directions -- the
         # sourced script sees the sourcer's assignments (guacamole's
-        # DESTINATION, assigned at build-guacamole.sh:58 and read by every
+        # DESTINATION, assigned in build-guacamole.sh and read by every
         # build.d script it sources) and the sourcer sees the sourced script's
-        # (cilium's GHCURL, assigned in gitlib.sh). Whole-file was the
-        # conservative rule available before this index existed; it called
-        # DESTINATION a host_secret and carried a host_fs finding on it.
+        # (cilium's GHCURL, assigned in gitlib.sh). The file alone would call
+        # DESTINATION an environment read and a host_secret source.
         #
         # FAILS CLOSED BY CONSTRUCTION: the index contributes names only for
         # `source` targets it RESOLVED, and every ambiguous or unrecognised
@@ -1281,20 +1277,19 @@ class BashAnalyzer(TreeSitterAnalyzer):
         if index is not None:
             assigned_names = assigned_names | index.names_visible_to(rel_path)
 
-        # WI-zovuz: which externally-derived names can reach what the SHELL
-        # writes at each redirect. Computed once per file — the derivation
+        # Which externally-derived names can reach what the SHELL writes at
+        # each redirect (WI-zovuz). Computed once per file — the derivation
         # closure is whole-file, so recomputing it per redirect would be the
         # same answer at N times the cost.
         redirect_origins = _redirect_origin_names(tree, source, assigned_names)
 
         for node in iter_tree(tree.root_node):
             if node.type in ("simple_expansion", "expansion"):
-                # INV-jurif: `$API_KEY` reads the environment, and bash emitted
-                # NOTHING for it — so bash carried 0 taint sources, failed the
-                # both-halves predicate, and made every claim on any repo
-                # containing a shell script `inconclusive` (INV-dabuf's 18/18).
-                # The SINK half shipped with INV-vavup; this is the source half
-                # it named as "taint-support SECOND".
+                # `$API_KEY` reads the environment. This is bash's taint
+                # SOURCE half (the redirect branch below is the SINK half):
+                # with no sources, bash fails the both-halves predicate and
+                # every claim on a repo containing a shell script is
+                # `inconclusive` (INV-jurif).
                 #
                 # Emitted as module_attr_ref on the shipped os.environ
                 # precedent: an environment read is an attribute access, not a
@@ -1312,27 +1307,24 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 # environment.
                 if not var_name[0].isalpha() and var_name[0] != "_":
                     continue
-                # INV-nular. The comment here used to claim that "$PWD-style
-                # shell-maintained names" were excluded while the code filtered
-                # only the non-alphabetic first character, so $BASH_SOURCE,
-                # $RANDOM and $LINENO each derived a host_secret taint SOURCE.
+                # Names bash itself maintains ($BASH_SOURCE, $RANDOM,
+                # $LINENO) are not environment reads either (INV-nular).
                 #
                 # THE RULE IS WHO SET THE VARIABLE, not whether the name looks
                 # sensitive — a sensitivity list is the curated name list the
                 # env_read row exists to refuse (it is wrong the moment a repo
                 # invents a name, and wrong in the SILENT direction). It is
-                # INV-jurif's own discriminator one level out: a name the
+                # the assigned-names discriminator one level out: a name the
                 # SCRIPT assigns is not an environment read, and neither is a
                 # name BASH assigns. $HOME stays an env read because bash does
                 # not set it, it inherits it.
                 if var_name in _SHELL_STATE_NAMES:
                     continue
                 if var_name in _HOST_DESCRIPTION_NAMES:
-                    # INV-tutar, one language over: env_read auto-derives the
-                    # host_secret label, so routing OSTYPE through it made a
-                    # host DESCRIPTION read count as a credential flow. The
-                    # read is real and stays reported — reclassified, not
-                    # suppressed.
+                    # env_read auto-derives the host_secret label, so routing
+                    # OSTYPE through it would count a host DESCRIPTION read as
+                    # a credential flow. The read is real and stays reported —
+                    # reclassified, not suppressed (INV-tutar).
                     dst = "bash:shell:0-0:shell.hostinfo:attribute"
                 else:
                     dst = "bash:env:0-0:env.environ:attribute"
@@ -1390,15 +1382,13 @@ class BashAnalyzer(TreeSitterAnalyzer):
                             ]
                             if words:
                                 sourced_path = node_text(words[0], source)
-                                # WI-hugom: previously dst was the raw
-                                # sourced_path (e.g. '/etc/kafka/docker/launch'),
-                                # which fell through ir._parse_dangling_id and
-                                # stuffed the path into the language slot of the
-                                # synthesized boundary node (observed on kafka
-                                # cohort-001/iter-001 as 8 such nodes). Construct
-                                # a properly-formed 5-part dst id; sourced_path
-                                # preserved on edge.meta for any future consumer
-                                # that needs path-based resolution.
+                                # dst is a well-formed 5-part id, not the raw
+                                # sourced_path: a bare path such as
+                                # '/etc/kafka/docker/launch' falls through
+                                # ir._parse_dangling_id and lands in the
+                                # language slot of the synthesized boundary
+                                # node. sourced_path rides on edge.meta for
+                                # path-based consumers (WI-hugom).
                                 dst_basename = (
                                     sourced_path.rsplit("/", 1)[-1]
                                     or sourced_path
@@ -1490,33 +1480,32 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
         return edges
 
-    # POSIX redirection operators, by the boundary they cross and the mode
-    # they open the target in. `>` and `>>` are ONE primitive at two modes,
-    # not two primitives — the truncate/append distinction rides on io_mode
-    # (the builtins.open pattern) so it cannot become an INV-zumin row-order
-    # collision. `>|` is `>` with noclobber defeated: same write, same mode.
+    # POSIX redirection operators, mapped to the mode they open the target
+    # in. `>` and `>>` are ONE primitive at two modes, not two primitives —
+    # the truncate/append distinction rides on io_mode (the builtins.open
+    # pattern) so it cannot become an INV-zumin row-order collision. `>|` is
+    # `>` with noclobber defeated: same write, same mode.
     # The MODE only. Which BOUNDARY an operator crosses is the catalogue's
     # call (io_primitives/bash.yaml), not the analyzer's — ADR-0016's
     # amendment puts the operator in data so a divergent shell (tcsh, fish)
-    # can be given different rows without touching this file. `>|` is `>`
-    # with noclobber defeated: same write, same mode.
+    # can be given different rows without touching this file.
     _REDIRECT_OPS: ClassVar[dict[str, str]] = {
         ">": "w", ">|": "w", ">>": "a", "<": "r",
     }
 
     #: Targets that name a KERNEL DEVICE rather than a place in a filesystem.
-    #: INV-nular: `echo "$API_KEY" > /dev/null` was measured returning
-    #: `violated` (rc 1) against `{boundary: fs_write, must_not_exist: true}`,
-    #: and nothing is written to any filesystem — the kernel discards the
-    #: bytes, so no observation anywhere differs because the redirect ran. That
-    #: is what makes the finding VACUOUS rather than merely imprecise.
+    #: Read as a filesystem write, `echo "$API_KEY" > /dev/null` would violate
+    #: `{boundary: fs_write, must_not_exist: true}`, yet nothing is written to
+    #: any filesystem — the kernel discards the bytes, so no observation
+    #: anywhere differs because the redirect ran. That is what makes such a
+    #: finding VACUOUS rather than merely imprecise (INV-nular).
     #:
     #: `/dev/null` is separated from the STANDARD STREAMS because they are not
     #: the same fact. A write to `/dev/stderr` really does leave the process
     #: and really can publish a secret — it is a `logging` crossing, not a
     #: filesystem one — so it is MARKED here and deliberately not reclassified;
-    #: doing that needs the `logging`-vs-`fs_write` decision the haskell
-    #: hPutStrLn rows are already waiting on (INV-vaduk shape 4).
+    #: doing that needs the `logging`-vs-`fs_write` decision that is still
+    #: open for the haskell hPutStrLn rows (INV-vaduk shape 4).
     _NULL_DEVICE_TARGETS: ClassVar[frozenset[str]] = frozenset({
         "/dev/null",
     })
@@ -1558,9 +1547,8 @@ class BashAnalyzer(TreeSitterAnalyzer):
         bodies, fd duplication such as `2>&1`, and the process-substitution
         forms) — NOT for an unresolvable target. A redirect whose target is a
         variable (`> "$OUT"`) still emits, marked unresolved: the write
-        happened, and staying silent about it is the fail-open direction this
-        area keeps paying for. An honest "wrote somewhere I cannot name" is
-        strictly better than nothing.
+        happened, and staying silent about it would fail open. An honest
+        "wrote somewhere I cannot name" is strictly better than nothing.
         """
         op_node = next(
             (c for c in node.children if c.type in self._REDIRECT_OPS), None,

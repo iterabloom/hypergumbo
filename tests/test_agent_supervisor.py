@@ -96,7 +96,7 @@ class MockRunner:
         return subprocess.CompletedProcess(args=cmd, returncode=rc, stdout=out, stderr=err)
 
 
-# --- Autouse: disable the seed-bootstrap pane-ready wait in existing
+# --- Autouse: disable the seed-bootstrap pane-ready wait in all
 # tests. The seed-specific tests exercise the wait helper directly with
 # explicit arguments; everything else just needs spawn_fresh() to not
 # hang on a real-time capture-pane poll loop.
@@ -464,9 +464,8 @@ class TestStopSentinel:
     def test_stop_leaves_log_entry(self, asv, state_dir, fake_repo) -> None:
         """A clean stop via sentinel must emit a log line so that
         ``tail respawn_log.log`` distinguishes stop-sentinel shutdown from
-        a daemon crash. Regression test for the 2026-04-19 post-trial
-        investigation, where the lack of a stop log made the operator
-        misread a manual `stop` as a silent crash."""
+        a daemon crash; without it a manual `stop` reads as a silent
+        crash."""
         sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo)
         (state_dir / "supervisor.stop-sentinel").touch()
         sup.run(interval_sec=999999)
@@ -474,7 +473,7 @@ class TestStopSentinel:
         assert "stop sentinel consumed; exiting" in log_text
 
 
-# --- Rate-limit saturation auto-shutdown (trial follow-up) ---
+# --- Rate-limit saturation auto-shutdown ---
 
 
 class TestRateLimitSaturationKill:
@@ -517,10 +516,9 @@ class TestRateLimitSaturationKill:
         self, asv, state_dir, fake_repo,
     ) -> None:
         """Run loop exits after RATE_LIMIT_SATURATION_KILL consecutive
-        rate-limited ticks and logs the auto-shutdown line. Bounds the
-        otherwise-indefinite "rate-limit reached" spam observed in the
-        2026-04-18→04-19 trial (145 identical log lines before manual
-        stop)."""
+        rate-limited ticks and logs the auto-shutdown line, bounding
+        what would otherwise be an indefinite stream of identical
+        "rate-limit reached" log lines."""
         (fake_repo / "autonomous_intent.txt").write_text("DEEP\n")
         # No sessions exist → poll_once will try to spawn each tick.
         runner = MockRunner({
@@ -748,7 +746,7 @@ class TestCLIDispatch:
     def test_stop_is_noop_when_no_lock_file(self, tmp_path: Path) -> None:
         """Running `stop` with no supervisor ever started must NOT arm the
         stop sentinel — otherwise the next `run` invocation consumes it and
-        exits immediately, which is the failure mode this fix addresses."""
+        exits immediately."""
         state = tmp_path / "state"
         state.mkdir()
         env = os.environ.copy()

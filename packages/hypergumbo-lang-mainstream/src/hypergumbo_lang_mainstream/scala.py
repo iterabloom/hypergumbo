@@ -38,7 +38,7 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
    - A method call's receiver is typed by :class:`_ScalaReceiverTyper`: the
      nearest lexical binder when its type can be said, else the file-wide
-     declared map as before; an inferred ``val``, a call result, a chained
+     declared map; an inferred ``val``, a call result, a chained
      receiver, a parameterless member, ``this`` and ``asInstanceOf[T]`` are
      typed through the registry, and a ``for`` generator, a one-parameter
      lambda / ``case`` / ``_`` of an element-passing call and a ``.get`` /
@@ -95,16 +95,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 
 Identity (WI-tusad): every stable_id hashes the FULL chain of enclosing
 scopes (``_scala_scope``: block packages, classes, objects, traits, enums,
-givens, functions), never the nearest owner alone. An ``object`` and a named
-``given`` (``instance``) mint ``make_typed_stable_id`` over it (before, they
-rode the backstop floor key, which two nested ``object Inner`` share, so both
-were null); methods, fields and enum cases hash ``A.Inner.go`` where they
-hashed their emitted name ``Inner.go``; classes, traits and enums mint
-``overload_arity.scoped_table_stable_id`` (INV-fabih: ``class Inner`` in two
-outer classes shared the backstop's bare-name table key, so deleting the first
-outer class moved the second ``Inner``'s id and its members'). A member of a
-top-level type, and a top-level type, keep their values: there the chain is
-the nearest owner. Emitted names are unchanged.
+givens, functions), never the nearest owner alone, which two nested
+``object Inner`` (or ``class Inner``) in different outer types share. An
+``object`` and a named ``given`` (``instance``) mint ``make_typed_stable_id``
+over it; methods, fields and enum cases hash ``A.Inner.go``, not their emitted
+name ``Inner.go``; classes, traits and enums mint
+``overload_arity.scoped_table_stable_id`` over it, so deleting one outer class
+does not move another's nested ``Inner``'s id or its members' (INV-fabih). For
+a member of a top-level type, and a top-level type, the chain is the nearest
+owner. Emitted names keep the nearest owner.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction
@@ -175,8 +174,8 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("scala")
 
-#: INV-bamij: templates whose BODY anchors a call that sits in no function
-#: (every ``val`` in an ``object`` is an initialiser).
+#: Templates whose BODY anchors a call that sits in no function (every
+#: ``val`` in an ``object`` is an initialiser; INV-bamij).
 _TYPE_BODY_NODES: frozenset[str] = frozenset({
     "object_definition", "class_definition", "trait_definition", "enum_definition",
 })
@@ -304,8 +303,9 @@ def _block_scoped_imports(
 
     ``_extract_import_hints`` reads every import as file-wide. That is harmless
     for a module-slot hint, but an import used to REFUSE a binding (WI-tipoh)
-    must apply to the call. On zio, a ``scala.concurrent.Promise`` imported
-    inside one test refused ``zio.Promise`` calls elsewhere in the file. A name
+    must apply only where it is in force: a ``scala.concurrent.Promise``
+    imported inside one test must not refuse ``zio.Promise`` calls elsewhere in
+    the file. A name
     also imported at top level is left out: the file-wide reading stands for it.
     """
     top: set[str] = set()
@@ -368,23 +368,21 @@ def _extract_annotation_info(
 #: Types Scala imports IMPLICITLY -- ``scala.Predef._``, ``scala._``,
 #: ``java.lang._`` -- which therefore appear in NO import line.
 #:
-#: WHY A GENERIC BASE IS DENIED WHEN IT IS ONE OF THESE, measured rather than
-#: argued. Widening type extraction to ``generic_type`` makes ``val m:
-#: Map[String, X]`` contribute the base ``Map``. That name cannot qualify --
-#: there is no import to look it up in -- so it adds NOTHING to the module slot.
-#: What it does instead is reach the bare short-name bind, which is the funnel
-#: this file's own external branch refuses for untyped receivers ("confidently
-#: bind to an arbitrary same-named internal def"). On sbt that produced 44
-#: bindings of a standard-library ``Map[K,V]`` to the PROJECT's
-#: ``sbt/SessionVar.scala`` ``Map.get`` -- 24% of every edge the change newly
-#: resolved. lila showed 0, because lila happens to define no such collider;
-#: that is luck, not safety.
+#: WHY A GENERIC BASE IS DENIED WHEN IT IS ONE OF THESE. Type extraction reads
+#: a ``generic_type``'s base, so ``val m: Map[String, X]`` would contribute
+#: ``Map``. That name cannot qualify -- there is no import to look it up in --
+#: so it adds NOTHING to the module slot. What it does instead is reach the
+#: bare short-name bind, which is the funnel this file's own external branch
+#: refuses for untyped receivers ("confidently bind to an arbitrary same-named
+#: internal def"): in a project that declares its own ``Map`` with a ``get``
+#: (sbt's ``SessionVar.scala``), every standard-library ``Map[K,V]`` receiver
+#: would bind to it. A project that happens to define no such collider is
+#: lucky, not safe.
 #:
 #: SCOPED TO THE GENERIC BASE, DELIBERATELY. An explicitly ANNOTATED bare
-#: ``val x: Map = ...`` is untouched: the programmer wrote that name, it is the
-#: pre-existing INV-fahub / WI-bihit population, and narrowing it is a separate
-#: change with its own measurement. This denies only names this change would
-#: newly INVENT from a type argument.
+#: ``val x: Map = ...`` is untouched: the programmer wrote that name (the
+#: INV-fahub / WI-bihit population), and narrowing it is a separate decision.
+#: This denies only names that would be INVENTED from a type argument.
 _SCALA_IMPLICIT_IMPORT_TYPES = frozenset({
     "Map", "List", "Set", "Seq", "Vector", "Array", "Option", "Some", "Either",
     "Left", "Right", "Iterable", "Iterator", "Stream", "Range", "String",
@@ -406,8 +404,9 @@ _SCALA_IMPLICIT_OBJECTS: "dict[str, str]" = {
 _SCALA_CONSOLE_STREAMS = frozenset({"out", "err"})
 
 #: The type-node kinds a declared Scala type can take. ``type_identifier`` is
-#: the bare one every extraction site used to look for exclusively; the other
-#: two were invisible, which cost the hint entirely (WI-pokam).
+#: the bare one; a qualified (``java.io.File``) or generic (``Buffer[String]``)
+#: type parses to one of the other two, and a site that does not read them
+#: loses the hint entirely (WI-pokam).
 _SCALA_TYPE_NODES = ("type_identifier", "stable_type_identifier", "generic_type")
 
 
@@ -435,9 +434,9 @@ def _is_project_type(
     type (WI-tipoh): ``import scala.sys.process.Process`` then
     ``Process.apply(c)`` is the stdlib's, whatever the project names
     ``Process``. An import of a PROJECT path keeps the name a project type even
-    when the registry holds a different same-named one. On spark, 1217
-    ``Utils.x`` calls on the imported ``org.apache.spark.util.Utils`` would
-    otherwise have lost the placeholder slot the Tier-2 linkers resolve from.
+    when the registry holds a different same-named one, so a call on it
+    (``Utils.x`` on an imported ``org.apache.spark.util.Utils``) keeps the
+    placeholder slot the Tier-2 linkers resolve from.
     """
     sym = global_symbols.get(name)
     if sym is None or sym.kind not in ("class", "object", "trait"):
@@ -563,12 +562,12 @@ def _import_names_elsewhere(
     ``sym`` the resolver returned (WI-tipoh).
 
     An explicit import outranks a same-named project symbol in another package:
-    ``import scala.sys.process.Process`` then ``Process(cmd)`` bound to spark's
-    unrelated test ``case class Process``. That is the edge this refuses.
+    ``import scala.sys.process.Process`` then ``Process(cmd)`` must not bind to
+    an unrelated project ``case class Process``. That is the edge this refuses.
 
-    WHY NOT AN EXACT QUALIFIED NAME, AS KOTLIN USES. Measured on the scala
-    cohort, an exact ``<package>.<name>`` against the import withheld correct
-    edges from three causes:
+    WHY NOT AN EXACT QUALIFIED NAME, AS KOTLIN USES. An exact
+    ``<package>.<name>`` against the import would withhold correct edges for
+    three reasons:
     - a scala import may be RELATIVE, to an enclosing package, to a wildcard
       import, or to ``scala._`` (``import pekko.util.OptionVal`` inside
       ``org.apache.pekko``; ``collection.concurrent.TrieMap``);
@@ -595,7 +594,7 @@ def _import_names_elsewhere(
     ``import cm.{AnyRefMap}`` names ``scala.collection.mutable.AnyRefMap``.
 
     Nothing to contradict (no import, an import with no dot, a file whose package
-    is unknown) is False, the old behaviour.
+    is unknown) is False.
     """
     if not imported or "." not in imported or file_packages is None:
         return False
@@ -622,8 +621,7 @@ def _import_names_elsewhere(
     # symbol name omits the object. The import fits when its leaf is the symbol
     # or a type enclosing it (a call on a value of the imported type returns a
     # member: ``SymDenotation.is``), and it passes through a type the symbol's
-    # own file declares. Measured: 91 withholds on scala3 and 39 on pekko were
-    # this shape.
+    # own file declares.
     parts = imported.split(".")
     return not (parts[-1] in sym.name.split(".")
                 and any(part in info.types for part in parts[:-1]))
@@ -703,27 +701,27 @@ def _qualify_scala_receiver(
 ) -> "str | None":
     """The module-slot path for a receiver type, or ``None`` to keep the sentinel.
 
-    WI-sigog's discipline, unchanged: the slot only ever carries a path THE FILE
-    ITSELF DECLARES. A bare name is looked up in the file's imports and left
+    The slot only ever carries a path THE FILE ITSELF DECLARES (WI-sigog). A
+    bare name is looked up in the file's imports and left
     alone when it misses, because a simple name in the module slot asserts a
     module that does not exist and can collide with a catalogued entry of the
     same short name (INV-fazim).
 
-    WI-pokam adds ONE case to "declares": an INLINE QUALIFICATION. ``val b:
+    ONE case besides an import counts as "declares": an INLINE QUALIFICATION
+    (WI-pokam). ``val b:
     java.io.File`` states the path at the use site, which is the same fact
     ``import java.io.File`` states at the top of the file — and it is precisely
     the case where there is NO import line to consult, so the alternative is not
     a safer answer but no answer. Nothing is invented and nothing is looked up:
     the name qualifies to itself.
 
-    THE KNOWN IMPRECISION, named rather than discovered later. Scala also writes
+    THE KNOWN IMPRECISION. Scala also writes
     a PATH-DEPENDENT type in type position (``val x: someObj.Inner``), which
     parses to the same ``stable_type_identifier`` node. That would put
     ``someObj.Inner`` in the slot, which is not a module. It is bounded rather
     than unbounded: a dotted name is far less collision-prone than the bare name
     INV-fazim refused, and a path that names nothing simply matches no catalogue
-    row. The corpus share of the shape is measured rather than assumed — see
-    ``~/hypergumbo_lab_notebook/pokam_scala_09102026/``.
+    row.
     """
     imported: "str | None" = import_aliases.get(receiver_type)
     if imported:
@@ -734,13 +732,13 @@ def _qualify_scala_receiver(
 def _declared_type_name(parent: "tree_sitter.Node", source: bytes) -> "str | None":
     """The NAME of the type declared as a direct child of ``parent``, or ``None``.
 
-    THE ONE PLACE A DECLARED TYPE IS NAMED. Every site that wanted a type used
-    to call ``find_child_by_type(parent, "type_identifier")`` itself, which named
-    ONLY a bare type; a qualified type (``java.io.File``) parses to
-    ``stable_type_identifier`` and a generic applied type (``Buffer[String]``) to
-    ``generic_type``, so four sites independently returned ``None`` for both.
-    Sharing the PREDICATE is not enough when callers can still walk different
-    populations (INV-motos), so this shares the WALK as well.
+    THE ONE PLACE A DECLARED TYPE IS NAMED. A bare type parses to
+    ``type_identifier``, a qualified type (``java.io.File``) to
+    ``stable_type_identifier`` and a generic applied type (``Buffer[String]``)
+    to ``generic_type``; a site that looks only for ``type_identifier`` gets
+    ``None`` for the other two. Sharing the PREDICATE is not enough when callers
+    can still walk different populations (INV-motos), so every site shares this
+    WALK as well.
 
     WHAT EACH SHAPE CONTRIBUTES, and the two are deliberately different:
 
@@ -775,10 +773,10 @@ def _type_node_name(node: "tree_sitter.Node", source: bytes) -> "str | None":
         return node_text(node, source)
     if node.type == "generic_type":
         base = _declared_type_name(node, source)
-        # A base this change INVENTED from a type argument is refused when
-        # it is an implicitly-imported name: it cannot qualify, so its only
+        # A base INVENTED from a type argument is refused when it is an
+        # implicitly-imported name: it cannot qualify, so its only
         # reachable effect is a short-name mis-bind. See
-        # :data:`_SCALA_IMPLICIT_IMPORT_TYPES` for the measurement.
+        # :data:`_SCALA_IMPLICIT_IMPORT_TYPES`.
         if base is not None and base not in _SCALA_IMPLICIT_IMPORT_TYPES:
             return base
     return None
@@ -807,7 +805,7 @@ def _registrable_type(name: "str | None", member: "tree_sitter.Node", source: by
     Two refusals, both about types the registry would INVENT for a caller that
     wrote no type at all. An implicitly-imported name (``String``, ``Int``,
     ``List``, ``Option``) cannot qualify, so its only reachable effect is the
-    short-name mis-bind WI-pokam measured (:data:`_SCALA_IMPLICIT_IMPORT_TYPES`).
+    short-name mis-bind :data:`_SCALA_IMPLICIT_IMPORT_TYPES` describes (WI-pokam).
     A type parameter names nothing outside the declaration.
     """
     if name is None or name in _SCALA_IMPLICIT_IMPORT_TYPES:
@@ -903,7 +901,7 @@ def _scala_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
 
     ``_get_enclosing_type`` keeps the nearest owner only, which two nested
     ``object Inner`` (or ``class Inner``) in classes ``A`` and ``B`` share, so
-    their ids and their members' ids tied. A header ``package a.b`` is no
+    hashing it alone would tie their ids and their members' ids. A header ``package a.b`` is no
     ancestor (the rest of the file is its sibling) and applies to the whole
     file, which the file anchor already identifies, so it is not in the chain;
     a block package can repeat within a file, so it is.
@@ -932,12 +930,12 @@ def _get_enclosing_function(
 ) -> Optional[Symbol]:
     """The function or method whose declaration contains ``node``.
 
-    Keyed by the declaration's POSITION, not its name (INV-midag). The short
-    name is shared by the ``apply`` of every companion in a file, and by
-    ``OneOf.show`` / ``WebSocketBodyOutput.show`` in tapir's EndpointIO.scala.
-    The lookup returned whichever registered last, so 964 of 16,531 scala call
-    edges on a 26-repo run named a src that does not contain the call. A
-    ``function_definition`` with no symbol (a local ``def``) is walked past.
+    Keyed by the declaration's POSITION, not its short name: the ``apply`` of
+    every companion in a file shares one, as do ``OneOf.show`` and
+    ``WebSocketBodyOutput.show`` in one file, and a name-keyed lookup returns
+    whichever registered last, naming a src that does not contain the call
+    (INV-midag). A ``function_definition`` with no symbol (a local ``def``) is
+    walked past.
     """
     current = node.parent
     while current is not None:
@@ -952,8 +950,8 @@ def _get_enclosing_function(
 # WI-jusus (emission-parity F5): scope discrimination for a val/var, so only a
 # class/object/trait/enum/given-body val becomes a ``field`` and only a
 # top-level val a ``variable``. Any LOCAL binding is NOT an API surface —
-# emitting one would repeat the swift INV-lanaz / go INV-sidab function-local
-# leak regressions. The local set must catch every non-body scope a val can sit
+# emitting one is the function-local leak swift and go also guard against
+# (INV-lanaz, INV-sidab). The local set must catch every non-body scope a val can sit
 # directly under: a block/function/lambda, a ``case_clause`` (a braceless
 # ``case _ => val w`` in a partial-function literal / match / try-catch — the
 # *initializer* of a field or top-level val, which would otherwise climb to the
@@ -1163,9 +1161,8 @@ def _extract_symbols_from_file(
                 # ``function_definition`` with identifier text "this" —
                 # ``def this(arg) = this(...)``. These are not methods;
                 # they're constructors, invoked by ``new ClassName(arg)``.
-                # Without this special case, the WI-tubot prospector
-                # surfaced them (e.g. CachedPartition.this, KafkaConfig.this)
-                # as top-ranked dead-code candidates, because the static
+                # Read as methods, they would rank as top dead-code
+                # candidates (``KafkaConfig.this``), because the static
                 # call graph never reaches them.
                 is_secondary_ctor = (
                     func_name == "this" and enclosing_type is not None
@@ -1307,8 +1304,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 base_classes = _extract_extends_clause(node, source)
                 annotations = _extract_annotations_scala(node, source)
-                # Renamed from `meta` — a different construct's meta dict than
-                # the earlier `meta` in this method (fixes mypy [no-redef]). Typed
+                # Not named `meta`: that is a different construct's meta dict
+                # earlier in this method (mypy [no-redef]). Typed
                 # non-Optional and built up as a dict, then coerced to None only at
                 # the Symbol via `or None`, so indexed assignment type-checks
                 # instead of tripping [index] on the `| None` arm (WI-hokag).
@@ -1355,10 +1352,10 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 modifiers = _extract_modifiers_scala(node)
-                # WI-kipol: an object's ``extends`` / ``with`` bases too, as
-                # classes and traits record theirs. ``object Factory extends
-                # Base`` had no inheritance edge, so a call on the object to an
-                # inherited member could never be walked to ``Base``.
+                # An object's ``extends`` / ``with`` bases too, as classes and
+                # traits record theirs: without an inheritance edge for
+                # ``object Factory extends Base``, a call on the object to an
+                # inherited member could never be walked to ``Base`` (WI-kipol).
                 object_bases = _extract_extends_clause(node, source)
                 object_meta: dict[str, object] | None = None
                 if object_bases:
@@ -1438,12 +1435,10 @@ def _extract_symbols_from_file(
             # val/var fields (Color.rgb -> Color). The `given` owner is emitted
             # below.
             #
-            # WI-dorop: the enum's CASES are now emitted too — they were the
-            # "remain out of scope" this comment used to record. Without them a
-            # reverse slice from the enum returned the container alone, which a
-            # consumer reads as "this enum is dead". Same defect WI-duguk
-            # drained for the eight analyzers the G2 parity matrix gates; scala
-            # is outside that matrix, so nothing caught it.
+            # The enum's CASES are emitted too (WI-dorop): without them a
+            # reverse slice from the enum returns the container alone, which a
+            # consumer reads as "this enum is dead". scala is outside the G2
+            # emission-parity matrix, so no matrix gate checks this.
             name_node = find_child_by_type(node, "identifier")
             if name_node:
                 type_name = node_text(name_node, source)
@@ -1553,7 +1548,7 @@ def _extract_symbols_from_file(
                         analysis.symbol_by_name[case_full] = case_sym
 
         elif node.type == "given_definition":
-            # WI-pujiz (REUSE-INSTANCE — 3-lens ADR/spec/spirit audit): a Scala 3
+            # A Scala 3
             # `given` is a typeclass / interface INSTANCE, the same construct
             # Haskell/Lean/PureScript already emit as kind="instance" (the
             # cross-language canonical). Per ADR-0027 a distinct source keyword
@@ -1563,6 +1558,7 @@ def _extract_symbols_from_file(
             # CONTAINER_KINDS, so the given body's val/var fields
             # (intOrd.cached -> intOrd) root under it. Anonymous givens have no
             # identifier child -> skipped (matches _scala_property_scope).
+            # (WI-pujiz)
             name_node = find_child_by_type(node, "identifier")
             if name_node:
                 type_name = node_text(name_node, source)
@@ -1667,9 +1663,7 @@ def _extract_symbols_from_file(
                 # short name): symbol_by_name is the edge pass's local_symbols
                 # resolution index, and a short-name field/variable would shadow a
                 # same-named callable (a call mis-resolving to a field, or a field
-                # returned as an enclosing "function"). This mirrors commit
-                # 67b2e14788, which stripped short-name registration from 11 langs
-                # for exactly this call-graph-integrity reason; short-name lookups
+                # returned as an enclosing "function"). Short-name lookups
                 # go through the NameResolver suffix index. A variable is never a
                 # call target, so it is not registered here at all.
                 if scope == "field":
@@ -1866,10 +1860,10 @@ def _element_passing_receiver(
 class _ScalaReceiverTyper:
     """The type of a receiver EXPRESSION, for one file of Pass 2 (WI-gokop).
 
-    Before this, ``scala.py`` typed a receiver from one file-wide ``var_types``
-    map filled by DECLARATIONS only, which left every inferred binding untyped:
-    ``val x = mk()``, ``mk().foo()``, ``a.b.foo()``, ``this.foo()``,
-    ``for (y <- ys)``, ``xs.map(z => z.foo())``.
+    The file-wide ``var_types`` map is filled by DECLARATIONS only, which leaves
+    every inferred binding untyped: ``val x = mk()``, ``mk().foo()``,
+    ``a.b.foo()``, ``this.foo()``, ``for (y <- ys)``, ``xs.map(z => z.foo())``.
+    This class types those.
 
     TWO SOURCES, IN THIS ORDER.
 
@@ -1880,15 +1874,14 @@ class _ScalaReceiverTyper:
        be said, it is the answer, and it beats the file-wide map. The walk
        stops at the nearest binder either way, so a typed ``val`` OUTSIDE a
        lambda never types the lambda's same-named parameter.
-    2. Otherwise the file-wide map answers, exactly as before this class
-       existed. That is a measured choice, not an oversight. Letting an untyped
-       binder SHADOW the map (the stricter reading) dropped 264 hints on sbt
-       and 236 on lila, and a sample of them read against the source was
-       mostly right by naming convention: ``{ s => s.get(k) }`` where every
-       ``s`` in sbt is a ``State``, ``threads.forEach { thread => .. }``. The
-       map's file-wide leak (ADR-0006 "Scope Handling") is pre-existing and
-       is neither widened nor narrowed here: an INFERRED binding is never
-       written to it.
+    2. Otherwise the file-wide map answers. That is a deliberate choice, not
+       an oversight: letting an untyped binder SHADOW the map (the stricter
+       reading) drops hundreds of hints on sbt and lila that, sampled against
+       the source, are mostly right by naming convention:
+       ``{ s => s.get(k) }`` where every ``s`` in sbt is a ``State``,
+       ``threads.forEach { thread => .. }``. The map's file-wide leak (ADR-0006
+       "Scope Handling") is neither widened nor narrowed here: an INFERRED
+       binding is never written to it.
 
     TYPES. An INFERRED binding takes the type of its right-hand side, through the
     return-type registry the base analyzer aggregates from every file's
@@ -1911,10 +1904,10 @@ class _ScalaReceiverTyper:
     WHAT THE REGISTRY HOLDS: a type as its DECLARING file names it, qualified
     through that file's imports -- a library type and an imported project type
     alike. The qualified path is KEPT, because it is the only thing that tells
-    two same-named project types apart: 74 lila files declare a class ``Env``,
-    and ``env.tournament.version(id)`` bound to ``lila.challenge.Env.version``
-    until the call site checked the bind against ``lila.tournament.Env``
-    (:func:`_import_names_elsewhere`, the WI-tipoh check). The simple name is
+    two same-named project types apart: where many files declare a class
+    ``Env``, ``env.tournament.version(id)`` must not bind to
+    ``lila.challenge.Env.version``, and the call site checks the bind against
+    ``lila.tournament.Env`` (:func:`_import_names_elsewhere`, WI-tipoh). The simple name is
     derived where a symbol is looked up (:meth:`symbol_type_name`).
 
     KNOWN IMPRECISION, shared with every registry in the tree: keys are simple
@@ -2269,9 +2262,9 @@ class _ScalaReceiverTyper:
             return top
         # An implicitly-imported name (``Map(..)``, ``List(..)``) is the
         # standard library's, whatever the project calls a type: measured on
-        # sbt, ``Map(pairs*)`` read as the project's ``SessionVar.Map`` bound two
-        # ``.get`` calls to it -- the collider WI-pokam measured, reached a new
-        # way.
+        # sbt, where reading ``Map(pairs*)`` as the project's ``SessionVar.Map``
+        # binds its ``.get`` calls there -- the collider
+        # :data:`_SCALA_IMPLICIT_IMPORT_TYPES` describes, reached another way.
         if name[:1].isupper() and name not in _SCALA_IMPLICIT_IMPORT_TYPES:
             found = self._member(name, "apply", registry)
             if found is not None or element:
@@ -2513,19 +2506,18 @@ def _extract_edges_from_file(
 
         # Track val receiver types: `val repo = new UserRepository()`
         # (constructor) and `val repo: UserRepository = f()` (annotation).
-        # INV-fahub / WI-bihit: threading the annotation-typed val — previously
-        # dropped — lets a receiver typed only by annotation resolve via the
-        # type-qualified path instead of misbinding to an arbitrary same-named
-        # def (recall recovery for the receiver gate below).
+        # Threading the annotation-typed val lets a receiver typed only by
+        # annotation resolve via the type-qualified path instead of misbinding
+        # to an arbitrary same-named def (recall for the receiver gate below;
+        # INV-fahub, WI-bihit).
         elif node.type == "val_definition":
             var_node = find_child_by_type(node, "identifier")
             if var_node:
                 inst_node = find_child_by_type(node, "instance_expression")
-                # WI-pokam: BOTH paths through ``_declared_type_name``, because a
-                # qualified or generic type was invisible to BOTH. The `new`
-                # branch is listed in WI-pokam among the shapes that work; it
-                # loses ``new java.io.File("p")`` exactly as the annotation
-                # branch loses ``val b: java.io.File``.
+                # BOTH paths go through ``_declared_type_name``, so a qualified
+                # or generic type is read in both: a bare-``type_identifier``
+                # lookup would lose ``new java.io.File("p")`` exactly as it
+                # loses ``val b: java.io.File`` (WI-pokam).
                 type_name = _declared_type_name(
                     inst_node if inst_node is not None else node, source,
                 )
@@ -2572,9 +2564,8 @@ def _extract_edges_from_file(
                 # ``get().createNewFile()`` and
                 # ``o.asInstanceOf[File].createNewFile()`` all land in the
                 # one-identifier arm below, where the receiver is real and
-                # nameless. Asking ``receiver_name`` "was there a receiver"
-                # answered "no" for all three (LIVE.md rule 7: one variable,
-                # two questions).
+                # nameless, so ``receiver_name`` cannot answer "was there a
+                # receiver" (LIVE.md rule 7: one variable, two questions).
                 has_receiver = False
                 inline_path: "str | None" = None
                 receiver_type: "str | None" = None
@@ -2594,9 +2585,8 @@ def _extract_edges_from_file(
                         elif ids:
                             # The receiver is an EXPRESSION, so it contributed
                             # no identifier of its own and the single id is the
-                            # method. Marked ``defensive`` and no-cover until
-                            # 2026-08-25; it is in fact the production path for
-                            # every complex-receiver call in Scala.
+                            # method. This is the production path for every
+                            # complex-receiver call in Scala.
                             callee_node = ids[0]
                             _value = field_node.child_by_field_name("value")
                             if _value is not None and _std_output_at(
@@ -2614,11 +2604,11 @@ def _extract_edges_from_file(
 
                     # Type-qualified resolution: receiver.method() → Type.method
                     edge_added = False
-                    # WI-kipol: a call on a bare PROJECT object or companion
-                    # (``Factory.make()``) was left external with no hint. A
-                    # capitalised receiver that no local binds and that is a
-                    # project type is looked up as ``Name.member`` -- only where
-                    # Scala binds the name (_project_object_binding).
+                    # A call on a bare PROJECT object or companion
+                    # (``Factory.make()``): a capitalised receiver that no local
+                    # binds and that is a project type is looked up as
+                    # ``Name.member`` -- only where Scala binds the name
+                    # (_project_object_binding; WI-kipol).
                     object_hint: "str | None" = None
                     if (
                         receiver_type is None and receiver_name
@@ -2657,7 +2647,8 @@ def _extract_edges_from_file(
                         # name, and the qualified path must not contradict the
                         # symbol found -- the same WI-tipoh check an explicit
                         # import gets. Without it a same-named type in another
-                        # package took the bind (lila: 74 ``Env`` classes).
+                        # package could take the bind (lila declares many
+                        # ``Env`` classes).
                         type_name = typer.symbol_type_name(receiver_type)
                         stated = receiver_type if type_name != receiver_type else None
                         qualified = f"{type_name}.{callee_name}"
@@ -2708,15 +2699,14 @@ def _extract_edges_from_file(
                         # Step-1); an untyped/duck receiver gets no hint (bias to
                         # unresolved). The linker is the sole minter of the
                         # resolved edge (INV-nilud; taint-safe by construction).
-                        # INV-pirot widened the guard above from "the
-                        # receiver has a NAME" to "there is a receiver", so a
-                        # nameless receiver now reaches this branch too. That is
-                        # the branch's own stated purpose -- an unresolvable
-                        # receiver MUST NOT fall through to the bare short-name
-                        # binds below and bind an arbitrary same-named internal
-                        # def -- and it is MORE true of a nameless receiver, not
-                        # less: ``new Untyped(x).createNewFile()`` cannot be a
-                        # call on the enclosing class under any reading.
+                        # The guard above asks "is there a receiver", not "does
+                        # the receiver have a NAME" (INV-pirot), so a nameless
+                        # receiver reaches this branch too. The branch's purpose
+                        # -- an unresolvable receiver MUST NOT fall through to
+                        # the bare short-name binds below -- applies MORE to a
+                        # nameless receiver, not less:
+                        # ``new Untyped(x).createNewFile()`` cannot be a call on
+                        # the enclosing class under any reading.
                         gate_meta: dict = {"call_construct": "method"}
                         if stdio_receiver:
                             gate_meta["receiver_type_hint"] = PRINT_STREAM_TYPE
@@ -2727,31 +2717,23 @@ def _extract_edges_from_file(
                             # WI-kipol: the object is visible but declares no such
                             # member; the inherited-calls linker walks its parents.
                             gate_meta["receiver_type_hint"] = object_hint
-                        # WI-sigog / INV-linub L3: the receiver TYPE this branch
-                        # has just inferred must also reach the MODULE SLOT, not
-                        # only ``meta``. The two slots answer different questions
+                        # The receiver TYPE this branch has just inferred must
+                        # also reach the MODULE SLOT, not only ``meta`` (WI-sigog,
+                        # INV-linub L3). The two slots answer different questions
                         # and both need an answer: ``receiver_type_hint`` is read
                         # by the Tier-2 ``inherited_calls`` linker, which resolves
                         # PROJECT-INTERNAL symbols, while the module segment of
                         # the dst is what ``_lookup_named_entry`` /
                         # ``gate_named_entry`` read on the EXTERNAL surface.
-                        # Hardcoding ``external`` here left the second one
-                        # permanently unanswered, and that is fatal rather than
-                        # lossy: the F3 gate opens with
+                        # A constant ``external`` there would leave the second
+                        # one unanswered, and that is fatal rather than lossy:
+                        # the F3 gate opens with
                         # ``if call_construct == "method": return None``, so with
                         # no module hint a method call matches NOTHING — not a
                         # method-kind entry, not even a function-kind one.
-                        # Measured 2026-09-09 on sbt + lila: 0 of 40,970 external
-                        # method-call edges carried a receiver type and 0 of 164
-                        # method-kind catalogue rows were reached through Scala's
-                        # own edges. Scala emitted every one of those calls and
-                        # stamped ``call_construct`` correctly; only the slot was
-                        # a constant.
                         #
-                        # THIS IS VERBATIM THE JAVA DEFECT PR #227 FIXED, one
-                        # language over (:func:`java._qualify_receiver_type`);
-                        # java measures 65.0% typed on killbill since. The
-                        # discipline that PR established is kept here: the slot
+                        # This is java's rule (:func:`java._qualify_receiver_type`),
+                        # with its discipline: the slot
                         # only ever carries a path THE FILE ITSELF DECLARES. An
                         # unqualifiable type is left alone rather than written in
                         # bare, because a simple name in the module slot asserts a
@@ -2764,15 +2746,15 @@ def _extract_edges_from_file(
                         # sentinel.
                         #
                         # ``call_construct="method"`` above is NOT decoration and
-                        # must not be dropped now that the slot is filled.
+                        # must not be dropped though the slot is filled.
                         # ``_register_sanitizer_callers`` refuses an unresolved
                         # call unless it carries receiver evidence and reads that
                         # evidence from THIS slot -- its docstring notes the
                         # placeholder "still yields no module, and is still
-                        # refused" -- so filling it is precisely what makes
-                        # barrier registration reachable for Scala for the first
-                        # time. A registered barrier earns ``sanitized`` and DROPS
-                        # the flow (#214), so the flag is what stops a first-party
+                        # refused" -- so filling it is what makes barrier
+                        # registration reachable for Scala. A registered
+                        # barrier earns ``sanitized`` and DROPS the flow, so the
+                        # flag is what stops a first-party
                         # ``doFinal`` from binding ``javax.crypto.Cipher.doFinal``
                         # and deleting a real one.
                         #
@@ -2783,10 +2765,10 @@ def _extract_edges_from_file(
                         # writes the comma-joined disjunction of its wildcard
                         # packages into the slot; that is not free, because an
                         # UNENUMERATED disjunct withholds every verdict under
-                        # INV-zimud's ALL-gate. Measured on the same corpus, the
-                        # shape is also rare in Scala -- 199/4,314 import lines in
-                        # sbt (4.6%) and 5/6,674 in lila (0.07%) -- so the
-                        # explicit-import path below carries the population.
+                        # INV-zimud's ALL-gate. The shape is also uncommon in
+                        # Scala imports (a few percent of import lines on sbt,
+                        # near zero on lila), so the explicit-import path below
+                        # carries the population.
                         typed_module = (
                             _qualify_scala_receiver(receiver_type, import_aliases)
                             if receiver_type else None
@@ -2797,11 +2779,11 @@ def _extract_edges_from_file(
                         # call, and its owner is the module. Only the file's
                         # import or java.lang's closed list names one, so
                         # WI-sigog's "a path the file declares" still holds.
-                        # INV-dibij: a bare DECLARED type the file never imports
+                        # A bare DECLARED type the file never imports
                         # (``pb: ProcessBuilder``) takes the same list -- there is
-                        # no import to forget (JLS 7.3), and it is what the
-                        # parameterless arm's ``_library_owner`` already did, so
-                        # the two arms no longer disagree on one receiver.
+                        # no import to forget (JLS 7.3) -- as the parameterless
+                        # arm's ``_library_owner`` does, so the two arms agree on
+                        # one receiver (INV-dibij).
                         owner_name = receiver_type or receiver_name or ""
                         if typed_module is None and "." not in owner_name:
                             typed_module = _scala_static_owner(
@@ -2870,13 +2852,13 @@ def _extract_edges_from_file(
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         # WI-jusus: a call must never resolve to a field/variable
-                        # — the resolver's suffix index now contains the newly
+                        # — the resolver's suffix index contains the
                         # emitted field/variable symbols, and a same-short-name
                         # field would otherwise become a confidently-wrong call
                         # target (a call-graph corruption). Fall through to the
                         # honest unresolved edge instead.
-                        # INV-fahub (real-repro re-scope 2026-07-18, WI-bihit
-                        # reopened): the DOMINANT Scala funnel is a BARE call —
+                        # INV-fahub (WI-bihit): the DOMINANT Scala funnel is a
+                        # BARE call —
                         # implicit-``this`` (case-class ``copy``) or a chained
                         # receiver whose receiver token was dropped — that
                         # suffix-matches an unrelated class's ``method`` @0.68
@@ -2916,8 +2898,8 @@ def _extract_edges_from_file(
                         else:
                             # INV-fahub: stamp the enclosing class so the
                             # inherited_calls Site-1 walker can recover a bare
-                            # *inherited* implicit-``this`` call (the ~30% solo
-                            # tail of the withheld suffix-method magnet), while a
+                            # *inherited* implicit-``this`` call withheld as a
+                            # suffix-method magnet, while a
                             # true cross-class magnet stays external (its method
                             # is not on the enclosing class's MRO).
                             edges.append(make_unresolved_edge(
@@ -2933,7 +2915,7 @@ def _extract_edges_from_file(
 
         # WI-bojud-sator: a parameterless call written without parentheses
         # (``Runtime.getRuntime.availableProcessors``, ``System.currentTimeMillis``)
-        # parses as a member access, not a call_expression, and emitted nothing.
+        # parses as a member access, not a call_expression, so it needs this arm.
         # Only an access the library is KNOWN to declare as a method counts: the
         # same node is a field read (``System.out``) or a ``val`` everywhere else.
         elif node.type == "field_expression" and _is_parameterless_call_site(node):
@@ -2995,7 +2977,7 @@ def _extract_edges_from_file(
     # WI-rabum: ``System.out`` / ``.err`` / ``.in`` READ as values, through the
     # shared emitter java uses (WI-lozug). java.yaml's ``java.lang.System``
     # attribute rows (logging; ipc_recv) reach scala through _CATALOG_PARENTS
-    # and had no edge to match. ``attribute_names`` keeps a parameterless CALL
+    # and need an edge to match. ``attribute_names`` keeps a parameterless CALL
     # (``System.currentTimeMillis``) from being recorded as a field read.
     emit_module_attribute_refs(
         tree.root_node, source,

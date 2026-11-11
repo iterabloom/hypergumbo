@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Per-test coverage census and test-trajectory search.
 
-WHAT THIS ANSWERS. The full suite costs ~17 wall-clock minutes and ~90 minutes
-of serial work on six cores, and nobody knows how much of that work is
-REDUNDANT. Aggregate coverage says the suite reaches 100%; it says nothing
+WHAT THIS ANSWERS. The full suite is expensive to run, and nobody knows how
+much of that work is REDUNDANT. Aggregate coverage says the suite reaches 100%; it says nothing
 about who contributed what. This module builds a per-test coverage index
 from a context-enabled coverage run -- each ``(path, line)`` interned to an
 integer id, and each test mapped to a bitset of the line ids it executes
@@ -66,7 +65,7 @@ group is uncharged; once a pick charges the group, its other tests get
 cheaper and their true ratios RISE above the queued ones, which are then
 stale LOWER bounds, and nothing re-queues them. The result can be a different,
 costlier pick order than plain cost-weighted greedy that recomputes every
-ratio each step -- reproduced, and tracked as INV-jupaf.
+ratio each step (INV-jupaf).
 
 GREEDY IS NOT OPTIMAL, WHICH IS WHY RANDOMISED TRAJECTORIES ARE NOT MERELY A
 ROTATION TRICK. A perturbed run can beat the deterministic one — randomised
@@ -81,15 +80,13 @@ test with zero unique lines is removable without moving the coverage gate,
 which is strictly weaker than removable safely.
 
 AND IT CANNOT SEE EVERY TEST. The population comes from the coverage rows, so a
-test that produced none is ABSENT rather than zero — 3,614 of them here, 15.9%
-of the suite. Left implicit they read as "not needed"; see
-:func:`load_index_from_coverage` for the four causes and
+test that produced none is ABSENT rather than zero. Left implicit they read as
+"not needed"; see :func:`load_index_from_coverage` for the four causes and
 :class:`RedundancyReport` for the denominator that keeps them out of the
-redundancy claim. In this repo the two near-misses
-of the week both passed every unit test and were caught only end-to-end, so a
-cost-ranked skip list would preferentially drop precisely the tests that catch
-its characteristic bugs. Output here is a shortlist for human review, never a
-delete list.
+redundancy claim. Bugs that pass every unit test are caught only end-to-end,
+and end-to-end tests are the expensive ones, so a cost-ranked skip list would
+preferentially drop precisely the tests that catch those bugs. Output here is a
+shortlist for human review, never a delete list.
 """
 from __future__ import annotations
 
@@ -220,8 +217,6 @@ class CoverageIndex:
     #: here rather than dropped because they are part of the coverage GATE's
     #: denominator while being outside anything the trajectory search can
     #: select — a caveat on every subset this module proposes, not a detail.
-    #: Measured on this repo: 25 lines over 7 files, 6 of them package
-    #: ``__init__.py``.
     unattributed_lines: dict[str, frozenset[int]] = field(default_factory=dict)
 
     #: Tests KNOWN to exist that the coverage data has no row for at all — see
@@ -277,17 +272,15 @@ def strip_phase(context: str) -> str:
     """``…::test_x|run`` -> ``…::test_x``.
 
     pytest-cov records a SEPARATE context per test phase, suffixed ``|setup``,
-    ``|run`` or ``|teardown``. Measured on a full run of this repo: 19,103
-    ``|run``, 1,210 ``|setup``, 124 ``|teardown``. Two consequences, and the
-    first is a defect this function exists to prevent:
+    ``|run`` or ``|teardown``. Two consequences, and the first is a defect this
+    function exists to prevent:
 
     * indexing the raw string treats ``t|setup`` and ``t|run`` as two
       different tests, so a test's coverage is split across phantom entries
       and every unique-line count is wrong;
     * nothing else in the toolchain uses that spelling — pytest's
       ``--durations`` report and ``test_timings.json`` both key on the bare
-      node id — so a raw join silently matches NOTHING. Measured before this
-      existed: 0 of 20,437 contexts joined; 19,129 of 19,129 after.
+      node id — so a raw join silently matches NOTHING.
 
     The empty-context case (``''``, meaning contexts were never collected) is
     the caller's to reject; it is not a phase and is returned unchanged.
@@ -298,32 +291,29 @@ def strip_phase(context: str) -> str:
 def canonical_lines(db_path: Path) -> dict[str, dict[int, int]]:
     """Per measured file, ``traced line -> the STATEMENT line it scores as``.
 
-    TWO CORRECTIONS LIVE HERE. The census got the first right and the second
-    wrong, and the second silently ate coverage.
+    TWO CORRECTIONS LIVE HERE, and their ORDER matters: getting the second
+    wrong silently eats coverage.
 
     (1) ``line_bits`` stores the raw line numbers the tracer saw, which is a
     SUPERSET of the statements coverage reports on: continuation lines, some
-    ``else:`` clauses and decorator lines execute without being counted.
-    Measured on this repo's census DB — 97,767 distinct executed
-    ``(file, line)`` pairs against a reported statement total of 63,603. Left
-    unfiltered the denominator is ~23% larger than the coverage GATE's, so "95%
-    covered" here would mean something different from "95% covered" in CI.
+    ``else:`` clauses and decorator lines execute without being counted. Left
+    unfiltered the denominator is substantially larger than the coverage
+    GATE's, so "95% covered" here would mean something different from "95%
+    covered" in CI.
 
-    (2) But FILTERING ALONE IS THE WRONG REMEDY, which is what the census
-    originally did. A multi-line statement is traced on its INNER lines and
-    attributed by the parser back to the statement's first line, so intersecting
-    raw lines with the statement set discards the coverage of every one of them.
-    Measured: 144 statements across 53 files that coverage reports COVERED were
-    absent from the index — py.py 17, go.py 15, java.py 12, concentrated in the
-    largest analyzers because that is where the multi-line conditions are. One
-    instance, ``py.py:1218``::
+    (2) But FILTERING ALONE IS THE WRONG REMEDY. A multi-line statement is
+    traced on its INNER lines and attributed by the parser back to the
+    statement's first line, so intersecting raw lines with the statement set
+    discards the coverage of every one of them — statements coverage reports
+    COVERED would be absent from the index, concentrated in the largest
+    analyzers because that is where the multi-line conditions are::
 
         if (            <- the statement coverage scores
             x > 0       <- the lines the tracer reports
             and x < 10
         ):
 
-    Translating FIRST and filtering SECOND closes the gap to zero.
+    Translating FIRST and filtering SECOND loses none of them.
 
     The statement set comes from ``analysis2`` rather than ``parser.statements``
     because only the former applies the config's ``exclude_list`` — without it
@@ -339,9 +329,7 @@ def canonical_lines(db_path: Path) -> dict[str, dict[int, int]]:
     THE DB IS A SNAPSHOT AND THIS READS TODAY'S SOURCE. Line numbers in
     ``line_bits`` were recorded against the tree as it was when the census ran;
     the parse here happens against the tree as it is now. Editing a measured
-    file between the two silently shifts its statements. Observed while
-    building this: the statement total moved 63,603 -> 63,628 across a few
-    hours purely from edits to this module and its tests. A census is only
+    file between the two silently shifts its statements. A census is only
     interpretable against the tree that produced it — re-run it after any
     change to measured source, and treat a stale DB as a different question.
     """
@@ -394,24 +382,24 @@ def load_index_from_coverage(
     :func:`canonical_lines`) so this index measures the same quantity the
     coverage gate does.
 
-    IMPORT-TIME CODE IS THE OTHER HALF, and leaving it out was a 14.5% blind
-    spot. Module bodies, class definitions, decorators and constants execute
-    once at collection, under NO test context — measured here, 9,192 statements,
-    14.5% of the gate's denominator, attributed to the empty context and
-    therefore invisible to a search that only reads test contexts. A subset
-    chosen against 85.2% of the gate cannot be trusted against the gate.
+    IMPORT-TIME CODE IS THE OTHER HALF. Module bodies, class definitions,
+    decorators and constants execute once at collection, under NO test context
+    — attributed to the empty context and therefore invisible to a search that
+    only reads test contexts. They are a sizeable share of the gate's
+    denominator, and a subset chosen against only part of the gate cannot be
+    trusted against the gate.
 
     The rule that recovers them is an IMPLICATION, not an approximation: if a
     test executes any line in file F then F was necessarily imported, so F's
     import-time lines are covered whenever that test runs — under any subset.
     So each file's import-time lines are credited to every test that touches
-    that file, which recovers 9,167 of the 9,192 (99.7%).
+    that file.
 
     WHAT IT DOES NOT RECOVER, and why that is not papered over: a file whose
     lines NO test ever executes has nobody to credit. Its import happens only
     because some test module imports it, which the coverage data does not
-    record. Those land in :attr:`CoverageIndex.unattributed_lines` — 25 lines
-    over 7 files here — rather than being silently counted as free. Attributing
+    record. Those land in :attr:`CoverageIndex.unattributed_lines` rather than
+    being silently counted as free. Attributing
     them would need a ``pytest_collectstart`` hook calling
     ``Coverage.switch_context()`` during collection, and a fresh census.
 
@@ -419,14 +407,14 @@ def load_index_from_coverage(
     delete a real test. This index derives its population FROM the coverage
     rows, so a test that produced no rows is ABSENT rather than zero — and an
     absent test is indistinguishable, downstream, from one greedy declined to
-    pick. Measured on this suite, 3,614 tests (15.9%) produce no rows at all:
+    pick. Four causes leave a test with no rows at all:
 
-        2,818  hypergumbo-tracker  -- the package is not in COV_PATHS
-          435  import-time subject -- asserts on a registry or frozen
-                                      dataclass built at import, so nothing
-                                      executes while the test runs
-          255  subprocess          -- the code runs in another process
-          106  tests a scripts/ file -- outside packages/*/src
+        hypergumbo-tracker    -- the package is not in COV_PATHS
+        import-time subject   -- asserts on a registry or frozen dataclass
+                                 built at import, so nothing executes while
+                                 the test runs
+        subprocess            -- the code runs in another process
+        tests a scripts/ file -- outside packages/*/src
 
     Supplying the test list records them in
     :attr:`CoverageIndex.unmeasured_tests`, which :func:`redundancy_report`
@@ -482,9 +470,8 @@ class RedundancyReport:
 
     THE DENOMINATOR IS THE BUG THIS TYPE EXISTS TO PREVENT. Reporting
     ``(suite - chosen) / suite`` counts every test the census could not see as
-    one it did not need: on this suite that turned 76% of the OBSERVABLE tests
-    into "79% of the suite is redundant", quietly absorbing 3,614 unobserved
-    tests into the claim.
+    one it did not need, inflating the redundant share by quietly absorbing
+    every unobserved test into the claim.
 
     ``skip_candidates`` is deliberately narrow and is still NOT a delete list.
     It excludes unmeasured tests structurally, and what remains has only been

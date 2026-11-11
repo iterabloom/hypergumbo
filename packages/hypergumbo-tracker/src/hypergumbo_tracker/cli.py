@@ -14,8 +14,9 @@ Entry points:
   - **Tier movement:** promote, demote, stealth, unstealth
   - **Messages:** check-messages, delete-msg, undelete-msg, edit-msg-text
   - **Tags:** tags (with describe / deprecate / rename subcommands)
-  - **Edit mode:** edit-mode (on / off / status) — the WI-zonur family that
-    suspends auto-sync while a human edits
+  - **Edit mode:** edit-mode (on / off / status) — opens, closes or inspects
+    the human-only, time-boxed window that authorizes the message ops above
+    (WI-zonur)
   - **Integrity and recovery:** validate, repair-drift, cache-rebuild,
     reconcile-reset, reconcile (flush pending ops, fast-forward, restore the
     journal), recover (deprecated: the journal-only part of reconcile)
@@ -112,7 +113,7 @@ _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "promote", "demote", "stealth", "unstealth",
     "delete", "reconcile-reset", "fork-setup",
     "batch",
-    # WI-zonur — edit-mode message ops
+    # Edit-mode message ops (WI-zonur)
     "edit-mode", "delete-msg", "undelete-msg", "edit-msg-text",
 })
 # Note: "tui" is NOT here — it handles auto-sync internally,
@@ -203,7 +204,7 @@ def _format_item_full(
 ) -> str:
     """Format item as a detailed multi-line display.
 
-    WI-zonur rendering:
+    Discussion rendering (WI-zonur):
     - By default, tombstoned discussion entries are suppressed; a one-line
       `(not shown: N deleted messages)` footer appears when N > 0.
     - `include_deleted=True` renders tombstones with a `[DELETED]` marker.
@@ -270,7 +271,7 @@ def _item_to_dict(
 ) -> dict[str, Any]:
     """Convert CompiledItem to a JSON-serializable dict.
 
-    WI-zonur: tombstoned messages are excluded by default; pass
+    Tombstoned messages are excluded by default (WI-zonur); pass
     `include_deleted=True` to include them. Each entry's `nonce` and
     `is_tombstoned` always serialize so downstream consumers can identify
     targets. `edit_history` only serializes when `include_history=True`.
@@ -481,7 +482,7 @@ def _resolve_ref(
     short prefixes that would fail cross-file validation.
 
     When ``writer_tier`` is supplied, the target's tier is checked
-    against the writer's tier per WI-sohot's cross-tier resolution rule:
+    against the writer's tier per the cross-tier resolution rule (WI-sohot):
     canonical and workspace items may not point at stealth-tier items,
     because stealth is gitignored and CI cannot resolve the reference.
     Stealth items may reference any tier.
@@ -977,9 +978,9 @@ def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> bool:
             prefix = "(summary) " if entry.is_summary else ""
             print(f"  [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
     print()
-    # WI-foril: argparse with `nargs="?"` positional + optional flag
-    # rejects `--ack-thread "<msg>"` (flag before positional). Show the
-    # working order: message first, then `--ack-thread`.
+    # argparse with an `nargs="?"` positional + optional flag rejects
+    # `--ack-thread "<msg>"` (flag before positional), so show the working
+    # order: message first, then `--ack-thread` (WI-foril).
     print(
         "To proceed, re-run with --ack-thread to confirm you have "
         "read the thread:\n"
@@ -1149,7 +1150,7 @@ def _cmd_unlock(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 # ---------------------------------------------------------------------------
-# WI-zonur — edit-mode + per-message ops
+# Edit-mode + per-message ops (WI-zonur)
 # ---------------------------------------------------------------------------
 
 
@@ -1306,8 +1307,8 @@ def _cmd_unstealth(args: argparse.Namespace, ts: TrackerSet) -> int:
 def _cmd_delete(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'delete' subcommand — set item status to deleted (human only).
 
-    INV-vudit: also sweep dangling isbefore references. Two cleanup
-    actions per the invariant:
+    Also sweeps dangling isbefore references (INV-vudit), in two cleanup
+    actions:
 
     1. The deleted item's own ``isbefore`` list is cleared — once the
        item is deleted those references are dead weight that
@@ -1418,10 +1419,10 @@ def _cmd_tags(args: argparse.Namespace, ts: TrackerSet) -> int:
     ``<tracker_root>/tracker/tag_catalog.yaml`` and update
     ``last_modified`` on every affected entry.
 
-    The first time this runs after the catalog file is introduced, it
-    walks the op log to backfill ``created_on`` / ``last_used`` for every
-    tag currently in use — see ``tag_catalog.ensure_catalog``. Migration
-    cost paid once.
+    When the catalog file does not exist yet, the first run walks the op
+    log to backfill ``created_on`` / ``last_used`` for every tag currently
+    in use — see ``tag_catalog.ensure_catalog``. Later runs find the file
+    and skip the walk, so the backfill cost is paid once.
     """
     from hypergumbo_tracker import tag_catalog
 
@@ -2042,13 +2043,12 @@ def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
 def _cmd_init(args: argparse.Namespace) -> int:
     """Handle 'init' subcommand — create tracker directory structure.
 
-    HUMAN ONLY (INV-mizid). ADR-0013's command table has always designated
-    ``init`` as a human command; nothing enforced it. That mattered because this
-    handler ends by calling ``config_lock`` on ``config.yaml`` whether or not the
-    file already existed — so an agent running ``init`` against an established,
-    human-owned config hit the cross-user chmod path, whose fallback rewrites the
-    file and hands ownership to the caller. That is the most likely way this
-    deployment's governance config became agent-owned. The guard mirrors
+    HUMAN ONLY, as ADR-0013's command table designates (INV-mizid). The guard
+    matters because this handler ends by calling ``config_lock`` on
+    ``config.yaml`` whether or not the file already existed — so an agent
+    running ``init`` against an established, human-owned config would hit the
+    cross-user chmod path, whose fallback rewrites the file and hands ownership
+    to the caller. The guard mirrors
     ``handle_setup_configure``'s, including its bootstrap: when no config exists
     yet there is nothing to read ``agent_usernames`` from, so ``resolve_actor``
     falls back to its ``["*_agent"]`` default, which is precisely the case
@@ -2568,11 +2568,11 @@ def _reconcile_fast_forward(repo_root: Path) -> tuple[bool, str]:
     post-checkout and reference-transaction hooks should be LIVE, because
     restoring ops the pull disturbs is exactly their job.
 
-    Not "around its own fetch", which is what this said and what several sibling
-    comments still say: ``do_sync`` creates the marker before its ``try`` and
-    releases it in the matching ``finally``, so the span is the WHOLE sync — its
-    CI poll included. The understatement is not cosmetic; it is what WI-pohir
-    read when it proposed timing a leaked marker out at fifteen minutes.
+    ``do_sync`` holds the marker for the WHOLE sync, not just around its fetch:
+    it acquires it before its ``try`` and releases it in the matching
+    ``finally``, so the span includes its CI poll. A legitimately held marker
+    can therefore be old, which is why marker age is not a leak signal
+    (WI-pohir).
     """
     from .sync import _git
 
@@ -2716,7 +2716,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- show ---
     p_show = sub.add_parser("show", help="Show detailed item info")
     p_show.add_argument("item_id", help="Item ID or prefix")
-    # WI-zonur — undocumented from the front-page help on purpose; surfaces only
+    # Undocumented from the front-page help on purpose (WI-zonur); surfaces only
     # in `show --help`. Default rendering suppresses tombstoned messages.
     p_show.add_argument(
         "--include-deleted", dest="include_deleted", action="store_true",
@@ -3575,21 +3575,18 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
                 f"via PR #{sync_result.pr_number}",
                 file=sys.stderr,
             )
-            # WI-torug: collect superseded sibling branches. Dev has just
+            # Collect superseded sibling branches (WI-torug). Dev has just
             # advanced, which is exactly when a sibling becomes redundant.
             #
-            # HERE RATHER THAN INSIDE ``do_sync``, and the reason is worth
-            # recording: the first cut put it on do_sync's post-merge path and
-            # broke 23 existing tests, which script an EXACT sequence of ``_git``
-            # calls and got StopIteration from the extra fetch. That is a fair
-            # signal — do_sync is a long function pinned call-for-call, and
-            # litter collection is not part of the transaction it implements.
+            # This lives here rather than inside ``do_sync``: litter collection
+            # is not part of the transaction do_sync implements, and do_sync's
+            # tests pin its ``_git`` calls one-for-one, so an extra fetch there
+            # would break them.
             #
-            # THE SAFETY PROPERTY DOES NOT DEPEND ON THE SYNC GATE, which is why
-            # moving out from under it is sound. A concurrent sync pushes ops dev
-            # does not yet have, so its branch cannot satisfy "merging changes
-            # nothing" and is never a candidate. The predicate carries the
-            # guarantee; the gate was only ever belt-and-braces.
+            # Running outside the sync gate is safe because the safety property
+            # lives in the predicate, not the gate. A concurrent sync pushes ops
+            # dev does not yet have, so its branch cannot satisfy "merging
+            # changes nothing" and is never a candidate.
             try:
                 pruned = prune_superseded_sync_branches(
                     repo_root, dry_run=False,
@@ -3632,8 +3629,8 @@ def _warn_recover_suppressed(tracker_root: Path) -> None:
 
     Wired at the single ``main`` exit so it covers every subcommand at once —
     including ``recover``, ``reconcile`` and ``count-todos``, the three a reader
-    reaches for when ops look wrong, and all three of which were silent about
-    the marker that had switched self-healing off underneath them.
+    reaches for when ops look wrong, and which otherwise say nothing about a
+    marker that has switched self-healing off underneath them.
 
     Printed regardless of exit code, unlike the sync reminder: a ``reconcile``
     that just failed is exactly when knowing self-healing is off changes what
@@ -3848,7 +3845,7 @@ def main(argv: list[str] | None = None) -> None:
         "batch": _cmd_batch,
         "serve": _cmd_serve,
         "tags": _cmd_tags,
-        # WI-zonur — edit-mode message ops
+        # Edit-mode message ops (WI-zonur)
         "edit-mode": _cmd_edit_mode,
         "delete-msg": _cmd_delete_msg,
         "undelete-msg": _cmd_undelete_msg,
@@ -3897,8 +3894,8 @@ def main(argv: list[str] | None = None) -> None:
     if exit_code == EXIT_SUCCESS:
         _print_sync_reminder(tracker_root)
 
-    # WI-pohir: last on stderr, so the most consequential line is the one
-    # closest to the prompt. Not gated on exit_code — see the helper docstring.
+    # Last on stderr, so the most consequential line is the one closest to
+    # the prompt (WI-pohir). Not gated on exit_code — see the helper docstring.
     _warn_recover_suppressed(tracker_root)
 
     raise SystemExit(exit_code)
@@ -3915,8 +3912,7 @@ def _render_textconv(path: str) -> str:
     Shared by BOTH textconv entry points — the ``hypergumbo-tracker-textconv``
     console script (:func:`textconv_main`) and the ``textconv`` subcommand
     (:func:`_cmd_textconv`). ADR-0013 documents both surfaces; holding the body
-    in one place is what keeps them from drifting, which is how the subcommand
-    came to be documented-but-absent in the first place.
+    in one place keeps them from drifting.
 
     Raises ``SystemExit(1)`` after writing to stderr on a missing or corrupt
     file. Note for callers: git ABORTS a diff whose textconv driver writes
@@ -4007,7 +4003,7 @@ def _cmd_textconv(args: argparse.Namespace) -> int:
 
 # ``main`` already raises ``SystemExit`` for its own exit codes, so the guard
 # only needs to invoke it. Without this guard ``python -m hypergumbo_tracker.cli``
-# imports the module and exits 0 WITHOUT dispatching — which silently broke
+# would import the module and exit 0 WITHOUT dispatching, silently breaking
 # ``scripts/tracker``'s ``-m`` fallback (taken when the ``hypergumbo-tracker``
 # console script is not on ``PATH``), including the reference-transaction
 # recovery hook. Exercised by test_cli.py::TestModuleEntrypoint via a real

@@ -17,25 +17,22 @@ cannot reach."* They were meant to be complementary — parent for a bare
 On ``os.environ.get("X")`` the ANALYZER EMITS TWO EDGES for the one expression —
 a ``module_attribute_reference`` to ``os.environ`` and an ``ast_call_direct`` to
 ``os.environ.get`` — so both rows match and the single read becomes two flows.
-Confirmed by live repro before this file was written.
 
 THE RELATION IS COMPUTED, NOT LISTED. A row is a slot-family PARENT when its
 qualified name is the MODULE SLOT of another row: ``os.environ`` is the module
-of ``get``. That is the catalogue's own structure, so the fix needs no per-
-language table and picks up a user-supplied catalogue for free. SEVEN rows in
-the shipped catalogues have the shape today, all Python: ``os.environ``
-(env_read), ``sys.stdin`` (ipc_recv), ``sys.stdout`` and ``sys.stderr``
-(logging), and -- added by WI-jabus, which rowed the class-qualified receivers
-the self-claims gate could not classify -- ``subprocess.Popen`` (subprocess),
-``zipfile.ZipFile`` and ``tarfile.TarFile`` (both dual fs_read/fs_write). The
-three new ones arrive by exactly the route the paragraph above describes and
-needed no mechanism change: each names a CONSTRUCTOR the module row already
-carried, which is now also a module slot carrying the methods called on what it
-returns. That the count moved without a code change is the point of computing
-the relation rather than listing it.
+of ``get``. That is the catalogue's own structure, so subsumption needs no per-language
+table and picks up a user-supplied catalogue for free. SEVEN rows in the
+shipped catalogues have the shape, all Python: ``os.environ`` (env_read),
+``sys.stdin`` (ipc_recv), ``sys.stdout`` and ``sys.stderr`` (logging),
+``subprocess.Popen`` (subprocess), and ``zipfile.ZipFile`` and
+``tarfile.TarFile`` (both dual fs_read/fs_write). The last three each name a
+CONSTRUCTOR the module row carries that is also a module slot carrying the
+methods called on what it returns (WI-jabus). A row can acquire the shape
+with no code change, which is the point of computing the relation rather than
+listing it.
 
-IT IS SYMMETRIC, WHICH THE ITEM DID NOT MEASURE. Two of those four are SINK
-rows, so ``sys.stdout.write(x)`` doubles a sink exactly as ``os.environ.get()``
+IT IS SYMMETRIC. ``sys.stdout`` and ``sys.stderr`` are SINK rows, so
+``sys.stdout.write(x)`` doubles a sink exactly as ``os.environ.get()``
 doubles a source. Both directions are pinned below.
 
 SUBSUMPTION IS CONDITIONAL ON THE CHILD BEING PRESENT AT THE SAME CALLER. A bare
@@ -177,7 +174,7 @@ class TestProductionPath:
         )
 
     def test_one_read_two_edges_is_one_finding(self) -> None:
-        """The filed defect, end to end."""
+        """One read matching two rows is one finding, end to end."""
         findings = self._run(
             [_call(_CALLER, _ENVIRON), _call(_CALLER, _ENVIRON_GET),
              _call(_CALLER, _SINK_CALLEE)],
@@ -187,7 +184,7 @@ class TestProductionPath:
         assert findings[0].source_primitives == ("os.environ.get",)
 
     def test_bare_attribute_read_still_reports(self) -> None:
-        """Non-vacuity guard: the fix must not delete the parent's own job."""
+        """Non-vacuity guard: subsumption must not delete the parent's own job."""
         findings = self._run(
             [_call(_CALLER, _ENVIRON), _call(_CALLER, _SINK_CALLEE)],
             [ENVIRON, ENVIRON_GET],
@@ -196,13 +193,13 @@ class TestProductionPath:
         assert findings[0].source_primitives == ("os.environ",)
 
     def test_two_distinct_sources_keep_both_names(self) -> None:
-        """Control: the fix must not eat a genuinely different read.
+        """Control: subsumption must not eat a genuinely different read.
 
         The structural arm ends in :func:`collapse_unadjudicated_flows`
         (INV-karud), so two sources at one caller reaching one sink are one
         finding carrying BOTH names and a ``collapsed_flow_count`` of 2. That
-        is the number INV-sukoh is about, so this pins the shape the defect
-        inflates as well as the fix not deflating it.
+        is the number INV-sukoh is about, so this pins the shape doubling
+        would inflate as well as subsumption not deflating it.
         """
         findings = self._run(
             [_call(_CALLER, _ENVIRON),
@@ -215,11 +212,11 @@ class TestProductionPath:
         assert findings[0].collapsed_flow_count == 2
 
     def test_doubling_no_longer_inflates_the_row_count(self) -> None:
-        """The filed defect stated in its own unit: the row denominator.
+        """Stated in INV-sukoh's own unit: the row denominator.
 
-        Before the fix the same single read produced
+        Without subsumption this single read would produce
         ``source_primitives == ("os.environ", "os.environ.get")`` and
-        ``collapsed_flow_count == 2`` — 0005 measured 9 such rows in 170.
+        ``collapsed_flow_count == 2``.
         """
         findings = self._run(
             [_call(_CALLER, _ENVIRON), _call(_CALLER, _ENVIRON_GET),
@@ -242,14 +239,13 @@ class TestProductionPath:
 
 
 class TestDdgArmWhereItCostsASituation:
-    """The ddg arm does NOT collapse, so there the doubling cost a SITUATION.
+    """The ddg arm does NOT collapse, so there doubling would cost a SITUATION.
 
     :data:`UNADJUDICATED_METHODS` is ``{structural, ddg_mixed}``; a confirmed
     ``ddg`` walk is a pair claim and passes through
     :func:`collapse_unadjudicated_flows` untouched. So on the ddg path the two
-    rows never merged and the read was reported as two separate findings —
-    which the item, measured on a structural-and-ddg_mixed population, records
-    as row-unit-only. It is not, and this pins the difference.
+    rows would never merge and the read would be reported as two separate
+    findings: doubling is not a row-unit-only cost, and this pins the ddg half.
     """
 
     _FN = "python:app.py:1-3:leak:function"
@@ -296,10 +292,10 @@ class TestShippedCatalogueHasTheShape:
         }
         assert parents == {
             "os.environ", "sys.stdin", "sys.stdout", "sys.stderr",
-            # WI-jabus. Each was ALREADY a primitive (the module row's
-            # constructor: `subprocess.Popen`, `zipfile.ZipFile`,
-            # `tarfile.TarFile`) and BECAME a module slot when the methods
-            # called on the constructed object were rowed. Pinned here rather
+            # Each is a primitive (the module row's constructor:
+            # `subprocess.Popen`, `zipfile.ZipFile`, `tarfile.TarFile`) and
+            # also a module slot, because the methods called on the
+            # constructed object are rowed (WI-jabus). Pinned here rather
             # than derived so that the next row to acquire the shape has to be
             # noticed -- the subsumption mechanism handles it automatically,
             # which is exactly why nobody would otherwise look.

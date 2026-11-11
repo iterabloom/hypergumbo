@@ -7,20 +7,20 @@ every occurrence of an ordinary string across a ~2GB corpus, irreversibly. So th
 false-positive guards and the "bytes unchanged when there is nothing to redact"
 invariant are the load-bearing tests, not the happy path.
 
-Every test named ``test_regression_*`` pins a defect an adversarial review
-DEMONSTRATED against the first implementation. They are grouped and labelled so a
-future reader can see that these are not hypotheticals:
+Every test named ``test_regression_*`` pins a failure mode an adversarial review
+demonstrated in practice, not a hypothetical. They are grouped and labelled so a
+reader can see that:
 
-* text mode with ``errors="replace"`` silently mutated non-UTF-8 bytes and
-  collapsed CRLF, on a destructive in-place rewrite, with no secret present;
-* line-based scrubbing let a secret straddling a ``\\r`` evade redaction *and*
-  rewrote the ``\\r``, making the credential permanently immune;
-* ``*_KEY`` / ``*_PAT`` key matching redacted ordinary config -- a plausible
-  ``CACHE_KEY`` would have replaced 376,928 occurrences across 265 files;
-* an inline ``# comment`` in .env folded into the secret literal, so the real
-  token was never matched while verification still reported clean;
-* equal-length overlapping secrets left a different fragment per run because the
-  ordering depended on set iteration order.
+* text mode with ``errors="replace"`` silently mutates non-UTF-8 bytes and
+  collapses CRLF, on a destructive in-place rewrite, with no secret present;
+* line-based scrubbing lets a secret straddling a ``\\r`` evade redaction *and*
+  rewrites the ``\\r``, making the credential permanently immune;
+* bare ``*_KEY`` / ``*_PAT`` key matching redacts ordinary config -- a plausible
+  ``CACHE_KEY`` value recurs hundreds of thousands of times across the corpus;
+* folding an inline ``# comment`` in .env into the secret literal means the real
+  token never matches while verification still reports clean;
+* ordering equal-length overlapping secrets by set iteration order leaves a
+  different fragment per run.
 """
 from __future__ import annotations
 
@@ -63,15 +63,15 @@ def _repo(tmp_path: Path, *, env: str = "", secrets: str = "") -> Path:
     return tmp_path
 
 
-# --- regressions from the adversarial review ------------------------------
+# --- regressions: demonstrated failure modes -----------------------------
 
 
 def test_regression_bytes_unchanged_when_nothing_to_redact(tmp_path: Path) -> None:
     """The single most important invariant: a no-op scrub must not touch bytes.
 
-    The first version read text with ``errors="replace"`` and universal newlines,
-    so a non-UTF-8 byte became U+FFFD and ``\\r\\n`` became ``\\n`` -- silently,
-    on the only copy, with zero secrets present and exit 0.
+    Reading text with ``errors="replace"`` and universal newlines turns a
+    non-UTF-8 byte into U+FFFD and ``\\r\\n`` into ``\\n`` -- silently, on the
+    only copy, with zero secrets present and exit 0.
     """
     raw = b'{"a":"ok"}\n{"b":"\xff\xfe bad utf8"}\n{"c":"crlf"}\r\n{"d":"no newline"}'
     target = tmp_path / "t.jsonl"
@@ -84,8 +84,8 @@ def test_regression_bytes_unchanged_when_nothing_to_redact(tmp_path: Path) -> No
 def test_regression_secret_straddling_a_carriage_return(tmp_path: Path) -> None:
     """A secret split by a raw CR must still be redacted.
 
-    Line-based scrubbing never saw the halves together, so the credential
-    survived AND its CR was rewritten to LF — making it immune to re-scrubbing.
+    Line-based scrubbing never sees the halves together, so the credential
+    survives AND its CR is rewritten to LF — making it immune to re-scrubbing.
     """
     straddled = _TOKEN[:20] + "\r" + _TOKEN[20:]
     target = tmp_path / "cr.jsonl"
@@ -110,11 +110,11 @@ def test_regression_secret_straddling_a_chunk_boundary(tmp_path: Path) -> None:
 
 
 def test_regression_ordinary_config_under_secretish_keys_is_kept(tmp_path: Path) -> None:
-    """The six keys the review weaponised must all be refused.
+    """Ordinary config under all six secret-ish keys must be refused.
 
-    Redacting ``packages/hypergumbo-core`` would have rewritten 376,928
-    occurrences across 265 files. Both guards are needed: the key regex no longer
-    accepts a bare ``*_KEY``/``*_PAT``, and the value must be credential-shaped.
+    Redacting ``packages/hypergumbo-core`` would rewrite every occurrence of that
+    path across the corpus. Both guards are needed: the key regex does not
+    accept a bare ``*_KEY``/``*_PAT``, and the value must be credential-shaped.
     """
     repo = _repo(tmp_path, env=(
         "CACHE_KEY=packages/hypergumbo-core\n"
@@ -131,8 +131,8 @@ def test_regression_ordinary_config_under_secretish_keys_is_kept(tmp_path: Path)
 def test_regression_inline_env_comment_does_not_defeat_redaction(tmp_path: Path) -> None:
     """``KEY=<token> # note`` must yield the token, not token-plus-comment.
 
-    Folding the comment in meant the real token never matched, while the tool
-    reported success — false assurance, the worst failure mode for a privacy tool.
+    Folding the comment in means the real token never matches, while the tool
+    reports success — false assurance, the worst failure mode for a privacy tool.
     """
     repo = _repo(tmp_path, env=f"MY_TOKEN={_TOKEN} # prod credential\n")
     assert scrub.collect_secrets(repo) == [_TOKEN]
@@ -141,7 +141,7 @@ def test_regression_inline_env_comment_does_not_defeat_redaction(tmp_path: Path)
 def test_regression_secret_ordering_is_deterministic(tmp_path: Path) -> None:
     """Ordering must not depend on set iteration order.
 
-    Two equal-length secrets sharing a core previously left a different fragment
+    Otherwise two equal-length secrets sharing a core leave a different fragment
     on different runs depending on PYTHONHASHSEED.
     """
     a, b = "AAAA" + "c" * 18, "BBBB" + "c" * 18
@@ -267,7 +267,8 @@ def test_stdout_mode_is_fail_safe_and_emits_original_bytes(
     """The property that makes future hook wiring safe.
 
     Callers pipe stdout into gzip. A non-zero exit or short write would yield a
-    truncated archive — and in the wiring reviewers examined, a DESTROYED source.
+    truncated archive — and, for a caller that removes the source after
+    archiving, a DESTROYED source.
     So any internal failure must fall back to the original bytes and exit 0.
     """
     repo = _repo(tmp_path, secrets=f"{_TOKEN}\n")

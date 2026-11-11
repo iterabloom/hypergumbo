@@ -16,9 +16,9 @@ Python subprocess invocations:
 Project CLI Detection
 ---------------------
 The linker identifies this project's CLI by unioning, across EVERY
-``pyproject.toml`` and ``setup.py`` the discovery walk finds (not just the
-repo root — that was WI-gadus, which made the linker structurally blind on
-any monorepo whose root manifest declares no scripts):
+``pyproject.toml`` and ``setup.py`` the discovery walk finds, not just the
+repo root, so a monorepo whose root manifest declares no scripts is still
+covered (WI-gadus):
 1. [project.scripts] entries from each pyproject.toml
 2. [project.name] (always included, alongside any scripts)
 3. console_scripts / entry_points from each setup.py
@@ -55,7 +55,7 @@ whose ``[project.name]`` ships a Rust binary (``bindings = "bin"``). It is
 excluded on purpose: a clap subcommand is selected by a kebab-cased enum
 VARIANT (or a ``Command::new("serve")`` string), neither of which is a Symbol
 name this linker joins on, so a same-named Rust symbol would still be a
-coincidence. No maturin-bin repository was found in the corpus to measure.
+coincidence.
 
 Confidence Scores
 -----------------
@@ -123,19 +123,19 @@ class SubprocessLinkResult:
 def _leading_constant_args(args_str: str) -> list[str]:
     """Return the LEADING run of constant elements of a list/tuple display.
 
-    WI-gadus B2. The previous implementation ran ``ast.literal_eval`` over the
-    WHOLE captured argv, so a single non-literal element discarded the entire
-    call site — and real self-invocations are almost never fully literal. The
-    live case is ``scripts/hypergumbo_diag.py``::
+    Real self-invocations are almost never fully literal, so evaluating the
+    WHOLE captured argv (``ast.literal_eval``) would discard the call site over
+    a single non-literal element. A typical case::
 
         subprocess.run(["hypergumbo", "slice", "--input", in_path, ...])
 
     where the executable and subcommand ARE plain literals in positions 0 and 1
     and everything the linker needs sits in front of the first variable. Parsing
     element-wise and stopping at the first non-constant recovers exactly that
-    prefix, and stopping (rather than skipping) is deliberate: once an element
-    is opaque, positional reasoning about what follows it is unsound — a
-    variable could expand to a flag, a subcommand, or nothing at all.
+    prefix (WI-gadus), and stopping (rather than skipping) is deliberate: once
+    an element is opaque, positional reasoning about what follows it is
+    unsound — a variable could expand to a flag, a subcommand, or nothing at
+    all.
 
     Returns ``[]`` when the string does not parse, is not a list/tuple display,
     or begins with a non-constant.
@@ -199,9 +199,8 @@ def _extract_command_info(args_str: str) -> tuple[str | None, str | None, bool]:
 def _cli_names_from_setup_py(setup_path: Path) -> set[str]:
     """Extract distribution + console_script names from a ``setup.py``.
 
-    WI-gadus B1, second half. ``setup.py`` was never read at all, so a
-    setuptools project that predates PEP 621 was invisible to this linker no
-    matter where its manifest sat. Parsed with ``ast`` rather than executed:
+    Reading ``setup.py`` makes a setuptools project that predates PEP 621
+    visible to this linker (WI-gadus). Parsed with ``ast`` rather than executed:
     the call is located structurally and only literal keyword values are read,
     so a computed ``name=`` or a dynamically-built ``entry_points`` fails safe
     to contributing nothing rather than to a wrong name.
@@ -252,21 +251,18 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
     2. ``[project.name]`` (plus its underscore variant) as fallback
     3. ``setup(name=...)`` and ``entry_points={"console_scripts": [...]}``
 
-    WI-gadus B1. This previously read ONLY ``<repo_root>/pyproject.toml``, which
-    made the linker structurally blind on any monorepo whose root manifest is
-    tool-config-only — including hypergumbo itself, whose root has no
-    ``[project]`` table at all while the ``hypergumbo`` console script is
-    declared in ``packages/hypergumbo/pyproject.toml``. The consequence was not
-    a degraded join but the total absence of one: ``_detect_project_cli_name``
-    returned an empty set, so the ``call.executable in project_cli_names`` guard
-    in :func:`link_subprocess` could never pass for any call in the repository,
-    and every downstream mechanism — including the WI-lubap argparse join, which
-    resolves its handlers correctly — was dead code behind it.
+    Searching the whole tree matters on a monorepo whose root manifest is
+    tool-config-only — hypergumbo itself has no root ``[project]`` table, and
+    declares the ``hypergumbo`` console script in
+    ``packages/hypergumbo/pyproject.toml``. Reading only the root would return
+    an empty set, so the ``call.executable in project_cli_names`` guard in
+    :func:`link_subprocess` could never pass and every handler join behind it
+    (argparse, fire, ``concept=command``) would be dead (WI-gadus).
 
     Unioning across nested manifests deliberately over-selects rather than
     under-selects. A workspace that vendors a package named after a common
     binary could admit a false executable name; that costs a spurious edge,
-    whereas the previous behavior cost every real one, and vendor directories
+    whereas a missed manifest costs every real one, and vendor directories
     are already excluded by the shared discovery rules.
 
     Returns:
@@ -470,8 +466,8 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
     name = " ".join(name_parts) if name_parts else "subprocess"
 
     # ADR-0031 Class B: synthetic stand-in for a subprocess invocation.
-    # Was LITERAL-HOST ("python"); discovery_language now derives from
-    # the host file (subprocess.Popen calls can surface from non-Python
+    # discovery_language derives from the host file rather than a literal
+    # "python" (subprocess.Popen calls can surface from non-Python
     # bindings or from polyglot fixtures).
     return Symbol(
         id=make_symbol_id(language_from_path(Path(call.file_path)), str(rel_path), call.line, call.line, sanitize_id_name_segment(name), "call_site"),
@@ -589,10 +585,10 @@ def _cli_scan_key(root: Path, files: list[Path]) -> str:
 def _scan_python_cli_facts(root: Path) -> _CliScanFacts:
     """Walk every python file ONCE and extract both scans' file-derived facts.
 
-    Replaces two independent walks that each parsed the whole tree, each of
-    which ran twice per survey (the linker and ``_count_cli_command_symbols``):
-    four full parse-and-walk passes over every python file, measured at ~16s on
-    this monorepo with ~12s of it re-parsing content already parsed.
+    The argparse and fire scans need the same parse, and each runs twice per
+    survey (the linker and ``_count_cli_command_symbols``). One shared,
+    memoized walk stands in for what would otherwise be four full
+    parse-and-walk passes over every python file.
     """
     global _CLI_SCAN_MEMO
 
@@ -618,18 +614,15 @@ def _scan_python_cli_facts(root: Path) -> _CliScanFacts:
         # parser-variable → handler name (from ``v.set_defaults(func=handler)``)
         var_to_handler: dict[str, str] = {}
         for node in ast.walk(tree):
-            # The fire probe sees EVERY Call node, exactly as its own loop did.
-            # It must NOT hang off the argparse if/elif below: a Call that is an
-            # Assign's value (``cli = fire.Fire(Service)``) takes the first
-            # branch there and would never be offered to the fire probe —
-            # silently dropping a target shape the separate loop had matched.
+            # The fire probe sees EVERY Call node, independently of the
+            # argparse if/elif below. (``ast.walk`` also yields the Call inside
+            # an Assign, so ``cli = fire.Fire(Service)`` is probed too.)
             if isinstance(node, ast.Call):
                 target = _fire_target_name(node)
                 if target is not None:
                     fire_targets.add((rel_path, target))
-            # The argparse branches keep their original if/elif relationship, so
-            # `_argparse_set_defaults_handler` sees exactly the node set it saw
-            # before (bare Calls only, never an Assign's value).
+            # argparse: ``v = X.add_parser("name")`` is matched on the Assign,
+            # ``v.set_defaults(func=h)`` on the Call node itself.
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
                 sub = _argparse_add_parser_name(node.value)
                 if sub is not None:
@@ -676,12 +669,10 @@ def _scan_argparse_commands(
     symbols_by_name: dict[str, list[Symbol]] = {}
     symbols_by_path_name: dict[tuple[str, str], list[Symbol]] = {}
     for sym in all_symbols:
-        # WI-gadus B3: an ``external_symbol`` is a boundary PLACEHOLDER, never a
-        # real handler body, and it carries the ``<external>`` path sentinel —
-        # which sorts before every real path, so the INV-zuhub min-by-id
-        # tie-break below would actively PREFER it. On hypergumbo's own tree the
-        # subcommand ``survey`` resolved to both the real ``cmd_run`` and such a
-        # placeholder, and the placeholder won.
+        # An ``external_symbol`` is a boundary PLACEHOLDER, never a real
+        # handler body, and it carries the ``<external>`` path sentinel —
+        # which sorts before every real path, so the min-by-id tie-break in
+        # link_subprocess (INV-zuhub) would actively PREFER it (WI-gadus).
         if sym.kind == "external_symbol":
             continue
         # WI-gopok: ``set_defaults(func=X)`` binds X in a Python module's
@@ -694,8 +685,8 @@ def _scan_argparse_commands(
 
     commands: dict[str, list[Symbol]] = {}
     for rel_path, subcmd, handler_name in _scan_python_cli_facts(root).argparse_pairs:
-        # WI-gadus B3: prefer the handler DEFINED in the same file as the
-        # add_parser/set_defaults pair. ``set_defaults(func=X)`` names a
+        # Prefer the handler DEFINED in the same file as the
+        # add_parser/set_defaults pair (WI-gadus). ``set_defaults(func=X)`` names a
         # binding in that module's scope, so a same-file definition is the
         # binding by construction, and any same-named symbol elsewhere is a
         # coincidence. Unlike _scan_fire_commands, this FALLS BACK to a
@@ -832,12 +823,11 @@ def link_subprocess(
     # Detect this project's CLI names
     project_cli_names = _detect_project_cli_name(root)
 
-    # Build index of CLI commands by name. INV-zuhub: when multiple
-    # commands share a short name (cross-binary collision in projects
-    # whose pyproject.toml declares multiple [project.scripts] entries,
-    # each with its own command tree), all candidates are tracked; the
-    # fallback rule picks at edge-creation time. Pre-fix single-value
-    # dict silently overwrote — see WI-jifiv (BUG-04/05 shape).
+    # Build index of CLI commands by name. When multiple commands share a
+    # short name (cross-binary collision in projects whose pyproject.toml
+    # declares multiple [project.scripts] entries, each with its own command
+    # tree), all candidates are tracked rather than one overwriting another;
+    # the fallback rule picks at edge-creation time (INV-zuhub, WI-jifiv).
     command_by_name: dict[str, list[Symbol]] = {}
     for sym in cli_symbols:
         if _is_python_command(sym):
@@ -1014,7 +1004,6 @@ SUBPROCESS_REQUIREMENTS = [
     # node is minted. The destinations are Python records: ``concept=command``
     # enriched onto the python analyzer's decorators/base_classes, argparse
     # handlers (resolvable on scip_python records as well), fire.Fire methods.
-    # The nine-language clause this replaced described the world.
     depends_on=[["python", "scip_python"]],
     activation=always_on_unreviewed(),
 )

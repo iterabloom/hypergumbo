@@ -1,43 +1,31 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A language whose catalogued I/O is method-shaped and that emits no method calls.
 
-WHAT THIS CLOSES. ``compute_boundary_coverage`` asked one question per language —
-*did it produce ANY call edge?* — and one edge was enough to look covered. Measured
-on a real Kotlin fixture that reads a socket and writes the bytes to disk: 93
-catalogued sinks, ``dataflow_capable: False``, zero findings, and a ``confirmed``
-verdict at rc 0. That is the worst failure this tool has: it claims support, looks
-at nothing, and reports silence as safety.
+WHAT THIS PINS. "Did the language produce ANY call edge?" is not a coverage test:
+one edge is enough to look covered. A Kotlin repo that reads a socket and writes the
+bytes to disk, under an analyzer that emits only the constructor calls, would get
+zero findings and a ``confirmed`` verdict at rc 0. That is the worst failure this
+tool has: it claims support, looks at nothing, and reports silence as safety.
 
-THE PREDICATE, AND WHY IT IS THIS ONE. Four candidates were measured over six
-fixtures with ``scripts/measure-blind-language-signal.py`` before any code changed:
+THE PREDICATE, AND WHY IT IS THIS ONE. For each external module a repo actually
+CALLS that the catalogue covers with METHOD-kind primitives, did any method-construct
+call edge land in it? ``kt_blind`` calls ``java.io.File`` exactly once — the
+CONSTRUCTOR — while ``writeText`` produces no edge at all (the WI-nasuf shape).
+``py_pure`` calls no catalogued module, so it raises no expectation. The simpler
+predicates (compared over six fixtures with
+``scripts/measure-blind-language-signal.py``) fail:
 
-    fixture     A:any  B:non-first-party  C/D:method-construct  F:starved-module
-    kt_blind    covered   covered            BLIND                BLIND
-    kt_clean    covered   covered            BLIND                covered
-    py_io       covered   covered            covered              covered
-    py_clean    covered   covered            covered              covered
-    py_pure     covered   covered            BLIND                covered
-    go_io       covered   covered            covered              covered
-
-* **A** is today's predicate and fails outright.
-* **B** ("count only non-first-party dsts") does not discriminate: Kotlin's
-  intra-repo dst is ``kotlin:App.kt:9-12:helper:function``, whose path slot is
-  RELATIVE, and :func:`is_first_party_callable_dst` requires an ABSOLUTE path slot.
-  That is the disclosed relative-path gap surfacing in a second consumer.
-* **C/D** catch ``kt_blind`` but also downgrade ``py_pure`` — a pure-computation repo
-  making no external calls at all. Conflating "the analyzer cannot see this
-  language's I/O" with "this repo calls nothing external" is the blanket-downgrade
-  failure mode that made ``confirmed`` unreachable in this gate's first version.
-* **F** is the one implemented: for each external module a repo actually CALLS that
-  the catalogue covers with METHOD-kind primitives, did any method-construct call
-  edge land in it? ``kt_blind`` calls ``java.io.File`` exactly once — the
-  CONSTRUCTOR — while ``writeText`` produces no edge at all, which is WI-nasuf
-  verbatim. ``py_pure`` calls no catalogued module, so it raises no expectation.
+* "did the language emit ANY call edge" passes ``kt_blind``.
+* "did the language emit any method-construct edge" catches ``kt_blind`` but also
+  downgrades ``py_pure`` — a pure-computation repo making no external calls at all.
+  Conflating "the analyzer cannot see this language's I/O" with "this repo calls
+  nothing external" is a blanket downgrade that makes ``confirmed`` unreachable.
 
 CALL EDGES ONLY, NOT IMPORTS. ``import pathlib`` performs no I/O, so an unused import
-must not starve. This mirrors the reasoning already recorded above
-``_IO_CALL_EDGE_TYPES`` for a different question, and it is load-bearing here: it is
-what keeps "imported but never called" out of the blind set. The Kotlin case is
+must not starve. The same reasoning is recorded above
+``_STARVATION_CALL_EDGE_TYPES`` in :mod:`hypergumbo_core.verify_claims`, and it is
+load-bearing here: it is what keeps "imported but never called" out of the blind
+set. The Kotlin case is
 caught anyway because its evidence is a CALL edge (the constructor), not the import.
 """
 from __future__ import annotations
@@ -52,9 +40,9 @@ from hypergumbo_core.verify_claims import (
     method_starved_modules,
 )
 
-#: The Kotlin map below is not invented. It is what ``hypergumbo survey`` really
-#: emits for a file that constructs ``java.io.File`` and calls ``.writeText`` on it:
-#: the constructor call is emitted, the method call is not.
+#: The Kotlin map below is what a method-blind analyzer emits for a file that
+#: constructs ``java.io.File`` and calls ``.writeText`` on it: the constructor call
+#: is emitted, the method call is not (the WI-nasuf shape).
 _KT_BLIND_EDGES = [
     {"src": "kotlin:src/App.kt:1-1:file:file",
      "dst": "kotlin:java.io.File:0-0:package:external_symbol", "type": "imports"},
@@ -109,11 +97,12 @@ class TestTheStarvationPredicate:
         assert method_starved_modules(_PY_HEALTHY_EDGES, _catalogs("python")) == []
 
     def test_a_repo_with_no_external_calls_starves_nothing(self) -> None:
-        """THE OVER-DOWNGRADE GUARD, and the reason candidates C/D were rejected.
+        """THE OVER-DOWNGRADE GUARD, and the reason the predicate is per called
+        module rather than per language.
 
         py_pure genuinely calls nothing external. Reporting it blind would say the
-        analyzer cannot see Python I/O, which is false and is the failure mode that
-        made ``confirmed`` unreachable when this gate was first built.
+        analyzer cannot see Python I/O, which is false, and a gate that did so
+        would make ``confirmed`` unreachable.
         """
         assert method_starved_modules(_PY_PURE_EDGES, _catalogs("python")) == []
 
@@ -192,22 +181,20 @@ class TestMalformedEdgesAreSkipped:
 
 
 class TestAnalyzersThatNeverStampCallConstruct:
-    """THE FALSE POSITIVE THAT NEARLY SHIPPED, and the reason for the abstention.
+    """THE ABSTENTION, and the false positive it prevents.
 
-    ``call_construct`` is not populated by every analyzer. Measured on two real
-    repos (alertmanager, apollo-server): Go stamps it on 7,741 call edges, 6,012 of
-    them ``method``; **JavaScript and TypeScript stamp it on ZERO of 2,995**. So for
-    a JS repo "no method call landed in ``fs``" is absence of evidence, not evidence
-    of blindness — and the first version of this predicate reported ``fs``,
-    ``console`` and ``process`` starved on BOTH real repos, which would have
-    downgraded every JavaScript repo in existence.
+    ``call_construct`` is not populated by every analyzer. For a language whose
+    call edges carry none, "no method call landed in ``fs``" is absence of
+    evidence, not evidence of blindness — and without the abstention ``fs``,
+    ``console`` and ``process`` would read starved on every repo in that
+    language.
 
     ``None`` (could not check) is not ``empty`` (checked, found none). A language
-    that never stamps the field is abstained on, which preserves today's behaviour
-    rather than inventing a refusal from a field the analyzer does not write.
+    that stamps the field on no edge in the run is abstained on, rather than
+    inventing a refusal from a field the analyzer does not write.
     """
 
-    #: Real apollo-server shape: JS/TS call edges carry no ``call_construct`` at all.
+    #: JS call edges carrying no ``call_construct`` at all -- an unstamped language.
     _JS_EDGES: ClassVar[list[dict[str, object]]] = [
         {"src": "javascript:src/app.js:1-3:main:function",
          "dst": "javascript:fs:0-0:readFileSync:external_symbol", "type": "calls"},
@@ -274,20 +261,16 @@ class TestAModuleCarryingBothCallKinds:
     A catalogue entry declares its own call shape, and a MODULE can legitimately
     declare both — ``std::fs::File`` has associated functions (``open``,
     ``create``) and methods (``metadata``, ``sync_all``, the ``lock`` family).
-    ``method_modules`` collects every module carrying ANY method-kind primitive
-    and marks a module satisfied ONLY on a ``call_construct == "method"`` edge,
-    so a mixed module can never be satisfied by a function-construct call — even
-    when the catalogue matched that call exactly.
+    ``method_modules`` collects every module carrying ANY method-kind primitive,
+    so satisfaction must be tested per KIND: a function-construct call into a
+    mixed module is one the catalogue can match exactly.
 
-    THE CONSEQUENCE IS THAT CORRECT CATALOGUING CAUSES WITHHOLDING, which is the
-    opposite of what the stdlib audit campaign is for. Measured on the shipped
-    catalogue: ``std::fs::File`` is function-only today and starves nothing;
-    adding ONE correct method row makes a repo that merely opens a file starve.
-    The incentive that creates is to UNDER-catalogue.
-
-    The predicate's own docstring states the intent the code does not implement:
-    *"the catalogue was never given anything it could match"*. For a mixed
-    module it WAS given something it could match.
+    A predicate keyed on ``method`` alone would make CORRECT CATALOGUING CAUSE
+    WITHHOLDING: adding one correct method row to a function-only module would
+    make a repo that merely opens a file starve, and the incentive that creates
+    is to UNDER-catalogue. The question is whether the catalogue was handed
+    anything it could match, and for a mixed module a function-construct call
+    IS something it can match.
     """
 
     @staticmethod
@@ -328,7 +311,7 @@ class TestAModuleCarryingBothCallKinds:
         }]
 
     def test_function_call_into_a_mixed_module_does_not_starve(self) -> None:
-        """THE DEFECT. The catalogue declares ``open`` as a function and the
+        """THE MIXED CASE. The catalogue declares ``open`` as a function and the
         analyzer produced a function-construct edge, so the catalogue was handed
         exactly what it needs. Reporting the module as structurally invisible is
         false."""
@@ -346,28 +329,25 @@ class TestAModuleCarryingBothCallKinds:
         """THE CONTROL, AND THE POINT OF THE WHOLE PREDICATE.
 
         This is the INV-nular / blind-Kotlin shape: every catalogued name needs a
-        receiver, and the analyzer produced none. The fix must NOT blunt it —
-        loosening this gate is the false-all-clear direction, so the signal it
-        was built for has to survive intact.
+        receiver, and the analyzer produced none. The per-kind test must NOT
+        blunt it — loosening this gate is the false-all-clear direction, so the
+        signal it was built for has to survive intact.
         """
         assert method_starved_modules(
             self._call("function"), {"toy": self._method_only_catalog()},
         ) == ["toy.File"]
 
     def test_shipped_rust_modules_split_by_pr_552_no_longer_starve(self) -> None:
-        """The three real instances, created by the INV-nular fix itself.
+        """Real mixed modules in the shipped Rust catalogue.
 
-        Splitting the miskinded associated functions out of ``methods:`` fixed
-        the MATCH and left the COVERAGE broken: the modules became mixed, so a
-        repo calling ``TcpStream::connect`` and nothing else still starved.
+        Their associated functions are keyed as functions and their methods as
+        methods (INV-nular, PR #552), so a repo calling ``TcpStream::connect``
+        and nothing else must not starve.
         """
         catalogs = _catalogs("rust")
-        # ``std::net::UdpSocket::bind`` WAS in this list and is not any more.
-        # INV-nular removed it: net_recv is an auto-derived taint SOURCE and
-        # binding a socket receives nothing, so the row was minting
-        # untrusted_input at a call that transfers no bytes. It has therefore
-        # left the population this test is about — a CATALOGUED associated
-        # function — and joined the one
+        # ``std::net::UdpSocket::bind`` is deliberately absent: net_recv is an
+        # auto-derived taint SOURCE and binding a socket receives nothing, so
+        # ``bind`` is not catalogued (INV-nular). It belongs to the population
         # ``test_an_unstamped_call_to_an_UNCATALOGUED_name_still_starves``
         # governs, where starvation is the correct answer. Pinned below.
         for module, fn in (
@@ -386,12 +366,12 @@ class TestAModuleCarryingBothCallKinds:
             )
 
     def test_kotlin_blind_signal_is_untouched_by_the_loosening(self) -> None:
-        """The gate this fix loosens must still catch what it was built for.
+        """The per-kind loosening must leave the blind-language catch intact.
 
         Neither the kotlin nor the java catalogue declares a single mixed-kind
         module, so the blind-language population is entirely method-only and
-        this change cannot reach it. Asserted rather than assumed, because the
-        fix would be unsafe if that ever stopped being true.
+        the per-kind test cannot reach it. Asserted rather than assumed, because
+        the loosening would be unsafe if that ever stopped being true.
         """
         from collections import defaultdict
 
@@ -411,27 +391,25 @@ class TestAModuleCarryingBothCallKinds:
 
 
 class TestAnUnstampedAssociatedFunctionCall:
-    """INV-soval's SECOND route, and the shape that forced it to exist.
+    """The SECOND satisfaction route: a called name matching a function-kind row
+    (INV-soval).
 
-    The construct test above cannot see the case the whole fix was measured on.
-    ``call_construct`` IS NOT STAMPED ON AN ASSOCIATED-FUNCTION CALL TO AN
-    EXTERNAL TYPE: across three real Rust repos every edge into
-    ``std::fs::File`` / ``std::process::Command`` / ``std::path::Path`` carries
-    ``call_construct: None``, while the same repos stamp it on thousands of
-    other edges (ripgrep: 917 ``method`` and 12 ``function`` among 1,156
-    external call edges). So the language clears the abstention check on its
-    OTHER edges and then arrives here with nothing to test.
+    The construct test above cannot see this case. ``call_construct`` IS NOT
+    STAMPED ON AN ASSOCIATED-FUNCTION CALL TO AN EXTERNAL TYPE: in real Rust
+    repos every edge into ``std::fs::File`` / ``std::process::Command`` /
+    ``std::path::Path`` carries ``call_construct: None``, while the same repos
+    stamp it on many other edges. So the language clears the abstention check
+    on its OTHER edges and then arrives here with no construct to test.
 
-    THE CLASS ABOVE STAMPS EVERY EDGE, so it never executes this route at all —
-    the coverage gate is what surfaced that, not the assertions. What follows
-    exercises the name route AND BOUNDS IT: loosening a withholding gate is the
-    false-all-clear direction, so each satisfying case is paired with a case
-    that must still starve.
+    THE CLASS ABOVE STAMPS EVERY EDGE, so it never executes this route. What
+    follows exercises the name route AND BOUNDS IT: loosening a withholding
+    gate is the false-all-clear direction, so each satisfying case is paired
+    with a case that must still starve.
     """
 
     #: One stamped edge, into a module nobody catalogues, purely so the language
     #: clears the ``languages_with_construct_evidence`` abstention. This mirrors
-    #: reality — Rust stamps thousands of edges and merely misses these.
+    #: reality — Rust stamps many edges and merely misses these.
     _EVIDENCE: ClassVar[dict] = {
         "src": "rust:src/lib.rs:1-9:f:function",
         "dst": "rust:std::collections::HashMap:0-0:insert:external_symbol",
@@ -468,12 +446,12 @@ class TestAnUnstampedAssociatedFunctionCall:
         assert self._starved("std::process::Command", "new") == []
 
     def test_the_name_route_covers_every_mixed_module_pr_552_created(self) -> None:
-        """The mixed modules that still HAVE a catalogued associated function.
+        """The mixed modules that HAVE a catalogued associated function.
 
-        ``UdpSocket::bind`` and ``TcpListener::bind`` were here and were removed
-        by INV-nular as false ``net_recv`` sources (binding receives nothing).
-        Both are now uncatalogued names, so the honest answer for them is
-        starvation — asserted directly in
+        ``UdpSocket::bind`` and ``TcpListener::bind`` are not catalogued, because
+        they would be false ``net_recv`` sources (binding receives nothing;
+        INV-nular), so the honest answer for them is starvation — asserted
+        directly in
         :meth:`test_binding_a_socket_no_longer_vouches_for_its_receive_surface`.
         """
         for module, fn in (
@@ -488,17 +466,17 @@ class TestAnUnstampedAssociatedFunctionCall:
     def test_binding_a_socket_no_longer_vouches_for_its_receive_surface(
         self,
     ) -> None:
-        """INV-nular, and it is INV-zubuh's shape one level down.
+        """A ``bind`` call must not vouch for the module's receive surface
+        (INV-nular; the INV-zubuh shape one level down).
 
-        Before the ``bind`` rows were removed, a repo that called only
-        ``UdpSocket::bind`` matched a function-kind row, the module counted as
-        satisfied, and the analysis reported that it had LOOKED at
-        ``std::net::UdpSocket``. Matching ``bind`` said nothing whatever about
-        whether ``recv`` / ``recv_from`` were examined — one row was vouching
-        for the rest of the module's surface, which is exactly what INV-zubuh
-        forbids.
+        Were ``bind`` a catalogued function-kind row, a repo that called only
+        ``UdpSocket::bind`` would satisfy the module, and the analysis would
+        report that it had LOOKED at ``std::net::UdpSocket``. Matching ``bind``
+        says nothing whatever about whether ``recv`` / ``recv_from`` were
+        examined — one row would vouch for the rest of the module's surface,
+        which is exactly what INV-zubuh forbids.
 
-        Now the module starves, and that is the honest answer: the repo called
+        So the module starves, and that is the honest answer: the repo called
         into ``UdpSocket``, the catalogue covers it with methods, and no method
         edge arrived. The direction is safe — starvation WITHHOLDS a verdict
         rather than granting one, so this trades a false all-clear for an
@@ -535,14 +513,14 @@ class TestAnUnstampedAssociatedFunctionCall:
         ]
 
     def test_the_real_Path_defect_is_NOT_papered_over_by_this_fix(self) -> None:
-        """``std::path::Path`` starves in 3 of 3 real Rust repos and MUST STILL.
+        """``std::path::Path`` starves in real Rust repos and MUST STILL.
 
         It is method-only in the shipped catalogue, so it has no function-kind
         names for the second route to match — ``Path::new`` performs no I/O and
         is correctly absent. Its starvation is a genuine, separate defect
-        (INV-linub: 92.7% of Rust method edges carry slot ``external``, so the
-        receiver type is unresolved). INV-soval must not make it disappear by
-        accident, because that would convert a filed L3 defect into silence.
+        (INV-linub: most Rust method edges carry slot ``external``, so the
+        receiver type is unresolved). The name route must not make it disappear
+        by accident, because that would convert a filed defect into silence.
         """
         assert self._starved("std::path::Path", "new") == ["std::path::Path"]
         assert self._starved("std::path::Path", "metadata") == ["std::path::Path"]
@@ -550,7 +528,7 @@ class TestAnUnstampedAssociatedFunctionCall:
     def test_an_unstamped_edge_alone_cannot_wake_an_abstaining_language(self) -> None:
         """The abstention outranks both routes. With no stamped edge anywhere,
         the language carries no construct evidence and is skipped entirely — so
-        this fix cannot start reporting JavaScript or TypeScript repos.
+        the name route cannot start reporting a language that stamps nothing.
         """
         assert method_starved_modules(
             [self._unstamped("std::process::Command", "arg")], _catalogs("rust"),
@@ -558,18 +536,18 @@ class TestAnUnstampedAssociatedFunctionCall:
 
 
 class TestAClassmethodCalledThroughAModuleAlias:
-    """INV-fugus: the self-proof's every verdict, withheld by one clock read.
+    """A classmethod reached through a module alias must not starve (INV-fugus).
 
     ``import datetime as _dt; _dt.date.today()`` is a MODULE-ROOTED dotted
     chain, and the python analyzer emits it with no ``call_construct`` at all.
-    ``datetime.date.today`` was keyed ``methods``, so the module declared no
+    Keyed as a method, ``datetime.date.today`` would give the module no
     function-kind name, neither route could satisfy it, and a call the
-    catalogue CLASSIFIES (host_info_read) was reported "structurally
-    invisible". That blocker is not the qualifying kind, so every self-claim
-    fell from ``confirmed_with_caveats`` to ``inconclusive``.
+    catalogue CLASSIFIES (host_info_read) would be reported "structurally
+    invisible" — a blocker that drops every claim from
+    ``confirmed_with_caveats`` to ``inconclusive``.
 
-    The cure is the row's kind (a classmethod takes no receiver -- INV-nular's
-    ``Path.cwd`` precedent), NOT a looser gate: an unstamped edge naming a
+    The answer is the row's kind (a classmethod takes no receiver, as with
+    ``Path.cwd`` -- INV-nular), NOT a looser gate: an unstamped edge naming a
     METHOD row still starves, pinned in the class above.
     """
 
@@ -606,14 +584,13 @@ class TestAClassmethodCalledThroughAModuleAlias:
 
 
 class TestAMethodOnAModuleLevelObject:
-    """INV-dihun: the INV-fugus contradiction on an OBJECT owner.
+    """The same shape on an OBJECT owner (INV-dihun).
 
     ``ctypes.cdll`` is a module-level ``LibraryLoader`` instance, so
     ``ctypes.cdll.LoadLibrary(p)`` is a module-rooted chain the analyzer emits
     with no ``call_construct`` -- the ``_dt.date.today()`` shape above. Keyed
-    ``methods:``, the call classified fs_read and the gate still reported
-    ``ctypes.cdll`` starved. INV-fugus's sweep resolves only CLASSES, so it
-    could not see this row. The cure is again the row's kind (INV-zikab:
+    ``methods:``, the call would classify fs_read while the gate reported
+    ``ctypes.cdll`` starved. The answer is again the row's kind (INV-zikab:
     ``module.name(...)`` is a valid call as written, so it is a function).
     """
 
@@ -648,16 +625,16 @@ class TestAMethodOnAModuleLevelObject:
 
 
 class TestAHandlerRegisteredByAssignment:
-    """WI-dapap: the cross-axis membership test, on its filed instance.
+    """The construct is translated to a row kind, not compared to it (WI-dapap).
 
     ``ws.onmessage = h`` is emitted (WI-dosuh) as a call edge into the METHOD
     row ``WebSocket.onmessage`` with ``call_construct="assignment"``, and the
-    classifier matches it (``net_recv``). The gate tested the construct STRING
-    for membership in the module's KIND set, two different axes, so
-    ``"assignment"`` never matched ``{"method"}`` and ``WebSocket`` was reported
-    structurally invisible in the same run that classified a call into it.
-    WI-zohuk measured the effect: all 7 generic claims fell from
-    ``confirmed_with_caveats`` to ``inconclusive`` on this fixture.
+    classifier matches it (``net_recv``). ``call_construct`` and the row kind
+    are two different axes: testing the construct STRING for membership in the
+    module's KIND set would never match ``"assignment"`` against ``{"method"}``,
+    and ``WebSocket`` would be reported structurally invisible in the same run
+    that classified a call into it, dropping every generic claim on this
+    fixture to ``inconclusive`` (WI-zohuk).
 
     ``sink.write("x")`` is an untyped method call. It is there so the language
     carries construct evidence WITHOUT the assignment edge, which keeps the
@@ -739,7 +716,7 @@ class TestTheConstructCrosswalkIsNotALoosening:
     def test_a_python_protocol_edge_satisfies_the_orm_module(self) -> None:
         """``for o in qs`` emits ``django.db.models.__iter__`` with construct
         ``protocol`` (WI-fasap). The dunder row is method-kind, so the edge
-        reaches it; it fell through to route 2 before and failed there too."""
+        reaches it through route 1; route 2 cannot rescue it."""
         edges = [
             {"src": "python:v.py:1-3:view:function",
              "dst": "python:django.db.models:0-0:__iter__:unresolved",

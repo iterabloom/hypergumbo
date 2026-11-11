@@ -810,7 +810,7 @@ class TestFindOpenPr:
 
 
 # ---------------------------------------------------------------------------
-# TestCreatePr (GitHub write path — PR-B2)
+# TestCreatePr (GitHub write path)
 # ---------------------------------------------------------------------------
 
 
@@ -878,7 +878,7 @@ class TestCreatePr:
 
 
 # ---------------------------------------------------------------------------
-# TestDeleteRemoteBranch (GitHub write path — PR-B2)
+# TestDeleteRemoteBranch (GitHub write path)
 # ---------------------------------------------------------------------------
 
 
@@ -1195,8 +1195,8 @@ class TestPollCi:
         """Woodpecker's single pending status must not trip stale-pending.
 
         On GitHub, Woodpecker posts one ``ci/woodpecker/pr/woodpecker`` status
-        that stays ``pending`` for the whole build.  Once per-element reads are
-        correct, the forgejo stale-pending heuristic would fire on every real
+        that stays ``pending`` for the whole build.  With correct per-element
+        reads, the forgejo stale-pending heuristic would fire on every real
         build (no element ever leaves pending) — so the github backend must
         treat a non-empty statuses list as "started" instead.  Same input on
         forgejo returns ``stale_pending`` (see test_stale_pending_detection).
@@ -1233,7 +1233,7 @@ class TestPollCi:
         """Sole-holdout bypass must read the github ``state`` element field.
 
         GitHub combined-status elements key the per-element state as ``state``;
-        if the bypass still read ``status`` both elements would look
+        if the bypass read ``status`` both elements would look
         non-success and the bypass would never fire.
         """
         # deadline(0) start(0) while(61) holdout_check(62 > 60)
@@ -1445,7 +1445,7 @@ class TestMergePr:
         ]
         assert not _merge_pr(self.BASE, "token", 42)
 
-    # --- GitHub backend (PR-B2): PUT {merge_method}, 200+{merged:true} ---
+    # --- GitHub backend: PUT {merge_method}, 200+{merged:true} ---
 
     @patch("hypergumbo_tracker.sync._api_call")
     def test_github_rebase_200_merged_true(self, mock_api: MagicMock) -> None:
@@ -1578,9 +1578,9 @@ class TestPreflightCheck:
     ) -> None:
         """A TRACKER_SYNC_PENDING file with no flock holder is auto-cleaned.
 
-        This is the WI-nutin scenario: a SIGKILLed prior holder leaves the
-        marker on disk, but the OS released the flock. ``check_sync_gate_held``
-        observes no holder, removes the stale file, and preflight proceeds.
+        A SIGKILLed prior holder leaves the marker on disk, but the OS has
+        released the flock. ``check_sync_gate_held`` observes no holder,
+        removes the stale file, and preflight proceeds (WI-nutin).
         """
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
@@ -2176,7 +2176,7 @@ class TestPreflightCheck:
 
 
 class TestOpsUnionRestore:
-    """Unit tests for the INV-dalup union-restore helpers.
+    """Unit tests for the union-restore helpers (INV-dalup).
 
     These lock the lossless line-union logic for the tracked-modified-reset
     case (which TestDoSync cannot exercise end-to-end because ``checkout HEAD``
@@ -2232,14 +2232,14 @@ class TestOpsUnionRestore:
 def test_stage_tracker_ops_additive_keeps_oplog_missing_from_worktree(
     tmp_path: Path,
 ) -> None:
-    """INV-lovih behavioral guard (real git): seed the temp index from a base
+    """Behavioral guard (real git, INV-lovih): seed the temp index from a base
     tree that holds an op-log, then stage a working tree that is MISSING it.
     The op-log must survive in the written tree (never staged for deletion)
     while a newly-added op-log is still included. A plain ``git add`` would
     drop the missing file; ``_stage_tracker_ops_additive`` (``--ignore-removal``)
-    preserves it. This is the data-loss scenario that lost WI-vojik/WI-durub:
-    origin/dev held the op-logs, a stale working tree did not, and the sync
-    recorded their absence as a deletion."""
+    preserves it. This is the data-loss scenario being guarded: origin/dev
+    holds the op-logs, a stale working tree does not, and a plain add would
+    record their absence as a deletion (WI-vojik, WI-durub)."""
     from hypergumbo_tracker.sync import _git, _stage_tracker_ops_additive
 
     _git(tmp_path, "init", "-q")
@@ -2280,10 +2280,11 @@ class TestDoSync:
     The plumbing call sequence is:
       fetch, rev-parse, read-tree, add, write-tree, diff --numstat,
       config user.name, config user.email, commit-tree, update-ref,
+      push, ..., then cleanup (fetch, checkout HEAD --, ls-files --others,
+      merge --ff-only, branch -D)
 
     Note: init_sync_log is auto-mocked via the fixture below to prevent
     file I/O during tests (creating .agent/.sync-logs/ in tmp_path).
-      push, ..., pull, branch -D
     """
 
     @pytest.fixture(autouse=True)
@@ -2371,7 +2372,7 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """INV-lovih: the sync seeds its temp index from origin/dev's tree
+        """The sync seeds its temp index from origin/dev's tree
         (which holds every item's append-only op-log) then stages the
         working-tree ops. A plain ``git add -- <ops dirs>`` reconciles the
         index to the working tree and therefore stages a DELETION for any
@@ -2379,7 +2380,7 @@ class TestDoSync:
         origin, files dropped by an intervening checkout) — silently dropping
         those items from the synced corpus. Every staging ``add`` must carry
         ``--ignore-removal`` so the sync is additive-only with respect to
-        op-log files."""
+        op-log files (INV-lovih)."""
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
@@ -2424,9 +2425,10 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """do_sync threads preflight.backend into _poll_ci (wires PR-A's fix).
+        """do_sync threads preflight.backend into _poll_ci, so CI polling
+        applies the backend's own status semantics.
 
-        Uses the GitHub write path (PR-B2): create-PR + reset --hard cleanup.
+        Uses the GitHub write path: create-PR + the path-scoped ff-only cleanup.
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
@@ -2604,11 +2606,10 @@ class TestDoSync:
         suppression must therefore cover ALL of do_sync's git operations (the
         try body AND the finally cleanup ff) and never leak past the call.
 
-        WI-gokuv: this asserts the LOCK, not the file. Presence of the file was
-        what the hooks used to test, and a file cannot say whether anyone still
-        owns it -- which is how a SIGKILLed run left self-healing off for ten
-        hours. Asserting existence here would pass just as happily against the
-        defect.
+        This asserts the LOCK, not the file: a file's presence cannot say
+        whether anyone still owns it, so a SIGKILLed run that leaves the file
+        behind would keep self-healing off, and an existence check would pass
+        just as happily against that defect (WI-gokuv).
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
@@ -2663,10 +2664,9 @@ class TestDoSync:
         would re-enable the recovery hooks while the outer git operation is
         still running.
 
-        WI-gokuv: the outer caller is simulated by actually TAKING the lock, not
-        by touching the file. Under the old flag semantics a touched file was
-        indistinguishable from a held one, which is precisely the conflation
-        that made the leak undetectable.
+        The outer caller is simulated by actually TAKING the lock, not by
+        touching the file: a touched file is not a held lock, and treating the
+        two as equivalent would make a leaked marker undetectable (WI-gokuv).
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
@@ -2723,14 +2723,13 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """INV-dalup: a new ops file created in the git-add -> cleanup race
-        window must NOT be destroyed by the untracked-ops unlink.
+        """A new ops file created in the git-add -> cleanup race window must
+        NOT be destroyed by the untracked-ops unlink (INV-dalup).
 
         The cleanup deletes every file ``ls-files --others`` reports, then
         ff-merges. A new item created after the snapshot is untracked and is
-        absent from the sync commit, so the ff-merge cannot restore it — the
-        old behavior lost it silently (INV-dalup incident #1, WI-dilab). The
-        union-restore must snapshot the file before the unlink and recreate
+        absent from the sync commit, so the ff-merge cannot restore it and the
+        unlink alone would lose it silently (WI-dilab). The union-restore must snapshot the file before the unlink and recreate
         it afterward.
         """
         mock_time.strftime.return_value = "20260218-120000"
@@ -2785,7 +2784,7 @@ class TestDoSync:
     ) -> None:
         """The push title and the PR-lookup title carry the rich, varied
         format (count + ops + item IDs) — distinct and informative per sync —
-        not the legacy ``tracker: sync N file(s)`` template."""
+        not a fixed ``tracker: sync N file(s)`` template."""
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
         pre = _make_preflight(
@@ -2825,7 +2824,7 @@ class TestDoSync:
         msg = commit_args[list(commit_args).index("-m") + 1]
         assert msg.startswith(expected_title)
         assert "Signed-off-by:" in msg
-        # Legacy template must not appear anywhere.
+        # The fixed count-only template must not appear anywhere.
         assert "tracker: sync 2 file(s)" not in msg
 
     @patch("hypergumbo_tracker.sync.time")
@@ -2883,8 +2882,8 @@ class TestDoSync:
         tmp_path: Path,
     ) -> None:
         """Untracked ops files are unlinked before the ff-only merge (so git
-        won't refuse to overwrite them), then union-restored by the INV-dalup
-        cleanup guard so no ops content is lost.
+        won't refuse to overwrite them), then union-restored by the cleanup
+        guard (INV-dalup) so no ops content is lost.
 
         In production the ff-only merge re-materializes a *synced* ops file as
         tracked, and the union-restore is a no-op for it (current == snapshot).
@@ -2927,7 +2926,7 @@ class TestDoSync:
         # The cleanup still issued the untracked-ops removal step…
         cleanup_calls = mock_git.call_args_list[-5:]
         assert "ls-files" in cleanup_calls[2][0]
-        # …but INV-dalup's union-restore re-applies the snapshot afterward, so
+        # …but the union-restore (INV-dalup) re-applies the snapshot afterward, so
         # the ops content survives rather than being silently destroyed.
         assert ops_path.exists(), (
             "Ops file must be union-restored after the cleanup unlink"
@@ -3249,10 +3248,10 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """With plumbing approach, push failure needs no ops restore.
+        """Push failure needs no ops restore.
 
-        Unlike the old checkout-based approach, the plumbing approach never
-        leaves the original branch, so ops files remain in the working tree.
+        The plumbing approach builds the sync commit without leaving the
+        original branch, so ops files remain in the working tree.
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
@@ -3295,15 +3294,15 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Local ops files survive a failed sync (WI-lufal regression).
+        """Local ops files survive a failed sync (WI-lufal).
 
         When ``do_sync`` fails before the PR is merged (here: push fails
         all 3 attempts), the cleanup in the ``finally`` block must NOT
-        wipe local ops files. The 2026-05 regression had the destructive
-        cleanup running unconditionally — `git checkout HEAD -- .ops/`
-        reverted modified ops and ``ls-files --others`` + ``unlink()``
-        deleted untracked ops, silently dropping every mutation in the
-        in-flight batch (including new-item ADD ops like WI-pudil).
+        wipe local ops files. Run unconditionally, the destructive
+        cleanup would revert modified ops (`git checkout HEAD -- .ops/`)
+        and delete untracked ops (``ls-files --others`` + ``unlink()``),
+        silently dropping every mutation in the in-flight batch
+        (including new-item ADD ops).
 
         Repro shape: place a real untracked ops file in the working
         tree, fail the push, and verify the file still exists at the
@@ -3344,8 +3343,8 @@ class TestDoSync:
         assert "push failed" in result.error
 
         # The ops file MUST still be on disk with its original content.
-        # Under the bug it would have been deleted by the unconditional
-        # ``unlink()`` in the destructive cleanup branch.
+        # An unconditional destructive cleanup branch would have deleted it
+        # via ``unlink()``.
         assert ops_path.exists(), (
             f"Ops file {ops_file} was wiped by failed-sync cleanup. "
             "Local ops must survive when the sync PR was never merged."
@@ -3438,8 +3437,8 @@ class TestDoSync:
     ) -> None:
         """Sync commit is parented on origin/dev, not the current branch.
 
-        This is the core fix: tracker sync PRs must only contain ops diffs,
-        not feature branch code.
+        Tracker sync PRs must only contain ops diffs, not feature branch
+        code.
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
@@ -4241,8 +4240,8 @@ class TestPendingSyncLines:
         After do_sync merges ops to origin/dev, the ops are still dirty
         relative to the feature branch HEAD.  Diffing against origin/dev
         correctly shows 0 pending lines, preventing re-sync of already-synced
-        ops.  This is the root cause of the duplicate PR bug: 4 identical
-        tracker sync PRs created because the same ops kept triggering sync.
+        ops; diffing against HEAD would keep re-triggering sync on the same
+        ops and open duplicate tracker sync PRs.
         """
         mock_git.side_effect = [
             self._REV_PARSE_OK,  # rev-parse origin/dev
@@ -4418,11 +4417,11 @@ class TestSyncSetupCheck:
 
 
 class TestSyncSetupCheckForgeToken:
-    """INV-zulin: check 22 accepts exactly the token ``htrac sync`` presents
-    to the origin's forge (HG_GITHUB_TOKEN for github, FORGEJO_TOKEN for
-    forgejo). Before the fix it looked only for FORGEJO_TOKEN, so it warned on
-    a correctly configured github repository and passed one that had only the
-    Codeberg token, which github.com rejects."""
+    """Check 22 accepts exactly the token ``htrac sync`` presents to the
+    origin's forge (HG_GITHUB_TOKEN for github, FORGEJO_TOKEN for forgejo).
+    Looking only for FORGEJO_TOKEN would warn on a correctly configured github
+    repository and pass one that has only the Codeberg token, which github.com
+    rejects (INV-zulin)."""
 
     @staticmethod
     def _run(

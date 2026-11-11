@@ -29,8 +29,7 @@ probe embeddings. Before every sentence_transformers import (in
 ``_ensure_hf_offline_for_cached_models`` sets ``HF_HUB_OFFLINE=1`` for the
 whole process unless the variable already holds a value huggingface_hub reads
 as offline; ``0`` or ``false`` is overridden. It does this whether or not the
-models are cached, despite its name (INV-dasig, made unconditional by
-INV-gujus).
+models are cached, despite its name (INV-dasig, INV-gujus).
 
 The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
@@ -44,9 +43,9 @@ they have nothing to do with embeddings.
 
 Degradation contract — TWO failure modes, not one
 -------------------------------------------------
-"sentence-transformers is unavailable" means two independent things, and
-conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
-(INV-rupid):
+"sentence-transformers is unavailable" means two independent things. A
+caller that handles only the first lets the second escape to the CLI top
+level, so ``hypergumbo .`` exits 1 without writing a sketch (INV-rupid):
 
 1. **The library is not importable.** ``_has_sentence_transformers()``
    answers this, and only this — it catches ``ImportError`` and nothing
@@ -152,18 +151,16 @@ def _restore_no_proxy(old_values: tuple[str | None, str | None]) -> None:
 class EmbeddingsUnavailable(RuntimeError):
     """The embedding model could not be loaded, so semantic work must degrade.
 
-    Raised by :func:`_load_st_model_offline_first` when neither the local HF
-    cache nor a download can supply the weights — the offline / air-gapped /
-    egress-blocked case. It exists so that consumers can tell "the enhancement
-    is unavailable" apart from a genuine bug, and answer with the SAME empty
-    value their ``_has_sentence_transformers()`` guard already returns.
+    Raised by :func:`_load_st_model_offline_first` when the local HF cache
+    does not hold the weights — analysis never downloads them, so this is the
+    case for a machine that has not run ``hypergumbo install-embeddings``. It
+    exists so that consumers can tell "the enhancement is unavailable" apart
+    from a genuine bug, and answer with the SAME empty value their
+    ``_has_sentence_transformers()`` guard already returns.
 
-    INV-rupid: before this existed, the network-allowing fallback constructor
-    was unwrapped, so its ``OSError`` propagated through six unguarded load
-    sites to the CLI top level. ``hypergumbo .`` then exited 1 with a
-    huggingface.co connection error and wrote a zero-byte sketch, while
-    ``hypergumbo survey`` on the same tree exited 0 — the default command was
-    the only casualty, which is the worst place for one in a LOCAL-FIRST tool.
+    An untyped ``OSError`` from the loader would instead reach the CLI top
+    level and fail the default ``hypergumbo .`` command with no sketch written,
+    for an enhancement that is optional in a local-first tool (INV-rupid).
 
     The originating exception is always attached as ``__cause__``; callers that
     report to the user should surface it rather than inventing a message.
@@ -222,9 +219,9 @@ def _load_embedding_model():
     if _cached_embedding_model is not None:
         return _cached_embedding_model
 
-    # INV-dasig: force HF offline (unless the variable is set) BEFORE importing
-    # sentence_transformers, which imports huggingface_hub and freezes its
-    # offline constant at import time.
+    # Force HF offline BEFORE importing sentence_transformers, which imports
+    # huggingface_hub and freezes its offline constant at import time
+    # (INV-dasig).
     _ensure_hf_offline_for_cached_models()
 
     # Suppress warnings BEFORE importing to catch all submodule loggers
@@ -268,13 +265,10 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     :class:`EmbeddingsUnavailable` naming ``hypergumbo install-embeddings``,
     which is where the weights are fetched (:func:`fetch_embedding_models`).
 
-    INV-gujus: this used to fall back to a network-allowed load, so the first
-    ``sketch`` after installing the library downloaded both models from
-    huggingface.co while ``runtime-cli-no-network`` said analysis never does.
-    Measured with a stub ``sentence_transformers``: every cache miss was a
-    ``local_files_only=True`` attempt followed by a download-allowed retry.
-    The claim was kept and the code made to match it, rather than the claim
-    weakened to describe the code.
+    There is deliberately no network-allowed fallback: ``runtime-cli-no-network``
+    says analysis never downloads, and a retry without ``local_files_only``
+    would fetch both models from huggingface.co on the first ``sketch`` after
+    the library is installed (INV-gujus).
 
     Catching the broader ``(OSError, ValueError)`` covers all the
     documented "no local entry" exception variants without forcing a
@@ -286,7 +280,7 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     (model card / commits / discussions), the xet daemon's cache-freshness
     ping, and the ``transformers`` safetensors auto-conversion *background
     thread* fired during ``encode()`` all still reach ``huggingface.co``
-    otherwise — so a plain ``hypergumbo run`` / sketch leaks outbound
+    otherwise — so a plain ``hypergumbo run`` / sketch would leak outbound
     network on every invocation, violating the ``runtime-cli-no-network``
     claim (INV-dasig). ``HF_HUB_OFFLINE=1`` is the only switch that
     hard-disables every HF Hub sub-API, so we set it before the cached
@@ -302,10 +296,10 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
             os.environ.pop("HF_HUB_OFFLINE", None)
         else:
             os.environ["HF_HUB_OFFLINE"] = prior_offline
-        # INV-rupid: the enhancement being unavailable is NOT a bug, so it
-        # must not reach the CLI's internal-error handler. A typed error
-        # rather than None keeps the failure distinguishable and preserves
-        # the original for the operator via __cause__.
+        # The enhancement being unavailable is NOT a bug, so it must not
+        # reach the CLI's internal-error handler. A typed error rather than
+        # None keeps the failure distinguishable and preserves the original
+        # for the operator via __cause__ (INV-rupid).
         raise EmbeddingsUnavailable(
             f"embedding model {model_name!r} is not in the local cache; "
             "run 'hypergumbo install-embeddings' to download it"
@@ -352,25 +346,23 @@ def _ensure_hf_offline_for_cached_models() -> bool:
     ``huggingface_hub.constants.HF_HUB_OFFLINE`` at IMPORT time and does not
     re-read ``os.environ`` afterward — so setting the env var inside the model
     loader (after ``from sentence_transformers import ...``) is too late and
-    the cached load still reaches the network (the original INV-dasig leak,
-    plus the encode()-time safetensors auto-conversion background thread). This
-    helper therefore runs at the top of every function that imports
-    sentence_transformers to load a model, BEFORE the import. (cli's
-    install-path availability checks import the library and load nothing.)
+    the cached load still reaches the network, as does the encode()-time
+    safetensors auto-conversion background thread. This helper therefore runs
+    at the top of every function that imports sentence_transformers to load a
+    model, BEFORE the import. (cli's install-path availability checks import
+    the library and load nothing.)
 
-    UNCONDITIONAL since INV-gujus. It used to force offline only when every
-    model was cached, leaving it off while one was missing so that model's
-    one-time download could proceed -- which kept a partial-cache window open
-    to HF metadata traffic. Analysis no longer downloads at all (the weights
-    come from ``install-embeddings``, :func:`fetch_embedding_models`), so there
-    is no download to protect and offline is forced on every runtime load.
+    Offline is forced unconditionally, whether or not every model is cached:
+    analysis never downloads (the weights come from ``install-embeddings``,
+    :func:`fetch_embedding_models`), so there is no download to protect, and
+    leaving it off while a model is missing would open the hub to metadata
+    traffic (INV-gujus).
 
     A value the user already set is kept only when huggingface_hub reads it as
     offline (:data:`_HF_TRUE_VALUES`, compared upper-cased as the library
-    does). Anything else -- ``0``, ``false``, ``no`` -- is replaced with ``1``.
-    Honouring every set value, as this did until the HF_HUB_OFFLINE=0 report,
-    left the hub reachable: a plain ``sketch`` made one connection to the
-    configured endpoint under strace, with the models loaded from cache.
+    does). Anything else -- ``0``, ``false``, ``no`` -- is replaced with ``1``,
+    because honouring it leaves the hub reachable: a plain ``sketch`` connects
+    to the configured endpoint even with the models loaded from cache.
 
     Returns True: offline mode is in effect (set here or already set).
     """
@@ -451,7 +443,7 @@ ANSWER_PATTERNS = [
 ]
 
 # Open-ended questions for big-picture/architectural context
-# NOTE: License questions removed - ANSWER_PATTERNS already captures compact
+# NOTE: No license questions here - ANSWER_PATTERNS already captures compact
 # license declarations (e.g., 'license = "MIT"') without matching verbose
 # LICENSE file boilerplate.
 BIG_PICTURE_QUESTIONS = [
@@ -643,8 +635,8 @@ NEGATIVE_PATTERNS = [
 
 def _has_sentence_transformers() -> bool:
     """Check if sentence-transformers is available."""
-    # INV-dasig: force HF offline (unless set) before this import freezes the
-    # huggingface_hub offline constant — this is often the process's first one.
+    # Force HF offline before this import freezes the huggingface_hub offline
+    # constant — this is often the process's first one (INV-dasig).
     _ensure_hf_offline_for_cached_models()
     try:
         from sentence_transformers import SentenceTransformer  # noqa: F401
@@ -1045,10 +1037,10 @@ def extract_readme_description_embedding(
             )
         return None
 
-    # Load model and get pre-computed probe embeddings. INV-rupid: an
-    # unavailable model answers with the SAME shape the
-    # _has_sentence_transformers() guard above returns, so there is exactly one
-    # definition of "no description could be extracted".
+    # Load model and get pre-computed probe embeddings. An unavailable model
+    # answers with the SAME shape the _has_sentence_transformers() guard above
+    # returns, so there is exactly one definition of "no description could be
+    # extracted" (INV-rupid).
     try:
         model = _load_embedding_model()
     except EmbeddingsUnavailable as exc:
@@ -1413,7 +1405,7 @@ def _run_git_command(
     """
     git_path = _find_git_executable()
     try:
-        # WI-fasuv: repo_inspection zone.
+        # repo_inspection safety zone (WI-fasuv).
         result = repo_inspect_git(
             [git_path, *args],
             cwd=cwd,
@@ -1482,13 +1474,10 @@ def _get_repo_state_hash(repo_root: Path) -> str:
     content-hash semantics — content change → hash change, mtime-only
     change → hash stable.
 
-    INV-magul: this used to use path:size:mtime, which picked up tracker
-    ``.ops`` mtime jitter and polluted the cache between unrelated
-    analysis runs. Migrating to ``compute_repo_fingerprint`` fixes that
-    as a side effect (content hashing ignores mtime). Existing cache
-    entries become unreachable on the algorithm switch — a one-time
-    miss the cache layer absorbs naturally; the next run repopulates
-    under the new key. See INV-tofur and ``docs/hypergumbo-spec.md:378-384``.
+    Content hashing is what keeps the key stable across mtime-only churn
+    such as tracker ``.ops`` files being touched between unrelated
+    analysis runs (INV-magul; see INV-tofur and ``repo_fingerprint`` in
+    ``docs/hypergumbo-spec.md``).
     """
     from .repo_fingerprint import compute_repo_fingerprint
     return compute_repo_fingerprint(repo_root)[:16]
@@ -1544,17 +1533,17 @@ def _get_results_cache_dir(
     Cache structure (WI-panih):
         ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>[-<backends>]/<analyzer_identity>/
 
-    The third segment is the repo state hash, suffixed (WI-givib) with the
-    RESOLVED opt-in backend set when it is non-empty — ``-rust_analyzer``
-    for a two-arm run — because which backends were ENABLED is run
-    configuration the analyzer identity (code identity) cannot see: a
-    tree-sitter-only run and a two-arm run of one tree used to share a
-    dir and return each other's artifact. The suffix is added only when a
+    The third segment is the repo state hash, suffixed with the RESOLVED
+    opt-in backend set when it is non-empty — ``-rust_analyzer`` for a
+    two-arm run — because which backends were ENABLED is run configuration
+    the analyzer identity (code identity) cannot see: without the suffix a
+    tree-sitter-only run and a two-arm run of one tree would share a dir and
+    return each other's artifact (WI-givib). The suffix is added only when a
     backend will actually run (opt-in chain AND binary installed —
-    ``backend_selection.resolved_backend_set``), so every entry written
-    before this change is still reachable, and a read command finds a
-    two-arm artifact only under the same resolved set (the environment
-    variable or the per-repository trust grant, not a one-off flag).
+    ``backend_selection.resolved_backend_set``), so a run with no backend
+    keeps the plain key, and a read command finds a two-arm artifact only
+    under the same resolved set (the environment variable or the
+    per-repository trust grant, not a one-off flag).
     The same segment is suffixed ``-deps-all`` / ``-deps-<hash>`` when
     installed dependency source is traced (``--trace-deps`` or the
     ``trace_deps`` config key; ``discovery.resolve_trace_deps``), so a traced
@@ -1565,15 +1554,15 @@ def _get_results_cache_dir(
     ``catalogue_home.analysis_channel_token``) and ``-cfg-<hash>`` with a
     digest of ``config.toml`` and ``.hypergumbo.toml``
     (``user_config.config_cache_token``). Neither is repository source the
-    state hash sees, and without them a cached survey kept answering after a
-    channel file was added, edited or broken — the broken file never read, so
-    never reported. Each suffix is absent when its files are, so a user with
-    no channel files and no config keeps every existing entry's key. It is
+    state hash sees, and without them a cached survey would keep answering
+    after a channel file was added, edited or broken — the broken file never
+    read, so never reported. Each suffix is absent when its files are, so a
+    user with no channel files and no config keeps the plain key. It is
     suffixed ``-ex-<hash>`` with a digest of the ``-e`` / ``--exclude``
-    patterns the run was given (``discovery.exclude_cache_token``; WI-tisuj):
-    a survey that skipped ``lib/`` used to REPLACE the plain survey in the one
-    directory, and a read command, which takes no ``--exclude``, then
-    answered from it. Read commands look under the plain key only.
+    patterns the run was given (``discovery.exclude_cache_token``): without
+    it a survey that skipped ``lib/`` would REPLACE the plain survey in the
+    one directory, and a read command, which takes no ``--exclude``, would
+    answer from it (WI-tisuj). Read commands look under the plain key only.
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1740,8 +1729,8 @@ def _extract_file_samples(
 
     # Extract non-overlapping samples with deterministic seeding. The seed is
     # a STABLE digest of the path: ``hash(str)`` is salted per process
-    # (PYTHONHASHSEED), so it picked different windows — and so different
-    # embedding rankings — on every run (WI-vosag analogue).
+    # (PYTHONHASHSEED), so it would pick different windows — and so different
+    # embedding rankings — on every run (cf. WI-vosag).
     seed = zlib.crc32(str(file_path).encode("utf-8"))
     rng = random.Random(seed)  # noqa: S311 # nosec B311
 
@@ -1773,8 +1762,8 @@ def _load_modernbert_model():
         Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
         notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
-    # INV-dasig: force HF offline (unless the variable is set) BEFORE importing
-    # sentence_transformers, which freezes huggingface_hub's offline constant.
+    # Force HF offline BEFORE importing sentence_transformers, which freezes
+    # huggingface_hub's offline constant (INV-dasig).
     _ensure_hf_offline_for_cached_models()
 
     # Suppress warnings BEFORE importing to catch all submodule loggers
@@ -1836,7 +1825,7 @@ def _get_additional_files_probe_embeddings() -> "np.ndarray":
             try:
                 model = _load_modernbert_model()
             except EmbeddingsUnavailable as exc:
-                # INV-rupid: same answer as the guard three lines above.
+                # Same answer as the guard three lines above (INV-rupid).
                 _warn_embeddings_unavailable(exc)
                 return np.zeros(
                     (len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM)
@@ -1943,10 +1932,10 @@ def batch_embed_files(
         try:
             model = _load_modernbert_model()
         except EmbeddingsUnavailable as exc:
-            # INV-rupid: cached hits found in phase 1 are REAL and are kept —
-            # degrading must not discard work already done. Only the paths this
-            # phase would have encoded become None, which is what the guard at
-            # the top of the function returns for every path.
+            # Cached hits found in phase 1 are REAL and are kept — degrading
+            # must not discard work already done. Only the paths this phase
+            # would have encoded become None, which is what the guard at the
+            # top of the function returns for every path (INV-rupid).
             _warn_embeddings_unavailable(exc)
             for path, _hash, _sample in uncached:
                 results[path] = None

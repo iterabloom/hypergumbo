@@ -24,7 +24,8 @@ from hypergumbo_lang_mainstream.py import (
 def test_django_cbv_as_view_with_local_class_attribute_form(tmp_path: Path) -> None:
     """Cover branch: views.LocalView.as_view() where LocalView is defined locally.
 
-    This tests the case where view_name is in symbol_by_name (line 610 in py.py).
+    Exercises the ast.Attribute receiver of ``as_view()`` when the class
+    name is in ``symbol_by_name``, so the view resolves to the local symbol.
     """
     urls_file = tmp_path / "urls.py"
     urls_file.write_text(
@@ -59,8 +60,8 @@ def test_django_cbv_as_view_with_local_class_attribute_form(tmp_path: Path) -> N
 def test_django_cbv_as_view_with_local_class_name_form(tmp_path: Path) -> None:
     """Cover branch: LocalView.as_view() where LocalView is defined locally.
 
-    This tests the case where view_name is in symbol_by_name (line 615 in py.py).
-    Uses direct Name reference (not attribute).
+    Exercises the ast.Name receiver of ``as_view()`` (a direct name, not an
+    attribute) when the class name is in ``symbol_by_name``.
     """
     urls_file = tmp_path / "urls.py"
     urls_file.write_text(
@@ -102,7 +103,7 @@ class TestAstValueToPython:
     """Tests for edge cases in _ast_value_to_python function."""
 
     def test_dict_with_none_key(self) -> None:
-        """Cover branch: dict with None key (line 165->164).
+        """Cover branch: dict with a None key is skipped.
 
         Python dicts can have None as a key: {None: 'value'}.
         In AST, this appears as keys=[None] (literal None, not ast.Constant).
@@ -115,7 +116,7 @@ class TestAstValueToPython:
         assert result == {"key": "value2"}
 
     def test_dict_with_non_string_key(self) -> None:
-        """Cover branch: dict with non-string key (line 167->164).
+        """Cover branch: dict with a non-string key is skipped.
 
         Python dicts can have integer keys: {1: 'value'}.
         We only extract string keys.
@@ -137,7 +138,7 @@ class TestExtractDecoratorInfo:
     """Tests for edge cases in _extract_decorator_info function."""
 
     def test_decorator_with_kwargs_unpacking(self) -> None:
-        """Cover branch: decorator with **kwargs (line 227->226).
+        """Cover branch: decorator with **kwargs unpacking.
 
         Decorators can have **kwargs unpacking: @dec(**config).
         These have kw.arg=None and should be skipped.
@@ -153,7 +154,7 @@ class TestExtractDecoratorInfo:
         assert result["kwargs"] == {}
 
     def test_module_decorator_without_call(self) -> None:
-        """Cover branch: @module.decorator without parens (line 212->230 path).
+        """Cover branch: @module.decorator without parens (ast.Attribute, not ast.Call).
 
         Decorators can be simple attributes: @module.decorator (no call).
         """
@@ -176,13 +177,14 @@ class TestFormatFunctionSignature:
     """Tests for edge cases in _format_function_signature function."""
 
     def test_annotation_formats_to_empty(self) -> None:
-        """Cover branch: annotation that formats to empty string (line 313->315).
+        """Pin the return-annotation path of _format_function_signature.
 
-        Some complex annotations might format to empty string.
-        This tests that we handle that gracefully.
+        The formatter appends `` -> <type>`` only when the return annotation
+        formats to a non-empty string. Despite the test name, this case uses
+        a plain ``-> str`` annotation, so it exercises the non-empty side of
+        that check; the empty-format side is not reached here.
         """
-        # Create a function with a subscript annotation that's complex
-        # For now just verify normal annotations work
+        # Plain parameter and return annotations
         code = "def f(x: int) -> str: pass"
         tree = ast.parse(code)
         func = tree.body[0]
@@ -196,7 +198,7 @@ class TestFormatFunctionSignature:
 
 
 def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
-    """Cover branch: add_url_rule with view_func=handler (line 728->727).
+    """Cover branch: add_url_rule with view_func=handler as a keyword argument.
 
     Flask's add_url_rule can take view_func as keyword argument.
     """
@@ -224,7 +226,7 @@ def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
 
 
 def test_flask_add_url_rule_with_attribute_view_func(tmp_path: Path) -> None:
-    """Cover branch: add_url_rule with view_func=views.handler (line 733->735).
+    """Cover branch: add_url_rule with view_func=views.handler (ast.Attribute).
 
     Flask's view_func can be an attribute reference.
     """
@@ -255,7 +257,7 @@ def test_flask_add_url_rule_with_attribute_view_func(tmp_path: Path) -> None:
 
 
 def test_flask_add_url_rule_third_arg_not_in_symbols(tmp_path: Path) -> None:
-    """Cover branch: add_url_rule with third arg not in symbol_by_name (line 742->748).
+    """Cover branch: add_url_rule with a third positional arg not in symbol_by_name.
 
     When the handler function is imported, not locally defined.
     """
@@ -281,7 +283,7 @@ def test_flask_add_url_rule_third_arg_not_in_symbols(tmp_path: Path) -> None:
 
 
 def test_flask_add_url_rule_third_arg_attribute(tmp_path: Path) -> None:
-    """Cover branch: add_url_rule with third arg as attribute (line 744->748).
+    """Cover branch: add_url_rule with the third positional arg as an attribute.
 
     Flask's third positional arg can be views.handler.
     """
@@ -311,7 +313,7 @@ def test_flask_add_url_rule_third_arg_attribute(tmp_path: Path) -> None:
 
 
 def test_decorator_signature_with_attribute_decorator(tmp_path: Path) -> None:
-    """Cover branch: function decorated with @module.decorator (line 840->835).
+    """Cover branch: function decorated with @module.decorator.
 
     Decorators can be attributes without being called.
     This exercises the branch where decorator is ast.Attribute (not ast.Call).

@@ -1,18 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-rasal: every repaired ``depends_on`` clause is an ENUMERATED producer set.
+"""Every repaired ``depends_on`` clause is an ENUMERATED producer set (WI-rasal).
 
-The six clauses WI-jijor's detector falsified were not six independent
-mistakes. Each was written as *"languages where this concept exists"* — a
-statement about the world — where ``depends_on`` is defined as *"passes whose
-output this pass reads"* — a statement about this tree. Both readings produce a
-plausible list of language names, which is why nothing caught the difference
-for as long as nothing read the field.
+``depends_on`` is defined as *"passes whose output this pass reads"* — a
+statement about this tree. The easy mistake is to write *"languages where this
+concept exists"* — a statement about the world. Both readings produce a
+plausible list of language names, so the difference goes unnoticed unless
+something checks it (the falsified clauses WI-jijor's detector found were all
+this one mistake).
 
-``inherited-calls-linker`` is the clean specimen: the comment above its
-declaration names ``_MRO_WALKERS`` as its source of truth and claims to mirror
-it. INV-fahub's fleet-walker PR grew that dict from 3 entries to 14 and the
-declaration stayed at three. A list copied from a registry is a snapshot; the
-registry keeps moving.
+A list copied from a registry is also only a snapshot, and the registry keeps
+moving: ``inherited-calls-linker``'s clause mirrors ``_MRO_WALKERS``, which
+grows as MRO walkers are added (INV-fahub).
 
 So these tests derive the producer set rather than restating it. Two gates:
 
@@ -123,12 +121,12 @@ def _edge_type_emits(path: Path) -> FileEmits:
 
     The SAME classifier the L3 registry gate uses
     (:func:`~hypergumbo_core.producer_coherence.scan_file_emits`), not a
-    private scan. WI-nakur: this helper used to count only a LITERAL
-    ``edge_type="extends"`` keyword, so an analyzer choosing the label from
-    data -- Dart's ``edge_type=ref.edge_type`` (the clause a base is written
-    in, carried through a dataclass), js_ts's ``edge_type=edge_type`` (a
-    ternary, and a tuple splatted into a helper) -- was invisible, and
-    deleting it from a clause left this gate green.
+    private scan. Counting only a LITERAL ``edge_type="extends"`` keyword
+    would miss an analyzer choosing the label from data -- Dart's
+    ``edge_type=ref.edge_type`` (the clause a base is written in, carried
+    through a dataclass), js_ts's ``edge_type=edge_type`` (a ternary, and a
+    tuple splatted into a helper) -- and deleting it from a clause would
+    leave this gate green (WI-nakur).
     """
     return scan_file_emits(
         path,
@@ -192,22 +190,22 @@ class TestTheScannerCanReturnBothAnswers:
         assert "python" not in emitters
 
     def test_edge_type_scan_sees_a_label_chosen_from_data(self) -> None:
-        """WI-nakur: neither analyzer writes ``edge_type="extends"``.
+        """Neither analyzer writes ``edge_type="extends"`` (WI-nakur).
 
         Dart picks extends / implements / includes from the clause a base is
         written in and emits ``edge_type=ref.edge_type`` off a dataclass;
         js_ts emits ``edge_type=edge_type`` from a ternary and from a tuple a
-        helper returns and the caller splats. The literal-only scan found
-        neither, so deleting either from type-hierarchy-linker's clause left
-        ``test_every_direct_analyzer_emitter_is_declared`` green.
+        helper returns and the caller splats. A literal-only scan finds
+        neither, so deleting either from type-hierarchy-linker's clause would
+        leave ``test_every_direct_analyzer_emitter_is_declared`` green.
         """
         emitters = _pass_ids_emitting_edge_type("extends", "implements")
         assert "dart" in emitters
         assert "javascript" in emitters
 
     def test_a_data_driven_scan_still_answers_no(self) -> None:
-        """The control on the widening: a value no producer can carry is
-        still absent, so the scan did not become "every analyzer"."""
+        """The control on the data-driven scan: a value no producer can carry
+        is absent, so the scan does not degrade to "every analyzer"."""
         assert _pass_ids_emitting_edge_type("wi_nakur_no_such_edge_type") == set()
         assert "dart" not in _pass_ids_emitting_edge_type("defines_target")
 
@@ -241,7 +239,7 @@ class TestEveryAnalyzerEdgeTypeSiteIsEnumerable:
 
 
 class TestInheritedCallsDeclaresItsWalkers:
-    """Clause repaired from a 3-entry snapshot of a 14-entry registry."""
+    """The clause covers every ``_MRO_WALKERS`` language, checked against the registry."""
 
     def test_every_registered_mro_walker_language_is_declared(self) -> None:
         clause = _clause_containing("inherited-calls-linker", "java")
@@ -277,10 +275,10 @@ class TestInheritedCallsDeclaresItsWalkers:
         ]
 
     def test_the_inheritance_linker_conjunct_is_gone(self) -> None:
-        """It was falsified on 26 surveys and it was false: Site-2 step 1 emits
-        ``ast_call_type_inferred`` with no inheritance edges in the graph at
-        all. The ordering fact it recorded (priority 18, after inheritance's
-        15) is carried by ``priority``, not by this axis."""
+        """No ``inheritance-linker`` conjunct: the dependency is false, since
+        Site-2 step 1 emits ``ast_call_type_inferred`` with no inheritance
+        edges in the graph at all. The ordering fact (priority 18, after
+        inheritance's 15) is carried by ``priority``, not by this axis."""
         declared = {p.id: p for p in get_default_catalog().passes}
         clauses = declared["inherited-calls-linker"].depends_on
         assert ["inheritance-linker"] not in clauses
@@ -304,7 +302,7 @@ class TestInheritanceDeclaresItsMetadataProducers:
         ]
 
     def test_rust_dart_and_elixir_are_no_longer_declared(self) -> None:
-        """Declared for four months, contributing nothing. ``rust`` emits
+        """None of these supplies what this linker reads. ``rust`` emits
         ``implements`` EDGES directly — which feeds ``type-hierarchy-linker``,
         not this linker, and it is declared there. ``dart`` and ``elixir``
         write neither metadata key."""
@@ -332,8 +330,8 @@ class TestTypeHierarchyDeclaresItsEdgeSources:
         ]
 
     def test_kotlin_is_declared_because_it_emits_both_labels(self) -> None:
-        """WI-nakur's first catch: ``kotlin`` writes ``edge_type`` from a
-        function-local ternary, which the literal-only scan never counted."""
+        """``kotlin`` writes ``edge_type`` from a function-local ternary,
+        which a literal-only scan would not count (WI-nakur)."""
         assert "kotlin" in _pass_ids_emitting_edge_type("extends")
         assert "kotlin" in _pass_ids_emitting_edge_type("implements")
 
@@ -350,10 +348,10 @@ class TestBuildTargetDeclaresItsManifestProducers:
         ]
 
     def test_the_entry_point_conjunct_is_gone(self) -> None:
-        """It named five languages and was falsified from Haskell. The linker
-        matches a function or method symbol literally named ``main`` (or the
-        manifest's ``target_function``), which every analyzer that emits
-        functions can supply — so the honest enumeration is all 118 and a
+        """No entry-point conjunct. The linker matches a function or method
+        symbol literally named ``main`` (or the manifest's
+        ``target_function``), which every analyzer that emits functions can
+        supply — so the honest enumeration is every such analyzer and a
         narrow one is false. A conjunct satisfied by everything states nothing
         the empty list does not."""
         declared = {p.id: p for p in get_default_catalog().passes}
@@ -362,14 +360,13 @@ class TestBuildTargetDeclaresItsManifestProducers:
 
 
 class TestDatabaseQueryWasNotRepaired:
-    """The sixth falsified clause needed no repair; the detector did.
+    """The ``sql`` conjunct is correct even where the falsification detector flags it.
 
-    All 68 of its falsifications emitted nodes and ZERO edges — the linker
-    minting one query symbol per SQL string scraped from a host file, with no
-    ``kind="table"`` dst to link it to. ``sql`` is the only analyzer that emits
-    that kind, so the declaration was right and the reading was wrong (fixed in
-    the preceding commit). Pinned here so the clause is not "tidied" later by
-    someone reading the old audit.
+    A run whose output is nodes and ZERO edges — the linker minting one query
+    symbol per SQL string scraped from a host file, with no ``kind="table"``
+    dst to link it to — is not a falsification of the clause. ``sql`` is the
+    only analyzer that emits that kind, so the declaration is right. Pinned
+    here so the clause is not "tidied" away.
     """
 
     def test_the_sql_conjunct_is_still_declared(self) -> None:
@@ -411,30 +408,27 @@ class TestEveryRepairedLiteralResolves:
 
 
 class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
-    """WI-ditir: a linker that OPENS THE FILES ITSELF depends on no host
-    analyzer, and saying otherwise is the too-wide shape falsification cannot
-    see.
+    """A linker that OPENS THE FILES ITSELF depends on no host analyzer, and
+    saying otherwise is the too-wide shape falsification cannot see (WI-ditir).
 
-    ``database-query-linker`` declared eleven host languages in a second
-    conjunct while scanning four globs and dispatching to three scanners, so
-    eight of the eleven named neither a pass whose output it reads nor a file
-    it opens. Too wide is the FALSE-ALL-CLEAR direction here: a clause is an
-    inner-OR, so any one member satisfies it, and eight never-scanned languages
-    keep it satisfiable on repos where the linker cannot have read anything.
+    A conjunct of host languages the linker merely scans names neither a pass
+    whose output it reads nor, for most of them, a file it opens. Too wide is
+    the FALSE-ALL-CLEAR direction here: a clause is an inner-OR, so any one
+    member satisfies it, and never-scanned languages keep it satisfiable on
+    repos where the linker cannot have read anything.
     ``find_falsified_dependencies`` is backward-looking and can only catch a
-    clause that is too NARROW, so nothing would ever have reported this.
+    clause that is too NARROW, so it cannot report this.
 
-    The repair follows the shipped WI-dinum precedent on ``graphql-linker``
-    verbatim -- name what supplies the edge DESTINATION, not where the source
-    pattern was found. Here that is ``sql``, whose ``kind="table"`` symbols are
+    The clause follows the ``graphql-linker`` precedent (WI-dinum) -- name
+    what supplies the edge DESTINATION, not where the source pattern was
+    found. Here that is ``sql``, whose ``kind="table"`` symbols are
     the only pass output this linker consumes; the query side it reads off disk
     itself, through ``_find_source_files``.
 
     NOT DONE HERE, deliberately: recording the scan capability on
     ``activation``. ``LinkerActivation`` has no file-shape field, so that is a
-    core-dataclass change with its own axis-declaration obligations, and the
-    seven sibling linkers this row also names each need their own verification
-    that they consume no host analyzer's output. Both are residual.
+    core-dataclass change with its own axis-declaration obligations, and it
+    remains residual.
     """
 
     def test_the_clause_is_exactly_this(self) -> None:
@@ -451,8 +445,8 @@ class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
         """The justification, derived rather than asserted: the linker finds its
         own files on disk, so the query side arrives from disk and not from a
         host analyzer's output. Checked by running its finder over files no
-        analyzer has seen -- not by matching its glob literals, which since
-        WI-hizon come from ``taxonomy.extension_globs`` for JS/TS."""
+        analyzer has seen -- not by matching its glob literals, which for
+        JS/TS come from ``taxonomy.extension_globs`` (WI-hizon)."""
         from hypergumbo_core.linkers.database_query import _find_source_files
         from hypergumbo_core.taxonomy import JS_TS_LANGUAGES, extension_suffixes
 
@@ -462,8 +456,9 @@ class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
         assert {p.suffix for p in _find_source_files(tmp_path)} == suffixes
 
     def test_sql_still_supplies_the_destination(self) -> None:
-        """The control on the removal: dropping the WRONG conjunct would have
-        left the linker declaring no producer for its edge destination."""
+        """The control: the clause still names ``sql`` — dropping the wrong
+        conjunct would leave the linker declaring no producer for its edge
+        destination."""
         declared = {p.id: p for p in get_default_catalog().passes}
         known = {p.id for p in get_default_catalog().passes}
         assert "sql" in known
@@ -471,9 +466,9 @@ class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
 
 
 class TestMessageQueueDeclaresNothingBecauseItConsumesNothing:
-    """WI-zujan: the second clean specimen of WI-ditir's family.
+    """``message-queue-linker`` consumes no pass output, so it declares none.
 
-    ``message-queue-linker`` declared NINE host languages. Its wrapper is
+    Same family as database-query-linker (WI-ditir; WI-zujan). Its wrapper is
 
         result = link_message_queues(ctx.repo_root)
 
@@ -484,15 +479,14 @@ class TestMessageQueueDeclaresNothingBecauseItConsumesNothing:
     pass supplies its destination either, and the honest declaration is the
     empty CNF — the registry's documented default.
 
-    Its own comment stated the WI-rasal diagnosis verbatim without noticing:
     "Kafka/RabbitMQ/SQS/Redis pub-sub clients exist across all common backend
     languages" is a statement about THE WORLD, where ``depends_on`` is defined
     as the passes whose OUTPUT this pass reads. Both readings produce a
-    plausible list of language names, which is why nothing caught it.
+    plausible list of language names (the WI-rasal diagnosis).
 
-    This is a stricter case than database-query-linker (WI-ditir), which at
-    least genuinely consumed ``sql``'s ``kind="table"`` symbols and kept
-    ``[["sql"]]``. Here there is nothing to keep.
+    This is a stricter case than database-query-linker, which genuinely
+    consumes ``sql``'s ``kind="table"`` symbols and keeps ``[["sql"]]``. Here
+    there is nothing to keep.
     """
 
     def test_the_clause_is_gone_entirely(self) -> None:
@@ -522,26 +516,24 @@ class TestMessageQueueDeclaresNothingBecauseItConsumesNothing:
 
 
 class TestGraphqlResolverDeclaresItsSchemaSuppliers:
-    """WI-zujan: the sibling WI-dinum repaired one half of.
+    """``graphql-resolver-linker`` declares its schema suppliers, not host languages.
 
-    ``graphql-resolver-linker`` declared five HOST languages plus ``graphql``.
-    Its only read of pass output is ``_get_graphql_schema_symbols``, which
+    The sibling of ``graphql-linker`` (WI-dinum; WI-zujan). Its only read of pass output is ``_get_graphql_schema_symbols``, which
     filters ``ctx.symbols`` on ``language == "graphql"`` and
     ``kind in ("type", "field", "interface")`` — and nothing else. The RESOLVER
     side, which is where those five host languages would matter, is read off
     disk by ``link_graphql_resolvers(ctx.repo_root, schema_symbols)``.
 
-    Its comment contained both readings side by side without noticing the
-    difference: "resolvers live in the language hosting the GraphQL server" is
-    a statement about the world; "Schema docs via the graphql analyzer carry
-    the type/field targets" is the actual dependency.
+    Of the two readings, "resolvers live in the language hosting the GraphQL
+    server" is a statement about the world; "Schema docs via the graphql
+    analyzer carry the type/field targets" is the actual dependency.
 
     BOTH suppliers are declared, not just the analyzer. ``graphql-sdl-linker``
     emits ``kind == "field"`` symbols at ``language="graphql"`` from SDL
     embedded in a ``gql`` template, and ``_get_graphql_schema_field_symbols``
     records that "the GraphQL analyzer has never emitted this kind". So a
-    ``field`` target can come from either, which is the same pair WI-dinum
-    settled on for ``graphql-linker``.
+    ``field`` target can come from either, which is the same pair
+    ``graphql-linker`` declares (WI-dinum).
     """
 
     def test_the_clause_is_exactly_this(self) -> None:
@@ -556,7 +548,7 @@ class TestGraphqlResolverDeclaresItsSchemaSuppliers:
         assert sorted(flat & {"javascript", "python", "java", "ruby", "go"}) == []
 
     def test_it_matches_the_sibling_wi_dinum_already_repaired(self) -> None:
-        """Both halves of the GraphQL pair now name the same suppliers, which
+        """Both halves of the GraphQL pair name the same suppliers, which
         is the point: they consume the same schema symbols."""
         declared = {p.id: p for p in get_default_catalog().passes}
         assert (
@@ -570,10 +562,10 @@ class TestGraphqlResolverDeclaresItsSchemaSuppliers:
 
 
 # ---------------------------------------------------------------------------
-# WI-zujan: the six linkers WI-ditir's family left, each derived by reading
-# what the linker consumes. The shape of every repair is the WI-dinum one:
-# name the passes that supply the records the linker READS, not the languages
-# where its own disk scan finds the other end.
+# Linkers whose clause is derived by reading what the linker consumes
+# (WI-zujan). Each names the passes that supply the records the linker READS,
+# not the languages where its own disk scan finds the other end (the WI-dinum
+# shape).
 # ---------------------------------------------------------------------------
 
 
@@ -619,8 +611,8 @@ class TestHttpDeclaresItsRouteProducers:
     """http-linker reads exactly one thing from the graph: path-bearing route
     records, its edge DESTINATION (``_get_route_symbols`` -> ``route_of``). The
     client side comes off disk, which is why ``elm`` (scanned for client calls,
-    never a route producer) was on the old list and ``play-routes`` (the Play
-    route producer) was not.
+    never a route producer) is not declared and ``play-routes`` (the Play
+    route producer) is.
 
     ``route_of`` has two arms and both collapse to the HOST analyzer: the marker
     arm's records are minted by an analyzer via ``make_route_symbol``; the
@@ -647,8 +639,8 @@ class TestHttpDeclaresItsRouteProducers:
 
     def test_elm_is_no_longer_declared(self) -> None:
         """The linker scans ``.elm`` files for CLIENT calls; no elm pass emits
-        a route record, so a clause naming it was satisfied on an Elm-only repo
-        where nothing could be matched."""
+        a route record, so a clause naming it would be satisfied on an
+        Elm-only repo where nothing can be matched."""
         (clause,) = _declared("http-linker")
         assert "elm" not in clause
 
@@ -675,7 +667,7 @@ class TestCryptoFlowDeclaresItsFileListProducers:
 
 class TestPythonOnlyLinkersDeclarePython:
     """Both scan ``**/*.py`` only and read records only a Python producer
-    writes; eight and nine host languages were declared."""
+    writes."""
 
     def test_subprocess_names_both_python_producers(self) -> None:
         """Destinations: ``concept=command`` (written onto the ``python``

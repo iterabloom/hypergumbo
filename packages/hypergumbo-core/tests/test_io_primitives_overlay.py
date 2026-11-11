@@ -8,17 +8,16 @@ Adding ``requests`` / ``httpx`` / ``urllib3`` rows to the shipped catalogue woul
 make hypergumbo the owner of every third-party HTTP API's surface, which is the
 maintenance burden ADR-0016 declined.
 
-WHAT WAS ACTUALLY MISSING. ADR-0017 established project-local catalogues for the
+WHAT THE OVERLAY ADDS. ADR-0017 established project-local catalogues for the
 TAINT arm — "any project can define its own taint sources, sinks, and sanitizers
 by writing YAML files ... with project-local entries taking precedence" (§370),
 shipped as ``--taint-sources`` / ``--taint-sinks`` / ``--taint-sanitizers`` plus
-``extra_catalogs:``. That pattern was never extended to BOUNDARIES: before this
-change ``load_catalog(language)`` read only the packaged directory and
-``extra_catalogs:`` accepted only the three taint keys, so the boundary arm had
-no user-supplied channel at all. ADR-0016 predates ADR-0017 and made its scoping
-decision before the project-local pattern existed.
+``extra_catalogs:``. The overlay extends that pattern to BOUNDARIES:
+``load_catalog(language, overlay_paths=...)`` layers user files over the
+packaged directory, fed by ``--io-primitives`` and the ``io_primitives`` key of
+``extra_catalogs:``.
 
-THE DEFECT THAT MOTIVATED IT, reproduced with controls firing in the same run::
+THE GAP IT CLOSES, shown with controls firing in the same run (no overlay)::
 
     import requests
     def exfiltrate(secret, url):
@@ -29,11 +28,11 @@ THE DEFECT THAT MOTIVATED IT, reproduced with controls firing in the same run::
         fs_read   builtins.open  1     <- control fired
         net_send                 0     <- a plain HTTP exfiltration, invisible
 
-python.yaml's header explained this away: third-party libraries "are detected
-transitively — they ultimately call these primitives". That holds only when the
-library's own source is inside the analyzed tree, and it is not — hypergumbo
-analyzes the repo, not site-packages. The scope decision is sound; the
-justification printed beside it was false, and is corrected in the same change.
+Third-party libraries are NOT detected transitively through the stdlib
+primitives they ultimately call: that would hold only if the library's own
+source were inside the analyzed tree, and it is not — hypergumbo analyzes the
+repo, not site-packages. The stdlib scope decision is sound; the overlay is
+how third-party I/O becomes visible.
 
 PRECEDENCE MIRRORS THE TAINT ARM RATHER THAN INVENTING A SECOND RULE:
 built-in < claims-file ``extra_catalogs:`` < CLI ``--io-primitives``, and a later
@@ -102,8 +101,7 @@ class TestOverlayLoading:
 
     def test_an_overlay_omits_status(self, tmp_path: Path) -> None:
         """``status`` is a shipped catalogue's completeness claim, and an
-        overlay makes none, so the key is simply absent (WI-sihiz). It was a
-        password: required as ``overlay``, compared once, then overwritten."""
+        overlay makes none, so the key may simply be absent (WI-sihiz)."""
         cat = load_overlay_catalog(_write(tmp_path, "o.yaml", """\
             language: python
             net_send:
@@ -126,8 +124,8 @@ class TestOverlayLoading:
         self, tmp_path: Path, value: str,
     ) -> None:
         """A non-laundering value is refused for what it IS, not with the
-        provenance_declared explanation every value used to get. Accepting
-        ``in_progress`` would be a key that loads and changes nothing."""
+        provenance_declared explanation. Accepting ``in_progress`` would be a
+        key that loads and changes nothing."""
         with pytest.raises(IoPrimitiveOverlayError) as exc:
             load_overlay_catalog(_write(tmp_path, "bad.yaml", f"""\
                 language: python
@@ -144,16 +142,15 @@ class TestOverlayLoading:
     def test_an_overlay_may_declare_its_own_dependency_enumerated(
         self, tmp_path: Path,
     ) -> None:
-        """OWNER RULING 2026-08-15: "i mean what else would it do? you have a
-        better idea? if not, then of course it may."
+        """An overlay may declare a dependency's I/O list COMPLETE
+        (``module_completeness``), not just what the dependency DOES (rows).
 
-        Overlays are where third-party goes. Before this, an overlay could
-        declare what a dependency DOES (rows) but never that the list was
-        COMPLETE, so a third-party module could never leave the uncatalogued
-        set no matter how carefully it was described — and `verify-claims`
-        could never confirm anything for a repo with dependencies. The user is
-        the authority on their own dependencies; this is the mechanism that
-        lets them say so.
+        Overlays are where third-party goes. Without this declaration a
+        third-party module could never leave the uncatalogued set no matter
+        how carefully it was described — and `verify-claims` could never
+        confirm anything for a repo with dependencies. The user is the
+        authority on their own dependencies; this is the mechanism that lets
+        them say so.
         """
         overlay = _write(tmp_path, "o.yaml", """\
             language: python
@@ -169,13 +166,12 @@ class TestOverlayLoading:
     def test_the_stdlib_SPELLING_is_refused_in_an_overlay(
         self, tmp_path: Path,
     ) -> None:
-        """THE NAME IS THE POINT, and it is the owner's: "overlays are where
-        third-party stuff goes. am i wrong? then why would we put anything
-        about stdlib in its associated names? that would be misleading."
+        """THE NAME IS THE POINT: overlays are where third-party goes, so a
+        stdlib-flavoured key name in one would be misleading.
 
-        The concept was never stdlib-specific — only its authors were. So the
-        key is ``module_completeness`` for everyone, and the old spelling stays
-        readable in the SHIPPED catalogues alone. An overlay declaring
+        The concept is not stdlib-specific, so the key is
+        ``module_completeness`` for everyone, and the ``stdlib_`` spelling
+        stays readable in the SHIPPED catalogues alone. An overlay declaring
         ``stdlib_module_completeness`` is asserting something about a stdlib it
         is not describing, so it is refused with a message that names the key
         the author actually wants rather than a flat rejection.
@@ -190,11 +186,11 @@ class TestOverlayLoading:
             """)
         with pytest.raises(IoPrimitiveOverlayError) as exc:
             load_catalog("python", overlay_paths=[overlay])
-        # DISCRIMINATING ON PURPOSE. ``match="module_completeness"`` passes
-        # against the OLD refusal too, because "stdlib_module_completeness"
-        # contains it as a substring — the test would have been green before
-        # the change and proved nothing. Assert the message actively steers the
-        # author to the key they want.
+        # DISCRIMINATING ON PURPOSE. ``match="module_completeness"`` would also
+        # pass against a flat rejection that merely quotes
+        # "stdlib_module_completeness", which contains it as a substring, and
+        # so prove nothing. Assert the message actively steers the author to
+        # the key they want.
         assert "Use `module_completeness` instead" in str(exc.value), str(exc.value)
 
     def test_an_overlay_completeness_entry_still_needs_provenance(
@@ -230,11 +226,9 @@ class TestOverlayLoading:
         an unconditional refusal here means a python overlay aborts any repo
         that also contains javascript.
 
-        Measured on hypergumbo's own tree: wiring its own python overlay into
-        its own claims file failed with "declares language 'python' but was
-        loaded for 'javascript'". The two overlays already shipped under
-        io_primitives_overlays/ (python + go) could never be declared
-        together either, which is the obvious thing a polyglot repo does.
+        A python overlay and a go overlay (both kinds ship under
+        io_primitives_overlays/) must be declarable together in one claims
+        file, which is the obvious thing a polyglot repo does.
 
         An overlay names its language; applying it only to that language is
         the whole of the contract. Being asked about another one is not an
@@ -256,13 +250,13 @@ class TestOverlayLoading:
     def test_an_overlay_for_an_UNKNOWN_language_is_still_refused(
         self, tmp_path: Path,
     ) -> None:
-        """THE DISCRIMINATOR, and why the fix above is a skip rather than a
-        softening. ``language: pyton`` is a typo, and silently ignoring it
+        """THE DISCRIMINATOR, and why the behaviour above is a skip rather
+        than a softening. ``language: pyton`` is a typo, and silently ignoring it
         leaves the author believing their rows applied — the fail-quiet
         direction this gate exists to avoid. A language no analyzer produces
         cannot be "somebody else's overlay", because there is no run in which
         it would ever apply. (A language an analyzer produces but no catalogue
-        ships, such as ruby, is a real overlay target since WI-guhuv; see
+        ships, such as ruby, is a real overlay target (WI-guhuv); see
         ``test_io_overlay_uncatalogued_language.py``.)
         """
         overlay = _write(tmp_path, "typo.yaml", """\
@@ -281,8 +275,8 @@ class TestPrecedence:
         self, tmp_path: Path,
     ) -> None:
         overlay = _write(tmp_path, "o.yaml", REQUESTS_OVERLAY)
-        # ``include_defaults=False`` is what "the BUILT-IN catalogue" now
-        # spells: ADR-0047 ships community rows for requests BY DEFAULT, and
+        # ``include_defaults=False`` is how to ask for "the BUILT-IN
+        # catalogue": ADR-0047 ships community rows for requests BY DEFAULT, and
         # this test is about the stdlib-scoped file underneath them.
         base = load_catalog("python", include_defaults=False)
         with_overlay = load_catalog(
@@ -369,28 +363,20 @@ class TestPrecedence:
         """THE ROUTE AROUND THE TEST ABOVE, closed.
 
         ``load_overlay_catalog`` pops ``stdlib_modules`` — which is what the
-        sibling test exercises — but ``_from_dict`` used to auto-promote every
-        ``stdlib_module_completeness`` entry into the same set on the reasoning
-        that "adding to completeness implies the module is stdlib". So an
-        overlay that never mentioned ``stdlib_modules`` at all still got
-        ``is_stdlib_module("requests") is True``, relabelling a PyPI package as
-        stdlib and feeding that to the supply-chain ecosystem classifier and
-        py_deps. Measured before the fix, with the popped spelling as the
-        control: ``stdlib_modules: [requests]`` gave False, the completeness
-        spelling gave True.
+        sibling test exercises — but a completeness entry is a second route
+        into the same set: auto-promoting every completeness entry into
+        ``stdlib_modules`` (on the reasoning that "adding to completeness
+        implies the module is stdlib") would give an overlay that never
+        mentioned ``stdlib_modules`` ``is_stdlib_module("requests") is True``,
+        relabelling a PyPI package as stdlib and feeding that to the
+        supply-chain ecosystem classifier and py_deps.
 
         The completeness declaration itself is legitimate for an overlay — the
         user may assert they audited their own dependency's I/O — so it is
-        preserved. It just no longer carries a provenance claim with it.
-
-        NOW LOAD-BEARING RATHER THAN HYPOTHETICAL. When this test was written
-        the overlay path REFUSED completeness outright, so the auto-promote it
-        guards against was unreachable through an overlay and the assertion
-        below rode on the refusal. The owner has since granted overlays the
-        declaration, which makes this the ONLY thing standing between "I
-        audited my dependency's I/O" and "…and it ships with the interpreter" —
-        two facts one write used to conflate, feeding the supply-chain
-        ecosystem classifier and py_deps.
+        preserved. It just carries no provenance claim with it. Because
+        overlays may make that declaration, this is the ONLY thing standing
+        between "I audited my dependency's I/O" and "…and it ships with the
+        interpreter".
         """
         overlay = _write(
             tmp_path, "o.yaml",
@@ -415,16 +401,14 @@ class TestPrecedence:
     def test_an_overlay_grant_is_real_and_this_is_what_it_costs(
         self, tmp_path: Path,
     ) -> None:
-        """THE SIX-LINE FILE THAT RE-OPENED INV-buzab — now PERMITTED, by
-        owner ruling 2026-08-15, and kept here as the price tag.
+        """A SIX-LINE FILE THAT IS PERMITTED, kept here as the price tag of
+        the overlay completeness grant (INV-buzab).
 
-        This test previously asserted a refusal. The contract changed, not the
-        measurement: a completeness entry is what lets ``verify-claims`` answer
-        ``confirmed`` about the calls it could not classify, and measured while
-        it was still refused, this exact overlay — zero primitive rows, one
-        entry — turned a fixture that opens ``telnetlib.Telnet`` and writes
-        ``os.environ["API_KEY"]`` into it from ``inconclusive`` rc 2 back to
-        ``confirmed`` rc 0.
+        A completeness entry is what lets ``verify-claims`` answer
+        ``confirmed`` about the calls it could not classify: this exact
+        overlay — zero primitive rows, one entry — is enough to turn a fixture
+        that opens ``telnetlib.Telnet`` and writes ``os.environ["API_KEY"]``
+        into it from ``inconclusive`` (rc 2) into ``confirmed`` (rc 0).
 
         The grant is deliberate. Overlays are where third-party goes and the
         user is the authority on their own dependencies; without it a
@@ -453,12 +437,13 @@ class TestPrecedence:
     def test_rows_are_still_welcome_from_an_overlay(
         self, tmp_path: Path,
     ) -> None:
-        """NON-VACUITY for the refusal above: the overlay channel still works.
+        """NON-VACUITY: the overlay row channel works, and rows alone do not
+        grant completeness.
 
         Rows are NARROWER than a completeness entry, not SAFER — see
         :meth:`test_a_row_also_grants_examined_ness_and_that_is_INV_zosun`.
-        A row vouches for one named call surface; only the blanket all-clear
-        over calls the catalogue could not classify is withheld."""
+        A row vouches for one named call surface; it does not grant the
+        blanket all-clear over calls the catalogue could not classify."""
         cat = load_catalog(
             "python",
             overlay_paths=[_write(tmp_path, "o.yaml", REQUESTS_OVERLAY)],
@@ -474,12 +459,11 @@ class TestPrecedence:
         """THE DISCLOSED RESIDUAL of accepting rows from a user-authored file.
 
         This does NOT assert the behaviour is desirable. It pins the mechanism
-        that makes it possible, so the correction stays load-bearing instead of
-        living in a changelog paragraph, and so nobody "fixes" INV-zosun
-        without this test telling them what they changed.
+        that makes it possible, so nobody "fixes" INV-zosun without this test
+        telling them what they changed.
 
-        A row is not a detection-only grant. Since INV-buzab, a call the
-        catalogue CLASSIFIED is what ``examined`` means, and
+        A row is not a detection-only grant. A call the catalogue CLASSIFIED
+        is what ``examined`` means (INV-buzab), and
         :func:`classify_call` is the one predicate answering that for both the
         tagging pass and the coverage gate. So an overlay row makes the gate
         treat its call surface as examined REGARDLESS of the boundary it
@@ -499,8 +483,8 @@ class TestPrecedence:
         ``requests.post`` -> ``fs_read``             **confirmed**    0
         ==========================================  ==============  ==
 
-        NOT A REGRESSION: before INV-buzab, row PRESENCE alone permitted the
-        whole module, on strictly weaker evidence.
+        This is still narrower than letting row PRESENCE alone permit the
+        whole module, which would rest on strictly weaker evidence.
         """
         mislabelled = _write(
             tmp_path, "o.yaml",
@@ -533,16 +517,14 @@ class TestTheMotivatingDefect:
     """Behavioural: the overlay actually makes the invisible egress visible."""
 
     def test_requests_post_is_undetectable_without_an_overlay(self) -> None:
-        """The premise, pinned — and REVISITED once, deliberately.
+        """The premise, pinned: the shipped catalogue file has no
+        ``requests`` rows.
 
-        This test used to read ``load_catalog("python")`` and carried the
-        instruction that a failure meant "ADR-0016's scope decision needs
-        revisiting rather than this test needing updating". That revisiting
-        happened: ADR-0047 is the owner-accepted amendment, and it keeps the
-        shipped catalogue stdlib-only while allowing unvouched community rows
-        to ship beside it. So the premise still holds exactly where the
-        tripwire aimed it — at the catalogue file — and the argument records
-        that the change was authorised, not worked around.
+        ADR-0047 keeps the shipped catalogue stdlib-only while allowing
+        unvouched community rows to ship beside it (loaded by default), so
+        the tripwire reads the catalogue file alone via
+        ``include_defaults=False``. A failure here means ADR-0016's scope
+        decision needs revisiting, not that this test needs updating.
         """
         cat = load_catalog("python", include_defaults=False)
         assert not any(p.module.startswith("requests") for p in cat.primitives)
@@ -562,7 +544,8 @@ class TestTheMotivatingDefect:
 
 
 class TestTheShippedExampleOverlay:
-    """The example under docs/ is the user's starting point — so it has to load.
+    """The example overlay (io_primitives_overlays/) is the user's starting
+    point — so it has to load.
 
     Shipping an example that does not parse is worse than shipping none: it is
     the first thing a user copies.
@@ -581,8 +564,9 @@ class TestTheShippedExampleOverlay:
         assert all(p.boundary in {"net_send", "net_recv"} for p in cat.primitives)
 
     def test_the_example_is_not_in_the_builtin_catalogue_dir(self) -> None:
-        """It must live under docs/, NOT beside the shipped catalogues — the
-        whole point is that hypergumbo does not own these rows."""
+        """It must live under io_primitives_overlays/, NOT beside the shipped
+        catalogues in io_primitives/ — the whole point is that hypergumbo does
+        not own these rows."""
         from hypergumbo_core import io_boundary
 
         catalog_dir = Path(io_boundary.__file__).parent / "io_primitives"
@@ -700,8 +684,8 @@ class TestOneDeclarationFeedsBothArms:
     BUILT-IN case — every write-side primitive auto-derives into a taint sink
     via ``AUTO_SINK_ZONE_MAP``, and hypergumbo ships no ``taint_sinks/``
     directory at all, "without a second source of truth that could drift out of
-    sync". The first cut of the overlay fed only the boundary arm, which
-    re-created exactly that drift one layer up: a user would have declared
+    sync". Feeding the overlay to the boundary arm alone would re-create
+    exactly that drift one layer up: a user would have to declare
     ``requests.post`` twice, in two schemas, to get it seen by both. These
     assertions pin the unification.
 
@@ -722,7 +706,7 @@ class TestOneDeclarationFeedsBothArms:
         return list(cat.sinks_for_language("python"))
 
     # ADR-0047 ships `requests` rows BY DEFAULT, so an overlay declaring
-    # requests no longer ADDS anything and a delta measured with it would be
+    # requests ADDS nothing and a delta measured with it would be
     # vacuously empty. These two tests are about the delta a USER overlay
     # makes, so they use a client hypergumbo does not ship.
     UNSHIPPED_OVERLAY = """\

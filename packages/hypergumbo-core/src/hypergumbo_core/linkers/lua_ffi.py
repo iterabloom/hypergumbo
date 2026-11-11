@@ -157,9 +157,9 @@ def link_lua_ffi(
     result_edges: list[Edge] = []
     seen_edges: set[tuple[str, str]] = set()  # (src_id, func_name) dedup
 
-    # Build multi-value lookup for C/C++ functions by name. INV-zuhub:
-    # multi-value indexing surfaces cross-file short-name collisions so
-    # the FFI resolver can downgrade ambiguous edges.
+    # Build multi-value lookup for C/C++ functions by name. Multi-value
+    # indexing surfaces cross-file short-name collisions so the FFI
+    # resolver can downgrade ambiguous edges (INV-zuhub).
     c_lookup: dict[str, list[Symbol]] = {}
     for sym in c_symbols:
         if sym.kind in ("function", "method"):
@@ -233,9 +233,9 @@ def link_lua_ffi(
                 continue
             seen_edges.add(dedup_key)
 
-            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-            # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when
-            # the FFI symbol name had cross-file collisions.
+            # Canonical 'calls' edge tagged meta['bridge_kind']='ffi'
+            # (ADR-0023 §6). Downgraded when the FFI symbol name had
+            # cross-file collisions (INV-zuhub).
             confidence = 0.5 if is_fallback else 0.85
             edge_meta: dict[str, object] = {"bridge_kind": "ffi"}
             if is_fallback:
@@ -275,9 +275,9 @@ def link_lua_ffi(
             continue
         seen_edges.add(dedup_key)
 
-        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-        # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when the
-        # FFI symbol name had cross-file collisions.
+        # Canonical 'calls' edge tagged meta['bridge_kind']='ffi'
+        # (ADR-0023 §6). Downgraded when the FFI symbol name had
+        # cross-file collisions (INV-zuhub).
         confidence = 0.5 if is_fallback else 0.85
         edge_meta = {"bridge_kind": "ffi"}
         if is_fallback:

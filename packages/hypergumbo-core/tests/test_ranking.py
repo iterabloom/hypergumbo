@@ -441,7 +441,8 @@ class TestCrossFileDegreeWeighting:
         assert weighted[sym_a.id] > weighted[sym_b.id]
 
     def test_within_file_weight_default_preserves_behavior(self):
-        """Default within_file_weight=1.0 gives same results as before."""
+        """Omitting within_file_weight is identical to passing 1.0 (no
+        within-file dampening)."""
         a = make_symbol("a", path="src/same.py")
         b = make_symbol("b", path="src/same.py")
         c = make_symbol("c", path="src/other.py")
@@ -1145,8 +1146,9 @@ class TestRankSymbols:
 
         # Model should rank higher than helper because it has 4 extends edges
         # (all preserved) vs helper's 2 production call edges (test calls excluded).
-        # Without the fix, Model only gets 1 extends edge (from prod_sub) and
-        # helper gets 2 call edges, making helper rank higher.
+        # If test-file extends edges were dropped, Model would get only 1
+        # extends edge (from prod_sub) against helper's 2 call edges, and
+        # helper would rank higher.
         assert base_ranked.rank < util_ranked.rank, (
             f"Model (rank {base_ranked.rank}) should rank above helper "
             f"(rank {util_ranked.rank}) because extends edges from test files "
@@ -1202,10 +1204,10 @@ class TestFilterEdgesForRanking:
         assert len(result) == 1
 
     def test_preserves_inherits_edges_from_tests(self):
-        """WI-lobif: `inherits` (Solidity-style class inheritance) from a test
-        file is preserved like `extends` — same is-a relationship. Before the
-        fix the structural set hardcoded {extends, implements}, so an `inherits`
-        edge from a test file was dropped as a test edge."""
+        """`inherits` (Solidity-style class inheritance) from a test file is
+        preserved like `extends` — same is-a relationship — so the structural
+        set kept by test filtering must include it alongside extends and
+        implements (WI-lobif)."""
         base = make_symbol("Ownable", path="src/base.sol")
         test_sym = make_symbol("TestOwnable", path="tests/test_ownable.py")
         edge = make_edge(test_sym.id, base.id, edge_type="inherits")
@@ -1253,10 +1255,10 @@ class TestFilterEdgesForRanking:
         assert result[0].confidence == 0.8
 
     def test_min_edge_confidence_keys_on_rank_score(self):
-        """ADR-0039 ruling 3: the ranking filter keys on rank_score, not
-        confidence — a high-confidence dispatch that a producer dampened for
+        """The ranking filter keys on rank_score, not confidence (ADR-0039
+        ruling 3): a high-confidence dispatch that a producer dampened for
         ranking (e.g. type_hierarchy fan-out, confidence 0.85 / rank_score 0.30)
-        is still demoted out (WI-kabom preserved), while an un-dampened edge
+        is demoted out (WI-kabom), while an un-dampened edge
         (rank_score == confidence) is unaffected."""
         a = make_symbol("a", path="src/a.py")
         b = make_symbol("b", path="src/b.py")
@@ -1270,7 +1272,7 @@ class TestFilterEdgesForRanking:
             [damped, normal], [a, b], min_edge_confidence=0.5
         )
         # The damped dispatch is excluded despite confidence 0.85 >= 0.5;
-        # keying on confidence (the pre-ADR-0039 behavior) would have kept it.
+        # keying on confidence would keep it.
         assert len(result) == 1
         assert result[0].edge_type == "calls"
 
@@ -2033,13 +2035,14 @@ class TestComputeSymbolMentionCentralityBatch:
         assert result.normalized_scores[f] == 0.0
 
     def test_score_is_indegree_density_not_zero_to_one_normalized(self, tmp_path):
-        """WI-sigof: ``normalized_scores`` is in-degree-per-character density
+        """``normalized_scores`` is in-degree-per-character density
         (Σ in-degree of mentioned symbols ÷ file length), NOT a [0,1]-normalized
         centrality. A short file mentioning a high-in-degree symbol scores well
         above 1.0 — so the field name / schema description must not imply a
         bounded [0,1] centrality. This characterization test locks the value
         semantics: if the computation is ever re-normalized to [0,1], it fires
-        and forces the honest label (schema + docstring) to be revisited.
+        and forces the honest label (schema + docstring) to be revisited
+        (WI-sigof).
         """
         f = tmp_path / "tiny.md"
         f.write_text("foo")  # 3 characters
@@ -2220,15 +2223,16 @@ class TestComputeCentralityWithPython:
 
 
 class TestCentralityNameMatchingScales:
-    """WI-rukaz: names are not matched as ONE regex alternation.
+    """Names are not matched as ONE regex alternation.
 
     ``\\b(n1|n2|...|nN)\\b`` makes CPython's sre try every branch at every
-    text position, so the scan cost names x bytes: on flink (106,317 eligible
-    names, 18.6 MB of docs) fewer than 100 of 1,775 files were done after
-    32 minutes. Identifier names are now matched by tokenizing each file once;
-    compound names (``Svc.run``, paths, ``@Inject``) are checked only when
-    every word segment occurs in the file, then confirmed by that name's own
-    whole-word pattern.
+    text position, so the scan costs names x bytes, which is impractical at
+    100k+ names over ~20 MB of docs. Identifier names are matched by
+    tokenizing each file once; compound names (``Svc.run``, paths,
+    ``@Inject``) are checked only when every word segment occurs in the file,
+    then confirmed by that name's own whole-word pattern. These tests use the
+    single alternation as the reference for identifier match semantics
+    (WI-rukaz).
     """
 
     @staticmethod
@@ -2261,8 +2265,9 @@ class TestCentralityNameMatchingScales:
     def test_compound_names_match_each_by_its_own_whole_word_pattern(
         self, tmp_path,
     ):
-        # Order matters for the old alternation: "Svc.run" listed first
-        # consumed the text, so "run" inside it was never reported.
+        # In a single alternation, "Svc.run" listed first would consume the
+        # text and "run" inside it would go unreported; each name must match
+        # on its own.
         names = ["Svc.run", "run", "a/b-c.ts", "@Inj", "+", "Svc.stop",
                  "x.y.z", "1+2"]
         text = "call Svc.run here, see a/b-c.ts; x@Inj; 1+2 = 3; x.y"
@@ -2272,7 +2277,7 @@ class TestCentralityNameMatchingScales:
         assert self._scan(tmp_path, text, names) == expected
 
     def test_an_empty_name_is_never_reported(self):
-        # The alternation's empty branch matched at every word boundary.
+        # An empty alternation branch would match at every word boundary.
         from hypergumbo_core.ranking import _NameMatcher
 
         assert _NameMatcher(["", "foo"]).match("a foo b") == {"foo"}
@@ -2554,9 +2559,9 @@ class TestIsUtilitySymbol:
     """Tests for is_utility_symbol function.
 
     Infrastructure utility symbols (loggers, clocks, metrics, error sentinels)
-    should be detected by name so they can be demoted in rankings. This covers
-    the INV-mahap finding: DefaultClock.Now (in-degree 474) dominates rankings
-    because hub saturation alone is insufficient.
+    should be detected by name so they can be demoted in rankings. Hub
+    saturation alone does not keep a high-in-degree utility such as
+    DefaultClock.Now out of the top ranks (INV-mahap).
     """
 
     def test_logger_names(self):
@@ -2606,9 +2611,9 @@ class TestIsUtilitySymbol:
     def test_logging_method_names(self):
         """Universal logging method names are detected.
 
-        These are the methods that appear at top of rankings in bakeoff
-        repos (forgejo: XORMLogBridge.Errorf rank 2, kong: log rank 2,
-        postal: Base#log rank 7). Covers all common logging verb patterns.
+        Logging methods are called everywhere, so without demotion they rank
+        near the top of real repos (e.g. XORMLogBridge.Errorf, log, Base#log).
+        Covers the common logging verb patterns.
         """
         # Core logging verbs (exact match, case-insensitive)
         assert is_utility_symbol("log")
@@ -2741,8 +2746,8 @@ class TestIsUtilitySymbol:
     def test_test_fixture_names_are_utility(self):
         """Test doubles (Dummy*, Mock*, Fake*, Stub*, Spy*) are utility symbols.
 
-        These have high in-degree from test code but zero production relevance.
-        Bakeoff finding: DummyNetworkAdapter ranked ahead of production code.
+        These have high in-degree from test code but zero production relevance;
+        undemoted, a double like DummyNetworkAdapter can outrank production code.
         """
         assert is_utility_symbol("DummyNetworkAdapter")
         assert is_utility_symbol("MockClient")
@@ -2762,10 +2767,10 @@ class TestIsUtilitySymbol:
     def test_assertion_panic_abort_names(self):
         """Assertion/panic/abort builtins are utility symbols.
 
-        DEEP bakeoff finding: assert() ranked 6th in automerge despite being
-        a language built-in called everywhere. logPanicAndDie dominated
-        firecracker rankings (caught by ^log_ pattern). These are
-        control-flow primitives, not domain architecture.
+        Built-ins like assert() are called everywhere and would otherwise rank
+        near the top; compound names like logPanicAndDie are caught by the
+        ^log_ pattern. These are control-flow primitives, not domain
+        architecture.
         """
         # Assertion builtins
         assert is_utility_symbol("assert")
@@ -2797,9 +2802,9 @@ class TestIsUtilitySymbol:
     def test_ui_primitive_component_names(self):
         """UI primitive components are utility symbols.
 
-        DEEP bakeoff finding: Button ranked above JobQueue.add in AFFiNE.
         Leaf UI components like Button, Input, Icon are rendered everywhere
-        but are design-system plumbing, not application architecture.
+        but are design-system plumbing, not application architecture; undemoted,
+        Button can outrank application logic such as JobQueue.add.
         """
         assert is_utility_symbol("Button")
         assert is_utility_symbol("Icon")
@@ -3047,11 +3052,10 @@ class TestMinEdgeConfidence:
     """Tests for min_edge_confidence filtering in rank_symbols.
 
     Low-confidence edges (ast_method_inferred, confidence <0.5) inflate
-    in-degree for common method names like .Lock(), .get(), .setValue().
-    DirLocker.Lock gets 255 false in-degree when only 2 production call
-    sites exist because every .Lock() call globally is attributed to it.
-    Filtering edges below a confidence threshold before computing
-    centrality addresses this.
+    in-degree for common method names like .Lock(), .get(), .setValue():
+    every .Lock() call in a repo can be attributed to one DirLocker.Lock that
+    has only a couple of real call sites. Filtering edges below a confidence
+    threshold before computing centrality addresses this.
     """
 
     def test_low_confidence_edges_excluded(self):
@@ -3224,7 +3228,7 @@ class TestTrivialSinkDampening:
         """A short-bodied pure sink should rank below a connector that
         has lower in-degree but meaningful out-degree and body size.
 
-        Real-world scenario from Prometheus bakeoff:
+        Scenario modeled on Prometheus:
           - Timer.Duration: in=98, out=0, LoC=3 — 1-line accessor
           - evaluator.eval: in=15, out=30, LoC=200 — core evaluation loop
         Without dampening, sink score=98 beats connector score≈66.
@@ -3429,10 +3433,10 @@ class TestApplyCommonMethodNameWeights:
 
     Methods with names shared across many distinct symbols (e.g., 'execute'
     defined on 50+ classes) get centrality dampening proportional to the
-    number of symbols sharing that name.  This addresses bakeoff finding
-    WI-luvaj: PartialToViewsMappings#execute (in-degree 2894) dominates
-    rankings due to receiver_call false positives from 'execute' calls
-    resolving to the wrong target.
+    number of symbols sharing that name.  Without it, receiver_call false
+    positives — 'execute' calls resolving to the wrong target — pile in-degree
+    onto one definition (e.g. PartialToViewsMappings#execute) and let it
+    dominate rankings (WI-luvaj).
     """
 
     def test_common_name_dampened(self):
@@ -3514,7 +3518,7 @@ class TestApplyCommonMethodNameWeights:
     def test_integration_with_rank_symbols(self):
         """rank_symbols integrates common method name dampening.
 
-        When 'execute' is defined on 50+ classes (as in gitlab bakeoff),
+        When 'execute' is defined on 50+ classes (as in gitlab),
         the first execute symbol should have reduced weighted_centrality
         compared to its raw_centrality.
         """
@@ -3600,9 +3604,9 @@ class TestComputeTruncationElbow:
         assert result == 500
 
     def test_span_none_symbol_excluded(self):
-        """WI-hafap: a span=None symbol is excluded from the elbow
-        computation — identical to how ``end_line > 0`` already excludes
-        the degenerate ``Span(0, 0, 0, 0)`` — rather than crashing."""
+        """A span=None symbol is excluded from the elbow computation —
+        identical to how ``end_line > 0`` excludes the degenerate
+        ``Span(0, 0, 0, 0)`` — rather than crashing (WI-hafap)."""
         path = "src/main.py"
         syms = [
             self._make_sym("func1", path, 1, 10),
@@ -3793,7 +3797,7 @@ class TestComputeHarmonicShares:
 
 
 class TestApplyGeneratedCodeWeights:
-    """WI-tizij: generated code symbols get centrality penalty."""
+    """Generated code symbols get a centrality penalty (WI-tizij)."""
 
     def test_generated_symbol_downweighted(self):
         from hypergumbo_core.ranking import apply_generated_code_weights
@@ -3850,7 +3854,7 @@ class TestApplyGeneratedCodeWeights:
 
 
 class TestApplyFileKindWeights:
-    """WI-ramuv: kind="file" Symbols are suppressed from ranking by default."""
+    """kind="file" Symbols are suppressed from ranking by default (WI-ramuv)."""
 
     def test_file_kind_symbol_zeroed(self):
         """A kind="file" Symbol's centrality is multiplied by 0 (default)."""
@@ -3938,12 +3942,12 @@ class TestApplyFileKindWeights:
 
 
 class TestEventSubscribesEdgeWeight:
-    """Phase 4b removed event_subscribes from the registry per audit-findings 0001
-    DEPRECATE-NO-FOLD verdict; the canonical event_publishes carries the
-    full pub-sub weighting (slice handles reverse traversal natively)."""
+    """event_subscribes is not a weighted edge type (audit-findings 0001,
+    DEPRECATE-NO-FOLD); the canonical event_publishes carries the full pub-sub
+    weighting (slice handles reverse traversal natively)."""
 
     def test_event_subscribes_not_in_default_weights(self):
-        """event_subscribes is removed from DEFAULT_EDGE_TYPE_WEIGHTS post Phase 4b."""
+        """event_subscribes has no entry in DEFAULT_EDGE_TYPE_WEIGHTS."""
         from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
 
         assert "event_subscribes" not in DEFAULT_EDGE_TYPE_WEIGHTS
@@ -3959,10 +3963,11 @@ class TestEventSubscribesEdgeWeight:
 class TestOrchestrationHubRanking:
     """Orchestration hubs (low in, very high out) should not be buried by dampening.
 
-    alertmanager's `run` function (in=9 all from same file, out=128) scored
-    raw centrality 5.27 vs NewAlertmanagerClient's 26.4 because within-file
-    dampening (0.3x) and per-file cap (5) crushed its effective in-degree
-    from 9 to 0.90.  The out-degree boost (ln-scale) couldn't compensate.
+    A function like alertmanager's `run` (in=9 all from the same file,
+    out=128) has its effective in-degree crushed by within-file dampening
+    (0.3x) and the per-file cap (5), and the ln-scaled out-degree boost alone
+    cannot compensate; compute_centrality's orchestration floor keeps such
+    hubs from sinking below moderate connectors.
     """
 
     def test_orchestration_hub_ranks_above_moderate_connector(self):
@@ -4121,12 +4126,12 @@ class TestComputeDampenedCentrality:
 
 
 class TestCanonicalDampenerStackPinned:
-    """Pins for the canonical 7-stage dampener stack (Phase 2b).
+    """Pins for the canonical 7-stage dampener stack.
 
-    Pins the tuple order and the specific multiplier formula for the one
-    dampener whose exact factor wasn't previously asserted (only
-    monotonicity bounds were). The other six dampeners already pin their
-    multipliers explicitly elsewhere in this file:
+    Pins the tuple order and the exact multiplier formula for the
+    common-method-name dampener, whose other tests assert only bounds.
+    The other six dampeners pin their multipliers explicitly elsewhere in
+    this file:
 
     - apply_tier_weights: 2.0 / 1.5 / 1.0 / 0.0 (TestApplyTierWeights)
     - apply_noise_weights: 0.1 (TestApplyNoiseWeights)
@@ -4150,9 +4155,9 @@ class TestCanonicalDampenerStackPinned:
         dampeners (so it sees post-dampener scores), ``file_kind`` last
         (so the file-kind zero doesn't propagate through subsequent stages).
 
-        WI-karad (2026-05-24): an 8th dampener ``sibling_impl`` was removed
-        from this stack after a 3-repo diagnostic confirmed 0 top-100
-        movement. See ranking.py for the removal rationale.
+        There is no ``sibling_impl`` stage: ``common_method`` already
+        dampens the same large name groups enough on its own (WI-karad; see
+        the comment above ``_CANONICAL_DAMPENERS`` in ranking.py).
         """
         assert _CANONICAL_DAMPENERS == (
             "tier",
@@ -4171,12 +4176,11 @@ class TestCanonicalDampenerStackPinned:
     def test_common_method_name_exact_formula_pinned(self) -> None:
         """Pins the ``factor = max(floor, threshold/count)`` formula.
 
-        Existing tests assert below-threshold has no dampening and floor
-        is respected, but the exact multiplier when dampening fires
-        wasn't pinned. The bakeoff finding WI-luvaj documents that
-        50 ``execute`` symbols should produce ``10/50 = 0.2x`` and
-        15 ``process`` symbols should produce ``10/15 ≈ 0.67x``; these
-        ratios drive expected user-visible behavior on real repos.
+        Other tests assert that below-threshold names are undampened and
+        the floor is respected; this pins the exact multiplier when
+        dampening fires: 50 ``execute`` symbols produce ``10/50 = 0.2x``
+        and 15 ``process`` symbols produce ``10/15 ≈ 0.67x`` (the WI-luvaj
+        examples). These ratios drive user-visible ranking on real repos.
         """
         # 20 symbols sharing name "call" → factor = 10/20 = 0.5
         syms_20 = [

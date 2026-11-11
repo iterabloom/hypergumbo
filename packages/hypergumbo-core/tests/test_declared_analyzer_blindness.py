@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A clean verdict on a language whose analyzer cannot see external
-instance-method calls must SAY SO (owner ruling 2026-08-23, "declare the
-blindness").
+instance-method calls must SAY SO ("declare the blindness").
 
-THE PROBLEM THIS CLOSES. ``untyped_receiver_sites`` disclosed the sink call
+THE PROBLEM THIS CLOSES. ``untyped_receiver_sites`` discloses the sink call
 sites whose receiver could not be typed — but it can only disclose an edge that
-EXISTS. kotlin and javascript emit no external instance-method call edge at
-all, so there was nothing to disclose and the verdict came out a bare
-``confirmed``: silence that reads as safety over 232 catalogued method-kind
-sinks (kotlin 181 of its 186 primitives, javascript 51 of 187).
+EXISTS. An analyzer that emits no external instance-method call edge at all
+leaves nothing to disclose, and without a declaration the verdict comes out a
+bare ``confirmed``: silence that reads as safety over every method-kind sink
+that language's catalogue declares.
 
 The edge set cannot tell the two cases apart — "this repository contains no
 external method calls" and "this analyzer never emits them" produce the same
@@ -16,20 +15,18 @@ empty set and opposite verdicts. So the fact is DECLARED, dated, with its
 measurement, in :mod:`hypergumbo_core.analyzer_disclosure`, and the coverage
 gate consults it.
 
-WHY A CAVEAT AND NOT A WITHHOLD. kotlin and javascript DO emit call edges, just
+WHY A CAVEAT AND NOT A WITHHOLD. A blind analyzer still emits call edges, just
 not this shape. "I examined everything I could see, except this whole
 construct" is a qualified opinion (ADR-0016 §4), and ``inconclusive`` would say
 the analysis formed no view at all — false, and less useful to a reader. The
 verdict still reads clean; the exit code moves 0 -> 3; the sentence names the
 language and the scale.
 
-THE LIVE INSTANCES ARE GONE, THE MECHANISM IS NOT. javascript's declaration
-flipped in PR #753 (INV-misup / WI-nasuf) and kotlin's in the PR that closed
-WI-nasuf's kotlin cell, so every shipped analyzer is now declared sighted and
-nothing in ``DECLARATIONS`` exercises the caveat. The tests below that need a
-blind language re-declare kotlin blind through the ``blind_kotlin`` fixture,
-with the 2026-08-23 date the real declaration carried, so the mechanism stays
-covered until the next analyzer that cannot see a call shape declares it.
+NO SHIPPED ANALYZER IS DECLARED BLIND, so nothing in ``DECLARATIONS``
+exercises the caveat. The tests below that need a blind language re-declare
+kotlin blind through the ``blind_kotlin`` fixture (kotlin's own blind
+declaration, before WI-nasuf made it sighted), so the mechanism stays covered
+for the next analyzer that cannot see a call shape.
 """
 
 import pytest
@@ -60,7 +57,7 @@ from pathlib import Path
 
 @pytest.fixture
 def blind_kotlin(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Re-declare kotlin blind, exactly as it was declared on 2026-08-23."""
+    """Re-declare kotlin blind, with a dated, evidenced blind declaration."""
     monkeypatch.setitem(DECLARATIONS, "kotlin", MethodCallEdgeDeclaration(
         "kotlin", False, "2026-08-23",
         "WI-nasuf: emits NO call edge for an external instance-method call in "
@@ -152,7 +149,7 @@ def _claim(boundary: str = "net_send") -> Claim:
 class TestTheVerdict:
 
     def test_a_clean_verdict_on_a_blind_language_is_not_bare(self, blind_kotlin: None) -> None:
-        """THE POINT OF THE WHOLE PR. kotlin emits a call edge for the
+        """THE CORE CASE. A blind kotlin emits a call edge for the
         constructor and none for the method, so the analysis looks busy and
         sees none of the 181 method sinks its own catalogue declares."""
         # The dst names a module the fixture catalogue ENUMERATES: an

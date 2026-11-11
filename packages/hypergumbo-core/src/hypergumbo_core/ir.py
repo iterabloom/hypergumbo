@@ -103,8 +103,8 @@ Provenance Fields
   exists). Serialized as provenance only and never read back; the results
   cache recomputes the same digest (compute_repo_fingerprint, truncated to 16
   hex) as its state_hash path segment, alongside analyzer_identity.
-- origin_run_signature: *Removed in 6.0.0 (SCHEMA_VERSION 0.10.0 -> 0.11.0,
-  WI-gapin); never stamped by any producer.*
+- origin_run_signature: not a field; it is absent from the schema
+  (WI-gapin).
 """
 import functools
 import hashlib
@@ -227,9 +227,9 @@ def make_pass_id(name: str) -> str:
     Analyzers: ``make_pass_id("go")`` → ``"go"``
     Linkers:   ``make_pass_id("containment-linker")`` → ``"containment-linker"``
 
-    INV-morag PR 2 dropped the legacy ``-v1`` suffix. Pass identity now
-    comes from a stable opaque name (the registration ``name`` argument);
-    versioning lives in :data:`AnalysisRun.pass_version` (a code-hash via
+    The pass ID is a stable opaque name (the registration ``name``
+    argument) with no version suffix (INV-morag); versioning lives in
+    :data:`AnalysisRun.pass_version` (a code-hash via
     :func:`compute_pass_version`); backend identity lives in
     :data:`RegisteredAnalyzer.backend` / :data:`RegisteredLinker.backend`;
     display labels live in ``pass_label``. ``make_pass_id`` is preserved
@@ -255,12 +255,11 @@ def compute_pass_version(target: types.ModuleType | Callable[..., Any]) -> str:
         module, or a docstring edit elsewhere) is bumped.
 
     Rationale (INV-morag option A):
-        The legacy pass-ID suffix ``-v1`` was a fake-versioning artifact —
-        it bumped with the package release whether or not the pass logic
-        changed, so caches and reproducibility comparisons couldn't tell
-        "this analyzer's behavior changed" from "this analyzer's package
-        version bumped." Hashing the module source replaces that fake
-        signal with a real one.
+        A version tied to the package release bumps whether or not the
+        pass logic changed, so caches and reproducibility comparisons
+        cannot tell "this analyzer's behavior changed" from "this
+        analyzer's package version bumped." Hashing the module source
+        gives a signal that changes when the pass's own code does.
 
         Module-level hashing was chosen over function-level for two reasons:
         (1) most analyzers depend on helper functions and module-level
@@ -373,7 +372,7 @@ class AnalysisRun:
     provenance fields external tools may use for cache keying
     (run_signature, repo_fingerprint) and runtime info (toolchain).
 
-    Readership note (concept-audit 2026-07-15): ``run_signature``,
+    Readership note: ``run_signature``,
     ``repo_fingerprint``, ``config_fingerprint``, and ``pass_version``
     have no *internal* consumers — hypergumbo never reads them back to
     key a cache or branch a decision. They are computed and serialized
@@ -389,8 +388,8 @@ class AnalysisRun:
     run_signature: str = ""  # axis: identity
     repo_fingerprint: Optional[str] = None  # axis: identity
     toolchain: Dict[str, str] = field(default_factory=dict)
-    # PRODUCER-IDENTITY fingerprint, NOT runtime CLI config (INV-lidul /
-    # concept-audit 2026-06-17). Every production producer keys this on its
+    # PRODUCER-IDENTITY fingerprint, NOT runtime CLI config (INV-lidul).
+    # Every production producer keys this on its
     # own identity — analyzer/linker class + grammar + static file globs, or
     # the pass_id for synthesis passes — via compute_config_fingerprint, so
     # distinct passes carry distinct cache-keying fingerprints. It does NOT
@@ -425,19 +424,18 @@ class AnalysisRun:
     # set it from self.pass_version; linkers are stamped by _stamp_pass_version
     # in run_all_linkers. Distinct from ``version`` (the package version).
     pass_version: str = ""  # axis: identity
-    # Per-pass productivity counters (INV-gizik / INV-pitab symptom 5). Number
+    # Per-pass productivity counters (INV-gizik, INV-pitab). Number
     # of Symbols / Edges this pass contributed, stamped centrally:
     # analyzers at the orchestrator chokepoint (collect_analyzer_result),
     # linkers in _run_linker_with_cache, synthesis passes at their create site.
     # Distinct from files_analyzed (a FILE count, contractually ==
     # profile.languages[L].files — ADR-0043 §6.1 #5: do NOT overload it).
-    # INV-gizik invariant: a pass with edges_emitted>0 (or nodes_emitted>0)
+    # Invariant (INV-gizik): a pass with edges_emitted>0 (or nodes_emitted>0)
     # must not also carry duration_ms==0 — producing output in zero time is
-    # structurally impossible (the timer was previously wired only on the
-    # file-walking branch, so IR-consuming linker/synthesis passes reported 0).
+    # structurally impossible, so a 0 there means the pass was never timed.
     nodes_emitted: int = 0
     edges_emitted: int = 0
-    # WHY this pass emitted nothing (INV-bikaj / INV-hujog, arc T6). Stamped at
+    # WHY this pass emitted nothing (INV-bikaj, INV-hujog). Stamped at
     # the same chokepoints as the counters above, from
     # pass_silence.derive_silence_reason. ``""`` means NOT APPLICABLE (the pass
     # emitted something); ``unreported`` means CANNOT DETERMINE (it was silent
@@ -477,7 +475,7 @@ class AnalysisRun:
         """Create a new AnalysisRun with a unique execution_id.
 
         Args:
-            pass_id: Identifier for the analysis pass (e.g., 'python-ast-v1')
+            pass_id: Identifier for the analysis pass (e.g., 'jni-linker')
             version: Hypergumbo package version (``PASS_VERSION``). All
                 producers pass the same value (INV-kohat).
             config_fingerprint: Producer-identity fingerprint (NOT runtime CLI
@@ -520,29 +518,28 @@ class AnalysisRun:
             "files_analyzed": self.files_analyzed,
             "files_skipped": self.files_skipped,
             "started_at": self.started_at,
-            # INV-gizik: a pass that emitted output cannot serialize duration_ms=0
-            # ("324 edges in 0ms is impossible"). The timer is now wired on every
-            # branch, but sub-millisecond work rounds int(elapsed*1000) down to 0;
-            # floor it at 1ms when this run emitted Symbols/Edges so 0ms always
+            # A pass that emitted output cannot serialize duration_ms=0
+            # (INV-gizik). Sub-millisecond work rounds int(elapsed*1000) down
+            # to 0, so floor it at 1ms when this run emitted Symbols/Edges so 0ms always
             # means "did nothing", never "was never timed". Passes with no output
             # keep their measured value (a no-op pass legitimately reports ~0ms).
             "duration_ms": self.duration_ms or (
                 1 if (self.nodes_emitted or self.edges_emitted) else 0
             ),
-            # WI-nuvam: ALWAYS present. null = not measured (the field could
-            # not see); a missing key means the artifact predates the field.
+            # ALWAYS present (WI-nuvam). null = not measured (the field could
+            # not see); a missing key means an artifact written without the field.
             "cpu_ms": self.cpu_ms,
             "pass_version": self.pass_version,
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
         }
-        # INV-virik: omit-when-empty, like the reporting lists below. An empty
+        # Omit-when-empty, like the reporting lists below (INV-virik). An empty
         # silence_reason is NOT APPLICABLE (this pass emitted output), and a
         # key present on every productive run would read as a field nobody set
         # rather than as a question that does not arise.
         if self.silence_reason:
             result["silence_reason"] = self.silence_reason
-        # INV-virik: the per-run reporting lists are present ONLY when non-empty,
+        # The per-run reporting lists are present ONLY when non-empty (INV-virik),
         # so a consumer reads their ABSENCE as "nothing to report" instead of a
         # misleading always-empty list on every one of the (many) runs (which read
         # as "pipeline clean"). Matches the partial_results_reason / max_tier_applied
@@ -566,7 +563,7 @@ _TIER_NAMES = {
 
 
 def _normalize_origin(raw: object) -> List[str]:
-    """Coerce scalar/list/missing origin to list[str] (INV-jidat migration)."""
+    """Coerce scalar/list/missing origin to list[str] (INV-jidat)."""
     if isinstance(raw, list):
         return raw
     if isinstance(raw, str):
@@ -587,8 +584,8 @@ class Symbol:
             host language; synthetic-stand-in Symbols emitted by linkers for
             protocol/framework patterns (Kafka topics, WASM modules, IPC
             channels, etc.) leave this ``None`` and populate ``protocol_origin``
-            instead. Pre-ADR-0031 emits will continue passing a string for the
-            full ADR-0031 §"Phase 1 Producer migration" window.
+            instead. Producers not yet migrated to ADR-0031 still pass a
+            string (ADR-0031 §"Phase 1 Producer migration").
         path: File path where the symbol is defined
         span: Source location with lines and columns
         origin: Provenance list (INV-jidat). Each element is a pass ID that
@@ -597,18 +594,16 @@ class Symbol:
             Auto-normalized from scalar str for backward compat. The declared
             type is ``str | List[str]`` so this accepted-input contract holds at
             the type level; do NOT narrow it to ``List[str]`` — most producers
-            pass a single scalar pass ID, and narrowing reintroduces hundreds of
+            pass a single scalar pass ID, and narrowing would produce hundreds of
             arg-type errors under mypy strict (INV-zogud). The stored value is
             always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         stable_id: Structural-identity hash within a (qualified_name,
-            module_path) scope (ADR-0014 amended by Phase 6 PR3 /
-            INV-bazij). Survives BODY edits; does NOT survive rename or
-            move — those are now identity-changing operations. Pre-Phase-6
-            the field was documented as "survives renames/moves", but on
-            the dogfood corpus that promise produced a 60% collision rate
-            (155 zero-param bash functions in one file shared one ID),
-            so name + qualified_name are now part of the hash inputs.
+            module_path) scope (ADR-0014; INV-bazij). Survives BODY edits;
+            does NOT survive rename or move — those are identity-changing
+            operations, because name + qualified_name are hash inputs.
+            Without them, same-shaped symbols in one scope collide (e.g.
+            the zero-param bash functions of one file would share one ID).
             Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names
             the hash *algorithm*, not the identity axis — the scheme/version
             lives in the top-level ``stable_id_scheme`` descriptor.
@@ -634,8 +629,7 @@ class Symbol:
             subtree — shape PLUS identifiers and literals, whitespace/
             comment-invariant, tagged with the scheme in
             ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw
-            source-byte hash — that was the ADR-0032-demolished Format-1
-            scheme. ``None`` for grammarless languages / parse errors /
+            source-byte hash (ADR-0032). ``None`` for grammarless languages / parse errors /
             synthetic spans. Producer: fingerprint.py.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
@@ -647,10 +641,11 @@ class Symbol:
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
         supply_chain_classified: Whether a producer or the annotator has
             assigned the tier (WI-lidig). The annotator classifies every node
-            for which this is False; it used to infer "unclassified" from the
-            default tier 1 with an empty reason, which made a free-text field's
-            emptiness a branch and left a deliberate "tier 1, no reason" stamp
-            indistinguishable from none. Set by ``__post_init__`` when a
+            for which this is False. An explicit flag is needed because
+            inferring "unclassified" from the default tier 1 with an empty
+            reason would make a free-text field's emptiness a branch and leave
+            a deliberate "tier 1, no reason" stamp indistinguishable from
+            none. Set by ``__post_init__`` when a
             constructor passes a tier or a reason, by ``from_dict`` (a
             serialized map is classified), and by every producer that assigns a
             tier afterwards. Internal: not serialized.
@@ -672,10 +667,9 @@ class Symbol:
             the role flags above.
         is_exported: True if the symbol is part of the package's public API,
             False if a producer measured that it is not, and ``None`` when
-            nobody looked (INV-kubup). Seventeen analyzer modules compute
-            exportedness and ninety-odd do not; while this was ``bool =
-            False`` the artifact could not tell a measured negative from a
-            missing rule, and said "not public API" for both. Only a
+            nobody looked (INV-kubup). Most analyzer modules have no
+            exportedness rule, so a ``False`` default would make a missing
+            rule read as a measured "not public API". Only a
             positive input fills it: an analyzer's own rule, an export
             modifier (``pub`` / ``public`` / ``exported``), or a language
             signal that the symbol is not public at all.
@@ -684,9 +678,10 @@ class Symbol:
         line_span: Physical line span of the symbol body — ``end_line -
             start_line + 1``, INCLUDING blank and comment lines. This is NOT
             source-lines-of-code (SLOC); the spec's "lines of code" / file-level
-            SLOC convention lives in ``profile.languages[*].loc``. Renamed from
-            ``lines_of_code`` (WI-bozid) so one term no longer names two
-            different counting conventions.
+            SLOC convention lives in ``profile.languages[*].loc``. It is not
+            called ``lines_of_code`` so that one term does not name two
+            different counting conventions; ``from_dict`` still accepts that
+            older key (WI-bozid).
         signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
             Only populated for callable symbols (functions, methods). None for classes, etc.
         docstring: First-line summary of doc comment (truncated to 80 chars).
@@ -717,8 +712,7 @@ class Symbol:
             consumer mechanically branches on it.
         qualified_name: ADR-0032 typed sibling field. Fully-qualified name
             including ancestor containers (e.g.
-            ``module.OuterClass.InnerClass.method``). Replaces the prior
-            ``meta["qualified_name"]`` shape. Per-language separator policy
+            ``module.OuterClass.InnerClass.method``). Per-language separator policy
             lives in :mod:`hypergumbo_core.qualified_name_axis`; the
             ``# axis: qualified-name`` classification keys into that
             catalog. ``None`` for analyzers whose ``name`` already encodes
@@ -744,14 +738,12 @@ class Symbol:
     kind: str  # axis: symbol-kind
     language: Optional[str]  # axis: language
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself EXCEPT the documented "<external>" sentinel (ADR-0036 Ruling 3) — the no-file-anchor marker for external/boundary pseudo-symbols, whose module identity lives in the id path-slot + stable_id, NOT here (WI-kapul: by-design; path is the filesystem axis, the id path-slot is the module-identity axis).
-    # Optional since WI-hafap: ten test files construct Symbol(span=None) and
-    # ~42 production sites dereference .span unguarded — the old non-Optional
-    # declaration made 52 live truthiness guards read as "always true" and 7
-    # is-None guard bodies as "unreachable", laundering the checker's verdict
-    # on every one of them (the 832->789 rewrite deleted 43 live guards on
-    # that basis and only the test suite caught it). The declaration now
-    # matches reality; surfaced unguarded dereferences drain per-site
-    # (guard vs assert decided individually), never as a blanket sweep.
+    # Optional because a span can be absent (a serialized null span; tests
+    # construct Symbol(span=None)) (WI-hafap). A non-Optional declaration
+    # would make the type checker read live truthiness guards as "always
+    # true" and is-None guard bodies as "unreachable", inviting their deletion.
+    # Unguarded dereferences are fixed per site (guard vs assert decided
+    # individually), never as a blanket sweep.
     span: Optional[Span]
     origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
@@ -762,11 +754,11 @@ class Symbol:
     meta: Optional[Dict[str, Any]] = None
     supply_chain_tier: int = 1  # Default to first_party
     supply_chain_reason: str = ""  # axis: free-text — natural-language explanation of the assigned tier; consumers display, never branch on the value itself.
-    is_test_file: bool = False  # WI-rigun: independent of tier
-    is_example_file: bool = False  # WI-jobuj: example/demo/sample/tutorial code
-    is_config_file: bool = False  # WI-jobuj: dependency/build manifest
-    is_generated_file: bool = False  # WI-tizij: generated code flag
-    is_exported: Optional[bool] = None  # WI-zimum: public API; None = unobserved (INV-kubup)
+    is_test_file: bool = False  # independent of tier (WI-rigun)
+    is_example_file: bool = False  # example/demo/sample/tutorial code (WI-jobuj)
+    is_config_file: bool = False  # dependency/build manifest (WI-jobuj)
+    is_generated_file: bool = False  # generated code flag (WI-tizij)
+    is_exported: Optional[bool] = None  # public API; None = unobserved (WI-zimum, INV-kubup)
     cyclomatic_complexity: Optional[int] = None
     line_span: Optional[int] = None
     signature: Optional[str] = None  # axis: callable-signature — ADR-0058; see hypergumbo_core.signature_axis. The facts inside have declared homes (FACT_HOMES); the consumers that parse the value are grandfathered and closed (8, was 9 -- py.py migrated under WI-ribak).
@@ -786,14 +778,13 @@ class Symbol:
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
             self.origin = [self.origin] if self.origin else []
-        # WI-lidig: a constructor that passes a tier or a reason has classified
-        # the node (boundary nodes, the crypto-flow stand-ins).
+        # A constructor that passes a tier or a reason has classified the
+        # node (boundary nodes, the crypto-flow stand-ins) (WI-lidig).
         if self.supply_chain_tier != 1 or self.supply_chain_reason:
             self.supply_chain_classified = True
 
-    # Keep line/end_line for backwards compatibility during transition
-    # (span=None falls back to the codebase-wide line-0 convention, matching
-    # the 0 these properties already returned for fabricated Span(0,0,0,0)).
+    # Shorthand for span.start_line / span.end_line; span=None yields the
+    # codebase-wide line-0 convention.
     @property
     def line(self) -> int:
         return self.span.start_line if self.span else 0
@@ -824,7 +815,8 @@ class Symbol:
             "path": self.path,
             # Schema-legal: docs/schema.json declares node span as oneOf
             # [Span, null]. Emitting null (not a fabricated zero-Span dict)
-            # keeps the WI-hafap honesty invariant through serialization.
+            # keeps an absent span honestly absent through serialization
+            # (WI-hafap).
             "span": self.span.to_dict() if self.span else None,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
@@ -853,10 +845,10 @@ class Symbol:
             "qualified_name": self.qualified_name,  # ADR-0032
             "visibility": self.visibility,  # INV-jusot
         }
-        # INV-nuzal: node ``quality`` has no producer (declared-but-empty,
-        # 0/N populated on self-analysis). Omit it when None — the INV-virik
-        # omit-when-empty pattern — rather than emit a universally-null key;
-        # present only when a producer sets it.
+        # Node ``quality`` has no producer (declared-but-empty; INV-nuzal).
+        # Omit it when None — the omit-when-empty pattern (INV-virik) —
+        # rather than emit a universally-null key; present only when a
+        # producer sets it.
         if self.quality is not None:
             result["quality"] = self.quality
         # ADR-0057 §6: the provenance slot exists only on a merged record.
@@ -869,7 +861,7 @@ class Symbol:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Symbol":
         """Reconstruct a Symbol from its dict representation (e.g., from cached results)."""
-        # WI-hafap honest-carry: a missing or null span deserializes to None
+        # A missing or null span deserializes to None (WI-hafap),
         # rather than a fabricated degenerate Span(0,0,0,0) that passes every
         # truthiness guard while claiming to occupy line 0.
         span_data = d.get("span")
@@ -896,7 +888,7 @@ class Symbol:
             is_generated_file=supply_chain.get("is_generated_file", False),
             is_exported=supply_chain.get("is_exported"),  # absent = unobserved (INV-kubup)
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
-            # WI-bozid back-compat: pre-rename maps stored this as lines_of_code.
+            # Older maps store this as lines_of_code (WI-bozid).
             line_span=d.get("line_span", d.get("lines_of_code")),
             signature=d.get("signature"),
             docstring=d.get("docstring"),
@@ -908,7 +900,7 @@ class Symbol:
             visibility=d.get("visibility"),  # INV-jusot
             attribution=d.get("attribution"),  # ADR-0057 §6
             alternatives=d.get("alternatives"),
-            supply_chain_classified=True,  # WI-lidig: a serialized map is classified
+            supply_chain_classified=True,  # a serialized map is classified (WI-lidig)
         )
 
 
@@ -922,14 +914,13 @@ def _compute_edge_key(src: str, dst: str, edge_type: str) -> str:
 class ExternalRef:
     """Structured identity for an external-target edge endpoint (WI-tihup).
 
-    Replaces the per-analyzer string-formatted ``Edge.dst`` for edges that
-    point at symbols outside the analyzed repo (stdlib, dependencies,
-    unresolved externals). Each analyzer composes one of these directly
-    rather than building a colon-delimited identity string with its own
-    convention; consumers query the structured fields rather than parsing
-    the legacy string. The legacy ``Edge.dst`` string is still populated
-    alongside ``Edge.dst_ref`` for back-compat with the ~34 consumer
-    sites that haven't migrated.
+    Names the target of an edge that points at a symbol outside the
+    analyzed repo (stdlib, dependencies, unresolved externals). Each
+    analyzer composes one of these directly rather than building a
+    colon-delimited identity string with its own convention; consumers
+    query the structured fields rather than parsing the legacy string. The
+    legacy ``Edge.dst`` string is still populated alongside
+    ``Edge.dst_ref`` for consumers that read the string.
 
     Fields:
         lang: Language identifier (``"python"``, ``"rust"``, ``"go"``, ...).
@@ -965,9 +956,8 @@ def format_legacy_dst(ref: ExternalRef) -> str:
 
     Shape: ``{lang}:{module_path}:0-0:{name}:unresolved``. Every analyzer
     composes its external-target legacy dst from this helper so the
-    format is uniform across languages (closes the WI-mafik audit's
-    "Rust 6-seg outlier" and "Java class-embedded-in-module" anomalies
-    by routing every producer through one builder).
+    format is uniform across languages — no per-language segment count or
+    class-embedded-in-module variants (WI-mafik).
     """
     return f"{ref.lang}:{ref.module_path}:0-0:{ref.name}:unresolved"
 
@@ -998,10 +988,9 @@ class Edge:
             (src, dst, edge_type), so it is stable across regenerations. This
             is the Edge counterpart of ``Symbol.stable_id`` (structural
             identity that survives regeneration); ``edge.id`` is the
-            per-instance counterpart of ``Symbol.id``. Named ``edge_key``
-            rather than ``stable_id`` for historical reasons — the rename
-            would be a breaking schema change and is not worth the churn
-            (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the
+            per-instance counterpart of ``Symbol.id``. It is not named
+            ``stable_id`` because renaming it would be a breaking schema
+            change (WI-niboh). Surfaced as ``edgekey:sha256:<16hex>``; the
             ``edgekey:`` namespace distinguishes it from ``edge:``-prefixed
             edge ids in a shared lookup space.
         src: ID of the source symbol (e.g., the caller)
@@ -1012,7 +1001,7 @@ class Edge:
         origin: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
             Declared ``str | List[str]`` (both the field and ``Edge.create``'s param) so the
             scalar-or-list input contract holds at the type level; do NOT narrow to ``List[str]``
-            (most producers pass a scalar pass ID — narrowing reintroduces arg-type errors under
+            (most producers pass a scalar pass ID — narrowing would produce arg-type errors under
             mypy strict, INV-zogud). Stored value is always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         evidence_type: Type of evidence (e.g., ast_call_direct)
@@ -1103,8 +1092,8 @@ class Edge:
 
         Dataflow kwargs (access_mode [ADR-0015], data_direction [ADR-0038
         ruling 3], channel) are merged into the meta dict when non-None.
-        ``dest_access_mode`` was removed (ADR-0038 ruling 3 — the bridge
-        direction it encoded now lives in ``data_direction``).
+        Bridge direction belongs in ``data_direction``, not in
+        ``access_mode`` (ADR-0038 ruling 3).
 
         ``is_resolved`` here is ADVISORY: the finalize edge-resolution sub-step
         (ADR-0037 ruling 1/2) derives the authoritative value from the dst
@@ -1152,8 +1141,8 @@ class Edge:
         # confidence:F1 (ADR-0039): when the producer passes no explicit
         # confidence, derive detection-reliability from the inference pathway
         # (Edge.evidence_type), conditioned on is_resolved. Unseeded pathways
-        # fall back to the historical 0.85 default, so unmigrated producers are
-        # unaffected; producers that pass an explicit confidence keep it.
+        # fall back to the 0.85 default; producers that pass an explicit
+        # confidence keep it.
         confidence_derived = False
         if resolution_score is not None:
             if confidence is not None:
@@ -1190,10 +1179,10 @@ class Edge:
         # until a producer relocates a ranking adjustment onto it.
         if rank_score is None:
             rank_score = confidence
-        # WI-kuluh / ADR-0040: central-stamp evidence_lang from the src id's
-        # language slot (ADR-0036: lang = everything up to the first colon; src is
-        # the producer's own well-formed node) when the producer did not pass one,
-        # so it stops being null on ~100% of mainstream analyzer + linker edges.
+        # Central-stamp evidence_lang from the src id's language slot
+        # (ADR-0036: lang = everything up to the first colon; src is the
+        # producer's own well-formed node) when the producer did not pass one,
+        # so analyzer and linker edges carry it (WI-kuluh; ADR-0040).
         # Catalog-guarded so a non-canonical src (e.g. a latex ``rel_path:file``
         # id) yields None rather than a bogus path-segment "language". This is the
         # future ``lang`` input to the (language, evidence_type) confidence matrix
@@ -1268,10 +1257,10 @@ class Edge:
     def from_dict(cls, d: dict[str, Any]) -> "Edge":
         """Reconstruct an Edge from its dict representation (e.g., from cached results).
 
-        WI-higap: ``__post_init__`` hard-raises on empty ``origin`` /
-        ``origin_run_id``. Deserialization of legacy behavior-map JSON that
-        predates WI-higap-era producer fixes must not crash — we inject a
-        sentinel so the Edge is constructable. A property test
+        ``__post_init__`` hard-raises on empty ``origin`` /
+        ``origin_run_id``. Older behavior-map JSON can carry empty values
+        there and must still load, so ``LEGACY_DESERIALIZED_SENTINEL`` is
+        injected to keep the Edge constructable (WI-higap). A property test
         (``tests/test_edge_provenance_invariant.py``) asserts that
         production hypergumbo runs never *emit* the sentinel; it appears
         only when reading older artifacts off disk.
@@ -1378,13 +1367,13 @@ def _absorb_per_call_site_key(
     at a different line.
 
     AND IT IS RECORDED AS ``None`` IN ``_values`` (INV-rajak). Listing only
-    the values sites HAD lost the unstamped site between the two halves of
-    this rule: an in-memory ``bufio.NewScanner`` beside a parameter scanner
-    left ``io_target_kind_values: ['in_memory']``, every reader saw one
-    unanimous non-crossing site, and the real receive and its taint source
-    vanished. ``None`` is that site, and every reader gives it the meaning a
-    single unstamped call already has. Sites that ALL omit the key write
-    nothing, exactly as before.
+    the values sites HAD would lose the unstamped site between the two halves
+    of this rule: an in-memory ``bufio.NewScanner`` beside a parameter scanner
+    would leave ``io_target_kind_values: ['in_memory']``, every reader would
+    see one unanimous non-crossing site, and the real receive and its taint
+    source would vanish. ``None`` is that site, and every reader gives it the
+    meaning a single unstamped call already has. Sites that ALL omit the key
+    write nothing.
 
     ``_values`` is ABSORBING. Once written it is never collapsed back to a
     singular, even if a third site happens to repeat an earlier value — the
@@ -1426,30 +1415,29 @@ def _absorb_call_site(kept: Edge, absorbed: Edge) -> None:
     :func:`apply_external_id_remap`) so an edge whose meta dict is shared with
     another record does not gain call sites by aliasing.
 
-    ``line`` USED TO BE THE ONLY per-site fact this merged, and INV-vukiv is
-    what that cost. The survivor of a collapse is the FIRST edge encountered,
-    so every other site-varying key on it reported one arbitrary site's value
-    with nothing to mark it partial. Measured, three keys:
+    Every per-site fact is merged, not only ``line`` (INV-vukiv). The survivor
+    of a collapse is the FIRST edge encountered, so a site-varying key left
+    unmerged on it would report one arbitrary site's value with nothing to
+    mark it partial. For example:
 
       bash ``redirect_target`` — ``echo a > /dev/null`` then
-      ``echo "$API_KEY" > /etc/cron.d/pwned`` survived as ``'/dev/null'``, so
-      the cron-dropper read as a write to the bit bucket.
+      ``echo "$API_KEY" > /etc/cron.d/pwned`` would survive as
+      ``'/dev/null'``, so the cron-dropper would read as a write to the bit
+      bucket.
 
-      bash ``env_var`` — ``$HOME`` then ``$API_KEY`` survived as ``'HOME'``,
-      naming the harmless read and losing the secret one.
+      bash ``env_var`` — ``$HOME`` then ``$API_KEY`` would survive as
+      ``'HOME'``, naming the harmless read and losing the secret one.
 
-      python ``io_mode`` — ``open(p,'r')`` then ``open(p,'w')`` survived as
-      ``'r'``, and the mode gate then eliminated the ``fs_write`` row. End to
-      end on the shipped CLI with a control in the same run, a truncating
-      ``open(p,'w')`` reported ``fs_write`` alone in its own function and
-      DISAPPEARED once a read was added above it.
+      python ``io_mode`` — ``open(p,'r')`` then ``open(p,'w')`` would survive
+      as ``'r'``, and the mode gate would then eliminate the ``fs_write`` row:
+      a truncating ``open(p,'w')`` would disappear once a read was added
+      above it.
 
-    ``call_arg_shape`` already had this discipline hardcoded here for
-    INV-fubag's security reason — a false negative on a security analysis is
-    strictly worse than the false positives that gate removes — and the fix is
-    to generalize the rule rather than to hand-write a second copy of it. The
-    key list is the registry's (``per_call_site_keys``), not this function's,
-    so the next per-site key someone declares is merged without editing ir.py.
+    ``call_arg_shape`` follows the same rule for INV-fubag's security reason —
+    a false negative on a security analysis is strictly worse than the false
+    positives that gate removes. The key list is the registry's
+    (``per_call_site_keys``), not this function's, so the next per-site key
+    someone declares is merged without editing ir.py.
     """
     lines = set(_edge_call_lines(kept)) | set(_edge_call_lines(absorbed))
     meta = dict(kept.meta or {})
@@ -1478,10 +1466,10 @@ def deduplicate_edges(
     per relationship stays the call-graph model (emitting one edge per call
     site would multiply the graph: a single Go function's ``fmt.Printf`` calls
     alone turn 1 edge into 12, inflating every centrality and fan-out metric
-    downstream). What changes is that ``edge.line`` stops being the *only*
-    recoverable site. ADR-0017 §4 needs this: to decide what a DDG use at line
-    U flows into, it has to know which callee is called at line U, and with
-    one line per relationship every call site but the first was unrecoverable.
+    downstream), but ``edge.line`` is not the *only* recoverable site.
+    ADR-0017 §4 needs this: to decide what a DDG use at line U flows into, it
+    has to know which callee is called at line U, and with one line per
+    relationship every call site but the first would be unrecoverable.
 
     A single-site edge carries NO ``call_lines`` key — absence is the contract
     for "exactly one site, and it is ``edge.line``". Emitting a one-element
@@ -1543,12 +1531,9 @@ class UsageContext:
             frameworks/library-exports.yaml). The field mixes the two axes;
             it is kept as one because every value still sits on exactly one
             of them. ``macro`` has NO producer today (qt.yaml's two macro
-            rules wait on one); ``data_value`` had none and was deleted.
-            WI-daruz: the old rule "don't add a 5th value without splitting"
-            had already been broken by ``library_export`` (emitted since
-            2026-01-30) with nothing noticing, because the Literal is not
-            enforced at runtime. ``test_usage_context_kinds`` now fails when
-            a producer emits a value this Literal lacks.
+            rules wait on one). The Literal is not enforced at runtime, so
+            ``test_usage_context_kinds`` fails when a producer emits a value
+            this Literal lacks (WI-daruz).
             Re-evaluation triggers: (a) a value that fits neither construct
             nor role; (b) a consumer needing per-axis filtering; (c) a bug
             where the single picked value hides a cross-axis signal a
@@ -1630,9 +1615,8 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
     rehydrate ``behavior_map["nodes"]`` from disk).
 
     Centralized here so consumers (sketch / compact / search /
-    dead-code-maybe / explain) all use the same predicate; previously
-    the check was duplicated ad-hoc as
-    ``not (s.meta and s.meta.get("external_boundary"))``.
+    dead-code-maybe / explain) all use the same predicate rather than each
+    hand-writing ``not (s.meta and s.meta.get("external_boundary"))``.
     """
     if isinstance(symbol_or_dict, Symbol):
         meta = symbol_or_dict.meta
@@ -1646,14 +1630,9 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
 # arbitrary but large enough to retain attribution on virtually any
 # real-world repo.
 #
-# THE NUMBER THIS COMMENT USED TO QUOTE IS STALE AND IS REMOVED RATHER THAN
-# LEFT TO MISLEAD: "the largest hypergumbo collapse target was 732 file
-# externals → 1 boundary". That measured a tree in which every Python file's
-# import-edge src dangled. WI-ramuv's file-Symbol synthesizer closed that, and
-# INV-rozob stopped ``_dedupe_key`` discarding the path for the remainder, so
-# no file-kind collapse target exists at all now. Measured after both: the
-# surviving per-language file population is 3 files on sqlalchemy, 2 on knex,
-# 2 on sops, 1 on poetry, 0 on httpx — and each keeps its own node.
+# No file-kind collapse target exists: dangling file-id srcs get a real file
+# Symbol (WI-ramuv), and ``_dedupe_key`` keeps the path for the few that
+# remain (INV-rozob), so each such file keeps its own node.
 _REFERRING_PATHS_CAP = 50
 
 
@@ -1670,16 +1649,15 @@ def sanitize_id_name_segment(name: str) -> str:
     ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
 
     :func:`analyze.base.make_symbol_id` applies this to every name slot
-    (WI-sikar), so calling it explicitly is no longer required for correctness.
+    (WI-sikar), so calling it explicitly is not required for correctness.
     Producers keep doing so where it documents intent, and the substitution is
     idempotent.
 
-    LIVES HERE, not in ``analyze.base``, since INV-divuf: ``ir`` mints boundary
+    LIVES HERE, not in ``analyze.base`` (INV-divuf): ``ir`` mints boundary
     ids too (:func:`_canonical_external_id`) and ``analyze.base`` imports from
     ``ir``, so a copy on the ``ir`` side would be a second home for one rule —
-    the arrangement LIVE.md rule 7 and this project's id-format history both
-    name as the failure. ``analyze.base`` re-exports it, so every existing
-    importer is unaffected.
+    the arrangement LIVE.md rule 7 names as the failure. ``analyze.base``
+    re-exports it.
     """
     return name.replace(":", ".")
 
@@ -1697,20 +1675,18 @@ def _canonical_external_id(language: str, path: str, name: str) -> str:
     Format mirrors :func:`make_symbol_id` so downstream tooling parses it
     consistently. The path slot carries semantic identity for every kind —
     module name for imports, qualified path for unresolved calls, and the
-    importing file for a ``make_file_id`` pseudo-id. It used to be collapsed to
-    ``<external>`` for that last case; see :func:`_dedupe_key` for why that was
-    wrong (INV-rozob).
+    importing file for a ``make_file_id`` pseudo-id; see :func:`_dedupe_key`
+    for why that last case keeps its path (INV-rozob).
 
     THE NAME SLOT IS SANITIZED, the id's half of ADR-0036 Ruling 1: names
     containing ``:`` fold to ``.`` because the id is a location-addressed KEY
-    and the slot is colon-free by rule. The caller now passes the FULL-FIDELITY
+    and the slot is colon-free by rule. The caller passes the FULL-FIDELITY
     name (``meta['callee_name']``, INV-divuf) so that two objc selectors which
     both parse to '' stay distinct in the dedupe key — but handing that name
     to the id unsanitized mints ``rust:external:0-0:Vec::with_capacity:...``
     and ``objc:external:0-0:writeToFile:atomically::...``, which the
     ``id_format`` validator correctly rejects (``double_colon_separator``,
-    INV-sadiv; measured: bellman's id_format violations went 1 -> 16 before
-    this fold was added). Full fidelity lives on ``Symbol.name``, which is
+    INV-sadiv). Full fidelity lives on ``Symbol.name``, which is
     exactly the split Ruling 1 prescribes — lossy key, lossless field.
     """
     return (
@@ -1746,9 +1722,9 @@ def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
     segments (``packages.``, ``.src.``) or — for Python — an embedded
     hyphen indicates an analyzer derivation bug: the producer fell
     through from "resolve to a real source root" to "stringify the
-    file path as if it were a module name." This is the WI-davan bug
-    class, and is the only class of malformation this validator
-    rejects; other ID irregularities pass through silently.
+    file path as if it were a module name" (WI-davan). That is the
+    only class of malformation this validator rejects; other ID
+    irregularities pass through silently.
 
     Slot 2 may itself contain colons (e.g. ``dart:dart:io:0-0:…``
     where the path is ``dart:io``); the parse uses the trailing
@@ -1758,15 +1734,15 @@ def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
     parts = symbol_id.split(":")
     if len(parts) < 5:
         return None
-    # ``parts[-3]`` IS CORRECT HERE, and a change to span-anchoring was tried
-    # and REVERTED (INV-divuf). Per ADR-0036 Ruling 1 the NAME slot is
+    # ``parts[-3]`` IS CORRECT HERE; do not span-anchor this parse
+    # (INV-divuf). Per ADR-0036 Ruling 1 the NAME slot is
     # colon-free by rule — ``sanitize_id_name_segment`` folds ``:`` to ``.``
     # and ``make_symbol_id`` applies it to every name slot — so on a WELL-FORMED
     # id ``parts[-3]`` is the span. On a MALFORMED one it is not, and that is
     # the signal: ``_classify_id_format_problem`` reports ``colon_in_name_slot``
     # precisely because the right-anchored slots shifted. Locating the span
-    # "correctly" on a malformed id makes it parse clean and silences the
-    # diagnosis INV-dulah paid an investigation to get right.
+    # "correctly" on a malformed id makes it parse clean and silences that
+    # diagnosis (INV-dulah).
     span = parts[-3]
     if span != _SYNTHETIC_SPAN:
         return None
@@ -1794,8 +1770,8 @@ def _canonical_external_stable_id(
     Identity is a function of the dedupe key ``(language, path, name)``
     (``path`` is the dangling id's path slot for every kind, file-id
     pseudo-ids included; see :func:`_dedupe_key`). Per ADR-0036
-    Ruling 2 the kind slot is uniformly ``external_symbol`` and no longer
-    participates in boundary identity. Two runs against equivalent code produce
+    Ruling 2 the kind slot is uniformly ``external_symbol`` and does not
+    participate in boundary identity. Two runs against equivalent code produce
     the same stable_id for the same logical boundary.
     """
     payload = f"external:{language}:{path}:{name}"
@@ -1807,12 +1783,11 @@ def _span_token_index(parts: list[str]) -> Optional[int]:
 
     THE ONE SPAN ANCHOR (INV-divuf). The span is the only slot that can be
     located without assuming any OTHER slot is colon-free, which is why every
-    correct parse in this module is anchored on it. The loop below was
-    copy-pasted into :func:`symbol_path_slot` and :func:`symbol_name_slot`,
-    and this extraction gives it one home. :func:`validate_symbol_id_format`
-    does NOT use it: it keeps ``parts[-3]`` deliberately (INV-divuf — moving it
-    to span-anchoring was tried and reverted), because on a malformed id the
-    shifted right-anchored slot is the ``colon_in_name_slot`` signal.
+    correct parse in this module is anchored on it; :func:`symbol_path_slot`
+    and :func:`symbol_name_slot` share this one home for it.
+    :func:`validate_symbol_id_format` does NOT use it: it keeps ``parts[-3]``
+    deliberately (INV-divuf), because on a malformed id the shifted
+    right-anchored slot is the ``colon_in_name_slot`` signal.
 
     Returns ``None`` when no span token is present, which is a real shape
     (``just:examples/screenshot.just:6:build:recipe`` carries a bare line
@@ -1835,41 +1810,37 @@ def symbol_path_slot(symbol_id: str) -> str:
     has path ``dart:io``, and ``rust:std::fs:0-0:write:external_symbol`` has
     path ``std::fs``.
 
-    THIS IS A CHOKEPOINT, and it exists because the fact had four homes of
-    which two took ``parts[1]``: this module's own ``_extract_path_slot`` and
-    ``taint._extract_callee_module``, against the correct ``_parse_dangling_id``
-    thirteen lines below and ``verify_claims._symbol_path_slot``. All four now
-    route here.
+    THIS IS A CHOKEPOINT: ``_extract_path_slot``, :func:`_parse_dangling_id`,
+    ``taint._extract_callee_module`` and ``verify_claims._symbol_path_slot`` all
+    route here, so none of them parses the path as ``parts[1]``.
 
-    The naive form was not merely untidy. Rust is the only language whose taint
-    catalogue uses ``::`` module paths and ALL NINE of its sink modules are
-    colon-bearing, so ``parts[1]`` truncated every one to ``std``;
+    That naive form is not merely untidy. Rust is the only language whose taint
+    catalogue uses ``::`` module paths and all of its sink modules are
+    colon-bearing, so ``parts[1]`` truncates every one to ``std``;
     ``_module_matches('std::fs', 'std')`` is False; and ``_lookup_named_entry``
     treats a present-but-mismatched module as a REJECTION rather than a
-    degrade. The net effect was inverted: an edge naming ``std::fs`` was
+    degrade. The net effect is inverted: an edge naming ``std::fs`` would be
     refused while an edge carrying no module at all matched.
 
     ANCHORED ON THE SPAN, not on slot count (INV-fokik). The right-anchored form
     ``parts[1:-3]`` is correct only while the grammar's colon-free-name rule
-    actually holds in the data, and it does not: 483 ids across two Rust repos are
+    actually holds in the data, and it does not always: some Rust ids are
     DOUBLE-SPAN — ``rust:external:0-0:Stdio:0-0:null:external_symbol`` — for which
     ``parts[1:-3]`` yields ``external:0-0:Stdio``. That string is not in
-    ``taint._UNRESOLVED_MODULE_PLACEHOLDERS``, so ``_lookup_named_entry`` compares
-    it as a real module name, matches nothing, and DROPS THE FINDING SILENTLY —
-    the same failure this chokepoint was created to end, reached from the other
-    side. Locating the ``\\d+-\\d+`` span token instead is right on both
-    populations, and it makes this function agree with
-    ``taint._extract_callee_name``, which has anchored on the span all along; the
-    two parsers disagreeing about one string is what exposed the defect.
+    ``taint._UNRESOLVED_MODULE_PLACEHOLDERS``, so ``_lookup_named_entry`` would
+    compare it as a real module name, match nothing, and DROP THE FINDING
+    SILENTLY. Locating the ``\\d+-\\d+`` span token instead is right on both
+    populations, and it agrees with :func:`symbol_name_slot`, which anchors on the
+    span the same way.
 
     FAILS SAFE BY CHOICE. A malformed id has no true path slot, so the question is
     only which wrong answer to give: ``external`` degrades to short-name matching
     plus the F3 gate, while ``external:0-0:Stdio`` rejects everything in silence.
 
     Falls back to the right-anchored parse when there is no span token at all
-    (``just:examples/screenshot.just:6:build:recipe`` — a bare line number, 584
-    occurrences in the same scan), because right-anchoring is already correct
-    there and returning "" would lose a path this function used to report.
+    (``just:examples/screenshot.just:6:build:recipe`` — a bare line number),
+    because right-anchoring is correct there and returning "" would discard a
+    real path.
 
     Returns ``""`` for anything with fewer than five colon-separated parts —
     an unparseable id is not evidence, and every caller treats "" as "no path
@@ -1887,13 +1858,12 @@ def symbol_path_slot(symbol_id: str) -> str:
 def symbol_name_slot(symbol_id: str) -> str:
     """THE name-slot parse for ``{lang}:{path}:{span}:{name}:{kind}`` ids.
 
-    The companion to :func:`symbol_path_slot`, and filed under the same defect
-    (INV-fokik). Fixing only the path side moved NOTHING, because the name side
-    carried the mirror bug in the same module: ``io_boundary._extract_callee_name``
-    took "everything after the first three fields", which assumes the PATH slot is
-    colon-free. On ``rust:std::fs:0-0:write:external_symbol`` it returned
-    ``fs:0-0:write``, so every Rust sink missed its catalogue row before the module
-    hint could matter — and the miss is silent.
+    The companion to :func:`symbol_path_slot` (INV-fokik). The path and name
+    parses must both be span-anchored: taking "everything after the first three
+    fields" as the name assumes the PATH slot is colon-free, and on
+    ``rust:std::fs:0-0:write:external_symbol`` yields ``fs:0-0:write``, so every
+    Rust sink would miss its catalogue row before the module hint could matter —
+    silently.
 
     Anchored on the span for the same reason the path parse is: it is the only
     anchor that survives colons on EITHER side. Everything between the span token
@@ -1901,9 +1871,8 @@ def symbol_name_slot(symbol_id: str) -> str:
     (``writeToFile:atomically:``) is returned whole rather than truncated at its
     first colon.
 
-    ``taint._extract_callee_name`` has always parsed it this way; this function is
-    where that logic now lives so the two consumers cannot drift apart again. The
-    two disagreeing about one string is what exposed the defect in the first place.
+    ``taint._extract_callee_name`` and ``io_boundary._extract_callee_name`` both
+    delegate here, so the two consumers cannot parse one id differently.
 
     Falls back to the second-to-last token when there is no span token, and returns
     ``""`` for anything with fewer than five parts — matching
@@ -1941,14 +1910,12 @@ def callee_name_of(
        and that is returned rather than the raw id: a name that cannot be read
        must not compare equal to one that can.
 
-    Two readers had two orders. ``verify_claims._callee_name`` read 1 then 3;
-    ``finalize._stub_callee_name`` read 2 and then parsed the id POSITIONALLY
-    as ``parts[-2]``, consulting 1 never. Measured on this repository's own
-    survey they returned different strings for 12 external edges, every one a
-    name whose id slot had escaped ``::`` to ``..`` — and ``_stub_callee_name``
-    is the callee half of ADR-0057 §14's supersession key, compared against a
-    lossless ``Symbol.name``, so each mismatch silently MISSED a demotion.
-    One home, because two homes for one read is how they drifted.
+    Readers route through this one function so the order cannot drift between
+    them. It matters: ``finalize._stub_callee_name`` is the callee half of
+    ADR-0057 §14's supersession key, compared against a lossless
+    ``Symbol.name``, so a reader that skipped 1 or parsed the id positionally
+    (``parts[-2]``) would return the escaped form of a name whose id slot
+    turned ``::`` into ``..``, and silently MISS a demotion.
     """
     stamped = (meta or {}).get("callee_name")
     if isinstance(stamped, str) and stamped:
@@ -1971,7 +1938,7 @@ def stated_module_of(edge: "Edge") -> Optional["ExternalRef"]:
     Two rules turn on this one fact and they must not drift: §15's fold
     absorbs a PARTIAL key into a complete one, and §14 supersedes only a
     PARTIAL stub (a complete one contradicts rather than abstains, which §11
-    makes two edges). INV-difud is what two homes for one read costs.
+    makes two edges), so both read it here (INV-difud).
     """
     ref = edge.dst_ref
     if ref is None or not ref.module_path:
@@ -1997,8 +1964,7 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
     The path slot may itself contain colons (e.g. dart imports like
     ``dart:dart:io:0-0:module:module`` where path = ``dart:io``), so the
     path half delegates to :func:`symbol_path_slot` rather than repeating
-    the right-anchored parse — this function was one of the two homes that
-    already had it right, and it is now one of four that share it.
+    that parse.
 
     Returns ``(language, path, name, kind)``. Falls back to safe defaults
     when the id has fewer than 5 colon-separated parts, and the ``<unknown>``
@@ -2026,34 +1992,27 @@ def _dedupe_key(
     FILE for a ``make_file_id`` pseudo-id — so it is kept in the key and
     distinct logical externals stay distinct.
 
-    THIS FUNCTION USED TO SPECIAL-CASE ``kind="file"``, collapsing every such
-    id in a language to ``(language, "<external>", name)`` on the stated
-    grounds that its path is "a per-reference filesystem path with no semantic
-    identity". THAT SENTENCE WAS THE DEFECT. The path IS the identity: it names
-    the file that did the importing, and it is the only thing a reader can
-    open. Discarding it produced ``{lang}:<external>:0-0:file:external_symbol``
-    — no path, span ``0-0`` — and because ``make_file_id`` puts the literal
-    ``"file"`` in the name slot, EVERY such file in a language landed on that
-    one id. A consumer could neither confirm nor refute an edge anchored there,
-    and a taint flow seeded from one named no place: 19 of 104 adjudicated
-    flows in measurement 0001, every one labelled UNADJUDICABLE by two
-    independent readers.
+    ``kind="file"`` gets NO special case. Its path is not "a per-reference
+    filesystem path with no semantic identity" — the path IS the identity: it
+    names the file that did the importing, and it is the only thing a reader
+    can open. Discarding it would mint
+    ``{lang}:<external>:0-0:file:external_symbol`` — no path, span ``0-0`` —
+    and because ``make_file_id`` puts the literal ``"file"`` in the name slot,
+    EVERY such file in a language would land on that one id. A consumer could
+    neither confirm nor refute an edge anchored there, and a taint flow seeded
+    from one would name no place.
 
-    WHICH FILES REACH HERE, since the answer is no longer "every Python file"
-    as the old text assumed. WI-ramuv's ``synthesize_file_symbols_for_dangling_
-    edges`` mints a real ``kind="file"`` Symbol for analyzer-emitted file ids,
-    so the surviving population is the files whose Symbol something REMOVED —
-    in practice tier-4 (DERIVED) files dropped by ``cli.py``'s tier filter,
-    whose edges are deliberately kept (WI-pozur / ADR-0043 C2, pinned by
-    ``test_pb2_import_srcs_resolved``). Measured on unmodified upstream repos:
-    3 files on sqlalchemy, 2 on knex, 2 on sops, 1 on poetry, 0 on httpx —
-    not the 732-to-1 collapse the ``_REFERRING_PATHS_CAP`` note once quoted
-    from before that synthesizer existed.
+    WHICH FILES REACH HERE: ``synthesize_file_symbols_for_dangling_edges``
+    mints a real ``kind="file"`` Symbol for analyzer-emitted file ids
+    (WI-ramuv), so the remaining population is the files whose Symbol
+    something REMOVED — in practice tier-4 (DERIVED) files dropped by
+    ``cli.py``'s tier filter, whose edges are deliberately kept (WI-pozur /
+    ADR-0043 C2, pinned by ``test_pb2_import_srcs_resolved``). That is a
+    handful of files per repo at most.
 
-    SO THE FIX IS TO NAME THE FILE, NOT TO DROP THE EDGE. Dropping it was tried
-    and is wrong: it deletes the dependency fact WI-pozur deliberately kept, and
-    ``test_pb2_import_srcs_resolved`` fails loudly on it, which is that test
-    working as designed.
+    SO THE FILE IS NAMED, NOT THE EDGE DROPPED. Dropping it would delete the
+    dependency fact WI-pozur deliberately keeps, and
+    ``test_pb2_import_srcs_resolved`` fails on it.
 
     ``kind`` is accepted but is **not** part of the returned key —
     ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
@@ -2086,14 +2045,14 @@ def create_boundary_nodes(
 
     * **Cross-run identity.** Every boundary Symbol gets a non-null
       ``stable_id`` and ``display_label`` (ADR-0032 typed sibling
-      replacing ``canonical_name``) derived from its dedupe key, so
+      field) derived from its dedupe key, so
       consumers (sketch / slice / cross-run diff) can group and
       compare boundary nodes the same way ADR-0014 stable_ids work for
       first-party symbols.
     * **Path-slot identity for every kind.** Every external, file-id
       pseudo-ids included, keeps its full path-slot identity in the
-      dedupe key (INV-rozob; see :func:`_dedupe_key`, which no longer
-      collapses ``kind="file"`` ids), so two distinct modules with the
+      dedupe key (INV-rozob; see :func:`_dedupe_key`, which does not
+      collapse ``kind="file"`` ids), so two distinct modules with the
       same exported name (e.g. ``urllib.request.urlopen`` vs
       ``urllib.parse.urlopen``) stay distinct boundaries. Only ids
       sharing one ``(language, path, name)`` merge.
@@ -2132,12 +2091,9 @@ def create_boundary_nodes(
     symbol_ids = {sym.id for sym in symbols}
     # Collect unique dangling targets (both src and dst). Also build a
     # ``dangling_id → ExternalRef`` lookup so the parsing step below can
-    # prefer the WI-tihup structured form over the legacy colon-split
-    # heuristic. Producers that populate ``Edge.dst_ref`` short-circuit
-    # the parsing-bug class behind the historical 6-seg Rust outlier
-    # (``rust:external:0-0:fs::read_to_string:unresolved`` parsed as
-    # ``path="external:0-0:fs"`` and re-emitted with a fabricated extra
-    # ``0-0`` slot).
+    # prefer the structured form over the legacy colon-split heuristic
+    # (WI-tihup). Producers that populate ``Edge.dst_ref`` bypass the
+    # string parse entirely, so a colon-bearing name cannot be misread.
     dangling_ids: set[str] = set()
     dangling_refs: Dict[str, ExternalRef] = {}
     # ADR-0036 Ruling 1: the id's name slot is LOSSY BY DESIGN, so when no
@@ -2145,9 +2101,9 @@ def create_boundary_nodes(
     # ``meta['callee_name']`` is the lossless home the ruling designates; it is
     # read here so a synthesised boundary node is not left nameless. Without it
     # an objc selector — which ENDS in a colon, making the id's second-to-last
-    # token the EMPTY STRING — produced ``objc:external:0-0::external_symbol``
-    # with ``name=''``, and every such selector in the run collapsed onto that
-    # one node (80 distinct selectors → 17 on Mantle; INV-divuf / WI-nakut).
+    # token the EMPTY STRING — would yield ``objc:external:0-0::external_symbol``
+    # with ``name=''``, and every such selector in the run would collapse onto
+    # that one node (INV-divuf, WI-nakut).
     dangling_callee_names: Dict[str, str] = {}
     for edge in edges:
         if edge.src not in symbol_ids:
@@ -2196,7 +2152,7 @@ def create_boundary_nodes(
     id_remap: Dict[str, str] = {}
     zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
 
-    # WI-muzuf: the boundary ``language`` is whatever ``_parse_dangling_id`` /
+    # The boundary ``language`` (WI-muzuf) is whatever ``_parse_dangling_id`` /
     # ``ExternalRef.lang`` yielded, which a malformed producer can leave as a
     # non-language — a bare import path (``../Governor.sol`` from a Solidity
     # ``import``) parses via the <5-part fallback to language=the-path, and
@@ -2223,15 +2179,14 @@ def create_boundary_nodes(
         canonical_id = _canonical_external_id(language, key_path, name)
 
         # ADR-0041 §1/§2 (supply:F5): tier names supply-chain distance only, so
-        # every boundary node is tier 3 (external) — the old tier-min relabel that
-        # promoted manifest-declared direct deps to tier 2 (and its "direct
-        # dependency (...)" reason strings) is retired. The direct/transitive/
-        # undeclared declaration relationship the classifier still knows is
-        # re-emitted as the `directness` meta stamp, stamped once here (the
-        # single classification chokepoint for boundary nodes).
-        # WI-juzaj: the manifest owns the per-language dispatch (flat entries
-        # for go/java/kotlin/python, scoped Hex/npm tables for elixir/js/ts)
-        # and returns None when it cannot tell -- no stamp then.
+        # every boundary node is tier 3 (external), and a manifest-declared
+        # direct dep is NOT promoted to tier 2. The direct/transitive/
+        # undeclared declaration relationship is emitted as the `directness`
+        # meta stamp instead, stamped once here (the single classification
+        # chokepoint for boundary nodes).
+        # The manifest owns the per-language dispatch (flat entries for
+        # go/java/kotlin/python, scoped Hex/npm tables for elixir/js/ts) and
+        # returns None when it cannot tell -- no stamp then (WI-juzaj).
         directness: str | None = None
         if dependency_manifest is not None:
             directness = dependency_manifest.directness_for(language, key_path)
@@ -2239,8 +2194,8 @@ def create_boundary_nodes(
         boundary_meta: dict[str, Any] = {"external_boundary": True}
         if directness is not None:
             boundary_meta["directness"] = directness
-        # ADR-0036 Ruling 2: preserve the use-site reference syntax that used to
-        # live (impurely) in the id kind-slot on its registered meta home.
+        # ADR-0036 Ruling 2: the use-site reference syntax lives on its
+        # registered meta home, not in the id kind-slot.
         if reference_syntax != "external_symbol":
             boundary_meta["reference_syntax"] = reference_syntax
 
@@ -2251,12 +2206,13 @@ def create_boundary_nodes(
         ecosystem: str | None = None
         if ecosystem_classifier is not None:
             ecosystem = ecosystem_classifier(language, key_path)
-        # WI-juzaj: a module the project's manifest resolves to a declared or
+        # A module the project's manifest resolves to a declared or
         # locked package IS fetched from a package registry -- positive
         # evidence of ``third_party`` that needs no stdlib enumeration. Only
         # fills the gap the catalog leaves (languages with no enumerated
         # stdlib); it never relabels a catalog verdict, and it is not a
-        # second stdlib recognizer (ADR-0041 §3 single-source constraint).
+        # second stdlib recognizer (ADR-0041 §3 single-source constraint;
+        # WI-juzaj).
         if ecosystem is None and directness in ("direct", "transitive"):
             ecosystem = "third_party"
         if ecosystem is not None:
@@ -2268,8 +2224,8 @@ def create_boundary_nodes(
             display_label=f"{language}:{key_path}:{name}:{reference_syntax}",
             name=name,
             kind="external_symbol",
-            # WI-muzuf: registered language or None (never a path / build-tool
-            # label). Raw ``language`` still feeds the id/stable_id/display_label
+            # Registered language or None (never a path / build-tool label;
+            # WI-muzuf). Raw ``language`` still feeds the id/stable_id/display_label
             # above (a separate id-slot concern).
             language=language if language in known_languages else None,
             path="<external>",
@@ -2277,10 +2233,9 @@ def create_boundary_nodes(
             meta=boundary_meta,
             supply_chain_tier=3,
             supply_chain_reason="unresolved external reference",
-            # synthetic:F1 (WI-sijut/WI-mosil): boundary nodes previously shipped
-            # origin=[] / origin_run_id='' (zero provenance). Stamp the synthesis
-            # mechanism as origin and the orchestrator-emitted AnalysisRun's
-            # execution_id as origin_run_id so the node->AnalysisRun JOIN resolves.
+            # synthetic:F1: stamp the synthesis mechanism as origin and the
+            # orchestrator-emitted AnalysisRun's execution_id as origin_run_id
+            # so the node->AnalysisRun JOIN resolves (WI-sijut, WI-mosil).
             origin="boundary_external_symbol_synthesis",
             origin_run_id=origin_run_id,
         )
@@ -2306,9 +2261,7 @@ def apply_external_id_remap(
     When several dangling ids remap to one canonical boundary Symbol, their
     edges acquire the same canonical endpoint and need to dedupe against
     each other; without preserving attribution, the referring sites would
-    be unanswerable from the graph alone. (The "732 file externals collapse
-    to one" case this was written for no longer exists; see the
-    ``_REFERRING_PATHS_CAP`` note.)
+    be unanswerable from the graph alone.
 
     For every edge whose ``src`` is remapped, the original ``src`` id's
     path slot is captured into ``edge.meta.referring_paths`` (capped at
@@ -2356,8 +2309,8 @@ def apply_external_id_remap(
         # kept edge. The call-site union is unconditional: unlike
         # referring_paths it does not depend on the src having been remapped
         # (a dst-only remap collapses edges just as effectively). Routed
-        # through the SAME function as ``deduplicate_edges`` so INV-vukiv's
-        # per-site rule cannot hold at one collapse site and not the other —
+        # through the SAME function as ``deduplicate_edges`` so the per-site
+        # rule (INV-vukiv) holds at both collapse sites, not just one —
         # this remap runs on the final graph, where a boundary-id rewrite
         # merges edges the analyzers kept apart.
         _absorb_call_site(kept, edge)

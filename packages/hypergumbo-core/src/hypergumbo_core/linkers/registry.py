@@ -73,9 +73,9 @@ values of the CALL-SITE stand-ins the enclosure pass attaches to their
 enclosing function (an IPC send, an MQ publish, a client call); every
 ``kind="call_site"`` node is one too. ``NOT_ENCLOSED_FRAMEWORK_ROLES``
 names the rest of what linkers write, each with its reason, and the two
-partition the linker sources (WI-pokuz; ``test_synthetic_role_partition``).
-This vocabulary replaced the old ``SYNTHETIC_KINDS`` set after
-ADR-0027's Phase-4b kind-vs-framework-role axis split.
+partition the linker sources (``test_synthetic_role_partition``; WI-pokuz).
+Roles live on ``meta["framework_role"]``, not ``Symbol.kind``
+(ADR-0027 Phase 4b kind-vs-framework-role axis split).
 
 Why This Design
 ---------------
@@ -101,7 +101,7 @@ and a producer-identity ``config_fingerprint`` (via
 ``_stamp_config_fingerprint()``, INV-lidul / WI-mipul) on the returned
 ``AnalysisRun`` — so linker bodies don't need to thread either manually.
 Without the config_fingerprint stamp every linker run would carry the
-constant default sentinel, collapsing all ~63 registered linker passes onto one cache key.
+constant default sentinel, collapsing all registered linker passes onto one cache key.
 
 Usage
 -----
@@ -198,13 +198,13 @@ class LinkerContext:
     linker_pass_id: str = ""
     linker_pass_version: str = ""
 
-    # WI-dabup / ADR-0056 W3: {pass_id: skip_reason_code} for every ANALYZER
-    # pass that did not run, lifted from limits.skipped_passes by
-    # run_all_linkers. It is what lets a silent linker distinguish "the repo
-    # has no Rust" (State A, a correct no-op) from "the Rust grammar is not
-    # installed and I was blocked" (State C) — a distinction the run counters
-    # alone cannot make, and the reason prerequisite_absent had no producer
-    # until skipped_passes carried a structured code.
+    # {pass_id: skip_reason_code} for every ANALYZER pass that did not run,
+    # lifted from limits.skipped_passes by run_all_linkers. It is what lets a
+    # silent linker distinguish "the repo has no Rust" (State A, a correct
+    # no-op) from "the Rust grammar is not installed and I was blocked"
+    # (State C) — a distinction the run counters alone cannot make, and the
+    # only input from which PREREQUISITE_ABSENT can be stamped.
+    # (WI-dabup / ADR-0056 W3)
     skipped_pass_codes: dict[str, str] = field(default_factory=dict)
 
     # Cross-linker tree-sitter parse cache. Populated lazily by the linker
@@ -344,9 +344,9 @@ class LinkerContext:
             line: Line number to find enclosing symbol for
             kinds: Symbol kinds to consider (default: function, method, class,
                    module, file). Module nodes are created for script-only
-                   non-Python files; INV-hojus collapsed Python's module-kind
-                   pseudo-node into file-kind, so file is the canonical
-                   "this file" container.
+                   non-Python files; Python files are represented by a
+                   file-kind node rather than a module-kind pseudo-node, so
+                   file is the canonical "this file" container (INV-hojus).
 
         Returns:
             The smallest enclosing symbol, or None if no match.
@@ -402,8 +402,8 @@ class LinkerContext:
         # Prefer function/method over class over module/file
         def specificity(s: "Symbol") -> tuple[int, int]:
             # Lower is better: (kind_priority, span_size)
-            # INV-hojus: file shares the file-level slot with module so
-            # nested children always win over the file container.
+            # file shares the file-level slot with module so nested
+            # children always win over the file container (INV-hojus).
             kind_priority = {
                 "method": 0, "function": 1, "class": 2,
                 "module": 3, "file": 3,
@@ -544,24 +544,23 @@ def always_on_unreviewed() -> LinkerActivation:
     """Always-on, and NOBODY HAS ASSESSED whether it should be gated (INV-nanon).
 
     Behaviourally identical to ``LinkerActivation(always=True)``. It exists to
-    say a different thing about the AUTHOR, because the two claims were
-    previously indistinguishable: ``register_linker`` defaulted a missing
-    ``activation=`` to ``always=True``, so "I considered gating and chose
-    always-on" and "I never thought about it" were the same bytes. Twenty-five
-    linkers were in the second state and twelve in the first, and nothing could
-    tell them apart.
+    say a different thing about the AUTHOR: "I considered gating and chose
+    always-on" is ``LinkerActivation(always=True)``, while "I never assessed
+    it" is this factory. ``register_linker`` defaults a missing
+    ``activation=`` to ``always=True``, so an omitted activation cannot tell
+    the two apart.
 
-    Writing ``LinkerActivation(always=True)`` on all twenty-five instead would
-    have manufactured twenty-five rationales nobody verified -- the
-    fabricated-disclosure failure :mod:`..pass_silence` already names, where a
-    reason invented on the producer's behalf is worse than no reason. This
-    factory claims only what is true: the linker runs unconditionally today,
-    and that is a default nobody defended.
+    Writing ``LinkerActivation(always=True)`` on an unassessed linker would
+    manufacture a rationale nobody verified -- the fabricated-disclosure
+    failure :mod:`..pass_silence` already names, where a reason invented on
+    the producer's behalf is worse than no reason. This factory claims only
+    what is true: the linker runs unconditionally today, and that is a
+    default nobody defended.
 
     It is a FACTORY and not a module-level constant because
     :class:`LinkerActivation` carries mutable ``frameworks`` /
     ``language_pairs`` lists; a shared instance would let one caller's
-    ``.append`` reach twenty-five linkers.
+    ``.append`` reach every linker that uses it.
 
     Narrowing any of these is the RECALL-LOSS direction -- a missed framework
     detection silently drops real edges and leaves no hole where a hole would
@@ -614,21 +613,21 @@ class RegisteredLinker:
     description: str = ""
     requirements: list[LinkerRequirement] = field(default_factory=list)
     activation: LinkerActivation = field(default_factory=lambda: LinkerActivation(always=True))
-    # INV-morag PR 2: catalog metadata co-located with registration.
+    # Catalog metadata co-located with registration (INV-morag).
     pass_label: str = ""
     backend: str = ""
     languages: list[str] = field(default_factory=list)
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
-    # ADR-0057 §14.1 (WI-togad): may this pass's resolution DEMOTE the stub it
-    # names in ``Edge.derived_from``? Granted on measured precision only — see
+    # May this pass's resolution DEMOTE the stub it names in
+    # ``Edge.derived_from``? Granted on measured precision only — see
     # ``docs/audits/0020-recovery-linker-supersession-precision.md``. Default
     # False: a pass that has not been measured does not get to rank a
-    # producer's answer below its own.
+    # producer's answer below its own. (ADR-0057 §14.1; WI-togad)
     supersedes_consumed_stub: bool = False
-    # WI-hupaz / WI-dilab / INV-hujog: pass-id dependencies surfaced into
-    # ``Pass.depends_on``, expressed in CNF (outer-AND of inner-OR clauses).
+    # Pass-id dependencies surfaced into ``Pass.depends_on``, expressed in
+    # CNF (outer-AND of inner-OR clauses). (WI-hupaz / WI-dilab / INV-hujog)
     # Distinct from ``activation`` (which gates "should this linker run at all
     # for this repo") and ``requirements`` (which gates "does this linker have
     # enough symbols to do useful work"). ``depends_on`` names the upstream
@@ -782,9 +781,9 @@ def _run_linker_with_cache(
     read_log: set[str] = set()
     token = set_active_parse_cache(ctx.parsed_trees)
     read_token = set_active_read_log(read_log)
-    # WI-nuvam: started HERE, on the thread that runs the linker body (this
-    # wrapper is what the cohort pool submits), because the CPU half of the
-    # reading is per-thread.
+    # Started HERE, on the thread that runs the linker body (this wrapper is
+    # what the cohort pool submits), because the CPU half of the reading is
+    # per-thread (WI-nuvam).
     _clock = PassClock()
     try:
         with worker_pass(getattr(ctx, "linker_pass_id", "") or "linker"):
@@ -792,73 +791,72 @@ def _run_linker_with_cache(
     finally:
         reset_active_read_log(read_token)
         reset_active_parse_cache(token)
-    # INV-gizik / INV-pitab: every linker invocation flows through this wrapper
-    # (serial dispatch, parallel-pool submit, and run_linker by-name), so it is
-    # the one locus that can time EACH linker individually — the parallel pool's
+    # Every linker invocation flows through this wrapper (serial dispatch,
+    # parallel-pool submit, and run_linker by-name), so it is the one locus
+    # that can time EACH linker individually — the parallel pool's
     # out-of-order as_completed makes per-linker wall-clock impossible at the
     # post-dispatch sites. Stamp the per-pass productivity counters here too
     # (result.symbols/result.edges are this pass's direct output, before any
     # accumulation); the counters are derived facts, always set.
-    # WI-nuvam: the stamp sets cpu_ms, the linker's own-thread CPU time, and
-    # duration_ms from the SAME clock. It used to keep a self-timing body's
-    # duration_ms, but a body's timer spans only part of the call, and a wall
-    # figure over a different span from cpu_ms cannot be compared with it.
-    # Linkers in one priority cohort share a pool, so the wall figure overlaps
-    # its siblings' and inflates while they hold the GIL; cpu_ms does not.
+    # (INV-gizik / INV-pitab)
+    # The stamp sets cpu_ms, the linker's own-thread CPU time, and
+    # duration_ms from the SAME clock, overwriting any duration_ms a
+    # self-timing body set: a body's timer spans only part of the call, and a
+    # wall figure over a different span from cpu_ms cannot be compared with
+    # it. Linkers in one priority cohort share a pool, so the wall figure
+    # overlaps its siblings' and inflates while they hold the GIL; cpu_ms
+    # does not. (WI-nuvam)
     _cost = _clock.read()
     if result.run is not None:
         _cost.stamp(result.run)
-        # WI-finij: fill files_analyzed from what the body ACTUALLY read, so
-        # the zero that derive_silence_reason reads as "received no input
-        # files" is a measurement rather than an unset default. Guarded like
-        # duration_ms: a body that assigned the field keeps its value —
-        # route-handler-linker deliberately stores a route count here, and the
-        # stamp fills a silent field rather than overruling a producer that
-        # spoke. It must precede the silence derivation below, which consumes
-        # it.
+        # Fill files_analyzed from what the body ACTUALLY read, so the zero
+        # that derive_silence_reason reads as "received no input files" is a
+        # measurement rather than an unset default. Guarded: a body that
+        # assigned the field keeps its value — route-handler-linker
+        # deliberately stores a route count here, and the stamp fills a
+        # silent field rather than overruling a producer that spoke. It must
+        # precede the silence derivation below, which consumes it. (WI-finij)
         if not result.run.files_analyzed:
             result.run.files_analyzed = len(read_log)
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
-        # INV-bikaj (arc T6): every linker invocation flows through this
-        # wrapper, so it is also the one locus that can stamp WHY a linker
-        # emitted nothing. The 22 truly-silent pass-runs the sizing found are
-        # linkers that opened files and produced nothing; they land in
-        # `unreported` rather than being labelled with a reason the
-        # orchestrator cannot know.
+        # Every linker invocation flows through this wrapper, so it is also
+        # the one locus that can stamp WHY a linker emitted nothing. A linker
+        # that opened files and produced nothing lands in `unreported` rather
+        # than being labelled with a reason the orchestrator cannot know.
+        # (INV-bikaj)
         _derived = derive_silence_reason(
             files_analyzed=result.run.files_analyzed,
             nodes_emitted=result.run.nodes_emitted,
             edges_emitted=result.run.edges_emitted,
         )
-        # WI-finij question A: only a pass BODY can know it looked for its
-        # construct and found none, which is why derive_silence_reason refuses
-        # to infer NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's
-        # behalf is a fabricated disclosure. But this stamp ASSIGNED
-        # UNCONDITIONALLY, so it overwrote the only producer able to say it, and
-        # the declared value had no reachable producer anywhere in the tree.
-        # Guarded now: a body that spoke keeps its word. The one exception is
-        # "" -- a pass that EMITTED has no silence to explain, and NOT
-        # APPLICABLE is not the body's to override.
+        # Only a pass BODY can know it looked for its construct and found
+        # none, which is why derive_silence_reason refuses to infer
+        # NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's behalf
+        # is a fabricated disclosure. So the stamp is guarded: a body that set
+        # silence_reason keeps its word, since an unconditional assignment
+        # would overwrite the only producer able to say it. The one exception
+        # is "" -- a pass that EMITTED has no silence to explain, and NOT
+        # APPLICABLE is not the body's to override. (WI-finij)
         if _derived == "":
             # A pass that EMITTED has no silence to explain, and NOT APPLICABLE
             # is not the body's to override.
             result.run.silence_reason = ""
         elif not result.run.silence_reason:
-            # WI-dabup / ADR-0056 W3: the orchestrator may speak only into a
-            # field the body left empty. Before falling through to the derived
-            # answer, ask whether this linker was BLOCKED -- a declared
-            # prerequisite that went missing for a toolchain reason rather than
-            # because the repo lacks its files.
+            # The orchestrator may speak only into a field the body left
+            # empty. Before falling through to the derived answer, ask whether
+            # this linker was BLOCKED -- a declared prerequisite that went
+            # missing for a toolchain reason rather than because the repo
+            # lacks its files. (WI-dabup / ADR-0056 W3)
             #
             # WHY THIS ORDER MATTERS, and it is not a detail. The derived answer
             # here is NO_CANDIDATE_FILES, declared to mean "nothing to find, and
             # no ordering or declaration mechanism would change it". On a JS+Rust
             # repo with the Rust grammar missing, that is FALSE for
-            # tauri-ipc-linker: installing the grammar changes it. The axis was
-            # asserting something untrue, which is worse than abstaining.
+            # tauri-ipc-linker: installing the grammar changes it. Stamping it
+            # would assert something untrue, which is worse than abstaining.
             #
-            # WHY IT DOES NOT OVERRIDE A BODY CLAIM. Measured on that same repo,
+            # WHY IT DOES NOT OVERRIDE A BODY CLAIM. On that same repo,
             # pyffi-linker is silent with the SAME blocked conjunct and its body
             # claims NO_CANDIDATE_CONSTRUCT -- truthfully: it scanned the Python
             # side and there are genuinely no FFI call sites, so the missing
@@ -1013,15 +1011,16 @@ def run_all_linkers(
         )
     ]
 
-    # WI-dabup / ADR-0056 W3: lift the analyzer skip codes once, so a silent
-    # linker can tell a prerequisite that was ABSENT FROM THE REPO from one
-    # that was BLOCKED BY THE TOOLCHAIN. run_all_analyzers has fully populated
-    # `limits` by the time linkers dispatch (cli.py runs them in that order),
-    # so this map is complete rather than racing the passes it describes.
-    # Falls back to the caller's own map when no Limits sink was supplied, so
-    # a direct caller can still exercise the path.
-    # A record with no code is UNREPORTED, read by the one reader the summary
-    # uses too (WI-punod: this used to default to "").
+    # Lift the analyzer skip codes once, so a silent linker can tell a
+    # prerequisite that was ABSENT FROM THE REPO from one that was BLOCKED BY
+    # THE TOOLCHAIN (WI-dabup / ADR-0056 W3). run_all_analyzers has fully
+    # populated `limits` by the time linkers dispatch (cli.py runs them in
+    # that order), so this map is complete rather than racing the passes it
+    # describes. Falls back to the caller's own map when no Limits sink was
+    # supplied, so a direct caller can still exercise the path.
+    # A record with no code is UNREPORTED, never "" (which means NOT
+    # APPLICABLE), read by the same skip_record_code the summary uses
+    # (WI-punod).
     from ..pass_silence import skip_record_code
 
     skipped_pass_codes = dict(ctx.skipped_pass_codes)
@@ -1178,14 +1177,13 @@ def run_all_linkers(
 # node is reachable from no real symbol, so a slice from application code
 # never reaches it.
 #
-# Values of ``Symbol.meta["framework_role"]`` (ADR-0027 Phase 4b moved them off
-# ``Symbol.kind``). The set used to be hand-written and drifted (WI-pokuz):
-# six members had no producer, and the Electron / Phoenix IPC linkers write
-# ``ipc_send`` / ``ipc_receive`` where it said ``ipc_publisher`` /
-# ``ipc_subscriber``, so on dev session-desktop's 43 and livebook's 31 IPC
-# nodes had no edge from any real symbol. It is now one half of a PARTITION of
-# every role a linker writes, with NOT_ENCLOSED_FRAMEWORK_ROLES below, and
-# ``test_synthetic_role_partition`` reads the linker sources to keep it so.
+# Values of ``Symbol.meta["framework_role"]`` (not ``Symbol.kind``; ADR-0027
+# Phase 4b). The set is one half of a PARTITION of every role a linker
+# writes, with NOT_ENCLOSED_FRAMEWORK_ROLES below, and
+# ``test_synthetic_role_partition`` reads the linker sources to keep it so:
+# a hand-maintained list drifts from what the linkers actually write (a role
+# spelled differently by its producer silently loses its enclosure edge).
+# (WI-pokuz)
 SYNTHETIC_FRAMEWORK_ROLES = frozenset({
     "crypto_consumer",
     "crypto_producer",
@@ -1229,19 +1227,15 @@ NOT_ENCLOSED_FRAMEWORK_ROLES: dict[str, str] = {
 def _is_synthetic_node(sym: "Symbol") -> bool:
     """True if *sym* is a linker-synthesized framework-role node.
 
-    Post-Phase-4b (ADR-0027 §6, PR #3633): the dual-shape predicate
-    collapsed to its post-fold branch. Producers emit
-    ``Symbol.kind="function"|"method"`` with the role qualifier on
-    ``Symbol.meta["framework_role"]``; the pre-Phase-4b legacy branch
-    (``sym.kind in <role-name>``) is structurally impossible now that
-    the role-name vocabulary is no longer in the ``Symbol.kind``
-    registry.
+    Producers emit ``Symbol.kind="function"|"method"`` with the role
+    qualifier on ``Symbol.meta["framework_role"]`` (ADR-0027 §6); role
+    names are not ``Symbol.kind`` values, so the kind alone never
+    identifies a role. A ``kind="call_site"`` node also qualifies.
     """
-    # WI-pokuz: a ``call_site`` node is a stand-in by construction -- the http,
+    # A ``call_site`` node is a stand-in by construction -- the http,
     # database, subprocess and solidity-ABI linkers fold their call sites to
-    # it (``call_kind`` says which) -- and ``http_client``, the one such role
-    # the old list named, could never match while this tested function/method
-    # alone.
+    # it (``call_kind`` says which) -- so it qualifies whatever its meta says;
+    # testing function/method alone would miss it. (WI-pokuz)
     if sym.kind == "call_site":
         return True
     if sym.kind in {"function", "method"}:
@@ -1274,15 +1268,11 @@ def _connect_synthetic_to_enclosing(
     edges: list[Edge] = []
     seen_pairs: set[tuple[str, str]] = set()
 
-    # Pre-Phase-3 the synthetic stubs carried framework-role values in
-    # ``Symbol.kind`` (e.g. ``"grpc_stub"``), which sit outside
-    # ``find_enclosing_symbol``'s default ``kinds`` filter, so the
-    # synthetic node never matched itself as its own encloser. Post-
-    # Phase-3 (ADR-0027 §"Phase 3" Wave 5) the canonical kind is
-    # ``"function"`` or ``"method"`` and the role moves to
-    # ``Symbol.meta["framework_role"]`` — which means the synthetic
-    # node DOES match the default kinds and could be returned as its
-    # own encloser. Build an enclosing-search context that excludes
+    # Synthetic nodes carry the canonical kind ``"function"`` or
+    # ``"method"`` with the role on ``Symbol.meta["framework_role"]``
+    # (ADR-0027 §"Phase 3" Wave 5), so they match
+    # ``find_enclosing_symbol``'s default kinds and could be returned as
+    # their own encloser. Build an enclosing-search context that excludes
     # the synthetic nodes from this run; only non-synthetic real
     # callables can be enclosers.
     synthetic_ids = {
@@ -1306,8 +1296,7 @@ def _connect_synthetic_to_enclosing(
         if not hasattr(sym, "kind"):
             continue
 
-        # Only process synthetic framework-role nodes (forward-compatible
-        # with ADR-0027 §"Phase 3" Wave 5 framework_role fold).
+        # Only process synthetic framework-role nodes.
         if not _is_synthetic_node(sym):
             continue
 
@@ -1316,7 +1305,7 @@ def _connect_synthetic_to_enclosing(
             continue
 
         # Find enclosing function/method/class (excluding synthetic
-        # nodes themselves, which would otherwise self-match post-Phase-3).
+        # nodes themselves, which would otherwise self-match).
         enclosing = enclosing_ctx.find_enclosing_symbol(sym.path, sym.span.start_line)
         if enclosing is None:
             continue

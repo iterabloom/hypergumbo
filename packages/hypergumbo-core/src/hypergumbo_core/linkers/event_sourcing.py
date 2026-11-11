@@ -7,10 +7,9 @@ events) and links event publishers to their subscribers.
 ``depends_on`` is EMPTY because this linker consumes no pass output (WI-zujan).
 ``link_events(root, ...)`` finds its own files (``_find_source_files``) and MINTS
 BOTH ENDS of every edge it emits. Its one read of ``ctx.symbols`` is the
-WI-vasik-jofiv tombstone ``_create_subscriber_to_method_edges``, which computes
-an enclosing method and discards it, so it contributes nothing to the output.
-The clause this replaced named six host languages "per the description" -- two
-of which (Ruby, C#) the file scan never even reads.
+tombstone ``_create_subscriber_to_method_edges`` (WI-vasik-jofiv), which
+computes an enclosing method and discards it, so it contributes nothing to the
+output.
 
 Detected Patterns
 -----------------
@@ -414,9 +413,9 @@ def _scan_python_events(
 ) -> list[EventPattern]:
     """Scan Python file for event patterns.
 
-    WI-pitit: the Django-signal sub-scans (``.send`` / ``.connect`` /
-    ``@receiver``) match framework-blind identifiers (``sqlite3.connect``,
-    ``sock.send``), so they are gated on Django actually being detected.
+    The Django-signal sub-scans (``.send`` / ``.connect`` / ``@receiver``)
+    match framework-blind identifiers (``sqlite3.connect``, ``sock.send``),
+    so they are gated on Django actually being detected (WI-pitit).
     ``detected_frameworks is None`` means "no framework info supplied" and stays
     permissive (unit callers testing the raw patterns); the production linker
     passes ``ctx.detected_frameworks`` (a real, possibly-empty set)."""
@@ -667,16 +666,16 @@ def _scan_file(
 def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     """Create a symbol for an event publisher or subscriber.
 
-    ADR-0027 Phase 3 / audit-findings 0013: event_publisher / event_subscriber
-    are framework-role values that fold to canonical kind="function" +
-    meta["framework_role"]. ADR-0036 Ruling 2 completes the fold: the id
-    kind-slot is the node's own kind ("function"), not the role (which the id
-    format `<lang>:<path>:<span>:<name>:<kind>` used to smuggle as a
-    disambiguator). The role no longer disambiguates in the id —
-    (path, line, event_name) is unique per pattern on all measured corpora (a
-    line publishes XOR subscribes a given event), and cross-run identity lives
-    in ``stable_id`` (``make_protocol_stable_id``), independent of the id-slot;
-    a per-file id-uniqueness validator backstops the rare pub+sub-same-line case.
+    event_publisher / event_subscriber are framework-role values: the symbol
+    has canonical kind="function" and carries the role in
+    meta["framework_role"] (ADR-0027, audit-findings 0013). The kind-slot of
+    the id format `<lang>:<path>:<span>:<name>:<kind>` is the node's own kind
+    ("function"), not the role (ADR-0036 Ruling 2). The role is not needed to
+    disambiguate the id -- (path, line, event_name) is unique per pattern on
+    all measured corpora (a line publishes XOR subscribes a given event), and
+    cross-run identity lives in ``stable_id`` (``make_protocol_stable_id``),
+    independent of the id-slot; a per-file id-uniqueness validator backstops
+    the rare pub+sub-same-line case.
     """
     try:
         rel_path = Path(pattern.file_path).relative_to(root)
@@ -705,12 +704,11 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
         language=None,
         discovery_language=pattern.language,
         protocol_origin="event_sourcing",
-        # Phase 6 PR1 (INV-hunup): was bare ``pattern.event_name`` (escape
-        # category ``no_colon``). The factory hashes (framework,
-        # pattern_type, event_name) into ``sha256:<16hex>`` so two events
-        # named ``dispatch`` from different frameworks remain distinct.
-        # WI-misod: an unresolved identifier is not an event name, so its
-        # stable_id carries a marker segment and cannot collide with one.
+        # The factory hashes (framework, pattern_type, event_name) into
+        # ``sha256:<16hex>`` so two events named ``dispatch`` from
+        # different frameworks remain distinct (INV-hunup). An unresolved
+        # identifier is not an event name, so its stable_id carries a
+        # marker segment and cannot collide with one (WI-misod).
         stable_id=make_protocol_stable_id(
             "event_sourcing",
             pattern.framework,
@@ -722,8 +720,8 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
             ),
         ),
         meta={
-            # WI-misod: None when the identifier written at the site could not
-            # be resolved (see ``event_identifier``).
+            # None when the identifier written at the site could not be
+            # resolved (see ``event_identifier``; WI-misod).
             "event_name": pattern.known_name,
             "event_identifier": pattern.event_identifier,
             "framework": pattern.framework,
@@ -779,11 +777,11 @@ def link_events(
         symbols.append(symbol)
         symbol_of[id(pattern)] = symbol
 
-    # Create edges from publishers to matching subscribers. WI-misod: the
-    # shared ``pair_by_name`` joins on the case-folded event VALUE when both
-    # are known and on the IDENTIFIER only when one side's value is unknown
+    # Create edges from publishers to matching subscribers. The shared
+    # ``pair_by_name`` joins on the case-folded event VALUE when both are
+    # known and on the IDENTIFIER only when one side's value is unknown
     # (unresolved, or a Django signal / Go channel) -- never an identifier's
-    # text against an event string.
+    # text against an event string (WI-misod).
     for publisher, sub_pattern, join in pair_by_name(
         publishers,
         subscribers,
@@ -802,10 +800,10 @@ def link_events(
         # to edge.meta after construction would wipe the dataflow
         # meta fields set by the kwargs above (INV-forim).
         #
-        # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak
-        # (event_name_match was a regex/naming-pattern shape).
-        # Fold to evidence_type="naming_convention" +
-        # meta["detection_pattern"]="event_name".
+        # The join is a naming-pattern match: canonical
+        # evidence_type="naming_convention", with the detection pattern
+        # named in meta["detection_pattern"]="event_name" (ADR-0028,
+        # audit-findings 0014).
         edge = Edge.create(
             src=pub_symbol.id,
             dst=sub_symbol.id,
@@ -832,8 +830,9 @@ def link_events(
         )
         edges.append(edge)
 
-    # WI-lisan: the claim is what the scan found, never what was emitted.
-    # A scan that read no file leaves the orchestrator's no_candidate_files.
+    # The silence claim is what the scan found, never what was emitted. A
+    # scan that read no file leaves the orchestrator's no_candidate_files
+    # (WI-lisan).
     if files_scanned:
         run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -854,16 +853,15 @@ def _create_subscriber_to_method_edges(
 ) -> list[Edge]:
     """Tombstone for the dropped subscriber→enclosing-method edge.
 
-    Per ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv),
-    ``event_subscribes`` was DEPRECATE-NO-FOLD: the production emit
-    shape was subscriber→enclosing-function (structural containment)
-    under a name suggesting pub-sub — the subscriber-is-enclosed-by-
-    method information is recoverable from ``Symbol.span``, so the
-    edge was a denormalization with no downstream consumer that
-    needed the explicit edge form.
+    No ``event_subscribes`` edge is emitted (DEPRECATE-NO-FOLD per
+    ADR-0023 §6 / audit-findings 0001; WI-vasik-jofiv). Its shape would be
+    subscriber→enclosing-function -- structural containment under a name
+    suggesting pub-sub -- and the subscriber-is-enclosed-by-method
+    information is recoverable from ``Symbol.span``, so the edge would be
+    a denormalization no downstream consumer needs.
 
-    This function is retained as a tombstone documenting the decision;
-    it always returns an empty edge list. The forward-slice flow is now::
+    This function is a tombstone documenting that decision; it always
+    returns an empty edge list. The forward-slice flow is::
 
         publisher_method → event_publisher → event_publishes → event_subscriber
 
@@ -873,7 +871,7 @@ def _create_subscriber_to_method_edges(
     mismatches between the linker's filesystem-derived paths and
     the analyzer pipeline's normalized paths).
     """
-    # Post-fold: filter on meta["framework_role"] since kind is now "function".
+    # Event symbols are kind="function"; the role is in meta["framework_role"].
     subscribers = [
         s for s in event_symbols
         if (s.meta or {}).get("framework_role") == "event_subscriber"
@@ -925,20 +923,12 @@ def _create_subscriber_to_method_edges(
                     best_size = size
                     enclosing = method
 
-        # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
-        # event_subscribes was DEPRECATE-NO-FOLD per audit-findings 0001 — the
-        # production emit shape was subscriber→enclosing-function
-        # (structural containment) under a name suggesting pub-sub.
-        # The producer is dropped here per the Phase-3 decision: the
-        # subscriber-is-enclosed-by-method information is recoverable
-        # from Symbol.span (subscriber's span fits inside the
-        # method's span), so the edge was a denormalization with no
-        # downstream consumer that needed the explicit edge form.
-        # Same verdict pattern as message_receive in audit-findings 0002.
-        # `enclosing` retains its computation only because the
-        # surrounding loop walks methods to find the tightest scope —
-        # the value is still computed but no longer materialized as
-        # an edge.
+        # No subscriber→enclosing-method edge is emitted: containment is
+        # recoverable from Symbol.span (the subscriber's span fits inside
+        # the method's span). See the docstring and audit-findings 0001;
+        # same verdict pattern as message_receive in audit-findings 0002.
+        # `enclosing` is computed by the loop above, which walks methods to
+        # find the tightest scope, but is not materialized as an edge.
         _ = enclosing  # explicitly drop the value; no edge emitted
 
     return edges
@@ -961,11 +951,11 @@ def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     """Event sourcing linker for registry-based dispatch.
 
     This wraps link_events() and invokes the dropped-edge tombstone
-    helper. ``event_subscribes`` was DEPRECATE-NO-FOLD per
-    audit-findings 0001 (WI-vasik-jofiv); the helper now always
-    returns an empty list, so the linker emits only the edges produced
-    by ``link_events()``. The helper call is preserved as a documented
-    no-op so the deprecation rationale stays adjacent to the code.
+    helper. ``event_subscribes`` is DEPRECATE-NO-FOLD per
+    audit-findings 0001 (WI-vasik-jofiv); the helper always returns an
+    empty list, so the linker emits only the edges produced by
+    ``link_events()``. The helper call is kept as a documented no-op so
+    the deprecation rationale stays adjacent to the code.
     """
     result = link_events(ctx.repo_root, detected_frameworks=ctx.detected_frameworks)
 

@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the confidence:F1 evidence->confidence derivation reader.
+"""Tests for the confidence:F1 evidence->confidence derivation readers.
 
 Per ADR-0039, ``Edge.confidence`` is *detection reliability* derived from
 the inference pathway (``Edge.evidence_type``) rather than hardcoded per
-emitter. This first slice introduces the registry-backed ``base_confidence``
-field on :class:`EvidenceTypeSpec` and the central ``derive_confidence``
-reader for the single-valued, behavior-preserving evidence types. It does
-NOT yet route producers through it (the high-blast-radius ``Edge.create``
-default flip and the ~575-site producer migration are later F1 steps), so
-no published edge value changes here. See
+emitter. These tests pin the registry-backed ``base_confidence`` /
+``base_confidence_unresolved`` seeds on :class:`EvidenceTypeSpec`, the
+``derive_confidence`` reader that ``Edge.create`` uses when a producer omits
+``confidence=``, the band check (``confidence_within_band``), resolver-grade
+interpolation (``derive_resolved_confidence``), and the constant-confidence
+guard (``find_constant_confidence_violations``). See
 ``docs/adr/0039-confidence-separation.md``.
 """
 
@@ -33,14 +33,12 @@ from hypergumbo_core.evidence_types import (
 )
 
 
-# The single-valued, in-band inference pathways seeded in this first slice.
-# Each value was verified behavior-preserving against the live self-corpus
-# behavior map (exactly one observed confidence per type). Multimodal types
-# (ast_call / ast_call_direct, driven by is_resolved) are deferred to a later
-# F1 slice. (naming_convention was the ceiling-breaching 1.0 producer; ADR-0039
-# R1 seeded it 0.85 and dropped the containment literal — WI-vakuh / WI-lutad.
-# type_hierarchy was the ranking-contaminated 0.85/sqrt(N) producer; ADR-0039
-# R1/R3 seeded it 0.85 and relocated the dampener to rank_score — WI-botif.)
+# Single-valued, in-band inference pathways seeded inline on their specs.
+# Each value is the one confidence observed per type on the self-corpus
+# behavior map, so deriving it preserves behavior. Multimodal types
+# (ast_call / ast_call_direct, driven by is_resolved) are tested further
+# down; naming_convention (ADR-0039 R1) and type_hierarchy (R1/R3) have their
+# own tests below.
 _SEEDED = {
     "ast_import": 0.95,
     "ast_new": 0.95,
@@ -59,9 +57,9 @@ def test_derive_confidence_returns_seeded_base():
 
 
 def test_derive_confidence_unregistered_returns_none():
-    # No re-introduced single default (guards the just-withdrawn 0.30 MUST,
-    # WI-gifat): an unregistered evidence type yields None so the caller
-    # keeps its own literal rather than being silently re-scored.
+    # No single blanket default (WI-gifat): an unregistered evidence type
+    # yields None so the caller keeps its own literal rather than being
+    # silently re-scored.
     assert derive_confidence("not-a-real-evidence-type") is None
 
 
@@ -69,7 +67,7 @@ def test_derive_confidence_registered_but_unseeded_returns_none():
     # Derivation is opt-in per type: a registered type without a
     # base_confidence (the long tail) yields None so the caller keeps its
     # own literal. Picked dynamically so seeding more pathways later does
-    # not break this (only ~10 of ~125 pathways are seeded).
+    # not break this.
     unseeded = next((s for s in EVIDENCE_TYPES if s.base_confidence is None), None)
     assert unseeded is not None
     assert derive_confidence(unseeded.name) is None
@@ -83,8 +81,7 @@ def test_all_base_confidence_within_unit_interval():
 
 def test_seeded_base_confidence_within_analyzer_linker_band():
     # Floor/ceiling guard (spec section 12: analyzer 0.30-0.95 / linker
-    # 0.40-0.95). Rejects enshrining a ceiling-breach like the old
-    # naming_convention=1.0 (now seeded 0.85 by ADR-0039 R1).
+    # 0.40-0.95). Rejects enshrining a ceiling-breach such as a 1.0 seed.
     # Entrypoint-band pathways (0.70-0.99) are not yet seeded; widen this
     # per-axis when they are.
     for spec in EVIDENCE_TYPES:
@@ -147,7 +144,7 @@ def test_unresolved_base_confidence_within_band():
             assert 0.30 <= spec.base_confidence_unresolved <= 0.95, spec.name
 
 
-# --- WI-nurun: the centralized _CONFIDENCE_SEEDS overlay (PR1) ---
+# --- The centralized _CONFIDENCE_SEEDS overlay (WI-nurun) ---
 
 
 def test_confidence_seeds_all_registered_inference_pathway_in_band():
@@ -175,7 +172,7 @@ def test_confidence_seeds_disjoint_from_inline_seeds():
     assert inline.isdisjoint(_CONFIDENCE_SEEDS), inline & _CONFIDENCE_SEEDS.keys()
 
 
-# --- WI-nurun step 4: range-validation band reader ---
+# --- Range-validation band reader (WI-nurun) ---
 
 
 def test_confidence_within_band_seeded_in_band():
@@ -201,7 +198,7 @@ def test_confidence_within_band_out_of_band():
 def test_confidence_within_band_unseeded_or_unregistered_is_in_band():
     # A registered-but-unseeded pathway has no band -> in-band (caller's
     # literal stands). Discover one dynamically so the test is stable as
-    # seeds are added (naming_convention was seeded by ADR-0039 R1).
+    # seeds are added.
     unseeded = next(s.name for s in EVIDENCE_TYPES if s.base_confidence is None)
     assert confidence_within_band(unseeded, 1.0) is True
     # unregistered type -> no band -> in-band (caller's literal stands).
@@ -210,7 +207,7 @@ def test_confidence_within_band_unseeded_or_unregistered_is_in_band():
 
 def test_naming_convention_seeded_below_span_overlap():
     """ADR-0039 R1 (WI-vakuh / WI-lutad): the name-parse containment heuristic
-    seeds below the structurally-certain span_overlap, and 1.0 now breaches
+    seeds below the structurally-certain span_overlap, and 1.0 breaches
     the band ceiling."""
     assert derive_confidence("naming_convention") == 0.85
     assert derive_confidence("span_overlap") == 0.90
@@ -222,11 +219,12 @@ def test_naming_convention_seeded_below_span_overlap():
 
 def test_type_hierarchy_seeded_in_band():
     """ADR-0039 R1/R3 (WI-botif): the dispatch pathway seeds a flat in-band 0.85
-    base; the fan-out dampener that undershot the 0.40 floor lives on rank_score."""
+    base; the fan-out dampener, whose values can fall below the 0.40 floor,
+    lives on rank_score."""
     assert derive_confidence("type_hierarchy") == 0.85
     assert confidence_within_band("type_hierarchy", 0.85) is True
-    assert confidence_within_band("type_hierarchy", 0.094) is False   # old dampened floor-breach
-    assert confidence_within_band("type_hierarchy", 0.30) is True     # old test-penalty, in band
+    assert confidence_within_band("type_hierarchy", 0.094) is False   # dampened value: floor breach
+    assert confidence_within_band("type_hierarchy", 0.30) is True     # test-penalty value: in band
 
 
 # --- ADR-0039 ruling 2 guard: find_constant_confidence_violations ---
@@ -332,7 +330,7 @@ def test_resolved_unconditioned_pathway_interpolates_from_analyzer_floor():
 
 
 def test_resolved_ambiguous_grades_never_leave_the_band():
-    # The rejected base * grade form fell below the floor here:
+    # A plain base * grade product would fall below the floor here:
     # 0.85 * 0.70 / sqrt(4) = 0.2975 < 0.40.
     for n in range(2, 60):
         grade = 0.70 / math.sqrt(n)
@@ -385,7 +383,7 @@ def test_edge_create_rejects_score_on_unresolved_edge():
 
 
 def test_edge_create_none_score_keeps_derivation():
-    # resolution_score=None is "no grade": the edge derives as before.
+    # resolution_score=None is "no grade": the edge derives from its pathway.
     edge = Edge.create(src="a", dst="b", edge_type="calls", line=1,
                        origin="t", origin_run_id="u",
                        evidence_type="ast_call", is_resolved=False, resolution_score=None)

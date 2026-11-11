@@ -1,37 +1,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the WI-rahib auto-pr convergence fix (INV-rahib regression).
+"""Tests for auto-pr convergence: every run ends merged or in an explicit,
+declared terminal state, regardless of concurrent activity (INV-rahib).
 
-Background
-----------
-INV-rahib ("auto-pr must converge to merged or explicit failure regardless
-of concurrent activity") regressed on 2026-04-26 (PR #3392 → #3393, WI-gijot
-ship). Two surfaces violated the invariant:
+The surfaces covered:
 
-  Surface 1 — Scenario B close-and-repush boundary: the timeout-recovery
+  Surface 1 — Scenario B close-and-repush boundary. The timeout-recovery
   and hung-run paths in scripts/auto-pr close the PR and force a fresh
-  push without first verifying that the PR has not actually merged (or
-  is not about to). Poll-endpoint flakes hide the merged/about-to-merge
-  state under a "no progress in N seconds" signal.
+  push. Poll-endpoint flakes can hide a merged or about-to-merge PR under
+  a "no progress in N seconds" signal, so before closing, both paths call
+  `_pre_scenario_b_gate` (scripts/lib/forgejo-api.sh), which checks
+  `_check_pr_merged` and then mergeability plus one short `poll_ci` retry;
+  if either succeeds the close is skipped.
 
-  Surface 2 — Post-rebase merge attempt in do_merge() (forgejo-api.sh):
-  after force-push of a rebased SHA, the function tried the merge once
-  and emitted `Recovery: ./scripts/merge-pr ... --wait-for-ci`, punting
-  to the human. The right behavior is to re-enter the CI poll loop on
-  the new SHA and continue to convergence.
+  Surface 2 — Post-rebase merge in do_merge() (forgejo-api.sh). After
+  force-pushing a rebased SHA, the function re-enters the CI poll on the
+  new SHA inside a labeled while-loop (explicit `continue` after a
+  re-rebase, capped at 3 iterations) instead of punting to a human with
+  `Recovery: ./scripts/merge-pr ... --wait-for-ci`. A loop rather than
+  recursion keeps it greppable and avoids a guard-flag re-entry hazard.
 
-The fix:
-  - Surface 1: a `_pre_scenario_b_gate` helper checks `_check_pr_merged`
-    and `mergeable+poll_ci-retry`; if either succeeds the close is
-    skipped. Helper lives in `scripts/lib/forgejo-api.sh`.
-  - Surface 2: a labeled while-loop with explicit `continue` after
-    re-rebase, capped at 3 iterations. No recursion (Decision 2 from
-    the human triage on 2026-04-27 — labeled loop is more greppable
-    and avoids the AUTOPR_FROM_REBASE re-entry hazard).
+  Surface 3 — poll_ci requires a failure-with-no-pending signal to be
+  stable across consecutive polls before returning failure.
 
-These tests are predominantly structural: the bash code paths require a
-live Forgejo to exercise end-to-end, so we lean on grep-style assertions
-plus seam-driven subprocess tests of the gate helper itself. The same
-shape was used by `test_autopr_exit2_retry.py` for the WI-dotod fix.
+  Also pinned: the tri-state `json_bool_state` reader the gate depends on,
+  the declared terminal-state vocabulary, and the post-merge boundary that
+  keeps housekeeping failures from turning a landed merge into a failure.
+
+The bash paths need a live forge to exercise end-to-end, so these tests
+mix grep-style structural assertions with subprocess tests that drive the
+real bash functions through stubs and test seams (the same shape as
+`test_autopr_exit2_retry.py`).
 """
 
 from __future__ import annotations
@@ -79,13 +77,11 @@ def test_pre_scenario_b_gate_uses_mergeable_plus_poll_retry() -> None:
     gate_start = text.index("_pre_scenario_b_gate()")
     gate_body_end = text.index("\n# ---", gate_start + 1)
     gate_body = text[gate_start:gate_body_end]
-    # Deliberately loose. This previously pinned the literal source line
-    # `mergeable=$(echo "$API_RESPONSE" | json_field "mergeable")`, which
-    # asserts an IMPLEMENTATION TEXT rather than a behavior — and that exact
-    # line was the site of the INV-rahib Surface 1 defect, so the assertion
-    # broke precisely when the bug was fixed and pointed the fixer at keeping
-    # it. The behavioral `_run_gate` cases below prove the gate consults
-    # mergeability; this only needs to keep the dependency from being deleted.
+    # Deliberately loose: pinning the literal line that reads `mergeable`
+    # would assert implementation text rather than behavior, and would break
+    # whenever that read is corrected. The behavioral `_run_gate` cases below
+    # prove the gate consults mergeability; this only needs to keep the
+    # dependency from being deleted.
     assert "mergeable" in gate_body
     assert "poll_ci" in gate_body
     assert "CI_TIMEOUT_SECONDS=120" in gate_body, (
@@ -149,8 +145,7 @@ def test_post_rebase_loop_uses_labeled_while_with_max() -> None:
 
 def test_post_rebase_loop_re_polls_ci_on_new_sha() -> None:
     """The loop body must re-enter `poll_ci` on the rebased SHA before
-    attempting the merge — that's the convergence guarantee that was
-    missing pre-fix."""
+    attempting the merge — that is the convergence guarantee."""
     text = FORGEJO_LIB.read_text()
     loop_start = text.index('while [ "$rebase_attempts" -lt "$rebase_max" ]; do')
     # Find loop end (matching `done`)
@@ -347,10 +342,9 @@ def test_gate_mergeable_but_poll_still_failing_returns_one(tmp_path: Path) -> No
 def test_gate_not_mergeable_returns_one(tmp_path: Path) -> None:
     """When the forge says mergeable=false, gate returns 1 (proceed close).
 
-    Scoped deliberately to the explicit `false`. The docstring here used to
-    read "false (or absent)" while only ever feeding `false`; absent and null
-    are now covered by their own cases below, because they are NOT the same
-    fact and the gate's handling of them differs in consequence.
+    Scoped deliberately to the explicit `false`. Absent and null are covered
+    by their own cases below, because they are NOT the same fact and the
+    gate's handling of them differs in consequence.
     """
     rc, out = _run_gate(
         check_merged_rc=1,
@@ -389,8 +383,7 @@ def test_gate_mergeable_null_must_not_close_a_green_pr(tmp_path: Path) -> None:
     The narrow claim, and the one this whole surface turns on: "the forge has
     not computed mergeability yet" and "the forge says this cannot merge" are
     different facts, and destroying a GREEN PR on the first is not defensible.
-    Before the fix this returned 1 and emitted nothing at all — the gate did
-    not merely decide wrongly, it decided invisibly.
+    The gate re-queries once, then lets the CI retry decide.
     """
     rc, out = _run_gate(
         check_merged_rc=1,
@@ -465,13 +458,13 @@ def test_gate_api_get_failure_returns_one(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------
-# Surface 3 (2026-06-17) — poll_ci confirmation re-poll under concurrency.
+# Surface 3 — poll_ci confirmation re-poll under concurrency.
 #
 # A single failure snapshot during concurrent CI activity can be transiently
 # inconsistent (e.g. the hung-run retry's PR-close cancels its in-flight run,
 # whose error statuses shadow the live run's still-pending status for the same
-# context). The fix requires the failure-with-no-pending signal to be STABLE
-# across FAILURE_CONFIRM_POLLS consecutive polls before poll_ci returns 1.
+# context). poll_ci therefore requires the failure-with-no-pending signal to be
+# STABLE across FAILURE_CONFIRM_POLLS consecutive polls before returning 1.
 #
 # These drive the REAL poll_ci loop (NOT the AUTOPR_TEST_POLL_EXITS seam, which
 # would bypass the loop under test) against a scripted api_get response
@@ -556,9 +549,9 @@ def test_poll_ci_stable_failure_still_returns_one(tmp_path: Path) -> None:
 
 
 def test_poll_ci_transient_failure_then_pending_recovers(tmp_path: Path) -> None:
-    """INV-rahib incident shape: a transient failure-with-no-pending snapshot
-    followed by the live run reappearing pending and then succeeding must
-    converge to 0 — NOT a false explicit failure (the regression this fixes)."""
+    """A transient failure-with-no-pending snapshot followed by the live run
+    reappearing pending and then succeeding must converge to 0 — NOT a false
+    explicit failure."""
     rc, out = _run_poll_ci(
         [_RESP_FAIL, _RESP_PENDING, _RESP_SUCCESS], tmp_path
     )
@@ -584,7 +577,8 @@ def test_poll_ci_confirmation_logic_present() -> None:
 # json_bool_state — the tri-state reader the gate depends on.
 #
 # json_field cannot express these apart (it prints '' for null, '' for a
-# missing key and '' on a parse failure), which is the root of Surface 1.
+# missing key and '' on a parse failure), so the gate cannot use it to read
+# `mergeable`.
 # --------------------------------------------------------------------
 
 
@@ -659,15 +653,13 @@ def test_json_field_still_conflates_them_which_is_why_the_helper_exists() -> Non
 
 
 # --------------------------------------------------------------------
-# The declared terminal-state vocabulary (INV-rahib refined clause (a)/(c)).
+# The declared terminal-state vocabulary (INV-rahib clauses (a)/(c)).
 #
-# The invariant's original wording — "merged or explicit failure, no third
-# state" — cannot be satisfied by any conforming implementation: `queued_vpr`
-# is a deliberate, documented, human-approved outcome (WI-hajif Ruling 2),
-# and so are `governance_pending` and `noop_empty_queue`. Owner ruling
-# 2026-08-03 replaced it with a DECLARED CLOSED SET: every run must record a
-# state drawn from this vocabulary, and `unknown` (the default) is the
-# violation signal.
+# "Merged or explicit failure" alone is too narrow: `queued_vpr`,
+# `governance_pending` and `noop_empty_queue` are deliberate, documented,
+# human-approved outcomes (WI-hajif). So convergence is a DECLARED CLOSED SET:
+# every run must record a state drawn from this vocabulary, and `unknown` (the
+# default) is the violation signal.
 # --------------------------------------------------------------------
 
 CONVERGED_MERGED = frozenset({"merged", "already_merged"})
@@ -682,9 +674,8 @@ CONVERGED_FAILURE = frozenset(
         "failed_pr_lookup",
         "failed_protected_branch",
         "failed_tracker_sync_pending",
-        # WI-nazoj: ten exits used to leave the state at its `unknown`
-        # initializer. Naming what each one decided is what moved them out of
-        # the violation bucket and into this vocabulary.
+        # Exits that each name what they decided, so they record a
+        # converged failure rather than the `unknown` initializer (WI-nazoj).
         "failed_branch_ownership",
         "failed_queue_not_linear",
         "failed_queue_unresolvable",
@@ -696,10 +687,9 @@ CONVERGED_FAILURE = frozenset(
         "ci_timeout",
         "ci_hung",
         "ci_unknown",
-        # WI-hajak: a non-tty caller that declared neither --detach nor
-        # --foreground is refused before doing any work, because exit 0 means
-        # different things in the two modes and guessing would re-make the
-        # conflation the preceding fixes removed.
+        # A non-tty caller that declared neither --detach nor --foreground is
+        # refused before doing any work, because exit 0 means different things
+        # in the two modes and guessing would conflate them (WI-hajak).
         "failed_mode_undeclared",
     }
 )
@@ -713,13 +703,12 @@ CONVERGED_DELIBERATE = frozenset(
     {"queued_vpr", "governance_pending", "noop_empty_queue", "detached_watching"}
 )
 
-# A FOURTH bucket (WI-katap), deliberately not folded into any of the three
-# above. A run that was killed did not converge — but it did not fail to
-# converge either, because it never got to decide. Folding it into
-# CONVERGED_DELIBERATE would claim auto-pr chose this; folding it into
-# CONVERGED_FAILURE would claim auto-pr failed; leaving it in `unknown` (the
-# status quo ante) made the ledger report 22 of 84 runs as INV-rahib
-# violations when 14 of the 15 PRs behind them had merged.
+# A FOURTH bucket, deliberately not folded into any of the three above. A run
+# that was killed did not converge — but it did not fail to converge either,
+# because it never got to decide. Folding it into CONVERGED_DELIBERATE would
+# claim auto-pr chose this; folding it into CONVERGED_FAILURE would claim
+# auto-pr failed; leaving it as `unknown` would report a run killed by its
+# caller (often after its PR merged) as an INV-rahib violation. (WI-katap)
 EXTERNALLY_TERMINATED = frozenset(
     {"terminated_sigterm", "terminated_sigint", "terminated_sighup"}
 )
@@ -760,9 +749,8 @@ def test_every_emitted_terminal_state_is_declared() -> None:
     """No auto-pr exit may record a state outside the declared vocabulary.
 
     This is the executable half of the refined invariant. A new terminal
-    state added without classifying it fails here, which is the point: the
-    2026-06-17 validation criterion went unevaluated for 579 commits partly
-    because nothing ever forced the state list to be looked at.
+    state added without classifying it fails here, which is the point:
+    it forces the state list to be looked at whenever it grows.
     """
     emitted = _emitted_states()
     # Non-vacuity floor (L17): a regex that stopped matching would make the
@@ -800,9 +788,9 @@ def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
 
     The refined invariant leans on this: an auto-pr run that ends without
     reaching one of its declared terminal states self-reports as `unknown`,
-    and that is exactly the "third state" the original wording was reaching
-    for. If the default ever becomes a real state, non-convergence stops
-    being detectable.
+    which is exactly the non-converged "third state" the invariant forbids.
+    If the default ever becomes a real state, non-convergence stops being
+    detectable.
     """
     text = AUTO_PR.read_text()
     assert '_autopr_state_final="unknown"' in text
@@ -817,44 +805,38 @@ def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
 # The post-merge boundary (INV-rahib, the "misleading status" clause).
 #
 # The invariant's second violation class is a run that reports failure for
-# work that succeeded. It was live at 8.5%: of 481 invocations recorded in
-# `.git/AUTOPR_HISTORY.jsonl`, 41 carried `final_state=merged` with
-# `exit_code=1`, and every one of their `merged_sha`s is an ancestor of
-# origin/dev. The merge landed; auto-pr said it failed.
+# work that succeeded: the merge landed, but auto-pr exits non-zero.
 #
-# Cause: `set -euo pipefail` (auto-pr:3) plus bare commands that run AFTER
-# `_autopr_state_final="merged"`. Two of them abort routinely:
+# auto-pr runs under `set -e`, and commands still run AFTER
+# `_autopr_state_final="merged"`. Two of them can abort:
 #
 #   git checkout "$base"   — refuses when a dirty file differs between the
 #                            feature branch and the base. A modified tracker
 #                            `.ops` file is exactly that, and is the normal
 #                            state of this working tree.
 #   read -p "Retry? …"     — returns 1 on EOF, which is every non-interactive
-#                            invocation. It also means the surrounding 3-attempt
-#                            retry loop has never run past attempt 1 in
-#                            production.
+#                            invocation; cleanup_local therefore only prompts
+#                            when stdin is a tty.
 #
-# The fix is a boundary, not three guards: once the merge has landed the
-# outcome is decided, so the housekeeping after it runs through
+# The guard is a boundary, not per-command guards: once the merge has landed
+# the outcome is decided, so the housekeeping after it runs through
 # `_autopr_post_merge`, whose `if !` context makes bash ignore `set -e` for
 # the whole callee body — including anything the callee itself calls.
 #
 # These tests drive the REAL extracted functions under PRODUCTION shell flags.
-# That distinction is load-bearing: `test_autopr_branch_cleanup.py` drove
-# `cleanup_local` under `set -uo pipefail` for its whole life, and a harness
-# missing the `-e` cannot observe this defect at all.
+# That distinction is load-bearing: a harness missing the `-e` cannot observe
+# this defect at all.
 # --------------------------------------------------------------------
 
 
 def _production_shell_flags() -> str:
     """The `set` line auto-pr actually runs under, read from auto-pr.
 
-    This was a hardcoded `set -euo pipefail` until WI-nazoj added `-E` for the
-    abort-attribution ERR trap, at which point the copy silently stopped
-    describing production. A harness carrying its own flags is the exact defect
-    this file was written to close: test_autopr_branch_cleanup.py ran
-    `set -uo pipefail` against a function whose bug only reproduces under `-e`,
-    and stayed green through six weeks of it.
+    Read from the script rather than hardcoded, so the harness cannot drift
+    from production when the flags change (e.g. auto-pr's `-E` for its ERR
+    trap). A harness carrying its own flags can miss bugs that only reproduce
+    under production's — a function whose failure only aborts under `-e`
+    stays green under `set -uo pipefail`.
     """
     for line in AUTO_PR.read_text(encoding="utf-8").splitlines()[:20]:
         if line.startswith("set -"):
@@ -954,14 +936,11 @@ def _run_post_merge_tail(repo: Path, *, wrapped: bool) -> tuple[int, str]:
 def test_control_bare_post_merge_call_really_does_abort(tmp_path: Path) -> None:
     """Non-vacuity floor: the fixture must break a BARE post-merge call.
 
-    This is the arm that can fail, and it is not decorative — it already
-    caught one of its own siblings. The `read -p` fixture was a second
-    control arm here until the tty guard landed in cleanup_local; that guard
-    removed the abort at its source, this control went red, and the arm was
-    re-pointed at the property it now actually holds
-    (`test_non_interactive_cleanup_skips_instead_of_aborting`). A control
-    that had merely been asserted rather than run would have gone on
-    "passing" against a fixture that no longer induced anything.
+    This is the arm that can fail: if the fixture stops inducing an abort,
+    it goes red instead of letting the boundary test pass vacuously. Only
+    the checkout-collision fixture is a control; the `read -p` fixture no
+    longer aborts (cleanup_local's tty guard), and its property is pinned by
+    `test_non_interactive_cleanup_skips_instead_of_aborting`.
     """
     repo = _build_post_merge_repo(tmp_path, collide=True)
     rc, _ = _run_post_merge_tail(repo, wrapped=False)
@@ -990,11 +969,11 @@ def test_merged_run_exits_zero_despite_post_merge_failure(tmp_path: Path) -> Non
 def test_non_interactive_cleanup_skips_instead_of_aborting(tmp_path: Path) -> None:
     """With stdin closed, a failed pull must skip cleanly, not abort.
 
-    `read` returns 1 at EOF, so under `set -euo pipefail` the retry prompt was
-    an abort at attempt 1 of 3 — the documented three-attempt loop had never
-    run in production. The boundary would now catch that abort, but catching
-    it is second best: the prompt is the thing that should not fire when
-    nobody can answer it.
+    `read` returns 1 at EOF, so under `set -e` an unguarded retry prompt is
+    an abort at attempt 1 of 3. The boundary would catch that abort, but
+    catching it is second best: the prompt is the thing that should not fire
+    when nobody can answer it. Run bare (unwrapped) so the boundary cannot
+    mask a regression.
     """
     repo = _build_post_merge_repo(tmp_path, collide=False)
     rc, state = _run_post_merge_tail(repo, wrapped=False)
@@ -1008,8 +987,8 @@ def test_no_bare_cleanup_local_call_survives_in_auto_pr() -> None:
     """Every `cleanup_local` invocation goes through the boundary.
 
     Structural complement to the behavioral tests: they prove the wrapper
-    works, this proves nothing skips it. A fourth call site added later
-    without the wrapper fails here rather than in six weeks of ledger rows.
+    works, this proves nothing skips it. A new call site added without the
+    wrapper fails here rather than surfacing later as ledger rows.
     """
     text = AUTO_PR.read_text(encoding="utf-8")
     bare = [
@@ -1026,9 +1005,9 @@ def test_no_bare_cleanup_local_call_survives_in_auto_pr() -> None:
 def test_gov_cleanup_records_merged_before_it_does_housekeeping() -> None:
     """gov_cleanup's PR is confirmed merged by the API before cleanup runs.
 
-    It used to set `_autopr_state_final="merged"` AFTER `cleanup_local`, so an
-    abort in between lost the merged fact entirely and the run self-reported
-    as `unknown` — the other violation class, reached from the same defect.
+    So `_autopr_state_final="merged"` must be set BEFORE `cleanup_local`;
+    otherwise an abort in between loses the merged fact and the run
+    self-reports as `unknown` — the other violation class.
     """
     # Strip comments first. The prose explaining this ordering names
     # cleanup_local, and an index over the raw body finds that mention before
@@ -1048,8 +1027,8 @@ def test_gov_cleanup_records_merged_before_it_does_housekeeping() -> None:
 def test_cleanup_local_does_not_prompt_without_a_tty() -> None:
     """The retry prompt must be reached only when someone can answer it.
 
-    `read -p` returns 1 at EOF, so under `set -e` the documented 3-attempt
-    retry loop aborted at attempt 1 on every non-interactive run. Guarding the
+    `read -p` returns 1 at EOF, so under `set -e` an unguarded prompt aborts
+    the 3-attempt retry loop at attempt 1 on every non-interactive run. Guarding the
     prompt on a tty makes the non-interactive path a deliberate skip rather
     than an abort that happens to be caught by the boundary.
     """

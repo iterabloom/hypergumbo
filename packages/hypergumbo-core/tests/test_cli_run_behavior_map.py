@@ -104,14 +104,14 @@ def test_cli_run_with_max_files(tmp_path: Path) -> None:
 
 def test_boundary_nodes_appear_in_output(tmp_path: Path) -> None:
     """Boundary nodes for unresolved external dsts must appear in
-    behavior_map['nodes'] (PR1 of stop-stripping plan).
+    behavior_map['nodes'].
 
-    Before this change, ir.create_boundary_nodes minted synthetic Symbols
-    for every dangling edge endpoint but cli.run_behavior_map stripped
-    them out before serialization. That left disk-load consumers
-    (cmd_slice / cmd_test_coverage / verify-claims) unable to resolve the
-    boundary's supply_chain.tier and reproduced the slice-traversal
-    stalls WI-sikur was originally meant to fix.
+    ir.create_boundary_nodes mints synthetic Symbols for every dangling
+    edge endpoint, and cli.run_behavior_map must serialize them rather
+    than strip them. Disk-load consumers (cmd_slice / cmd_test_coverage /
+    verify-claims) need them to resolve the boundary's supply_chain.tier,
+    and slice traversal through boundary endpoints depends on them
+    (WI-sikur).
     """
     import json
     from hypergumbo_core.cli import run_behavior_map
@@ -158,13 +158,13 @@ def test_no_analysis_run_carries_default_config_fingerprint(tmp_path: Path) -> N
     """INV-lidul / WI-mipul production-path witness: after a real run, NO
     AnalysisRun may carry the constant default config_fingerprint sentinel.
 
-    This is the headline regression guard for the producer-side
-    config_fingerprint fix. The fixture exercises a Class-C function-registered
-    analyzer (python), the orchestrator file-symbol synthesis pass, the
-    boundary external-symbol synthesis pass, and the enclosure pass — every one
-    of which previously fell through to ``_default_config_fingerprint()``. A new
-    override-analyze analyzer that regresses (or a new synthesis create-site
-    that forgets to stamp) trips this test.
+    Every producer must stamp its own config_fingerprint. The fixture
+    exercises a Class-C function-registered analyzer (python), the
+    orchestrator file-symbol synthesis pass, the boundary external-symbol
+    synthesis pass, and the enclosure pass — each a site that falls through
+    to ``_default_config_fingerprint()`` if it forgets to stamp. A new
+    override-analyze analyzer (or a new synthesis create-site) that forgets
+    to stamp trips this test.
     """
     import json
     from hypergumbo_core.cli import run_behavior_map
@@ -199,11 +199,11 @@ def test_no_analysis_run_carries_default_config_fingerprint(tmp_path: Path) -> N
 def test_inv_gizik_no_emission_in_zero_duration(tmp_path: Path) -> None:
     """INV-gizik production-path witness: after a real run, NO AnalysisRun may
     carry nodes_emitted>0 or edges_emitted>0 while reporting duration_ms==0
-    ('324 edges in 0ms is impossible'). Exercises the analyzer chokepoint, the
-    linker chokepoint (_run_linker_with_cache), and the boundary / file-symbol /
-    enclosure synthesis passes — every locus that previously left the timer
-    unstarted on IR-consuming passes. Also asserts the new productivity fields
-    are present on every run.
+    (emitting work in 0ms is impossible). Exercises the analyzer chokepoint,
+    the linker chokepoint (_run_linker_with_cache), and the boundary /
+    file-symbol / enclosure synthesis passes — each a locus where an
+    IR-consuming pass must start its timer. Also asserts the productivity
+    fields (nodes_emitted / edges_emitted) are present on every run.
     """
     import json
     from hypergumbo_core.cli import run_behavior_map
@@ -229,7 +229,7 @@ def test_inv_gizik_no_emission_in_zero_duration(tmp_path: Path) -> None:
                 f"pass {r.get('pass')!r} emitted {emitted} nodes+edges but "
                 f"reports duration_ms={r.get('duration_ms')!r} (INV-gizik)"
             )
-    # At least one IR-consuming pass (a linker or synthesis pass) must now carry
+    # At least one IR-consuming pass (a linker or synthesis pass) must carry
     # a real emission count — proves the chokepoints fire, not just the floor.
     assert any(
         (r.get("edges_emitted", 0) or 0) > 0 and r.get("pass") not in ("python",)
@@ -372,7 +372,7 @@ def test_run_behavior_map_stores_sketch_precomputed(tmp_path: Path) -> None:
     assert "config_info" in precomputed
     assert "testproj" in precomputed["config_info"]
 
-    # INV-padoz: the consumer-less `vocabulary` field is deleted.
+    # The consumer-less `vocabulary` field is not emitted (INV-padoz).
     assert "vocabulary" not in precomputed
 
     # Check readme_description (should have extracted text)
@@ -453,14 +453,13 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
 ) -> None:
     """§17 / WI-madal (P0): an unreadable file must not abort the whole run.
 
-    This is the end-to-end regression for the fail-open containment. A
-    single chmod-000-style file is read at two pipeline stages — the
-    analyzer (``read_text``) and the repo-fingerprint (``read_bytes``) —
-    and before the fix either read raised ``PermissionError`` that escaped
-    to the top level and crashed ``run_behavior_map``. After the fix the
-    run emits valid partial JSON: the readable file is analyzed, the
-    fingerprint is still stamped, and the unreadable file is recorded in
-    ``limits.failed_files``.
+    This is the end-to-end test of the fail-open containment. A single
+    chmod-000-style file is read at two pipeline stages — the analyzer
+    (``read_text``) and the repo-fingerprint (``read_bytes``) — and a
+    ``PermissionError`` from either must not escape to the top level of
+    ``run_behavior_map``. The run emits valid partial JSON: the readable
+    file is analyzed, the fingerprint is still stamped, and the unreadable
+    file is recorded in ``limits.failed_files``.
 
     Uses monkeypatch rather than ``chmod(0o000)`` so the test is
     deterministic regardless of euid (``chmod`` does not deny root).
@@ -503,8 +502,8 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
     # file (proves the fail-open guard reached the non-git fingerprint walk).
     runs = data["analysis_runs"]
     assert runs
-    # WI-bosog: the AR-record field carries the ``sha256:`` scheme prefix
-    # (uniform with run_signature / config_fingerprint) over the full 64-hex.
+    # The AR-record field carries the ``sha256:`` scheme prefix (uniform with
+    # run_signature / config_fingerprint) over the full 64-hex (WI-bosog).
     assert all(r["repo_fingerprint"].startswith("sha256:") for r in runs)
     assert all(len(r["repo_fingerprint"][len("sha256:"):]) == 64 for r in runs)
 
@@ -525,11 +524,10 @@ def test_get_or_run_analysis_returns_generated_main_map_on_cold_cache(
     ``generated_files``), not re-derive it via ``_discover_input_file``. That
     helper recomputes the ``<state_hash>`` cache-dir segment from live git-dirty
     content, so if the repo's dirty content changes during the multi-second run
-    (concurrent tracker ``.ops`` / ``.ci`` writes in the self-analysis +
-    smart-test scenario) the recomputed segment drifts from the write-time value,
-    the freshly written map becomes undiscoverable, and the caller reported
-    "Input file not found: None" (smart-test then fell back to a full-suite
-    manifest). The main map is selected BY NAME so a budget side-output
+    (e.g. concurrent tracker ``.ops`` / ``.ci`` writes while smart-test runs a
+    self-analysis) the recomputed segment drifts from the write-time value and
+    the freshly written map becomes undiscoverable ("Input file not found").
+    The main map is selected BY NAME so a budget side-output
     (``survey.<tier>.json``) or a handler-slice file is never returned
     in its place."""
     from hypergumbo_core import cli
@@ -566,9 +564,9 @@ def test_discover_input_file_returns_cache_dir_hit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """``_discover_input_file`` returns the cache-dir map when one exists there
-    (the warm-cache-hit path). This branch used to be covered incidentally by
-    ``_get_or_run_analysis``'s now-removed post-run re-discovery (INV-somup); it
-    is exercised directly here so the warm cache-dir hit stays covered."""
+    (the warm-cache-hit path). ``_get_or_run_analysis`` does not re-discover
+    after a run (INV-somup), so this branch is exercised directly here to keep
+    the warm cache-dir hit covered."""
     from hypergumbo_core import cli
     from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
 
@@ -585,9 +583,9 @@ def test_discover_input_file_returns_cache_dir_hit(
 def test_discover_input_file_finds_canonical_survey_json_at_repo_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ADR-0042: ``_discover_input_file`` (now on the merged ``find_survey_in_dir``
-    resolver) discovers the canonical ``survey.json`` at the repo root, not only
-    the legacy ``hypergumbo.results.json``."""
+    """``_discover_input_file`` (via the ``find_survey_in_dir`` resolver)
+    discovers the canonical ``survey.json`` at the repo root, not only the
+    legacy ``hypergumbo.results.json``. See ADR-0042."""
     from hypergumbo_core import cli
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
@@ -603,8 +601,8 @@ def test_discover_input_file_still_finds_legacy_results_json_at_repo_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Backward compat: the legacy ``hypergumbo.results.json`` at the repo root is
-    still discovered after the resolver merge (the merged resolver widens, never
-    narrows, discovery)."""
+    still discovered (``find_survey_in_dir`` searches the canonical name and
+    every legacy alias)."""
     from hypergumbo_core import cli
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))

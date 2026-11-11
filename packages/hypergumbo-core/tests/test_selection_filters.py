@@ -172,11 +172,9 @@ class TestExcludedKinds:
     def test_dependency_excluded(self):
         """Dependency kinds are in the set.
 
-        Post-Phase-4b (ADR-0027 §6, PR #3633): ``devDependency`` no
-        longer carries Symbol.kind status — producers emit
-        ``kind="dependency"`` + ``meta["dependency_scope"]="dev"``.
-        The dev case is excluded by virtue of the ``dependency``
-        fold target already being in this set."""
+        A dev dependency is ``kind="dependency"`` +
+        ``meta["dependency_scope"]="dev"`` (ADR-0027 §6), so it is
+        excluded by the ``dependency`` fold target being in this set."""
         assert "dependency" in EXCLUDED_KINDS
 
     def test_file_excluded(self):
@@ -195,12 +193,11 @@ class TestExcludedKinds:
         assert "font_face" in EXCLUDED_KINDS
 
     def test_npm_and_module_file_fold_targets_excluded(self):
-        """Post-Phase-4b (ADR-0027 §6, PR #3633): ``npm_package`` /
-        ``module_file`` no longer carry Symbol.kind status — producers
-        emit ``kind="package"`` + ``meta["package_ecosystem"]="npm"``
-        and ``kind="file"`` + ``meta["module_system"]`` respectively.
-        The fold targets ``package`` and ``file`` are already in the
-        set, so the post-fold shapes are excluded automatically."""
+        """An npm package is ``kind="package"`` +
+        ``meta["package_ecosystem"]="npm"`` and a module file is
+        ``kind="file"`` + ``meta["module_system"]`` (ADR-0027 §6). The
+        fold targets ``package`` and ``file`` are in the set, so both
+        shapes are excluded automatically."""
         assert "package" in EXCLUDED_KINDS
         assert "file" in EXCLUDED_KINDS
 
@@ -218,9 +215,9 @@ class TestExcludedKinds:
 
 
 class TestIsExcludedKind:
-    """Tests for is_excluded_kind dual-shape predicate (WI-jukav slice 2).
+    """Tests for is_excluded_kind dual-shape predicate (WI-jukav).
 
-    Post-Phase-4b (ADR-0027 §6, PR #3633) the predicate has two layers:
+    The predicate has two layers (ADR-0027 §6):
 
     1. Direct exclusion via :data:`EXCLUDED_KINDS` for canonical
        Symbol.kind values (``dependency``, ``file``, ``target``, CSS
@@ -230,9 +227,9 @@ class TestIsExcludedKind:
        ``method`` but whose ``Symbol.meta["framework_role"]`` is a
        framework role we want to suppress (``event_subscriber``).
 
-    Pre-Phase-4b, both layers collapsed into ``EXCLUDED_KINDS`` because
-    framework-role labels were still on ``Symbol.kind``. After Phase 4b
-    removed those kinds, the meta-key vocabulary needed its own home."""
+    Framework roles live in ``Symbol.meta`` rather than on
+    ``Symbol.kind``, so the role vocabulary needs its own set: adding
+    ``method`` to ``EXCLUDED_KINDS`` would exclude every real method."""
 
     def test_canonical_kind_in_set_is_excluded(self):
         """Direct exclusion: canonical Symbol.kind is in
@@ -241,8 +238,8 @@ class TestIsExcludedKind:
         assert is_excluded_kind("file") is True
 
     def test_a_section_is_excluded_only_for_documentation_languages(self):
-        """INV-siza: a COBOL section is a callable, not a heading. Without a
-        language the old kind-only answer stands."""
+        """A COBOL section is a callable, not a heading (INV-siza). Without
+        a language the kind-only answer stands."""
         assert is_excluded_kind("section", language="markdown") is True
         assert is_excluded_kind("section", language="cobol") is False
         assert is_excluded_kind("section") is True
@@ -265,7 +262,7 @@ class TestIsExcludedKind:
         ) is True
 
     def test_post_fold_method_with_unrelated_role_is_not_excluded(self):
-        """A function-role that's NOT in EXCLUDED_KINDS (e.g.,
+        """A function-role that's NOT in EXCLUDED_FRAMEWORK_ROLES (e.g.,
         framework_role='route') doesn't trigger exclusion. Routes are
         first-class endpoints — the user wants to see them."""
         assert is_excluded_kind(
@@ -310,26 +307,27 @@ class TestExamplePathPatterns:
 
 
 class TestKeySymbolPolicy:
-    """WI-zulij: the shared "is this worth showing a reader" policy.
+    """The shared "is this worth showing a reader" policy (WI-zulij).
 
-    This lived inside ``sketch._format_symbols``'s body, unreachable by anything
-    else, which is how compact's default came to advertise the same thing while
-    ranking a different population. It has one home now, so a change to it moves
-    both surfaces together instead of letting one drift.
+    Sketch and compact both select through this one definition, so a change to
+    it moves both surfaces together instead of letting one drift and rank a
+    different population under the same advertised policy.
     """
 
     def test_accepts_a_plain_declaration(self):
         assert is_key_symbol(_sym("handler"))
 
     def test_rejects_non_key_kind(self):
-        """``file`` is the shape that actually led compact's output."""
+        """``file`` is not a key kind; file nodes would otherwise lead
+        compact's output."""
         assert not is_key_symbol(_sym("src/main.py", kind="file"))
 
     def test_rejects_test_path(self):
         assert not is_key_symbol(_sym("helper", path="tests/conftest.py"))
 
     def test_rejects_test_named_symbol(self):
-        """Substring, not prefix — kept verbatim from the sketch original."""
+        """Substring, not prefix — it also catches ``helper_test_case``;
+        narrowing it would change sketch's output."""
         assert not is_key_symbol(_sym("test_thing"))
         assert not is_key_symbol(_sym("helper_test_case"))
 
@@ -358,8 +356,8 @@ class TestKeySymbolPolicy:
 class TestProductionEdges:
     """Edges ORIGINATING in a test file are dropped before centrality.
 
-    Measured the dominant clause: on the eight 2026-07-17 bakeoff maps this
-    alone moved sketch/compact top-10 agreement more than the symbol filter did.
+    This is the dominant clause of the policy: measured on bakeoff maps, it
+    moves sketch/compact top-10 agreement more than the symbol filter does.
     """
 
     def _edge(self, src, dst):

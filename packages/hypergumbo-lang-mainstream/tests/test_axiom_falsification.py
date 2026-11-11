@@ -213,7 +213,7 @@ _CALL_PAIRS: dict[str, dict[str, str]] = {
 }
 _CALLERS = {"java": "A.caller", "csharp": "C.Caller", "scala": "O.caller"}
 
-#: Measured 2026-10-27: each analyzer's resolver arm emits ``ast_call`` (with
+#: In these analyzers the resolver arm emits ``ast_call`` (with
 #: ``call_construct``) and the shared unresolved emitter ``ast_call_direct``.
 _RESOLUTION_LABEL_HOLES = dict.fromkeys(
     ("go", "swift", "kotlin", "rust", "ruby", "csharp", "scala", "cpp"),
@@ -510,8 +510,8 @@ _VISIBILITY: dict[str, tuple[dict[str, str], dict[str, str]]] = {
     )}, {"C.pub": "public", "C.priv": "private", "C.prot": "protected"}),
 }
 
-#: Measured 2026-10-27: one language-agnostic ``public`` default, and the TS
-#: analyzer never reads the member keyword.
+#: The rows read wrong: a language-agnostic ``public`` default, and the TS
+#: analyzer not reading the member keyword.
 _VISIBILITY_HOLES = {
     ("java", "V.pkg"), ("csharp", "K.Default"), ("rust", "private_fn"),
     ("typescript", "C.priv"), ("typescript", "C.prot"),
@@ -563,7 +563,8 @@ _ROUTE_TWINS: dict[str, tuple[dict[str, str], dict[str, str]]] = {
 }
 
 #: The kinds whose definition names a CALLABLE target (EntrypointKind's own
-#: comments; WI-tuvun split main_guard out of main_function on exactly this).
+#: comments; main_guard is a separate kind from main_function on exactly
+#: this, WI-tuvun).
 _CALLABLE_ENTRYPOINT_KINDS = frozenset({"main_function", "cli_command", "http_route"})
 _CALLABLE_SYMBOL_KINDS = frozenset({"function", "method"})
 
@@ -839,7 +840,7 @@ class TestCollapsedRowIsItsGroup:
 
 # ---------------------------------------------------------------------------
 # ADR-0031 Class B: a route marker is a synthetic stand-in for the ROUTE
-# (WI-mupal, owner ruling 2026-10-27)
+# (WI-mupal)
 # ---------------------------------------------------------------------------
 
 #: One fixture per route-marker producer: the javascript and go analyzers,
@@ -892,9 +893,9 @@ class TestRouteMarkerIsAStandIn:
         assert class_b_violations(markers, host) == []
 
     def test_a_file_holding_only_route_markers_keeps_its_anchor(self, survey) -> None:
-        """A Rails config/routes.rb holds nothing but route markers. With the
-        markers' language None the file-anchor pass skipped it, and on chatwoot
-        the file node and its 623 contains edges vanished."""
+        """A Rails config/routes.rb holds nothing but route markers, whose
+        language is None. The file-anchor pass must still anchor it, or the
+        file node and its contains edges vanish."""
         bm = survey("route_rails", _ROUTE_PRODUCERS["rails"][1])
         (anchor,) = [n for n in bm["nodes"] if n["kind"] == "file" and n["path"] == "config/routes.rb"]
         contained = {e["dst"] for e in bm["edges"] if e["type"] == "contains" and e["src"] == anchor["id"]}
@@ -906,11 +907,11 @@ class TestRouteMarkerIsAStandIn:
 
     @pytest.mark.parametrize("name", ["express", "spring"])
     def test_dead_code_does_not_report_a_route_marker(self, tmp_path: Path, name: str) -> None:
-        """Before WI-mupal, dead-code-maybe listed the express and spring
-        markers ("GET /u", "GET /a") as dead functions: they carried a host
-        language, so the INV-disin protocol_origin filter let them in, and
-        nothing calls a route. The handler is the callable, and it stays a
-        candidate."""
+        """dead-code-maybe must not list the express and spring markers
+        ("GET /u", "GET /a") as dead functions: nothing calls a route, so a
+        marker carrying a host language would pass the INV-disin
+        protocol_origin filter and be reported (WI-mupal). The handler is the
+        callable, and it stays a candidate."""
         from hypergumbo_core.cli import main
 
         repo = _write(tmp_path / name, _ROUTE_PRODUCERS[name][1])

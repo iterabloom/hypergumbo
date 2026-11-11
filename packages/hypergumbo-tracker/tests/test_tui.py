@@ -661,17 +661,14 @@ class TestLabelMarkup:
     def test_description_with_bracket_substring_does_not_raise(self) -> None:
         """Descriptions containing ``[ ... ]`` substrings render without error.
 
-        Regression for the WI-difij crash: when the user opened the
-        WI-difij detail view, the TUI raised
-        ``MarkupError: Expected markup value (found '--name-only
-        \\$sha)" ]')`` because Rich tried to parse a bracketed shell
-        snippet in the description as a markup tag.  ``Static.update``
-        calls ``visualize`` which in turn calls ``Text.from_markup``,
-        so any user-controlled text embedded in the joined detail
-        lines must be escaped.
+        ``Static.update`` calls ``visualize``, which calls
+        ``Text.from_markup``, so any user-controlled text embedded in the
+        joined detail lines must be escaped; otherwise Rich parses a
+        bracketed shell snippet as a markup tag and raises
+        ``MarkupError: Expected markup value``.
 
-        Uses the exact escape sequence from WI-difij to faithfully
-        reproduce the original parser failure.
+        The description is a shell snippet whose ``[ -z ... ]`` test
+        triggers that parser failure when left unescaped (WI-difij).
         """
         item = CompiledItem(
             id="WI-shellsnippet",
@@ -692,7 +689,7 @@ class TestLabelMarkup:
         lines = _format_detail_lines(item)
         raw = "\n".join(lines)
         # Round-trip through the same code path Static.update uses.
-        # Pre-fix this raises rich.errors.MarkupError.
+        # Without escaping this raises rich.errors.MarkupError.
         plain = Text.from_markup(raw).plain
         # The escaped substring still renders to the original text.
         assert "--name-only" in plain
@@ -892,7 +889,7 @@ class TestFormatActivityLines:
         assert "[/] Human decision" in line
 
     def test_tombstoned_entries_suppressed_with_footer(self) -> None:
-        """WI-zonur: tombstoned messages hidden; footer shows the count."""
+        """Tombstoned messages hidden; footer shows the count (WI-zonur)."""
         from hypergumbo_tracker.models import DiscussionEntry
 
         item = CompiledItem(
@@ -2159,7 +2156,7 @@ class TestStandardEdgeCases:
         # Width 80 (>= 80 for filter), height 18 (compact tier: < 20)
         async with app.run_test(size=(80, 18)) as pilot:
             await _wait_for_table(pilot, app)
-            # Activate text filter directly (f key now opens filter panel)
+            # Activate text filter directly (the f key opens the filter panel)
             app._filter_active = True
             app._apply_layout()
             await pilot.pause()
@@ -2626,28 +2623,19 @@ async def _wait_for_modal(
     This accounts for the asynchronous compose lifecycle when a ModalScreen is
     pushed from ``on_mount``.
 
-    TWO CHANGES, BOTH LEARNED FROM A CI FAILURE THIS HELPER MADE UNREADABLE
-    (INV-bozid). The 2026-08-20 13:00 full-suite cron went red on
-    ``TestLockScreenUnit::test_cancel_returns_none`` with
-    ``assert 'NOT_SET' is None`` -- the ``_ModalTestApp._capture`` sentinel,
-    meaning the dismiss callback never ran at all, so the click never landed on
-    a button. It is not reproducible locally (five consecutive runs of the
-    modal/screen classes pass, 60 each) and it turned a whole-codebase signal
-    carrying three other independent gates red, which is the masking INV-bozid
-    is about.
+    It enforces two rules, because a modal test that drives an unready DOM
+    fails later with an unreadable assertion about a RESULT (typically the
+    ``_ModalTestApp._capture`` ``'NOT_SET'`` sentinel, meaning the dismiss
+    callback never ran) that names neither the widget nor the wait
+    (INV-bozid):
 
-    1. IT NO LONGER GIVES UP SILENTLY. The old loop ran out of rounds and
-       ``return``ed as if it had succeeded, so every caller then drove a DOM
-       that was not ready and failed later with an assertion about a RESULT,
-       naming neither the widget nor the wait. A helper that gives up quietly
-       is a green tick over a hole -- the same note this repo writes about a
-       skip that can be reached by a typo. It now raises, naming what it waited
-       for and for how long.
+    1. IT NEVER GIVES UP SILENTLY. When the rounds run out it raises, naming
+       what it waited for and for how long, rather than returning as though
+       it had succeeded. A helper that gives up quietly is a green tick over
+       a hole.
     2. IT WAITS FOR THE DIALOG'S SIZE, NOT MERE PRESENCE. A widget in the
        DOM but not laid out has a zero-sized region, and a click there lands
-       nowhere. Presence is necessary and not sufficient, the same
-       presence-is-not-reachability distinction the io-boundary work keeps
-       paying for.
+       nowhere. Presence is necessary and not sufficient.
 
     A sized dialog is still not a clickable one (WI-mumos): on a starved run
     the dialog has a size while its buttons report a region where hit-testing
@@ -2679,15 +2667,13 @@ async def _wait_for_dismissal(app: Any, timeout: float = 30.0) -> Any:
     is MouseDown/MouseUp/Click on the screen, forwarded to the Button, which
     posts ``Button.Pressed``; that bubbles to the screen's handler, which calls
     ``dismiss``; ``dismiss`` hands the callback to ``app.call_next``. Every
-    hop is a message on some pump's queue. The old shape -- one
-    ``pilot.pause()`` and then read ``app._result`` -- bet that a pause covers
-    all of them. It does not, under load: ``pause`` ends in Textual's
-    ``wait_for_idle``, which calls the process idle when its CPU time stops
-    advancing against wall-clock time, and a worker descheduled on a loaded
-    box looks exactly like an idle one. The read then sees the ``'NOT_SET'``
-    sentinel, which is the 2026-08-20 cron failure of
-    ``TestLockScreenUnit::test_cancel_returns_none`` (``assert 'NOT_SET' is
-    None``) that ``_wait_for_modal``'s layout fix did not cover.
+    hop is a message on some pump's queue. A single ``pilot.pause()``
+    followed by a read of ``app._result`` does not cover all of them under
+    load: ``pause`` ends in Textual's ``wait_for_idle``, which calls the
+    process idle when its CPU time stops advancing against wall-clock time,
+    and a worker descheduled on a loaded box looks exactly like an idle one.
+    The read then sees the ``'NOT_SET'`` sentinel (``assert 'NOT_SET' is
+    None``), a failure ``_wait_for_modal``'s layout wait does not prevent.
 
     So this waits on the CONDITION, not on a tick count: ``_capture`` sets
     ``app._dismissed``, and this awaits it. The timeout is generous because it
@@ -3240,13 +3226,12 @@ class TestBeforeScreenUnit:
 class TestWaitForModalHelper:
     """The helper every modal test depends on must FAIL when its wait fails.
 
-    INV-bozid: a full-suite cron went red on a modal test whose assertion named
-    the RESULT (``assert 'NOT_SET' is None``) rather than the wait, because
-    ``_wait_for_modal`` exhausted its rounds and returned as though it had
-    succeeded. One unreadable failure in one tracker test masked three other
-    independent gates in the same aggregate commit status for a day and a half.
-
-    These two tests are the ones that would have named the real cause.
+    A wait that exhausts its rounds and returns as though it had succeeded
+    lets the test fail later on an assertion about the RESULT (``assert
+    'NOT_SET' is None``) instead of naming the wait, and such an unreadable
+    failure can mask other independent gates sharing the same aggregate CI
+    status (INV-bozid). These tests pin that the helper raises on a missing
+    widget and still returns for a present one.
     """
 
     async def test_it_raises_when_the_widget_never_appears(self) -> None:
@@ -3288,7 +3273,7 @@ async def _one_event_loop_tick(self: Any, delay: float | None = None) -> None:
 class TestWaitForDismissalHelper:
     """A modal test must wait for the RESULT, not for a tick count (WI-ruhul).
 
-    Under the one-tick model the old ``click; pause(); assert app._result``
+    Under the one-tick model a ``click; pause(); assert app._result``
     shape reads the ``'NOT_SET'`` sentinel: a click travels Click -> Button ->
     Pressed (bubbling to the screen) -> ``dismiss`` -> ``app.call_next``,
     several queue hops after the read. ``_wait_for_dismissal`` waits on the
@@ -3349,10 +3334,9 @@ async def _instant_idle(*args: Any, **kwargs: Any) -> None:
 class TestClickWhenClickable:
     """Click a button only once it is what the compositor finds there (WI-mumos).
 
-    Nightly 979a6c11 failed ``test_it_returns_the_result_under_the_one_tick_model
-    [#submit]`` with "modal was never dismissed within 30.0s": the click had
-    landed on ``#modal-dialog``, because ``_wait_for_modal`` returns when the
-    dialog has a size, before its buttons are where hit-testing finds them.
+    ``_wait_for_modal`` returns once the dialog has a size, which can be
+    before its buttons are where hit-testing finds them; a click in that
+    window lands on ``#modal-dialog`` and the modal is never dismissed.
     """
 
     async def test_the_starved_model_reaches_the_hazard(
@@ -4462,9 +4446,9 @@ class TestOnEditItemCallbackBranches:
     async def test_invalid_tag_value_error_is_caught(
         self, tmp_path: Path,
     ) -> None:
-        """INV-pahoj: when ``trackerset.update`` rejects a kebab-case tag,
-        the TUI's edit-item handler must catch ``ValueError`` and surface
-        it as a user notification rather than letting it propagate."""
+        """When ``trackerset.update`` rejects a kebab-case tag, the TUI's
+        edit-item handler must catch ``ValueError`` and surface it as a
+        user notification rather than letting it propagate (INV-pahoj)."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -6168,22 +6152,16 @@ class TestTuiPreferences:
     def test_save_preserves_human_read_state_across_concurrent_writes(
         self, tmp_path: Path,
     ) -> None:
-        """Regression for the line-3307 + non-atomic-write incident
-        (2026-05-31): pressing Shift+< / Shift+> in the TUI used to
-        trigger a v1-schema save that dropped human_read_state from disk;
-        when paired with a non-atomic write that could fail under
-        concurrent activity in the same dir, this silently wiped the
-        user's read-state. The fix passes all v2 kwargs from
-        _move_selected AND uses atomic temp+rename. This test verifies
-        the first half: a save that takes hidden_statuses + display_order
-        as positional but doesn't pass human_read_state must NOT clobber
-        the on-disk human_read_state if a prior save established it.
+        """A positional-only (v1-schema) save drops human_read_state.
 
-        NB: this validates the new contract — callers like _move_selected
-        in the TUI now always pass human_read_state. The bare-positional
-        form documented by this test remains backward-compatible (v1
-        schema, no human_read_state field on disk) but the line-3307
-        call site no longer uses it.
+        Calling ``_save_tui_preferences`` with only hidden_statuses +
+        display_order writes a v1 file with no human_read_state field, so
+        a prior v2 save's read-state is lost. That is why TUI callers such
+        as ``_move_selected`` (Shift+< / Shift+>) always pass the v2 kwargs,
+        and why the write is atomic (temp+rename): together they keep the
+        user's read-state from being silently wiped. This test pins the
+        v1 behavior so anyone changing the v1/v2 boundary has to think
+        about the human_read_state implication.
         """
         p = tmp_path / "prefs.json"
         # First save: full v2 with human_read_state
@@ -6191,16 +6169,13 @@ class TestTuiPreferences:
             p, {"done"}, ["A"],
             human_read_state={"WI-foo": {"read": True, "discussion_len": 3}},
         )
-        # Second save: only positional (v1 schema). This is the call
-        # shape line 3307 used to use. The on-disk file will lose
-        # human_read_state on this write — this test pins that
-        # behavior so anyone changing the v1/v2 boundary thinks about
-        # the human_read_state implication.
+        # Second save: only positional (v1 schema). The on-disk file
+        # loses human_read_state on this write.
         assert _save_tui_preferences(p, {"done"}, ["A"])
         loaded = _load_tui_preferences(p)
         # After a v1-schema save, the load fills human_read_state with
-        # the {} default (the field is absent from disk). The new
-        # _move_selected call site avoids this by passing v2 kwargs.
+        # the {} default (the field is absent from disk). _move_selected
+        # avoids this by passing v2 kwargs.
         assert loaded["human_read_state"] == {}
 
     def test_v2_roundtrip_with_tags_and_sessions(self, tmp_path: Path) -> None:
@@ -6345,7 +6320,7 @@ def _make_tracker_set_with_resolved(tmp_path: Path) -> TrackerSet:
 
 
 class TestStatusToggles:
-    """Test status toggle via _toggle_status (previously c/w keybindings)."""
+    """Test status toggle via _toggle_status."""
 
     @pytest.fixture()
     def tracker_set(self, tmp_path: Path) -> TrackerSet:
@@ -6543,10 +6518,9 @@ class TestManualReorder:
     async def test_move_preserves_human_read_state_on_disk(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Regression for 2026-05-31 incident: Shift+< / Shift+> used to
-        trigger a v1-schema save that dropped human_read_state from
-        disk. Verifies that after a move action, the on-disk
-        human_read_state is preserved (not absent, not empty)."""
+        """A Shift+< / Shift+> move saves a v2-schema prefs file, so the
+        on-disk human_read_state survives (not absent, not empty). A
+        v1-schema save would drop it."""
         import json
         from hypergumbo_tracker.tui import TrackerApp
 
@@ -8367,7 +8341,7 @@ class TestFilterPanel:
             assert "tags hidden: 2" in str(plain)
 
     async def test_c_and_w_keys_removed(self, tmp_path: Path) -> None:
-        """The c and w keybindings no longer toggle done/wont_do directly."""
+        """The c and w keys do not toggle done/wont_do directly."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set_with_tags(tmp_path)
@@ -10165,11 +10139,11 @@ class TestCheckExternalWrites:
     async def test_scroll_offset_preserved_after_tui_initiated_write(
         self, tmp_path: Path,
     ) -> None:
-        """Regression test for the latent 'submit resets scroll to top' bug.
+        """A TUI-initiated write (e.g. submit) does not reset scroll to top.
 
-        _reload_after_write now captures and restores scroll offset, so
-        the same mechanism that fixes the background-reload case also
-        fixes the existing TUI-initiated-write case for free.
+        _reload_after_write captures and restores the scroll offset, so
+        the mechanism that covers background reloads covers TUI-initiated
+        writes too.
         """
         from hypergumbo_tracker.tui import TrackerApp
 
@@ -10376,7 +10350,7 @@ class TestCheckExternalWrites:
 
 
 class TestEditModeBindingAndBanner:
-    """WI-zonur phase 3: Ctrl-E toggle binding and edit-mode banner widget."""
+    """Ctrl-E toggle binding and edit-mode banner widget (WI-zonur)."""
 
     @pytest.fixture()
     def tracker_set(self, tmp_path: Path) -> TrackerSet:
@@ -10446,7 +10420,7 @@ class TestEditModeBindingAndBanner:
 
 
 # ---------------------------------------------------------------------------
-# INV-rugid: preferences live in the user's state home (end to end)
+# Preferences live in the user's state home, end to end (INV-rugid)
 # ---------------------------------------------------------------------------
 
 

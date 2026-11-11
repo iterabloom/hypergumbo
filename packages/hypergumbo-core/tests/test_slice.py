@@ -216,19 +216,16 @@ class TestAmbiguousEntryDetection:
         assert ts_ping.id in [c.id for c in error.candidates]
 
     def test_language_hint_is_withheld_when_it_cannot_disambiguate(self) -> None:
-        """WI-kutam: the suggested remedy must be one that actually works.
+        """The suggested remedy must be one that actually works.
 
-        The template appended "or filter with --language" unconditionally. When
-        every candidate shares a language the flag cannot split them, so the
-        error sent the user round a loop: ``--entry find_files`` lists two
-        python candidates, ``--language python`` reproduces the same error.
-        Reported twice from dogfooding, on two different candidate shapes — a
-        real symbol against a ``python:external:0-0:...:unresolved`` synthetic,
-        and a same-name collision across two packages (``cli:main``).
-
-        The invariant, as the item phrases it: an ambiguity error "should not
-        suggest --language as a remedy if the ambiguous candidates already share
-        a language; the suggested fix should be applicable."
+        When every candidate shares a language, ``--language`` cannot split
+        them: ``--entry find_files`` lists two python candidates, and adding
+        ``--language python`` reproduces the same error. Candidates sharing a
+        language arise both from a real symbol against a
+        ``python:external:0-0:...:unresolved`` synthetic and from a same-name
+        collision across two packages (``cli:main``). So the error suggests
+        ``--language`` only when the candidates span more than one language.
+        (WI-kutam)
         """
         a = make_symbol("find_files", path="pkg/a/util.py", language="python")
         b = make_symbol("find_files", path="pkg/b/util.py", language="python")
@@ -242,8 +239,8 @@ class TestAmbiguousEntryDetection:
         # node ID ("symbol name, file path, node ID"), and every candidate's ID
         # is printed above, so pointing at those is applicable. Nothing else is:
         # `--path` is the REPO ROOT, not a file filter, and there is no --file
-        # flag — suggesting either would repeat this very defect. Checked
-        # against `slice --help` rather than assumed.
+        # flag — suggesting either would be another inapplicable remedy (per
+        # `slice --help`).
         assert "full node ID" in message
         for sym in (a, b):
             assert sym.id in message
@@ -1177,8 +1174,8 @@ class TestSliceEdgeCases:
             assert edge.src in result.node_ids and edge.dst in result.node_ids
 
     def test_function_entry_max_hops_0_not_reduced_to_file_imports(self) -> None:
-        """INV-tarol repro: at --max-hops 0 a function-entry slice must not be
-        reduced to ONLY its containing file's imports (the original symptom).
+        """At --max-hops 0 a function-entry slice must not be reduced to ONLY
+        its containing file's imports (INV-tarol).
         """
         func = make_symbol("main", path="src/main.py")
         file_node, module_node, file_import = self._make_file_and_os_import("src/main.py")
@@ -1189,9 +1186,9 @@ class TestSliceEdgeCases:
         assert file_import.id not in result.edge_ids
 
     def test_container_entry_includes_file_level_imports(self) -> None:
-        """The preserved half of the INV-tarol contract: a CONTAINER/FILE-entry
-        slice DOES include that file's import edges (the container's file IS the
-        slice scope).
+        """The other half of the contract: a CONTAINER/FILE-entry slice DOES
+        include that file's import edges (the container's file IS the slice
+        scope). (INV-tarol)
         """
         cls = make_symbol("Service", path="src/app.py", kind="class")
         file_node, module_node, file_import = self._make_file_and_os_import("src/app.py")
@@ -1668,12 +1665,12 @@ class TestReverseSliceClassExpansion:
         assert calls1.id in result.edge_ids
 
     def test_protocol_entry_expands_to_requirements(self) -> None:
-        """WI-duguk: a `protocol` entry expands like an `interface` entry.
+        """A `protocol` entry expands like an `interface` entry.
 
-        `protocol` was absent from the slicer's container set, so reverse-slicing
-        from a Swift/Obj-C protocol never expanded to its requirements and
-        returned the container alone — indistinguishable, to a consumer, from
-        "this protocol has no users".
+        `protocol` must be in the slicer's container set: otherwise
+        reverse-slicing from a Swift/Obj-C protocol does not expand to its
+        requirements and returns the container alone — indistinguishable, to a
+        consumer, from "this protocol has no users". (WI-duguk)
         """
         drawable = make_symbol(
             "Drawable", kind="protocol",
@@ -2081,12 +2078,14 @@ class TestForwardSliceInheritanceEdges:
         assert other_impl.id not in result.node_ids
 
     def test_forward_slice_skips_inherits_edge(self) -> None:
-        """WI-lobif: `inherits` (Solidity-style class inheritance) must behave
-        like `extends` in forward slices — skipped, not followed to the parent.
+        """`inherits` (Solidity-style class inheritance) must behave like
+        `extends` in forward slices — skipped, not followed to the parent.
 
-        `inherits` and `extends` are the same relationship axis; the consumer's
-        structural-edge set previously hardcoded {extends, implements} and
-        omitted `inherits`, so it leaked into forward slices as a normal edge.
+        `inherits` and `extends` are the same relationship axis, so the
+        slicer's structural-edge set is derived from the inheritance edge types
+        rather than listing {extends, implements} by hand; a hand-written set
+        that omits `inherits` lets it leak into forward slices as a normal
+        edge. (WI-lobif)
         """
         child = make_symbol(
             "Token", kind="contract",
@@ -2114,8 +2113,8 @@ class TestForwardSliceInheritanceEdges:
         assert parent.id not in result.node_ids
 
     def test_reverse_slice_still_follows_inherits(self) -> None:
-        """WI-lobif: reverse slice follows `inherits` (like `extends`) —
-        "who inherits from this contract?"."""
+        """Reverse slice follows `inherits` (like `extends`) — "who inherits
+        from this contract?". (WI-lobif)"""
         parent = make_symbol(
             "ERC20", kind="contract",
             path="src/ERC20.sol", start_line=1, end_line=30, language="solidity",
@@ -2178,12 +2177,11 @@ class TestForwardSliceInheritanceEdges:
     def test_forward_slice_ancestor_explosion_prevented(self) -> None:
         """Forward slice should not explode through shared ancestor.
 
-        This tests the specific scenario reported in bakeoff assessments:
-        VoiceController extends ApplicationController, which is also extended
-        by 3 other controllers. Without the fix, forward slicing from
-        VoiceController would traverse to ApplicationController and then
-        discover all sibling controllers through the reverse direction of
-        their extends edges — producing a massively inflated slice.
+        Scenario: VoiceController extends ApplicationController, which is also
+        extended by 3 other controllers. If forward slicing followed extends
+        edges, it would traverse from VoiceController to ApplicationController
+        and then discover all sibling controllers through the reverse direction
+        of their extends edges — producing a massively inflated slice.
         """
         app_ctrl = make_symbol(
             "ApplicationController", kind="class",
@@ -3304,7 +3302,7 @@ class TestDataflowOneHopDownstreamRead:
         """One-hop read admission must NOT enqueue dst for further expansion.
 
         Otherwise the downstream read would re-introduce read-chain BFS,
-        which is precisely what option (1) avoids.
+        which the one-hop terminal rule exists to avoid.
         """
         writer = make_symbol("writer", path="src/a.py")
         reader = make_symbol("reader", path="src/b.py")
@@ -3343,11 +3341,11 @@ class TestDataflowOneHopDownstreamRead:
         assert downstream_edge.id not in result.edge_ids
 
     def test_non_writer_entry_still_skips_read(self) -> None:
-        """Pre-existing skip behavior preserved for non-writer source nodes.
+        """Non-writer source nodes still skip their outgoing read edges.
 
-        This is the regression-guard for test_dataflow_skips_read_edges.
-        A node with NO outgoing write/mutate edges is not a writer, so its
-        outgoing reads are NOT admitted.
+        Complements test_dataflow_skips_read_edges: a node with NO outgoing
+        write/mutate edges is not a writer, so its outgoing reads are NOT
+        admitted.
         """
         non_writer = make_symbol("non_writer", path="src/a.py")
         target = make_symbol("target", path="src/b.py")
@@ -3493,14 +3491,12 @@ class TestDataflowOneHopDownstreamRead:
 
 
 class TestAdmissionStatsTelemetry:
-    """WI-hukoh Phase A: per-rule edge-admission counters.
+    """Per-rule edge-admission counters (WI-hukoh).
 
     These tests verify that each BFS admission path increments the correct
-    counter in ``SliceResult.admission_stats``. The telemetry is the baseline
-    instrumentation for the forward-dataflow option-1 admission law: by
-    comparing per-rule admission counts on real repos, we quantify option 1's
-    coverage on the existing corpus. (The option-2 ``would_admit_dst_reader``
-    predictive counter was retired with ``dest_access_mode`` — ADR-0038 ruling 3.)
+    counter in ``SliceResult.admission_stats``. The telemetry instruments the
+    forward-dataflow admission rules: comparing per-rule admission counts on
+    real repos quantifies how much the one-hop downstream-read rule admits.
     """
 
     def test_stats_empty_when_dataflow_false(self) -> None:
@@ -3533,7 +3529,7 @@ class TestAdmissionStatsTelemetry:
         assert result.admission_stats["admitted_downstream_read"] == 0
 
     def test_stats_downstream_read_counter(self) -> None:
-        """WI-saful option 1 terminal admissions increment
+        """One-hop downstream-read terminal admissions (WI-saful) increment
         admitted_downstream_read."""
         writer = make_symbol("writer", path="src/a.py")
         sink = make_symbol("sink", path="src/b.py")
@@ -3664,9 +3660,9 @@ class TestAdmissionStatsTelemetry:
 class TestCrossLinkerIntegration:
     """Verify slice BFS traverses edges from multiple linkers in a single trace.
 
-    Validates INV-jisit: when multiple linkers (Tauri IPC, Yjs CRDT, WebSocket,
-    event sourcing) are active in the same project, a single forward slice must
-    produce a connected subgraph that crosses 3+ boundary types.
+    When multiple linkers (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) are
+    active in the same project, a single forward slice must produce a connected
+    subgraph that crosses 3+ boundary types. (INV-jisit)
 
     The test simulates a PlazaFlow-like polyglot project:
       TS frontend → Tauri IPC → Rust handler → Yjs CRDT → WebSocket relay
@@ -4029,7 +4025,7 @@ class TestLimitsDetail:
     """A truncated slice carries the shortfall magnitude per limit (WI-mibuj).
 
     ``limits_hit`` alone says THAT a limit stopped the walk, not HOW MUCH it
-    cost: a reverse slice capped at ``max_files`` looked complete. Each
+    cost, so a reverse slice capped at ``max_files`` would look complete. Each
     ``limits_detail[limit]`` counts the frontier the limit stopped -- nodes
     and edges that passed every other filter, were refused by this limit, and
     are absent from the final slice -- together with the cap value.

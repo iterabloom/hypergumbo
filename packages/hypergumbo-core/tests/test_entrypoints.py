@@ -1361,9 +1361,9 @@ class TestSemanticEntryDetection:
         The concept detector fires ``library_export`` on a nested private
         closure (e.g. ``fold_string_interpolation._sub``, the callback passed
         to ``re.sub``), but such a symbol is not importable — no consumer can
-        reach it as public API. INV-jusot's canonical ``Symbol.visibility``
-        axis (computed in finalize, before ``detect_entrypoints``) lets the
-        gate reject it. ``visibility='private'`` -> no LIBRARY_EXPORT.
+        reach it as public API. The canonical ``Symbol.visibility`` axis
+        (computed in finalize, before ``detect_entrypoints``; INV-jusot) lets
+        the gate reject it. ``visibility='private'`` -> no LIBRARY_EXPORT.
         """
         sym = make_symbol(
             "fold._sub",
@@ -1584,10 +1584,10 @@ class TestSemanticEntryDetection:
     def test_main_guard_entrypoint_detection(self) -> None:
         """A guard-only script (if __name__, no main()) is a MAIN_GUARD entry (WI-tuvun).
 
-        INV-hojus: the carrier is the file-kind pseudo-node, not module-kind.
-        WI-tuvun: the ``main_guard`` concept produces the distinct MAIN_GUARD
-        kind (file target), NOT MAIN_FUNCTION (function target), so ``kind``
-        alone disambiguates the target type.
+        The carrier is the file-kind pseudo-node, not a module-kind node
+        (INV-hojus). The ``main_guard`` concept produces the distinct
+        MAIN_GUARD kind (file target), NOT MAIN_FUNCTION (function target), so
+        ``kind`` alone disambiguates the target type.
         """
         sym = Symbol(
             id="python:script.py:1-1:file:file",
@@ -1710,8 +1710,8 @@ class TestSemanticEntryDetection:
 
         The naming-conventions YAML emits this concept for ``BrokerServer.startup``,
         ``KafkaApis.handleProduceRequest``, ``SocketServer.Acceptor.run``, etc.
-        — Kafka-style server lifecycle methods that the previous detector
-        missed because it only matched ``main()`` functions.
+        — Kafka-style server lifecycle methods that are real entrypoints even
+        though they are not ``main()`` functions.
         """
         sym = Symbol(
             id="scala:BrokerServer.scala:50-200:BrokerServer.startup:method",
@@ -1748,8 +1748,6 @@ class TestSemanticEntryDetection:
         packages dispatch to type-defined methods reflectively. Marking these
         methods as LIBRARY_EXPORT entrypoints makes them seeds for the
         dead-code BFS so they (and their transitive callees) become reachable.
-        On alertmanager this covers 82 functions / ~1540 LOC — the largest
-        WI-juhov dead-code-maybe triage category.
         """
         sym = Symbol(
             id="go:alert.go:50-80:Alert.UnmarshalYAML:method",
@@ -2870,9 +2868,9 @@ class TestEntrypointRankingPenalties:
         demoted so they don't seed forward slices over the real API surface.
 
         A checked-in mvnw/gradlew sits at the repo root at tier 1, so NONE of
-        the existing penalties (test / utility-dir / vendor-tier) fire — its
-        0.85 base plus a large out-degree connectivity boost climbs to ~0.98,
-        outranking the actual controllers in ``--entry auto``. The build-wrapper
+        the other penalties (test / utility-dir / vendor-tier) fire — undemoted,
+        its 0.85 base plus a large out-degree connectivity boost climbs to
+        ~0.98, outranking the actual controllers in ``--entry auto``. The build-wrapper
         demotion (x0.1) plus a connectivity-boost skip pushes it below the noise
         floor.
         """
@@ -2898,7 +2896,7 @@ class TestEntrypointRankingPenalties:
         assert mvnw.id not in {e.symbol_id for e in entrypoints}
 
     def test_route_outranks_build_wrapper(self) -> None:
-        """WI-batit: after the demotion a real HTTP route (the API surface)
+        """WI-batit: with the demotion a real HTTP route (the API surface)
         outranks a mvnw/gradlew wrapper, so ``slice --entry auto`` seeds from
         the controller, not the build script."""
         gradlew = make_symbol(
@@ -2925,8 +2923,7 @@ class TestEntrypointRankingPenalties:
         ]
         entrypoints = detect_entrypoints(nodes, edges)
         # The wrapper is demoted below the floor and filtered out; the route
-        # survives and is the top-ranked auto-slice seed (was: gradlew at ~1.0
-        # outranked the route at 0.95 before the WI-batit demotion).
+        # survives and is the top-ranked auto-slice seed.
         assert gradlew.id not in {e.symbol_id for e in entrypoints}
         assert entrypoints[0].symbol_id == route.id
 
@@ -2993,7 +2990,7 @@ class TestEntrypointRankingPenalties:
         # zellij's vendored ``InputParser::parse``.  This is what makes the test
         # non-vacuous — the x0.1 demotion alone leaves 0.0225, but the ADDITIVE
         # connectivity boost (in-degree, cap +0.35) re-inflates that back over
-        # the 0.10 floor.  Suppressing the boost is the other half of the fix.
+        # the 0.10 floor, so the boost must be suppressed as well.
         callers = [
             make_symbol(f"caller{i}", path="pretix/api/callers.py",
                         language="python", start_line=10 + i, end_line=11 + i)
@@ -3012,8 +3009,8 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[0].symbol_id == route.id
 
     def test_first_party_export_keeps_carve_out_protection(self) -> None:
-        """WI-batit precision (the ArkLib guard): the fix above narrows the
-        carve-out by SUPPLY-CHAIN TIER only.  A FIRST-PARTY export in a language
+        """WI-batit precision (the ArkLib guard): the vendored-export rule
+        above narrows the carve-out by SUPPLY-CHAIN TIER only.  A FIRST-PARTY export in a language
         with no semantic entrypoints of its own keeps full ranking prominence —
         exactly what the carve-out was built to protect."""
         lean_export = make_symbol(
@@ -4284,10 +4281,10 @@ class TestApplicationLibraryExportDemotion:
         """Library exports from infrastructure paths (telemetry/, metrics/, logging/)
         should be dampened more aggressively than API exports.
 
-        In gemini-cli, 77 of 111 entrypoints were telemetry exports from
-        packages/core/src/telemetry/*.ts. With connectivity boost, these
-        survive the standard 0.1x demotion at ~0.14 confidence. Infrastructure-
-        path exports get an additional dampening, dropping them below threshold.
+        Telemetry exports (e.g. gemini-cli's packages/core/src/telemetry/*.ts)
+        can dominate the entry list: with the connectivity boost they survive
+        the standard 0.1x demotion at ~0.14 confidence. Infrastructure-path
+        exports get an additional dampening, dropping them below threshold.
         """
         route = make_symbol(
             "handle_mcp", path="src/server.ts", kind="function",
@@ -4499,10 +4496,9 @@ class TestInvTajapShellScriptEntrypoint:
     """INV-tajap: ``shell_script`` concept on a file-kind Symbol becomes a
     ``SHELL_SCRIPT`` entrypoint.
 
-    Pre-fix, entrypoint detection was Python-only: on hypergumbo self-analysis,
-    0 of ~50 bash scripts were detected as entrypoints, so all 153 bash
-    functions looked unreachable (a primary driver of WI-vuton's 92.6%
-    dead-code candidate rate with ``--seeds entrypoints``).
+    Without it, every bash function is unreachable from the entrypoint seeds,
+    inflating the dead-code candidate set under ``--seeds entrypoints``
+    (WI-vuton).
     """
 
     def test_shell_script_concept_emits_entrypoint(self) -> None:
@@ -4608,12 +4604,12 @@ class TestInvTajapShellScriptEntrypoint:
 
 
 class TestInvTajapHtmlEntryEntrypoint:
-    """INV-tajap PR 2: ``html_entry`` concept on a file-kind HTML Symbol
-    becomes a ``HTML_ENTRY`` entrypoint. Parallel to SHELL_SCRIPT (PR 1).
+    """INV-tajap: ``html_entry`` concept on a file-kind HTML Symbol
+    becomes a ``HTML_ENTRY`` entrypoint. Parallel to SHELL_SCRIPT.
 
-    Pre-fix: SPA roots (index.html files that bootstrap a JS bundle) were
-    not detected as entrypoints; all JS routes reachable only from a
-    `<script src=...>` reference looked unreachable.
+    SPA roots (index.html files that bootstrap a JS bundle) must be
+    entrypoints; otherwise JS reachable only from a `<script src=...>`
+    reference looks unreachable.
     """
 
     def test_html_entry_concept_emits_entrypoint(self) -> None:
@@ -4694,12 +4690,13 @@ class TestInvTajapHtmlEntryEntrypoint:
 
 
 class TestInvTajapScriptModuleEntrypoint:
-    """INV-tajap PR 3: TS/JS file Symbols with no inbound ``imports`` edges and
+    """INV-tajap: TS/JS file Symbols with no inbound ``imports`` edges and
     at least one outbound ``calls`` edge are SCRIPT_MODULE entrypoints.
 
-    Pre-fix: TS/JS standalone scripts like ``main.ts`` (SPA bootstrap) and
-    ``vite.config.ts`` (build-time config) were not entrypoints, so their
-    transitive callees looked unreachable. The two conditions together
+    TS/JS standalone scripts like ``main.ts`` (SPA bootstrap) and
+    ``vite.config.ts`` (build-time config) are run directly rather than
+    imported; without this their transitive callees would look
+    unreachable. The two conditions together
     express the spec rule: "top-level executable code (proxied by outbound
     calls) and no inbound imports edges". Unlike SHELL_SCRIPT / HTML_ENTRY
     which derive from analyzer-stamped concepts, SCRIPT_MODULE requires the
@@ -4899,9 +4896,9 @@ class TestEntrypointConfidenceFiltering:
     """Tests for minimum confidence threshold and count cap.
 
     detect_entrypoints() should filter out entries below a minimum confidence
-    threshold (0.10) and cap the total number of returned entries. This
-    addresses the INV-mahap finding: 3100 library_export entries at 0.075
-    confidence flooding --list-entries output.
+    threshold (0.10) and cap the total number of returned entries, so heavily
+    demoted library_export entries (0.075) cannot flood --list-entries
+    output on large repos (INV-mahap).
     """
 
     def test_low_confidence_entries_filtered(self) -> None:
@@ -5136,8 +5133,8 @@ class TestEntrypointConceptDetection:
     """Tests for generic 'entrypoint' concept -> entrypoint mapping.
 
     The 'entrypoint' concept is used by electron.yaml, cli.yaml, cli-go.yaml,
-    cli-ruby.yaml, and akka-http.yaml but was previously silently ignored by
-    _detect_from_concepts(). These tests verify it is now handled.
+    cli-ruby.yaml, and akka-http.yaml. These tests verify that
+    _detect_from_concepts() maps it to an entrypoint.
     """
 
     def test_entrypoint_concept_electron(self) -> None:
@@ -5727,13 +5724,14 @@ class TestSwiftApplicationConcept:
 class TestPerSymbolDedupKeepsMostConfidentKind:
     """INV-liraj: one symbol, several entrypoint kinds -> the most confident wins.
 
-    ``detect_entrypoints`` collapses entrypoints that share a ``symbol_id``.
-    It used to keep the FIRST-EMITTED entry, so the outcome depended on the
-    order detectors happened to run in: a Phoenix route marker (kind=function,
-    meta.framework_role=route) also carries the Elixir ``library_export``
-    concept, the concept pass emits that LIBRARY_EXPORT (0.75) before the
-    route-marker pass emits HTTP_ROUTE (0.90), and every Phoenix route
-    vanished from the sketch's HTTP Routes section (thc: 377 routes, 0 shown).
+    ``detect_entrypoints`` collapses entrypoints that share a ``symbol_id``,
+    keeping the most confident one rather than the first emitted, so the
+    outcome does not depend on detector order. A Phoenix route marker
+    (kind=function, meta.framework_role=route) also carries the Elixir
+    ``library_export`` concept, and the concept pass emits that
+    LIBRARY_EXPORT (0.75) before the route-marker pass emits HTTP_ROUTE
+    (0.90); keeping the first would drop every Phoenix route from the
+    sketch's HTTP Routes section.
     """
 
     def test_route_marker_with_library_export_concept_is_http_route(self) -> None:

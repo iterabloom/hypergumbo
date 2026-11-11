@@ -39,13 +39,12 @@ def test_symbol_has_required_fields() -> None:
 
 
 def test_symbol_line_properties_none_span() -> None:
-    """WI-hafap: a span-less Symbol reports line 0 through the compat
-    properties — the codebase-wide line-0 convention, matching the 0 these
-    properties already returned for the degenerate ``Span(0, 0, 0, 0)``.
+    """A span-less Symbol reports line 0 through the compat properties —
+    the codebase-wide line-0 convention, matching the 0 these properties
+    return for the degenerate ``Span(0, 0, 0, 0)``.
 
-    Pins the convention at the IR chokepoint so a future blanket rewrite
-    cannot silently change it (the failure mode of the reverted 43-guard
-    deletion recorded on WI-hafap).
+    Pins the convention at the IR chokepoint so a blanket rewrite of the
+    downstream line-0 guards cannot silently change it (WI-hafap).
     """
     symbol = Symbol(
         id="python:test.py:0-0:ghost:function",
@@ -60,9 +59,10 @@ def test_symbol_line_properties_none_span() -> None:
 
 
 def test_symbol_none_span_roundtrip() -> None:
-    """WI-hafap honest-carry: span=None serializes to an explicit null
+    """Honest carry: span=None serializes to an explicit null
     (schema-legal — the node schema declares span as oneOf [Span, null])
-    and deserializes back to None, not a fabricated ``Span(0, 0, 0, 0)``."""
+    and deserializes back to None, not a fabricated ``Span(0, 0, 0, 0)``
+    (WI-hafap)."""
     sym = Symbol(
         id="python:test.py:0-0:ghost:function",
         name="ghost",
@@ -78,10 +78,10 @@ def test_symbol_none_span_roundtrip() -> None:
 
 
 def test_symbol_from_dict_missing_span_is_none() -> None:
-    """WI-hafap honest-carry: a record with NO span key deserializes to
-    span=None rather than a fabricated degenerate ``Span(0, 0, 0, 0)`` —
-    the zero-span passed every guard while claiming to occupy line 0,
-    which is the exact hole the WI-hafap filing named."""
+    """Honest carry: a record with NO span key deserializes to span=None
+    rather than a fabricated degenerate ``Span(0, 0, 0, 0)`` — a fabricated
+    zero-span would pass every span guard while claiming to occupy line 0
+    (WI-hafap)."""
     back = Symbol.from_dict({
         "id": "python:test.py:0-0:ghost:function",
         "name": "ghost",
@@ -378,11 +378,10 @@ def test_symbol_to_dict_includes_new_fields() -> None:
 
 
 def test_symbol_to_dict_omits_quality_when_none() -> None:
-    """INV-nuzal: node ``quality`` has no producer (0/N populated on
-    self-analysis) — a declared-but-empty field. Following the INV-virik
-    omit-when-empty pattern, ``Symbol.to_dict()`` omits ``quality`` when None
-    rather than emitting a universally-null key, and includes it only when a
-    (future) producer sets it."""
+    """No producer sets node ``quality``, so ``Symbol.to_dict()`` omits it
+    when None rather than emitting a universally-null key, and includes it
+    only when a producer does set it — the same omit-when-empty rule as the
+    run reporting lists (INV-nuzal; INV-virik)."""
     span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
     symbol = Symbol(
         id="python:test.py:1-2:greet:function",
@@ -526,7 +525,7 @@ def test_edge_from_dict_defaults_new_fields_for_legacy_artifact() -> None:
 
 
 def test_valid_confidence_sources_vocabulary() -> None:
-    # ``composite`` had no producer and was deleted (WI-daruz).
+    # No ``composite`` source: nothing would produce it (WI-daruz).
     assert VALID_CONFIDENCE_SOURCES == {
         "evidence_derived", "emitter_constant",
         "corroborated",  # ADR-0057 §13 (WI-binis)
@@ -636,10 +635,11 @@ def test_deduplicate_edges_removes_self_loops() -> None:
 def test_deduplicate_edges_handles_none_edge_key() -> None:
     """Edges with edge_key=None must not collapse into a single edge.
 
-    Regression test: Edge( origin="test", origin_run_id="test") constructor (not Edge.create( origin="test", origin_run_id="test")) defaults
-    edge_key to None.  When multiple such edges existed, only the first
-    survived deduplication because None was treated as a valid dedup key.
-    This silently dropped ALL routes_to edges from the route-handler linker.
+    The raw ``Edge(...)`` constructor (unlike ``Edge.create``) leaves
+    edge_key as None. If None were used as the dedup key, only the first
+    such edge would survive and every other raw-constructed edge (e.g. a
+    linker's routes_to edges) would be silently dropped; deduplicate_edges
+    computes the key from (src, dst, type) instead.
     """
     from hypergumbo_core.ir import deduplicate_edges
 
@@ -650,7 +650,7 @@ def test_deduplicate_edges_handles_none_edge_key() -> None:
         dst="go:server.go:20-30:listUsers:method",
         edge_type="routes_to",
         line=10,
-        # edge_key deliberately not set (None) — matches real bug
+        # edge_key deliberately not set (None)
 
         origin="test", origin_run_id="test",
     )
@@ -743,8 +743,8 @@ def test_deduplicate_edges_preserves_different_types() -> None:
 # ADR-0017 §4 needs to map "a DDG use at line U" onto "which callee is called
 # at line U". The call graph keeps one edge per (src, dst, type) and that
 # edge's ``line`` is whichever call site happened to be encountered first, so
-# every other site's line was unrecoverable. These tests pin the additive
-# remedy: the survivor carries the full set.
+# every other site's line would be unrecoverable. These tests pin the additive
+# record that prevents that: the survivor carries the full set.
 # ---------------------------------------------------------------------------
 
 
@@ -913,11 +913,10 @@ def test_apply_external_id_remap_seeds_call_lines_from_edge_line() -> None:
 
 
 def test_edge_to_dict_has_no_quality() -> None:
-    """WI-riguh / WI-humok (ADR-0039 ruling 4): the deprecated Edge.quality
-    field is REMOVED — edges no longer carry a ``quality`` block (it was a pure
-    function of confidence + an emitter-mechanism reason, zero independent
-    signal). Read confidence + confidence_source + is_resolved (and rank_score
-    for ranking) instead."""
+    """Edges carry no ``quality`` block: it would be a pure function of
+    confidence + an emitter-mechanism reason, with zero independent signal.
+    Read confidence + confidence_source + is_resolved (and rank_score for
+    ranking) instead (ADR-0039 ruling 4; WI-riguh, WI-humok)."""
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
@@ -977,10 +976,10 @@ def test_edge_to_dict_includes_new_fields() -> None:
 
 
 def test_edge_create_central_stamps_evidence_lang_from_src() -> None:
-    """WI-kuluh / ADR-0040: Edge.create central-stamps evidence_lang from the
-    src id's language slot (ADR-0036 grammar: lang = up to the first colon) when
-    the producer did not pass one, so the field is no longer null on ~100% of
-    mainstream analyzer + linker edges."""
+    """Edge.create central-stamps evidence_lang from the src id's language
+    slot (ADR-0036 grammar: lang = up to the first colon) when the producer
+    did not pass one, so analyzer and linker edges carry it without each
+    producer setting it (ADR-0040; WI-kuluh)."""
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
@@ -993,7 +992,8 @@ def test_edge_create_central_stamps_evidence_lang_from_src() -> None:
 
 def test_central_stamp_does_not_clobber_explicit_evidence_lang() -> None:
     """The central stamp must not override a value a producer passed explicitly
-    (ADR-0040 ruling 2) — guards the ~25 long-tail analyzers that set it."""
+    (ADR-0040 ruling 2) — guards the long-tail analyzers that set it
+    themselves."""
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
@@ -1035,9 +1035,9 @@ def test_stamped_evidence_lang_round_trips() -> None:
 
 
 def test_edge_has_no_evidence_spans_field() -> None:
-    """WI-vozar / ADR-0040: evidence_spans (dead — 0/110533 populated) is removed
-    from the Edge dataclass and the Edge.create kwarg, so a stale writer cannot
-    silently reintroduce it."""
+    """Edge has no ``evidence_spans`` field and Edge.create takes no such
+    kwarg (no producer populated it), so a stale writer cannot silently
+    reintroduce it (ADR-0040; WI-vozar)."""
     assert "evidence_spans" not in {f.name for f in dataclasses.fields(Edge)}
     with pytest.raises(TypeError):
         Edge.create(
@@ -1050,7 +1050,7 @@ def test_edge_has_no_evidence_spans_field() -> None:
 
 
 def test_to_dict_meta_has_no_evidence_spans() -> None:
-    """evidence_spans no longer appears in the serialized edge meta."""
+    """evidence_spans does not appear in the serialized edge meta."""
     edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
@@ -1565,17 +1565,17 @@ def test_symbol_from_dict() -> None:
 
 
 def test_symbol_from_dict_line_span_legacy_lines_of_code_key() -> None:
-    """WI-bozid back-compat: a pre-rename behavior map stored the per-symbol
-    physical line span under the key ``lines_of_code``. Symbol.from_dict still
-    reads that legacy key into ``line_span`` so old maps deserialize correctly;
-    the new ``line_span`` key takes precedence when both are present."""
+    """Back-compat: older behavior maps store the per-symbol physical line
+    span under the key ``lines_of_code``. Symbol.from_dict reads that legacy
+    key into ``line_span`` so those maps deserialize correctly; the
+    ``line_span`` key takes precedence when both are present (WI-bozid)."""
     legacy = {
         "id": "python:a.py:1-9:f:function",
         "name": "f",
         "kind": "function",
         "language": "python",
         "path": "a.py",
-        "lines_of_code": 9,  # pre-rename key
+        "lines_of_code": 9,  # legacy key
     }
     assert Symbol.from_dict(legacy).line_span == 9
 
@@ -1605,9 +1605,9 @@ def test_symbol_from_dict_with_defaults() -> None:
 def test_symbol_roundtrip_preserves_tier() -> None:
     """to_dict → from_dict must preserve non-default supply_chain_tier.
 
-    Regression test: _node_from_dict (removed) read d.get("supply_chain_tier")
-    but to_dict() nests it under d["supply_chain"]["tier"], so non-default
-    tiers were silently lost during deserialization.
+    to_dict() nests the tier under d["supply_chain"]["tier"], so a reader
+    that looks for a top-level ``supply_chain_tier`` key would silently reset
+    every non-default tier on deserialization.
     """
     sym = Symbol(
         id="python:vendor/lib.py:1-10:function:parse",
@@ -1690,11 +1690,11 @@ def test_symbol_from_dict_is_test_file_default_false() -> None:
 
 
 def test_symbol_is_exported_default() -> None:
-    """INV-kubup: Symbol.is_exported defaults to None — nobody looked.
+    """Symbol.is_exported defaults to None — nobody looked.
 
-    It was ``False``, which said "measured, and not part of the public API"
-    for every record from the ninety-odd analyzer modules that compute no
-    exportedness. A producer with a rule still writes True or False."""
+    A ``False`` default would say "measured, and not part of the public API"
+    for every record from the analyzers that compute no exportedness. A
+    producer with a rule still writes True or False (INV-kubup)."""
     sym = Symbol(
         id="python:src/lib.py:1-2:helper:function",
         name="helper",
@@ -1820,8 +1820,7 @@ def test_create_derives_confidence_when_omitted():
                           origin="test", origin_run_id="test")
     assert e_res.confidence == 0.85
     assert e_unres.confidence == 0.50
-    # Unseeded pathway -> the historical 0.85 default (unmigrated producers
-    # are unaffected):
+    # Unseeded pathway -> the 0.85 fallback default:
     e_unseeded = Edge.create(src="a", dst="b", edge_type="references", line=1,
                              evidence_type="naming_convention",
                              origin="test", origin_run_id="test")
@@ -1893,8 +1892,7 @@ class TestCreateBoundaryNodes:
     def test_stamps_origin_and_origin_run_id(self):
         """synthetic:F1: boundary external_symbol nodes carry a non-empty
         ``origin`` (the ``boundary_external_symbol_synthesis`` mechanism) and the
-        provided ``origin_run_id``, so the node->AnalysisRun JOIN resolves.
-        Previously both were empty (origin=[], origin_run_id='')."""
+        provided ``origin_run_id``, so the node->AnalysisRun JOIN resolves."""
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         e = Edge.create(
             src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
@@ -1927,8 +1925,8 @@ class TestCreateBoundaryNodes:
         <5-part fallback to language='../Governor.sol' — a file path, never a
         registered language. The boundary node's ``language`` FIELD must be
         None (the axis allows None) so it does not pollute the language axis
-        (axis_conformance). The id/display_label keep the raw value (the id
-        kind/lang-slot cleanup is a separate INV-dulah/WI-zugob concern)."""
+        (axis_conformance). The id/display_label keep the raw value (the id's
+        lang slot is not cleaned here; see INV-dulah, WI-zugob)."""
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         e = Edge.create(
             src=s1.id, dst="../Governor.sol", edge_type="imports",
@@ -1956,7 +1954,7 @@ class TestCreateBoundaryNodes:
         assert result[0].language is None
 
     def test_boundary_known_language_preserved(self):
-        """WI-muzuf regression guard: a real registered language (go) on a
+        """WI-muzuf guard: a real registered language (go) on a
         dangling id is unchanged by the field normalization."""
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         e = Edge.create(
@@ -2077,36 +2075,22 @@ class TestCreateBoundaryNodes:
         assert result[0].id < result[1].id
 
     def test_file_kind_boundaries_keep_their_path(self):
-        """INVERTED (INV-rozob). WI-fozoh's collapse is REVERSED, on a re-price
-        of the number that bought it.
+        """Each dangling ``kind="file"`` pseudo-id becomes its own boundary
+        naming that file's path, rather than all of a language's file ids
+        collapsing onto one ``{lang}:<external>:0-0:file:external_symbol``
+        placeholder.
 
-        THIS TEST USED TO ASSERT THE OPPOSITE — that every ``kind="file"``
-        pseudo-id in a language collapses onto one
-        ``{lang}:<external>:0-0:file:external_symbol`` boundary — and the
-        rationale was a measurement: "732 of these on hypergumbo
-        self-analysis", every Python file's import-edge src dangling, so 732
-        boundary nodes was the alternative.
-
-        THAT PREMISE IS DEAD, and it was re-measured on WI-fozoh's own evidence
-        base rather than argued down. WI-ramuv's
-        ``synthesize_file_symbols_for_dangling_edges`` now mints a real
-        ``kind="file"`` Symbol for analyzer-emitted file ids, so a full
-        hypergumbo self-survey today carries **1,577 real file Symbols and
-        exactly 3 file-kind boundary anchors** — 732 → 3. The surviving
-        population is files whose Symbol something REMOVED, in practice tier-4
+        ``make_file_id`` puts the literal ``"file"`` in the name slot, so a
+        collapsed id would be a many-to-one bucket: a reader could not tell
+        which file imported what, and the node would name no path at all
+        (which leaves taint flows through it unadjudicable; see
+        ``docs/measurements/0001``). Keeping the path is cheap because
+        ``synthesize_file_symbols_for_dangling_edges`` already mints a real
+        ``kind="file"`` Symbol for analyzer-emitted file ids; the file ids still
+        left dangling are files whose Symbol was removed, in practice tier-4
         (DERIVED) files whose edges the tier filter deliberately keeps
-        (WI-pozur / ADR-0043 C2). Across five upstream repos it is 3 / 2 / 2 /
-        1 / 0. The collapse is no longer buying node-count relief; it is only
-        destroying attribution.
-
-        WHAT IT DESTROYED. ``make_file_id`` puts the literal ``"file"`` in the
-        name slot, so the collapsed id was a many-to-one bucket: a reader could
-        not tell which file imported what, and the node named no path at all —
-        19 of 104 adjudicated taint flows in ``docs/measurements/0001`` were
-        UNADJUDICABLE for exactly this reason. Keeping the path costs +2 nodes
-        on sqlalchemy, +1 on knex, +1 on sops, 0 on poetry, and loses ZERO
-        relationships (measured: every ``(dst, type)`` previously anchored on
-        the placeholder is still present, now from a real path).
+        (ADR-0043 C2). No relationship is lost: every ``(dst, type)`` is still
+        present, anchored on a real path (INV-rozob).
         """
         # Two real Python file pseudo-IDs.
         e1 = Edge.create(
@@ -2124,8 +2108,8 @@ class TestCreateBoundaryNodes:
             origin="test", origin_run_id="test",
         )
         result, remap = create_boundary_nodes([], [e1, e2])
-        # THREE boundary nodes now: one per source file, plus 1 click boundary
-        # from the shared dst. Was two, with the two files sharing one id.
+        # Three boundary nodes: one per source file, plus 1 click boundary
+        # from the shared dst.
         ids = {n.id for n in result}
         # ADR-0036 Ruling 2: kind slot is uniformly external_symbol; the "file"
         # reference syntax moves to meta.reference_syntax.
@@ -2152,7 +2136,7 @@ class TestCreateBoundaryNodes:
         reference syntax, which is preserved on ``meta.reference_syntax``.
         """
         s1 = self._make_symbol("python:a.py:1-1:f:function")
-        # A mix of reference syntaxes that used to leak into the kind slot.
+        # A mix of reference syntaxes that must not leak into the kind slot.
         dsts = {
             "python:os.path:0-0:join:unresolved": "unresolved",
             "python:mod:0-0:attr:attribute": "attribute",
@@ -2174,9 +2158,9 @@ class TestCreateBoundaryNodes:
     def test_boundary_ids_are_unique_even_across_reference_syntaxes(self):
         """ADR-0036 Ruling 2 dedupe-collision guard: two references to the same
         ``(lang, path, name)`` external via *different* reference syntaxes
-        collapse to a single boundary node with a unique id (the kind slot no
-        longer distinguishes them). Guards against the duplicate ids the
-        kind-slot uniforming could otherwise introduce.
+        collapse to a single boundary node with a unique id (the kind slot
+        does not distinguish them). Guards against the duplicate ids a uniform
+        kind slot could otherwise introduce.
         """
         s1 = self._make_symbol("python:a.py:1-1:f:function")
         e1 = Edge.create(src=s1.id, dst="python:os:0-0:getcwd:unresolved",
@@ -2214,10 +2198,8 @@ class TestCreateBoundaryNodes:
     def test_direct_dep_is_tier3_with_directness_direct(self):
         """ADR-0041 §1/§2: a declared (direct) third-party boundary node is
         tier 3 — supply-chain distance only — and carries the declaration
-        relationship on the ``directness`` meta stamp instead of tier 2.
-
-        (Supersedes WI-fozoh's tier-min-picks-tier-2 behavior; stable_id /
-        display_label are still populated regardless of manifest match.)
+        relationship on the ``directness`` meta stamp, not as tier 2.
+        stable_id / display_label are populated regardless of manifest match.
         """
         from hypergumbo_core.supply_chain import DependencyManifest
 
@@ -2599,7 +2581,7 @@ class TestApplyExternalIdRemap:
 
 
 class TestIsExternalBoundary:
-    """Tests for is_external_boundary helper (PR1 of stop-stripping plan)."""
+    """Tests for the is_external_boundary helper."""
 
     def _real_symbol(self) -> Symbol:
         return Symbol(
@@ -2659,7 +2641,7 @@ class TestIsExternalBoundary:
 
 
 # ==================== VALIDATE_SYMBOL_ID_FORMAT TESTS ====================
-# WI-davan: enforce the dual-shape spec from docs/hypergumbo-spec.md §6.
+# Enforces the dual-shape id spec from docs/hypergumbo-spec.md §6 (WI-davan).
 
 
 def test_validate_accepts_file_path_shape_with_real_span() -> None:
@@ -2692,8 +2674,8 @@ def test_validate_accepts_module_hint_shape() -> None:
 
 def test_validate_accepts_module_hint_with_sentinel_slot2() -> None:
     # `external` and `unresolved` are sentinel slot-2 values used as
-    # fallbacks when no module hint is recoverable. They are not the
-    # WI-davan bug.
+    # fallbacks when no module hint is recoverable. They are not a file
+    # path leaking into the module hint, so they pass.
     assert validate_symbol_id_format(
         "python:external:0-0:requests:unresolved"
     ) is None
@@ -2711,8 +2693,8 @@ def test_validate_accepts_dart_io_with_colon_in_slot2() -> None:
 
 
 def test_validate_rejects_packages_segment_in_module_hint() -> None:
-    # WI-davan canonical: `packages.<pkg>.src.<mod>` shape leaking
-    # into a module-hint slot.
+    # The canonical rejected case: a `packages.<pkg>.src.<mod>` path
+    # leaking into a module-hint slot (WI-davan).
     err = validate_symbol_id_format(
         "python:packages.hypergumbo-core.src.hypergumbo_core.taxonomy:0-0:LANGUAGE_ALIASES:symbol"
     )
@@ -2749,7 +2731,8 @@ def test_validate_does_not_constrain_non_python_module_hint_hyphens() -> None:
 
 def test_validate_passes_through_short_ids() -> None:
     # Ids with fewer than 5 colon-separated parts are out of scope —
-    # this validator is narrowly the WI-davan bug class.
+    # this validator targets only the path-as-module-hint bug class
+    # (WI-davan).
     assert validate_symbol_id_format("garbage") is None
     assert validate_symbol_id_format("a:b:c:d") is None
 
@@ -2771,9 +2754,8 @@ def test_python_analyzer_emits_only_well_formed_ids_on_monorepo(
     ``packages/<pkg>/src/<mod>/`` monorepo emits no symbols or edges
     whose IDs violate :func:`validate_symbol_id_format`.
 
-    This is the structural enforcement the lab notebook proposed for
-    WI-davan — replacing tag-borne validation with an in-CI invariant
-    check. Catches future regressions in ``_detect_source_roots``,
+    This enforces the id shape as an in-CI invariant check (WI-davan),
+    catching regressions in ``_detect_source_roots``,
     ``_module_name_from_path``, or any analyzer that derives a
     module-hint qualifier from a file path under a monorepo layout.
     """
@@ -2813,7 +2795,7 @@ def test_python_analyzer_emits_only_well_formed_ids_on_monorepo(
 
 
 # ---------------------------------------------------------------------------
-# WI-tihup: ExternalRef + Edge.dst_ref sibling-field tests (PR1 foundation)
+# ExternalRef + Edge.dst_ref sibling-field tests (WI-tihup)
 # ---------------------------------------------------------------------------
 
 
@@ -2831,9 +2813,9 @@ def test_external_ref_constructs_and_is_frozen() -> None:
 def test_format_legacy_dst_uniform_5seg_shape() -> None:
     """``format_legacy_dst`` produces the 5-seg ``{lang}:{module}:0-0:{name}:unresolved`` shape.
 
-    This is the helper PR2's per-analyzer retrofits route their legacy
-    dst string through so the format is uniform across languages —
-    no more Rust 6-seg outlier or Java class-embedded-in-module variant.
+    Producers that hold an ExternalRef route their legacy dst string
+    through this helper so the format is uniform across languages — no
+    6-segment or class-embedded-in-module variants.
     """
     py_ref = ExternalRef(lang="python", module_path="urllib.request", name="urlopen")
     assert format_legacy_dst(py_ref) == "python:urllib.request:0-0:urlopen:unresolved"
@@ -2906,13 +2888,12 @@ def test_edge_from_dict_handles_null_dst_ref() -> None:
 
 
 def test_py_analyzer_populates_dst_ref_on_polyglot_imports(tmp_path: Path) -> None:
-    """PR1 reference adoption: Python emits ExternalRef on import + call edges.
+    """The Python analyzer emits ExternalRef on import + call edges.
 
-    The polyglot fixture's Python source exercises the 4 import shapes
-    WI-zigah Level 1 fixed; PR1 of WI-tihup requires each emitted
-    external-target edge to carry a structured ExternalRef alongside the
-    legacy dst string. This is the worked example for the 7 PR2
-    retrofits.
+    The source uses both ``import urllib.request`` and ``from
+    urllib.request import urlopen``; external-target edges carry a
+    structured ExternalRef alongside the legacy dst string (WI-tihup), and
+    the test pins one pointing at ``urllib.request.urlopen`` (WI-zigah).
 
     Uses the full pipeline (run_behavior_map) because call-edge emission
     depends on global symbol context that the standalone ``analyze_python``
@@ -2942,7 +2923,7 @@ def test_py_analyzer_populates_dst_ref_on_polyglot_imports(tmp_path: Path) -> No
         if e.get("dst_ref") is not None
     ]
     # At least one external-target edge must carry a populated dst_ref
-    # pointing at urllib.request.urlopen — the canonical WI-zigah Case A.
+    # pointing at urllib.request.urlopen (WI-zigah Case A).
     assert (
         "python",
         "urllib.request",
@@ -2950,11 +2931,12 @@ def test_py_analyzer_populates_dst_ref_on_polyglot_imports(tmp_path: Path) -> No
     ) in refs, f"Expected an ExternalRef to urllib.request:urlopen, got {refs!r}"
 
 
-# --- WI-gapin: origin_run_signature removal ---
+# --- origin_run_signature is not a field (WI-gapin) ---
 
 
 class TestOriginRunSignatureRemoved:
-    """WI-gapin: origin_run_signature was dead weight — never stamped by any producer."""
+    """No producer stamps origin_run_signature, so Symbol and Edge do not
+    carry it; older JSON that has the key still deserializes (WI-gapin)."""
 
     def test_symbol_has_no_origin_run_signature_field(self) -> None:
         """Symbol dataclass must not have an origin_run_signature field."""

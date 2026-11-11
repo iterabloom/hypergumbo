@@ -63,11 +63,12 @@ class TestDeadCodeMaybe:
         assert "orphan" in dead_names
         # helper IS reachable from main → NOT dead
         assert "helper" not in dead_names
-        # INV-fipol: dead-code-maybe JSON now carries the schema envelope
-        # WI-jozah: this view PROMOTED out of the shared read-view
-        # placeholder when it evolved its wire shape, which is the escape
-        # hatch schema.py documents. Asserted against the constant, never a
-        # literal — a literal is a second home for a single-sourced value.
+        # dead-code-maybe JSON carries the schema envelope (INV-fipol).
+        # This view has its own schema-version constant rather than the
+        # shared read-view placeholder because its wire shape diverged — the
+        # escape hatch schema.py documents (WI-jozah). Asserted against the
+        # constant, never a literal — a literal is a second home for a
+        # single-sourced value.
         assert output["schema_version"] == DEAD_CODE_MAYBE_SCHEMA_VERSION
         assert output["view"] == "dead_code_maybe"
 
@@ -316,8 +317,9 @@ class TestDeadCodeMaybe:
     def test_routes_to_makes_handler_reachable(self, tmp_path: Path) -> None:
         """Route registration edges make handlers reachable.
 
-        HTTP route registrations emit routes_to edges.  The BFS must follow
-        them so that route handlers are not flagged as dead.
+        HTTP route registrations emit dispatches_to edges with
+        meta['dispatch_kind']='route'.  The BFS must follow them so that
+        route handlers are not flagged as dead.
         """
         import argparse
 
@@ -339,8 +341,8 @@ class TestDeadCodeMaybe:
         edges = [
             {"type": "calls", "src": "go:main.go:1-10:main:function",
              "dst": "go:routes.go:5-5:GET /api:route"},
-            # Post-Phase-3 (WI-vasik-jofiv): routes_to → dispatches_to
-            # + meta['dispatch_kind']='route'
+            # Route registration: dispatches_to +
+            # meta['dispatch_kind']='route' (WI-vasik-jofiv)
             {"type": "dispatches_to", "src": "go:routes.go:5-5:GET /api:route",
              "dst": "go:handler.go:10-40:handleAPI:function",
              "meta": {"dispatch_kind": "route", "framework_role": "route"}},
@@ -620,7 +622,7 @@ class TestDeadCodeMaybe:
         assert "libFunc" not in dead_names
 
     def test_exclude_annotated_propagates_from_class(self, tmp_path: Path) -> None:
-        """WI-rumij: class-level annotations propagate to contained methods for exclusion."""
+        """Class-level annotations propagate to contained methods for exclusion (WI-rumij)."""
         import argparse
 
         nodes = [
@@ -835,7 +837,7 @@ class TestDeadCodeMaybe:
         assert "tested_fn" not in dead_names
 
     def test_seeds_exports_uses_exported_symbols(self, tmp_path: Path) -> None:
-        """WI-zimum: --seeds exports treats is_exported=True functions as seeds.
+        """--seeds exports treats is_exported=True functions as seeds (WI-zimum).
 
         A lone function with is_exported=True and no incoming call edges
         should NOT be flagged as dead when --seeds exports is used, because
@@ -888,8 +890,8 @@ class TestDeadCodeMaybe:
         assert "orphan" in dead_names
 
     def test_ffi_signature_flag_boosts_rank(self, tmp_path: Path) -> None:
-        """WI-hadap H2: candidates with FFI decorators get ffi_signature=True
-        and sort above plain dead candidates."""
+        """Candidates with FFI decorators get ffi_signature=True
+        and sort above plain dead candidates (WI-hadap H2)."""
         import argparse
 
         nodes = [
@@ -932,7 +934,7 @@ class TestDeadCodeMaybe:
     def test_ffi_signature_flag_matches_native_modifier(
         self, tmp_path: Path,
     ) -> None:
-        """WI-hadap H2: Java native modifier sets ffi_signature=True."""
+        """Java native modifier sets ffi_signature=True (WI-hadap H2)."""
         import argparse
 
         nodes = [
@@ -964,14 +966,14 @@ class TestDeadCodeMaybe:
     def test_generated_file_symbols_never_appear_as_dead(
         self, tmp_path: Path,
     ) -> None:
-        """WI-jifup: symbols in generated files never appear as dead candidates.
+        """Symbols in generated files never appear as dead candidates (WI-jifup).
 
         Generated code is not actionable — you regenerate it, you don't
         delete it manually. The file-level ``is_generated_file`` flag on a
         symbol's supply_chain is an unconditional drop for dead-code-maybe
-        (no flag opt-in needed). Covers the four TS utility-file types
-        that leaked past WI-vubad's centrality demotion: ``CancelablePromise.ts``,
-        ``request.ts``, ``OpenAPI.ts``, ``ApiError.ts``.
+        (no flag opt-in needed). Covers four generated TS utility-file
+        types: ``CancelablePromise.ts``, ``request.ts``, ``OpenAPI.ts``,
+        ``ApiError.ts``.
         """
         import argparse
 
@@ -1035,8 +1037,8 @@ class TestDeadCodeMaybe:
     def test_exclude_exports_drops_public_api(
         self, tmp_path: Path,
     ) -> None:
-        """WI-zafab filter 3: --exclude-exports drops candidates where
-        supply_chain.is_exported=True (public API)."""
+        """--exclude-exports drops candidates where
+        supply_chain.is_exported=True (public API; WI-zafab filter 3)."""
         import argparse
 
         nodes = [
@@ -1110,8 +1112,8 @@ class TestDeadCodeMaybe:
         assert "PublicFn" in dead_names
 
     def test_ffi_signature_flag_accepts_string_decorator(self) -> None:
-        """WI-hadap H2: a bare-string decorator entry (older-schema
-        encoding) matches the fragment check."""
+        """A bare-string decorator entry (older-schema encoding) matches
+        the fragment check (WI-hadap H2)."""
         from hypergumbo_core.cli import _compute_ffi_signature_flag
         node = {"meta": {"decorators": ["no_mangle"], "framework_role": "route"}}
         assert _compute_ffi_signature_flag(node) is True
@@ -1119,7 +1121,7 @@ class TestDeadCodeMaybe:
     def test_ffi_signature_flag_ignores_non_dict_non_str_decorator(
         self,
     ) -> None:
-        """WI-hadap H2: a non-dict/non-str decorator entry is ignored."""
+        """A non-dict/non-str decorator entry is ignored (WI-hadap H2)."""
         from hypergumbo_core.cli import _compute_ffi_signature_flag
         node = {"meta": {"decorators": [42, None], "framework_role": "route"}}
         assert _compute_ffi_signature_flag(node) is False
@@ -1127,7 +1129,7 @@ class TestDeadCodeMaybe:
     def test_ffi_signature_flag_false_for_plain_function(
         self, tmp_path: Path,
     ) -> None:
-        """WI-hadap H2: candidates without FFI markers are not flagged."""
+        """Candidates without FFI markers are not flagged (WI-hadap H2)."""
         import argparse
 
         nodes = [
@@ -1157,7 +1159,7 @@ class TestDeadCodeMaybe:
         assert output["dead_candidates"][0]["ffi_signature"] is False
 
     def test_seeds_all_includes_exports(self, tmp_path: Path) -> None:
-        """WI-zimum: --seeds all combines entrypoints, tests, AND exports."""
+        """--seeds all combines entrypoints, tests, AND exports (WI-zimum)."""
         import argparse
 
         nodes = [
@@ -1226,7 +1228,7 @@ def _run_dead_code_maybe(tmp_path: Path, behavior_map: dict) -> dict:
 
 
 class TestWiVutonViewFuncDemotion:
-    """WI-vuton heuristic 2: usage_contexts cross-reference.
+    """usage_contexts cross-reference (WI-vuton heuristic 2).
 
     A symbol that appears as the ``view_func`` (or any callable position)
     of a ``usage_context`` is reachable via the framework dispatcher, even
@@ -1368,7 +1370,7 @@ class TestWiVutonViewFuncDemotion:
 
 
 class TestWiVutonDispatchInheritedDemotion:
-    """WI-vuton heuristic 1: polymorphic dispatch demotion.
+    """Polymorphic dispatch demotion (WI-vuton heuristic 1).
 
     When a method ``Sub.foo`` has zero in-edges in the static call graph
     but the base-class method ``Base.foo`` IS reachable, ``Sub.foo`` is
@@ -1598,13 +1600,12 @@ class TestWiVutonDispatchInheritedDemotion:
     def test_wi_kilal_ruby_hash_separator_basename_match(
         self, tmp_path: Path,
     ) -> None:
-        """WI-kilal: Ruby qualifies instance methods as ``Class#method``
+        """Ruby qualifies instance methods as ``Class#method``
         (not ``Class.method``). The dispatch_inherited heuristic must
         basename both child and ancestor names the same way for the
-        same-named-method comparison to succeed. Before the fix,
-        ``_method_basename`` only split on ``.``, so
-        ``Sub#extract``.rsplit(``.``)[-1] == ``Sub#extract`` (no dot to
-        split on), and the heuristic missed every Ruby override.
+        same-named-method comparison to succeed, so ``_method_basename``
+        splits on ``#`` as well as ``.``; splitting on ``.`` alone leaves
+        ``Sub#extract`` whole and misses every Ruby override (WI-kilal).
         """
         base_class = self._make_class_node("ApplicationController", line=1)
         sub_class = self._make_class_node("SessionsController", line=20)
@@ -1754,9 +1755,9 @@ def _f2_behavior_map() -> dict:
 
 class TestDispatchF2SeedsDefault:
     """dispatch:F2 — default seed mode is ``production`` (entrypoints + exports)
-    with disclosure buckets; the 2026-06-10 ruling. Retires the entrypoint-only
-    ~89%-dead headline while keeping the strict view + test-only reachability
-    as labeled cohorts (WI-lirob / WI-jufih)."""
+    with disclosure buckets. The strict entrypoint-only view, which flags most
+    production callables dead, is not the headline; it and test-only
+    reachability are kept as labeled cohorts (WI-lirob / WI-jufih)."""
 
     def test_default_is_production_with_buckets_and_warn(self, tmp_path: Path) -> None:
         rc, out, err = _run_dead_code_f2(tmp_path, _f2_behavior_map(), seeds=None)
@@ -1883,10 +1884,11 @@ def _clh_fixture(tmp_path: Path):
 
 
 class TestDispatchF7CrossLanguageDemoter:
-    """dispatch:F7 (WI-gavub): cross_language_hits is consumed as a false-positive
-    DEMOTER. A candidate whose name appears in >= cross_lang_threshold
-    other-language files is near-certainly reached via a cross-language path
-    (framework dispatch, HTTP route, RPC, FFI) — excluded from the dead set."""
+    """cross_language_hits is consumed as a false-positive DEMOTER
+    (dispatch:F7, WI-gavub). A candidate whose name appears in
+    >= cross_lang_threshold other-language files is near-certainly reached
+    via a cross-language path (framework dispatch, HTTP route, RPC, FFI) —
+    excluded from the dead set."""
 
     def test_demoter_excludes_at_threshold_1(self, tmp_path: Path) -> None:
         nodes, edges = _clh_fixture(tmp_path)
@@ -1913,11 +1915,11 @@ class TestDispatchF7CrossLanguageDemoter:
 
 
 class TestProductionCallablesClassBExclusion:
-    """INV-disin: ADR-0031 Class-B synthetic linker stand-ins (protocol_origin
+    """ADR-0031 Class-B synthetic linker stand-ins (protocol_origin
     populated, language=None) are not real source callables. They must NOT enter
     the dead-code candidate universe — otherwise they are ~100% flagged dead,
     since language-scoped seeds/entrypoints can never match a language=None node
-    (kserve/prometheus/killbill each surfaced dozens of these phantom dead nodes)."""
+    (INV-disin)."""
 
     def test_class_b_synthetic_excluded_from_production_candidates(self) -> None:
         from hypergumbo_core.cli import production_callables
@@ -1960,24 +1962,24 @@ class TestProductionCallablesClassBExclusion:
 
 
 class TestPerCandidateReachabilityCohort:
-    """WI-jozah — the cohort must be ON each candidate, not only in the summary.
+    """The reachability cohort must be ON each candidate, not only in the
+    summary (WI-jozah).
 
-    ``test_only_reachable`` was computed and reported as an aggregate count
-    only, while every one of the candidate records carried an identical field
-    set. That made the highest-value cohort in the whole output unselectable:
-    "reachable only from tests" means the function has tests but no production
+    "Reachable only from tests" means the function has tests but no production
     caller, so the tests are load-bearing for nothing and the coverage gate is
-    actively concealing the deadness. On hypergumbo's own tree that is 1859 of
-    2107 candidates — a list a consumer could count but not filter.
+    actively concealing the deadness. That is the highest-value cohort in the
+    output; an aggregate ``test_only_reachable`` count alone would let a
+    consumer count it but not filter it, so each candidate carries a
+    ``reachability`` label.
 
-    THE FILING SUGGESTED THREE VALUES AND ONLY TWO ARE MEANINGFUL. It proposed
-    ``test_only`` / ``entrypoint_only`` / ``unreachable``. But a dead candidate
-    is by definition not reachable from the *production* seeds, and those are a
+    The label has two values, ``test_only`` / ``unreachable``. A third
+    ``entrypoint_only`` value would partition nothing: a dead candidate is by
+    definition not reachable from the *production* seeds, and those are a
     superset of the entrypoint seeds — so every dead candidate is
-    entrypoint-only-dead by construction and the label would partition nothing.
-    ``entrypoint_only_dead`` is a different, larger cohort (4314 against 2107 on
-    the self-tree), which is why it stays a summary count. The per-candidate
-    discriminator is binary, and it is the one with an action attached.
+    entrypoint-only-dead by construction. ``entrypoint_only_dead`` is a
+    different, larger cohort, which is why it stays a summary count. The
+    per-candidate discriminator is binary, and it is the one with an action
+    attached.
     """
 
     def test_test_only_candidate_is_labelled(self, tmp_path: Path) -> None:
@@ -2006,19 +2008,17 @@ class TestPerCandidateReachabilityCohort:
     ) -> None:
         """The per-item labels must reconcile — with the RIGHT aggregate.
 
-        THIS TEST FIRST ASSERTED THE WRONG THING AND PASSED. It compared the
-        label count against ``test_only_reachable``, which counts the cohort
-        over *all production symbols*; the emitted candidate list has the FP
-        demoters applied (generated files, cross-language name hits,
-        virtual-dispatch overrides). On this fixture nothing is demoted, so the
-        two happen to be equal and the assertion held. On the self-tree they are
-        **1859 against 1747** — a 112-symbol gap that would have shipped as a
-        false equality nobody could reproduce from the fixture. Caught by
-        measuring on a real repository, not by the test.
+        ``test_only_reachable`` counts the cohort over *all production
+        symbols*, while the emitted candidate list has the FP demoters applied
+        (generated files, cross-language name hits, virtual-dispatch
+        overrides). On this fixture nothing is demoted, so the two happen to
+        be equal, but on a real repository they diverge — asserting equality
+        with ``test_only_reachable`` would pass here and be false there.
 
-        So the summary now publishes both denominators and this asserts the
-        relationship that is actually invariant: the candidate-scoped count is
-        exact, and it can only be ≤ the production-scoped one.
+        So the summary publishes both denominators and this asserts the
+        relationship that is actually invariant: the candidate-scoped count
+        (``test_only_reachable_candidates``) is exact, and it can only be ≤
+        the production-scoped one.
         """
         rc, out, _ = _run_dead_code_f2(
             tmp_path, _f2_behavior_map(), seeds="production",
@@ -2059,7 +2059,7 @@ class TestPerCandidateReachabilityCohort:
         """Parity with the summary bucket, which is null under explicit modes.
 
         Emitting ``unreachable`` here would be a lie of exactly the kind this
-        item is about: under ``--seeds entrypoints`` no test-seeded walk ran, so
+        label exists to prevent: under ``--seeds entrypoints`` no test-seeded walk ran, so
         the tool does not know which cohort a candidate is in. Absence of
         knowledge gets ``null``, not a default.
         """
@@ -2075,8 +2075,8 @@ class TestPerCandidateReachabilityCohort:
     def test_text_output_annotates_the_cohort(self, tmp_path: Path) -> None:
         """A disclosure only under ``--json`` is half shipped.
 
-        Same rule the taint work has been applying: WI-bifob's exclusion bucket
-        reached the dataclass and never the text renderer.
+        The text renderer must annotate the cohort too — the same rule taint
+        applies to its exclusion bucket (WI-bifob).
         """
         rc, out, _ = _run_dead_code_f2(
             tmp_path, _f2_behavior_map(), seeds="production", fmt="text",
@@ -2089,19 +2089,18 @@ class TestPerCandidateReachabilityCohort:
 
 
 class TestConstructionEdgesAreReachability:
-    """INV-kahig: constructing an object makes its constructor reachable.
+    """Constructing an object makes its constructor reachable (INV-kahig).
 
-    ``_REACHABILITY_EDGE_TYPES`` was ``{"calls", "dispatches_to", "wraps"}``.
-    Every analyzer that emits ``instantiates`` — dart, csharp, java, py, js_ts,
-    php, cpp, verilog, and (as of INV-kahig) ruby — therefore had its
-    construction edges skipped by the dead-code BFS, so a class reached only by
-    ``new Foo()`` had its constructor AND everything transitively downstream of
-    it reported as dead.
+    ``_REACHABILITY_EDGE_TYPES`` is the registry's call family
+    (``call_family_edge_types()``, which includes ``instantiates``) plus
+    ``dispatches_to`` and ``wraps``. Without ``instantiates``, the dead-code
+    BFS would skip construction edges, so a class reached only by
+    ``new Foo()`` would have its constructor AND everything transitively
+    downstream of it reported as dead.
 
-    This is the third consumer found holding a private edge-type set that
-    excluded ``instantiates``, after ``TAINT_CALL_EDGE_TYPES`` (INV-lalad, where
-    it hid a command-injection flow) and ``verify_claims._CALL_SITE_EDGE_TYPES``.
-    All three now derive the call-family half from the registry.
+    ``TAINT_CALL_EDGE_TYPES`` and ``verify_claims._CALL_SITE_EDGE_TYPES``
+    derive their call-family half from the same registry rather than holding
+    a private edge-type set (INV-lalad).
     """
 
     _EDGES: ClassVar[list[dict[str, Any]]] = [
@@ -2125,16 +2124,16 @@ class TestConstructionEdgesAreReachability:
         assert self._reachable(live) == {"main", "init", "polish"}
 
     def test_the_old_narrow_set_loses_both_downstream_symbols(self) -> None:
-        """POSITIVE CONTROL — pins the defect this fixes, so the assertion
-        above is shown to depend on the widening rather than passing for some
+        """POSITIVE CONTROL — shows the assertion above depends on
+        ``instantiates`` being in the set rather than passing for some
         unrelated reason. Without ``instantiates`` the BFS reaches ONLY the
         seed: ``init`` is unreachable because nothing calls it, and ``polish``
-        is collateral because its only caller was.
+        is collateral because its only caller is.
         """
         assert self._reachable({"calls", "dispatches_to", "wraps"}) == {"main"}
 
     def test_reachability_derives_the_call_family_from_the_registry(self) -> None:
-        """The set must not restate the call family — that is how it drifted."""
+        """The set must not restate the call family — a restated copy drifts from the registry."""
         from hypergumbo_core.axis_meta_keys import call_family_edge_types
 
         assert "instantiates" in call_family_edge_types()

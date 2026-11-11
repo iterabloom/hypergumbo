@@ -701,9 +701,9 @@ helper();
         result = analyze_php(tmp_path)
 
         assert result.run is not None
-        # INV-kokaj: top-level call is attributed to the file pseudo-node
-        # (kind="file", canonical file-id shape) instead of the legacy
-        # <module:filename> kind="module" wrapper.
+        # A top-level call is attributed to the file pseudo-node
+        # (kind="file", canonical file-id shape), not a <module:filename>
+        # kind="module" wrapper (INV-kokaj).
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
         assert call_edges[0].src.endswith(":1-1:file:file")
@@ -967,11 +967,11 @@ Route::any('/catchall', [CatchAllController::class, 'handle']);
     def test_match_route_recovers_verbs_path_and_controller(
         self, tmp_path: Path,
     ) -> None:
-        """WI-zunal: ``Route::match`` is no longer dropped.
+        """``Route::match`` yields its verbs, path and controller (WI-zunal).
 
         Its args[0] is the verb array, so reading the path from args[0]
-        found no string and skipped the route entirely — the whole route
-        vanished from the map, not merely its verb. Every positional
+        would find no string and skip the route entirely — the whole route
+        would vanish from the map, not merely its verb. Every positional
         argument shifts right by one.
         """
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -1184,14 +1184,13 @@ Route::resource('photos', PhotoController::class);
 
 
 class TestLaravelApiResourceAndModifiers:
-    """WI-jorim: apiResource excludes HTML-form routes; .except()/.only() filter actions.
+    """apiResource excludes HTML-form routes; .except()/.only() filter actions (WI-jorim).
 
-    The historical bug: apiResource() was treated identically to resource(),
-    producing phantom GET /create and GET /{id}/edit endpoints. On koel, this
-    contributed 40 phantom routes (~19% of 207 total). .except() / .only()
-    modifiers were also silently ignored, so calls like
+    apiResource() is not resource(): it mounts no GET /create or
+    GET /{id}/edit HTML-form endpoints, and treating the two alike would emit
+    phantom routes. .except() / .only() modifiers filter the action set, so
         Route::resource('users', UserController::class)->except(['create'])
-    still emitted the create route.
+    must not emit the create route.
 
     Each test below reproduces a specific shape from real Laravel apps.
     """
@@ -1374,10 +1373,10 @@ def _php_literal(code: str):
 
 
 class TestLaravelDoubleQuotedRoutes:
-    """WI-fadip: a double-quoted PHP literal is an ``encapsed_string`` node,
-    a single-quoted one a ``string`` node. The route-path read accepted only
-    ``string``, so every double-quoted Laravel route was silently dropped, for
-    every ``Route::`` verb. An INTERPOLATED double-quoted path must be refused,
+    """A double-quoted PHP literal is an ``encapsed_string`` node, a
+    single-quoted one a ``string`` node (WI-fadip). The route-path read must
+    accept both, or every double-quoted Laravel route would be silently
+    dropped, for every ``Route::`` verb. An INTERPOLATED double-quoted path must be refused,
     never truncated to its leading literal prefix.
     """
 
@@ -1919,7 +1918,7 @@ class TestPhpIsExported:
 
 
 class TestPhpDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on PHP callable symbols."""
+    """Symbol.docstring on PHP callable symbols (INV-jahiv)."""
 
     def test_function_with_phpdoc(self, tmp_path: Path) -> None:
         """Function symbols populate docstring from preceding /** PHPDoc. */"""
@@ -1951,7 +1950,7 @@ class TestPhpDocstring:
 
 
 class TestPHPQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on PHP symbols."""
+    """Symbol.qualified_name on PHP symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_namespace_and_scope_resolution(self, tmp_path: Path) -> None:
         """Methods carry Namespace\\Class::method with '\\' for namespace and '::' for class-to-method."""
@@ -1997,7 +1996,7 @@ class TestPHPQualifiedName:
 
 
 class TestPhpCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity populated on PHP callables."""
+    """cyclomatic_complexity populated on PHP callables."""
 
     def test_function_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -2020,9 +2019,9 @@ class TestPhpCyclomaticComplexity:
 
 
 class TestPhpUseImports:
-    """INV-naguv: `use Namespace\\Class;` statements emit imports edges (php.py
-    previously emitted zero), so PHP framework namespaces reach the import-promote
-    phase and a manifest-less PHP app surfaces its framework."""
+    """`use Namespace\\Class;` statements emit imports edges, so PHP framework
+    namespaces reach the import-promote phase and a manifest-less PHP app
+    surfaces its framework (INV-naguv)."""
 
     def test_use_statement_emits_imports_edge(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -2038,9 +2037,9 @@ class TestPhpUseImports:
 
 
 class TestPHPFieldAndConstantEmission:
-    """WI-fosuh (WI-jusus slice): PHP class properties and constants emit as
-    kind='field' anchored to their type; top-level constants emit as
-    kind='variable'; method-body locals do NOT leak as fields."""
+    """PHP class properties and constants emit as kind='field' anchored to
+    their type; top-level constants emit as kind='variable'; method-body
+    locals do NOT leak as fields (WI-fosuh, WI-jusus)."""
 
     def test_class_properties_and_constants_emit_as_fields(
         self, tmp_path: Path
@@ -2265,15 +2264,13 @@ class Controller {
 class TestPhpTypeContainerEmission:
     """interface / trait / enum declarations are symbols (INV-tihim).
 
-    The analyzer emitted ONLY `class_declaration`, so three of PHP's four
-    type containers were invisible: an `interface` declared in the same file
-    surfaced as an `external_symbol` (the boundary synthesizer's placeholder
-    for a name with no in-tree definition), and members declared inside an
-    interface or trait were emitted BARE — `area` rather than `Shape.area` —
-    because the enclosing-owner walk recognised `class_declaration` alone.
-
-    Measured consequence: PHP produced no interface->implementation
-    `dispatches_to` edge at all, while the byte-equivalent Java produced one.
+    All four of PHP's type containers are emitted, each with its own kind. An
+    `interface` declared in the same file must not surface as an
+    `external_symbol` (the boundary synthesizer's placeholder for a name with
+    no in-tree definition), and members declared inside an interface or trait
+    must be owner-qualified — `Shape.area`, not bare `area`. Otherwise PHP
+    gets no interface->implementation `dispatches_to` edge, where the
+    byte-equivalent Java gets one.
     """
 
     def test_interface_trait_enum_are_emitted_with_their_own_kinds(
@@ -2299,9 +2296,9 @@ class TestPhpTypeContainerEmission:
     ) -> None:
         """A bare member name cannot be matched against an implementor's.
 
-        This is what made PHP invisible to the shared dispatch linker even
-        once the interface existed: `area` has no owner, so no consumer can
-        tell which type declares it.
+        A bare member would leave PHP invisible to the shared dispatch linker
+        even with the interface emitted: `area` has no owner, so no consumer
+        can tell which type declares it.
         """
         from hypergumbo_lang_mainstream.php import analyze_php
 
@@ -2315,7 +2312,7 @@ class TestPhpTypeContainerEmission:
         assert "Loggable.log" in names, f"trait member not owner-qualified: {names}"
 
     def test_class_emission_is_unchanged(self, tmp_path: Path) -> None:
-        """Guard the path that already worked — abstract classes especially.
+        """Class emission keeps its kind and modifiers — abstract classes especially.
 
         PHP is one of five languages that correctly records abstract-ness in
         `modifiers`, which the type-family predicate reads.
@@ -2332,12 +2329,12 @@ class TestPhpTypeContainerEmission:
 
 
 class TestPhpTraitAndEnumCallers:
-    """WI-fonaz: a trait or enum method is the caller of the calls in its body.
+    """A trait or enum method is the caller of the calls in its body (WI-fonaz).
 
-    The caller lookup found a method's owner with a walk that recognised
-    ``class_declaration`` only, so in a trait or enum no method was ever the
-    caller: ``$this->`` / ``static::`` / ``self::`` calls and ``new`` emitted
-    nothing, and a bare call was credited to the file.
+    The caller lookup's owner walk must recognise traits and enums, not just
+    ``class_declaration``: otherwise no trait or enum method is ever the
+    caller, ``$this->`` / ``static::`` / ``self::`` calls and ``new`` emit
+    nothing, and a bare call is credited to the file.
     """
 
     def test_trait_and_enum_methods_own_their_calls(self, tmp_path: Path) -> None:

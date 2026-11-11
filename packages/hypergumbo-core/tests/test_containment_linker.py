@@ -60,12 +60,12 @@ class TestContainmentLinker:
         assert edge.edge_type == "contains"
 
     def test_dot_separated_field(self) -> None:
-        """WI-zajaz: a class field (ClassName.field) is rooted at its class.
+        """A class field (ClassName.field) is rooted at its class.
 
         Class-body attributes are emitted as kind='field' with dotted names
-        (e.g. 'Widget.size'), exactly like methods, but were never in
-        CONTAINABLE_KINDS — so 1862 real field symbols (99.6% of them) were
-        orphans on self-analysis. Fields must root at their class like methods.
+        (e.g. 'Widget.size'), exactly like methods; 'field' must be in
+        CONTAINABLE_KINDS or every such field is an orphan. Fields must root
+        at their class like methods. (WI-zajaz)
         """
         cls = _sym("py:app.py:1-10:Widget:class", "Widget", "class")
         field = _sym("py:app.py:2-2:Widget.size:field", "Widget.size", "field", start=2, end=2)
@@ -112,15 +112,14 @@ class TestContainmentLinker:
         assert edge.edge_type == "contains"
 
     def test_swift_struct_body_subscript(self) -> None:
-        """WI-fokag: a struct-body subscript (Type.subscript(key:)) roots at its type.
+        """A struct-body subscript (Type.subscript(key:)) roots at its type.
 
         Swift subscripts are emitted as kind='subscript' with dotted names like
-        'JSON.subscript(key:)', exactly like methods, but 'subscript' was absent
-        from CONTAINABLE_KINDS — so correctly-named struct-body subscripts had 0
-        contains edges (verified real on SwiftyJSON post-#689: the JSON struct
-        contained its field and method members but not its subscripts). The
-        parenthesized '(key:)' name suffix carries no separator, so parent
-        extraction already yields 'JSON'; only the kind gate blocked the edge.
+        'JSON.subscript(key:)', exactly like methods. The parenthesized
+        '(key:)' name suffix carries no separator, so parent extraction
+        already yields 'JSON'; the edge depends only on 'subscript' being in
+        CONTAINABLE_KINDS. Without it the struct contains its fields and
+        methods but not its subscripts. (WI-fokag)
         """
         cls = _sym(
             "swift:json.swift:1-20:JSON:struct",
@@ -295,15 +294,14 @@ class TestContainmentLinker:
         assert result.edges[0].dst == method.id
 
     def test_protocol_contains_requirement(self) -> None:
-        """WI-duguk: `protocol` is a container exactly like `interface`.
+        """`protocol` is a container exactly like `interface`.
 
-        Its absence from CONTAINER_KINDS made Swift/Obj-C protocol containment
-        structurally impossible: with the requirements emitted and correctly
-        named `Drawable.draw`, the protocol still scored `contains_out=0` while
-        a sibling `enum` and `struct` in the same file each rooted 3 members.
-        No analyzer-side change could have fixed that — which is why the
+        Without `protocol` in CONTAINER_KINDS, Swift/Obj-C protocol
+        containment is structurally impossible: even with the requirements
+        emitted and correctly named `Drawable.draw`, the protocol roots no
+        members. No analyzer-side change can fix that — which is why the
         emission-parity column (span nesting, one analyzer in isolation) can
-        read green while the pipeline outcome stays broken.
+        read green while the pipeline outcome stays broken. (WI-duguk)
         """
         proto = _sym(
             "swift:Shapes.swift:1-10:Drawable:protocol",
@@ -334,11 +332,11 @@ class TestContainmentLinker:
         assert result.edges[0].dst == requirement.id
 
     def test_record_contains_its_members(self) -> None:
-        """WI-pidos: a java ``record`` is a container exactly like ``class``.
+        """A java ``record`` is a container exactly like ``class``.
 
-        Records were not emitted before WI-pidos, so the set never met one;
-        once they were, a record's methods and component fields found no owner
-        and the file's ``contains`` tree skipped them."""
+        Without ``record`` in CONTAINER_KINDS, a record's methods and
+        component fields find no owner and the file's ``contains`` tree skips
+        them. (WI-pidos)"""
         rec = _sym(
             "java:R.java:1-5:R:record", "R", "record",
             language="java", path="R.java",
@@ -510,9 +508,9 @@ class TestContainmentLinker:
     def test_edge_confidence(self) -> None:
         """Contains edges derive naming_convention confidence (ADR-0039 R1).
 
-        The old hardcoded 1.0 breached the 0.95 band ceiling and outranked the
-        structurally-certain span_overlap (0.90); the name-parse heuristic now
-        derives 0.85 from the registry and is stamped evidence_derived.
+        The name-parse heuristic derives 0.85 from the registry and is stamped
+        evidence_derived, so it stays below the structurally-certain
+        span_overlap (0.90) and under the 0.95 band ceiling.
         """
         cls = _sym("py:app.py:1-10:User:class", "User", "class")
         method = _sym("py:app.py:3-5:User.save:method", "User.save", "method", start=3, end=5)
@@ -527,7 +525,7 @@ class TestContainmentLinker:
         assert result.edges[0].evidence_type == "naming_convention"
         assert result.edges[0].confidence == 0.85
         assert result.edges[0].confidence_source == "evidence_derived"
-        # Reliability ordering restored: the certain span_overlap outranks it.
+        # Reliability ordering: the certain span_overlap outranks it.
         assert result.edges[0].confidence < 0.90
 
     def test_struct_contains_method(self) -> None:
@@ -711,11 +709,10 @@ class TestContainmentNameCollision:
         assert len(result.edges) == 1
 
     def test_same_file_same_name_classes_disambiguate_by_span(self) -> None:
-        """WI-vakuh: two classes with the SAME name in ONE file — a method
-        links to the class whose span ENCLOSES it, not merely the first
-        same-file candidate. _find_parent previously returned the first
-        same-file match, producing provably-false containments where the
-        method span lies outside the matched class span."""
+        """Two classes with the SAME name in ONE file — a method links to
+        the class whose span ENCLOSES it, not merely the first same-file
+        candidate, which can be a class whose span lies outside the method's
+        and so yield a provably-false containment. (WI-vakuh)"""
         # First _FakeMetadata (a small earlier stub).
         first = _sym(
             "py:t.py:205-207:_FakeMetadata:class", "_FakeMetadata", "class",
@@ -777,7 +774,7 @@ class TestContainmentNameCollision:
     def test_find_parent_multi_same_file_without_span_keeps_legacy_first(
         self,
     ) -> None:
-        """Without a child span, _find_parent keeps the legacy first-match among
+        """Without a child span, _find_parent takes the first match among
         multiple same-file same-name containers — span disambiguation needs the
         child span, which the link_containment callers always supply."""
         a = _sym(
@@ -1017,9 +1014,9 @@ class TestSpanBasedContainment:
         """dispatch:F4 — a file anchor contains a top-level function via span.
 
         A top-level ``def`` carries a bare name, so only Phase-2 span_overlap
-        can root it at its enclosing ``kind="file"`` anchor. Before F4,
-        ``function`` was excluded from CONTAINABLE_KINDS so this edge never
-        landed and the function was a contains-tree orphan."""
+        can root it at its enclosing ``kind="file"`` anchor; this needs
+        ``function`` in CONTAINABLE_KINDS, without which the function is a
+        contains-tree orphan."""
         f = _sym(
             "python:app/util.py:1-50:app/util.py:file",
             "app/util.py", "file", path="app/util.py", start=1, end=50,
@@ -1061,8 +1058,8 @@ class TestSpanBasedContainment:
     def test_dotted_function_name_without_container_roots_at_file(self) -> None:
         """A dotted function name (JS route-handler idiom) whose prefix names
         no container gets no naming edge to a made-up owner, but the file that
-        encloses its span still contains it (span_overlap). It was an orphan:
-        Phase 2 skipped every dotted name, placed by Phase 1 or not."""
+        encloses its span still contains it (span_overlap): Phase 2 serves a
+        dotted name that Phase 1 did not place, so it is not an orphan."""
         handler = _sym(
             "javascript:routes.js:5-9:userController.createUser:function",
             "userController.createUser", "function",
@@ -1087,8 +1084,8 @@ class TestSpanBasedContainment:
         function in ``module A`` ``A.run``; neither namespace nor module is a
         symbol, so Phase 1 finds no owner. The file encloses them, so it
         contains them, as it contains the bare-named declarations beside
-        them (WI-tusad: renaming ``S`` to ``A.S`` cost the struct its file
-        edge)."""
+        them: a namespace-qualified name does not cost a declaration its
+        file edge (WI-tusad)."""
         lean_file = _sym(
             "lean:Demo.lean:1-20:Demo.lean:file", "Demo.lean", "file",
             language="lean", path="Demo.lean", start=1, end=20,
@@ -1614,8 +1611,8 @@ class TestCanonicalNameContainment:
 
     def test_canonical_name_owner_in_another_file_is_refused(self) -> None:
         """An rpc is declared inside its service, so a ``HelloService`` in
-        another file is not its owner, and of two such it used to pick the
-        first. With no owner in the rpc's own file, no edge is emitted."""
+        another file is not its owner, and with two such neither is picked.
+        With no owner in the rpc's own file, no edge is emitted."""
         svc_a = _sym(
             "proto:a.proto:1-20:HelloService:interface",
             "HelloService", "interface", language="proto", path="a.proto",
@@ -1676,11 +1673,10 @@ class TestCanonicalNameContainment:
     def test_cross_language_same_name_no_false_edge(self) -> None:
         """Two classes with the same name in different languages must not link.
 
-        Regression: DEEP bakeoff cohort #6 (forgejo) showed JS Source class
-        (eventsource.sharedworker.js) linked via contains edges to Go LDAP
-        Source struct methods (services/auth/source/ldap/). This was a
-        name-collision bug: _find_parent returned the first candidate when
-        no same-file match existed, ignoring language.
+        Pins that _find_parent, finding no same-file match, refuses to cross
+        a language boundary rather than returning the first same-name
+        candidate — which would link, e.g., a JS ``Source`` class to the
+        methods of a Go ``Source`` struct.
         """
         # Go Source struct and its method
         go_source = _sym(
@@ -1805,11 +1801,11 @@ class TestFindParent:
 
 
 class TestWiSakugFieldContainment:
-    """WI-sakug: fields emitted by the WI-jusus tail (solidity/nim/scala/D) were
-    never rooted because their enclosing type's kind (contract/library/type/
-    object/union) was absent from CONTAINER_KINDS — the container was never
-    indexed, so the dotted-name field found no owner and stayed orphaned
-    (solidity 0% rooted, nim 8%, scala 69%, D 78%)."""
+    """Fields in solidity/nim/scala/D types root at their enclosing type.
+
+    The enclosing type's kind (contract/library/type/object/union) must be in
+    CONTAINER_KINDS: otherwise the container is never indexed, so the
+    dotted-name field finds no owner and stays orphaned. (WI-sakug)"""
 
     def _root(self, kind: str, lang: str, container: str, field: str) -> bool:
         c = _sym(f"{lang}:f.src:1-20:{container}:{kind}", container, kind,
@@ -1843,9 +1839,9 @@ class TestConstructorsAreContained:
     """WI-lozop: a ``constructor``-kind symbol is rooted at its class.
 
     java, dart (and csharp, swift, pony, apex, pascal, solidity) emit their
-    initializers as kind ``constructor``. The kind was not containable, so a
-    class held no ``contains`` edge to its constructor and a construction that
-    lands on the class (java ``instantiates``) reached no initializer.
+    initializers as kind ``constructor``. Unless the kind is containable, a
+    class holds no ``contains`` edge to its constructor and a construction
+    that lands on the class (java ``instantiates``) reaches no initializer.
     """
 
     @staticmethod

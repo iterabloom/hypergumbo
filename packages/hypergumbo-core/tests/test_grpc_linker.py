@@ -268,10 +268,10 @@ class TestTtrpcPatterns:
         ]
 
     def test_go_method_without_span_emits_line_zero(self, tmp_path: Path) -> None:
-        """WI-hafap: a span-less implementing method still gets its
-        implements edge, at the conventional line 0 — the same pin as the
-        caddy/kafka line-zero tests (dropping the edge would delete recall
-        for no reason; crashing was the pre-Optional behavior)."""
+        """A span-less implementing method still gets its implements edge,
+        at the conventional line 0 — the same pin as the caddy/kafka
+        line-zero tests. A missing span must neither drop the edge (losing
+        recall) nor crash the linker (WI-hafap)."""
         from hypergumbo_core.ir import Span, Symbol
         from hypergumbo_core.linkers.grpc import link_grpc
 
@@ -592,7 +592,7 @@ class TestTtrpcPatterns:
 
 
 class TestGrpcTypescriptClientToProtoBinding:
-    """WI-ropoz: TS gRPC client → proto service binding.
+    """TS gRPC client → proto service binding (WI-ropoz).
 
     When a TypeScript file uses ``new FooServiceClient(...)`` and the
     repo contains a ``.proto`` declaring ``service FooService { ... }``
@@ -647,7 +647,7 @@ class TestGrpcTypescriptClientToProtoBinding:
 
     def test_ts_client_fallback_dedupes_cross_package_collision(self, tmp_path: Path) -> None:
         """Two ``.proto`` files declaring the same short-name service
-        force INV-zuhub disambiguation_fallback on the no-impl fallback.
+        force ``disambiguation_fallback`` on the no-impl fallback (INV-zuhub).
 
         Edge gets ``meta['disambiguation_fallback']=True`` and lower
         confidence; resolution stays deterministic-by-id.
@@ -752,7 +752,7 @@ stub = user_pb2_grpc.UserServiceStub(channel)
         result = link_grpc(tmp_path)
 
         # Should create canonical 'calls' edges with meta['protocol']='grpc'
-        # (post WI-vumum-juvil; pre-fold edge_type was 'grpc_calls').
+        # (WI-vumum-juvil).
         grpc_edges = [
             e for e in result.edges
             if e.edge_type == "calls" and e.meta.get("protocol") == "grpc"
@@ -1165,8 +1165,8 @@ class TestGrpcProtoRouteSymbols:
 class TestGrpcServerToServiceBridge:
     """Tests for dispatches_to edges bridging server/servicer to service symbols.
 
-    Canonical 'calls' edges with meta['protocol']='grpc' (post
-    WI-vumum-juvil; pre-fold name was grpc_calls) terminate at
+    Canonical 'calls' edges with meta['protocol']='grpc' (WI-vumum-juvil)
+    terminate at
     grpc_server/grpc_servicer symbols (from Go RegisterXxxServer or
     Python XxxServicer). routes_to edges originate from route symbols
     and target grpc_service symbols (from proto files). Without a
@@ -1341,13 +1341,12 @@ class TestINVZuhubConformanceForServiceLookup:
     the same short name (the containerd-style versioned-monorepo shape:
     ``services/containers/v1/containers.proto`` and
     ``services/containers/v2/containers.proto`` both declare
-    ``service Containers``). The pre-fix single-value
-    ``service_sym_by_name: dict[str, str]`` lookup collapsed them onto
-    whichever file iteration processed last — both routes_to and the
-    server-to-service bridge then pointed every cross-package edge at one
-    surviving service symbol.
+    ``service Containers``). The service lookup therefore keeps every
+    candidate symbol per short name; a single-value lookup would collapse
+    them onto whichever file was processed last, pointing every
+    cross-package routes_to and bridge edge at one surviving service symbol.
 
-    Per INV-zuhub item 1:
+    Resolution rules (INV-zuhub item 1):
 
     - The routes_to lookup has ``rpc.package`` available — when exactly one
       candidate service symbol carries ``meta["proto_package"]`` matching
@@ -1496,8 +1495,8 @@ class TestINVZuhubConformanceForServiceLookup:
         """Two package-less .proto files with same service name → both routes_to fall back.
 
         Without a proto ``package`` declaration, the routes_to lookup has no
-        precision disambiguator and must drop to the INV-zuhub fallback
-        shape. Covers the multi-candidate-no-package-match branch.
+        precision disambiguator and must drop to the disambiguation-fallback
+        shape (INV-zuhub). Covers the multi-candidate-no-package-match branch.
         """
         from hypergumbo_core.linkers.grpc import link_grpc
 
@@ -1795,20 +1794,17 @@ class TestGrpcProtoToGoImplementation:
     def test_same_struct_name_in_multiple_files_resolves_per_file(
         self, tmp_path: Path,
     ) -> None:
-        """WI-kunoz / BUG-05: two Go files each defining ``type service struct``
-        embedding different ``UnimplementedXxxServer`` types must each resolve
-        their methods to their own service's RPCs.
+        """Two Go files each defining ``type service struct`` embedding
+        different ``UnimplementedXxxServer`` types must each resolve their
+        methods to their own service's RPCs (WI-kunoz).
 
-        On containerd, eight plugin packages (containers, content, diff,
-        images, leases, mounts, namespaces, snapshots, tasks) each declare a
+        containerd has this shape: several plugin packages each declare a
         struct literally named ``service`` that embeds the corresponding
-        ``UnimplementedXxxServer``. Pre-fix, ``struct_to_service`` was keyed
-        by short struct name, so all eight collapsed onto whichever file the
-        ``go_server_files`` set happened to iterate last — every
-        ``service.Create`` ended up routed to the same wrong RPC family
-        (Round 08 §8.3 of hg-uat-v4.1.0). Distinctive struct names
-        (controllerService, sandboxService, server) escaped the collision
-        because they were unique across files.
+        ``UnimplementedXxxServer``. ``struct_to_service`` is keyed by
+        ``(file path, struct name)``; keyed by short struct name alone, every
+        ``service`` struct would collapse onto whichever file happened to be
+        processed last, routing every ``service.Create`` to the same wrong
+        RPC family.
 
         Files are written in two subdirectories so the file paths are clearly
         distinct, mirroring the containerd layout.
@@ -2461,7 +2457,7 @@ class TestGrpcUnresolvedEdgeResolution:
 
 
 class TestTransitiveStructEmbedding:
-    """WI-pogus: Go gRPC ttrpc detection walks transitive struct embedding.
+    """Go gRPC ttrpc detection walks transitive struct embedding (WI-pogus).
 
     The Go analyzer encodes embedded structs in ``meta.base_classes``.
     A struct that embeds an in-tree intermediate (e.g. ``BaseFooImpl``
@@ -2650,7 +2646,7 @@ class TestTransitiveStructEmbedding:
         assert len(edges_from_check) == 1
 
     def test_direct_embedding_regression_unaffected(self, tmp_path: Path) -> None:
-        """Direct ttrpc HealthService embedding still works without edges."""
+        """Direct ttrpc HealthService embedding is detected with no extends edges."""
         from hypergumbo_core.ir import Span, Symbol
         from hypergumbo_core.linkers.grpc import link_grpc
 
@@ -2681,11 +2677,9 @@ class TestTransitiveStructEmbedding:
 
 
 class TestATsClientPatternCarriesTheHostFileLanguage:
-    """WI-dovog: ``_scan_ts_file`` labelled every client pattern
-    ``language="typescript"`` whatever the file's extension, so a ``.js`` gRPC
-    client became a typescript symbol. The same emission-path literal as the
-    synthetic-src family, fixed with it; here the node census and the id agree
-    either way, so this never withheld a verdict."""
+    """``_scan_ts_file`` labels each client pattern with the host file's
+    language, derived from its extension, so a ``.js`` gRPC client is a
+    javascript symbol rather than a typescript one (WI-dovog)."""
 
     def test_a_js_client_is_javascript(self) -> None:
         from hypergumbo_core.linkers.grpc import _scan_ts_file
@@ -2703,10 +2697,11 @@ class TestATsClientPatternCarriesTheHostFileLanguage:
 
 
 class TestLinkerMintedSymbolsCarryAStableId:
-    """INV-fufij: the services, servicers and stubs this linker mints carry a
-    language, and the analyzer-side backstop runs before the linkers, so they
-    shipped ``stable_id=None``. Each is minted through
-    ``pass_minted_stable_id``, scoped by the framework role and proto package."""
+    """The services, servicers and stubs this linker mints carry a language,
+    so the analyzer-side stable-id backstop (which runs before the linkers)
+    never reaches them. Each gets its stable id from
+    ``pass_minted_stable_id``, scoped by the framework role and proto
+    package (INV-fufij)."""
 
     def test_services_and_python_mints_hold_distinct_producer_ids(self, tmp_path: Path) -> None:
         from hypergumbo_core.analyze.base import floor_stable_id_key
@@ -2745,12 +2740,12 @@ class TestLinkerMintedSymbolsCarryAStableId:
 
 
 class TestIdSlotsMatchTheNode:
-    """WI-fotad: ADR-0036 Ruling 2 (the kind slot is ``node.kind``) and the
-    language-slot rule (``discovery_language or language``). The linker minted
-    ``grpc:<path>:<line>:<Service>:grpc_service``: a framework role in the kind
-    slot and a protocol name in the language slot. The role stays in
-    ``meta.framework_role`` and, as the websocket linker does (INV-dulah), as
-    a name-segment suffix so two roles at one line keep distinct ids."""
+    """Minted ids follow ADR-0036 Ruling 2 (the kind slot is ``node.kind``)
+    and the language-slot rule (``discovery_language or language``) -- not a
+    ``grpc`` protocol name in the language slot or a framework role in the
+    kind slot. The role lives in ``meta.framework_role`` and, as in the
+    websocket linker (INV-dulah), as a name-segment suffix so two roles at
+    one line keep distinct ids (WI-fotad)."""
 
     def test_every_minted_id_round_trips_to_its_node(self, tmp_path: Path) -> None:
         from hypergumbo_core.linkers.grpc import link_grpc

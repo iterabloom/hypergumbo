@@ -56,10 +56,9 @@ def _has_sentence_transformers() -> bool:
     during test collection causes OOM on small CI runners.
     CI can optionally install sentence-transformers in a separate step.
 
-    The weights are part of the precondition since INV-gujus: analysis never
-    downloads a model, so with the library but no weights these tests would
-    exercise the degraded path, not the one they are about. (Before, they
-    downloaded both models from huggingface.co in the middle of the run.)
+    The cached weights are part of the precondition: analysis never
+    downloads a model (INV-gujus), so with the library but no weights these
+    tests would exercise the degraded path, not the one they are about.
     """
     try:
         import sentence_transformers
@@ -671,12 +670,9 @@ class TestGenerateSketch:
     def test_many_directories(self, tmp_path: Path) -> None:
         """Sketch handles projects with many directories.
 
-        Each directory holds a file. The Structure tree summarizes the
-        survey's file universe, cold or warm (INV-jumim), so a directory
-        with nothing in it is not part of that universe. This test made 15
-        EMPTY directories while a cold sketch still re-walked the working
-        tree, and a warm run of the same test would already have printed no
-        directories at all.
+        Each directory holds a file because the Structure tree summarizes
+        the survey's file universe, cold or warm (INV-jumim), and a
+        directory with nothing in it is not part of that universe.
         """
         for i in range(15):
             (tmp_path / f"dir_{i:02d}").mkdir()
@@ -699,23 +695,11 @@ class TestGenerateSketch:
         which ranks files by importance and collapses the rest — so these labels
         are structurally unreachable there, for real repositories always.
 
-        This fixture used to say ``print('hello')``, which reached the labelled
-        renderer only because Python emitted NO edge for a bare builtin call
-        (INV-foluz). Fixing that gave the one-line fixture an in-degree and
-        flipped it to the other renderer.
-
-        MEASURED ACROSS THAT FIX, five bodies, both arms — exactly one moved::
-
-            VERSION = '1.0'      map        -> map
-            x = 1                map        -> map
-            def f(): pass        map        -> map
-            print('hello')       LABELLED   -> map      <- the only change
-            (empty)              LABELLED   -> LABELLED
-
-        A comment-only body was then confirmed LABELLED in both arms before
-        being adopted here, rather than assumed: two earlier candidates
-        (``VERSION = '1.0'`` and ``x = 1``) look inert and are not — a
-        module-level assignment defines a symbol.
+        Bodies that look inert are not: ``VERSION = '1.0'``, ``x = 1`` and
+        ``def f(): pass`` each define a symbol, and ``print('hello')`` emits a
+        call edge for the builtin call (INV-foluz), so all of them take the
+        map-driven tree. A comment-only body (like an empty file) stays on the
+        labelled renderer.
         """
         (tmp_path / "lib").mkdir()
         (tmp_path / "test").mkdir()
@@ -1113,9 +1097,10 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_blockquote_note_in_paragraph(self, tmp_path: Path) -> None:
         """INV-modor: a '> ' blockquote note (a callout/aside) that continues a
-        paragraph is skipped, not embedded raw with its markdown prefix. Before
-        the fix the '> ' prefix leaked into readme_description and the cut landed
-        mid-blockquote; skipping the aside leaves a clean, complete sentence."""
+        paragraph is skipped, not embedded raw with its markdown prefix.
+        Embedding it would leak the '> ' prefix into readme_description and
+        could cut mid-blockquote; skipping the aside leaves a clean, complete
+        sentence."""
         from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text(
@@ -2184,9 +2169,8 @@ class TestFormatAdditionalFiles:
 
         ``read_text(errors="replace")`` only substitutes *invalid* encoding
         sequences; U+0000 is a valid code point, so a binary file's NULs pass
-        through verbatim. Before the fix a cold-cache ``sketch -t 4000`` emitted
-        12,792 NUL bytes into the rendered section. The file is now omitted with
-        an explanatory placeholder instead, at any token budget.
+        through verbatim, so such a file is omitted with an explanatory
+        placeholder instead, at any token budget.
         """
         text_file = tmp_path / "GUIDE.md"
         text_file.write_text("# Guide\n\nReal readable documentation content.\n")
@@ -3045,13 +3029,12 @@ class TestFormatEntrypoints:
 
 
 class TestEntrypointSectionBudget:
-    """INV-liraj follow-through: the Entry Points section stays inside its budget.
+    """The Entry Points section stays inside its budget (INV-liraj).
 
-    ``max_entries`` used to cap each display GROUP, so a repo with hundreds
-    of routes AND hundreds of library exports printed max_entries of each
-    (thc: 57 + 57 + more — 22.7k of a 31.7k-char sketch). It is now one
-    budget shared across groups: small groups are shown whole and the rest
-    is split evenly among the large ones.
+    ``max_entries`` is one budget shared across display groups rather than a
+    cap per group, so a repo with hundreds of routes AND hundreds of library
+    exports cannot print max_entries of each. Small groups are shown whole
+    and the rest is split evenly among the large ones.
     """
 
     @staticmethod
@@ -3107,8 +3090,8 @@ class TestRouteMarkerEntryLine:
     """A route marker's line names its handler instead of repeating itself.
 
     A route marker is named after the route ("GET /feed") and its entrypoint
-    label is "HTTP GET /feed", so the old line said the route twice and never
-    said what serves it.
+    label is "HTTP GET /feed", so a line built from those alone would say
+    the route twice and never say what serves it.
     """
 
     def _render(self, tmp_path: Path, meta: dict) -> str:
@@ -3511,9 +3494,8 @@ class TestFormatSymbols:
         """Symbols on /db/migrate/ or /migrations/ paths are dampened (WI-lidum).
 
         Aligns sketch._format_symbols' dampener stack with rank_symbols.
-        Without noise dampening, a high-centrality migration class can
-        outrank a less-central first-party class — django's ModelState
-        produced this exact failure mode in the WI-lidum 6-repo audit.
+        Without noise dampening, a high-centrality migration class (e.g.
+        django's ModelState) can outrank a less-central first-party class.
         """
         repo_root = Path("/fake/repo")
         # High-raw-centrality migration class
@@ -3553,9 +3535,9 @@ class TestFormatSymbols:
     def test_generated_code_dampener_demotes_openapi_models(self) -> None:
         """Symbols flagged is_generated_file are dampened (WI-lidum).
 
-        kserve's V1beta1 OpenAPI model classes produced 42 of the top-100
-        sketch entries before this dampener was applied; this test pins
-        the fix.
+        Without it, generated OpenAPI model classes (e.g. kserve's
+        V1beta1* models) can crowd hand-written classes out of the top
+        entries.
         """
         repo_root = Path("/fake/repo")
         # High-raw-centrality generated class
@@ -3643,8 +3625,8 @@ class TestFormatSymbols:
         distinct files (uncapped at 6 each = 6). Without the parameter,
         A wins on raw in-degree; with the parameter, B wins.
 
-        This is the parameter that fixes the WI-lidum-cited 'createYAMLNode
-        called 46 times from 1 file' inflation pattern.
+        The cap stops a symbol called many times from one file (e.g.
+        createYAMLNode) from inflating its centrality (WI-lidum).
         """
         repo_root = Path("/fake/repo")
         long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
@@ -4020,10 +4002,9 @@ class TestGenerateSketchWithBudget:
     def test_minimum_key_symbols_guarantee(self, tmp_path: Path) -> None:
         """Key Symbols section appears even with tight budget for large projects.
 
-        Issue: Some projects (qwix, marlin, guacamole-client) had 0 Key Symbols
-        at 1k budget because budget was exhausted before reaching symbols section.
-
-        The fix guarantees at least MIN_KEY_SYMBOLS (5) appear regardless of budget.
+        On a large project the earlier sections can exhaust a 1k budget before
+        the symbols section is reached, so at least MIN_KEY_SYMBOLS (5) appear
+        regardless of budget.
         """
         # Create a project that consumes budget with structure/config
         # but still has analyzable Python code
@@ -4043,8 +4024,8 @@ class TestGenerateSketchWithBudget:
         (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
         (tmp_path / "README.md").write_text("# Test Project\n\nA test project.\n")
 
-        # Even at 1k budget (which previously caused 0 Key Symbols),
-        # we should now get at least 5 symbols
+        # Even at 1k budget we should get at least MIN_KEY_SYMBOLS (5)
+        # symbols
         sketch = generate_sketch(tmp_path, max_tokens=1000)
 
         assert "## Key Symbols" in sketch, "Key Symbols section should always appear"
@@ -4473,10 +4454,10 @@ class TestExcludeTests:
     ) -> None:
         """exclude_tests shows correct counts for markdown-only repos.
 
-        Regression test for a bug where repos with non-source files (markdown,
-        JSON, YAML) showed "0 files" and "~0 LOC" when using -x flag because
-        _format_language_stats was recalculating totals from an empty
-        filtered_source_files list instead of using the profile's counts.
+        With -x, _format_language_stats takes totals from the profile's
+        counts, not from the filtered source-file list, which is empty for a
+        repo of non-source files (markdown, JSON, YAML) and would report
+        "0 files" and "~0 LOC".
         """
         from hypergumbo_core.profile import RepoProfile, LanguageStats
 
@@ -5460,7 +5441,7 @@ license = "GPL-3.0"
     ) -> None:
         """WI-gojuz: license aggregation reports every distinct license present,
         including per-package LICENSE files in a monorepo — not just the first
-        root file (which collapsed a dual-licensed AGPL+MPL repo to AGPL alone).
+        root file, so a dual-licensed AGPL+MPL repo reports both.
         """
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
@@ -5715,7 +5696,7 @@ gem "puma"
 
         # Root manifest still present.
         assert "root-umbrella" in result
-        # Sub-package identity now surfaced, each with its path prefix.
+        # Sub-package identity is surfaced, each with its path prefix.
         assert "packages/core/pyproject.toml" in result
         assert "acme-core" in result
         assert "packages/web-app/package.json" in result
@@ -6663,10 +6644,11 @@ class TestAnalyzeTestFiles:
 class TestTestFrameworkDetectionDeterminism:
     """WI-vosag: the framework sample must not depend on set/walk order.
 
-    The original code built the glob list from a ``set`` (per-process str
-    hash order), walked pattern by pattern and detected frameworks from the
-    FIRST 20 test files of that order — so on one repo the Tests line named
-    vitest on one run and nothing on the next.
+    A glob list built from a ``set`` follows per-process str hash order, and
+    a sample of the first N test files in walk order can miss a framework
+    entirely, so the Tests line could name vitest on one run and nothing on
+    the next. The patterns are sorted and the sample is stratified by
+    (extension, top-level dir).
     """
 
     def test_find_files_receives_sorted_patterns(
@@ -6691,8 +6673,8 @@ class TestTestFrameworkDetectionDeterminism:
     ) -> None:
         """A lone vitest file after 30 framework-less files is still sampled.
 
-        The walk order is forced adversarial (the minority file last); the
-        old first-20 sample missed it, the stratified sample cannot.
+        The walk order is forced adversarial (the minority file last); a
+        first-20 sample would miss it, the stratified sample cannot.
         """
         import hypergumbo_core.sketch as sketch_mod
 
@@ -7327,9 +7309,8 @@ class TestEstimateTestCoverage:
 
     def test_inv_gifoh_only_calls_edges_widen_reach(self) -> None:
         """INV-gifoh: non-`calls` edges (references, inherits, imports) do NOT
-        contribute to transitive reach. Pre-fix, sketch passed all edges to the
-        BFS which inflated coverage by ~34 points on self-analysis vs the
-        test-coverage subcommand.
+        contribute to transitive reach. Following them would inflate sketch
+        coverage above the test-coverage subcommand's figure.
         """
         test_sym = Symbol(
             id="t1", name="test_x", kind="function", language="python",
@@ -7385,10 +7366,9 @@ class TestEstimateTestCoverage:
     def test_inv_gifoh_sketch_and_cli_methodologies_agree(self) -> None:
         """INV-gifoh: `_estimate_test_coverage` (sketch) and the test-coverage
         subcommand's internal coverage calculation must produce the same
-        (tested, total, pct) on the same Symbol+Edge input. Previously they
-        diverged on hypergumbo's self-analysis (58.2% vs 92%) because sketch
-        included non-`calls` edges in transitive reach and missed concept-
-        tagged tests.
+        (tested, total, pct) on the same Symbol+Edge input. That requires both
+        to widen transitive reach over `calls` edges only and both to count
+        concept-tagged tests as tests.
         """
         # Fixture: one test (tests/), one prop-test in src/ (concept-tagged),
         # three production functions, one inherits edge (should NOT count),
@@ -7945,7 +7925,8 @@ class TestCachedResults:
 
     def test_frameworks_section_lists_each_framework_once(self, tmp_path: Path) -> None:
         """INV-vapov: a framework two ecosystems detect (hardhat: JS + Solidity;
-        ktor: Kotlin + Gradle) appeared twice in the sketch's Frameworks section."""
+        ktor: Kotlin + Gradle) is listed once in the sketch's Frameworks
+        section, not once per ecosystem."""
         (tmp_path / "package.json").write_text(
             '{"name": "x", "dependencies": {"hardhat": "^2.0.0", "ethers": "^6.0.0"}}'
         )
@@ -8115,16 +8096,16 @@ class TestRequireSections:
     def test_require_section_survives_base_overflow(self, tmp_path: Path) -> None:
         """Required sections render even when max_tokens <= base_tokens.
 
-        Per WI-nakam (UAT 2026-04-13 BUG-05): the previous early-return
-        at ``max_tokens <= base_tokens`` truncated the base sketch and
-        skipped all extended sections regardless of --require-section,
-        which is the exact case the flag exists to handle. This test
-        forces the early-return scenario (large README -> large base
-        sketch) and asserts Key Symbols still appears when required.
+        When ``max_tokens <= base_tokens`` the base sketch alone overflows
+        the budget, which is the exact case --require-section exists to
+        handle, so required sections must not be skipped along with the
+        other extended sections (WI-nakam). This test forces that scenario
+        (large README -> large base sketch) and asserts Key Symbols still
+        appears when required.
         """
         # Large README + config files produce a large base section that
-        # exceeds the 500-token budget. Without the fix, Key Symbols is
-        # dropped; with the fix it appears because it's required.
+        # exceeds the 500-token budget. On budget alone Key Symbols would
+        # be dropped; it appears because it's required.
         big_readme = "# Test project\n\n" + ("Lorem ipsum dolor sit amet. " * 200)
         (tmp_path / "README.md").write_text(big_readme)
         (tmp_path / "pyproject.toml").write_text(
@@ -8192,9 +8173,9 @@ class TestRequireSections:
     def test_markdown_content_headings_do_not_bleed(self, tmp_path: Path) -> None:
         """Markdown content rendered in Additional Files Content must not
         produce H1/H2 headings that compete with hypergumbo's structural
-        sections (WI-bilul / UAT BUG-06).
+        sections (WI-bilul).
 
-        The README has '## Installation', '## Usage', etc. After fix, the
+        The README has '## Installation', '## Usage', etc. The
         sketch must NOT contain any '## Installation' style line at the
         structural-H2 level — markdown content headings should be demoted
         so they are clearly subordinate to the tool's own H2 sections.
@@ -8213,8 +8194,8 @@ class TestRequireSections:
         sketch = generate_sketch(tmp_path, max_tokens=8000, with_source=True)
 
         # Bleeding headings would appear as standalone '## Installation' etc.
-        # at the start of a line. After the demote fix they should appear at
-        # ## level 4+ (e.g. '#### Installation').
+        # at the start of a line. Demoted, they should appear at
+        # level 4+ (e.g. '#### Installation').
         sketch_lines = set(sketch.split("\n"))
         for bleed_heading in (
             "## Installation",
@@ -8837,14 +8818,11 @@ class TestRepoFingerprint:
         # Get initial state hash
         hash1 = _get_repo_state_hash(tmp_path)
 
-        # Modify an ANALYZED file. This used to modify test.txt, which
-        # worked only because the fingerprint derived its file set from
-        # `git status` and therefore counted every dirty file regardless of
-        # whether an analyzer would ever read it. `git status` was removed
-        # because it executes programs the target repo controls (see
-        # test_repo_fingerprint.TestNoCodeExecutionFromTargetRepo), and the
-        # file set is now the analyzer-input allowlist. A .txt change no
-        # longer invalidating is CORRECT — it cannot change any analysis
+        # Modify an ANALYZED file. The fingerprint's file set is the
+        # analyzer-input allowlist, not a `git status` dirty set (`git status`
+        # executes programs the target repo controls; see
+        # test_repo_fingerprint.TestNoCodeExecutionFromTargetRepo). A .txt
+        # change not invalidating is CORRECT — it cannot change any analysis
         # output — and is pinned as intended behaviour just below.
         (tmp_path / "mod.py").write_text("print('modified content')\n")
 
@@ -8915,7 +8893,7 @@ class TestRepoFingerprint:
 
         # Modify an ANALYZED file — see the note in
         # test_state_hash_changes_with_file_modifications for why this is a
-        # .py file now rather than test.txt.
+        # .py file rather than a .txt file.
         (tmp_path / "mod.py").write_text("print('modified')\n")
 
         # Results cache should be different directory
@@ -8930,8 +8908,8 @@ class TestRepoFingerprint:
     def test_results_cache_dir_per_resolved_backend_set(self, tmp_path: Path, monkeypatch) -> None:
         """WI-givib: a tree-sitter-only run and a two-arm run of ONE tree land in
         different cache dirs; the same set twice hits the same dir; the
-        tree-sitter-only dir is the unsuffixed state hash, so every cache
-        entry written before this change stays reachable."""
+        tree-sitter-only dir is the unsuffixed state hash, so existing
+        tree-sitter-only cache entries stay reachable."""
         import hypergumbo_core.backend_selection as selection
         from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
 
@@ -9229,9 +9207,9 @@ class TestStModelOfflineFirst:
         st_cls.assert_called_once_with("model-name", local_files_only=True)
 
     def test_a_cache_miss_raises_without_a_network_attempt(self) -> None:
-        """INV-gujus: a local-only miss is the end. It used to fall through to
-        a network-allowing load; the second construction is what made the
-        first sketch download both models."""
+        """INV-gujus: a local-only miss is the end. There is no second,
+        network-allowing construction, which would make the first sketch
+        download both models."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
             EmbeddingsUnavailable,
@@ -9349,10 +9327,9 @@ class TestHfOfflineBeforeImport:
     huggingface_hub reads its offline switch into a module constant
     (``huggingface_hub.constants.HF_HUB_OFFLINE``) at IMPORT time, NOT live
     from ``os.environ`` — so setting the env var after ``from
-    sentence_transformers import ...`` (as the earlier fix did) was too late
-    and the cached-model load still hit the network. The guard here sets the
-    env var before any HF import, gated on every embedding model already being
-    cached so the one-time first-install download is unaffected.
+    sentence_transformers import ...`` is too late and the cached-model load
+    still hits the network. The guard here sets the env var before any HF
+    import, unconditionally: analysis never downloads a model (INV-gujus).
     """
 
     @staticmethod
@@ -9411,8 +9388,7 @@ class TestHfOfflineBeforeImport:
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """INV-gujus: analysis never downloads, so a partial cache is no
-        reason to leave the HF Hub reachable. This used to assert the
-        opposite, to keep the runtime download the claim forbids possible."""
+        reason to leave the HF Hub reachable."""
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
             _EMBEDDING_MODEL,
@@ -9443,8 +9419,8 @@ class TestHfOfflineBeforeImport:
         self, tmp_path, monkeypatch: pytest.MonkeyPatch, value: str,
     ) -> None:
         """huggingface_hub reads only 1/ON/YES/TRUE as offline, so honouring
-        HF_HUB_OFFLINE=0 left a plain sketch contacting the hub (one connect
-        to the configured endpoint under strace) despite runtime-cli-no-network."""
+        HF_HUB_OFFLINE=0 would leave a plain sketch contacting the hub despite
+        runtime-cli-no-network; the guard replaces such a value with 1."""
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
         )
@@ -9507,7 +9483,7 @@ class TestHfOfflineBeforeImport:
 
         This must run in a subprocess: the pytest process already imported
         huggingface_hub (under the conftest's HF_HUB_OFFLINE=1), so its module
-        constant is frozen and the in-process value cannot exercise the fix.
+        constant is frozen and the in-process value cannot exercise the guard.
         """
         import subprocess
         import sys
@@ -9542,9 +9518,8 @@ class TestHfOfflineBeforeImport:
     def test_subprocess_import_time_constant_true_even_when_uncached(
         self, tmp_path
     ) -> None:
-        """INV-gujus: nothing cached is no longer a reason to leave the HF Hub
-        reachable at import time -- analysis never downloads. This asserted
-        False|False while the runtime still made the first-install download."""
+        """INV-gujus: nothing cached is not a reason to leave the HF Hub
+        reachable at import time either -- analysis never downloads."""
         import subprocess
         import sys
 
@@ -9612,7 +9587,7 @@ class TestConfigFilesNoLockFiles:
 class TestConfigExtractionFallbackWarning:
     """Embedding/hybrid modes must visibly degrade to heuristic when the
     embedding stack is unavailable, instead of silently producing
-    heuristic-mode output (UAT 2026-04-13 DQ-07).
+    heuristic-mode output (WI-fumap).
     """
 
     def _reset_warning_flag(self) -> None:
@@ -9765,9 +9740,9 @@ class TestConfigExtractionFallbackWarning:
 def test_language_stats_count_own_code_only(tmp_path: Path) -> None:
     """WI-kojul / ADR-0004 3a: the Overview counts tiers 1-2 only.
 
-    The 2026-10-14 self-sketch said "Python (62%), C (26%)" because of
-    305,712 lines of vendored, generated tree-sitter C. Vendored code is
-    still analysed; it just does not describe the project.
+    Counting vendored code (e.g. a vendored, generated tree-sitter C
+    parser) would let it dominate the language mix. Vendored code is still
+    analysed; it just does not describe the project.
     """
     from hypergumbo_core.profile import LanguageStats, RepoProfile
     from hypergumbo_core.sketch import _format_language_stats

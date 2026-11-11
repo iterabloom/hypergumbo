@@ -622,9 +622,8 @@ class TestCompressedReadIntegration:
 
         Interface methods accumulate dispatches_to edges (one per concrete
         implementation) that look like high out-degree but aren't actual
-        function calls.  prometheus genericSeriesSet.Err (1 line, in=222)
-        had out=20 from dispatches_to edges, passing _MIN_OUT_DEGREE=3 and
-        getting selected as a seed over real domain functions.
+        function calls.  Counting them would let a one-line interface stub
+        clear _MIN_OUT_DEGREE and outrank real domain functions as a seed.
         """
         data = {
             "nodes": [
@@ -679,14 +678,13 @@ class TestCompressedReadIntegration:
     def test_pick_reverse_slice_seeds_warns_on_suspicious_hub(
         self, tmp_path: Path, capsys,
     ) -> None:
-        """WI-gapom: defensive warning when a picked seed has prod_in_degree > 1000.
+        """Defensive warning when a picked seed has prod_in_degree > 1000.
 
-        After WI-fuhaj/WI-jopar removed the underlying short-name collision
-        bugs that produced 6054-edge POJO hubs on Kafka, the rslice seed
-        picker should still surface a stderr warning when any picked seed
-        has an unusually high production in-degree. This catches both (a)
-        legitimate framework hubs and (b) any future name-collision artifact
-        that slips past the analyzer fixes.
+        The rslice seed picker surfaces a stderr warning when any picked
+        seed has an unusually high production in-degree. Such a seed is
+        either (a) a legitimate framework hub or (b) a short-name collision
+        artifact from the analyzer, and either way it is worth investigating
+        before trusting the reverse slice (WI-gapom).
         """
         # Build a fixture with one hub node receiving 1500 prod calls plus
         # enough out-degree to pass the _MIN_OUT_DEGREE filter, so the picker
@@ -742,10 +740,10 @@ class TestCompressedReadIntegration:
     def test_pick_reverse_slice_seeds_no_warning_for_normal_hub(
         self, tmp_path: Path, capsys,
     ) -> None:
-        """WI-gapom: no spurious warning for ordinary domain hubs.
+        """No spurious high-in-degree warning for ordinary domain hubs.
 
         A function with prod_in_degree well below the threshold (e.g., 50)
-        must NOT trigger the WI-gapom warning even though it qualifies as
+        must NOT trigger the hub warning even though it qualifies as
         a seed candidate. This guards against the warning becoming noise.
         """
         nodes = [
@@ -801,11 +799,12 @@ class TestCompressedReadIntegration:
 
 
 class TestTestPathRegex:
-    """Tests for _is_test_path (the analyzer's own predicate since WI-dibuf).
+    """Tests for _is_test_path, which delegates to hypergumbo's own path predicate.
 
-    Regression: DEEP bakeoff assessments showed rslice seed selection picking
-    test functions because paths like 'test/helpers/governance.js' (no leading
-    slash) and 'testonly/mock_evm.rs' slipped through the regex.
+    rslice seed selection relies on it to exclude test functions, so these
+    pin path shapes that are easy to miss: a path-initial 'test/' with no
+    leading slash, Rust 'testonly/' directories, and non-test files whose
+    names merely contain 'test' (WI-dibuf).
     """
 
     def test_filters_test_dir_path_initial(self) -> None:
@@ -874,12 +873,11 @@ class TestTestPathRegex:
 class TestQualityThresholds:
     """Tests for QUALITY_THRESHOLDS values.
 
-    WI-hulak: 9 of 21 WARN repos were false positives from thresholds
-    set too tight for formal methods repos (pure first-party, small
-    focused, highly-connected). Human approved raising:
-    - tier1_pct good_max: 95 → 98 (pure first-party repos)
-    - slice_coverage_pct good_max: 10 → 20 (small focused repos)
-    - avg_slice_nodes good_max: 500 → 2000 (highly-connected repos)
+    The good_max ceilings must be loose enough not to WARN on legitimate
+    repo shapes (WI-hulak):
+    - tier1_pct good_max >= 98 (pure first-party repos)
+    - slice_coverage_pct good_max >= 20 (small focused repos)
+    - avg_slice_nodes good_max >= 2000 (highly-connected repos)
     """
 
     def test_tier1_pct_good_max_accommodates_pure_first_party(self) -> None:

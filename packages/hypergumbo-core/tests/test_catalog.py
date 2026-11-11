@@ -322,8 +322,7 @@ class TestCatalogMethods:
 
 
 # ---------------------------------------------------------------------------
-# WI-dilab: Pass.depends_on CNF substrate + validators
-# (Migrated from WI-hupaz's flat-list shape; same intent, richer semantics.)
+# Pass.depends_on CNF substrate + validators (WI-dilab)
 # ---------------------------------------------------------------------------
 
 
@@ -401,7 +400,7 @@ class TestValidatePassNameResolution:
         """``[[]]`` is an OR of nothing: a clause no active set can satisfy.
 
         It is not the outer ``[]`` (no declared dependency), which stays legal.
-        The runtime readers disagreed about it -- the falsification audit
+        The runtime readers treat it differently -- the falsification audit
         reports it, ``prerequisite_absent_clauses`` skips it -- so it is
         refused here, before either can see it.
         """
@@ -432,18 +431,15 @@ class TestValidatePassNameResolution:
 class TestCatalogStaticConsistency:
     """get_default_catalog() must pass validate_pass_name_resolution().
 
-    WI-jijor: this assertion was a CONTROL THAT COULD NOT FAIL. Linker modules
-    register via ``@register_linker`` import side-effects, and this class sits
-    ABOVE the one class in this file that imports them — so run in isolation
-    (or first in file order) the catalog held 118 analyzers, **zero** of which
-    declare ``depends_on``, and the validator passed over 0 conjuncts. Whether
-    it validated 73 clauses or nothing at all depended on which other test
-    module had happened to import ``hypergumbo_core.cli`` first.
-
-    Fixed by importing the linkers here and PINNING THE AIM, not just the
-    volume: a floor alone catches an EMPTY instrument but not a MIS-AIMED one
-    (LIVE.md §1.4), so the test also names a specific declaration it must have
-    actually seen.
+    Linker modules register via ``@register_linker`` import side effects. Until
+    something imports ``hypergumbo_core.cli``, the catalog holds only analyzers,
+    none of which declare ``depends_on``, and the validator passes vacuously
+    over zero conjuncts -- so the result would depend on which test module
+    happened to import ``cli`` first. ``_full_catalog`` therefore imports the
+    linkers itself, and the tests pin the AIM as well as the volume: a floor
+    alone catches an EMPTY instrument but not a MIS-AIMED one (LIVE.md §1.4),
+    so one test also names a specific declaration it must have actually seen.
+    (WI-jijor)
     """
 
     def _full_catalog(self) -> Catalog:
@@ -641,8 +637,8 @@ class TestBridgeLinkerDependsOnPopulated:
         assert p.depends_on == [["swift"], ["objc"]]
 
 
-#: WI-zujan. The exact phrase a Bridge/Framework/Protocol linker must carry in
-#: its module docstring to be allowed an EMPTY ``depends_on``. A phrase rather
+#: The exact phrase a Bridge/Framework/Protocol linker must carry in its
+#: module docstring to be allowed an EMPTY ``depends_on`` (WI-zujan). A phrase rather
 #: than a flag or an allowlist, because the justification has to live next to
 #: the code it justifies -- an allowlist in the test drifts away from the linker
 #: and is satisfied by adding a name, which is the thing being prevented.
@@ -660,8 +656,8 @@ class TestINVHujogClosureCriterion:
     def _linkers_registered(self) -> None:
         """Linkers register when ``cli`` is imported, and several tests here
         build the catalog before any helper imports it. Run alone (one xdist
-        worker, no earlier test importing ``cli``), the catalog came back with
-        no linkers and ``test_the_allowance_is_actually_exercised`` failed."""
+        worker, no earlier test importing ``cli``), the catalog would otherwise
+        hold no linkers."""
         import hypergumbo_core.cli
 
     def _all_linkers_with_subcategory(self) -> dict[str, str]:
@@ -716,21 +712,19 @@ class TestINVHujogClosureCriterion:
     def test_every_bridge_framework_protocol_linker_has_non_empty_depends_on(self) -> None:
         """...unless it PROVABLY consumes no pass output and says so (WI-zujan).
 
-        The criterion was written on the premise that a Bridge/Framework/
-        Protocol linker always reads some analyzer's output, and for almost all
-        of them that holds. ``message-queue-linker`` falsifies the premise: its
-        entry point is ``link_message_queues(root: Path)``, it scans the tree
-        itself and mints BOTH ENDS of every edge, so there is no pass to name.
-        Forcing a non-empty clause there does not make the declaration true --
-        it makes it a list of passes the linker never reads, which is the
-        too-wide, false-all-clear shape WI-ditir and WI-zujan exist to remove.
+        Almost every Bridge/Framework/Protocol linker reads some analyzer's
+        output, but not all. ``message-queue-linker``'s entry point is
+        ``link_message_queues(root: Path)``: it scans the tree itself and mints
+        BOTH ENDS of every edge, so there is no pass to name. Forcing a
+        non-empty clause there would not make the declaration true -- it would
+        list passes the linker never reads, a too-wide declaration that gives a
+        false all-clear (WI-ditir).
 
         So the allowance is narrow and POSITIVE: the module docstring must say,
         in the exact words of ``_EMPTY_DEPENDS_ON_DECLARATION``, why the clause
         is empty. Silence plus an empty clause is still an offence, because
         silence is indistinguishable from having forgotten to declare -- which
-        is the case the criterion exists to catch. Owner ruled this amendment
-        2026-09-22 after being shown the collision.
+        is the case the criterion exists to catch.
         """
         offenders = self._empty_depends_on_offenders()
         assert not offenders, (
@@ -800,7 +794,7 @@ class TestSyntheticPassIds:
             "boundary_external_symbol_synthesis",
             "scip",
         })
-        # The stale 'inheritance' phantom was dropped (zero producers).
+        # 'inheritance' has no producer, so it is not a synthetic pass id.
         assert "inheritance" not in _SYNTHETIC_PASS_IDS
 
     def test_synthetic_pass_ids_are_known_pass_ids(self) -> None:
@@ -817,7 +811,7 @@ class TestSyntheticPassIds:
         assert not hasattr(cat, "_SYNTHESIS_MECHANISMS")
 
     def test_known_pass_ids_include_divergent_linker_emitted_pass_id(self) -> None:
-        """WI-gobip: a linker's EMITTED pass_id (its module-level ``PASS_ID``)
+        """A linker's EMITTED pass_id (its module-level ``PASS_ID``)
         can diverge from its registration name — the view_template family
         registers under ``view_template`` / ``view_template_phoenix`` / … but all
         EMIT ``view-template-linker`` via ``_view_template_core.PASS_ID``. The
@@ -825,7 +819,8 @@ class TestSyntheticPassIds:
         ``Edge.origin`` / ``AnalysisRun.pass_id``), so ``all_known_pass_ids()``
         must include it, or every view-template edge/symbol trips
         axis_conformance. Non-divergent linkers add nothing new (``make_pass_id``
-        is identity, so their emitted pass_id equals their registration name)."""
+        is identity, so their emitted pass_id equals their registration name).
+        (WI-gobip)"""
         import hypergumbo_core.cli  # registers linkers (import side effect)
         from hypergumbo_core.catalog import all_known_pass_ids
 
@@ -833,14 +828,15 @@ class TestSyntheticPassIds:
         assert "view-template-linker" in known
 
     def test_known_languages_include_taxonomy_languages(self) -> None:
-        """WI-kunut: the language axis catalog is analyzer/linker languages UNION
-        the taxonomy's recognized LanguageSpecs. Discovery and the orchestrator
+        """The language axis catalog is analyzer/linker languages UNION the
+        taxonomy's recognized LanguageSpecs. Discovery and the orchestrator
         file-anchor synthesis label file nodes with taxonomy languages (a
         ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that have a
-        LanguageSpec but no dedicated ``@register_analyzer`` — so they were
-        absent from the registration-only catalog and every such file-anchor
-        tripped axis_conformance. ``all_known_languages()`` now unions the
-        taxonomy names, so the catalog is the complete recognized-language set."""
+        LanguageSpec but no dedicated ``@register_analyzer``; a
+        registration-only catalog would miss them and every such file anchor
+        would trip axis_conformance. ``all_known_languages()`` unions the
+        taxonomy names, so the catalog is the complete recognized-language set.
+        (WI-kunut)"""
         from hypergumbo_core.catalog import all_known_languages
 
         known = all_known_languages()
@@ -848,12 +844,12 @@ class TestSyntheticPassIds:
         assert "makefile" in known
 
     def test_known_languages_include_rails_view_templates(self) -> None:
-        """WI-novob: erb/haml/slim are Rails view-template languages that the
+        """erb/haml/slim are Rails view-template languages that the
         view-template linker stamps as ``Symbol.language`` (``.html.erb`` →
-        ``erb``), but they had no ``@register_analyzer`` and no LanguageSpec,
-        so every such file-anchor tripped axis_conformance (19 on chatwoot).
-        Registered as taxonomy LanguageSpecs (human ruling: roles=CONFIG, like
-        html), so the language-axis catalog now recognizes them."""
+        ``erb``). They have no ``@register_analyzer``; they are taxonomy
+        LanguageSpecs (roles=CONFIG, like html), which is how the language-axis
+        catalog recognizes them -- otherwise every such file anchor would trip
+        axis_conformance. (WI-novob)"""
         from hypergumbo_core.catalog import all_known_languages
 
         known = all_known_languages()
@@ -863,10 +859,9 @@ class TestSyntheticPassIds:
 
 
 class TestFindFalsifiedDependencies:
-    """WI-jijor / ADR-0056 W1: the CNF predicate read after the run.
+    """The CNF predicate read after the run (WI-jijor / ADR-0056 W1).
 
-    A pre-run gate would ask "may these passes run together?" and RAISE (the
-    one that did was deleted, WI-rihob). This asks "did a pass that already ran
+    A pre-run gate would ask "may these passes run together?" and RAISE. This asks "did a pass that already ran
     prove its own declaration wrong?" and REPORTS. Falsification never suppresses anything, so it cannot
     lose an edge — which is why it may be wired where a gate may not
     (LIVE.md §2: raising is the withholding direction).
@@ -896,30 +891,28 @@ class TestFindFalsifiedDependencies:
         ]
 
     def test_nodes_alone_do_not_falsify_a_declaration(self) -> None:
-        """RE-POINTED by WI-rasal's corpus re-read, not by taste.
+        """Only EDGES prove a declaration wrong; nodes alone do not (WI-rasal).
 
-        The first cut counted ``nodes_emitted`` as proof, on the precedent that
-        keying on ``edges_emitted`` alone once called a 91-node pass silent.
-        That precedent is about SILENCE — "did this pass say anything?" — and
-        importing it here answered a different question wrong.
-        ``depends_on`` is documented as naming what a linker needs to "produce
-        its intended edges at all", and all 59 declarers are linkers (pinned by
+        Whether a pass is SILENT ("did this pass say anything?") counts nodes
+        too, but that is a different question. ``depends_on`` is documented as
+        naming what a linker needs to "produce its intended edges at all", and
+        every declarer is a linker (pinned by
         ``test_every_depends_on_declarer_is_a_linker``).
 
-        The measurement: 68 of the 261 falsifying surveys were
-        ``database-query-linker`` runs with nodes and ZERO edges. It mints one
+        ``database-query-linker`` shows why nodes must not count: it mints one
         query node per SQL string it scrapes out of a host file, then needs the
         ``sql`` analyzer's ``kind="table"`` symbols for the dst of every edge.
         Nodes-with-no-edges is precisely the shape of "could NOT do its job
-        without the thing it declared" — the detector was reading a correct
-        declaration as a falsified one, on 26% of its own hits.
+        without the thing it declared" -- counting nodes would read that
+        correct declaration as a falsified one.
         """
         passes = [self._p("db-linker", [["sql"]])]
         runs = [self._run("db-linker", nodes=15)]
         assert find_falsified_dependencies(passes, runs) == []
 
     def test_edges_falsify_even_when_no_nodes_were_minted(self) -> None:
-        """The complement: the five surviving clauses all emit edges, no nodes."""
+        """The complement: a linker that emits edges and mints no nodes still
+        falsifies an unsatisfied clause."""
         passes = [self._p("inheritance-linker", [["java"]])]
         runs = [self._run("inheritance-linker", edges=30)]
         assert find_falsified_dependencies(passes, runs) == [
@@ -940,21 +933,21 @@ class TestFindFalsifiedDependencies:
     def test_a_pass_that_ran_and_produced_NOTHING_does_not_satisfy_a_clause(
         self,
     ) -> None:
-        """RE-POINTED by WI-rasal. The old rule was not a function of its fact.
+        """A clause is satisfied by PRODUCTION, not by run membership (WI-rasal).
 
-        "Active" used to mean "has an ``analysis_runs`` row". Under the
-        WI-jadig / INV-manov file-presence pre-filter, an analyzer is
-        short-circuited into ``limits.skipped_passes`` only when EVERY language
+        Having an ``analysis_runs`` row is not a function of the repo's
+        contents. Under the file-presence pre-filter (WI-jadig / INV-manov),
+        an analyzer is short-circuited into ``limits.skipped_passes`` only when EVERY language
         it declares is in the taxonomy's ``LANGUAGE_EXTENSIONS``; every other
         analyzer runs anyway and records a 0-file / 0-node row. So on caddy —
-        a Go repository — ``apex``, ``astro`` and ``pony`` are "active" and
-        ``java``, ``ruby`` and ``python`` are not, for the identical underlying
+        a Go repository — ``apex``, ``astro`` and ``pony`` have rows and
+        ``java``, ``ruby`` and ``python`` do not, for the identical underlying
         fact that the repo has no such files. Membership in ``analysis_runs``
         answers "is this language in the taxonomy?", not "did this pass
         contribute anything?".
 
         Producing output is the same fact under both representations, so that
-        is what a clause now tests.
+        is what a clause tests.
         """
         passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
         runs = [self._run("rust"), self._run("tauri-ipc-linker", edges=3)]
@@ -1082,11 +1075,11 @@ class TestEmitFalsifiedDependencySummary:
 class TestBuildCatalogWithNoAnalyzers:
     """hypergumbo-core installed alone registers linkers and no analyzers.
 
-    The linker loop recorded each name through the analyzer loop's variable,
-    a rename leftover: with analyzers registered it recorded the last
-    analyzer's name instead of the linker's, and with none it raised
-    UnboundLocalError, so ``measure-taint-precision.py`` died on a core-only
-    tree.
+    The catalog must still build in that case (``measure-taint-precision.py``
+    builds one on a core-only tree), with each linker recorded under its own
+    name. Recording linkers through the analyzer loop's variable would name
+    the last analyzer instead, or raise UnboundLocalError when no analyzer is
+    registered.
     """
 
     def test_linkers_only_catalog_builds(self) -> None:

@@ -21,7 +21,7 @@ from hypergumbo_core.cli import run_behavior_map
 
 
 def test_csharp_attribute_with_named_args(tmp_path: Path) -> None:
-    """Cover branch: attribute with named arguments (line 143->145).
+    """Cover branch: attribute with named arguments.
 
     C# attribute with named argument: [Route(Name = "users")].
     """
@@ -50,7 +50,7 @@ def test_csharp_attribute_with_named_args(tmp_path: Path) -> None:
 
 
 def test_csharp_attribute_with_positional_args(tmp_path: Path) -> None:
-    """Cover branch: attribute with positional arguments (line 166->176).
+    """Cover branch: attribute with positional arguments.
 
     C# attribute with positional argument: [Route("api/users")].
     """
@@ -77,7 +77,7 @@ def test_csharp_attribute_with_positional_args(tmp_path: Path) -> None:
 
 
 def test_csharp_attribute_qualified_name(tmp_path: Path) -> None:
-    """Cover branch: attribute with qualified name (line 128->129).
+    """Cover branch: attribute with qualified name.
 
     C# attribute with fully qualified name: [System.Serializable].
     """
@@ -104,7 +104,7 @@ def test_csharp_attribute_qualified_name(tmp_path: Path) -> None:
 
 
 def test_csharp_generic_param_type(tmp_path: Path) -> None:
-    """Cover branch: generic type parameter extraction (line 236->237).
+    """Cover branch: generic type parameter extraction.
 
     C# method with generic parameter type: List<string>.
     """
@@ -136,7 +136,7 @@ def test_csharp_generic_param_type(tmp_path: Path) -> None:
 
 
 def test_csharp_array_param_type(tmp_path: Path) -> None:
-    """Cover branch: array type parameter extraction (line 239->240).
+    """Cover branch: array type parameter extraction.
 
     C# method with array parameter: int[].
     """
@@ -166,7 +166,7 @@ def test_csharp_array_param_type(tmp_path: Path) -> None:
 
 
 def test_csharp_nullable_param_type(tmp_path: Path) -> None:
-    """Cover branch: nullable type parameter extraction (line 241->242).
+    """Cover branch: nullable type parameter extraction.
 
     C# method with nullable parameter: int?.
     """
@@ -201,7 +201,7 @@ def test_csharp_nullable_param_type(tmp_path: Path) -> None:
 
 
 def test_csharp_method_with_custom_return_type(tmp_path: Path) -> None:
-    """Cover branch: method with custom return type (line 351->352).
+    """Cover branch: method with custom return type.
 
     C# method returning a custom class type.
     """
@@ -275,7 +275,7 @@ def test_csharp_method_with_generic_return_type(tmp_path: Path) -> None:
 
 
 def test_csharp_using_alias(tmp_path: Path) -> None:
-    """Cover branch: aliased using directive (line 411->421).
+    """Cover branch: aliased using directive.
 
     C# using alias: using Svc = MyApp.Services.
     """
@@ -301,7 +301,7 @@ def test_csharp_using_alias(tmp_path: Path) -> None:
 
 
 def test_csharp_using_simple_namespace(tmp_path: Path) -> None:
-    """Cover branch: simple using directive with single identifier (line 435->439).
+    """Cover branch: simple using directive with single identifier.
 
     C# using: using System.
     """
@@ -332,7 +332,7 @@ def test_csharp_using_simple_namespace(tmp_path: Path) -> None:
 
 
 def test_csharp_class_with_base_class(tmp_path: Path) -> None:
-    """Cover branch: class with base class (line 461->469).
+    """Cover branch: class with base class.
 
     C# class inheritance: class Dog : Animal.
     """
@@ -363,7 +363,7 @@ def test_csharp_class_with_base_class(tmp_path: Path) -> None:
 
 
 def test_csharp_class_implements_interface(tmp_path: Path) -> None:
-    """Cover branch: class implementing interface (line 463).
+    """Cover branch: class implementing interface.
 
     C# interface implementation: class Handler : IHandler.
     """
@@ -393,7 +393,7 @@ def test_csharp_class_implements_interface(tmp_path: Path) -> None:
 
 
 def test_csharp_class_with_generic_base(tmp_path: Path) -> None:
-    """Cover branch: class with generic base class (line 466->467).
+    """Cover branch: class with generic base class.
 
     C# class inheriting generic base: class UserRepo : Repository<User>.
     """
@@ -431,7 +431,7 @@ def test_csharp_class_with_generic_base(tmp_path: Path) -> None:
 
 
 def test_csharp_type_inference_from_new(tmp_path: Path) -> None:
-    """Cover branch: type inference from constructor (line 956->960).
+    """Cover branch: type inference from constructor.
 
     C# var keyword with new: var db = new Database().
     """
@@ -463,7 +463,7 @@ def test_csharp_type_inference_from_new(tmp_path: Path) -> None:
 
 
 def test_csharp_type_inference_from_param(tmp_path: Path) -> None:
-    """Cover branch: type inference from method parameter (line 832->833).
+    """Cover branch: type inference from method parameter.
 
     C# method parameter type tracking.
     """
@@ -499,7 +499,7 @@ def test_csharp_type_inference_from_param(tmp_path: Path) -> None:
 
 
 def test_csharp_struct_declaration(tmp_path: Path) -> None:
-    """Cover branch: struct declaration (line 567->590).
+    """Cover branch: struct declaration.
 
     C# struct definition.
     """
@@ -527,7 +527,7 @@ def test_csharp_struct_declaration(tmp_path: Path) -> None:
 
 
 def test_csharp_enum_declaration(tmp_path: Path) -> None:
-    """Cover branch: enum declaration (line 592->615).
+    """Cover branch: enum declaration.
 
     C# enum definition.
     """
@@ -556,7 +556,7 @@ def test_csharp_enum_declaration(tmp_path: Path) -> None:
 
 
 def test_csharp_constructor_declaration(tmp_path: Path) -> None:
-    """Cover branch: constructor declaration (line 662->693).
+    """Cover branch: constructor declaration.
 
     C# constructor with parameters.
     """
@@ -592,7 +592,7 @@ def test_csharp_constructor_declaration(tmp_path: Path) -> None:
 
 
 def test_csharp_property_declaration(tmp_path: Path) -> None:
-    """Cover branch: property declaration (line 695->722).
+    """Cover branch: property declaration.
 
     C# auto-implemented and full properties.
     """
@@ -629,7 +629,7 @@ def test_csharp_property_declaration(tmp_path: Path) -> None:
 
 
 def test_csharp_member_access_call(tmp_path: Path) -> None:
-    """Cover branch: member access expression in invocation (line 841->864).
+    """Cover branch: member access expression in invocation.
 
     C# method call via member access: obj.Method().
     """
@@ -665,7 +665,7 @@ def test_csharp_member_access_call(tmp_path: Path) -> None:
 
 
 def test_csharp_direct_method_call(tmp_path: Path) -> None:
-    """Cover branch: direct method call without receiver (line 803->805).
+    """Cover branch: direct method call without receiver.
 
     C# direct function call.
     """

@@ -1,26 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A wildcard import is a CANDIDATE package, not a blanket file-level prefix.
 
-INV-hahak. ``_extract_wildcard_imports``' own docstring already says the resolver
-should "attribute bare class receivers to the first wildcard whose package the
-receiver could plausibly belong to" — but the resolver took ``wildcard_imports[0]``
-unconditionally, so under ``import java.io.*;`` the call ``System.currentTimeMillis()``
-landed as ``java.util.System`` / ``java.io.System`` and matched no catalogue row.
+INV-hahak. Taking ``wildcard_imports[0]`` as the package of every bare class
+receiver would put ``System.currentTimeMillis()`` under ``import java.io.*;`` in
+``java.io.System``, which matches no catalogue row.
 
 **java.lang is the load-bearing case and it is not a heuristic.** JLS 7.3 makes
 ``java.lang.*`` implicitly imported in every compilation unit, so ``String``,
 ``System``, ``Integer``, ``Math`` and ``Thread`` are in scope having never been
-written. Any file carrying ANY wildcard therefore mis-attributes all of them.
-Measured on jedis alone: 170 external refs name a java.lang class under a
-non-java.lang package, including ``System.currentTimeMillis`` x28 and
-``System.nanoTime``, both catalogued ``host_info_read``.
+written. A single-package guess under ANY wildcard would mis-attribute all of
+them, including ``System.currentTimeMillis`` and ``System.nanoTime``, both
+catalogued ``host_info_read``.
 
-The fix emits the disjunction the situation actually is — every wildcard package
-plus ``java.lang`` — reusing the comma-joined slot contract cpp has used since
-INV-funuf, where ``_module_hint_candidates`` asks an ANY question over the
+The slot is the disjunction the situation actually is — every wildcard package
+plus ``java.lang`` — in the comma-joined slot contract cpp also uses
+(INV-funuf), where ``_module_hint_candidates`` asks an ANY question over the
 disjuncts. It does NOT add the bare class name as a candidate: that would match
-any catalogue row ending in that class and would turn a recall fix into the
-INV-dijor false-positive shape.
+any catalogue row ending in that class, the INV-dijor false-positive shape.
 """
 from __future__ import annotations
 
@@ -45,11 +41,11 @@ def _analyze(src: str):
 def _name_slot(dst: str) -> str:
     """The dst's NAME slot.
 
-    WI-nakut removed the receiver prefix from it, so the selector these helpers
-    take is the method's OWN name (``currentTimeMillis``) rather than the
-    receiver-qualified spelling (``System.currentTimeMillis``) java used to
-    write there. Matched as the whole slot rather than as a suffix, so
-    ``writeString`` cannot also select a hypothetical ``xwriteString``.
+    It carries no receiver prefix (WI-nakut), so the selector these helpers
+    take is the method's OWN name (``currentTimeMillis``), not the
+    receiver-qualified spelling (``System.currentTimeMillis``). Matched as the
+    whole slot rather than as a suffix, so ``writeString`` cannot also select
+    a hypothetical ``xwriteString``.
     """
     return dst.split(":")[-2]
 
@@ -91,7 +87,7 @@ def test_java_lang_is_a_candidate_under_any_wildcard():
 
 
 def test_the_catalogued_row_is_reached_under_a_wildcard():
-    """The measured loss: 28 sites in jedis alone."""
+    """``System.currentTimeMillis`` under a wildcard reaches its ``host_info_read`` row."""
     prim = _classify(_WILDCARD_SYSTEM, "currentTimeMillis")
     assert prim is not None
     assert prim.boundary == "host_info_read"
@@ -124,7 +120,7 @@ def test_the_class_in_the_second_wildcard_now_reaches_its_row():
 
 
 def test_a_correct_single_wildcard_still_resolves():
-    """WI-tuhok's gain must survive: the wildcard's OWN classes still attribute."""
+    """The wildcard's OWN classes still attribute to it (WI-tuhok)."""
     src = (
         "import java.nio.file.*;\n"
         "public class P { void f(String s) throws Exception "
@@ -149,7 +145,7 @@ def test_a_repo_local_class_under_a_wildcard_still_matches_nothing():
 
     A project class named ``Files`` must not reach ``java.nio.file.Files`` just
     because the short names agree — that is INV-dijor's shape, and offering the
-    unqualified name as a disjunct is exactly how this fix would have caused it.
+    unqualified name as a disjunct would cause it.
     """
     src = (
         "import java.io.*;\n"
@@ -159,16 +155,12 @@ def test_a_repo_local_class_under_a_wildcard_still_matches_nothing():
 
 
 def test_no_wildcard_gets_a_single_candidate_not_a_disjunction():
-    """INV-hahak's blast-radius fence, RE-POINTED at what it was protecting.
+    """INV-hahak's blast-radius fence.
 
-    As written for INV-hahak this asserted ``slot in (None, "external")`` under
-    the name ``test_no_wildcard_is_unchanged`` -- an UNCHANGED-ness claim about
-    that fix's scope, with no rationale recorded and no assertion that the
-    external placeholder was CORRECT. It was not: INV-suril is the item saying
-    so, and JLS 7.3 does not condition the implicit import on a wildcard being
-    present. What the fence was really guarding is that a wildcard file's
-    comma-joined DISJUNCTION must not leak into a file that has no wildcard --
-    there is nothing there to disjoin. That is what it now pins.
+    A wildcard file's comma-joined DISJUNCTION must not leak into a file that
+    has no wildcard -- there is nothing there to disjoin. The file still gets
+    ``java.lang`` as its one candidate, since JLS 7.3 does not condition the
+    implicit import on a wildcard being present (INV-suril).
     """
     src = (
         "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
@@ -190,16 +182,16 @@ def test_other_implicitly_imported_java_lang_classes(cls):
         assert f"java.lang.{cls}" in slot.split(",") or "java.lang" in slot
 
 
-# --- the second half of INV-hahak: a fully-qualified call site was overridden ---
+# --- the second half of INV-hahak: a fully-qualified call site is not overridden ---
 
 def test_a_fully_qualified_call_site_is_not_overridden_by_a_wildcard():
     """The call site spells the package; that is evidence, not a guess.
 
-    This is the half that made INV-hahak more than an import-table gap: under
-    ``import java.io.*;`` the call ``java.nio.file.Files.writeString(...)`` was
-    re-attributed to ``java.io.Files``, discarding a package the source states
-    outright. The receiver arrives as a ``field_access`` chain and only its last
-    component (``Files``) was kept.
+    Under ``import java.io.*;`` the call ``java.nio.file.Files.writeString(...)``
+    must not be re-attributed to ``java.io.Files``, which would discard a
+    package the source states outright. The receiver arrives as a
+    ``field_access`` chain, and the whole chain, not only its last component
+    (``Files``), is the evidence.
     """
     src = (
         "import java.io.*;\n"
@@ -288,20 +280,19 @@ def test_candidate_slot_preserves_wildcard_source_order():
 # ---------------------------------------------------------------------------
 # INV-suril: the same JLS 7.3 rule, in the file that carries NO wildcard.
 #
-# INV-hahak fixed java.lang for a file with a wildcard import, because the slot
-# is built by ``_wildcard_candidate_slot`` and that branch is gated on
-# ``wildcard_imports`` being non-empty. A file with only single-type imports --
-# the style every java linter enforces -- takes no branch at all, so a static
-# call on an implicitly imported class keeps the ``external`` placeholder and
-# its ``System.`` prefix, and ``strip_redundant_module_qualifier`` cannot fire
-# because the module slot it compares against is a placeholder.
+# ``_wildcard_candidate_slot`` builds the slot for a capitalised name when the
+# file has a wildcard import OR the name is on the closed java.lang list. A file
+# with only single-type imports -- the style every java linter enforces --
+# depends on the second condition; without it a static call on an implicitly
+# imported class keeps the ``external`` placeholder and its ``System.`` prefix,
+# and ``strip_redundant_module_qualifier`` cannot fire because the module slot
+# it compares against is a placeholder.
 #
-# MEASURED, not feared: cassandra (6,090 java files) loses 459 edges this way --
-# System.currentTimeMillis x285, System.nanoTime x123, System.getProperty x29,
-# System.getenv x16, System.getProperties x6 -- against 446 java calls that
-# classify in the whole repository. Three of those five are ``env_read``, which
-# mints untrusted_input, so the loss is on the taint SOURCE side and not only in
-# the io-boundary map. sherpa-onnx, the repo INV-suril was filed from, loses 6.
+# The shape is common (``System.currentTimeMillis`` / ``nanoTime`` /
+# ``getProperty`` / ``getenv`` / ``getProperties`` throughout a repo like
+# cassandra). Three of those five are ``env_read``, which mints
+# untrusted_input, so the loss would be on the taint SOURCE side and not only in
+# the io-boundary map.
 # ---------------------------------------------------------------------------
 
 _NO_IMPORTS_SYSTEM = (
@@ -346,9 +337,9 @@ def test_a_project_class_of_the_same_name_is_not_sent_to_java_lang():
     """THE REFUTATION CELL. A project's own ``System`` is not java.lang's.
 
     The mechanism that holds this is NOT a guard in the java.lang branch -- one
-    was written for it and removed as unreachable. ``class_resolver`` claims a
-    project class name before the branch runs and emits a RESOLVED edge, so the
-    branch never sees it. The cell stays because the GUARANTEE is what matters
+    there would be unreachable. ``class_resolver`` claims a project class name
+    before the branch runs and emits a RESOLVED edge, so the branch never sees
+    it. The cell exists because the GUARANTEE is what matters
     and the mechanism could move; if a future change makes the resolver defer,
     this is what fails.
     """
