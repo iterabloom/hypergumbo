@@ -35,3 +35,18 @@
   clock: 3  # b542
   nonce: b542  # b542
   message: "Owner decision 2026-11-10: PARKED. Local narrowing stays opt-in; the goal of making it the default is dropped. Reasons, measured (details on WI-zajuv): with the WI-zunug fix (a), narrowing applies to about 18 percent of commits that touch package source (20 of 113; the rest change import-time code, where every importer must run); and 69 test files read the whole tree as text, about 50 of which match any one source file, a floor of roughly 3 minutes wall on 6 CPUs for any selector narrower than the import graph. Not reopened unless the whole-tree reader set gets built (option 1 on WI-zajuv: reads markers, verified per test). Alternatives filed: WI-fipuf (failure-first ordering), WI-nupit (four slow whole-tree tests)."  # b542
+- op: update  # 380b
+  at: '2026-11-11T15:52:56Z'  # 380b
+  by: agent  # 380b
+  actor: jgstern_agent  # 380b
+  clock: 4  # 380b
+  nonce: 380b  # 380b
+  set:  # 380b
+    status: wont_do  # 380b
+- op: discuss  # 8364
+  at: '2026-11-11T15:52:57Z'  # 8364
+  by: agent  # 8364
+  actor: jgstern_agent  # 8364
+  clock: 5  # 8364
+  nonce: '8364'  # 8364
+  message: "Owner decision 2026-11-11: COMPLETE FOR THE FORESEEABLE FUTURE. Closed as wont_do (not done: nothing here was built). Local narrowing stays opt-in; making it block-level and default-on is dropped. Measured reasons are on WI-zajuv: narrowing applies to about 18 percent of source commits, and 69 whole-tree text readers set a floor of about 3 minutes. Reopen only if the owner asks. The earlier technical trigger (someone builds a reliable map of which whole-tree text-reading tests depend on which source file) has no watcher, so it will not fire by itself."  # 8364

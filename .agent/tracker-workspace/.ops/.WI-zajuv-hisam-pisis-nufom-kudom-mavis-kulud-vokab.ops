@@ -59,3 +59,18 @@
   clock: 6  # 3870
   nonce: '3870'  # 3870
   message: "Owner decision 2026-11-10: option (2). Part B (CI manifest narrowing for comment-only changes) and the whole-tree half of part A are PARKED; the path-naming half shipped in PR #2127. --narrow stays opt-in. WI-gapos and WI-linug parked with the same note. Alternatives filed: WI-fipuf (failure-first ordering), WI-nupit (four slow whole-tree tests)."  # 3870
+- op: update  # 9b99
+  at: '2026-11-11T15:52:59Z'  # 9b99
+  by: agent  # 9b99
+  actor: jgstern_agent  # 9b99
+  clock: 7  # 9b99
+  nonce: 9b99  # 9b99
+  set:  # 9b99
+    status: wont_do  # 9b99
+- op: discuss  # 205c
+  at: '2026-11-11T15:52:59Z'  # 205c
+  by: agent  # 205c
+  actor: jgstern_agent  # 205c
+  clock: 8  # 205c
+  nonce: 205c  # 205c
+  message: "Owner decision 2026-11-11: COMPLETE FOR THE FORESEEABLE FUTURE. The part that shipped stays shipped: the path-naming half of part A (PR 2127, the citation gate). Not built and not planned: the whole-tree half of part A, and part B (keeping a comment-only change's import closure out of the CI manifest). Closed as wont_do rather than done, because done would claim the whole item. Reopen only if the owner asks. The earlier technical trigger (someone builds a reliable map of which whole-tree text-reading tests depend on which source file) has no watcher, so it will not fire by itself."  # 205c
