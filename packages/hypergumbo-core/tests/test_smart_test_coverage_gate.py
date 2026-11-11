@@ -318,6 +318,7 @@ def _drive_run_pytest(
     (tmp_path / "fns.sh").write_text(
         _extract("count_executed_tests") + "\n"
         + _extract("summarize_pytest_output") + "\n"
+        + _extract("omp_threads_for_run") + "\n"
         + _extract("run_pytest") + "\n"
     )
     (tmp_path / "drive.sh").write_text(_DRIVER)

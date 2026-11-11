@@ -779,6 +779,42 @@ fold_selection_index() {
         "${full_flag[@]}" || true
 }
 
+# ONE OpenMP THREAD PER PARALLEL WORKER (WI-zuzoz). Prints 1 when this run
+# should be capped, nothing when it should not.
+#
+# When the embedding model is in the local cache, a pipeline run inside a test
+# performs torch inference, and torch sizes its OpenMP pool to every core. Each
+# xdist worker starts its own pool, so six workers put up to 36 compute threads
+# on six cores and each worker's pipeline work slows about eightfold. Measured
+# on one commit and machine: the full suite 45:49 as it was, 35:16 capped;
+# test_route_concept_parity.py alone 401 s and 61 s. OPENBLAS_NUM_THREADS did
+# nothing; the pool is OpenMP's.
+#
+# PARALLEL RUNS ONLY: one uncontended process is SLOWER capped (17 pipeline
+# runs: 26 s with the pool, 44 s without). The last -n / --numprocesses wins,
+# as it does for pytest, and a value the caller exported is left alone.
+omp_threads_for_run() {
+    if [[ -n "${OMP_NUM_THREADS:-}" ]]; then
+        return 0
+    fi
+    local workers="" expect_value=false arg
+    for arg in "$@"; do
+        if [[ "$expect_value" == "true" ]]; then
+            workers="$arg"
+            expect_value=false
+        elif [[ "$arg" == "-n" ]] || [[ "$arg" == "--numprocesses" ]]; then
+            expect_value=true
+        elif [[ "$arg" == --numprocesses=* ]]; then
+            workers="${arg#--numprocesses=}"
+        elif [[ "$arg" == -n?* ]]; then
+            workers="${arg#-n}"
+        fi
+    done
+    if [[ -n "$workers" ]] && [[ "$workers" != "0" ]] && [[ "$workers" != "1" ]]; then
+        echo 1
+    fi
+}
+
 run_pytest() {
     local test_targets="$1"
     shift
@@ -788,6 +824,8 @@ run_pytest() {
     # always understood; whether a run USES it is the caller's choice (see
     # FAIL_GRACE_ARGS). The plugin directory goes on PYTHONPATH for pytest
     # alone. ${…:-} because tests extract this function and drive it bare.
+    local omp_cap
+    omp_cap=$(omp_threads_for_run "${extra_args[@]}")
     local plugin_dir="${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/pytest_plugins"
     local plugin_path="${PYTHONPATH:-}"
     if [[ -f "$plugin_dir/pytest_fail_grace.py" ]]; then
@@ -834,7 +872,7 @@ run_pytest() {
     if [[ "$RAW_OUTPUT" == "true" ]]; then
         # Stream output directly (old behavior)
         # shellcheck disable=SC2086
-        exec env PYTHONPATH="$plugin_path" pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
+        exec env PYTHONPATH="$plugin_path" ${omp_cap:+OMP_NUM_THREADS=$omp_cap} pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
     else
         # Capture output, then summarize
         echo "Running tests... (output saved to $PYTEST_LOG)"
@@ -862,7 +900,7 @@ run_pytest() {
         # INV-tazur: the junit report is how the verdict below counts what ran,
         # so the previous run's report must not survive to answer for this one.
         rm -f "$JUNIT_XML"
-        env -u FORCE_COLOR -u COLORTERM PYTHONPATH="$plugin_path" pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
+        env -u FORCE_COLOR -u COLORTERM PYTHONPATH="$plugin_path" ${omp_cap:+OMP_NUM_THREADS=$omp_cap} pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
         # Corrective re-derivation: these may only ESCALATE to failure, never
         # de-escalate to success. An affirmative-green clause (`N passed` && !
         # `N failed` -> 0) used to live here; it was a no-op while exit_code
