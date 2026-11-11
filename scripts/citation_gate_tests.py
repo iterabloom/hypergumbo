@@ -37,6 +37,25 @@ that have nothing to do with the citation. Keying on the basename would trade a
 precise edge for noise, and the noise is what makes an over-selecting gate get
 narrowed later by someone who does not know why it was wide.
 
+A CITATION IS WHAT THE PARSER SEES, NOT WHAT THE TEXT SPELLS. PR #2121 moved
+two lines that ``signature_axis.py`` cites by number, and this gate selected
+nothing, because the path there is two ADJACENT literals --
+``"packages/.../hypergumbo_core/" "linkers/method_call_recovery.py"`` -- which
+Python joins and a text search never sees joined. dev stayed red until a full
+run found it (#2126). So a Python citer is also searched through its string
+constants (adjacent literals arrive joined) and through ``a / "b" / "c.py"``
+chains whose parts are all constants. A part that is computed names nothing
+and is not guessed at. Measured on the live tree when this landed: joined
+literals add 3 citation edges and constant chains 8 more sources. The parse
+runs only on a file whose text holds a cited BASENAME, which both spellings
+keep whole. Measured: one changed file costs 0.5s (0.2s before), and every
+shipped source changed at once 11s (3s before), the parse being most of it.
+
+EXTENSIONLESS SCRIPTS ARE CITERS TOO. ``scripts/check-*`` and their siblings
+mostly carry no ``.py``, and 14 of them name a shipped source by path (the
+field-axis linter names ``ir.py``, ``datamodels.py`` and ``io_boundary.py``).
+Their tests reach them by the script's name, which is the stem hop below.
+
 WHAT THIS DOES NOT COVER, MEASURED RATHER THAN ASSUMED. Seven markdown files
 under ``docs/`` (and ``CHANGELOG.md``) cite a shipped source by slash-path the
 same way, and none of them is scanned here. That is deliberate and it is a
@@ -53,6 +72,8 @@ line, sorted and deduplicated. Always exits 0 — no citation is the normal case
 from __future__ import annotations
 
 import argparse
+import ast
+import fnmatch
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
@@ -65,12 +86,30 @@ def _scan_roots(repo_root: Path) -> List[Path]:
     found += sorted(repo_root.glob("packages/*/tests/*.py"))
     found += sorted(repo_root.glob("tests/*.py"))
     found += sorted(repo_root.glob("scripts/*.py"))
+    found += sorted(
+        p for p in repo_root.glob("scripts/*") if p.is_file() and not p.suffix
+    )
     return found
 
 
+#: pytest's ``python_files`` in pyproject.toml; a test pins the two together.
+TEST_MODULE_PATTERNS = ("test_*.py", "*_test.py", "BRANCHES_*.py")
+
+
+def _is_test_module(path: Path) -> bool:
+    return any(fnmatch.fnmatchcase(path.name, pat) for pat in TEST_MODULE_PATTERNS)
+
+
 def _is_test(path: Path, repo_root: Path) -> bool:
+    """A test MODULE: under a tests directory AND named as pytest collects.
+
+    A ``conftest.py`` or helper beside the tests is not something to hand
+    pytest by path; four same-named conftests in one run is a collection
+    error. Such a citer takes the second hop like a source does.
+    """
     relative = path.relative_to(repo_root).as_posix()
-    return relative.startswith("tests/") or "/tests/" in relative
+    in_tests = relative.startswith("tests/") or "/tests/" in relative
+    return in_tests and _is_test_module(path)
 
 
 def citation_literals(changed: Iterable[str]) -> Dict[str, str]:
@@ -93,8 +132,63 @@ def citation_literals(changed: Iterable[str]) -> Dict[str, str]:
     return literals
 
 
+def _constant(node: ast.AST) -> Optional[str]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def parsed_strings(text: str) -> List[str]:
+    """The strings a Python file spells in pieces, as the parser joins them.
+
+    Every string constant (adjacent literals arrive as one), and every
+    ``x / "a" / "b.py"`` chain whose ``/`` operands are all constants, joined
+    with ``/``. The chain's leftmost operand joins too when it is a constant
+    and is dropped when it is not (``REPO_ROOT``), because only the constant
+    tail is a claim about a path. A file that does not parse yields nothing:
+    its raw text is still searched.
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    found: List[str] = []
+    for node in ast.walk(tree):
+        value = _constant(node)
+        if value is not None:
+            found.append(value)
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            parts: List[str] = []
+            current: ast.AST = node
+            while isinstance(current, ast.BinOp) and isinstance(current.op, ast.Div):
+                right = _constant(current.right)
+                if right is None:
+                    parts = []
+                    break
+                parts.append(right)
+                current = current.left
+            if len(parts) >= 2:
+                head = _constant(current)
+                if head is not None:
+                    parts.append(head)
+                found.append("/".join(reversed(parts)))
+    return found
+
+
+def _is_python(path: Path, text: str) -> bool:
+    return path.suffix == ".py" or (
+        text.startswith("#!") and "python" in text.split("\n", 1)[0]
+    )
+
+
 def citing_files(repo_root: Path, literals: Iterable[str]) -> Set[Path]:
-    """Files whose text contains one of ``literals``, excluding self-citation."""
+    """Files that cite one of ``literals``, excluding self-citation.
+
+    A file cites a literal when its text contains it, or, for Python, when a
+    string the parser joins does (:func:`parsed_strings`). The parse is gated
+    on the literal's basename appearing in the text: both joined spellings
+    keep the basename whole, so a file without it cannot cite the path.
+    """
     wanted = [lit for lit in literals if lit]
     hits: Set[Path] = set()
     if not wanted:
@@ -105,8 +199,18 @@ def citing_files(repo_root: Path, literals: Iterable[str]) -> Set[Path]:
         except OSError:  # pragma: no cover - unreadable file on a listed path
             continue
         relative = candidate.relative_to(repo_root).as_posix()
+        joined: Optional[str] = None
         for literal in wanted:
-            if literal in text and not relative.endswith(literal):
+            if relative.endswith(literal):
+                continue
+            if literal in text:
+                hits.add(candidate)
+                break
+            if literal.rsplit("/", 1)[-1] not in text or not _is_python(candidate, text):
+                continue
+            if joined is None:
+                joined = "\n".join(parsed_strings(text))
+            if literal in joined:
                 hits.add(candidate)
                 break
     return hits
@@ -145,8 +249,10 @@ def tests_naming(repo_root: Path, needles: Iterable[str]) -> Set[str]:
     found: Set[str] = set()
     for base in (
         sorted(repo_root.glob("packages/*/tests/*.py"))
-        + sorted((repo_root / "tests").glob("test_*.py"))
+        + sorted((repo_root / "tests").glob("*.py"))
     ):
+        if not _is_test_module(base):
+            continue
         relative = base.relative_to(repo_root).as_posix()
         if any(base.name == f"test_{n.rsplit('.', 1)[-1]}.py" for n in wanted):
             found.add(relative)

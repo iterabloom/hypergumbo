@@ -1485,8 +1485,8 @@ fi
 # repaired two firings later by a PR that happened to touch a core file.
 #
 # The helper's docstring carries the two-hop argument and the measurement that
-# rules out keying on a bare basename. Its cost is 0.1s here and 2s with every
-# source in the tree changed.
+# rules out keying on a bare basename. Its cost is 0.5s for one changed file and
+# 11s with every source in the tree changed (it parses Python citers: #2126).
 CITATION_GATE_HELPER="$TOOLS_ROOT/scripts/citation_gate_tests.py"
 if [[ -f "$CITATION_GATE_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_FILES" ]]; then
     CITATION_GATE_TESTS=$(echo "$CHANGED_FILES" \

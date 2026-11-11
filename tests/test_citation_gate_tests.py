@@ -229,3 +229,108 @@ def test_this_file_is_not_itself_a_citer() -> None:
         literal for literal in _shipped_sources() if literal in text
     )
     assert not written_out, written_out
+
+
+def _mini_repo(root: Path, files: dict) -> Path:
+    for relative, text in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return root
+
+
+def run_helper_in(repo: Path, changed: list[str]) -> list[str]:
+    proc = subprocess.run(
+        [sys.executable, str(HELPER), str(repo)],
+        input="\n".join(changed),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return [line for line in proc.stdout.splitlines() if line]
+
+
+#: The changed file in every mini repo below, and the literal that cites it.
+_TARGET = "/".join(["packages", "p", "src", "m", "target.py"])
+_READER = "/".join(["tests", "test_reader.py"])
+
+
+class TestSpellingsATextSearchCannotSee:
+    """A citation the source's TEXT does not contain whole is still a citation.
+
+    PR #2121 moved two lines that ``signature_axis.py`` cites by number, and
+    the gate selected nothing: the path there is two adjacent literals,
+    ``"packages/.../hypergumbo_core/" "linkers/method_call_recovery.py"``,
+    which the parser joins and a text search never sees joined. dev stayed red
+    until a full-suite run found it (fixed in #2126).
+    """
+
+    def test_adjacent_literals_are_joined(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, {
+            _TARGET: "X = 1\n",
+            "packages/p/src/m/citer.py": 'CITED = ("m/"\n         "target.py")\n',
+            "packages/p/tests/test_citer.py": "import m.citer\n",
+        })
+        assert run_helper_in(repo, [_TARGET]) == ["packages/p/tests/test_citer.py"]
+
+    def test_a_constant_slash_chain_is_joined(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, {
+            _TARGET: "X = 1\n",
+            _READER: 'P = ROOT / "packages" / "p" / "src" / "m" / "target.py"\n',
+        })
+        assert run_helper_in(repo, [_TARGET]) == [_READER]
+
+    def test_an_extensionless_script_is_a_citer(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, {
+            _TARGET: "X = 1\n",
+            "scripts/check-thing": "#!/usr/bin/env python3\nTARGET = 'm/target.py'\n",
+            "tests/test_check_thing.py": "SCRIPT = 'check-thing'\n",
+        })
+        assert run_helper_in(repo, [_TARGET]) == ["tests/test_check_thing.py"]
+
+    def test_a_chain_with_a_computed_part_is_not_a_citation(self, tmp_path: Path) -> None:
+        """The control: only constants join, so a variable part names nothing."""
+        repo = _mini_repo(tmp_path, {
+            _TARGET: "X = 1\n",
+            _READER: 'P = ROOT / "m" / name\n',
+        })
+        assert run_helper_in(repo, [_TARGET]) == []
+
+    def test_the_rot_that_reached_dev_is_now_caught(self) -> None:
+        cited = "/".join(["packages", "hypergumbo-core", "src", _CORE,
+                          "linkers", "method_call_recovery.py"])
+        test = "/".join(["packages", "hypergumbo-core", "tests",
+                         "test_signature_axis.py"])
+        assert test in run_helper([cited])
+
+    def test_only_a_test_module_is_selected(self, tmp_path: Path) -> None:
+        """A conftest or helper beside the tests is not a test to run.
+
+        The second hop grepped ``packages/*/tests/*.py``, which takes in
+        ``conftest.py``. Once ``scripts/smart-test`` became a citer, every
+        package conftest that mentions smart-test was selected, and pytest
+        refused four same-named conftests in one run ("import file mismatch").
+        """
+        repo = _mini_repo(tmp_path, {
+            _TARGET: "X = 1\n",
+            "scripts/check-thing": "TARGET = 'm/target.py'\n",
+            "packages/p/tests/conftest.py": "# runs check-thing\n",
+            "packages/p/tests/test_thing.py": "# runs check-thing\n",
+            "packages/p/tests/helpers.py": "CITED = 'm/target.py'\n",
+        })
+        assert run_helper_in(repo, [_TARGET]) == ["packages/p/tests/test_thing.py"]
+
+    def test_the_test_module_patterns_are_pytests(self) -> None:
+        """BRANCHES_*.py and *_test.py are collected tests here, not helpers."""
+        import importlib.util
+        import re
+
+        spec = importlib.util.spec_from_file_location("citation_gate", HELPER)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        match = re.search(r"^python_files\s*=\s*\[(.*?)\]", text, re.MULTILINE)
+        assert match, "python_files is gone from pyproject.toml"
+        declared = tuple(re.findall(r'"([^"]+)"', match.group(1)))
+        assert module.TEST_MODULE_PATTERNS == declared
