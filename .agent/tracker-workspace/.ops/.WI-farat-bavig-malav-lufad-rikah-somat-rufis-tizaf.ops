@@ -40,3 +40,18 @@
   clock: 4  # d5d0
   nonce: d5d0  # d5d0
   message: "Owner decision 2026-11-10: NOT NOW; parked with WI-gapos, WI-linug and the rest of WI-zajuv. The payoff here was letting test selection reach about 6 more minutes of tests (hypergumbo-tracker and subprocess tests have no coverage rows). Local narrowing was parked the same day, so nothing would use those rows: narrowing applies to about 18 percent of source commits and has a floor of about 3 minutes from the whole-tree text readers (measurements on WI-zajuv). Reopen together with narrowing if the whole-tree reader set gets built. Status left as it is; the owner has answered the question it asked."  # d5d0
+- op: update  # 4666
+  at: '2026-11-11T15:53:00Z'  # 4666
+  by: agent  # 4666
+  actor: jgstern_agent  # 4666
+  clock: 5  # 4666
+  nonce: '4666'  # 4666
+  set:  # 4666
+    status: wont_do  # 4666
+- op: discuss  # 931f
+  at: '2026-11-11T15:53:00Z'  # 931f
+  by: agent  # 931f
+  actor: jgstern_agent  # 931f
+  clock: 6  # 931f
+  nonce: 931f  # 931f
+  message: "Owner decision 2026-11-11: COMPLETE FOR THE FORESEEABLE FUTURE. Closed as wont_do (not done: nothing here was built). The question this item asked (bring hypergumbo-tracker and subprocess tests into COV_PATHS?) is answered: not for the foreseeable future. Its payoff was coverage rows for local narrowing, which is dropped (WI-gapos, WI-linug). Reopen only if the owner asks. The earlier technical trigger (someone builds a reliable map of which whole-tree text-reading tests depend on which source file) has no watcher, so it will not fire by itself."  # 931f

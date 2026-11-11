@@ -27,3 +27,18 @@
   clock: 2  # 8cdf
   nonce: 8cdf  # 8cdf
   message: "Owner decision 2026-11-10: PARKED. Local narrowing stays opt-in; the goal of making it the default is dropped. Reasons, measured (details on WI-zajuv): with the WI-zunug fix (a), narrowing applies to about 18 percent of commits that touch package source (20 of 113; the rest change import-time code, where every importer must run); and 69 test files read the whole tree as text, about 50 of which match any one source file, a floor of roughly 3 minutes wall on 6 CPUs for any selector narrower than the import graph. Not reopened unless the whole-tree reader set gets built (option 1 on WI-zajuv: reads markers, verified per test). Alternatives filed: WI-fipuf (failure-first ordering), WI-nupit (four slow whole-tree tests). Applies here because a per-function static selector is also narrower than the import graph and would drop the same whole-tree readers."  # 8cdf
+- op: update  # 41c2
+  at: '2026-11-11T15:52:58Z'  # 41c2
+  by: agent  # 41c2
+  actor: jgstern_agent  # 41c2
+  clock: 3  # 41c2
+  nonce: 41c2  # 41c2
+  set:  # 41c2
+    status: wont_do  # 41c2
+- op: discuss  # 4661
+  at: '2026-11-11T15:52:58Z'  # 4661
+  by: agent  # 4661
+  actor: jgstern_agent  # 4661
+  clock: 4  # 4661
+  nonce: '4661'  # 4661
+  message: "Owner decision 2026-11-11: COMPLETE FOR THE FORESEEABLE FUTURE. Closed as wont_do (not done: nothing here was built). The per-function static selector is dropped with the rest of local narrowing; same measured reasons as WI-gapos (details on WI-zajuv). Reopen only if the owner asks. The earlier technical trigger (someone builds a reliable map of which whole-tree text-reading tests depend on which source file) has no watcher, so it will not fire by itself."  # 4661

@@ -29,3 +29,10 @@
   set:  # ce66
     status: done  # ce66
     pr_ref: '#2134'  # ce66
+- op: discuss  # 0a7e
+  at: '2026-11-11T07:39:48Z'  # 0a7e
+  by: agent  # 0a7e
+  actor: jgstern_agent  # 0a7e
+  clock: 3  # 0a7e
+  nonce: 0a7e  # 0a7e
+  message: "Done in PR #2134: smart-test sets OMP_NUM_THREADS=1 for pytest when the run has more than one xdist worker (last -n wins; a single process and a caller-exported value are left alone). BEHAVIOURAL EVIDENCE, re-run after the change: packages/hypergumbo-core/tests/test_route_concept_parity.py through plain smart-test 418 s before -> 78 s. Full suite on one commit and machine: 45:49 uncapped, 35:16 with the cap, 37,766 passed in both (the capped run set the variable by hand; the shipped code path is the 78 s run and the unit tests). Mutation control: 8 tests red. STILL OPEN, owner question: tests run embedding inference only when the model is cached locally; owner leans to turning it off in tests because it is slower; a full run with embeddings off is being measured next. Leads not done: build_once for test_route_concept_parity, test_import_dst_ids_are_canonical, test_doc_family_id_parity."  # 0a7e
