@@ -29,6 +29,11 @@ import pytest
 from hypergumbo_core.catalog import all_known_languages
 from hypergumbo_core.cli import run_survey
 
+# Every test here runs on ONE xdist worker, so the module fixture is built
+# once per run (smart-test and CI pass --dist=loadgroup; see
+# dist_args_for_run in scripts/smart-test).
+pytestmark = pytest.mark.xdist_group("test_import_dst_ids_are_canonical")
+
 KNOWN_LANGUAGES = frozenset(all_known_languages())
 
 # css joined the cases with WI-popak-mopad: its import edges used to start at

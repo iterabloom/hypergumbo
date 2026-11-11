@@ -74,7 +74,7 @@ steps:
         else
           WORKERS=$(nproc)
         fi
-        pytest -n "$WORKERS" --tb=short \
+        pytest -n "$WORKERS" --dist=loadgroup --tb=short \
           --cov=packages/hypergumbo-core/src \
           --cov=packages/hypergumbo-lang-mainstream/src \
           --cov=packages/hypergumbo-lang-common/src \

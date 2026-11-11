@@ -36,6 +36,7 @@ def _cap(*args: str, preset: str | None = None) -> str:
     script = "\n".join([
         "set -euo pipefail",
         "unset OMP_NUM_THREADS" if preset is None else f"export OMP_NUM_THREADS={preset}",
+        _function("xdist_workers_of"),
         _function("omp_threads_for_run"),
         'omp_threads_for_run "$@"',
     ])

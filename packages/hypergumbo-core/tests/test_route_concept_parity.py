@@ -63,6 +63,11 @@ import pytest
 from hypergumbo_core.analyze.registry import ensure_discovered
 from hypergumbo_core.cli import run_behavior_map
 
+# Every test here runs on ONE xdist worker, so the module fixture is built
+# once per run (smart-test and CI pass --dist=loadgroup; see
+# dist_args_for_run in scripts/smart-test).
+pytestmark = pytest.mark.xdist_group("test_route_concept_parity")
+
 CORPUS = Path(__file__).resolve().parent / "fixtures" / "route-parity"
 
 # Fixture CASES whose canonical web-route idiom the full pipeline detects today.
