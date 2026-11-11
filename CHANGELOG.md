@@ -150,6 +150,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Archaeology corpus: 240 blind-labelled docstrings of 100+ words replace 60.**
 - **Archaeology heuristic: narrower provenance, numbers and rule-voice families; weights refitted.**
 - **Archaeology corpus adds 480 random blind-labelled blocks; weights refit to all comments.**
+- **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
 - **`scripts/smart-test-bed`**: scores smart-test's test selection on a small repo.
 - **`smart-test --full` on an unchanged tree now updates the selection index.**
 - **The pre-commit hook says when a check could not run, rather than calling the doc stale.**

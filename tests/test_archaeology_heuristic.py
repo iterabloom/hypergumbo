@@ -332,7 +332,7 @@ def test_cli_blocks_mode_lists_blocks_over_the_threshold(
 def test_cli_blocks_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "mod.py"
     path.write_text(SOURCE, encoding="utf-8")
-    assert ah.main(["--blocks", "--json", str(path)]) == 0
+    assert ah.main(["--min-words", "0", "--blocks", "--json", str(path)]) == 0
     records = json.loads(capsys.readouterr().out)
     assert [(r["start"], r["end"]) for r in records] == [(1, 1), (5, 6), (8, 8)]
     assert records[1]["probability"] > 0.5
@@ -366,7 +366,7 @@ def test_cli_blocks_mode_shows_an_empty_comment_as_an_empty_first_line(
 ) -> None:
     path = tmp_path / "bare.py"
     path.write_text("x = 1\n#\n", encoding="utf-8")
-    assert ah.main(["--blocks", str(path)]) == 0
+    assert ah.main(["--min-words", "0", "--blocks", str(path)]) == 0
     assert capsys.readouterr().out == f"{ah.probability(''):.2f}  {path}:2-2  comment  \n"
 
 
@@ -375,7 +375,7 @@ def test_cli_kind_docstrings_scores_docstrings_without_blocks(
 ) -> None:
     path = tmp_path / "mod.py"
     path.write_text(DOC_SOURCE, encoding="utf-8")
-    assert ah.main(["--kind", "docstrings", "--json", str(path)]) == 0
+    assert ah.main(["--min-words", "0", "--kind", "docstrings", "--json", str(path)]) == 0
     records = json.loads(capsys.readouterr().out)
     assert [(r["start"], r["kind"]) for r in records] == [
         (b.start, "docstring") for b in ah.docstring_blocks(DOC_SOURCE)]
@@ -388,7 +388,7 @@ def test_cli_kind_all_labels_each_line_with_its_kind(
 ) -> None:
     path = tmp_path / "mod.py"
     path.write_text(DOC_SOURCE, encoding="utf-8")
-    assert ah.main(["--blocks", "--kind", "all", str(path)]) == 0
+    assert ah.main(["--min-words", "0", "--blocks", "--kind", "all", str(path)]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert [line.split("  ")[2] for line in lines] == [
         b.kind for b in ah.blocks_of(DOC_SOURCE, "all")]
@@ -400,7 +400,7 @@ def test_cli_blocks_alone_still_means_comments(
 ) -> None:
     path = tmp_path / "mod.py"
     path.write_text(DOC_SOURCE, encoding="utf-8")
-    assert ah.main(["--blocks", "--json", str(path)]) == 0
+    assert ah.main(["--min-words", "0", "--blocks", "--json", str(path)]) == 0
     assert {r["kind"] for r in json.loads(capsys.readouterr().out)} == {"comment"}
 
 
@@ -411,3 +411,126 @@ def test_cli_kind_refuses_a_file_it_cannot_parse(
     path.write_text("def f(:\n    pass\n", encoding="utf-8")
     assert ah.main(["--kind", "docstrings", str(path)]) == 2
     assert "broken.py" in capsys.readouterr().err
+
+
+#: Blocks of 9, 10 and 12 words; the tracker ID in the last is not a word.
+SHORT_SOURCE = '''\
+# one two three four five six seven eight nine
+x = 1
+# one two three four five six seven eight nine ten
+y = 2
+# one two three four five six seven eight nine ten eleven twelve WI-damir
+def f():
+    """One two three four five six seven eight nine."""
+'''
+
+
+def _block_starts(tmp_path: Path, capsys: pytest.CaptureFixture[str], *args: str) -> list[int]:
+    path = tmp_path / "short.py"
+    path.write_text(SHORT_SOURCE, encoding="utf-8")
+    assert ah.main([*args, "--json", str(path)]) == 0
+    return [r["start"] for r in json.loads(capsys.readouterr().out)]
+
+
+def test_blocks_under_ten_words_are_skipped_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One matched word saturates a short block's density, so its score says
+    little; ten words is the default floor."""
+    assert ah.DEFAULT_MIN_WORDS == 10
+    assert _block_starts(tmp_path, capsys, "--kind", "all") == [3, 5]
+
+
+def test_min_words_sets_the_floor_and_zero_turns_it_off(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _block_starts(tmp_path, capsys, "--kind", "all", "--min-words", "11") == [5]
+    assert _block_starts(tmp_path, capsys, "--kind", "all", "--min-words", "0") == [1, 3, 5, 7]
+
+
+def test_min_words_counts_words_as_the_score_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Twelve words and a tracker ID: twelve, so a floor of 13 drops it."""
+    assert _block_starts(tmp_path, capsys, "--blocks", "--min-words", "12") == [5]
+    assert _block_starts(tmp_path, capsys, "--blocks", "--min-words", "13") == []
+
+
+def test_min_words_does_not_filter_stdin(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Stdin is one text, not a file of blocks: it is scored whatever its length."""
+    monkeypatch.setattr(sys, "stdin", io.StringIO("It was."))
+    assert ah.main(["--min-words", "50"]) == 0
+    assert capsys.readouterr().out.startswith(f"{ah.probability('It was.'):.2f}")
+
+
+#: A short comment and a short docstring that are all history, beside code
+#: and blocks of ten or more words that are not.
+WHOLE_SOURCE = '''\
+"""Module docstring that states a rule and runs to more than ten words in all."""
+# Previously this was wrong.
+x = 1  # trailing comment previously kept
+# The value must stay positive because the caller divides by it in every case.
+def f():
+    """It was replaced."""
+    return x
+'''
+
+
+def test_a_python_file_scored_whole_leaves_out_its_short_blocks() -> None:
+    kept = ah.without_short_blocks(WHOLE_SOURCE, 10)
+    assert "Previously this was wrong" not in kept
+    assert "It was replaced" not in kept
+    assert "Module docstring that states a rule" in kept
+    assert "The value must stay positive" in kept
+    assert "x = 1  # trailing comment previously kept" in kept
+    assert "def f():" in kept and "return x" in kept
+
+
+def test_a_cut_docstring_with_non_ascii_text_leaves_the_code_beside_it() -> None:
+    """ast counts columns in UTF-8 bytes; the cut must count characters."""
+    source = 'def f(): """Résumé café naïve."""; return 1\n'
+    assert ah.without_short_blocks(source, 10) == "def f(): ; return 1\n"
+
+
+def test_a_floor_of_zero_leaves_a_python_file_whole() -> None:
+    assert ah.without_short_blocks(WHOLE_SOURCE, 0) == WHOLE_SOURCE
+
+
+def test_cli_scores_a_python_file_without_its_short_blocks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "mod.py"
+    path.write_text(WHOLE_SOURCE, encoding="utf-8")
+    assert ah.main(["--json", str(path)]) == 0
+    (record,) = json.loads(capsys.readouterr().out)
+    assert record["probability"] == pytest.approx(
+        ah.probability(ah.without_short_blocks(WHOLE_SOURCE, 10)), abs=1e-4)
+    assert record["matches"]["change_narrative"] == ["previously"]  # the trailing one only
+
+
+def test_cli_scores_a_non_python_file_whole(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_text(WHOLE_SOURCE, encoding="utf-8")
+    assert ah.main(["--json", str(path)]) == 0
+    (record,) = json.loads(capsys.readouterr().out)
+    assert record["probability"] == pytest.approx(ah.probability(WHOLE_SOURCE), abs=1e-4)
+
+
+def test_cli_refuses_a_python_file_it_cannot_parse_scored_whole(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "broken.py"
+    path.write_text("def f(:\n    pass\n", encoding="utf-8")
+    assert ah.main([str(path)]) == 2
+    assert "broken.py" in capsys.readouterr().err
+
+
+def test_min_words_refuses_a_negative_floor(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        ah.main(["--blocks", "--min-words", "-1", "x.py"])
+    assert exit_info.value.code == 2
+    assert "--min-words: must be 0 or more" in capsys.readouterr().err

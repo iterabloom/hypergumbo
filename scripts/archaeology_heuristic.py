@@ -82,9 +82,13 @@ USAGE.
   archaeology_heuristic.py [FILE ...]           score each file's text (stdin if none)
   archaeology_heuristic.py --blocks FILE.py ... score each comment-only block
   --kind comments|docstrings|all                which blocks to score; implies --blocks
+  --min-words N   skip blocks under N words (default 10; 0 keeps all): not
+                  listed with --blocks/--kind, and cut from a .py file scored
+                  whole (code and comments sharing a line with code stay)
   --threshold P   list only results scoring at least P
   --json          machine-readable output
-Exit 0, or 2 when a file cannot be read or (with --blocks) tokenised or parsed.
+Exit 0, or 2 when a file cannot be read, or a .py file (or any file with
+--blocks/--kind) cannot be tokenised or parsed.
 """
 from __future__ import annotations
 
@@ -180,6 +184,8 @@ class Assessment:
 
 #: What ``--kind`` may select: comment blocks, docstrings, or both.
 KINDS = ("comments", "docstrings", "all")
+#: Blocks shorter than this many words are skipped unless ``--min-words`` says otherwise.
+DEFAULT_MIN_WORDS = 10
 
 
 @dataclass(frozen=True)
@@ -258,15 +264,54 @@ def docstring_blocks(source: str) -> list[Block]:
     bare string is not. Raises ``SyntaxError`` or ``ValueError`` on source it
     cannot parse.
     """
-    found = []
+    found = [Block(literal.lineno, literal.end_lineno or literal.lineno, text, "docstring")
+             for literal, text in _docstrings(source)]
+    return sorted(found, key=lambda b: b.start)
+
+
+def _docstrings(source: str) -> Iterable[tuple[ast.expr, str]]:
+    """Each docstring's string literal node and its cleaned text."""
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, _HAS_DOCSTRING):
             text = ast.get_docstring(node, clean=True)
             if text is not None:
-                literal = node.body[0]
-                found.append(Block(literal.lineno, literal.end_lineno or literal.lineno,
-                                   text, "docstring"))
-    return sorted(found, key=lambda b: b.start)
+                yield node.body[0].value, text  # type: ignore[attr-defined]
+
+
+def without_short_blocks(source: str, min_words: int) -> str:
+    """``source`` with its comment blocks and docstrings under ``min_words`` cut out.
+
+    What a whole Python file is scored on: a short block's score says little
+    (one matched word saturates its density), so it should not tip the file's
+    either. Code stays, and so does a comment that shares its line with code,
+    which is not a comment-only block. Words are counted as :func:`assess`
+    counts them. ``min_words`` of 0 or less returns ``source`` unchanged.
+    Raises what :func:`comment_blocks` and :func:`docstring_blocks` raise.
+    """
+    if min_words <= 0:
+        return source
+    lines = source.splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+
+    def offset(lineno: int, byte_col: int) -> int:
+        # ast columns count UTF-8 bytes, not characters
+        return starts[lineno - 1] + len(lines[lineno - 1].encode("utf-8")[:byte_col].decode("utf-8"))
+
+    cuts: list[tuple[int, int]] = []
+    for block in comment_blocks(source):
+        if assess(block.text).words < min_words:
+            for n in range(block.start, block.end + 1):
+                cuts.append((starts[n - 1], starts[n - 1] + len(lines[n - 1].rstrip("\r\n"))))
+    for literal, text in _docstrings(source):
+        if assess(text).words < min_words:
+            end_line = literal.end_lineno or literal.lineno
+            cuts.append((offset(literal.lineno, literal.col_offset),
+                         offset(end_line, literal.end_col_offset or 0)))
+    for start, end in sorted(cuts, reverse=True):
+        source = source[:start] + source[end:]
+    return source
 
 
 def blocks_of(source: str, kind: str) -> list[Block]:
@@ -319,7 +364,7 @@ class _Unreadable(Exception):
     """A named input could not be read or tokenised; the message names it."""
 
 
-def _score(files: Sequence[str], kind: Optional[str]) -> Iterable[_Scored]:
+def _score(files: Sequence[str], kind: Optional[str], min_words: int) -> Iterable[_Scored]:
     if not files:
         yield _Scored("<stdin>", assess(sys.stdin.read()))
         return
@@ -327,13 +372,24 @@ def _score(files: Sequence[str], kind: Optional[str]) -> Iterable[_Scored]:
         try:
             text = Path(name).read_text(encoding="utf-8")
             found = blocks_of(text, kind) if kind else []
+            if not kind and Path(name).suffix in (".py", ".pyi"):
+                text = without_short_blocks(text, min_words)
         except (OSError, UnicodeDecodeError, tokenize.TokenError, SyntaxError,
                 ValueError) as exc:
             raise _Unreadable(f"{name}: {exc}") from exc
         if not kind:
             yield _Scored(name, assess(text))
         for block in found:
-            yield _Scored(name, assess(block.text), block)
+            assessment = assess(block.text)
+            if assessment.words >= min_words:
+                yield _Scored(name, assessment, block)
+
+
+def _non_negative(value: str) -> int:
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be 0 or more")
+    return number
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -346,13 +402,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              "(comment blocks unless --kind says otherwise)")
     parser.add_argument("--kind", choices=KINDS,
                         help="which blocks to score: comments, docstrings or all; implies --blocks")
+    parser.add_argument("--min-words", type=_non_negative, default=DEFAULT_MIN_WORDS,
+                        help="skip comment blocks and docstrings of fewer words, counted as the "
+                             "score counts them: listed blocks with --blocks/--kind, or cut from "
+                             f"a .py file scored whole (default {DEFAULT_MIN_WORDS}; 0 keeps all)")
     parser.add_argument("--threshold", type=float, default=0.0,
                         help="list only results scoring at least this probability")
     parser.add_argument("--json", action="store_true", help="emit a JSON list")
     args = parser.parse_args(argv)
     try:
         kind = args.kind or ("comments" if args.blocks else None)
-        scored = [s for s in _score(args.files, kind)
+        scored = [s for s in _score(args.files, kind, args.min_words)
                   if s.assessment.probability >= args.threshold]
     except _Unreadable as exc:
         print(f"archaeology_heuristic: {exc}", file=sys.stderr)
