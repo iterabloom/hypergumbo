@@ -11,8 +11,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from hypergumbo_core import prose_only as po
 from hypergumbo_core.selection_index import open_index
 
@@ -72,12 +70,10 @@ def test_a_docstring_only_body_keeps_its_shape() -> None:
     assert po.classify(one, "def f():\n    return 1\n") == po.CODE
 
 
-def test_source_that_parses_but_does_not_tokenize_is_code(monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(_readline: object) -> object:
-        raise po.tokenize.TokenError("eof")
-
-    monkeypatch.setattr(po.tokenize, "generate_tokens", boom)
-    assert po.prose_digests("x = 1\n") is None
+def test_prose_that_quotes_a_machine_comment_counts_as_one() -> None:
+    """The comments are matched by pattern, so this errs toward ``code``."""
+    quoted = 'def f():\n    """Mark it ``# noqa`` to silence."""\n'
+    assert po.classify(quoted, quoted.replace("silence", "quiet it")) == po.CODE
 
 
 # ── introspection ───────────────────────────────────────────────────────────
