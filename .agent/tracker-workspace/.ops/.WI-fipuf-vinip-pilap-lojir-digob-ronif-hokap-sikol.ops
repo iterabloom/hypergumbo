@@ -19,3 +19,26 @@
     pr_ref:  # 94ca
     description: "Idea (owner-approved to file, 2026-11-10; not measured): instead of REMOVING tests from the local run (--narrow), ORDER them. Run first the tests the coverage index saw executing the changed blocks, then the citation-gate tests, then the rest of the selection. Nothing is dropped, so neither the whole-tree text readers (WI-zajuv measurement: 69 test files) nor import-time code (WI-zunug) can cause a miss, and the CI manifest is untouched.\n\nLimit, stated up front: a green run takes as long as today. The gain is time-to-first-failure only.\n\nOpen questions to measure before building: how pytest-xdist distributes an ordered list (ordering may be lost across workers); how often a failing local run's first failure is in the coverage-directed set (the smart-test bed, scripts/smart-test-bed, can score this: for each edit, the rank of the first MUST test).\n\nDone when: measured on the bed, and either shipped with the rank numbers or closed with the reason it does not help."  # 94ca
     fields: {}  # 94ca
+- op: discuss  # 4c72
+  at: '2026-11-11T01:16:00Z'  # 4c72
+  by: agent  # 4c72
+  actor: jgstern_agent  # 4c72
+  clock: 2  # 4c72
+  nonce: 4c72  # 4c72
+  message: "Owner suggestion 2026-11-10 (hunch, not measured): after the first test failure, keep running for about 15 seconds to collect nearby failures, then stop, instead of running the whole selection to the end. Applies to the CI pytest step as well as local runs. Notes: pytest has only count-based stops (-x, --maxfail=N), so this needs a small plugin (record the time of the first failed report; once the grace period passes, set session.shouldstop; under xdist do it on the controller). Risk to measure: a truncated failure list can cost a second CI round trip when an unrelated later failure was cut off; failure-first ordering lowers that risk, so the two belong together. Measure on past red CI runs: how long after the first failure did the last distinct failure arrive, and how much wall time followed it."  # 4c72
+- op: update  # d434
+  at: '2026-11-11T03:26:37Z'  # d434
+  by: agent  # d434
+  actor: jgstern_agent  # d434
+  clock: 3  # d434
+  nonce: d434  # d434
+  set:  # d434
+    status: done  # d434
+    pr_ref: '#2131'  # d434
+- op: discuss  # e1eb
+  at: '2026-11-11T03:26:38Z'  # e1eb
+  by: agent  # e1eb
+  actor: jgstern_agent  # e1eb
+  clock: 4  # e1eb
+  nonce: e1eb  # e1eb
+  message: "Done in PR #2131. SHIPPED: (1) scripts/pytest_plugins/pytest_fail_grace.py, --fail-grace=N stops a run N seconds after the first failed report, with and without xdist, exit 1; (2) per-PR CI pytest step uses --fail-grace=15 (cron suites untouched); (3) smart-test targeted runs use it by default (SMART_TEST_FAIL_GRACE=0 or --fail-grace=0 runs everything; not on --full or explicitly named files); (4) smart-test hands pytest the run set failure-first (changed tests, coverage-selected, citation tests, rest) -- reorders, never removes; (5) smart-test-bed prints the first-MUST rank. BEHAVIOURAL EVIDENCE: throwaway project, 4 workers, grace 1 s: failing file first -> 3.7 s, last -> 11.4 s. The branch own run while five tests were red stopped at 92 s (1,989 tests) where the green run of that selection takes 295 s (4,426). SIZING MEASURED: PR pytest steps are bimodal, 15-46 s up to ~150 files, 11-28 min for 200-760 files; about 1 PR run in 9 ends red (120 ci_failed vs 973 merged). BED: first MUST never later, 4th -> 1st in 2 of 18 edits; run sets of 1-12 files, so this shows no harm and does not size the gain. NOT MEASURED, and said so in the commit: the spread of failures in real red CI runs (failing commits are superseded, logs not recoverable), so 15 s is the owner estimate; and xdist ordering on the real suite beyond the one observed red run. NOT DONE: failure-first ordering in CI (the manifest order is unchanged there; only the stop rule applies)."  # e1eb

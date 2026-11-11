@@ -20,3 +20,19 @@
     pr_ref:  # 9e02
     description: "Lead (not investigated): four tests that read the whole source tree as text cost about 815 serial seconds per full run, 56% of what all 69 whole-tree text readers cost (1450 s of the suite's 23,084 s; timings from test_timings.json, reader set from the WI-zajuv measurement in ~/hypergumbo_lab_notebook/text_reader_measurement_11102026/):\n\n- packages/hypergumbo-core/tests/test_meta_write_discipline.py  226 s\n- packages/hypergumbo-core/tests/test_catalogue_error_exit_code.py  212 s\n- packages/hypergumbo-core/tests/test_stable_id_floor_gate.py  199 s\n- packages/hypergumbo-core/tests/test_producer_coherence.py  179 s\n\nA lint-like check over ~400 files should not need minutes. Hypotheses to check, none verified: the tree is rescanned per test case rather than once per module; a subprocess is spawned per file or per case; a full hypergumbo run on the repo is repeated. A fix here speeds every run that selects them, local and CI.\n\nFirst step: profile where the time goes in each (per-test durations, then a profiler on the slowest case). Done when each of the four is either faster with the numbers recorded, or has a stated reason its cost is necessary."  # 9e02
     fields: {}  # 9e02
+- op: update  # 4166
+  at: '2026-11-11T02:57:07Z'  # 4166
+  by: agent  # 4166
+  actor: jgstern_agent  # 4166
+  clock: 2  # 4166
+  nonce: '4166'  # 4166
+  set:  # 4166
+    status: done  # 4166
+    pr_ref: '#2130'  # 4166
+- op: discuss  # 4d99
+  at: '2026-11-11T02:57:08Z'  # 4d99
+  by: agent  # 4d99
+  actor: jgstern_agent  # 4d99
+  clock: 3  # 4d99
+  nonce: 4d99  # 4d99
+  message: "Done in PR #2130, on this item own terms: each of the four is either faster with numbers, or has a stated reason. PREMISE CORRECTED: the 815 s figure came from a loaded full run with a recorder attached. Re-timed alone on a quiet machine: stable_id_floor_gate 161 s wall (621 serial), producer_coherence 64 s, catalogue_error_exit_code 39 s, meta_write_discipline 28 s. (1) test_stable_id_floor_gate: a module-scoped fixture (three pipeline runs over ~130 language fixtures) was rebuilt in every xdist worker that got one of its tests; new build_once fixture builds once per session behind an flock. Alone: 161 s -> 42 s wall, one 34 s build where four workers built ~152 s each. (2) test_meta_write_discipline: the live drift scan ran in two tests, now once (-20 s under coverage). (3) test_producer_coherence ratchet: NOT changed; four tree scans, one per axis, ~5 s each unloaded, helper discovery is axis-dependent so nothing to share without rewriting the scanner. (4) test_catalogue_error_exit_code: NOT changed; 175 cases x ~1 s CLI subprocess. SCOPE LIMIT: the gain is for small selections (per-PR CI, local); in the full suite the stable-id fixture was already built once, so the full suite gains about 20 s. No fixed pipeline overhead exists to remove (0.25 s on a one-file dir). RESIDUAL LEADS, not done: both AST scanners re-walk subtrees (5.7M node visits and 792 parses for 396 files in find_discipline_drift); test_route_concept_parity has one 264 s fixture, test_import_dst_ids_are_canonical 81 s, test_doc_family_id_parity 80 s (pipeline work, built once in the full run); build_once could be applied to other module-scoped fixtures that run pipelines."  # 4d99

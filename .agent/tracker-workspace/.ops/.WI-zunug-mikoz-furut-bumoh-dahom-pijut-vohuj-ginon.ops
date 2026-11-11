@@ -43,3 +43,19 @@
   clock: 4  # b971
   nonce: b971  # b971
   message: "Follow-up measured, same 400 commits: of the 90 with a changed <module> block, 12 changed only the module docstring. Routing those to the text-reader set would let narrowing apply to 32 of 113 commits instead of 20; most module-level changes are real code (imports, constants, registrations)."  # b971
+- op: update  # 1526
+  at: '2026-11-11T01:47:01Z'  # 1526
+  by: agent  # 1526
+  actor: jgstern_agent  # 1526
+  clock: 5  # 1526
+  nonce: '1526'  # 1526
+  set:  # 1526
+    status: done  # 1526
+    pr_ref: '#2129'  # 1526
+- op: discuss  # e20f
+  at: '2026-11-11T01:47:01Z'  # e20f
+  by: agent  # e20f
+  actor: jgstern_agent  # e20f
+  clock: 6  # e20f
+  nonce: e20f  # e20f
+  message: "Done in PR #2129, fix (a). Changed import-time code (a module body, or a class body outside any function) in a coverable source file is now a narrowing_blocker: the run set stays whole. Behavioural evidence, the filed repro re-run: scripts/smart-test-bed run narrow --edit rename no longer drops packages/bed-app/tests/test_cli_usage.py; narrow dropped-MUST total 33 -> 32 across the 19 edits. The 32 left are test_docstrings and test_tree_gate, the whole-tree text readers the manifest drops too (WI-zajuv, parked) -- NOT fixed here. Unit tests in test_selection_index (TestImportTimeChanges), test_selection_narrow and test_block_hash; the bed end-to-end test pins the rename case. Mutation control: disabling the import-time mark turned two unit tests red. Cost stated: narrowing now refuses on about 82 percent of commits that modify package source (93 of 113 measured)."  # e20f
