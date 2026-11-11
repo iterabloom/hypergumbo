@@ -16,14 +16,19 @@ per 100 words (capped at :data:`CAP`):
 * ``change_narrative`` -- a past state set against the present one ("used
   to", "previously", "the first draft", "was replaced");
 * ``provenance`` -- where and when the change was made: a date, a PR number,
-  a commit, a phase, batch or audit, "reported", "found";
+  "in commit", a phase, batch or audit, "caught", "discovered". Not "found",
+  a present-passive "is reported", or a bare "commit": searching, reporting
+  and committing are things code DOES, so those words describe the code;
 * ``measurement`` -- a figure taken once on some corpus ("measured", "52 of
   52", "63.9%", "on 12 repos");
 * ``numbers`` -- figures of three or more digits, comma-grouped or decimal
-  (an ID such as ``ADR-0061`` or ``0018``, or a date's year, does not count);
+  (an ID such as ``ADR-0061`` or ``0018``, or a date's year, does not count,
+  and nor does a fraction below 1, which is a threshold or a confidence);
 * ``past_tense`` -- narrative auxiliaries ("was", "were", "had");
-* ``rule_voice`` -- the present-tense voice of a constraint ("must",
-  "never", "because"), the one family that lowers the score.
+* ``rule_voice`` -- the conditional and normative voice of a rule ("if",
+  "when", "unless", "must", "cannot", "does not"), the one family that lowers
+  the score. Not "never", "only", "always" or "because": a story uses them
+  as often as a rule does ("it never fired", "only because the old code").
 
 A logistic model turns the densities into a probability:
 ``1 / (1 + exp(-(BIAS + sum(WEIGHTS[f] * density[f]))))``. Densities rather
@@ -36,7 +41,7 @@ WHERE THE WEIGHTS COME FROM. They are fitted (L2-regularised logistic
 regression, scikit-learn's ``LogisticRegression(C=0.18)`` on the capped
 densities) to the labelled COMMENT blocks in
 ``tests/fixtures/archaeology-corpus.json``, 108 blocks from hypergumbo_core;
-five-fold cross-validation classifies 88% of them correctly at 0.5. Most
+five-fold cross-validation classifies about 87% of them correctly at 0.5. Most
 misses are mixed blocks, a rule wrapped in an incident story, which score
 between 0.3 and 0.5. The probability is a calibrated heuristic over that
 corpus, not a judgement: read a high-scoring block before cutting it. When the
@@ -52,10 +57,10 @@ for the rule) rather than set apart, so the densities over-read rules and
 under-read that history: about one rule-stating docstring in five scores
 over 0.5, and a cutoff high enough to be mostly right finds few of the
 historical ones. The limit is the families, not the weights: refitting on
-the docstring rows themselves ranks them barely better (cross-validated AUC
-0.85 against these weights' 0.83). The sample has no docstring under 100 words, so a short
-docstring's score is unmeasured, and there one word ("found", a version
-number, an array's dimension) can saturate it.
+the docstring rows themselves ranks them no better (cross-validated AUC
+0.87-0.89 against these weights' 0.89). The sample has no docstring under
+100 words, so a short docstring's score is unmeasured, and there one word (a
+version number, an array's dimension, a "was") can saturate it.
 
 BLOCKS. Score a Python file one block at a time, not as one text: a whole
 file's score is diluted by its code and by the rules around a historical
@@ -107,13 +112,14 @@ FAMILIES: dict[str, re.Pattern[str]] = {
     ),
     "provenance": re.compile(
         r"\b20\d\d-[01]\d-[0-3]\d\b"
-        r"|\bPR ?#?\d+\b|(?<![\w/])#\d{3,}\b|\bcommit\b|\bon dev\b"
+        r"|\bPR ?#?\d+\b|(?<![\w/])#\d{3,}\b|\b(?:in|at|by) commit\b|\bon dev\b"
         r"|\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,40}\b"
         r"|\bPhase[- ]?\d\w*\b|\bslice [A-Z0-9]\b|\bbatch \d+\b|\bWave[- ]?\d+\b|\bPR\d\b"
         r"|\bdogfood\w*|\bsession\b|\bnotebook\w*\b|\bround \d+\b"
         r"|\bthe owner (?:ruled|granted|said|asked|decided|approved|chose)\b"
         r"|\bowner's (?:ruling|decision|call)\b|\bthe audit\b|\baudited\b"
-        r"|\b(?:reported|caught|discovered|noticed|found)\b",
+        r"|(?<!\bis )(?<!\bare )(?<!\bbe )(?<!\bbeen )\breported\b(?! (?:as|by)\b)"
+        r"|\b(?:caught|discovered|noticed)\b",
         _I,
     ),
     "measurement": re.compile(
@@ -125,26 +131,26 @@ FAMILIES: dict[str, re.Pattern[str]] = {
         _I,
     ),
     "numbers": re.compile(
-        r"(?<![\w.\-#:])(?:[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{2,}|\d+\.\d*[1-9]\d*)(?![\w.\-])"
+        r"(?<![\w.\-#:])(?:[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{2,}|[1-9]\d*\.\d*[1-9]\d*)(?![\w.\-])"
     ),
     "past_tense": re.compile(r"\b(?:was|were|had|did|became)\b", _I),
     "rule_voice": re.compile(
-        r"\b(?:must|never|always|only|cannot|so that|because|otherwise|deliberately"
-        r"|do not|does not|is not|are not|keeps?|ensures?|guarantees?)\b",
+        r"\b(?:if|when|unless|whenever|otherwise|must|cannot"
+        r"|do not|does not|is not|are not)\b",
         _I,
     ),
 }
 
 #: Fitted log-odds per unit of density (matches per 100 words); see the module docstring.
 WEIGHTS: dict[str, float] = {
-    "change_narrative": 1.12,
-    "provenance": 0.89,
-    "measurement": 0.62,
-    "numbers": 0.75,
-    "past_tense": 0.40,
-    "rule_voice": -0.25,
+    "change_narrative": 1.06,
+    "provenance": 0.77,
+    "measurement": 0.64,
+    "numbers": 0.67,
+    "past_tense": 0.31,
+    "rule_voice": -0.38,
 }
-BIAS = -0.69
+BIAS = -0.54
 #: Density ceiling per family, so one repeated phrase cannot decide the score alone.
 CAP = 20.0
 #: A tracker or ADR ID is a pointer, not prose: it is not counted as a word, so

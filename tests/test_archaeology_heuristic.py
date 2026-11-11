@@ -92,6 +92,46 @@ def test_an_identifier_suffix_is_not_a_measurement() -> None:
     assert not ah.assess("ADR-0061 and audit-findings 0018 and #:1234").matches.get("numbers")
 
 
+def _hits(text: str, family: str) -> tuple[str, ...]:
+    return ah.assess(text).matches.get(family, ())
+
+
+@pytest.mark.parametrize("text", [
+    "Returns the number of matching items found under root.",
+    "Drift is reported as a warning; a gap is reported by the gate.",
+    "The pre-commit hook rejects a commit with no sign-off.",
+])
+def test_what_the_code_does_now_is_not_provenance(text: str) -> None:
+    """Searching, reporting and committing are things code DOES; the words
+    describe the code, not who changed it when."""
+    assert _hits(text, "provenance") == ()
+
+
+@pytest.mark.parametrize("text, phrase", [
+    ("The owner reported it twice.", "reported"),
+    ("Fixed in commit 4bb8062cef.", "in commit"),
+    ("A crash caught by the nightly run.", "caught"),
+])
+def test_an_event_is_still_provenance(text: str, phrase: str) -> None:
+    assert phrase in _hits(text, "provenance")
+
+
+def test_a_fraction_below_one_is_a_threshold_not_a_figure() -> None:
+    assert _hits("Edges under a 0.85 confidence, or 0.5 by default, are dropped.", "numbers") == ()
+    assert _hits("It took 517.7 seconds over 1,377 rows.", "numbers") == ("517.7", "1,377")
+
+
+def test_the_rule_voice_is_conditional_and_normative() -> None:
+    """A rule states a condition and its consequence, or an obligation; the
+    emphatic words a story uses as often ("it never fired", "only because")
+    are not the rule's voice."""
+    assert _hits("If the key is absent, it must not guess; when unsure, it "
+                 "cannot, unless told. Otherwise it does not.", "rule_voice") == (
+        "If", "must", "when", "cannot", "unless", "Otherwise", "does not")
+    assert _hits("It never fired, only because it always kept what it "
+                 "deliberately ensured, so that nothing guaranteed it.", "rule_voice") == ()
+
+
 def test_matches_name_the_phrases_that_scored() -> None:
     matches = ah.assess(HISTORY).matches
     assert "used to" in matches["change_narrative"]
@@ -247,7 +287,7 @@ def test_cli_json_for_a_file(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     (record,) = json.loads(capsys.readouterr().out)
     assert record["source"] == str(path)
     assert record["probability"] == pytest.approx(ah.probability(RULE), abs=1e-4)
-    assert record["matches"]["rule_voice"] == ["must", "must", "because"]
+    assert record["matches"]["rule_voice"] == ["must", "must"]
 
 
 def test_cli_blocks_mode_lists_blocks_over_the_threshold(
