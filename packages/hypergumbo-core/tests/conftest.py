@@ -160,3 +160,31 @@ def pytest_configure(config):
             "pytest wrapper repair failed. Run ./scripts/install-hooks to fix.",
             stacklevel=1,
         )
+
+
+@pytest.fixture(scope="session")
+def build_once(tmp_path_factory):
+    """``build_once(name, build)``: ``build()``'s JSON result, computed by one
+    xdist worker per session and loaded by the rest.
+
+    For a module- or session-scoped fixture whose build is expensive: under
+    xdist's ``load`` mode every worker that gets one of the module's tests
+    builds it again (WI-nupit). See ``tests/helpers_build_once.py``.
+    """
+    # BY PATH, NOT BY NAME. The root pyproject puts tests/ on pythonpath, but
+    # a run of core tests alone is configured by this package's own pyproject,
+    # which does not, and `import helpers_build_once` then fails.
+    import importlib.util
+
+    helper_path = Path(__file__).resolve().parents[3] / "tests" / "helpers_build_once.py"
+    spec = importlib.util.spec_from_file_location("helpers_build_once", helper_path)
+    assert spec and spec.loader, helper_path
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+
+    shared = helper.shared_session_dir(tmp_path_factory.getbasetemp()) / "build-once"
+
+    def _build_once(name: str, build):
+        return helper.build_once_in(shared, name, build)
+
+    return _build_once

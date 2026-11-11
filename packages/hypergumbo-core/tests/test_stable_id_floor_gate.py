@@ -1782,9 +1782,18 @@ def test_flat_languages_each_carry_a_reason() -> None:
 
 
 @pytest.fixture(scope="module")
-def runs(tmp_path_factory) -> dict:
+def runs(tmp_path_factory, build_once) -> dict:
     """Both variants of every fixture through the full pipeline, nodes by file
-    (and the with-sibling variant once more, checked out elsewhere)."""
+    (and the with-sibling variant once more, checked out elsewhere).
+
+    Built ONCE PER SESSION, not once per xdist worker: three pipeline runs
+    cost about 150 s, and under xdist's default distribution this module's
+    tests land on several workers, each of which used to build its own copy
+    (four of six, 621 serial seconds for this file alone; WI-nupit)."""
+    return build_once("stable-id-floor-runs", lambda: _build_runs(tmp_path_factory))
+
+
+def _build_runs(tmp_path_factory) -> dict:
     ensure_discovered()
     base = tmp_path_factory.mktemp("stable-id-floor")
     out: dict = {}
@@ -1806,7 +1815,8 @@ def runs(tmp_path_factory) -> dict:
         nodes = json.loads(out_path.read_text())["nodes"]
         by_file: dict = defaultdict(list)
         for node in nodes:
-            by_file[node.get("path")].append(node)
+            # A str key: the result crosses workers as JSON (build_once).
+            by_file[str(node.get("path"))].append(node)
         out[variant] = by_file
     return out
 

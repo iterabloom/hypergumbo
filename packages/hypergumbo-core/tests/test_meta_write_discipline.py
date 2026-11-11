@@ -252,9 +252,18 @@ def test_checker_allows_whole_dict_assignment_with_no_meta_bearing_kwarg(
 # -- the live tree ---------------------------------------------------
 
 
-def test_live_tree_has_no_discipline_drift():
-    offenders = find_discipline_drift(REPO_ROOT)
-    assert offenders == [], "\n".join(offenders)
+@pytest.fixture(scope="module")
+def live_drift(build_once) -> list:
+    """The live tree's offenders, scanned once per session. The scan costs
+    about 20 s under coverage and two tests read it (WI-nupit)."""
+    return build_once(
+        "meta-write-discipline-live-drift",
+        lambda: find_discipline_drift(REPO_ROOT),
+    )
+
+
+def test_live_tree_has_no_discipline_drift(live_drift):
+    assert live_drift == [], "\n".join(live_drift)
 
 
 def test_live_tree_collision_capable_set_is_declared():
@@ -440,17 +449,16 @@ def test_filter_refuses_a_single_valued_key():
         filter_meta_key({single.name: ["x"]}, single.name, lambda c: False)
 
 
-def test_the_live_remover_routes_through_the_chokepoint():
+def test_the_live_remover_routes_through_the_chokepoint(live_drift):
     """END TO END on the real function, not a fixture.
 
     ``strip_test_file_only_concepts`` is the site that motivated (b). Its
     behaviour must be unchanged — it still strips, and still returns the
     count — while no longer assigning through an alias.
     """
-    offenders = find_discipline_drift(REPO_ROOT)
-    assert not [o for o in offenders if "framework_patterns.py" in o], (
+    assert not [o for o in live_drift if "framework_patterns.py" in o], (
         "the live remover must satisfy rule 1 now that it can be seen:\n"
-        + "\n".join(offenders)
+        + "\n".join(live_drift)
     )
     # And it still does its job — behaviour unchanged, which is the half a
     # linter cannot check.
