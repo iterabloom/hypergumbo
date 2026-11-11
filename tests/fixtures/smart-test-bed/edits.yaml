@@ -227,3 +227,22 @@
       write: |
         {"square_of_3": 9, "square_of_4": 16}
   should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+# The prose-only rule with a second, real change beside it: chain_c's comment
+# selects only its text readers, while tables.py's statement keeps every test
+# the import graph selects for it.
+- name: comment-with-code
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/chain_c.py
+      old: |
+        def step_c(x):
+      new: |
+        # The last link: callers multiply what this returns.
+        def step_c(x):
+    - file: packages/bed-core/src/bedcore/tables.py
+      old: |
+        LIMIT = 10
+      new: |
+        LIMIT = 5 * 2
+  should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
