@@ -39,28 +39,37 @@ that states rules is long, not historical.
 
 WHERE THE WEIGHTS COME FROM. They are fitted (L2-regularised logistic
 regression, scikit-learn's ``LogisticRegression(C=0.18)`` on the capped
-densities) to the labelled COMMENT blocks in
-``tests/fixtures/archaeology-corpus.json``, 108 blocks from hypergumbo_core;
-five-fold cross-validation classifies about 87% of them correctly at 0.5. Most
-misses are mixed blocks, a rule wrapped in an incident story, which score
-between 0.3 and 0.5. The probability is a calibrated heuristic over that
-corpus, not a judgement: read a high-scoring block before cutting it. When the
-families change, refit against the comment rows and update :data:`WEIGHTS`
-and :data:`BIAS`; the corpus test fails if the fit no longer separates them.
+densities) to every labelled COMMENT block in
+``tests/fixtures/archaeology-corpus.json``. Each row names its ``sample``:
+the ``curated`` comments were picked by hand, about half of them history,
+for the contrast; the ``random`` ones are a random sample of comment blocks
+of 40 or more words, labelled blind to these scores, about one in six of
+them history. The random sample is what real code looks like, so it sets
+the base rate: a score is the chance that a substantial comment in a
+codebase like this one is history, which is why a curated block, drawn from
+a half-history pool, often scores under 0.5 while still ranking near the
+top. Cross-validated, the fit ranks the curated comments with AUC 0.93 and
+the random ones with 0.84; most misses are mixed blocks, a rule wrapped in
+an incident story. The probability is a calibrated heuristic over that
+corpus, not a judgement: read a high-scoring block before cutting it. When
+the families change, refit against all the comment rows and update
+:data:`WEIGHTS` and :data:`BIAS`; the corpus test fails if the fit no longer
+separates them, sample by sample.
 
-A DOCSTRING SCORE IS WEAK EVIDENCE: USE IT TO PICK WHAT TO READ. The
+A DOCSTRING SCORE IS WEAKER EVIDENCE: USE IT TO PICK WHAT TO READ. The
 corpus's docstring rows, a random sample of docstrings of 100 or more words
-labelled blind to these scores, are held out of the fit. History is the
-minority there, about one docstring in seven, and it is usually woven into a
+labelled blind to these scores, are held out of the fit. History is rarer
+there, about one docstring in eight, and it is usually woven into a
 present-tense rule ("the previous code did X, measured on Y" as the reason
-for the rule) rather than set apart, so the densities over-read rules and
-under-read that history: about one rule-stating docstring in five scores
-over 0.5, and a cutoff high enough to be mostly right finds few of the
-historical ones. The limit is the families, not the weights: refitting on
-the docstring rows themselves ranks them no better (cross-validated AUC
-0.87-0.89 against these weights' 0.89). The sample has no docstring under
-100 words, so a short docstring's score is unmeasured, and there one word (a
-version number, an array's dimension, a "was") can saturate it.
+for the rule) rather than set apart, so the densities under-read it: at 0.5
+about half the docstrings flagged are history, and those are under a third
+of the historical ones. Ranked, they do better (AUC 0.88), so sort by score
+and read from the top. The limit is the families, not the weights:
+refitting on the docstring rows themselves ranks them no better
+(cross-validated AUC 0.87-0.88). Neither sample has a block under 40 words
+(comments) or 100 words (docstrings), so a short block's score is
+unmeasured, and there one word (a "was", a version number, an array's
+dimension) can saturate it.
 
 BLOCKS. Score a Python file one block at a time, not as one text: a whole
 file's score is diluted by its code and by the rules around a historical
@@ -143,14 +152,14 @@ FAMILIES: dict[str, re.Pattern[str]] = {
 
 #: Fitted log-odds per unit of density (matches per 100 words); see the module docstring.
 WEIGHTS: dict[str, float] = {
-    "change_narrative": 1.06,
-    "provenance": 0.77,
-    "measurement": 0.64,
-    "numbers": 0.67,
-    "past_tense": 0.31,
-    "rule_voice": -0.38,
+    "change_narrative": 0.81,
+    "provenance": 0.49,
+    "measurement": 0.62,
+    "numbers": 0.91,
+    "past_tense": 0.60,
+    "rule_voice": -0.33,
 }
-BIAS = -0.54
+BIAS = -1.83
 #: Density ceiling per family, so one repeated phrase cannot decide the score alone.
 CAP = 20.0
 #: A tracker or ADR ID is a pointer, not prose: it is not counted as a word, so
