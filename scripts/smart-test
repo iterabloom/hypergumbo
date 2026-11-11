@@ -52,9 +52,17 @@
 # TOOLS_ROOT's types), coverage roots are the target's packages/*/src, the
 # no-embeddings coverage config is used only if the target has one, and test
 # timings are not ingested into this machine's leaderboard.
-# SMART_TEST_SELECTION_OUT=<dir> writes manifest.txt, after-union.txt and
-# local.txt there once the local run set is final, so a caller can read every
-# stage of one selection without parsing the log.
+# SMART_TEST_SELECTION_OUT=<dir> writes manifest.txt, after-union.txt,
+# local.txt and run-order.txt there once the local run set is final, so a
+# caller can read every stage of one selection without parsing the log.
+#
+# FAILURE-FIRST, AND A RED RUN STOPS EARLY (WI-fipuf). A targeted run hands
+# pytest the likeliest failures first (changed tests, tests that executed a
+# changed block, tests citing a changed file) and stops 15 seconds after its
+# first failure. Nothing is dropped from the run set; a green run is
+# unchanged. SMART_TEST_FAIL_GRACE=<seconds> changes the wait, =0 (or
+# `--fail-grace=0`) runs everything; --full and explicitly named test files
+# always run everything.
 
 set -euo pipefail
 
@@ -234,6 +242,20 @@ done
 # wiring, not to let a selector shrink the merge gate.
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
+fi
+
+# --fail-grace (WI-fipuf): a TARGETED run stops this many seconds after its
+# first failure (scripts/pytest_plugins/pytest_fail_grace.py). Default 15;
+# SMART_TEST_FAIL_GRACE=0 or `--fail-grace=0` on the command line runs
+# everything. Not applied to --full or to explicitly named test files: those
+# runs exist to see every failure, and a cut-short full run must not fold a
+# partial coverage picture into the selection index as if it were complete.
+# A --fail-grace given on the command line comes later in pytest's argv than
+# this default, so it wins.
+FAIL_GRACE_ARGS=()
+if [[ "${SMART_TEST_FAIL_GRACE:-15}" != "0" ]] \
+        && [[ -f "${TOOLS_ROOT:-$REPO_ROOT}/scripts/pytest_plugins/pytest_fail_grace.py" ]]; then
+    FAIL_GRACE_ARGS=("--fail-grace=${SMART_TEST_FAIL_GRACE:-15}")
 fi
 
 # Auto-add -n auto for parallel execution unless:
@@ -762,6 +784,17 @@ run_pytest() {
     shift
     local extra_args=("$@")
 
+    # --fail-grace (WI-fipuf): load the plugin on every run so the option is
+    # always understood; whether a run USES it is the caller's choice (see
+    # FAIL_GRACE_ARGS). The plugin directory goes on PYTHONPATH for pytest
+    # alone. ${…:-} because tests extract this function and drive it bare.
+    local plugin_dir="${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/pytest_plugins"
+    local plugin_path="${PYTHONPATH:-}"
+    if [[ -f "$plugin_dir/pytest_fail_grace.py" ]]; then
+        plugin_path="$plugin_dir${PYTHONPATH:+:$PYTHONPATH}"
+        extra_args=("-p" "pytest_fail_grace" "${extra_args[@]}")
+    fi
+
     mkdir -p "$MANIFEST_DIR"
 
     # Pin rootdir so --cov-context node ids are ALWAYS repo-relative.
@@ -801,7 +834,7 @@ run_pytest() {
     if [[ "$RAW_OUTPUT" == "true" ]]; then
         # Stream output directly (old behavior)
         # shellcheck disable=SC2086
-        exec pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
+        exec env PYTHONPATH="$plugin_path" pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
     else
         # Capture output, then summarize
         echo "Running tests... (output saved to $PYTEST_LOG)"
@@ -829,7 +862,7 @@ run_pytest() {
         # INV-tazur: the junit report is how the verdict below counts what ran,
         # so the previous run's report must not survive to answer for this one.
         rm -f "$JUNIT_XML"
-        env -u FORCE_COLOR -u COLORTERM pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
+        env -u FORCE_COLOR -u COLORTERM PYTHONPATH="$plugin_path" pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
         # Corrective re-derivation: these may only ESCALATE to failure, never
         # de-escalate to success. An affirmative-green clause (`N passed` && !
         # `N failed` -> 0) used to live here; it was a no-op while exit_code
@@ -1834,6 +1867,29 @@ fi
 # hold it to the same rule as the manifest before pytest sees it.
 require_selection_on_disk "the local run set" "$AFFECTED_TESTS"
 
+# ── FAILURE-FIRST RUN ORDER (WI-fipuf) ───────────────────────────────────────
+# ORDERS, NEVER REMOVES. The run set is exactly $AFFECTED_TESTS; only the
+# order pytest receives it in changes, so nothing here can drop a test, and
+# the manifest (snapshotted above) is untouched.
+#
+# First the tests most likely to fail on this change: the changed test files,
+# then the tests the coverage index saw executing a changed block, then the
+# tests that cite a changed file by path. Then everything else, as before.
+# pytest collects its arguments in the order given, and xdist's `load` mode
+# hands tests out from the front, so the order survives -n (measured on 41
+# files, 4 workers: a failing file listed first ended the run in 3.7s with
+# --fail-grace=1, listed last in 11.4s).
+#
+# The point is --fail-grace below: a red run stops soon after its first
+# failure, so the sooner the likely failure runs, the less of a red run is
+# waited for. A green run takes as long as it did.
+RUN_ORDER=$( {
+    printf '%s\n' "${CHANGED_TEST_FILES:-}" "${COVERAGE_UNION_ADDS:-}" "${CITATION_GATE_TESTS:-}" \
+        | awk 'NR==FNR { run[$0]; next } ($0 in run) && !seen[$0]++' \
+              <(echo "$AFFECTED_TESTS") -
+    echo "$AFFECTED_TESTS"
+} | awk 'NF && !seen[$0]++')
+
 # SMART_TEST_SELECTION_OUT (see the header): every stage of this selection,
 # for scripts/smart-test-bed. Written only on this path; an early exit (a
 # full-suite fallback, nothing to run) leaves the directory empty, and the
@@ -1843,6 +1899,7 @@ if [[ -n "${SMART_TEST_SELECTION_OUT:-}" ]]; then
     echo "$MANIFEST_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/manifest.txt"
     echo "$UNION_RUN_SET" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/after-union.txt"
     echo "$AFFECTED_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/local.txt"
+    echo "$RUN_ORDER" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/run-order.txt"
 fi
 
 # Count affected tests
@@ -1913,7 +1970,7 @@ if [[ "$AFFECTED_COV" == "FULL" ]]; then
     TARGETED_TEST_COUNT=$TEST_COUNT
     TARGETED_SOURCE_COUNT=0
     echo "Running $TEST_COUNT affected test files (use --full for complete suite)"
-    run_pytest "$AFFECTED_TESTS" "${PYTEST_ARGS[@]}"
+    run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" "${PYTEST_ARGS[@]}"
     exit $?
 fi
 
@@ -1988,7 +2045,7 @@ except Exception:
 fi
 
 # Run tests and collect coverage (don't enforce threshold yet)
-run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"
+run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" "${SCOPED_PYTEST_ARGS[@]}"
 TEST_EXIT=$?
 
 # ── Coverage-directed selection, SHADOW PHASE ────────────────────────────────

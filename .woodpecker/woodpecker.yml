@@ -638,7 +638,15 @@ steps:
         # explicit `exit $TEST_EXIT` below. Final exit code is unchanged.
         TEST_EXIT=0
         JUNIT="$(mktemp -d)/pytest-junit.xml"
-        pytest --rootdir=. -n "$WORKERS" --tb=short --junit-xml="$JUNIT" $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
+        # --fail-grace=15 (WI-fipuf): a red run stops 15 s after its first
+        # failure instead of running the whole selection. A red verdict is
+        # decided at the first failure, and a large selection takes 11 to 28
+        # minutes here. Failures inside the 15 s are still reported; later
+        # ones are not, and pytest says so in its last lines. The gate is not
+        # narrowed: a run this stops was already failing, and a green run is
+        # untouched. See scripts/pytest_plugins/pytest_fail_grace.py.
+        PYTHONPATH="scripts/pytest_plugins${PYTHONPATH:+:$PYTHONPATH}" \
+          pytest --rootdir=. -p pytest_fail_grace --fail-grace=15 -n "$WORKERS" --tb=short --junit-xml="$JUNIT" $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
         # INV-tazur: exit 5 is "collected nothing". It already fails the step;
         # say so in words, because pytest's own line ("no tests ran") reads like
         # a skip rather than a failure of the selection.

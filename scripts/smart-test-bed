@@ -99,6 +99,8 @@ class Score:
     selected: dict[str, list[str]]
     should_not: list[str]
     must_tests: list[str] = field(default_factory=list)
+    #: The local run set in the order smart-test would hand it to pytest.
+    run_order: list[str] = field(default_factory=list)
 
 
 def load_edits(bed: Path = BED) -> list[dict]:
@@ -287,6 +289,8 @@ def score_edit(edit: dict, readers: dict[str, list[str]], work: Path) -> Score:
     for name in SELECTORS:
         stage = stages / STAGE_FILES[name]
         selected[name] = sorted(stage.read_text().split()) if stage.exists() else manifest
+    order_file = stages / "run-order.txt"
+    run_order = order_file.read_text().split() if order_file.exists() else []
 
     if edit.get("oracle", "mutate") == "mutate":
         mutate(root, touched)
@@ -295,7 +299,7 @@ def score_edit(edit: dict, readers: dict[str, list[str]], work: Path) -> Score:
             | set(edit.get("must", [])))
     return Score(edit=edit["name"], mode=mode, must=sorted(must),
                  selected=selected, should_not=sorted(edit.get("should_not", [])),
-                 must_tests=broken)
+                 must_tests=broken, run_order=run_order)
 
 
 def run(edits: list[dict], jobs: int, keep: bool) -> list[Score]:
@@ -313,6 +317,26 @@ def run(edits: list[dict], jobs: int, keep: bool) -> list[Score]:
             print(f"kept: {top}", file=sys.stderr)
         else:
             shutil.rmtree(top, ignore_errors=True)
+
+
+def first_must_rank(order: list[str], must: list[str]) -> int | None:
+    """1-based position in ``order`` of the first test an edit can break."""
+    wanted = set(must)
+    return next((i for i, test in enumerate(order, 1) if test in wanted), None)
+
+
+def order_table(scores: list[Score]) -> str:
+    """Where the first MUST test runs: sorted by path (the old order) against
+    smart-test's failure-first order, over the same local run set."""
+    rows = ["run order: position of the first MUST-select test",
+            f"{'edit':<22}{'run set':>8}{'by path':>9}{'failure-first':>15}"]
+    for s in scores:
+        if not s.run_order:
+            continue
+        old = first_must_rank(sorted(s.run_order), s.must)
+        new = first_must_rank(s.run_order, s.must)
+        rows.append(f"{s.edit:<22}{len(s.run_order):>8}{old or '-':>9}{new or '-':>15}")
+    return "\n".join(rows)
 
 
 def table(scores: list[Score], selector: str) -> str:
@@ -367,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"smart-test-bed: {exc}", file=sys.stderr)
         return 2
     chosen = SELECTORS if args.selector == "all" else (args.selector,)
-    print("\n\n".join(table(scores, s) for s in chosen))
+    print("\n\n".join([*(table(scores, s) for s in chosen), order_table(scores)]))
     if args.json:
         Path(args.json).write_text(json.dumps([s.__dict__ for s in scores], indent=2))
     return 0
