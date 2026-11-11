@@ -78,6 +78,7 @@ def _sel(**kw) -> Selection:
         unknown_paths=frozenset(kw.get("unknown", ())),
         unmeasured=frozenset(kw.get("unmeasured", ())),
         missing_paths=frozenset(kw.get("missing", ())),
+        import_time_changed=frozenset(kw.get("import_time", ())),
     )
 
 
@@ -182,6 +183,28 @@ class TestNarrowingBlockers:
         """``scripts/`` is outside COV_PATHS; nothing in-process can cover it."""
         assert narrowing_blockers(
             _sel(unknown={"/repo/scripts/measure-thing.py"}), self._ROOT,
+        ) == ()
+
+    def test_changed_import_time_code_forbids_narrowing(self) -> None:
+        """WI-zunug: an import is not a coverage row.
+
+        A module body runs at import, under no test's coverage context, so a
+        test that only IMPORTS the file has no row for it, and "no row" read as
+        "irrelevant" dropped a test that runs the changed code. Every importer
+        runs a changed module or class body, and the index does not know the
+        importers, so the run set stays whole.
+        """
+        got = narrowing_blockers(
+            _sel(import_time={("/repo/packages/p/src/p/a.py", "<module>")}),
+            self._ROOT,
+        )
+        assert got == ("import-time code changed: packages/p/src/p/a.py (<module>)",)
+
+    def test_a_changed_test_module_body_does_not_forbid(self) -> None:
+        """A test file's importers are not tests; it is its own cover."""
+        assert narrowing_blockers(
+            _sel(import_time={("/repo/packages/p/tests/test_a.py", "<module>")}),
+            self._ROOT,
         ) == ()
 
     def test_a_clean_change_forbids_nothing(self) -> None:

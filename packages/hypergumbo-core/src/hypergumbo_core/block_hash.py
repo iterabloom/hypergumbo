@@ -89,6 +89,11 @@ class Block:
     first_line: int
     last_line: int
     digest: str
+    #: The block's own statements run when the file is IMPORTED: the module
+    #: body, and a class body not inside any function. Coverage records those
+    #: lines under no test's context, so the selection index holds no row
+    #: saying which tests ran them (``selection_index.narrowing_blockers``).
+    import_time: bool = False
 
 
 class _Elide(ast.NodeTransformer):
@@ -169,9 +174,10 @@ def blocks_for_source(path: str, source: str) -> list[Block]:
         first_line=1,
         last_line=max(n_lines, 1),
         digest=_elided_digest(tree),
+        import_time=True,
     )]
 
-    def walk(node: ast.AST, prefix: str) -> None:
+    def walk(node: ast.AST, prefix: str, at_import: bool = True) -> None:
         seen: dict[str, int] = {}
         for child in _child_blocks(node):
             # Two defs sharing a name at one level (a conditional redefinition)
@@ -182,14 +188,16 @@ def blocks_for_source(path: str, source: str) -> list[Block]:
                 else f"{child.name}#{seen[child.name]}"
             qualified = f"{prefix}{label}"
             first, last = _body_span(child)
+            runs_at_import = at_import and isinstance(child, ast.ClassDef)
             blocks.append(Block(
                 path=path,
                 name=qualified,
                 first_line=first,
                 last_line=last,
                 digest=_elided_digest(child),
+                import_time=runs_at_import,
             ))
-            walk(child, f"{qualified}.")
+            walk(child, f"{qualified}.", runs_at_import)
 
     walk(tree, "")
     return blocks

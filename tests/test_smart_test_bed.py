@@ -245,7 +245,7 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     done = subprocess.run(
         [sys.executable, str(HARNESS), "run", "--json", str(out),
          "--edit", "body-edit-c", "--edit", "runtime-dispatch",
-         "--edit", "comment-marker"],
+         "--edit", "comment-marker", "--edit", "rename"],
         capture_output=True, text=True, cwd=REPO_ROOT)
     assert done.returncode == 0, done.stdout + done.stderr
     scores = {s["edit"]: s for s in json.loads(out.read_text())}
@@ -265,6 +265,14 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     assert f"{core}test_registry.py" in dispatch["must"]
     assert f"{core}test_registry.py" not in dispatch["selected"]["manifest"]
     assert f"{core}test_registry.py" in dispatch["selected"]["union"]
+
+    # WI-zunug: a rename changes chain_a's import line, which is import-time
+    # code. test_cli_usage only IMPORTS chain_a, so no coverage row ties it to
+    # the change, and --narrow dropped it. Changed import-time code now
+    # refuses narrowing.
+    rename = scores["rename"]
+    assert f"{app}test_cli_usage.py" in rename["must"]
+    assert f"{app}test_cli_usage.py" in rename["selected"]["narrow"]
 
     # A text edit is scored by what breaks on the edited tree itself.
     assert f"{core}test_kinds_markers.py" in scores["comment-marker"]["must"]
