@@ -1,0 +1,37 @@
+- op: create  # 7d4f
+  at: '2026-11-12T19:00:16Z'  # 7d4f
+  by: agent  # 7d4f
+  actor: jgstern_agent  # 7d4f
+  clock: 1  # 7d4f
+  nonce: 7d4f  # 7d4f
+  data:  # 7d4f
+    kind: invariant  # 7d4f
+    title: "In-process measurement scripts restore the production globals they rebind"  # 7d4f
+    status: violated  # 7d4f
+    priority: 2  # 7d4f
+    parent:  # 7d4f
+    tags:  # 7d4f
+    - testing  # 7d4f
+    isbefore: []  # 7d4f
+    duplicate_of: []  # 7d4f
+    not_duplicate_of: []  # 7d4f
+    pr_ref:  # 7d4f
+    description: "scripts/measure-taint-precision.py run_verify_claims sets verify_claims._MAX_EVIDENCE_ROWS = 1_000_000 (and, with no_collapse, replaces taint.collapse_unadjudicated_flows) and never restores either. tests/test_measure_taint_precision.py calls it in-process (TestNonProductionSourcesArm._capture_argv), so any later test in the same process that relies on the 100-row cap fails.\n\nRepro (2026-11-12, dev 103083af1c): smart-test -n 0 -p no:randomly tests/test_measure_taint_precision.py packages/hypergumbo-core/tests/test_verify_claims.py::TestViolatedFlowEvidence -> 1 failed (test_structured_evidence_is_bounded: assert 125 == 100), 19 passed. The test class alone passes 7/7. Seen first in a 566-file local run where xdist put both files on one worker.\n\nAnalogue: scripts/measure-go-import-versioning.py run_arm(legacy=True) rebinds go._go_package_identifier with no restore; no test calls it in-process today and the script runs one arm per process. The other measure-* scripts restore in try/finally."  # 7d4f
+    fields:  # 7d4f
+      statement: "A measurement script that rebinds a production module global in-process restores it before returning, so a caller in the same process sees production state."  # 7d4f
+      root_cause: "measure-taint-precision.py run_verify_claims and measure-go-import-versioning.py run_arm assign module globals without a try/finally restore."  # 7d4f
+- op: update  # e511
+  at: '2026-11-12T19:07:40Z'  # e511
+  by: agent  # e511
+  actor: jgstern_agent  # e511
+  clock: 2  # e511
+  nonce: e511  # e511
+  set:  # e511
+    status: satisfied  # e511
+- op: discuss  # 7418
+  at: '2026-11-12T19:07:40Z'  # 7418
+  by: agent  # 7418
+  actor: jgstern_agent  # 7418
+  clock: 3  # 7418
+  nonce: '7418'  # 7418
+  message: "Fixed in PR #2151 (merged). measure-taint-precision.py run_verify_claims and measure-go-import-versioning.py run_arm now save the production globals they rebind and restore them in try/finally. Behavioral evidence: the filed repro, smart-test -n 0 -p no:randomly tests/test_measure_taint_precision.py packages/hypergumbo-core/tests/test_verify_claims.py::TestViolatedFlowEvidence, went from 1 failed / 19 passed to 23 passed (exit 0). New restore tests fail against the unfixed scripts (2 failed, 1 passed each) and pass with the fix. Scope: the two scripts named; the other measure-* scripts swept already restore in try/finally."  # 7418

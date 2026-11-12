@@ -1,0 +1,20 @@
+- op: create  # 1b27
+  at: '2026-11-12T19:21:56Z'  # 1b27
+  by: agent  # 1b27
+  actor: jgstern_agent  # 1b27
+  clock: 1  # 1b27
+  nonce: 1b27  # 1b27
+  data:  # 1b27
+    kind: work_item  # 1b27
+    title: "prose-only check reads directives by regex, not as positioned comments"  # 1b27
+    status: todo_hard  # 1b27
+    priority: 2  # 1b27
+    parent:  # 1b27
+    tags:  # 1b27
+    - testing  # 1b27
+    isbefore: []  # 1b27
+    duplicate_of: []  # 1b27
+    not_duplicate_of: []  # 1b27
+    pr_ref:  # 1b27
+    description: "hypergumbo_core.prose_only._machine_comments matches directives (# pragma, # covers:, # noqa ...) by regex over raw lines and compares them as a sorted list. Two consequences, measured 2026-11-12 with classify():\n(1) unsafe: moving a real `# pragma: no cover` from one line to another classifies as `comments` (prose-only), so CI exempts the file from the changed-file coverage gate while coverage exclusion moved; the twice-daily full suite catches it only after merge.\n(2) safe but costly: a directive quoted inside a docstring counts, and the match runs to end of line, so rewording prose after a quoted `# pragma` in a docstring classifies as `code` (cost: a history line in a Scala test had to stay; slower import-graph selection).\nFix: take directives from real COMMENT tokens (tokenize) and key each to the code on its line."  # 1b27
+    fields: {}  # 1b27

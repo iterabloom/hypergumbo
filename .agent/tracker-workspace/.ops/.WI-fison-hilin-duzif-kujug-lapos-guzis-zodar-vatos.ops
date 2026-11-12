@@ -1,0 +1,20 @@
+- op: create  # 5799
+  at: '2026-11-12T19:21:50Z'  # 5799
+  by: agent  # 5799
+  actor: jgstern_agent  # 5799
+  clock: 1  # 5799
+  nonce: '5799'  # 5799
+  data:  # 5799
+    kind: work_item  # 5799
+    title: "bakeoff-broad cohort --dry-run crashes on RepoInfo fields it lacks"  # 5799
+    status: todo_hard  # 5799
+    priority: 2  # 5799
+    parent:  # 5799
+    tags:  # 5799
+    - bakeoff  # 5799
+    isbefore: []  # 5799
+    duplicate_of: []  # 5799
+    not_duplicate_of: []  # 5799
+    pr_ref:  # 5799
+    description: "`bakeoff-broad cohort --dry-run` raises AttributeError: line ~715 prints r.file_count and r.complexity_score, which bakeoff-broad's RepoInfo (name, path, size_bytes, size_mb, languages) does not have; the line matches bakeoff-deep, whose RepoInfo does. Repro 2026-11-12: init a throwaway session (--pool with one repo), then `cohort --dry-run --repos <repo>` -> AttributeError: 'RepoInfo' object has no attribute 'file_count'. Both auto-select and --repos paths reach the print; `loop --dry-run` does not. No test covers cohort --dry-run."  # 5799
+    fields: {}  # 5799
