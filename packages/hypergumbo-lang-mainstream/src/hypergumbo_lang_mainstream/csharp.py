@@ -119,6 +119,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
     SymbolsAt,
     symbols_at,
+    declares_async,
 )
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -1222,6 +1223,7 @@ def _extract_symbols_from_file(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=_csharp_member_chain(node, source, name),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 ns_name = _get_csharp_enclosing_namespace(node, source)

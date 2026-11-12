@@ -47,7 +47,7 @@ repo-relative module/path → enclosing class(es) → enclosing function(s)
   → name → kind → within-scope occurrence index (where applicable)
 ```
 
-plus the existing structural inputs (signature/arity flags, decorators, visibility where present). The occurrence index applies only when two definitions are otherwise hash-identical within one scope (e.g., conditional redefinition, same-scope overloads); it is an ordinal over emit order within that scope, never a line number.
+plus the existing structural inputs (signature/arity flags, decorators, visibility where present) and the async marker: an `async` declaration (Kotlin `suspend`, a Dart `async`/`async*` body) hashes differently from the same declaration without it, in every language, because the caller receives a coroutine or future and must await it. The marker is the keyword, not the return type: a function that returns a future without `async` keeps the unmarked id. Every non-async id is unaffected. The occurrence index applies only when two definitions are otherwise hash-identical within one scope (e.g., conditional redefinition, same-scope overloads); it is an ordinal over emit order within that scope, never a line number.
 
 What survives: line drift, body edits, comment/docstring changes, edits elsewhere in the file. What now churns: file moves and renames of the file, container, or symbol. **Zero by-design collisions** — two semantically distinct symbols never share a stable_id by construction.
 

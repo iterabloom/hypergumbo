@@ -100,6 +100,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
     visibility_from_modifiers,
+    declares_async,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -421,7 +422,9 @@ def _extract_symbols_from_file(
             if scope_node is not None else full_name
         )
 
-        # Typed stable_id (ADR-0014 §3)
+        # Typed stable_id (ADR-0014 §3). Dart writes ``async`` / ``async*`` on
+        # the function BODY, which ``def_node`` is when the symbol has one.
+        is_async = def_node is not None and declares_async(def_node)
         stable_id = None
         if signature:
             norm_sig = normalize_dart_signature(signature)
@@ -430,6 +433,7 @@ def _extract_symbols_from_file(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=hashed_name,
                     file_stable_id=file_stable_id,
+                    is_async=is_async,
                 )
         if stable_id is None and kind in _UNSIGNED_PRODUCER_KINDS:
             # WI-tusad: constructors, getters, setters, mixins and extensions
@@ -440,6 +444,7 @@ def _extract_symbols_from_file(
                 kind, "", visibility_from_modifiers(modifiers),
                 name=name, qualified_name=full_name,
                 file_stable_id=file_stable_id,
+                is_async=is_async,
             )
 
         return Symbol(

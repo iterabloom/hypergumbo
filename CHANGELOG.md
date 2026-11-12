@@ -24,7 +24,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Breaking and contract changes
 
 - **Behavior map `SCHEMA_VERSION` 0.20.15 → 0.21.0**: a C/C++ module slot naming several headers points into the new top-level `module_sets` table.
-- **`stable_id_scheme` v9 → v13**: BitBake, SCIP-only, `@hg:route` and some C/C++ external symbols get new `stable_id`s; all others are unchanged.
+- **`stable_id_scheme` v9 → v14**: BitBake, SCIP-only, `@hg:route`, some C/C++ external symbols and every async function get new `stable_id`s; all others are unchanged.
 - **`verify-claims` output 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` become `reached` / `refuted`; command-line arguments are `untrusted_input`, counted only when a claim sets `include_command_line: true`.
 - **io-boundaries schema 2.4 → 2.5**: Unix-domain sockets are IPC, not network (ADR-0050 §1): a server is `ipc_listen`, its reads and writes `ipc_recv` / `ipc_send`.
 - **Route markers have `language: null`**; read `Symbol.host_language` (ADR-0031). Route ids are unchanged, and `dead-code-maybe` no longer lists markers.
