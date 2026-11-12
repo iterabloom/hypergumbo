@@ -30,7 +30,7 @@ These escape hatches exist for debugging but waste tokens by producing ~4000 lin
 **smart-test provides:**
 1. **Compact summary** - Only shows test result, failures, and coverage gaps (~20 lines vs ~4000)
 2. **Full log saved** - Complete output in `.ci/pytest-output.log` for debugging
-3. **Affected test selection** - Runs only tests that depend on changed files (when stable hypergumbo is installed)
+3. **Affected test selection** - Runs only tests that depend on changed files (when stable hypergumbo is installed). A changed `.py` file whose code is unchanged (comments and docstrings only) skips the import graph: its tests come from recorded evidence, the manifest carries them too, and its coverage is not gated, locally or in CI (ADR-0010 §"What the Manifest Carries", ADR-0011). `--no-prose-rule` turns this off for one run.
 
 **Usage:**
 ```bash
