@@ -233,6 +233,9 @@ fs_read:
   - module: doctest
     functions: [testfile]
     notes: "Opens the named file; DocFileTest/DocFileSuite build cases over the same open."
+  - module: tokenize
+    functions: [open]
+    notes: "tokenize.open(path) opens the path read-only ('rb', then decodes by the detected encoding)."
   - module: codecs
     functions: [open]
     notes: "codecs.open(path, mode) opens a path, builtins.open's shape: fs_read AND fs_write, settled by io_mode (python's producer knows codecs.open's mode sits at positional 1 like open)."
@@ -942,6 +945,9 @@ logging:
   - module: base64
     functions: [main]
     notes: "The python -m base64 entry point; opens files and writes stdout. The survey probe's catch."
+  - module: tokenize
+    functions: [main]
+    notes: "The python -m tokenize entry point; opens the named file (or reads stdin) and writes tokens to stdout, errors to stderr."
   - module: xml.etree.ElementTree
     functions: [dump]
   # WI-tolif: stdio writes are terminal output / log destinations, not
@@ -1964,6 +1970,14 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       main (the -m entry) rowed; the codec functions are pure transcoding.
+  - module: tokenize
+    completeness: complete
+    retrieved: "2026-11-12"
+    notes: >-
+      open rowed under fs_read and main (the -m entry) under logging; generate_tokens,
+      tokenize and detect_encoding read only the readline callable the caller
+      passes, and untokenize is pure. The survey probe's other hit (tokenize.tokenize,
+      open() in a docstring example) is not a call.
   - module: shlex
     completeness: complete
     retrieved: "2026-08-15"
