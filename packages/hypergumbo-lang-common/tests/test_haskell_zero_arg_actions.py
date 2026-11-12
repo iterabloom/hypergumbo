@@ -1,58 +1,36 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for call edges on Haskell zero-argument IO actions (INV-fofoj).
+"""Tests for call edges on Haskell zero-argument IO actions.
 
-THE DEFECT. Every catalogue is keyed on a callee name and the analyzer emitted
-a ``calls`` edge only for a function APPLICATION. A zero-argument IO action is
-a BARE IDENTIFIER in every position it appears, so ``getLine`` produced no edge
-at all while ``readProcess "uname" [] ""`` in the identical flow shape produced
-one. The row's boundary was irrelevant: correcting the classification, as
-INV-muvis did for haskell's Prelude rows, left the call just as undetectable.
+WHY THIS NEEDS ITS OWN SEAM. Every catalogue is keyed on a callee name, and
+the application branch only sees function APPLICATIONS. A zero-argument IO
+action is a BARE IDENTIFIER in every position it appears, so without this seam
+``getLine`` produces no edge at all while ``readProcess "uname" [] ""`` in the
+identical flow shape produces one -- and no correction to a catalogue row's
+boundary can make the missing edge appear. The same mechanism covers every
+zero-argument row, not only the console reads: ``getArgs``,
+``getEnvironment``, ``getCurrentDirectory``, ``getProgName``,
+``getCurrentTime``, ``exitFailure``.
 
 WHY THE SCOPE IS ``do``-STATEMENTS PLUS A COMBINATOR ARGUMENT, and not every
-position a bare identifier can be executed in. Measured over the eight
-DISTINCT repositories that carry the filed population -- every bare-identifier
-site classified, then split by whether the name is catalogued, a module-level
-definition in the repo, or bound inside the enclosing definition:
-
-    rule                cat  1stparty  localbnd  otherimp   total   wrong
-    R1  ``pat <- act``  267      1172       294       861    2594   11.3%
-    R2  bare do-stmt     33       768       164       111    1076   15.2%
-    R4  ``liftIO act``  142       164        68        65     439   15.5%
-    -- excluded --
-    R3  ``<$>``          23       376       530       574    1503   35.3%
-    R3  ``>>=``           5       116       119       122     362   32.9%
-    R3  ``<*>``           1       149       227       320     697   32.6%
-    R3  ``=<<``          11        24        23        30      88   26.1%
-    R3  ``>>``           23       321       116        62     522   22.2%
-    R3  ``*>``/``<*``     0       501       187       307     995   18.8%
-
-The three covered positions carry 442 of the 505 catalogued sites (87.5%) at
-the three lowest wrong-edge rates among rules with any payoff. Every infix
-operator together adds the remaining 63 for 3,812 more sites at 18-35% wrong.
-The exclusion is a measured trade, not an oversight, and
-``test_infix_operand_is_deliberately_excluded`` pins it so a later reader has
-to re-measure rather than assume.
-
-EIGHT REPOSITORIES, NOT NINE, AND THE CORRECTION CUTS BOTH THIS TABLE AND THE
-ITEM'S OWN FILED POPULATION. ``simplex-chat`` is a SYMLINK into
-``cohort6_crypto/simplex-chat/``, and all 267 of ``cohort6_crypto``'s ``.hs``
-files live under it -- the two paths are one repository. Counting both put
-this table at 794 catalogued sites when it is 505, and INV-fofoj's per-repo
-tally reads "cohort6_crypto 6, simplex-chat 6" for what is one set of six, so
-its filed 25 sites over 9 repositories is 19 over 8. The corpus-is-symlinked
-landmine, in the form that inflates a count rather than hanging a walk.
-
-THE POPULATION IS STILL FAR LARGER THAN THE ITEM FILED. INV-fofoj scoped to
-getLine/getChar/getContents/readLn. The same mechanism hides every
-zero-argument row in the catalogue -- ``getArgs``, ``getEnvironment``,
-``getCurrentDirectory``, ``getProgName``, ``getCurrentTime``, ``exitFailure``
--- which is 505 sites, not 19.
+position a bare identifier can be executed in. The positions were chosen by
+classifying every bare-identifier site as catalogued, a first-party
+definition, bound inside the enclosing definition, or another import. The
+three covered positions -- ``pat <- act``, a bare ``do`` statement and
+``liftIO act`` -- hold the large majority of catalogued sites at the lowest
+wrong-edge (locally bound) rates. The infix operands (``<$>``, ``>>=``,
+``=<<``, ``<*>``, ``>>``, ``*>``/``<*``) are wrong markedly more often and add
+few catalogued sites. The exclusion is a measured trade, not an oversight;
+``test_infix_operand_is_deliberately_excluded`` pins it so a change has to
+re-measure rather than assume. When re-measuring, deduplicate repositories
+symlinked into one another in the corpus, or their sites count twice.
 
 FAIL CLOSED ON A LOCAL BINDING, matching ``_hs_classify_handle_text``'s rule in
-this same module: this seam ADDS edges, so a name bound inside the enclosing
+the analyzer: this seam ADDS edges, so a name bound inside the enclosing
 definition (a ``<-`` binder, a parameter, a ``let``/``where`` binding) is not
 guessed at. That costs the ``let g = getLine ; s <- g`` shape, which is a known
 and accepted false negative.
+
+(history: INV-fofoj)
 """
 from pathlib import Path
 
@@ -93,7 +71,7 @@ class TestBindArrowPosition:
         assert "getLine" in _callees(edges)
 
     def test_the_control_still_emits(self, tmp_path: Path) -> None:
-        """``readProcess`` is an application and was never the broken case."""
+        """``readProcess`` is an application, seen by the application branch."""
         edges = _calls(
             tmp_path, 'main = do\n  s <- readProcess "u" [] ""\n  writeFile "o" s\n')
         assert "readProcess" in _callees(edges)
@@ -141,7 +119,7 @@ class TestDoStatementPosition:
         assert "getLine" in _callees(edges)
 
     def test_exit_failure_emits(self, tmp_path: Path) -> None:
-        """Not one of the four names the item filed; same mechanism."""
+        """Not a console read; the mechanism covers every zero-argument action."""
         edges = _calls(
             tmp_path,
             "import System.Exit\nmain = do\n  putStrLn \"x\"\n  exitFailure\n")
@@ -149,7 +127,7 @@ class TestDoStatementPosition:
 
 
 class TestCombinatorArgument:
-    """``liftIO act`` / ``void act`` run *act*; the head alone was emitted."""
+    """``liftIO act`` / ``void act`` run *act*; the argument is a call, not only the head."""
 
     def test_void_argument_emits(self, tmp_path: Path) -> None:
         edges = _calls(tmp_path, "main = void getLine\n")
@@ -160,7 +138,7 @@ class TestCombinatorArgument:
         assert "void" in _callees(edges)
 
     def test_lift_io_argument_emits(self, tmp_path: Path) -> None:
-        """``liftIO getCurrentTime`` is the single most common site measured."""
+        """``liftIO getCurrentTime`` is the most common site in this position."""
         edges = _calls(tmp_path, "main = liftIO getCurrentTime\n")
         assert "getCurrentTime" in _callees(edges)
 
@@ -197,7 +175,7 @@ class TestDeliberateExclusions:
     """Pinned so a later reader must re-measure rather than assume."""
 
     def test_infix_operand_is_deliberately_excluded(self, tmp_path: Path) -> None:
-        """``<$>`` measured 36.7% wrong for 40 catalogued sites. See docstring."""
+        """``<$>`` is excluded on measurement; see the module docstring."""
         edges = _calls(tmp_path, "main = do\n  c <- lines <$> getContents\n  return c\n")
         assert "getContents" not in _callees(edges)
 
@@ -206,10 +184,9 @@ class TestDeliberateExclusions:
     ) -> None:
         """``return`` is a monadic lift, not a call, in EITHER position.
 
-        The application branch has skipped it since the analyzer was written.
-        Pinned here because the two positions build their edges through one
-        shared emitter now, and a skip that held on only one side of it is
-        precisely the drift that emitter exists to prevent.
+        The two positions build their edges through one shared emitter, but
+        each applies the ``return`` skip itself, so this pins that neither
+        side drops it.
         """
         edges = _calls(tmp_path, 'main = do\n  return\n  putStrLn "x"\n')
         assert "return" not in _callees(edges)
@@ -222,7 +199,7 @@ class TestDeliberateExclusions:
 
 
 class TestEdgeShape:
-    """The added edges must be indistinguishable in kind from existing ones."""
+    """Monadic-action edges have the shape of application edges, bar ``call_construct``."""
 
     def test_the_construct_is_named_on_the_edge(self, tmp_path: Path) -> None:
         edges = _calls(tmp_path, "main = do\n  s <- getLine\n  putStrLn s\n")

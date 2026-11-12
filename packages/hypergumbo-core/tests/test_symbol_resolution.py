@@ -829,10 +829,11 @@ class TestListNameResolverDisambiguation:
         assert len(result.candidates) == 2
 
     def test_short_path_hint_uses_full_path(self) -> None:
-        """Short path hint like 'entities/bug' disambiguates via full path match.
+        """Short path hint like 'entities/bug' selects the package directory.
 
-        When the last segment alone is ambiguous (both paths contain
-        'bug'), the full path 'entities/bug' should uniquely match.
+        ``/cache/bug_cache.go`` contains ``bug`` only inside its filename;
+        matching is on directory components, so the hint's last segment
+        ``bug`` already selects ``/entities/bug/`` alone.
         """
         sym_pkg = make_symbol("AddComment", "/entities/bug/op_add_comment.go", "go")
         sym_local = make_symbol("AddComment", "/cache/bug_cache.go", "go")
@@ -848,13 +849,12 @@ class TestListNameResolverDisambiguation:
 
 
 class TestListNameResolverCandidateScaling:
-    """Ambiguous confidence scales down with more candidates.
+    """A tie is unresolved at every candidate count, not a graded pick.
 
     When many types implement the same method (e.g., Close(), String(),
-    Name() in Go), a random pick among 50 candidates should have much
-    lower confidence than a pick among 2. The formula is
-    1/sqrt(num_candidates), giving:
-      2 → 0.707,  5 → 0.447,  10 → 0.316,  50 → 0.141
+    Name() in Go), the resolver does not pick one at 1/sqrt(N) confidence;
+    that grading applies only to a ``variants`` registry. Path-hint and
+    single-candidate matches keep their full confidence whatever N is.
     """
 
     def test_two_candidates_confidence(self) -> None:
@@ -905,8 +905,8 @@ class TestListNameResolverAmbiguityThreshold:
     """Tests for the ambiguity_threshold parameter.
 
     When candidate count >= ambiguity_threshold and no path_hint match,
-    the resolver should return an unresolved result (found=False) instead
-    of picking an arbitrary candidate. This prevents false-positive call
+    the resolver returns an unresolved result (found=False) even when one
+    candidate is in the caller's own file. This prevents false-positive call
     edges for common method names like Get(), Set(), Close(), String().
 
     Invariant: AMB-METHOD — method calls with 3+ ambiguous receiver types
@@ -1025,17 +1025,18 @@ class TestListNameResolverAmbiguityThreshold:
     def test_single_segment_hint_anchored_to_path_components(self) -> None:
         """Single-segment hint must match path components, not substrings.
 
-        Regression: alertmanager has an ``api`` package at ``api/api.go``
-        and a swagger-generated client tree at ``api/v2/client/<sub>/*.go``.
-        Several of those generated files define ``func New(...)``.  When
-        main.go calls ``api.New(...)``, the import path stripped against
-        the module prefix yields the single-segment hint ``api``.
+        Layout (modelled on alertmanager): an ``api`` package at
+        ``api/api.go`` and a swagger-generated client tree at
+        ``api/v2/client/<sub>/*.go``, several of whose files define
+        ``func New(...)``.  When main.go calls ``api.New(...)``, the import
+        path stripped against the module prefix yields the single-segment
+        hint ``api``.
 
-        Substring matching incorrectly admitted ``api/v2/client/general/g.go``,
+        Substring matching would admit ``api/v2/client/general/g.go``,
         ``api/v2/client/silence/s.go`` etc. because the substring ``api``
-        appears anywhere in the path.  With ``ambiguity_threshold=3`` the
-        narrowed set was still ≥ 3 → unresolved → forward slice from main
-        could not reach the api package.
+        appears anywhere in the path; with ``ambiguity_threshold=3`` the
+        narrowed set stays ≥ 3, the call is unresolved, and a forward slice
+        from main cannot reach the api package.
 
         Component-anchored matching restricts the hint to a path-component
         suffix of the candidate's containing directory, so ``api`` matches
@@ -1287,7 +1288,8 @@ class TestNameResolverTestPathPreference:
         resolver = NameResolver(registry)
 
         # Non-test caller + path_hint triggers both test filtering AND
-        # path-hint Stage 2 zip.  Before the fix this raised ValueError.
+        # path-hint Stage 2 zip, which raises ValueError if the keys were
+        # not filtered alongside the candidates.
         result = resolver.lookup(
             "Initialize",
             path_hint="parser",
@@ -1298,14 +1300,13 @@ class TestNameResolverTestPathPreference:
 
 
 class TestNonUniquePickNeedsCallerFile:
-    """WI-jomik phase 2: a pick among 2+ candidates needs in-file evidence.
+    """A pick among 2+ candidates needs in-file evidence.
 
-    Measured on an 11-repo corpus, a non-unique pick (``ambiguous`` /
-    ``suffix_ambiguous``) or a soft-hint fallback with no evidence from the
-    caller's own file or its imports bound the wrong target ~80% of the time
-    (45 of 57 judged), and 0 of 13 with it. So the resolvers no longer guess:
-    such a lookup is unresolved, its candidates kept, unless exactly one
-    candidate is defined in the caller's own file.
+    A non-unique pick (``ambiguous`` / ``suffix_ambiguous``) with no evidence
+    from the caller's own file or its imports binds the wrong target far more
+    often than the right one, so the resolvers do not guess: such a lookup is
+    unresolved, its candidates kept, unless exactly one candidate is defined
+    in the caller's own file. (history: WI-jomik)
     """
 
     def _two(self) -> tuple[Symbol, Symbol]:

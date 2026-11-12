@@ -1,61 +1,57 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-ratuv: a production function whose only callers live in test modules.
+"""Find production functions whose only callers live in test modules.
 
-WHAT THIS EXISTS TO PREVENT. Six ADR-0017 artifacts were closed ``done`` on "N
-tests, 100% coverage" while having no production caller — ``infer_summary``,
-``is_field_tainted``, ``select_ddg_targets`` and peers. Every reference to them
-was PROSE: an ADR section, a sibling docstring, a test docstring. Each parsed,
-linted, and sat at 100% coverage held there by its own tests. This module is the
-executable trigger that prose could not be.
+WHAT THIS EXISTS TO PREVENT. A function can sit at 100% coverage, held there by
+its own tests, while nothing in production calls it. Prose that says it is
+wired in (an ADR section, a sibling docstring, a test docstring) parses, lints
+and checks nothing. This module is the executable check that prose cannot be.
+(history: WI-ratuv, the ADR-0017 artifacts)
 
-THE QUESTION IS ABOUT CALLERS, NOT SEEDS, AND THAT DISTINCTION IS THE ITEM'S
-WHOLE HISTORY. ``dead-code-maybe`` asks "is this reachable from the production
-seed set", and the seeds are entrypoints PLUS exported public API — so a public
-function with zero in-repo callers can never be flagged, which is exactly the
-shape the ADR-0017 family has. Measured on that question the gate caught 3 of
-its own 6 motivating examples and would have fired ~1,747 times on day one; the
-owner refused it. Asking instead "does every DIRECT CALLER of this symbol live
-in a test module" catches all of them and is immune to the seeding.
+THE QUESTION IS ABOUT CALLERS, NOT SEEDS. ``dead-code-maybe`` asks "is this
+reachable from the production seed set", and the seeds are entrypoints PLUS
+exported public API — so a public function with zero in-repo callers can never
+be flagged, and every dynamically dispatched symbol with no direct caller is
+flagged, far too noisy to ratchet. Asking instead "does every DIRECT CALLER of
+this symbol live in a test module" catches the test-only shape and is immune to
+the seeding.
 
-METHODS ARE GATED ONLY ON A MAP THAT CARRIES RECEIVER TYPES (WI-mifag). In the
+METHODS ARE GATED ONLY ON A MAP THAT CARRIES RECEIVER TYPES. In the
 syntax-only call graph a method's identity is its SHORT name, so ``Store.add``
-cannot be told from ``set.add`` and ``Pattern.matches`` once scored 497
-production hits off regex ``.matches``. Gating such rows would freeze
-unadjudicable keys into a shrink-only baseline, and *"a rubber-stamped ratchet
-is worse than none"* is WI-ratuv's governing constraint. The scip-python
-backend (WI-nanom, pyright/SCIP under ADR-0012 multi-fidelity coexistence)
-supplies the types, and the Woodpecker full-suite map is built with it
-(WI-losig). On such a map ``typed_references`` reads them out and methods are
-judged; on any other map they are set aside as ``SET_ASIDE_UNTYPED`` and
-counted, never gated.
+cannot be told from ``set.add``, and ``Pattern.matches`` collects every regex
+``.matches`` call. Gating such rows would freeze unadjudicable keys into a
+shrink-only baseline, and a rubber-stamped ratchet is worse than none. The
+scip-python backend (pyright/SCIP, ADR-0012) supplies the types. On a map it
+contributed to, ``typed_references`` reads them out and methods are judged; on
+any other map they are set aside as ``SET_ASIDE_UNTYPED`` and counted, never
+gated. (history: WI-mifag, WI-nanom)
 
 TYPING THE CALL GRAPH IS NOT ENOUGH; THE DEMOTION ARM NEEDS THE TYPES TOO. The
 bare-name indexes below put ``set.add`` and ``Store.add`` in one bucket
 (``refs.loads["add"]``) however well the call graph is typed. For a method they
 are not consulted. Instead every production ATTRIBUTE site naming the method
 (``member_sites``: the ``.add`` token's file and line) resolves through the
-typed producer's edges out of its innermost enclosing callable: typed to the
-method, or untyped (a receiver pyright saw as ``Any``, or a site outside every
-callable, which SCIP drops) demotes; typed only to other receivers does not.
-Resolution is per ENCLOSER rather than per line because the map keeps one edge
-per ``(src, dst, type)`` on its first line, so a second ``.add`` on a set in one
-function has no edge of its own. The residual that costs: an untyped ``.add``
-sharing a callable with a typed one reads as typed. A bare ``Name`` is never a
-member site except in a class body (``x = property(_get)``): in a function it
-is a local, and 42 locals called ``ancestors`` once demoted ``Store.ancestors``.
+typed producer's edges out of its innermost enclosing function, method or
+class: typed to the method, or untyped (a receiver pyright saw as ``Any``, or
+a site outside every encloser, which SCIP drops) demotes; typed only to other
+receivers does not. Resolution is per ENCLOSER rather than per line because
+the map keeps one edge per ``(src, dst, type)`` on its first line, so a second
+``.add`` on a set in one function has no edge of its own. The residual that
+costs: an untyped ``.add`` sharing a callable with a typed one reads as typed.
+A bare ``Name`` is never a member site except in a class body
+(``x = property(_get)``): in a function it is a local, and counting locals
+would let every local called ``ancestors`` demote ``Store.ancestors``.
 
-FOUR DISPATCH MECHANISMS REACH A METHOD WITH NO CALL EDGE, each found by
-adjudicating the first typed cohort row by row (148 methods, 2026-10-24):
+FOUR DISPATCH MECHANISMS REACH A METHOD WITH NO CALL EDGE:
 
     an OVERRIDE of a production-reached method   ``self.parse_source()`` in the
                                                  base types to the base; the
                                                  subclass's override runs
     a class on an EXTERNAL base                  Textual calls ``action_*`` by
                                                  binding name and ``on_*`` by
-                                                 event (42 rows); ``typing.
-                                                 Protocol`` and ``abc.ABC``
-                                                 declare a shape, run nothing,
-                                                 and do not count
+                                                 event; ``typing.Protocol``
+                                                 and ``abc.ABC`` declare a
+                                                 shape, run nothing, and do
+                                                 not count
     a PROTOCOL method production reaches         ``extractor.extract()`` types
                                                  to ``DefUseExtractor.extract``;
                                                  ``CDefUseExtractor`` conforms
@@ -67,8 +63,8 @@ Each demotes; a decorator demotes only the method that carries it, keyed by
 ``(path, Class.method)``.
 
 THE DEMOTION ARM, AND WHY IT IS NOT OPTIONAL. Three reference mechanisms are
-invisible to a ``calls``/``instantiates`` edge set, and each produced a
-FALSE POSITIVE on live production code in the first measurement:
+invisible to a ``calls``/``instantiates`` edge set, and each reaches live
+production code:
 
     ``p_slice.set_defaults(func=cmd_slice)``   a VALUE BINDING, not a call —
                                               and ``cmd_slice`` is the entry
@@ -76,34 +72,27 @@ FALSE POSITIVE on live production code in the first measurement:
     ``@register_linker(...)``                 decorator APPLICATION
     a plain cross-module reference            the call graph missed the edge
 
-Demoting them costs one AST pass over production source and removes 53 of 585
-functions. Without it the gate fires on user-facing CLI commands, which is
-disqualifying however good the rest of the signal is.
+Demoting them costs one AST pass over production source. Without it the gate
+fires on user-facing CLI commands, which is disqualifying however good the rest
+of the signal is.
 
-AST, NOT GREP, AND THAT CHOICE HAS ALREADY PAID. A grep proxy once scored
-``infer_summary`` as having one production reference; the reference was a
-COMMENT in ``taint.py`` reading "``infer_summary`` still has zero production
-callers". Prose about deadness counted as evidence of life. This module collects
-``ast.Name`` loads and ``ast.Attribute`` accesses, so a comment cannot vote.
+AST, NOT GREP. A grep proxy counts a comment as a reference, including one
+that says the function has no production callers, so prose about deadness
+becomes evidence of life. This module collects ``ast.Name`` loads and
+``ast.Attribute`` accesses, so a comment cannot vote.
 
-REPOSITORY SCRIPTS VOTE TOO (WI-famub). The first cut scanned ``packages/*/src``
-alone, and the map it reads is built from the same tree -- so a core module
-whose only production caller is a ``scripts/check-*`` gate had, as far as the
-gate could see, only its tests. ``check_id_construction`` was baselined for it;
-``confidence_sites`` failed the cron the day its gate shipped; a 2026-10-14
-commit ratified ``unregistered_edge_meta_keys`` into the baseline for the same
-reason and counted 37 keys of that shape already there. A ``scripts/`` gate is
-production in the only sense this module cares about: it is run, and not by a
+REPOSITORY SCRIPTS VOTE TOO. A core module whose only production caller is a
+``scripts/check-*`` gate must not read as test-only: a ``scripts/`` gate is
+production in the only sense this module cares about — it is run, and not by a
 test runner. So ``production_source_files`` includes the repository's Python
 scripts, found by ``.py`` suffix or by a Python shebang since the gates are
 extensionless. They vote as referencers only -- their own functions are not
-under ``packages/*/src`` and are never in the cohort.
+under ``packages/*/src`` and are never in the cohort. (history: WI-famub)
 
-THE MAP MUST CARRY THE TYPING IT CLAIMS. The Woodpecker full-suite map is
-built with the scip-python backend, whose preconditions (the opt-in, the
-binary on ``PATH``) fail silently into the plain map.
-``pass_contribution_problem`` lets the gate's ``--require-pass`` refuse a map
-in which the named pass was skipped, never ran, or emitted nothing, and
+THE MAP MUST CARRY THE TYPING IT CLAIMS. The scip-python backend's
+preconditions (the opt-in, the binary on ``PATH``) fail silently into the plain
+map. ``pass_contribution_problem`` lets the gate's ``--require-pass`` refuse a
+map in which the named pass was skipped, never ran, or emitted nothing, and
 ``typed_method_call_share`` reports how many Python method calls that pass
 actually typed.
 """
@@ -188,9 +177,9 @@ class ProductionReferences:
     decorated: dict[str, set[str]] = field(default_factory=dict)
     dispatch_bound: dict[str, set[str]] = field(default_factory=dict)
     #: Functions that CARRY a decorator. Distinct from ``decorated``, which
-    #: indexes the decorator's own name — and confusing the two was a real
-    #: bug: ``@register_linker`` put ``register_linker`` in ``decorated`` and
-    #: left ``link_decorator_dispatch``, the registered function, gated.
+    #: indexes the decorator's own name; consulting only ``decorated`` leaves
+    #: the registered function gated: ``@register_linker`` puts
+    #: ``register_linker`` there, not ``link_decorator_dispatch``.
     carries_decorator: dict[str, set[str]] = field(default_factory=dict)
     #: Where a MEMBER is named: ``{attr: {(path, line)}}`` for every attribute
     #: load (the line of the attribute token) and every class-body name load.
@@ -518,7 +507,7 @@ def demotion_reason(
     consulted, which for a method is ambiguous by construction -- the reason
     :func:`gated_cohort` sets methods aside without ``typed``.
 
-    SAME-MODULE REFERENCES COUNT, and the first cut excluded them. A ``def``
+    SAME-MODULE REFERENCES COUNT. A ``def``
     is not a ``Load``, so the only way a module mentions its own function is a
     real reference — ``cli.py`` passes ``cli_mod._install_rust_analyzer_…`` as
     a value one screen above the definition, which is production use the call
@@ -618,13 +607,12 @@ def compare_to_baseline(
 def pass_contribution_problem(data: Mapping[str, Any], pass_id: str) -> str | None:
     """Why ``pass_id`` contributed nothing to the map ``data``, or ``None``.
 
-    WI-losig: the full-suite self-map is built with the scip-python backend so
-    a method reference resolves to its owning type. Both of the backend's
-    preconditions (the opt-in, the binary on ``PATH``) fail SILENTLY into the
-    plain map, and so did WI-nijod's wrong ``cwd`` for as long as the backend
-    existed. A gate told to require the pass therefore checks the map itself:
-    a skip record, no run record, and a run that emitted nothing are each a
-    map the step did not ask for.
+    A map built with the scip-python backend resolves a method reference to
+    its owning type, but both of the backend's preconditions (the opt-in, the
+    binary on ``PATH``) fail SILENTLY into the plain map. A gate told to
+    require the pass therefore checks the map itself: a skip record, no run
+    record, and a run that emitted nothing are each a map the step did not ask
+    for. (history: WI-losig, WI-nijod)
     """
     for skipped in (data.get("limits") or {}).get("skipped_passes") or []:
         if skipped.get("pass") == pass_id:
@@ -647,8 +635,7 @@ def typed_method_call_share(
 
     Typed means ``origin`` is among the edge's producers: the receiver was
     resolved by type, not by the bare last-name component the syntax arm uses
-    -- the property WI-mifag needs before methods can be gated. Measured on
-    the self-tree (2026-10-20): 9,435 of 9,619.
+    -- the property methods need before they can be gated.
     """
     methods = {
         n["id"] for n in nodes

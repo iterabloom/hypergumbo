@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-midag, c: a call edge's src is the function whose span contains it.
 
-An ``#ifdef``/``#else`` pair defines one function name twice in one file
-(tmux's compat/closefrom.c). The name-keyed lookup kept one of them, so calls in
-the other were anchored to it: 35 of 11,011 c call edges on a 26-repo run.
+An ``#ifdef``/``#else`` pair defines one function name twice in one file. A
+name-keyed lookup keeps only one of them, so calls in the other would be
+anchored to it; the enclosing function is found by position instead.
 """
 from __future__ import annotations
 
@@ -55,12 +55,13 @@ def _anchors(result) -> list[tuple[str, int, int, int]]:
 
 
 def test_every_declarator_shape_names_its_function(tmp_path: Path) -> None:
-    """WI-saduj. A definition whose name sits deeper than ONE ``pointer_declarator``
-    got no symbol, so every call in it was left unemitted: ``char **f()`` (crun's
-    ``read_dir_entries`` and ``dup_array``), ``T ***f()``, a const-qualified pointer
-    level, a parenthesised name, and a function returning a function pointer, whose
-    own name sits under a ``parenthesized_declarator`` inside the declarator of the
-    pointer it returns."""
+    """A definition's name can sit deeper than ONE ``pointer_declarator``; a
+    reader that looks only one level down mints no symbol for it and leaves
+    every call in it unemitted (WI-saduj). The shapes: ``char **f()``,
+    ``T ***f()``, a const-qualified pointer level, a parenthesised name, and a
+    function returning a function pointer, whose own name sits under a
+    ``parenthesized_declarator`` inside the declarator of the pointer it
+    returns."""
     (tmp_path / "m.c").write_text("""\
 #include <stdlib.h>
 char *one_ptr(int n) { return malloc(n); }
@@ -87,8 +88,9 @@ int (paren)(int n) { malloc(n); return 0; }
 
 
 def test_dispatch_table_reference_is_anchored_by_position(tmp_path: Path) -> None:
-    """The dispatch-table body scan found the referring function by NAME, so of two
-    ``#ifdef`` alternatives the reference in the first was attributed to the second."""
+    """The dispatch-table body scan must find the referring function by
+    POSITION: by NAME, the reference in the first of two ``#ifdef``
+    alternatives would be attributed to the second."""
     (tmp_path / "d.c").write_text("""\
 int a(int n) { return n; }
 struct cmd { const char *name; int (*fn)(int); };
@@ -146,13 +148,13 @@ int ok(void) { foo(); return 0; }
 
 def test_a_call_in_an_unnamed_definition_stands_in(tmp_path: Path) -> None:
     """WI-tikop. A definition whose name comes from a macro tree-sitter cannot
-    expand -- jemalloc's ``TEST_BEGIN(test_x) {..}`` (2,598 redis call sites),
-    ``PFX(f)(args)`` -- has no symbol and no honest name. Every edge drawn from
-    inside it -- a call, a callback argument, ``&f``, a dispatch-table use --
-    comes from the nearest enclosing record that has a symbol (an outer
-    definition, else the file) and carries ``src_stands_in_for``. Before, all of
-    them were left unemitted, except inside a named outer definition, where they
-    were drawn from it with nothing to say so."""
+    expand -- jemalloc's ``TEST_BEGIN(test_x) {..}``, ``PFX(f)(args)`` -- has
+    no symbol and no honest name. Every edge drawn from inside it -- a call, a
+    callback argument, ``&f``, a dispatch-table use -- comes from the nearest
+    enclosing record that has a symbol (an outer definition, else the file) and
+    carries ``src_stands_in_for``. Without a stand-in those edges go
+    unemitted; without the marker, one drawn from a named outer definition is
+    indistinguishable from that definition's own calls."""
     (tmp_path / "t.c").write_text("""\
 #include <pthread.h>
 int helper(int x) { return x; }
@@ -175,7 +177,7 @@ int MAC2(user)(int i) { return tbl[i]; }
 """)
     result = analyze_c(tmp_path)
     # No dangling src: the dispatch-table VARIABLES (``tbl``, ``cmds``) are
-    # emitted as symbols since WI-dirij.
+    # emitted as symbols (WI-dirij).
     assert unemitted_edge_sources(result.symbols, result.edges) == []
     names = {s.name for s in result.symbols if s.kind == "function"}
     assert not names & {"TEST_BEGIN", "test_x", "MAC", "inner", "MAC2", "user"}, names

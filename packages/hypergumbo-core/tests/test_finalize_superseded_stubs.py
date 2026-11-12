@@ -6,7 +6,8 @@ unresolved edge (``is_resolved=False``, dst an external stub) is demoted —
 ``rank_score`` scaled by ``SUPERSEDED_STUB_RANK_FACTOR``, never deleted,
 ``confidence`` untouched — when a RESOLVED edge shares its ``src``, one of
 its call lines, its ``edge_type`` and its declared callee name key, and that
-resolved edge carries a producer the stub's own ``origin`` lacks. The stamp
+resolved edge carries an anchored producer (a registered analyzer, not a
+linker) the stub's own ``origin`` lacks. The stamp
 ``meta.superseded_by`` / ``meta.superseded_by_origin`` records which edge
 did it, so a low ``rank_score`` is never an unexplained number. Every
 condition has a test that removes it and sees no demotion: a different
@@ -201,27 +202,23 @@ class TestWhatDoesNotDemote:
 
 
 class TestOnlyAnAnchoredProducerSupersedes:
-    """ADR-0057 §14, ruled 2026-09-20 on measurement (Open question 4).
+    """ADR-0057 §14 (Open question 4): only an anchored producer supersedes.
 
-    The origin condition as first landed tested PASS-ID INEQUALITY and stood in
-    for a test on INDEPENDENT OBSERVATION. A single-backend Python run of this
-    repository showed how far apart the two are: 419 stubs demoted, every
-    superseder a linker, and those 419 superseders were 419 of the 421 edges
-    ``inherited-calls-linker`` (329 of 329) and ``method-call-recovery-linker``
-    (90 of 92) emitted — each one the linker's own resolution of the very stub
-    it superseded, built from that stub's ``src``, ``line`` and parsed callee.
-    A refinement of one observation is not a second observation (§13 case 2).
+    The origin condition tests INDEPENDENT OBSERVATION, not pass-id
+    inequality. A linker's resolution of a stub is built from that stub's own
+    ``src``, ``line`` and parsed callee, so under a pass-id-inequality test
+    nearly every linker resolution would demote the very stub it refined. A
+    refinement of one observation is not a second observation (§13 case 2).
     """
 
     def test_two_producers_registered_but_only_one_ran_demotes_nothing(self) -> None:
-        """THE CONTROL, and unlike its predecessor it can fail.
+        """THE CONTROL: it reaches the origin gate, so it can fail.
 
         ``test_a_language_with_one_registered_producer_is_untouched`` pops
         ``pyscip`` from the REGISTRY, which makes ``merge_participants`` return
         ``[]`` and the pass early-return before the origin gate is ever
-        consulted — so it cannot observe the state that produced the 419:
-        both producers REGISTERED (the monorepo installs both) and only one
-        RUN. This leaves the registry exactly as production has it and varies
+        consulted — so it cannot observe the production state: both
+        producers REGISTERED (the monorepo installs both) and only one RUN. This leaves the registry exactly as production has it and varies
         what is in the graph instead.
         """
         stub = _edge(STUB, origin=["python"], resolved=False)
@@ -248,8 +245,8 @@ class TestOnlyAnAnchoredProducerSupersedes:
         the same anchored producer and both are accepted; recognising only the
         registration name would silently disarm the rule for the only backends
         it exists to serve. The declaration is what is read — reading
-        ``backend`` instead got the right answer off the wrong field
-        (INV-gabak)."""
+        ``backend`` instead would get the right answer off the wrong field.
+        (history: INV-gabak)"""
         stub = _edge(STUB, origin=["python"], resolved=False)
         resolved = _edge(WRAP, origin=["scip"], resolved=True)
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
@@ -260,14 +257,15 @@ class TestOnlyAnAnchoredProducerSupersedes:
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
 
     def test_the_survey_case_that_ranked_a_field_over_a_correct_stub(self) -> None:
-        """The regression that would have caught the 419 the day they appeared.
+        """A linker's wrong binding must not demote a correct stub.
 
-        Measured on this repository: ``tree_sitter.Language(tree_sitter_rust.language())``
-        at ``test_rust.py:612``. The producer said ``tree_sitter_rust.language``
-        and was RIGHT; ``method-call-recovery-linker`` bound the call to
-        ``Symbol.language`` — a dataclass FIELD in ``ir.py`` — and §14 then
-        halved the correct answer's rank in favour of the fabrication. Nineteen
-        of that shape, 28 with a stated module, 45 wrong in all.
+        The shape, from a survey of this repository:
+        ``tree_sitter.Language(tree_sitter_rust.language())``. The producer
+        says ``tree_sitter_rust.language`` and is RIGHT;
+        ``method-call-recovery-linker`` can bind the call to
+        ``Symbol.language`` — a dataclass FIELD in ``ir.py`` — and letting
+        that edge supersede would halve the correct answer's rank in favour
+        of the fabrication.
         """
         stub = _edge(STUB, origin=["python"], resolved=False)
         stub.dst_ref = ExternalRef(lang="python", module_path="tree_sitter_rust", name="wrap")
@@ -307,10 +305,10 @@ class TestADerivationStampSupersedesWhatItConsumed:
 
     §14's same-site rule reconstructs the supersession relation downstream, by
     matching ``src``, a call line, ``edge_type`` and a callee name key over the
-    post-dedup graph. That reconstruction is what produced Open question 4's
-    419 false-positive-bearing demotions: the key cannot tell "this pass
-    refined this stub" from "this pass bound a different call that happens to
-    share the line and short name". A pass that CONSUMED a stub already knows
+    post-dedup graph. That reconstruction produces false demotions (Open
+    question 4): the key cannot tell "this pass refined this stub" from "this
+    pass bound a different call that happens to share the line and short
+    name". A pass that CONSUMED a stub already knows
     which one, and ``Edge.derived_from`` is where it says so — the relation
     becomes a stated fact rather than a re-derivation, with no name or line
     matching involved.
@@ -345,11 +343,11 @@ class TestADerivationStampSupersedesWhatItConsumed:
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
 
     def test_an_undeclared_pass_stamps_without_effect(self) -> None:
-        """``method-call-recovery-linker`` resolves 16 of its 64 edges wrongly
-        on this repository and no shipped signal separates the wrong quarter —
-        ``disambiguation_fallback`` is set on 5 of the 16 wrong and 13 of the
-        48 right. It stamps its consumed edge, because the provenance is true
-        and useful; it does not get to demote on it."""
+        """``method-call-recovery-linker`` resolves a material share of its
+        edges wrongly and no shipped signal separates the wrong ones —
+        ``disambiguation_fallback`` appears on wrong and right edges alike
+        (docs/audits/0020). It stamps its consumed edge, because the
+        provenance is true and useful; it does not get to demote on it."""
         stub, resolved = self._pair("method-call-recovery-linker")
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
         assert "superseded_by" not in (stub.meta or {})

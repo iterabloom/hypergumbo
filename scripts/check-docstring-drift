@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Module-docstring drift checker — co-change scan over .py source trees.
 
-This script implements the mechanical passes of the stratum-6
+This script implements the mechanical passes of the
 docstring-staleness audit (see
 ``.agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md``).
 It produces a ranked candidate list of files where the module
@@ -23,28 +23,24 @@ Four sub-checks are available:
    meaningful while the docstring's date can still move; where a
    mass commit PINNED it, delta grows with wall clock alone and the
    ``>= 90`` threshold degenerates into "was this touched
-   recently". That is not hypothetical — the ``ds=2026-02-19``
-   cohort could not fire at ANY body age on 2026-05-15 and fired
-   for anything touched within 89 days by 2026-08-18, taking the
-   flagged count from 28 to 87 with nothing having drifted. So the
-   day arm is applied ONLY to rows whose floor commit is particular
-   to them, and the primary metric is
-   ``body_commits_since_ds`` — how many commits have landed on the
-   body since anyone touched the docstring — which counts commits
-   rather than days and so does not move with the calendar.
+   recently", flagging files where nothing drifted. So the day arm
+   is applied ONLY to rows whose floor commit is particular to
+   them, and the primary metric is ``body_commits_since_ds`` — how
+   many commits have landed on the body since anyone touched the
+   docstring — which counts commits rather than days and so does
+   not move with the calendar.
 
    Each row discloses what dates it: the floor commit, the share of
    the docstring that commit owns, and how many OTHER docstrings it
    floors. Those are facts, not verdicts. The scan deliberately
    does NOT try to decide whether a floor commit "counted as a
-   review" and skip past it if not: measured on this corpus, the
-   ADR-3bbb convention stamp owns a median 1 line (2%) of the
-   docstrings it floors and a genuine staleness-audit fix owns 2
-   lines (4%), so no threshold on size or file-count separates a
-   stamp nobody read from the most careful reading those files ever
-   had. Guessing would be actively harmful: it would classify every
-   prior audit's own fix commits as sweeps, making each audit blind
-   the next one to exactly the files it had just verified.
+   review" and skip past it if not: a convention stamp nobody read
+   and a genuine staleness-audit fix each own a line or two of the
+   docstrings they floor, so no threshold on size or file-count
+   separates them. Guessing would be actively harmful: it would
+   classify every prior audit's own fix commits as sweeps, making
+   each audit blind the next one to exactly the files it had just
+   verified.
 
 2. **Tracker-ID cross-ref** (``--tracker-refs``). Extract ``WI-`` /
    ``INV-`` / ``BUG-`` IDs from docstrings and inline comments,
@@ -64,11 +60,9 @@ Four sub-checks are available:
    sub-check that does not key on change. Checks #1-#3 read blame
    dates, tracker status and marker words, so none of them can see
    a docstring that never aged relative to its body but names a
-   value the registry retired -- the family that dominated the
-   2026-08-18 audit (63 lines in 19 files, nine of those files
-   unflaggable by co-change, one site published into
-   ``docs/schema.json``). This check reads every comment and every
-   string literal containing whitespace (docstrings at any level,
+   value the registry retired (description strings can publish such
+   a name into ``docs/schema.json``). This check reads every comment
+   and every string literal containing whitespace (docstrings at any level,
    and description strings such as a ``MetaKeySpec``'s), finds the
    names the prose presents as vocabulary -- ``X edges``,
    ``edge type is X``, ``kind="X"``, ``evidence_type="X"`` -- and
@@ -77,8 +71,8 @@ Four sub-checks are available:
    blame, no dates, no thresholds, so it cannot decay with the
    calendar. A hit whose sentence explains a fold is reported under
    ``fold_explained`` instead of flagged. Reported only: it never
-   changes the exit code (WI-sipuk's first pass; see the playbook
-   for its measured precision and recall before anyone gates on it).
+   changes the exit code; see the playbook for its measured
+   precision and recall before anyone gates on it (history: WI-sipuk).
 
 ``--all`` runs all four. Default scope is ``packages/*/src``; pass
 positional path arguments to narrow.
@@ -107,9 +101,9 @@ machine-readable output, ``--window`` / ``--min-delta`` /
 
 Rolling read
 ------------
-The flags are not a selection rule: a 2026-10-06 random sample of
-never-audited, unflagged files drifted at >= 19/30, about the rate of
-flagged files. So an audit also reads the files whose last recorded
+The flags are not a selection rule: never-audited, unflagged files
+drift at a rate comparable to flagged ones. So an audit also reads the
+files whose last recorded
 review is oldest, and records every file it read (matches included,
 since a read that finds nothing leaves no commit) in the committed
 ledger ``.ci/docstring-review-ledger.json``::
@@ -137,43 +131,40 @@ import sys
 import tokenize
 
 
-# Default co-change thresholds (calibrated against the 2026-05-15
-# stratum-6 audit on hypergumbo itself; see the playbook for the
-# calibration story).
+# Default co-change thresholds (see the playbook for how they were
+# calibrated).
 DEFAULT_BODY_AGE_DAYS = 120
 DEFAULT_MIN_DELTA_DAYS = 90
 
 # A commit that is the youngest edit to at least this many DIFFERENT module
-# docstrings is treated as a mass sweep rather than as a review. Three such
-# commits exist in this repo's history and between them they floored 55 of 87
-# flagged files on 2026-08-18: the ADR-0010 monorepo reorg (blame follows the
-# move), the Phase-4 TreeSitterAnalyzer migration (~70 analyzers stamped with
-# identical "two-pass orchestration" boilerplate), and the ADR-3bbb subcategory
-# sweep (one line prepended to 45 linker docstrings). 8 is well above the
-# largest genuine multi-file docstring edit observed and well below all three.
+# docstrings dates them systematically, not particularly: on such a row the
+# day arm is disabled, and with a small share (STAMP_MAX_SHARE) the row goes to
+# the ``pinned`` bucket. Mass commits of this kind -- a package move that blame
+# follows, boilerplate stamped into every analyzer, a convention line prepended
+# to every linker docstring -- floor dozens of docstrings at once. 8 is well
+# above the largest genuine multi-file docstring edit and well below them.
 SWEEP_MIN_FILES = 8
 
 # A floor commit owning at most this share of a docstring did not rewrite it.
-# Reported, never acted on. Measured 2026-08-18: the ADR-3bbb convention stamp
-# owns a median 2% of the docstrings it floors; the 2026-06-19 staleness-audit
-# fix -- a genuine line-by-line review -- owns 4%. Neither share nor co-floor
-# count separates a stamp from a review, so this is one of three facts a human
-# weighs, not a classifier. Auto-skipping on it would make each audit blind the
-# next one to the very files it had just verified.
+# It only chooses the bucket a row is reported in (``pinned`` rather than
+# ``flagged``, together with SWEEP_MIN_FILES); no row is dropped. A convention
+# stamp and a genuine line-by-line audit fix both own a few percent of the
+# docstrings they floor, so neither share nor co-floor count separates a stamp
+# from a review: this is one of three facts a human weighs, not a classifier.
+# Auto-skipping on it would make each audit blind the next one to the very
+# files it had just verified.
 STAMP_MAX_SHARE = 0.10
 
 # Commits that landed on the body since the docstring was last touched.
 # Clock-independent, unlike --min-delta days: `delta = ds_age - body_age` grows
 # on its own whenever ds is pinned, so the day threshold decays into "was this
-# touched recently" (the ds=2026-02-19 cohort could not fire at ANY body age on
-# 2026-05-15 and fired for anything within 89 days by 2026-08-18 -- 28 flags
-# became 87 with nothing drifting). A file qualifies on EITHER metric.
+# touched recently" and flags files where nothing drifted. A file qualifies on
+# EITHER metric.
 DEFAULT_MIN_BODY_COMMITS = 15
 
 def default_scope(repo_root: str) -> tuple[str, ...]:
-    """Every package's ``src`` tree, read from the checkout. A hand-kept tuple
-    stood here and silently left hypergumbo-lang-scip-python unscanned
-    (WI-bavak)."""
+    """Every package's ``src`` tree, globbed from the checkout: a hand-kept
+    list silently leaves newly added packages unscanned (history: WI-bavak)."""
     return tuple(sorted(glob.glob(os.path.join(repo_root, "packages", "*", "src"))))
 
 TRACKER_ID_RE = re.compile(r"\b(WI|INV|BUG)-[a-z0-9]+(?:-[a-z]+){0,7}")
@@ -230,7 +221,7 @@ def blame_lines(path: str, start: int, end: int) -> list[tuple[int, str]]:
     """Return ``(committer_time, sha)`` for each blamed line in ``start..end``.
 
     The sha is what makes sweep detection possible: a timestamp alone cannot
-    distinguish "someone reviewed this docstring" from "a 45-file compliance
+    distinguish "someone reviewed this docstring" from "a many-file compliance
     sweep prepended one line to it".
     """
     if start > end:
@@ -282,15 +273,11 @@ def floor_facts(
 ) -> dict:
     """Report FACTS about what dates a docstring. No inference about intent.
 
-    An earlier version of this function tried to decide whether the floor
-    commit "counted as a review" and to look past it when it did not. That
-    cannot be done from blame, and the measurement says so plainly: the
-    ADR-3bbb convention sweep owns a median of 1 docstring line (2%), and the
-    2026-06-19 staleness-audit fix — a genuine line-by-line review — owns a
-    median of 2 lines (4%). One is a stamp nobody read; the other is the most
-    careful reading those files have ever had. They are the same size, and
-    they touch a similar number of files, so neither ownership share nor
-    corpus-wide co-floor count separates them.
+    Whether the floor commit "counted as a review" (and should be looked
+    past if not) cannot be decided from blame. A convention stamp nobody read
+    and a genuine line-by-line audit fix each own a line or two of the
+    docstrings they floor and touch a similar number of files, so neither
+    ownership share nor corpus-wide co-floor count separates them.
 
     Guessing would be worse than not guessing: classifying an audit's own fix
     commits as sweeps makes every audit blind the next one to exactly the
@@ -325,10 +312,9 @@ def count_body_commits_since(path: str, since_ts: int) -> int:
     ``delta_days = ds_age - body_age`` decays into meaninglessness whenever
     ``ds`` is pinned: the docstring date stops moving, wall clock keeps going,
     so delta grows on its own and the ``>= 90`` threshold degenerates into
-    "was this file touched recently". Concretely, the ``ds=2026-02-19`` cohort
-    could not fire at ANY body age on 2026-05-15 (ds_age was 85) and fires for
-    anything touched within 89 days by 2026-08-18 — 28 flags became 87 with no
-    docstring drifting in between.
+    "was this file touched recently": a pinned cohort that cannot fire at any
+    body age today fires for everything recently touched a few months later,
+    with no docstring drifting in between.
 
     Counting COMMITS instead of DAYS removes the clock from the numerator. "17
     commits have landed on this file since anyone touched its docstring" means
@@ -355,8 +341,8 @@ def partition_rows(
     files AND whose floor commit owns almost none of the docstring — the shape
     a convention stamp leaves. Those are reported in their own bucket rather
     than dropped, because an unreviewed file is not a clean file, and rather
-    than silently re-dated, because the measurement above shows that call
-    cannot be made mechanically.
+    than silently re-dated, because blame cannot tell a stamp from a review
+    (see floor_facts).
     """
     flagged: list[dict] = []
     pinned: list[dict] = []
@@ -473,10 +459,8 @@ def co_change_scan(
 # Rolling read (review ledger)
 # ---------------------------------------------------------------------------
 #
-# The co-change flags are not a selection rule. On 2026-10-06 a seeded random
-# sample of 30 files that no audit had read -- median 2 body commits since the
-# docstring, so none flagged -- drifted at >= 19/30 (14/30 with a wrong
-# reference or false claim), against 57-89% for flagged files across runs.
+# The co-change flags are not a selection rule: files that no audit has read
+# and that are too quiet to flag drift at a rate comparable to flagged files.
 # What drifts there is invisible to blame by construction: a fold or move in
 # ANOTHER file, or a docstring describing wiring that never landed. So each
 # audit also reads the N files whose last recorded review is oldest, and
@@ -758,8 +742,8 @@ def prose_mask(src: str) -> str | None:
     Prose is a comment, or a string literal that contains whitespace: module,
     class and function docstrings, and description strings such as a
     ``MetaKeySpec`` description (which ``scripts/generate-schema`` publishes
-    into ``docs/schema.json`` -- the 2026-08-18 audit found a retired edge-type
-    pair shipped through exactly that path). A string with no whitespace is a
+    into ``docs/schema.json``, so a retired name there ships to schema
+    consumers). A string with no whitespace is a
     code value (``etype == "routes_to"`` in a back-compat reader), and code is
     the producer-coherence gates' job, not this scan's.
 
@@ -815,7 +799,7 @@ def prose_mask(src: str) -> str | None:
 # (``kind="x"``), never vocabulary. Only the bare form needs a guard after it
 # (so ``routes_to`` is not read out of routes_tox); a quoted form ends at its
 # own closing quote, which may itself sit inside RST backticks, as in
-# ``kind="route"`` -- two of the 63 audit lines had exactly that shape.
+# ``kind="route"``.
 _NAME = r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*"
 _SNAKE = r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+"
 _PRE = r"(?<![\w.`'\"*-])"
@@ -837,8 +821,7 @@ def _token_list(token: str, more: str | None = None) -> str:
     *more* restricts the elements after the first: after an anchor the list
     continues only through QUOTED names, because in ``kind="call",
     context_name="path"`` and ``kind=="file" and entry_role==...`` the next
-    bare word is a different keyword, not a second value (both measured on
-    the live tree)."""
+    bare word is a different keyword, not a second value."""
     more = more or token
     return "((?:" + token + ")(?:" + _LIST_SEP + "(?:" + more + "))*)"
 
@@ -867,12 +850,11 @@ _ANCHORED_TOKEN_RE = re.compile(_ANCHORED_TOKEN)
 
 # A sentence that explains a fold names the retired value ON PURPOSE. Such a
 # hit is reported under ``fold_explained``, never dropped, so the suppression
-# itself stays auditable. The first five alternatives are the item's proposal;
-# the history words after them were measured: on the live tree they move six
-# hits ("previously emitted kind='function_call'", "message_receive edges are
-# dropped") from flagged to fold_explained, and on the pre-fold tree they
-# suppress none of the 63 retired-vocabulary lines 22418804f4 removed.
-# The scope is the SENTENCE: a paragraph scope suppressed three of those 63.
+# itself stays auditable. The history words (previously, formerly, former,
+# dropped) catch sentences like "previously emitted kind='function_call'" and
+# "message_receive edges are dropped" without excusing genuinely stale
+# vocabulary. The scope is the SENTENCE: a paragraph scope also excuses stale
+# names that merely share a paragraph with a fold explanation.
 FOLD_EXPLANATION_RE = re.compile(
     r"fold|retired|deprecated|was .* onto|no longer"
     r"|previously|formerly|former\b|dropped",
@@ -906,10 +888,10 @@ def registry_hits_in_source(
     text = prose_mask(src)
     if text is None:
         return None
-    # The union, as the item specifies and as the evidence requires: prose that
-    # says "``ast_call`` edges" means edges carrying that evidence type, and
-    # message_send is a live evidence type although it is also a retired edge
-    # type. A name live on ANY axis is not retired vocabulary.
+    # The union of every axis: prose that says "``ast_call`` edges" means
+    # edges carrying that evidence type, and message_send is a live evidence
+    # type although it is also a retired edge type. A name live on ANY axis is
+    # not retired vocabulary.
     live = frozenset().union(*vocab.values())
     hits: list[dict] = []
     seen: set[tuple[int, str]] = set()
@@ -1319,9 +1301,8 @@ def main() -> int:
             pass
 
     if args.registry_refs:
-        # Reported, not gated (WI-sipuk): the first pass lands as a report so
-        # its false-positive rate is measured on the live tree before anyone
-        # decides whether it should fail anything.
+        # Reported, not gated: its false-positive rate on the live tree should
+        # be known before it is allowed to fail anything (history: WI-sipuk).
         report["registry_refs"] = registry_cross_reference(
             scope, live_vocabulary(repo_root))
 

@@ -1,22 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""One answer to "is this node test code", in every view (WI-dibuf).
+"""One answer to "is this node test code", in every view.
 
-Five predicates answered it: ``paths.is_test_file`` (path), ``selection.filters.
-is_test_path`` (path plus ``tests.py`` / ``*Test.java`` / ``*Tests.swift`` /
-``.test-d.ts`` shapes, no annotations), ``paths.is_test_node`` (``is_test_file``
-plus test annotations), and a path-or-concept rule written twice. dead-code,
-test-coverage, explain, symbols, sketch and compact used the path-only
-``is_test_path``; slice, io-boundaries, the tiered views and ranking used
-``is_test_node``; routes, entrypoints, the ratchet and the linkers used
-``is_test_file``. Measured by WI-borib (docs/audits/0026) on ripgrep: 496
-``#[test]`` functions inside ``mod tests`` in ``src/`` were tests to slice and
-io-boundaries, and to dead-code 434 of its 817 candidates, to test-coverage 493
-of its 2,680 "production functions".
-
-Now: one PATH predicate (``is_test_file``, which absorbed ``is_test_path``'s
-shapes; ``is_test_path`` is the same function by another name), and one NODE
-predicate (``is_test_node``: the path predicate or a test annotation) that
-every consumer deciding about a node calls.
+There is one PATH predicate, ``paths.is_test_file`` (``selection.filters.
+is_test_path`` is the same function by another name), and one NODE predicate,
+``paths.is_test_node``: the path predicate or a test annotation. Every consumer
+deciding about a node calls ``is_test_node``. A view that asks the path alone
+gets annotated test code wrong: a Rust ``#[test]`` function inside
+``mod tests`` in ``src/`` would be a test to one view and a production function
+(a dead-code candidate, a test-coverage cold spot) to another.
+(history: WI-dibuf, WI-borib, docs/audits/0026)
 """
 from __future__ import annotations
 

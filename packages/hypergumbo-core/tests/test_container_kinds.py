@@ -3,13 +3,11 @@
 
 slice expands an entry of a container kind to its members (through
 ``contains`` edges), and the containment linker decides which kinds own
-members at all. Each kept a hand-written copy, and slice's lacked ``object``:
-``slice --entry Registry --reverse`` on a Kotlin ``object`` returned only
-``{Registry:object}`` while the same code as a ``class`` returned its members
-and their callers. Measured 2026-10-28 on 30 recent surveys, ``object`` was the
-source of 40,820 ``contains`` edges. Both now read
-:func:`symbol_kinds.container_kind_names`: the nominal type kinds plus
-:data:`SCOPE_CONTAINER_KINDS`.
+members at all. Both read :func:`symbol_kinds.container_kind_names`: the
+nominal type kinds plus :data:`SCOPE_CONTAINER_KINDS`. Separate hand-written
+copies drift, and a slice set missing ``object`` makes ``slice --entry
+Registry --reverse`` on a Kotlin ``object`` return only ``{Registry:object}``
+while the same code as a ``class`` returns its members and their callers.
 """
 from __future__ import annotations
 
@@ -24,9 +22,9 @@ from hypergumbo_core.symbol_kinds import (
     type_like_kind_names,
 )
 
-#: Every kind that was the source of a ``contains`` edge on the 2026-10-28
-#: 30-survey measurement, except ``external_symbol`` (a stand-in for code
-#: outside the project, deliberately not expanded).
+#: Every kind seen as the source of a ``contains`` edge in real surveys,
+#: except ``external_symbol`` (a stand-in for code outside the project,
+#: deliberately not expanded).
 _MEASURED_CONTAINERS = frozenset({
     "class", "file", "object", "trait", "struct", "interface", "enum", "type",
     "instance", "contract", "protocol", "module",

@@ -3,8 +3,8 @@
 
 Provides ``htrac sync`` — a purpose-built command that pushes tracker ops
 files via a lightweight PR workflow: plumbing commit → push → poll CI →
-merge → cleanup.  Completes in ~45-60 seconds vs ~3.5 minutes for the
-general-purpose ``auto-pr`` script.
+merge → cleanup.  It is a much shorter path than the general-purpose
+``auto-pr`` script, which is built for feature branches.
 
 Also provides ``pending_sync_lines()`` for auto-sync: counts pending
 uncommitted ops-file changes so the CLI can trigger sync after a
@@ -19,7 +19,7 @@ Design:
   supported and selected from the ``origin`` host: ``github`` (the live
   one — ``api.github.com``, no ``/api/v1`` segment) and ``forgejo``
   (Gitea/Codeberg, ``/api/v1/repos``). The ``forgejo_*`` field names on
-  the config object are kept for backwards compatibility and carry the
+  ``PreflightResult`` are kept for backwards compatibility and carry the
   resolved backend's credentials either way.
 - ``FORGE_TOKEN_VARS`` maps each backend to its token (``HG_GITHUB_TOKEN``
   for github, ``FORGEJO_TOKEN`` for forgejo; not interchangeable).
@@ -322,7 +322,9 @@ class PreflightResult:
         error: Human-readable error message if ok is False.
         repo_root: Resolved git repository root.
         git_dir: Path to .git directory.
-        original_branch: Branch name to restore after sync.
+        original_branch: Branch checked out when sync started.  Sync never
+            switches branches; the post-merge working-tree cleanup in
+            ``do_sync`` runs only when this is the base branch.
         changed_files: List of dirty tracker file paths (relative to repo root).
         api_base: Forge REST API base URL for this repo.
         forgejo_user: Effective forge username for the resolved ``backend`` —
@@ -687,9 +689,9 @@ def _poll_ci(
     """Poll CI status until terminal state or timeout.
 
     Watches for the commit status context that signals tracker CI completion.
-    Implements sole-holdout bypass: if all other contexts have succeeded and
-    only one remains pending for >60s, treat it as success (Scenario A from
-    the auto-pr design).
+    Implements sole-holdout bypass: once 60s have passed since polling
+    began, if all contexts but one have succeeded, treat it as success
+    (the same "Scenario A" rule ``auto-pr`` applies).
 
     Stale-pending detection: if no job has left the pending state after
     ``stale_pending_threshold`` seconds, returns ``"stale_pending"`` so the
@@ -1168,7 +1170,8 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     Checks (in order):
     1. Git repo: verify .git directory exists.
     2. Gate files: abort if auto-pr or sync is already in flight.
-    3. Current branch: record for later restore.
+    3. Current branch: recorded so ``do_sync`` knows whether it is on the
+       base branch (sync itself never switches branches).
     4. No staged non-tracker files: abort if non-tracker files are staged.
     5. Dirty tracker files: check for changes to commit.
     6. Credentials: at least one forge token (.env or environment).
@@ -1899,7 +1902,7 @@ def do_sync(
                             check=False,
                         )
                         _log("rebased and force-pushed sync branch")
-                        # Brief delay for Forgejo to process
+                        # Brief delay for the forge to process the push
                         time.sleep(3)
 
         # 14. Merge PR (with retries for status check propagation)

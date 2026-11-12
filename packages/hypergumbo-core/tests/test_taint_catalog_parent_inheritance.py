@@ -1,36 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The taint catalogue must inherit parent io_primitives, exactly as io-boundaries does.
 
-WHY THIS FILE EXISTS. ``io_boundary._CATALOG_PARENTS`` declares four inheriting
-languages — ``cpp <- c``, ``kotlin <- java``, ``scala <- java``,
-``elixir <- erlang`` — and ``io_boundary.load_catalog`` honours it by merging the
-parent catalogue. The taint catalogue is derived from the same YAML by
-``_derive_auto_imports_from_io_primitives``, which called
-``IoBoundaryCatalog.from_yaml(path)`` directly and therefore inherited NOTHING,
-while its own docstring claimed ``ambiguous_by_lang`` lets the taint matchers
-"disambiguate exactly as io-boundaries does". Two consumers of one data file
-disagreeing about inheritance, with a docstring asserting the parity that did
-not hold (L50).
+``io_boundary._CATALOG_PARENTS`` declares the inheriting languages — ``cpp <- c``,
+``kotlin <- java``, ``scala <- java``, ``elixir <- erlang`` — and
+``io_boundary.load_catalog`` honours it by merging the parent catalogue. The
+taint catalogue is derived from the same YAML by
+``_derive_auto_imports_from_io_primitives``. Loading a child file directly
+(``IoBoundaryCatalog.from_yaml(path)``) inherits NOTHING: the child is left
+with a small fraction of its parent's sources and sinks (C++ with a handful of
+primitives against C's dozens) and without the parent's ``ambiguous_names``,
+the short-name collision guard — so it has BOTH less to match against AND a
+weaker guard against false matches. Two consumers of one data file must agree
+about inheritance (L50).
 
-MEASURED CONSEQUENCE, and it is not a rounding error. Taint sources+sinks
-before the fix vs. after:
-
-    cpp        3  ->   70   (+67)   C++ ran taint on THREE primitives while C had 67
-    elixir   231  ->  469  (+238)
-    kotlin    26  ->  138  (+112)
-    scala     23  ->  137  (+114)
-    TOTAL   1588  -> 2119  (+531, a 33% increase in the whole catalogue)
-
-and ``ambiguous_names``, the short-name collision guard, was missing for the
-same four: cpp 0 (io-boundaries had 19), kotlin 34 vs 58, scala 73 vs 80,
-elixir 50 vs 54. So the four inheriting languages had BOTH less to match against
-AND a weaker guard against false matches.
-
-WHY THE 9-REPO COHORT SHOWS NOTHING. It contains no cpp, kotlin, scala or
-elixir source at all, so no arm of it can observe this (L59: before running an
-A/B, check that a path exists by which the difference reaches the number). The
-evidence here is therefore catalogue-level and structural, asserted directly
-rather than inferred from a cohort that cannot see it.
+WHY THE EVIDENCE IS CATALOGUE-LEVEL. A cohort with no cpp, kotlin, scala or
+elixir source cannot observe this difference at all (L59: before running an
+A/B, check that a path exists by which the difference reaches the number), so
+the property is asserted directly on the loaded catalogues rather than
+inferred from a cohort.
 """
 
 from __future__ import annotations
@@ -73,7 +60,7 @@ class TestParentedLanguagesInheritTheirParent:
 
         Stated as a floor rather than an exact count so that adding a primitive
         to either file does not make this test wrong — the defect being pinned
-        is total non-inheritance, where the child had a small fraction of the
+        is total non-inheritance, where the child has a small fraction of the
         parent's surface.
         """
         parent = _CATALOG_PARENTS[lang]
@@ -91,9 +78,9 @@ class TestParentedLanguagesInheritTheirParent:
     ) -> None:
         """The headline instance, pinned by name.
 
-        C++ shipped with 3 taint entries against C's 67. A regression here is
-        not a small drift — it is C++ taint analysis silently becoming inert,
-        which is exactly the ADR-0017 family this campaign keeps finding.
+        Without the parent merge C++ has only a few taint entries against C's
+        dozens. A regression here is not a small drift — it is C++ taint
+        analysis silently becoming inert, the ADR-0017 failure family.
         """
         n = (len(taint_catalog.sources_for_language("cpp"))
              + len(taint_catalog.sinks_for_language("cpp")))
@@ -107,11 +94,11 @@ class TestTheGuardIsWellFormed:
     def test_no_boolean_leaked_into_ambiguous_names(self, lang) -> None:
         """``- on`` parses as the BOOLEAN True under YAML 1.1, not the string.
 
-        ``javascript.yaml`` and ``scala.yaml`` each declare a bare ``on`` in
-        ``ambiguous_names``, so the string ``"on"`` was never suppressed in
-        either language while the list *looked* correct. A text grep cannot see
-        this — the file reads ``on`` either way — so the assertion is made
-        against the LOADED value.
+        ``javascript.yaml`` and ``scala.yaml`` each list ``on`` in
+        ``ambiguous_names``, and it must be quoted: a bare ``on`` loads as
+        ``True``, so the string ``"on"`` is never suppressed while the list
+        *looks* correct. A text grep cannot reliably see this — the entry reads
+        ``on`` either way — so the assertion is made against the LOADED value.
         """
         names = load_catalog(lang).ambiguous_names
         bad = [n for n in names if not isinstance(n, str)]
@@ -122,7 +109,7 @@ class TestTheGuardIsWellFormed:
         )
 
     def test_no_language_leaks_a_non_string(self) -> None:
-        """The whole-catalogue form, so a fifth file cannot reintroduce it."""
+        """The whole-catalogue form, so no other file can introduce it."""
         from pathlib import Path
 
         from hypergumbo_core.taint import _IO_PRIMITIVES_DIR

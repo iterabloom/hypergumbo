@@ -6,8 +6,8 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
 - Function definitions (fun_decl)
 - Record definitions (-record)
 - Macro definitions (-define)
-- Behaviours as a TYPE relationship (WI-hidit, the shape WI-vitas gave
-  Elixir). ``-callback area() -> integer().`` is a symbol named ``area/0``
+- Behaviours as a TYPE relationship, the same shape the Elixir analyzer
+  emits (history: WI-hidit, WI-vitas). ``-callback area() -> integer().`` is a symbol named ``area/0``
   (kind ``function``, ``modifiers=["abstract"]``, ``meta["optional"]`` when
   ``-optional_callbacks`` lists it), kept out of call resolution because it
   has no body. ``-behaviour(X)`` (or ``-behavior``) emits ``implements`` from
@@ -35,7 +35,7 @@ complexity of one base path plus every clause's decision points and the
 line span covering all of them. Emitting a symbol per clause would triple-count a idiomatic
 pattern-matched function.
 
-Function and macro identity (WI-tusad). A function's stable_id is the
+Function and macro identity. A function's stable_id is the
 ADR-0035 producer formula, minted at construction through
 ``overload_arity.declared_arity_stable_id`` from ``name/arity`` and the
 ``meta["arity"]`` count, the same inputs ``callback_stable_id`` hashes for a
@@ -44,11 +44,12 @@ same-named function in one module stay apart). The scope chain is the file:
 the compiler binds one module to one file. A ``-define(NAME(A, B), ...)``
 macro records ``A, B`` in ``meta["parameters"]``, so ``?MAX`` and
 ``?MAX(X)`` (Erlang allows both) hash apart; a macro without an argument
-list takes the zero-parameter formula. Before this both kinds rode the
-backstop floor, and a same-named pair in one file (``-ifdef``/``-else``
-alternatives) was left null; such a pair is now a same-scope tie the
-per-file occurrence pass orders. A ``-record(name, ...)`` mints the same
-formula over its name with no arity (record names are unique per module).
+list takes the zero-parameter formula. Minting here matters: left to the
+backstop floor, a same-named pair in one file (``-ifdef``/``-else``
+alternatives) would collide and both get a null stable_id; minted, such a
+pair is a same-scope tie that the per-file occurrence pass orders. A
+``-record(name, ...)`` mints the same formula over its name with no arity
+(record names are unique per module). (history: WI-tusad)
 
 If tree-sitter with Erlang support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -570,18 +571,19 @@ def _extract_symbols_from_file(
 
 
 #: OTP's eight logger levels, as declared in ``kernel/include/logger.hrl``,
-#: mapped to the ``logger:`` function each expands to (INV-zihor).
+#: mapped to the ``logger:`` function each expands to (history: INV-zihor).
 #:
-#: EIGHT NAMES, NOT A ``?LOG_`` PREFIX. rabbitmq also defines ``?LOG_DIR`` (a
-#: directory string), ``?LOG_PREFIX`` (a prefix string) and ``?LOG_EXCH_NAME``
-#: (a binary); a prefix match would mint logging sinks out of string literals.
+#: EIGHT NAMES, NOT A ``?LOG_`` PREFIX. Projects define their own ``?LOG_*``
+#: macros that are not logging calls -- rabbitmq has ``?LOG_DIR`` (a directory
+#: string), ``?LOG_PREFIX`` and ``?LOG_EXCH_NAME`` -- so a prefix match would
+#: mint logging sinks out of string literals.
 #:
-#: Widening this set is the unsafe direction, so a ninth entry needs the same
-#: evidence these eight have: measured across rabbitmq, emqx, ejabberd,
-#: vernemq, rebar3 and cowboy, none of these names is EVER redefined, while
-#: general function-like macro names collide in more than one file at 5-21%
-#: per repository. That asymmetry is the whole argument for handling these by
-#: name and refusing to generalise into a preprocessor on the cheap.
+#: Widening this set is the unsafe direction. These eight are safe to match by
+#: name because real projects do not redefine them, whereas user-defined
+#: function-like macro names are redefined across files often enough that
+#: matching them by name alone would be wrong. So a ninth entry needs evidence
+#: that its name is likewise never redefined; anything broader means a real
+#: preprocessor, not a name table.
 OTP_LOGGER_LEVEL_MACROS: Final[dict[str, str]] = {
     "LOG_EMERGENCY": "emergency",
     "LOG_ALERT": "alert",
@@ -595,11 +597,11 @@ OTP_LOGGER_LEVEL_MACROS: Final[dict[str, str]] = {
 
 #: A file only receives OTP's macros by including a header named
 #: ``logger.hrl``. Gating on the INCLUDE rather than on the name is what makes
-#: this sound instead of merely probable, and it is measured: across rabbitmq,
-#: emqx, ejabberd and vernemq this covers 2267 of 2267 OTP macro sites, where
-#: the stricter ``include_lib("kernel/include/logger.hrl")`` covers 2266 --
-#: ejabberd reaches kernel's header through its OWN same-named one, which is
-#: one level of indirection and exactly the case a literal match misses.
+#: this sound instead of merely probable. The pattern accepts any ``-include``
+#: or ``-include_lib`` path ending in ``logger.hrl``, not only the literal
+#: ``include_lib("kernel/include/logger.hrl")``: a project can reach kernel's
+#: header through its OWN same-named header (ejabberd does), one level of
+#: indirection that a literal match misses.
 _LOGGER_HRL_INCLUDE = re.compile(
     r'-include(?:_lib)?\(\s*"[^"]*logger\.hrl"\s*\)'
 )
@@ -616,8 +618,8 @@ def _arity_of(node: "tree_sitter.Node") -> int:
     args = find_child_by_type(node, "expr_args")
     if args is None:  # pragma: no cover - defensive for malformed AST
         # The grammar gives every function_clause and local call an
-        # expr_args, even ``f()``; none was found across ejabberd and rebar3
-        # or in truncated input. Same guard as _extract_erlang_signature.
+        # expr_args, even ``f()``, so only a malformed tree reaches this.
+        # Same guard as _extract_erlang_signature.
         return 0
     return sum(1 for c in args.children if c.type not in ("(", ")", ","))
 
@@ -630,17 +632,18 @@ def _get_enclosing_function_erlang(
     """Find the function whose declaration encloses ``node``.
 
     The lookup key is ``name/arity``, the symbol's own name, read off the
-    enclosing ``fun_decl``. INV-mozas: it used to be the bare atom, which
-    every arity registers under (``base_name``), so a call inside
-    ``get_timeout/0`` was anchored to whichever arity registered last --
-    a source attributed to a function that does not contain it. Erlang
+    enclosing ``fun_decl``. Not the bare atom: every arity registers under
+    that (``base_name``), so a call inside ``get_timeout/0`` would be anchored
+    to whichever arity registered last -- a source attributed to a function
+    that does not contain it (history: INV-mozas). Erlang
     rejects two same-name/arity functions in one module, and consecutive
     clauses coalesce into one symbol under that name, so a call in any clause
     finds the coalesced function. The key is NOT unique per file, though:
     ``-ifdef``/``-else`` defines the same name/arity once per branch, and
     tree-sitter parses unpreprocessed source, so both are symbols. Of the
-    candidates, the one whose span contains the declaration is the answer
-    (ejabberd_app.erl: 21 calls anchored to the ``-else`` stub otherwise).
+    candidates, the one whose span contains the declaration is the answer;
+    taking any other anchors one branch's calls to the other branch's
+    definition, such as an ``-else`` stub.
     """
     current = node.parent
     while current is not None:
@@ -747,14 +750,13 @@ def _extract_edges_from_file(
                 edges.append(edge)
 
         elif node.type == "macro_call_expr" and logger_macros_visible:
-            # INV-zihor: ?LOG_DEBUG("...", [Secret]) IS a logging call, but
-            # tree-sitter parses source rather than preprocessed source, so it
-            # produced no edge at all and no catalogue row could match it. On
-            # rabbitmq that hid 1,910 of 2,093 logging call sites.
+            # ?LOG_DEBUG("...", [Secret]) IS a logging call, but tree-sitter
+            # parses source rather than preprocessed source, so without this
+            # branch the site yields no edge and no catalogue row can match it.
             #
             # EXPANDED HERE, NOT IN THE CATALOGUE, because the catalogue can
-            # only match a call the analyzer emitted -- and there was none. The
-            # item's own scope note says as much: no row can fix this.
+            # only match a call the analyzer emitted; no row can stand in for
+            # a missing edge. (history: INV-zihor)
             macro_var = find_child_by_type(node, "var")
             level = OTP_LOGGER_LEVEL_MACROS.get(
                 node_text(macro_var, source) if macro_var else "",
@@ -777,8 +779,8 @@ def _extract_edges_from_file(
                     #
                     # NO ``call_construct``. No call construct was parsed at the
                     # site, and "it came from a macro" is already stated by
-                    # ``evidence_type`` above; a ``macro`` construct restated
-                    # the pathway on a second axis (WI-dapap).
+                    # ``evidence_type`` above; a ``macro`` construct would
+                    # restate the pathway on a second axis (history: WI-dapap).
                     evidence_type="macro_expansion",
                 ))
 
@@ -831,11 +833,11 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    # INV-tadup: NOT "remote_external". The suffix encoded
-                                    # whether the resolver found the callee, which is
-                                    # already recoverable from ``dst`` (a synthetic
-                                    # external node id vs an in-repo symbol id). The
-                                    # construct is the same either way: ``mod:func(args)``.
+                                    # NOT "remote_external": whether the resolver found
+                                    # the callee is already recoverable from ``dst`` (a
+                                    # synthetic external node id vs an in-repo symbol
+                                    # id), and the construct is the same either way:
+                                    # ``mod:func(args)``. (history: INV-tadup)
                                     meta={"call_construct": "remote"},
                                 )
                                 edges.append(edge)
@@ -845,9 +847,9 @@ def _extract_edges_from_file(
                     if atom:
                         func_name = node_text(atom, source)
                         # A local function is its name AND arity. The bare
-                        # name is whichever arity registered last, so keying
-                        # on it made get_timeout() inside get_timeout/2 a
-                        # self-loop (INV-mozas's wrong-callee symptom).
+                        # name maps to whichever arity registered last, so
+                        # keying on it would make get_timeout() inside
+                        # get_timeout/2 a self-loop (history: INV-mozas).
                         callee = local_symbols.get(
                             f"{func_name}/{_arity_of(node)}",
                         )

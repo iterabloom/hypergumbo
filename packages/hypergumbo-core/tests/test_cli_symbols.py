@@ -9,7 +9,7 @@ from hypergumbo_core.cli import cmd_symbols, main, _symbols_column_config
 
 # SGR (color/style) ANSI escape sequences. Rich emits these when color is
 # enabled — which happens even for a non-tty capsys capture when the ambient
-# environment sets FORCE_COLOR (as this dev environment does). The codes
+# environment sets FORCE_COLOR. The codes
 # interleave with rendered text (e.g. a styled count `40` is separated from
 # ` additional…` by a reset code), which breaks any assertion that treats the
 # rendered output as contiguous text. Stripping them makes text assertions
@@ -1447,9 +1447,10 @@ def test_cmd_symbols_kind_function_still_excludes_low_value_kinds(
 def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
     """Extreme pure sinks (in=100, out=0) rank below architectural connectors.
 
-    Trivial stubs with very high in-degree (e.g. noopMetric.Inc, in=109,
-    out=0) must not crowd the top symbols ahead of genuine architectural hubs
-    like evaluator.eval (in=10, out=78).  The raw formula
+    Trivial stubs with very high in-degree (e.g. a no-op metric's ``Inc``,
+    called everywhere and calling nothing) must not crowd the top symbols
+    ahead of genuine architectural hubs like an evaluator's ``eval``.  The raw
+    formula
     ``in * (1 + ln(1 + out))`` doesn't sufficiently penalize pure sinks when
     their in-degree is 10x higher.
 
@@ -1562,8 +1563,8 @@ def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
 def test_cmd_symbols_utility_symbol_dampened(tmp_path: Path, capsys) -> None:
     """Utility symbols (exceptions, loggers) rank below domain symbols.
 
-    A high in-degree exception class (e.g. GuacamoleServerException, in=81,
-    out=2) must not push domain-relevant classes like ObjectPermission and
+    A high in-degree exception class (e.g. a server exception thrown from
+    everywhere) must not push domain-relevant classes like ObjectPermission and
     UserService far below their architectural importance.
 
     Exception classes have non-zero out-degree (from extends/implements

@@ -717,7 +717,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.taint_refine`**: Post-DDG IR refinement pass: resolve unresolved-external method-cal...
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
-- **`hypergumbo_core.test_only_reachability`**: WI-ratuv: a production function whose only callers live in test mod...
+- **`hypergumbo_core.test_only_reachability`**: Find production functions whose only callers live in test modules.
 - **`hypergumbo_core.tier_filter`**: The supply-chain tier filter: ONE function for ``run_survey`` and t...
 - **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ...
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
@@ -869,7 +869,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_lang_extended1.vhdl`**: VHDL analysis pass using tree-sitter-vhdl.
 - **`hypergumbo_lang_extended1.wolfram`**: Wolfram Language analysis pass using tree-sitter-wolfram.
 - **`hypergumbo_lang_extended1.zig`**: Zig language analyzer using tree-sitter.
-- **`hypergumbo_lang_rust_analyzer.analyzer`**: Registered analyzer entry point for the SCIP-backed Rust backend (W...
+- **`hypergumbo_lang_rust_analyzer.analyzer`**: Registered analyzer entry point for the SCIP-backed Rust backend.
 - **`hypergumbo_lang_rust_analyzer.crate_units`**: Which crate target each Document of a rust-analyzer index belongs t...
 - **`hypergumbo_lang_rust_analyzer.gate`**: Opt-in gate for the SCIP-backed Rust analyzer (WI-duzul Slice C gate).
 - **`hypergumbo_lang_rust_analyzer.graceful_degrade`**: Graceful-degrade orchestrator for the SCIP-backed Rust analyzer (WI...
@@ -997,8 +997,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 51a9edf1a552
-  commit_count: 9085
+  commit: 103083af1cf6
+  commit_count: 9091
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

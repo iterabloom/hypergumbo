@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """An Objective-C message to a receiver the file DECLARES (``NSFileManager *fm``,
 a ``(NSFileManager *)fm`` parameter) carries the declared class in the module
-slot, as a class-message receiver already does (WI-higob, objc half).
+slot, as a class-message receiver (``[NSFileManager defaultManager]``) does
+(WI-higob).
 
-Before this, only a PascalCase receiver (``[NSFileManager defaultManager]``)
-got a module; every lowercase receiver took the bare placeholder even when its
-type was written two lines up. Sized on AFNetworking / SDWebImage: 66% / 63% of
-message sends carried no module. The catalogue's 123 objc method-kind rows key
-by bare class (``NSFileManager``), so a declared type is the whole match.
+Without this a lowercase receiver would take the bare placeholder even when
+its type is written two lines up. The catalogue's objc method-kind rows key by
+bare class (``NSFileManager``), so a declared type is the whole match. A class
+the repo declares is the exception on both arms: it rides in
+``receiver_type_hint`` only.
 """
 from __future__ import annotations
 
@@ -125,14 +126,13 @@ class TestCategoriesDoNotMakeProjectClasses:
 
 
 class TestAClassMessageToAProjectClassIsHintOnly:
-    """WI-dason: the class-MESSAGE arm takes the same ``project_classes`` guard
-    the declared arm already had (WI-higob).
+    """The class-MESSAGE arm takes the same ``project_classes`` guard as the
+    declared arm (WI-dason, WI-higob).
 
-    ``[Svc alloc]`` used to put ``Svc`` in the module slot, which asserts an
-    external module that does not exist -- 583 of 3,300 typed objc slots on the
-    four-repository corpus named a first-party class. A project class is a
-    symbol, not a module, so it rides in ``receiver_type_hint`` only, exactly as
-    a declared ``(Svc *)s`` receiver does in the test above.
+    ``Svc`` in the module slot for ``[Svc alloc]`` would assert an external
+    module that does not exist. A project class is a symbol, not a module, so
+    it rides in ``receiver_type_hint`` only, exactly as a declared ``(Svc *)s``
+    receiver does in the test above.
     """
 
     def _project(self, root: Path, body: str) -> list[Edge]:
@@ -155,8 +155,8 @@ class TestAClassMessageToAProjectClassIsHintOnly:
 
     def test_a_project_class_method_found_by_selector_but_deferred(self, tmp_path: Path) -> None:
         """``+[Svc log:]`` exists, but a cross-class selector hit is deferred
-        (INV-fahub), so the send reaches the unresolved arm -- the shape of the
-        corpus's worst offender, ``[DDLog log:...]`` (116 slots)."""
+        (INV-fahub), so the send reaches the unresolved arm -- the shape of
+        a logging call such as ``[DDLog log:...]``."""
         edges = self._project(tmp_path / "b", "- (void)run {\n    [Svc log:@\"x\"];\n}")
         e = _send(edges, "log:")
         assert e.dst == "objc:external:0-0:log::unresolved", e.dst
@@ -201,9 +201,9 @@ class TestAClassMessageToAProjectClassIsHintOnly:
 
 
 class TestANonClassTypeSpellingIsNotADeclaredClass:
-    """WI-dason, second shape: ``__auto_type`` parses as a ``type_identifier``
-    and reached the module slot 89 times on CocoaLumberjack, naming a module
-    that cannot exist. It is a type-inference KEYWORD, so the declaration is
+    """``__auto_type`` parses as a ``type_identifier``, and read as a class it
+    would name a module that cannot exist (WI-dason). It is a type-inference
+    KEYWORD, so the declaration is
     read the way ``id x = [obj sel]`` is: the registry's answer for the
     initialiser, else untyped. ``instancetype`` is the same family."""
 
@@ -244,11 +244,11 @@ class TestANonClassTypeSpellingIsNotADeclaredClass:
 
 
 class TestANullabilityQualifierIsSkippedForTheClassAfterIt:
-    """WI-dason, third shape: the grammar does not know ``nonnull`` (nor
-    ``null_unspecified`` / ``null_resettable``), parses it as a
-    ``type_identifier`` AHEAD of the class, and the first one used to win --
-    13 slots on the corpus named ``nonnull``. ``nullable`` parses as a
-    qualifier and was never affected."""
+    """The grammar does not know ``nonnull`` (nor ``null_unspecified`` /
+    ``null_resettable``) and parses it as a ``type_identifier`` AHEAD of the
+    class, so taking the first ``type_identifier`` would name ``nonnull`` as
+    the class (WI-dason). ``nullable`` parses as a ``type_qualifier`` and never
+    reaches this path."""
 
     def test_a_nonnull_parameter_carries_the_class_after_it(self, tmp_path: Path) -> None:
         edges = _edges(tmp_path / "a", WRAP % (
@@ -285,8 +285,9 @@ class TestANullabilityQualifierIsSkippedForTheClassAfterIt:
 
 def test_first_descendant_returns_none_when_the_kind_is_absent() -> None:
     """``_first_descendant`` answers ``None``, not a wrong node, when no
-    descendant has the asked-for kind -- the fallback the qualified-name reader
-    relies on when a declarator holds no identifier."""
+    descendant has the asked-for kind -- the fallback the declared-receiver
+    reader (``_objc_declared_receiver_types``) relies on when a declarator
+    holds no identifier."""
     import tree_sitter
     import tree_sitter_objc
 

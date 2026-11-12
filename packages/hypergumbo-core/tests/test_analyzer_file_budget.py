@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-fomid: ``max_files`` bounds every analyzer, enforced where files are found.
+"""``max_files`` bounds every analyzer, enforced where files are found (WI-fomid).
 
-The cap was documented as "maximum files per language analyzer" and reached
-only the 10 of 119 analyzers registered ``supports_max_files=True``; at a cap
-of 1 this repository still analyzed 252 of 1,385 files. 108 of the analyzers
-take ``repo_root`` alone, so the cap cannot travel as an argument. It travels
-as a per-analyzer budget that ``discovery.find_files`` consults instead.
+The cap is "maximum files per language analyzer", and it must bind every
+analyzer, not only those registered ``supports_max_files=True``. Most
+analyzers take ``repo_root`` alone, so the cap cannot travel as an argument.
+It travels as a per-analyzer budget that ``discovery.find_files`` consults
+instead.
 """
 from __future__ import annotations
 
@@ -100,9 +100,9 @@ def _analyzed(root: Path, cap: int | None) -> dict[str, int]:
 
 class TestEveryAnalyzerHonoursTheCap:
     def test_a_cap_of_one_bounds_each_language(self, tmp_path: Path) -> None:
-        """The audit's repro: three files each of .py/.go/.md/.sh/.rs, and at
-        max_files=1 python analyzed 1 while bash, go, markdown and rust
-        analyzed 3."""
+        """Three files each of .py/.go/.md/.sh/.rs: at max_files=1 every one
+        of these languages analyzes 1. An analyzer that ignores the cap
+        analyzes all 3."""
         for i in range(3):
             for ext, text in _SOURCES.items():
                 (tmp_path / f"f{i}.{ext}").write_text(text, encoding="utf-8")
@@ -110,10 +110,10 @@ class TestEveryAnalyzerHonoursTheCap:
         assert self._capped_and_uncapped(tmp_path, languages)
 
     def test_finders_that_bypass_find_files_are_bounded_too(self, tmp_path: Path) -> None:
-        """Measured on this repository at --max-files 1: bash analyzed 33
-        (its shebang scan of extensionless files reads the file index
-        directly) and gitignore 2 (the root ``.gitignore`` was appended
-        unconditionally). The generic yaml finder walks the index too."""
+        """Finders that do not go through ``find_files`` are charged too:
+        bash's shebang scan of extensionless files reads the file index
+        directly, the gitignore analyzer appends the root ``.gitignore``
+        unconditionally, and the generic yaml finder walks the index."""
         for i in range(3):
             sub = tmp_path / f"d{i}"
             sub.mkdir()

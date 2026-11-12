@@ -1,46 +1,41 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-kipor: a bare constructor name must be binding-confirmed before it is
-emitted as receiver evidence.
+"""A bare constructor name must be binding-confirmed before it is receiver evidence.
 
-WHAT WAS WRONG. ``_external_constructor_module`` (py.py) answers "does this call
-construct a catalogued I/O object?" from two branches. The ``ast.Attribute``
-branch (``socket.socket(...)``) verifies the base name is a real module import
-(``func.value.id in module_imports``) before trusting it. The ``ast.Name`` branch
-(``open(...)``) did not verify anything at all — it looked the bare identifier up
-in ``EXTERNAL_CONSTRUCTOR_TYPES`` and emitted the catalogued module as the
-receiver type of whatever the call returned. So a file that rebinds the name::
+``_external_constructor_type`` (py.py) answers "does this call construct a
+catalogued I/O object?" from two branches. The ``ast.Attribute`` branch
+(``socket.socket(...)``) verifies the base name is bound by an import before
+trusting it. The ``ast.Name`` branch (``open(...)``) must check the bare
+identifier's binding too: looked up in ``EXTERNAL_CONSTRUCTOR_TYPES`` unchecked,
+the catalogued module becomes the receiver type of whatever the call returns, so
+a file that rebinds the name::
 
     from decoy_lib import open
     v = open(spec)
-    return v.read()          # reported fs_read against ``file.read``
+    return v.read()          # would be reported fs_read against ``file.read``
 
-produced a filesystem-read boundary for an object that is not a file. Wrong in
-the expensive direction for a security tool, on the shipping tree, with no
-configuration required.
+gets a filesystem-read boundary for an object that is not a file -- wrong in the
+expensive direction for a security tool, with no configuration required.
 
-WHY THE CONSUMER CANNOT FIX IT. The lying edge and an honest one are
+WHY THE PRODUCER, NOT THE CONSUMER. A mis-bound edge and an honest one are
 byte-identical by the time they reach the catalogue: same ``call_construct``,
-same ``resolution_quality``, same shape. The evidence that would separate them —
-what the name is bound to in this file — is destroyed at the producer. Gating the
-consumer instead (the remedy INV-kipor was originally filed with: route the
-module-hint branch of ``lookup_with_module`` through ``gate_named_entry``) refuses
-the false positive only by refusing the entire class, because that gate vetoes
-every ``call_construct == "method"`` unconditionally — measured at 61.5% of
-reported boundaries destroyed, nothing gained, and every correctly-bound site
-lost along with the incorrect one.
+same ``resolution_quality``, same shape. The evidence that separates them --
+what the name is bound to in this file -- exists only at the producer. Gating
+the consumer instead (routing the module-hint branch of ``lookup_with_module``
+through ``gate_named_entry``) refuses the false positive only by refusing the
+entire class, because that gate vetoes every ``call_construct == "method"``
+unconditionally, so every correctly-bound site is lost along with the incorrect
+one.
 
-WHY THIS IS NOT A NEW RULE. The identical test already exists inline in
-``_receiver_type_id_trustworthy`` (WI-supat D3), which refuses to stamp a concrete
-receiver-type id when a same-name import could rebind it. This is that rule
-applied at the one site that skipped it, so both callers now share
+This is the rule ``_receiver_type_id_trustworthy`` already applies (refuse a
+concrete receiver-type id when a same-name import could rebind it); both share
 ``_import_binding_for``.
 
 THE POSITIVE CONTROLS ARE LOAD-BEARING. Every negative assertion here is paired
 with an unshadowed twin asserting the boundary IS still reported. Without them a
 test asserting "0 boundaries" passes just as well when the analyzer is broken
-outright — which is the failure mode this file exists to catch. INV-kipor's
-pre-existing regression test stayed green through the entire defect precisely
-because it hand-constructed its ``external`` dst instead of running the analyzer.
+outright. For the same reason the fixtures run the analyzer: a test that
+hand-constructs its ``external`` dst stays green whatever the producer does.
+(history: INV-kipor, WI-supat)
 """
 
 from pathlib import Path
@@ -77,7 +72,7 @@ def _dsts_named(edges: list, name: str) -> list[str]:
 
 
 class TestBareConstructorBindingIsChecked:
-    """The live shipping-tree defect: ``open`` rebound by an import."""
+    """``open`` rebound by an import."""
 
     SHADOWED = (
         "from decoy_lib import open\n"
@@ -127,17 +122,15 @@ class TestBareConstructorBindingIsChecked:
 
 
 class TestBindingOwnershipDecidesTrust:
-    """The ticket's own example, and the reason the filed remedy was wrong.
+    """Binding ownership decides trust, which a consumer-side gate cannot express.
 
     A binding to the module the catalogue claims must be TRUSTED; a binding to any
-    other module must be WITHHELD. Refusing both is what the filed remedy did.
+    other module must be WITHHELD. A consumer-side gate refuses both.
 
-    THESE NOW RUN AGAINST THE REAL TABLE. When INV-kipor was filed, ``Path`` was not
-    in ``EXTERNAL_CONSTRUCTOR_TYPES``, so this class monkeypatched the row in to pin
-    a risk before anyone landed it. The row shipped, the monkeypatch became a no-op
-    setting the same value, and a fixture that no longer does anything is a fixture
-    that hides whether the real table still satisfies the property. It is removed,
-    which is what the original comment ("pinned before anyone lands it") was for.
+    These run against the real ``EXTERNAL_CONSTRUCTOR_TYPES`` row for ``Path``, not
+    a monkeypatched one, so they also check that the shipped table still satisfies
+    the property. A patch that sets the row to the value it already has does
+    nothing and hides exactly that.
     """
 
     GOOD = (
@@ -156,7 +149,7 @@ class TestBindingOwnershipDecidesTrust:
     )
 
     def test_the_row_this_class_depends_on_is_really_in_the_table(self) -> None:
-        """Guard against the class going vacuous now that the monkeypatch is gone."""
+        """Guard against the class going vacuous if the ``Path`` row leaves the table."""
         assert py.EXTERNAL_CONSTRUCTOR_TYPES.get("Path") == "pathlib.Path"
 
     def test_matching_binding_is_trusted(self, tmp_path: Path) -> None:
@@ -181,8 +174,8 @@ class TestBindingOwnershipDecidesTrust:
         """One producer fix closes BOTH consumers.
 
         ``pathlib.Path.replace`` is a taint sink (host_fs), so the mis-bound hint
-        would mint a sink as well as a boundary — the WI-razol cascade the
-        catalogue's ``ambiguous_names`` list was written to close.
+        would mint a sink as well as a boundary — the cascade the catalogue's
+        ``ambiguous_names`` list exists to close (history: WI-razol).
         """
         catalog = load_full_taint_catalog()
         bad = _dsts_named(_analyse(tmp_path / "bad", self.BAD), "replace")[0]
@@ -210,7 +203,7 @@ class TestEveryBareConstructorKeyIsGuarded:
 
     def test_dotted_keys_are_already_binding_checked(self) -> None:
         """A dotted key is reachable only through the ``ast.Attribute`` branch,
-        which has always required ``func.value.id in module_imports``."""
+        which requires its chain root to be bound by an import."""
         dotted = [k for k in EXTERNAL_CONSTRUCTOR_TYPES if "." in k]
         assert dotted, "expected at least one dotted key (socket.socket)"
 
@@ -277,13 +270,11 @@ class TestEveryBareConstructorKeyIsGuarded:
     ) -> None:
         """An unbound bare name is trusted ONLY for a real builtin.
 
-        The table used to hold only ``open``, so "unbound means the builtin" was
-        true of every row and the branch was written that way. It stopped being true
-        the moment a non-builtin bare key was added: an unbound ``Path`` is a local
-        class, a star-import, or a name from a module never read — and trusting it
-        mints an ``fs_write`` boundary and a ``host_fs`` taint SINK for any class
-        merely named ``Path``. Enumerated over the table so the next non-builtin key
-        inherits the guard instead of re-learning it.
+        "Unbound means the builtin" holds only for builtins such as ``open``. An
+        unbound non-builtin key such as ``Path`` is a local class, a star-import, or
+        a name from a module never read — and trusting it mints an ``fs_write``
+        boundary and a ``host_fs`` taint SINK for any class merely named ``Path``.
+        Enumerated over the table so every non-builtin key gets the guard.
         """
         catalog = load_catalog("python")
         checked = 0
@@ -299,20 +290,17 @@ class TestEveryBareConstructorKeyIsGuarded:
                 f"    v = {key}(spec)\n"
                 f"    return v.{method}()\n"
             )
-            # MEASURE THE METHOD EDGE, NOT EVERY EDGE (WI-jabus). What this
-            # test is about is the RECEIVER HINT: an unbound `Path(spec)`
-            # minting a pathlib.Path type, so that `v.write_text()` tags. The
-            # CONSTRUCTOR call is a different mechanism with its own guard --
-            # a bare `Popen(spec)` matches subprocess.yaml's own launch row by
-            # short name, which it did long before any class-qualified rows
-            # existed and which is a DETECTION, not a fabrication. Counting
-            # every edge conflated the two and made this test fail on a row it
-            # was not written to police; scoping it to the method edge tests
-            # the hint and leaves the launch row alone. Adding `Popen` to
-            # ambiguous_names was the alternative and was refused: with the
-            # import present there is no bare Popen edge at all, so the only
-            # thing it would change is to DELETE the unbound detection -- the
-            # loosening direction, on a subprocess claim.
+            # MEASURE THE METHOD EDGE, NOT EVERY EDGE. This test is about the
+            # RECEIVER HINT: an unbound `Path(spec)` minting a pathlib.Path
+            # type, so that `v.write_text()` tags. The CONSTRUCTOR call is a
+            # different mechanism with its own guard -- a bare `Popen(spec)`
+            # matches subprocess.yaml's launch row by short name, which is a
+            # DETECTION, not a fabrication. Counting every edge conflates the
+            # two and fails this test on a row it does not police. Adding
+            # `Popen` to ambiguous_names is not the fix: with the import
+            # present there is no bare Popen edge at all, so the only effect
+            # would be to DELETE the unbound detection -- loosening a
+            # subprocess claim. (history: WI-jabus)
             edges = [
                 e for e in _analyse(tmp_path / f"unbound_{key}", body)
                 if e.dst.endswith(f":{method}:unresolved")

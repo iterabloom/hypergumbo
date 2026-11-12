@@ -100,7 +100,7 @@ verdict a non-empty list makes it ``confirmed_with_caveats``;
 ride a ``violated`` verdict, and caveats
 raised on a clean path survive a coverage downgrade to ``inconclusive``
 (``_require_coverage_to_confirm``). Sixteen ``CAVEAT_*`` constants exist, plus
-one unconstanted kind (``deferred_crossing``). The four longest-standing:
+one unconstanted kind (``deferred_crossing``). Four are described here:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
   sanitizer, or a function summary, that did not ship with hypergumbo
@@ -304,11 +304,10 @@ from .paths import classify_test_file, is_migration_file
 # correct verdict — but it would UNDERSTATE what the analysis saw, which is
 # why this is a version change rather than a silent field addition.
 # 1.3 adds the per-verdict ``flow_origins`` breakdown and a per-evidence-row
-# ``source_boundary`` (WI-vazal). Also additive, and deliberately so: the
-# alternative considered was RELABELLING database reads away from
-# ``untrusted_input``, which would have been a silent semantic change to every
-# claim already written against that label. Reporting the split instead means
-# no published claim changes meaning and no verdict moves.
+# ``source_boundary`` (WI-vazal). Also additive, and deliberately so:
+# RELABELLING database reads away from ``untrusted_input`` would silently
+# change every claim already written against that label. Reporting the split
+# instead means no published claim changes meaning and no verdict moves.
 # 1.4 adds the per-verdict ``analysis_methods`` breakdown and a per-evidence-row
 # ``confidence`` / ``analysis_method`` (INV-karud clause c). Additive, and a
 # version change rather than a silent field addition for the same reason 1.2
@@ -339,8 +338,8 @@ from .paths import classify_test_file, is_migration_file
 # carry to be reportable as sanitized at all, and ``same_function_honoured_by``.
 # Additive, and it exists because clause (b)'s evidence is unreadable without
 # it — the catalogue is entirely cryptographic, so a repository-wide "0
-# sanitized flows" usually means the claims' labels and the sanitizers' labels
-# are disjoint sets rather than that nothing was protected. It also publishes
+# sanitized flows" can mean the claims' labels and the sanitizers' labels are
+# disjoint sets rather than that nothing was protected. It also publishes
 # the one shape the call-graph pass structurally cannot honour: a sanitizer
 # called in the same function as the source (WI-fasub), which the DDG pass
 # honours and which every language without a def/use extractor misses.
@@ -412,8 +411,8 @@ from .paths import classify_test_file, is_migration_file
 # zero-filled, and a 2.2 consumer that ignores it still reads a correct
 # verdict. It bumps because a key that makes an EXISTING key interpretable is a
 # version change: ``flows_removed_by_walk: 0`` reads as "the walk adjudicated
-# these flows and found nothing to remove", but it usually means the walk never
-# got to look (only ``refuted`` can remove a flow). A consumer's correct
+# these flows and found nothing to remove", but it can equally mean the walk
+# never got to look (only ``refuted`` can remove a flow). A consumer's correct
 # reading of an unchanged key therefore changes, which is what the "changed
 # the meaning of an existing one" carve-out is for.
 # 2.4 adds the per-verdict ``resource_naming_flows`` count (WI-bulag / arc T9).
@@ -586,8 +585,8 @@ CAVEAT_DISPLACED_SHIPPED_ENTRY = "displaced_shipped_entry"
 #: determine the receiver's type" is a qualified opinion by the same test.
 #:
 #: BOUNDARY-SCOPED, AND THAT IS WHAT MAKES IT USABLE. A DOWNGRADE on this
-#: signal is not: on a real repository (poetry) every boundary would downgrade,
-#: because the catalogued method names include ``close`` / ``get`` / ``read`` /
+#: signal is not: on an ordinary Python repository every boundary would
+#: downgrade, because the catalogued method names include ``close`` / ``get`` / ``read`` /
 #: ``write`` / ``send`` — the most common method names in Python. So the
 #: verdict is QUALIFIED rather than WITHHELD, and a name is matched only
 #: against primitives catalogued for the CLAIMED boundary, so an unrelated dict
@@ -616,13 +615,12 @@ CAVEAT_UNTYPED_RECEIVER = "untyped_receiver"
 #: the disclosure away with it. So the qualification is not dropped, it is made
 #: MORE precise: "typed from a declared accessor name, not from a typed root".
 #:
-#: WHY A CAVEAT RATHER THAN A REFUSAL. A shuffled-index ablation over pretix
-#: (20 size- and frequency-matched WRONG accessor sets) puts the rule's
-#: true:shuffled firing ratio at 78.9 against a kill threshold of 10, so the
-#: name-keying is
-#: overwhelmingly right and refusing it would cost 2,943 correctly-slotted edges
-#: for a rare error. Being right is not the same as being VERIFIED, and this
-#: says which one the reader is getting.
+#: WHY A CAVEAT RATHER THAN A REFUSAL. Against size- and frequency-matched
+#: WRONG accessor sets, the rule fires far more often on the declared accessors
+#: than on the shuffled ones, so the name-keying is overwhelmingly right and
+#: refusing it would cost many correctly-slotted edges for a rare error. Being
+#: right is not the same as being VERIFIED, and this says which one the reader
+#: is getting.
 CAVEAT_ACCESSOR_NAME_RECEIVER = "accessor_name_receiver"
 
 #: A clean boundary verdict is CLOSED-WORLD over the receivers the analysis could
@@ -690,25 +688,24 @@ CAVEAT_ANALYZER_METHOD_CALL_BLIND = "analyzer_method_call_blind"
 #: I/O sinks (INV-polad).
 #:
 #: THE SIBLING ABOVE IS ABOUT A WHOLE CONSTRUCT; THIS IS ABOUT NAMED METHODS,
-#: and they are kept apart because the remedies differ. kotlin cannot see
-#: external instance-method calls AT ALL and the fix is to build the edges
-#: (WI-nasuf). rust sees them and drops a listed 77 by name to stop a name-only
-#: resolution binding ``x.load()`` to a project ``JoltDevice::load`` (WI-bakak,
-#: 22 of 29 false callers) — a policy that is CORRECT and stays. Collapsing the
-#: two would suggest one fix for two different problems.
+#: and they are kept apart because the remedies differ. A language whose
+#: analyzer cannot see external instance-method calls AT ALL needs the edges
+#: built (WI-nasuf). rust sees them and drops a listed set by name to stop a
+#: name-only resolution binding ``x.load()`` to a project ``JoltDevice::load``,
+#: which produces mostly false callers (WI-bakak) — a policy that is CORRECT
+#: and stays. Collapsing the two would suggest one fix for two different
+#: problems.
 #:
-#: NINE NAMES, TEN CATALOGUE ROWS, DERIVED NOT LISTED. ``send`` / ``write`` /
-#: ``read`` / ``flush`` / ``recv`` / ``new`` / ``spawn`` / ``status`` /
-#: ``output`` are each declared a method-kind sink by ``rust.yaml``
-#: (``write`` twice, for ``io::Write`` and ``TcpStream``). The overlap is
+#: THE OVERLAP IS DERIVED, NOT LISTED. Names such as ``send`` / ``write`` /
+#: ``read`` / ``recv`` / ``spawn`` / ``status`` / ``output`` are both on the
+#: denylist and declared method-kind sinks by ``rust.yaml``. The overlap is
 #: computed from the shipped catalogue at render time, so adding a row for a
 #: denylisted name extends the disclosure with nobody remembering to.
 #:
 #: WHY NOT JUST EMIT THE CALLS: as ordinary unresolved-external edges they
-#: inflate total edges by +33% / +67% and the external population by
-#: +115% / +207% on two real crates, because the same set holds
-#: ``clone`` / ``unwrap`` / ``map``. Declaring the gap says the same true thing
-#: for nothing.
+#: substantially inflate both the total edge count and the external
+#: population, because the same set holds ``clone`` / ``unwrap`` / ``map``.
+#: Declaring the gap says the same true thing for nothing.
 CAVEAT_ANALYZER_SUPPRESSED_METHODS = "analyzer_suppressed_methods"
 
 #: A clean verdict rests on a language whose catalogue declares rows that
@@ -734,11 +731,10 @@ CAVEAT_ANALYZER_CONSTRUCT_BLIND = "analyzer_construct_blind"
 #:
 #: WHY IT IS NOT SIMPLY DROPPED. A loop makes a textually-earlier sink genuinely
 #: reachable from a later source, so the marker means "the walk could not run", not
-#: "the flow is impossible". The census behind this rule read all 14 such rows on the
-#: 16-repository cohort against source: 1 was true (7.1%) and NO row had a loop
-#: enclosing both calls, which refutes the loop defence empirically -- but the walk
-#: cannot check enclosure per row (the decision is line-based and the DDG exposes no
-#: loop spans there), so the rule is broader than ideal and says so.
+#: "the flow is impossible". Rows of this shape are predominantly false positives,
+#: and a loop enclosing both calls is the exception -- but the walk cannot check
+#: enclosure per row (the decision is line-based and the DDG exposes no loop spans
+#: there), so the rule is broader than ideal and says so.
 CAVEAT_SINK_BEFORE_SOURCE_ONLY = "sink_before_source_only"
 
 #: A higher-fidelity analyzer for a language in this repository is INSTALLED on
@@ -795,12 +791,11 @@ CHOICE_SHAPED_SOURCE_LABEL = "untrusted_input"
 #:
 #: WHY IT IS DECLARED RATHER THAN FIXED, and the number is the reason. Under a
 #: 5% finding-weighted share, the source half is not worth a per-row
-#: ``value_shape`` field. A 23-repository cohort sampled DELIBERATELY for socket
-#: ownership — maximally favourable to the property — has 2 choice-shaped
-#: findings out of 568 (0.35%), an order of magnitude under the line, while
-#: plainly SEEING the population: 87% of that cohort reached a choice-shaped
-#: chain across 12 primitives and 6 languages. The rows are found, resolved and
-#: walked; reaching one almost never produces a finding.
+#: ``value_shape`` field, and the measured share is an order of magnitude under
+#: that line on a cohort chosen to favour the property, while the analysis
+#: plainly SEES the population: the rows are found, resolved and walked, and
+#: reaching one almost never produces a finding. The emitted caveat detail
+#: carries the measurement and its date.
 #:
 #: WHY IT RIDES THE **VIOLATED** PATH, alone among the caveats here. Every other
 #: caveat qualifies a CLEAN verdict, where the risk is a false all-clear. This
@@ -978,8 +973,8 @@ def ingress_candidates(behavior_map: Mapping[str, Any]) -> list[Mapping[str, Any
     candidate BEFORE ``detect_entrypoints`` applies its rank floor and its
     size cap. ``entrypoints`` is a ranked OVERVIEW, floored at
     ``MIN_ENTRYPOINT_CONFIDENCE`` and capped by repo size with a 40% per-kind
-    share, so a completeness statement read off it is silently partial (on
-    mlflow the capped list holds 200 of 302 route handlers). An older map has no such
+    share, so a completeness statement read off it is silently partial: the
+    capped list can omit route handlers. An older map has no such
     key and the capped list is all there is, so that is read: partial, but
     no handler invented. The key's PRESENCE decides -- an empty list is the
     positive statement that the detector found no request handler.
@@ -1366,9 +1361,9 @@ def _untyped_receiver_caveat(
     KNOWN COLLISIONS LAST (WI-jiful). ``collisions`` is the subset of ``sites``
     whose method name the catalogue lists in ``ambiguous_names`` -- the
     short-name collision set the row choice itself consults
-    (:func:`untyped_receiver_known_collisions`). On hypergumbo's own tree about
-    half the sites are ``.replace()``, mostly ``str.replace``, which would bury
-    the ``mkdir`` and ``write_text`` sites a reader can act on. They are still
+    (:func:`untyped_receiver_known_collisions`). Such sites -- ``.replace()``,
+    mostly ``str.replace``, for one -- can be a large share of the list and
+    would bury the ``mkdir`` and ``write_text`` sites a reader can act on. They are still
     DISCLOSED (``pathlib.Path.replace`` is a real sink an untyped receiver could
     be), and ``entries`` keeps every site; they are listed after the others,
     named in a clause of their own, and carried in ``known_collisions`` so a
@@ -1381,13 +1376,12 @@ def _untyped_receiver_caveat(
     if len(sites) <= _MAX_REPORTED_UNTYPED_SITES:
         where = ", ".join(plain + marked)
     else:
-        # AT SCALE THE SITES ARE NOT THE FACT; THE METHOD NAMES ARE. On
-        # poetry, for example, 306 fs_read sites are 16 distinct names (``read`` 95,
-        # ``exists`` 86, ``open`` 34, ``group`` 19, ``read_text`` 16, ...) and
-        # 103 ipc_recv sites are a SINGLE name, ``get``. A reader deciding
-        # whether to trust the verdict acts on "which methods" — ``group`` is
-        # almost all ``re.Match``, ``read_text`` is almost all ``pathlib`` —
-        # and cannot act on five arbitrary line numbers out of three hundred.
+        # AT SCALE THE SITES ARE NOT THE FACT; THE METHOD NAMES ARE. Hundreds
+        # of sites can collapse to a handful of distinct names, or to a single
+        # one (``get``). A reader deciding whether to trust the verdict acts on
+        # "which methods" — ``group`` is almost all ``re.Match``, ``read_text``
+        # is almost all ``pathlib`` — and cannot act on five arbitrary line
+        # numbers out of hundreds.
         # The full site list is still in ``entries``, which is the machine
         # surface; this only bounds the sentence a human reads, the same trade
         # ``_MAX_REPORTED_UNCATALOGUED_MODULES`` and ``_MAX_EVIDENCE_ROWS``
@@ -1500,7 +1494,7 @@ def _analyzer_method_call_blind_caveat(
     """The one place the declared-blindness disclosure is built.
 
     NAMES THE LANGUAGE AND THE SCALE, because "some calls were not seen" is
-    unactionable while "kotlin: 181 of 186 catalogued primitives are
+    unactionable while "<language>: N of M catalogued primitives are
     method-kind" tells a reader whether this verdict is worth anything for
     their repository. The count comes from the shipped catalogue rather than
     from a literal here, so it cannot go stale against the catalogue it
@@ -1603,9 +1597,9 @@ def _unknown_receiver_scope_caveat(
     that nothing is known about them, so what a reader can act on is the SIZE of
     the unknown and WHICH METHODS it covers: 1-of-3 and 1-of-3000 are different
     verdicts, and ``append``/``items`` reads very differently from
-    ``upload_file``/``post``. Measured on the corpus: 34.7% of untyped-receiver
-    sites are builtin container/string method names, which is exactly the
-    calibration a bare "some receivers were unknown" would deny the reader.
+    ``upload_file``/``post``. Builtin container/string method names are a
+    large share of untyped-receiver sites, which is exactly the calibration a
+    bare "some receivers were unknown" would deny the reader.
     """
     more = len(names) - _MAX_REPORTED_UNTYPED_SITES
     suffix = f" (+{more} more)" if more > 0 else ""
@@ -1871,15 +1865,16 @@ class BoundaryCoverage:
     * the analysis produced no call edges at all (empty repo, wrong cwd, or an
       unanalyzable input) — nothing could be traced to an I/O primitive; or
     * a *supported* language (one with an I/O catalog) was analyzed but
-      produced zero call edges, so ``io_boundary`` saw none of its I/O — the
-      F69.A1 missing-edge-production case (e.g. the JS body-call gap); or
+      produced zero call edges, so ``io_boundary`` saw none of its I/O — a
+      missing-edge-production case, such as an analyzer that emits no edge
+      for calls inside function bodies (F69.A1); or
     * the analysis called out to a module the catalog has no opinion about —
       ``requests``, ``sqlmodel``, ``boto3``. The first two spots ask "did this
       language produce ANY call edges", and a language producing hundreds of
       thousands passes them while every third-party I/O call goes unexamined.
-      For example, on poetry's ``src/poetry`` (14 files import ``requests``)
-      the analysis reports ``fs_read`` chains, so it is demonstrably not
-      blind — yet without this check "never sends data over the network"
+      For example, an analysis of a project that imports ``requests`` may
+      report ``fs_read`` chains, so it is demonstrably not blind — yet
+      without this check "never sends data over the network"
       would read ``confirmed``: the analysis looked, could not classify
       ``requests``, and would report the silence as safety. See :func:`_adjudicate_external_modules` for the predicate and
       the residual it deliberately leaves open.
@@ -2019,8 +2014,8 @@ class BoundaryCoverage:
     #: the gate: a run whose verdicts are all violated or withheld still
     #: lists what the gate passed, because the reader who then rows the
     #: withholding module gets a confirmed verdict resting on exactly these.
-    #: Not the whole grant list, which is 121 modules for python and would be
-    #: the always-there disclosure a reader discounts.
+    #: Not the whole grant list, which for python runs to over a hundred
+    #: modules and would be the always-there disclosure a reader discounts.
     load_bearing_grants: dict[str, list[str]] = field(default_factory=dict)
     #: Language -> the subset of :attr:`load_bearing_grants` that an OVERLAY
     #: granted and the built-in catalogue does not (WI-pogar,
@@ -2098,11 +2093,10 @@ _ALLOWED_TAINT_FLOW_KEYS: frozenset[str] = frozenset(
 #: ``taint_sources:`` in place of ``sources:`` would turn a ``violated``
 #: (rc 1) into ``confirmed_with_caveats`` (rc 3) with no warning of any kind.
 #:
-#: The typo is the one the documentation invites: ``verify-claims --help``
-#: introduces this block by naming the FLAGS (``--taint-sources`` /
-#: ``--taint-sinks`` / ``--taint-sanitizers``) and never the sub-keys, and
-#: promises four lines later that "an unknown field name ... produces a clear
-#: error and exit code 2 (not a silent pass)".
+#: The typo is an easy one: the sub-keys share their names with the FLAGS
+#: (``--taint-sources`` / ``--taint-sinks`` / ``--taint-sanitizers``), and
+#: ``verify-claims --help`` promises that "an unknown field name ... produces
+#: a clear error and exit code 2 (not a silent pass)".
 #:
 #: DROPPING SANITIZERS IS SAFE; DROPPING SOURCES OR SINKS IS NOT. Fewer
 #: sanitizers means more violations. Fewer sources or sinks means a claim the
@@ -2272,7 +2266,7 @@ def shipped_artifact_roots(repo_root: Path) -> list[str]:
       names a package directory;
     - a package directory that is an ANCESTOR of another is a workspace
       wrapper, not a package, and is dropped — hypergumbo's own root
-      pyproject sits above six real packages, and keeping it would widen the
+      pyproject sits above its real packages, and keeping it would widen the
       scope back to the whole repo, making the feature a no-op on the proof
       it exists for;
     - the shipped tree is ``<dir>/src`` when it exists (src layout), else
@@ -3517,8 +3511,6 @@ def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
     infix of a path this analysis read. ``github.com/other/modules/caddyhttp``
     is NOT suppressed by a repo owning ``modules/caddyhttp`` — the folded
     module is longer than the analyzed entry and the infix runs the other way.
-    On caddy the widening is two entries, ``modules/caddyhttp`` and
-    ``caddyconfig/httpcaddyfile``, both of which are caddy's own packages.
     Pinned in both directions by
     ``test_a_repos_own_slash_spelled_package_IS_suppressed`` and
     ``test_normalisation_alone_does_not_vouch_for_an_unread_module``.
@@ -3840,8 +3832,8 @@ def _opaque_launch_sites(
         if not catalog.declares_opaque_crossing(primitive.module, primitive.name):
             continue
         # Joined rather than branched on a missing module: no shipped catalogue
-        # has a moduleless subprocess row (checked across all 14), so an
-        # ``if primitive.module`` branch would be dead code dressed as caution.
+        # has a moduleless subprocess row, so an ``if primitive.module`` branch
+        # would be dead code dressed as caution.
         sites.add(".".join(part for part in (primitive.module, primitive.name) if part))
     return sorted(sites)
 
@@ -4180,9 +4172,8 @@ def _adjudicate_external_modules(
 
     THE STRICT DIRECTION IS AFFORDABLE BECAUSE IT CANNOT SUPPRESS A DETECTION.
     ``verify_claim`` returns ``violated`` outside the ``coverage.complete``
-    branch, so coverage gates only the all-clear. On real repos (httpx,
-    poetry, full-stack-fastapi-template, hypergumbo itself) verdicts are
-    ``inconclusive`` regardless, with dozens of uncatalogued modules apiece.
+    branch, so coverage gates only the all-clear. A repository with
+    uncatalogued third-party modules gets ``inconclusive`` regardless.
     The cost falls on programs with no unadjudicable third-party module at
     all, which is precisely the population a false confirm endangers.
 
@@ -4309,8 +4300,7 @@ def _adjudicate_external_modules(
         # a synthetic pseudo-module no ``module_completeness`` entry can ever
         # match, which would make every C++ call site with more than one system
         # include PERMANENTLY unexaminable, not merely unexamined. Such slots
-        # are common in C++ (roughly a quarter of external dsts across a C/C++
-        # sweep, WI-lutuh).
+        # are common in C++ (WI-lutuh).
         #
         # ALL, NOT ANY. Classification asks "does any spelling name a
         # primitive" and an ANY answer is a positive claim. This gate asks "was
@@ -4380,8 +4370,7 @@ def _adjudicate_external_modules(
         # read, so whatever I/O it performs was examined on its own edges — it
         # is not a leaf this analysis cannot see past. Counting it would send a
         # repo with no third-party dependency at all to ``inconclusive`` on one
-        # unresolved internal call (on poetry, most call-site modules are
-        # poetry's own).
+        # unresolved internal call.
         if _is_analyzed_module(module, analyzed):
             continue
         # A MODULE THE LANGUAGE ITSELF MARKS AS FIRST-PARTY IS NOT A CATALOGUE
@@ -4395,9 +4384,9 @@ def _adjudicate_external_modules(
         #
         # ASKED AFTER the path-derived test, so the cheap and general
         # answer runs first and this one only sees what it could not explain.
-        # On bellman and express a handful of modules are exactly this, and
-        # because ``qualifying_only`` is ``not unknown``, those alone would
-        # withhold every claim on both repos. The importing file goes with it,
+        # Because ``qualifying_only`` is ``not unknown``, a handful of such
+        # modules alone would withhold every claim in a repository. The
+        # importing file goes with it,
         # so a relative path that climbs out of the analysed root is not taken
         # for the repo's own (INV-juvul).
         if is_definitionally_first_party(
@@ -4499,8 +4488,8 @@ def untyped_receiver_sites(
     QUALIFY a clean verdict instead of leaving it silent.
 
     KEYED BY BOUNDARY BECAUSE THE SCOPING IS THE WHOLE DESIGN. A downgrade on
-    the unscoped version of this signal is refused — on poetry every boundary
-    would downgrade, because the catalogued method names include ``close`` /
+    the unscoped version of this signal is refused — on an ordinary Python
+    repository every boundary would downgrade, because the catalogued method names include ``close`` /
     ``get`` / ``read`` / ``write`` / ``send``. Returning a MAP rather than a
     flat list is what makes the scope structural: a caller that forgets to
     scope gets a dict, not a wrong answer. An unrelated dict ``.get``,
@@ -4857,10 +4846,10 @@ def _call_site_label(edge: dict[str, Any]) -> str:
 
     THE ``src`` IS NORMALLY AN IN-REPO SYMBOL AND SO NORMALLY A REAL PATH, but
     not always: an external symbol's path slot reads ``<external>``, producing a
-    label like ``<external>:75 count()`` that a reader cannot open. It is rare
-    (1 of 6,195 distinct labels on sqlalchemy, 0 of 713 on poetry), and it is
-    disclosed rather than dropped: at that rate special-casing buys nothing, and dropping sites is the
-    under-disclosure direction this whole caveat exists to close.
+    label like ``<external>:75 count()`` that a reader cannot open. It is rare,
+    and it is disclosed rather than dropped: special-casing a rare label buys
+    nothing, and dropping sites is the under-disclosure direction this whole
+    caveat exists to close.
 
     READ BACK BY :func:`_site_method`, WHICH IS WHY THE NAME IS LAST. The two are
     a pair and live together deliberately: ``_merge_caveat`` re-renders a widened
@@ -4937,7 +4926,7 @@ def method_starved_modules(
     ``scripts/measure-blind-language-signal.py``, six fixtures):
 
     * "did the language emit ANY call edge"; a Kotlin repo that writes a
-      socket payload to disk emits five and passes.
+      socket payload to disk emits a few and passes.
     * "count only non-first-party dsts" does not discriminate at all, because
       :func:`is_first_party_callable_dst` requires an ABSOLUTE path slot and
       Kotlin's intra-repo dsts are relative.
@@ -5221,8 +5210,8 @@ def is_synthetic_build_target_call(edge: Mapping[str, Any]) -> bool:
     WHY THE ORIGIN AND NOT THE LANGUAGE. The obvious rule -- "a config-format
     language cannot call" -- is WRONG HERE: ``taxonomy``'s
     ``FileRole.ANALYZABLE`` describes a file's ROLE, not whether an analyzer
-    exists, and 17 of the languages it marks non-analyzable DO have registered
-    analyzers, ``dockerfile``, ``cmake``, ``hcl``, ``starlark``, ``just`` and
+    exists, and several of the languages it marks non-analyzable DO have
+    registered analyzers, ``dockerfile``, ``cmake``, ``hcl``, ``starlark``, ``just`` and
     ``jsonnet`` among them. A Dockerfile ``RUN curl ...`` is real I/O, so
     exempting the language would be a false all-clear -- the direction these
     gates exist to prevent. The synthetic edge is identified by what MINTED it,
@@ -5540,8 +5529,8 @@ def verify_claim(
     """Verify a boundary claim and stamp the fidelity behind the answer.
 
     ONE HOME FOR THE STAMP, and the count is the argument: this module builds a
-    ``ClaimVerdict`` at fifteen separate return sites, and a field set at each
-    of them is a field the sixteenth will not set; stamping in one wrapper
+    ``ClaimVerdict`` at many separate return sites, and a field set at each
+    of them is a field the next one added will not set; stamping in one wrapper
     means no branch can omit which analyzer produced its edges (WI-lagod). The
     wrapper is deliberately thin — all the reasoning stays in
     :func:`_verify_claim_uncredited`.
@@ -5831,8 +5820,8 @@ def _flow_identity(v: "TaintFlowFinding") -> tuple[Any, ...]:
 
 
 #: How many primitive names one rendered row spells out before switching to a
-#: count. A situation on a large symbol can name dozens (caddy's ``cmdRun``
-#: alone spans 32 pairs on one claim), and a prose row that long is not read.
+#: count. A situation on a large symbol can name dozens of primitives, and a
+#: prose row that long is not read.
 #: The full sets are always in the structured ``evidence`` row.
 _MAX_RENDERED_PRIMITIVES = 3
 
@@ -5919,8 +5908,8 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # own and "which guard" is exactly what prices a remedy.
         "walk_blocked_by": v.walk_blocked_by,
         # The two scalars above are the REPRESENTATIVE's (INV-muhij). On a
-        # collapsed row the other members frequently report something else
-        # -- most groups containing a ``sink_before_source`` member are not
+        # collapsed row the other members may report something else -- a
+        # group containing a ``sink_before_source`` member need not be
         # unanimous -- so a consumer deciding what this row is entitled to
         # claim must read the union rather than the scalar. Emitted HERE as
         # well as in ``TaintFlowFinding.to_dict`` because this record is a
@@ -6041,7 +6030,7 @@ def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
 
     INV-pojib. Built from the sanitized-flow COUNT alone, "a sanitizer
     protects every route" would read identically whether the sanitizer was
-    ``cryptography.fernet.Fernet.encrypt`` from the shipped catalogue or a
+    ``javax.crypto.Cipher.doFinal`` from the shipped built-in catalogue or a
     no-op function the ANALYSED REPOSITORY declared about itself — e.g. a
     fixture doing ``os.remove(launder(os.environ["API_KEY"]))``, where
     ``launder`` returns its argument unchanged, turns ``violated`` into a
@@ -6069,11 +6058,11 @@ def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
         for name in named
     )
     # "via X" WHEN ONE CANDIDATE, "one of" WHEN SEVERAL, because the barrier
-    # records which sanitizers COULD have fired, not which did. All four shipped
-    # ``*.encrypt`` entries match a bare ``encrypt`` callee, so a fixture calling
-    # ``Fernet.encrypt`` has four candidates and naming one would be a fact the
-    # analysis never established (it could print ``ChaCha20Poly1305.encrypt``
-    # for a Fernet call).
+    # records which sanitizers COULD have fired, not which did. Every
+    # ``*.encrypt`` row in the cryptography sanitizer file matches a bare
+    # ``encrypt`` callee, so a credited ``Fernet.encrypt`` call has several
+    # candidates and naming one would be a fact the analysis never established
+    # (it could print ``ChaCha20Poly1305.encrypt`` for a Fernet call).
     if len(named) == 1:
         return f" (via {shown})"
     return f" (barrier matched one of: {shown})"
@@ -6313,8 +6302,8 @@ def _verify_taint_claim_uncredited(
     # per row.
     #
     # READ FROM `walk_blocked_by_values`, NEVER THE SCALAR. On a collapsed row the
-    # scalar is `grp[0]`'s and says nothing about the other members, and groups
-    # containing such a member are frequently NOT unanimous. The field's own
+    # scalar is `grp[0]`'s and says nothing about the other members, and a
+    # group containing such a member need not be unanimous. The field's own
     # docstring states this constraint: "A rule may act on `walk_blocked_by_values ==
     # ("sink_before_source",)`; it may not act on the scalar."
     from .taint import WALK_BLOCKED_SINK_BEFORE_SOURCE
@@ -6698,8 +6687,8 @@ def _verify_taint_claim_uncredited(
     # one" (WI-bifob), and `cli.py` prints `details` alone — so without this a
     # TEXT-mode reader of a violated claim would never learn that flows were
     # set aside by a policy they did not choose. `flow_origins` (WI-vazal) is
-    # decision-changing too: on pretix's largest violated claim every flow is
-    # database-read-to-database-write.
+    # decision-changing too: on an ORM-backed application every flow of a
+    # violated claim can be database-read-to-database-write.
     #
     # Both are spliced into `details` rather than rendered by the CLI, because
     # `details` is where this module already puts the confirmed-path exclusion

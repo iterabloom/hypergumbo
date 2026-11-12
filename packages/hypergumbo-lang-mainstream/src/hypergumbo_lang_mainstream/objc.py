@@ -15,13 +15,12 @@ Node types handled:
 - preproc_include: #import statements
 - message_expression: [receiver message] method calls
 
-Pre-parse rewrite (WI-lafom):
+Pre-parse rewrite (history: WI-lafom):
 tree-sitter-objc does not preprocess, so an Apple SDK macro that expands to
 syntax is a syntax error to it, and its error recovery falls back to C: a
 ``@property`` under a ``NS_ASSUME_NONNULL_BEGIN`` becomes ``@`` plus a C
-``function_declarator``, and no ``property_declaration`` node is produced at all
-(74 of 387 files over four real ObjC repositories). No newer grammar fixes this
--- 3.0.2 is the newest published and upstream is dormant -- so
+``function_declarator``, and no ``property_declaration`` node is produced at
+all. No published grammar release fixes this, so
 :func:`_objc_parse_source` retries a failing file through a
 byte-length-preserving rewrite of the three macro families that actually break
 the parse (``NS_ASSUME_NONNULL_BEGIN``/``_END`` in the wrapping position,
@@ -37,12 +36,12 @@ Three-pass analysis:
 - Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers that the repo does not declare.
   The cross-file registry is keyed by bare selector, which is weak evidence,
   so a cross-file hit binds only when it is a method of the caller's own
-  class (INV-fahub, via ``defer_bare_method_call``). A different class's
+  class (via ``defer_bare_method_call``; history: INV-fahub). A different class's
   method, or a tie the resolver leaves unresolved (``defer_unresolved_tie``),
   is withheld and emitted as an unresolved edge carrying ``enclosing_class``,
   for the ``inherited_calls`` Site-1 walker.
 
-Receiver typing (WI-higob, WI-garar): an unresolved send whose receiver is
+Receiver typing (history: WI-higob, WI-garar): an unresolved send whose receiver is
 lowercase still gets a class. It comes from the receiver's declaration in
 the enclosing body -- a typed parameter, local or fast-enumeration variable
 (``_objc_declared_receiver_types``) -- from the return class of a nested
@@ -53,7 +52,7 @@ Return classes come from a registry aggregated in Pass 1 and merged with
 is carried in ``receiver_type_hint``, and becomes the module hint only when
 it is not a class the repo declares.
 
-ONE GUARD, BOTH ARMS (WI-dason). The module slot asserts an EXTERNAL owner
+ONE GUARD, BOTH ARMS (history: WI-dason). The module slot asserts an EXTERNAL owner
 (ADR-0051), so a class the repo declares never fills it -- whichever arm found
 the class: the declared-receiver arm or the class-MESSAGE arm (``[Svc alloc]``,
 ``[DDLog log:...]``). Both put a project class in ``receiver_type_hint`` only,
@@ -61,8 +60,8 @@ which is also what lets ``inherited_calls`` Site 2 look the selector up on that
 class instead of walking the CALLER's class for it (Site 1). The exception is
 a class message to the caller's own class (``[RACSignal empty]`` inside
 RACSignal): it gets no hint and stays on Site 1, which makes the same lookup.
-A non-class type
-KEYWORD (``__auto_type``, ``instancetype``; :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`)
+
+A non-class type KEYWORD (``__auto_type``, ``instancetype``; :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`)
 is not a declared class at all: the declaration is read the way ``id x = ...``
 is, so the initialiser's registered return class types it or nothing does. A
 nullability qualifier the grammar misreads as a type (``nonnull``;
@@ -109,7 +108,7 @@ PASS_ID = make_pass_id("objc")
 
 
 def _is_objc_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
-    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    """Unused stub; availability is checked by TreeSitterAnalyzer._check_grammar_available."""
     pass
 
 
@@ -146,20 +145,17 @@ def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
 #: (WI-dason). ``__auto_type`` is clang's type-inference keyword and
 #: ``instancetype`` the related-result-type keyword; both parse as a
 #: ``type_identifier``, so without this list a receiver declared with one
-#: would carry the KEYWORD as its class (CocoaLumberjack declares receivers
-#: with ``__auto_type``). ``id`` and ``Class`` are the same family; the grammar parses
-#: them as non-``type_identifier`` nodes today, and they are listed so that a
-#: grammar change cannot start typing a receiver as ``id``.
+#: would carry the KEYWORD as its class. ``id`` and ``Class`` are the same
+#: family; the grammar parses them as non-``type_identifier`` nodes, and they
+#: are listed so that a grammar change cannot start typing a receiver as ``id``.
 _OBJC_NON_CLASS_TYPE_SPELLINGS: frozenset[str] = frozenset(
     {"__auto_type", "instancetype", "id", "Class"}
 )
 
 #: Nullability QUALIFIERS the grammar does not know, so they parse as a
 #: ``type_identifier`` AHEAD of the class they qualify (WI-dason):
-#: ``(nonnull NSString *)path`` reads ``nonnull`` first (SDWebImage and
-#: ResearchKit write it this way). Unlike a keyword they do not mean "no
-#: class": the class is the
-#: NEXT ``type_identifier``. ``nullable`` / ``_Nonnull`` / ``__nonnull`` and the
+#: ``(nonnull NSString *)path`` reads ``nonnull`` first. Unlike a keyword they
+#: do not mean "no class": the class is the NEXT ``type_identifier``. ``nullable`` / ``_Nonnull`` / ``__nonnull`` and the
 #: rest parse as ``type_qualifier`` and never reach here.
 _OBJC_NULLABILITY_QUALIFIERS: frozenset[str] = frozenset(
     {"nonnull", "null_unspecified", "null_resettable"}
@@ -260,17 +256,18 @@ class FileAnalysis:
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     methods_by_name: dict[str, Symbol] = field(default_factory=dict)
     current_class: str | None = None
-    #: WI-higob: ``<Class>.<selector>`` -> the bare class a method returns
+    #: ``<Class>.<selector>`` -> the bare class a method returns
     #: (``instancetype`` resolved to the class), keyed the way every other
-    #: analyzer's return-type registry is, so WI-lalot's loader can feed it.
+    #: analyzer's return-type registry is, so ``load_library_signatures``
+    #: rows merge into it (WI-higob, WI-lalot).
     method_return_types: dict[str, str] = field(default_factory=dict)
-    #: WI-garar stage 2: ``<Class>.<property>`` -> the bare class the
-    #: ``@property`` declares. Aggregated across pass 1 the way
-    #: ``method_return_types`` is, because ObjC declares properties in the
-    #: ``@interface`` and implements methods in the ``@implementation`` and
-    #: those are idiomatically DIFFERENT FILES -- AFNetworking declares
-    #: ``session`` in ``AFURLSessionManager.h`` and sends ``[self.session …]``
-    #: from the ``.m``, so a per-file map resolves neither.
+    #: ``<Class>.<property>`` -> the bare class the ``@property`` declares
+    #: (WI-garar). Aggregated across pass 1 the way ``method_return_types``
+    #: is, because ObjC declares properties in the ``@interface`` and
+    #: implements methods in the ``@implementation`` and those are
+    #: idiomatically DIFFERENT FILES -- ``session`` declared in ``Foo.h`` and
+    #: sent ``[self.session …]`` from ``Foo.m`` -- so a per-file map resolves
+    #: neither.
     property_types: dict[str, str] = field(default_factory=dict)
 
 
@@ -289,8 +286,10 @@ def _objc_category_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     tree-sitter-objc shapes a category as the same ``class_interface`` /
     ``class_implementation`` node with ``( identifier )`` after the class
     identifier, so the class symbol minted for it carries the FRAMEWORK class's
-    name. WI-higob reads this to keep ``UIImage`` / ``NSData`` out of the
-    project-class set: a category extends a class the repo does not define.
+    name. The result is stored as the class symbol's ``meta["category"]``,
+    which ``analyze`` reads to keep ``UIImage`` / ``NSData`` out of the
+    project-class set: a category extends a class the repo does not define
+    (WI-higob).
     """
     seen_paren = False
     for child in node.children:
@@ -395,7 +394,7 @@ def _extract_property_name(node: "tree_sitter.Node", source: bytes) -> str | Non
 def _extract_property_type(node: "tree_sitter.Node", source: bytes) -> str | None:
     """The declared class of a ``property_declaration``, or ``None``.
 
-    WI-garar stage 2. The type sits one node from the name
+    WI-garar. The type sits one node from the name
     :func:`_extract_property_name` reads::
 
         property_declaration
@@ -416,8 +415,8 @@ def _extract_property_type(node: "tree_sitter.Node", source: bytes) -> str | Non
     # where a type would sit -- ``@property (strong) IBOutlet UIImageView *v;``
     # parses to TWO ``type_identifier`` children, ``IBOutlet`` then
     # ``UIImageView`` -- and taking the first would write the macro into the
-    # module slot as though it were a class (AFNetworking and CocoaLumberjack
-    # both declare such outlets). The type adjacent to the declarator is the type.
+    # module slot as though it were a class. The type adjacent to the
+    # declarator is the type.
     # ``IBInspectable`` and the ``__weak`` / ``__block`` qualifiers take the
     # same shape.
     type_nodes = [
@@ -434,15 +433,15 @@ def _self_property_type(
 ) -> str | None:
     """The declared class of a ``self.<property>`` receiver, or ``None``.
 
-    WI-garar stage 2, and it is deliberately narrow in two ways that the tests
-    pin as sentinel controls rather than leave implicit:
+    Deliberately narrow in two ways, each pinned by a sentinel test
+    (WI-garar):
 
     * the chain root must be ``self``. ``other.prop`` would need ``other``
       typed first, which is a different (and more speculative) inference.
     * the lookup is keyed on the DECLARING class only, so a property inherited
       from a superclass is not resolved. Walking the base chain has its own
-      false-positive surface -- a subclass may redeclare -- and belongs to a
-      change that can measure it.
+      false-positive surface -- a subclass may redeclare -- and is not
+      attempted here.
     """
     if receiver is None or receiver.type != "field_expression":
         return None
@@ -494,13 +493,13 @@ def _extract_symbols_from_file(
     ``repo_rel_path`` is the repo-relative path of this file (computed in
     ``analyze()`` via ``relative_to(repo_root)``). ``file_path`` / the legacy
     ``rel_path`` local below are absolute (``find_objc_files`` yields absolute
-    paths), so the WI-bokab file-identity anchor MUST be derived from
+    paths), so the file-identity anchor MUST be derived from
     ``repo_rel_path`` — folding the absolute path would make stable_ids
-    location-dependent (a regression).
+    location-dependent (WI-bokab).
     """
     analysis = FileAnalysis()
     rel_path = str(file_path)
-    # WI-bokab (v7): file-identity anchor for this file's symbols. Folded into
+    # File-identity anchor for this file's symbols (WI-bokab). Folded into
     # compute_stable_id's containing slot so same-(kind, name, qualified_name)
     # symbols in different files hash distinctly. Uses the repo-relative path
     # (NOT the absolute ``rel_path`` above) so the id is location-independent.
@@ -512,8 +511,8 @@ def _extract_symbols_from_file(
         return analysis
 
     source, tree = _objc_parse_source(parser, source)
-    # WI-bulaz: recorded AFTER WI-lafom's rewrite retry, so only the damage
-    # the retry could not repair is reported.
+    # Recorded AFTER the macro-rewrite retry, so only the damage the retry
+    # could not repair is reported (WI-bulaz).
     record_partial_parse(run, repo_rel_path, tree)
 
     for node in iter_tree(tree.root_node):
@@ -650,7 +649,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
-                # WI-garar stage 2: keep the DECLARED CLASS too, keyed the way
+                # WI-garar: keep the DECLARED CLASS too, keyed the way
                 # the call site can ask for it.
                 _prop_type = _extract_property_type(node, source)
                 if _prop_type is not None and current_class:
@@ -685,8 +684,8 @@ def _message_receiver_node(
 ) -> "tree_sitter.Node | None":
     """The child of a ``message_expression`` that IS the receiver.
 
-    WI-garar. ONE fact with ONE home. Three places need to know which child is
-    the receiver -- the selector extractor, the receiver extractor, and the
+    ONE fact with ONE home (WI-garar). Three places need to know which child
+    is the receiver -- the selector extractor, the receiver extractor, and the
     emit site that types a nested receiver -- and all three ask this helper, so
     they agree by construction. Each deciding for itself would encode the same
     unstated assumption -- that a receiver is either a bare identifier or a
@@ -699,10 +698,9 @@ def _message_receiver_node(
           [  <receiver>  identifier(sel) : <arg>  identifier(sel2) : <arg2>  ]
 
     so the receiver is simply the first child that is not the opening bracket.
-    Measured on AFNetworking's 2,729 sends, the receiver is an ``identifier``
-    70.0% of the time, a ``field_expression`` (``self.session``) 15.7%, a nested
-    ``message_expression`` 11.8%, and a subscript / call / string-literal /
-    cast expression in the remaining 2.4%.
+    It may be an ``identifier``, a ``field_expression`` (``self.session``), a
+    nested ``message_expression``, or a subscript / call / string-literal /
+    cast expression.
 
     Returns ``None`` for a malformed send with nothing but punctuation.
     """
@@ -766,11 +764,12 @@ def _extract_message_receiver(node: "tree_sitter.Node", source: bytes) -> str | 
     message receivers like ``[[obj alloc] init]`` — there is no single
     receiver name to attribute the call to.
 
-    WI-nigah Tier 2 uses this in conjunction with the ObjC convention
-    that class names are PascalCase: receivers whose first letter is
-    uppercase are treated as class-message targets and become the
-    ``module_path`` of the structured ``dst_ref``. Lowercase receivers
-    (``self``, ``super``, local vars) get no ``dst_ref``.
+    The unresolved-edge path uses this with the ObjC convention that class
+    names are PascalCase: a receiver whose first letter is uppercase is a
+    class-message target, and becomes the ``module_path`` of the structured
+    ``dst_ref`` unless the repo declares that class. A lowercase receiver
+    (``self``, ``super``, a local) has no class of its own; it is typed, if
+    at all, from its declaration in the enclosing body (WI-nigah, WI-higob).
     """
     receiver = _message_receiver_node(node)
     if receiver is not None and receiver.type == "identifier":
@@ -786,8 +785,8 @@ def _get_enclosing_method_objc(
 
     Keyed by the definition's POSITION, not its selector (INV-midag, WI-mapor).
     One selector implemented in two ``@implementation`` blocks of a file
-    (``-run`` in A and in B) shares a key in the selector map, and the lookup
-    returned whichever registered last.
+    (``-run`` in A and in B) shares a key in the selector map, so a
+    selector-keyed lookup returns whichever registered last.
     """
     current = node.parent
     while current is not None:
@@ -1053,11 +1052,13 @@ def _extract_edges_from_file(
                         # honest unresolved edge carrying ``enclosing_class`` so
                         # the inherited_calls Site-1 walker can later recover a
                         # genuine inherited implicit-``self`` call.
-                        # WI-nigah Tier 2: if the receiver looks like an
-                        # ObjC class name (PascalCase), use it as the
-                        # ``module_path`` for the structured ``dst_ref``.
-                        # ``self`` / ``super`` / local-var receivers
-                        # (lowercase) get no dst_ref — no module signal.
+                        # The ``module_path`` of the structured ``dst_ref`` is
+                        # the receiver's class when that class is external: a
+                        # PascalCase receiver names one directly (WI-nigah);
+                        # any other receiver is typed below from its
+                        # declaration, a nested send's return class, or a
+                        # ``self.<property>``'s declared class. An untyped
+                        # receiver gets no dst_ref.
                         #
                         # INV-fibis disclosure parity: BOTH branches stamp
                         # ``call_construct="method"``. An objc message send IS a
@@ -1099,7 +1100,7 @@ def _extract_edges_from_file(
                                     _registry,
                                 )
                             else:
-                                # WI-garar stage 2: ``self.<property>``. The
+                                # WI-garar: ``self.<property>``. The
                                 # class the property declares is what the F3
                                 # gate needs, since a correct selector alone
                                 # never matches a method-kind row
@@ -1184,9 +1185,9 @@ _OBJC_NS_ENUM = re.compile(
 #: Availability / deprecation attribute macros, matched PREFIX-TOLERANTLY. An
 #: exact list of Apple's names -- ``API_AVAILABLE``, ``NS_DEPRECATED`` and so on
 #: -- misses a project's own wrappers, and silently: a name search over an
-#: incomplete vocabulary does not error, it returns clean. AFNetworking spells
-#: its wrapper ``AF_API_AVAILABLE``, and that one macro is 820 of
-#: ``AFURLSessionManager.m``'s 822 ERROR nodes.
+#: incomplete vocabulary does not error, it returns clean. A project prefix
+#: such as ``AF_API_AVAILABLE`` is therefore matched too, and one such wrapper
+#: can account for nearly every ERROR node in a file.
 _OBJC_AVAILABILITY = re.compile(
     rb"\b(?:[A-Z][A-Z0-9_]*_)?"
     rb"(?:API|NS)_(?:AVAILABLE|UNAVAILABLE|DEPRECATED)[A-Z0-9_]*"
@@ -1209,28 +1210,26 @@ def _objc_blank(match: "re.Match[bytes]") -> bytes:
 def _objc_rewrite_unparseable(source: bytes) -> bytes:
     """Rewrite the three macro families tree-sitter-objc cannot parse.
 
-    WI-lafom. tree-sitter-objc 3.0.2 does not preprocess, so a macro that expands
-    to syntax is a syntax error to it. No newer grammar fixes this -- 3.0.2 is
-    the newest published and upstream is dormant -- so the fix is a pre-parse
-    rewrite behind
-    :meth:`TreeSitterAnalyzer.parse_source`, the route the Swift analyzer takes
-    too (INV-bisok).
+    tree-sitter-objc does not preprocess, so a macro that expands to syntax is
+    a syntax error to it, and no published grammar release fixes that. Hence a
+    pre-parse rewrite behind :meth:`TreeSitterAnalyzer.parse_source`, the
+    route the Swift analyzer takes too (INV-bisok; history: WI-lafom).
 
-    Every rule here is confirmed by parsing a MINIMAL SNIPPET with and without
-    the construct, never by reading the source at the first ERROR node's line.
+    Confirm a rule by parsing a MINIMAL SNIPPET with and without the
+    construct, never by reading the source at the first ERROR node's line.
     That line is where error recovery re-parented TO, and reading it as the
     cause misattributes the failure. ``@property (class, ...)``, ``nullable``,
     generics, block properties, ``NS_DESIGNATED_INITIALIZER``,
     ``NS_SWIFT_NAME``, ``FOUNDATION_EXPORT`` and a LONE
     ``NS_ASSUME_NONNULL_BEGIN`` all parse with ZERO ERROR nodes and need no rule.
 
-    Rules are priced on ERROR NODES, not on whole files, because the file count
-    is the wrong unit: a file with two ERROR nodes in one corner has all its
-    other method bodies back, and the availability rule removes most of the
-    remaining ERROR nodes while changing the file count by one.
+    Price a rule on ERROR NODES, not on whole files: a file with two ERROR
+    nodes in one corner has all its other method bodies back, so a rule can
+    remove most of a corpus's ERROR nodes while barely moving the count of
+    failing files.
 
     One rule is deliberately ABSENT: blanking any ``SHOUTY(...)`` before a
-    ``;`` recovers a couple more files but SHEDS real ``property_declaration``
+    ``;`` makes a few more files parse but SHEDS real ``property_declaration``
     nodes, and a count bought by shrinking the denominator is pure loss.
 
     What remains unparsed after this is one characterised family, not handled
@@ -1352,7 +1351,7 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
         global_methods: dict[str, Symbol] = {}
 
         for objc_file in all_files:
-            # WI-bokab (v7): repo-relative path for the file-identity anchor.
+            # Repo-relative path for the file-identity anchor (WI-bokab).
             # ``find_objc_files`` yields absolute paths, so we derive the
             # repo-relative form here (where ``repo_root`` is in scope) and
             # thread it down — folding an absolute path would make stable_ids
@@ -1408,7 +1407,7 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
         # in-repo declaration always wins.
         for _key, _ret in load_library_signatures("objc").items():
             _method_return_types.setdefault(_key, _ret)
-        # WI-garar stage 2: the property-type map is GLOBAL for the same
+        # WI-garar: the property-type map is GLOBAL for the same
         # reason `_method_return_types` is -- the declaration and the call site
         # are routinely in different files. First writer wins.
         _property_types: dict[str, str] = {}

@@ -329,8 +329,7 @@ class TestElixirEdgeCases:
 
         In the TreeSitterAnalyzer base class, grammar unavailability is
         detected via _check_grammar_available() and produces a skipped result
-        with an AnalysisRun. This replaces the old try/except pattern around
-        parser loading.
+        with an AnalysisRun.
         """
         from hypergumbo_lang_common import elixir as elixir_module
         from hypergumbo_lang_common.elixir import analyze_elixir
@@ -540,21 +539,18 @@ end
         assert unresolved[0].confidence == 0.50
 
     def test_dot_call_resolves_through_an_alias_directive(self, tmp_path: Path) -> None:
-        """Partial module name resolved via NameResolver suffix/exact match.
+        """A short module name resolves exactly through its ``alias`` directive.
 
         The call uses a short module alias (``Greeter.greet``) and the symbol
         is stored under the full module path (``App.Helpers.Greeter.greet``),
         so the ALIAS DIRECTIVE is what resolves it.
 
-        WI-kafor re-pointed this test rather than deleting it. Its fixture
-        carried no ``alias`` line at all, and a bare ``Greeter.greet()`` in a
-        different module is not something Elixir can resolve -- the call would
-        raise at runtime. It passed because the analyzer bound qualified calls
-        by BARE NAME whenever any global symbol key merely CONTAINED the text
-        ``"Greeter."``, which is the same mechanism that bound
-        ``Logger.error(...)`` to an ``error/1`` inside a generator template on
-        phoenix-framework. The scenario the docstring always described -- an
-        alias -- is the one now written, and it resolves exactly.
+        The ``alias`` line is essential to the fixture: without it a
+        ``Greeter.greet()`` in a different module is not something Elixir can
+        resolve (the call raises at runtime), and the analyzer must not bind a
+        qualified call by bare name just because some global symbol key
+        contains ``"Greeter."`` -- that rule is what lands ``Logger.error(...)``
+        on an unrelated ``error/1``. (history: WI-kafor)
         """
         from hypergumbo_lang_common.elixir import analyze_elixir
 
@@ -585,25 +581,25 @@ end
             e for e in call_edges
             if "Main.run" in e.src
             and "greet" in e.dst
-            # WI-gobip: a module-qualified call carries the REGISTERED generic
-            # call pathway ``ast_call`` (was the unregistered
-            # ``module_qualified_call``, an axis_conformance violation).
+            # A module-qualified call carries the REGISTERED generic call
+            # pathway ``ast_call``, not a construct-specific evidence type the
+            # registry does not know (history: WI-gobip).
             and e.evidence_type == "ast_call"
         ]
         assert len(resolver_edges) == 1, (
             f"Expected 1 resolver-fallback edge, got {len(resolver_edges)}. "
             f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
         )
-        # The alias branch's own confidence, not the retired bare-name path's.
+        # The alias-expansion branch's confidence; a qualified call is never
+        # bound by bare name.
         assert resolver_edges[0].confidence == 0.85
 
     def test_dot_call_outside_function_is_anchored_on_the_module(self, tmp_path: Path) -> None:
         """A module-qualified call at module level is anchored on its module.
 
-        This test used to pin "ignored" (no call edges from module-level
-        code), which is the defect WI-dokib names: 101 of 225 atom call sites
-        on phoenix emitted nothing because they sat in a module body or a
-        ``test`` block rather than in a ``def``."""
+        A call in a module body or a ``test`` block, outside any ``def``, is a
+        real call site; with no enclosing function it is attributed to the
+        module rather than dropped. (history: WI-dokib)"""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "top_level.ex").write_text("""
@@ -624,17 +620,14 @@ end
     def test_dot_call_aliased_module_resolver_uses_expanded_name(
         self, tmp_path: Path,
     ) -> None:
-        """Aliased module name expands before checking if module is known.
+        """An aliased call with no matching symbol still produces an edge.
 
-        When code uses ``alias App.Helpers.Svc, as: S`` and calls
-        ``S.process()``, steps 1-2 fail because ``S.process`` is not in
-        global_symbols and ``App.Helpers.Svc.process`` is not in
-        global_symbols either (the function is named ``do_process`` in
-        source).  Without alias expansion, "S." won't match any global
-        symbol key and the resolver would be skipped (treating it as
-        external).  With expansion, "App.Helpers.Svc." IS found in global
-        symbols (``App.Helpers.Svc.do_process`` exists), so the resolver
-        is tried.
+        With ``alias App.Helpers.Svc, as: S`` and a call ``S.process()``,
+        neither ``S.process`` nor the expanded ``App.Helpers.Svc.process`` is
+        in global_symbols (the function is named ``do_process`` in source).
+        A qualified call is never bound by bare name, so it falls to the
+        unresolved edge, whose dst names the expanded module
+        (``App.Helpers.Svc``), not the alias ``S``.
         """
         from hypergumbo_lang_common.elixir import analyze_elixir
 
@@ -660,9 +653,7 @@ end
         result = analyze_elixir(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # The call should produce some edge (resolved or unresolved).
-        # The key is that the alias expansion ran (line 958 covered) and
-        # the module was recognized as known so the resolver was tried.
+        # The call must still produce an edge (the unresolved fallback).
         edges_from_run = [
             e for e in call_edges if "Caller.run" in e.src
         ]
@@ -2194,7 +2185,7 @@ end
         ]
         edge_dsts = {e.dst for e in call_edges}
 
-        # scan_files() has parens — should already work
+        # scan_files() has parens — an ordinary call node
         assert scan_sym.id in edge_dsts, "Missing edge to scan_files (with parens)"
         # fixup_sourcemaps has NO parens — pipe-only call
         assert fixup_sym.id in edge_dsts, "Missing edge to fixup_sourcemaps (pipe, no parens)"
@@ -2312,7 +2303,7 @@ end
         """Piping to a module-qualified function: data |> Mod.func.
 
         Tree-sitter wraps ``Mod.func`` in a call node even without parens,
-        so this is handled by the existing dot-call path (not the pipe handler).
+        so this is handled by the dot-call path (not the pipe handler).
         """
         from hypergumbo_lang_common.elixir import analyze_elixir
 

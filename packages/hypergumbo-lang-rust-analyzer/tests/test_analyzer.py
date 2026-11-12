@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for :mod:`hypergumbo_lang_rust_analyzer.analyzer` (WI-duzul Slice C-final).
+"""Tests for :mod:`hypergumbo_lang_rust_analyzer.analyzer`.
 
 Validates the registry-level analyzer function that chains the gate +
 graceful-degrade + translate primitives into a single
@@ -94,13 +94,11 @@ class TestAnalyzeRustWithScip:
     def test_gate_true_but_backend_failed_is_a_reasoned_skip(
         self, tmp_path: Path,
     ) -> None:
-        """Re-pointed, not deleted (WI-luvud).
+        """A backend failure self-declares a skip rather than vanishing.
 
-        This asserted the literal prose ``"rust-analyzer backend produced no
-        output"`` — the single string all FOUR failure states used to share,
-        which is the defect WI-luvud names. The behaviour it was protecting
-        (a failure self-declares a skip rather than vanishing) still holds and
-        is still asserted; only the conflated string is gone.
+        The skip carries the attempt's silence code and its state-specific
+        detail, never one string shared by every failure state.
+        (history: WI-luvud)
         """
         with patch(
             "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
@@ -114,8 +112,8 @@ class TestAnalyzeRustWithScip:
             result = analyze_rust_with_scip(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        # WI-didil: backend on but SCIP produced nothing (WI-nohah fall-through)
-        # → self-declare a reasoned skip rather than vanishing silently.
+        # WI-didil: backend on but the SCIP attempt failed → self-declare a
+        # reasoned skip rather than vanishing silently.
         assert result.skipped is True
         assert result.skip_reason_code == "pass_crashed"
         assert "exited 101" in result.skip_reason, (
@@ -192,10 +190,11 @@ class TestAnalyzerRegistration:
         assert entry.name == "rust_analyzer"
 
     def test_declares_itself_as_the_scip_backend_for_rust(self) -> None:
-        """WI-juzig / ADR-0057 §10: the registry could not tell ``rust`` and
-        ``rust_analyzer`` were two backends for one language — ``languages``
-        defaulted to ``[name]``, making ``rust_analyzer`` its own (phantom)
-        language, and ``backend`` was set on 0 of 118 registrations."""
+        """ADR-0057 §10: ``rust`` and ``rust_analyzer`` are two backends for
+        one language, so the registration declares ``languages=["rust"]``
+        (omitted, it defaults to ``[name]`` and ``rust_analyzer`` would be a
+        phantom language of its own) and ``backend="scip"``.
+        (history: WI-juzig)"""
         import hypergumbo_lang_rust_analyzer.analyzer as _ra
         _ = _ra  # the decorator fired at import
         from hypergumbo_core.analyze.registry import _ANALYZER_REGISTRY
@@ -226,12 +225,12 @@ class TestAnalyzerRegistration:
 
 
 class TestEngagementCheck:
-    """WI-todon: warn if the SCIP backend ran but produced no SCIP-origin edges
-    on a repo that contains `.rs` files.
+    """Warn if the SCIP backend ran but produced no SCIP-origin edges on a
+    repo that contains `.rs` files.
 
-    This catches silent fall-through after invoke returned exit 0 but the
-    SCIP→IR translation yielded nothing useful — exactly the wasmtime / OOM
-    scenario where rust-analyzer "completes" without engaging.
+    This catches silent fall-through where invoke returned exit 0 but the
+    SCIP→IR translation yielded nothing useful — rust-analyzer "completes"
+    without engaging. (history: WI-todon)
     """
 
     @staticmethod
@@ -307,7 +306,7 @@ class TestEngagementCheck:
             assert engagement == []
 
     def test_silent_when_result_is_none(self, tmp_path: Path) -> None:
-        """graceful-degrade already logged on its way to None; don't double-warn."""
+        """A failed attempt is a skip graceful-degrade already logged; don't double-warn."""
         (tmp_path / "lib.rs").write_bytes(b"fn main() {}\n")
         with patch(
             "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
@@ -385,14 +384,12 @@ class TestEngagementCheck:
 
 
 class TestProvenanceJoin:
-    """WI-didag / WI-zabus: the success path must emit a real ``AnalysisRun``.
+    """The success path must emit a real ``AnalysisRun`` every record joins to.
 
-    Measured on ``aardvark-dns`` before this landed: 669 nodes and 637 edges
-    carrying ``origin=['scip']`` entered the artifact from a pass that
-    appeared in NEITHER ``analysis_runs`` NOR ``limits.skipped_passes`` — the
-    only one of 118 registered analyzers for which that was true — and all
-    1306 records had provenance resolving to nothing (1308 cross_field
-    validation violations). The cause was one missing ``run=`` argument.
+    Without ``run=`` on the result, the pass's Symbols and Edges enter the
+    artifact from a pass that appears in neither ``analysis_runs`` nor
+    ``limits.skipped_passes``, and their provenance resolves to nothing
+    (cross_field validation violations). (history: WI-didag, WI-zabus)
     """
 
     def _scip_blob(self) -> bytes:
@@ -440,13 +437,12 @@ class TestProvenanceJoin:
 
 
 class TestSilenceClassification:
-    """WI-luvud: 'backend produced no output' was filed as ONE skip.
+    """Backend failure states are told apart, and a completed run is no skip.
 
-    Four distinct states shared the reason string "rust-analyzer backend
-    produced no output" and the code ``unreported``, and the row's own title
-    objected that the pass RAN. Both halves are addressed here: the states are
-    told apart, and the one where the backend genuinely ran to completion now
-    lands in the RAN population with an ``AnalysisRun``.
+    Each failure state gets its own silence code and its own reason prose;
+    a backend that ran to completion and found nothing lands in the RAN
+    population with an ``AnalysisRun``, not in ``skipped_passes``.
+    (history: WI-luvud)
     """
 
     def _run_with(self, tmp_path, attempt):
@@ -480,7 +476,7 @@ class TestSilenceClassification:
     def test_the_four_states_no_longer_share_one_reason_string(
         self, tmp_path: Path,
     ) -> None:
-        """The conflation itself, pinned: distinct states, distinct prose."""
+        """Distinct failure states produce distinct skip prose."""
         from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
         reasons = {
             self._run_with(tmp_path, ScipAttempt.failure(code, detail)).skip_reason
@@ -495,8 +491,7 @@ class TestSilenceClassification:
     def test_a_successful_empty_index_RAN_and_says_so(
         self, tmp_path: Path,
     ) -> None:
-        """The state the row is named for. The backend ran to completion and
-        found nothing: that belongs in analysis_runs, not skipped_passes, and
+        """The backend ran to completion and found nothing: that belongs in analysis_runs, not skipped_passes, and
         must NOT claim no_candidate_files — the repo may be full of .rs."""
         from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
         result = self._run_with(tmp_path, ScipAttempt.success([], []))

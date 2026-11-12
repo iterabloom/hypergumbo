@@ -357,7 +357,8 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
     Tombstoned entries (WI-zonur) are suppressed; a single
     ``(not shown: N deleted messages)`` footer is appended when N > 0.
 
-    Prepends a ``[20+ msgs]`` badge when entry count >= 20 (D9).
+    Prepends a ``[20+ msgs]`` badge when 20 or more non-deleted entries
+    remain.
     """
     # Filter tombstones first so the "no recent activity" / 20+ / limit
     # logic operates on the user-visible set.
@@ -906,10 +907,11 @@ def _format_detail_lines(
     detail panel, but suppresses the inline discussion section (the activity
     panel handles it instead).
 
-    Each locked field carries its own ``[locked]`` indicator (D8).
+    Each locked field carries its own ``[locked]`` indicator.
     When *fields_schema* is provided, known fields render in schema
-    declaration order with descriptions; unknown fields go under ``Other`` (D7).
-    Discussion badge ``[20+ msgs]`` appears when entry count >= 20 (D9).
+    declaration order with descriptions; unknown fields go under ``Other``.
+    The inline discussion header carries a ``[20+ msgs]`` badge when 20 or
+    more non-deleted entries remain.
     """
     lines: list[str] = []
     if item.frozen:
@@ -1082,7 +1084,7 @@ class ConfirmScreen(ModalScreen[bool]):
     """Reusable confirmation dialog with Yes/No buttons.
 
     Returns True if confirmed, False if cancelled. Used by ``D``
-    (clear discussion) and potentially other destructive actions.
+    (clear discussion) and ``R`` (repair drift).
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [

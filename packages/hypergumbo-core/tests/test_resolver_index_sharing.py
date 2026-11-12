@@ -1,23 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-bavuz: the suffix index belongs to the REGISTRY, not to the resolver.
+"""The suffix index belongs to the REGISTRY, not to the resolver.
 
 `_ensure_suffix_index` builds a whole-registry index (for each of R keys, split
-the module and join every one of its D suffixes) and caches it on the RESOLVER.
-`lookup_symbol` constructs a fresh resolver per call, so the index was rebuilt
-per lookup: O(lookups x registry), and both factors grow with file count.
+the module and join every one of its D suffixes). `lookup_symbol` constructs a
+fresh resolver per call, so an index cached on the RESOLVER would be rebuilt per
+lookup: O(lookups x registry), and both factors grow with file count.
 
-Measured on pretix at N=300 vs N=600 (profile, 2026-09-09): `__init__` 5,827 ->
-16,065 calls tracking `lookup_symbol` 5,826 -> 16,064 to within the one
-legitimate resolver, `_ensure_suffix_index` tottime 40.1s -> 269.9s (6.73x for
-2x the files), and `_lookup_symbol_by_module` holding 680s cumulative of a 936s
-run. 61% of all growth sat in that one function.
-
-Caching on registry identity rather than threading a resolver parameter through
-six call layers is deliberate: the parameter already exists, all nine py.py call
-sites already pass it, and 46% of calls still arrived with None because six
-forwarding functions default it. An optional argument whose omission costs 6.7x
-is a footgun; making the fast path the default removes it for the next caller
-too.
+Caching on registry identity, rather than relying on callers to thread one
+resolver through their call layers, is deliberate: an optional resolver argument
+that forwarding functions default to None silently drops every caller onto the
+rebuild-per-lookup path. Making the shared index the default protects every
+caller, present and future. (history: WI-bavuz)
 """
 from __future__ import annotations
 

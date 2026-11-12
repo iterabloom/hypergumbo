@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The JS module linker anchors repo-relative symbol paths on the repo root.
 
-WI-fukaf. The production pipeline hands the linker REPO-RELATIVE
-``Symbol.path`` values (``src/a.ts``), and the linker treated them as
-absolute:
+The production pipeline hands the linker REPO-RELATIVE ``Symbol.path`` values
+(``src/a.ts``). Treating them as absolute breaks two things:
 
-(a) a relative import was resolved against the process working directory,
-    so the same repository surveyed from outside its own directory lost
-    imports (koel: 4,078 -> 3,680, module_exports 2,085 -> 1,471);
-(b) a tsconfig ``paths`` alias never resolved from any directory, because the
-    ancestor walk compared ``src`` with the absolute keys of the tsconfig
-    index, and the import minted a phantom npm package instead.
+(a) a relative import resolves against the process working directory, so the
+    same repository surveyed from outside its own directory loses imports and
+    module exports;
+(b) a tsconfig ``paths`` alias never resolves from any directory, because the
+    ancestor walk compares ``src`` with the absolute keys of the tsconfig
+    index, and the import mints a phantom npm package instead.
 
-Every existing test in ``test_js_module_linker.py`` builds ABSOLUTE symbol
-paths, which is why none of them saw this. These build repo-relative ones and
-run from a working directory that is not the repository.
+The tests in ``test_js_module_linker.py`` build ABSOLUTE symbol paths and so
+cannot see this. These build repo-relative ones and run from a working
+directory that is not the repository. (history: WI-fukaf)
 """
 
 from __future__ import annotations

@@ -1,28 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A Solidity function declared inside a contract is a method (INV-lapas).
 
-The defect
-----------
-``solidity.py`` emitted ``kind="function"`` for every function definition,
-whether it was declared inside a ``contract`` / ``interface`` / ``library``
-body or at file scope. Every other OO analyzer in the fleet distinguishes
-the two, and the consumers are keyed on that distinction — most visibly
+Why the kind matters
+--------------------
+Every OO analyzer in the fleet distinguishes a member from a free function,
+and the consumers are keyed on that distinction — most visibly
 ``link_type_hierarchy``, which indexes dispatch candidates with
-``if sym.kind != "method": continue``.
+``if sym.kind != "method": continue``. A contract member emitted as
+``function`` is invisible there: the parent-method lookup returns empty for
+every parent, and even a densely ``virtual`` / ``override`` codebase yields no
+Solidity ``dispatches_to`` edges at all.
 
-Measured on openzeppelin-contracts before the fix:
-
-* **2,025 members of type-like containers, 100% ``kind="function"``, zero
-  ``kind="method"``** — the only 100% cell in the corpus (ruby 814/0,
-  kotlin 1140/0, java 1040/0, python 634/0 the other way).
-* 516 ``inherits`` edges over 164 distinct parents, **none of which had a
-  single ``method``-kind member**, so the parent-method lookup returned
-  empty for every one of them and the repo produced **zero** Solidity
-  ``dispatches_to`` edges — against 545 ``overrides`` edges, i.e. the
-  repository is densely virtual and none of it was visible.
-
-Scope of the change
--------------------
+The rule
+--------
 Containment decides the kind, exactly as it does for every other analyzer:
 a function with an enclosing contract / interface / library is a
 ``method``, a file-scope function (legal since Solidity 0.7) stays a
@@ -30,14 +20,13 @@ a function with an enclosing contract / interface / library is a
 kinds — they are distinct constructs, not functions with a different
 receiver.
 
-Identity impact, deliberate and disclosed
-------------------------------------------
-``kind`` is a slot in both ``Symbol.id`` and the typed ``stable_id``, so
-the ids of contract members CHANGE. This is a producer correction, not a
-scheme change — the formula is untouched, the input is now right — but the
-values are not comparable across the boundary. The tests below pin the
-containment rule rather than any particular id string, so they do not have
-to be rewritten the next time the formula moves.
+Identity
+--------
+``kind`` is a slot in both ``Symbol.id`` and the typed ``stable_id``, so a
+contract member's ids depend on this rule, and ids minted under a different
+kind rule are not comparable with these. The tests below pin the containment
+rule rather than any particular id string, so they do not have to be
+rewritten the next time the id formula moves.
 """
 
 from __future__ import annotations
@@ -100,9 +89,8 @@ class TestContainmentDecidesTheKind:
 
         Solidity 0.7+ allows free functions at file scope. If this ever
         returns ``method``, the rule has stopped reading containment and has
-        become an unconditional rename — which would be a different, wrong
-        change that the other three tests could not distinguish from the
-        right one.
+        become an unconditional rename — a wrong rule that the other three
+        tests could not distinguish from the right one.
         """
         (tmp_path / "F.sol").write_text(
             "function helper(uint a) pure returns (uint) {\n"
@@ -144,13 +132,13 @@ class TestContainmentDecidesTheKind:
 
 
 class TestTheEdgesThatKeyOnTheKind:
-    """The four in-file consumers of the old literal must still work.
+    """The in-file consumers of the member kind.
 
-    ``solidity.py`` held FOUR separate ``kind == "function"`` checks — the
-    enclosing-symbol span index, the ``using X for Y`` library-call
-    resolver, and both halves of the ``overrides`` walker. A rename that
-    missed any of them would silently drop edges, and openzeppelin-contracts
-    carries 545 ``overrides`` edges to lose.
+    Four readers in ``solidity.py`` key on the kind — the enclosing-symbol
+    span index, the ``using X for Y`` library-call resolver, and both halves
+    of the ``overrides`` walker. One that does not accept ``method`` silently
+    drops edges, and ``overrides`` edges are numerous on inheritance-heavy
+    code.
     """
 
     def test_overrides_edges_survive(self, tmp_path: Path) -> None:
@@ -224,14 +212,11 @@ class TestTheCrossPackageConsumerStaysInSync:
     """The kind vocabulary has a reader in ANOTHER package (INV-lapas).
 
     ``hypergumbo_core.linkers.solidity_abi`` filters Solidity symbols by
-    kind to mint ABI call-site nodes. When the producer here started
-    emitting ``method`` while that linker still read
-    ``("function", "constructor")``, it silently stopped minting — **1,250
-    call-site nodes on openzeppelin-contracts, and 6,689 resolved call
-    edges with them**. Nothing raised; a count just dropped.
-
-    Reading the diff did not catch it. Re-running the corpus did. So the
-    coupling is pinned from the producer side, where the emitted kinds
+    kind (``SOLIDITY_CALLABLE_DECLARATION_KINDS``) to mint ABI call-site
+    nodes. A kind this analyzer emits that the set lacks makes the linker
+    silently stop minting those nodes, and the resolved call edges with them:
+    nothing raises, a count just drops, and a diff review does not show it.
+    So the coupling is pinned from the producer side, where the emitted kinds
     actually originate.
     """
 

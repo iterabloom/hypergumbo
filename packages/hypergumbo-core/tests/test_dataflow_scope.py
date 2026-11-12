@@ -204,9 +204,8 @@ class TestEmittedShape:
         assert INCLUSION_DECIDED_BY == (
             "call_graph_reachability_minus_ddg_refutation"
         )
-        # The half that did NOT change: reachability still decides inclusion,
-        # and the walk still adds nothing. A future edit that lets the walk
-        # MINT a flow has to come back through here.
+        # Reachability decides inclusion and the walk adds nothing. An edit
+        # that lets the walk MINT a flow has to come back through here.
         assert INCLUSION_DECIDED_BY.startswith("call_graph_reachability")
         assert "minus" in INCLUSION_DECIDED_BY
 
@@ -217,14 +216,13 @@ class TestEmittedShape:
         ``dataflow_capable`` while holding functions the walk cannot see into.
         A reader who took the bit for coverage would be making exactly the
         assumption clause (a3) forbids, so the granularity is emitted rather
-        than left implicit: ``function``, because WI-joluk's per-function
-        coverage gate decides coverage function by function.
+        than left implicit: ``function``, because the per-function coverage
+        gate decides coverage function by function (WI-joluk).
 
         Like ``inclusion_decided_by`` this is a declared constant with a test
-        on it, which is what stops the claim outliving its truth. Such a test
-        guards a change to the CONSTANT, not the arrival of the CONDITION that
-        makes it false, so a trigger phrased "becomes X when Y lands" needs
-        something that notices Y.
+        on it. Such a test guards a change to the CONSTANT, not a change in
+        the code that makes it true or false: if the coverage gate changes,
+        the constant and this test must be updated by hand.
         """
         out = dataflow_scope_dict([_row(language="go")], {"ddg": 1})
         assert out["coverage_granularity"] == COVERAGE_GRANULARITY
@@ -232,9 +230,10 @@ class TestEmittedShape:
 
     def test_forfeit_disclosure_is_a_pair_and_always_present(self) -> None:
         """Per-function granularity is only honest if the cost is published:
-        a function that forfeits may not refute (WI-mugop). A bare count cannot be read — 400 of 800 and 400 of 40,000
-        are different facts — so both halves are emitted, zero-filled like
-        every other key, so their absence never has to be interpreted."""
+        a function that forfeits may not refute (WI-mugop). A bare count
+        cannot be read — 400 of 800 and 400 of 40,000 are different facts —
+        so both halves are emitted, zero-filled like every other key, so
+        their absence never has to be interpreted."""
         out = dataflow_scope_dict(
             [_row(language="go")], {"ddg": 1},
             functions_walkable=1329, functions_forfeited=611,
@@ -279,8 +278,8 @@ class TestEmittedShape:
         assert "cfg_mapping" in body
         assert "call-graph reachability" in body
         # The text says "wired", never "adjudicable" — the latter reads as a
-        # completeness claim the block is not making, and the caveat naming
-        # the Go initializer gap must travel with it.
+        # completeness claim the block is not making, and the caveat that not
+        # every function is modelled must travel with it.
         assert "wired" in body
         assert "adjudicable" not in body
         assert "NOT that every function" in body
@@ -307,9 +306,9 @@ class TestWalkVerdictDisclosure:
     tell a walk that adjudicated and refuted nothing from a walk that never
     got to look. Only ``refuted`` can remove a flow.
 
-    Escapes are not chased until refutation fires at scale. Accepting that
-    limit without disclosing its consequence would make it a silent
-    limitation, so the breakdown is the user-visible half of that decision.
+    Closing the walk's escapes is not pursued (a declared limitation).
+    Accepting that limit without disclosing its consequence would make it a
+    silent one, so the breakdown is the user-visible half of that decision.
     """
 
     def test_a_unanimous_row_is_counted_under_its_verdict(self) -> None:
@@ -339,9 +338,8 @@ class TestWalkVerdictDisclosure:
     def test_a_MIXED_row_is_not_attributed_to_its_first_member(self) -> None:
         """The whole reason ``walk_verdict_values`` exists (INV-muhij A).
 
-        On a collapsed row the scalar is ``grp[0]``'s, and groups are not
-        reliably unanimous (on one measured repo, 63.9% of groups holding a
-        ``sink_before_source`` member were not). Counting the scalar would publish a clean, plausible,
+        On a collapsed row the scalar is ``grp[0]``'s, and a group's members
+        need not agree. Counting the scalar would publish a clean, plausible,
         entirely wrong breakdown -- and would do it in the direction that
         flatters the tool, since a row standing for one confirmed and three
         escaped members would read as fully adjudicated.

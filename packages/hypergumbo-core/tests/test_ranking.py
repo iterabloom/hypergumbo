@@ -200,9 +200,10 @@ class TestComputeCentrality:
         # The absolute score before normalization is lower with weighting
 
     def test_grpc_rpc_implementation_ranks_like_a_call(self):
-        """A folded gRPC RPC-implementation edge (implements + protocol=grpc,
-        audit-findings 0016) keeps its call-like 1.0 weight, NOT the structural
-        'implements' 0.5 — so gRPC handler centrality is not silently demoted."""
+        """A gRPC RPC-implementation edge (implements + protocol=grpc) keeps
+        its call-like 1.0 weight, NOT the structural 'implements' 0.5 — so gRPC
+        handler centrality is not silently demoted. (history: audit-findings
+        0016)"""
         from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
 
         grpc_target = make_symbol("grpc_handler")
@@ -1050,11 +1051,10 @@ class TestRankSymbols:
             first_party_priority=True
         )
 
-        # With tier weighting, first_party should rank higher
-        # because its weight compensates for lower raw centrality
-        # Actually, in this case both have 0 incoming, so tier doesn't matter
-        # Let me fix the test...
-        pass  # This test needs adjustment
+        # No assertion: first_party has no incoming edges here, so its raw
+        # centrality is 0 and tier weighting cannot lift it above external.
+        # This only exercises rank_symbols with first_party_priority=True.
+        pass
 
     def test_tier_weighting_disabled(self):
         """Raw centrality used when tier weighting disabled."""
@@ -1112,8 +1112,8 @@ class TestRankSymbols:
         When exclude_test_edges=True, call edges from test files are excluded.
         But extends/implements edges should be preserved because they indicate
         architectural importance of the base class, regardless of where the
-        subclass lives. Without this, Django's Model (degree 5) is massively
-        underranked because most subclasses are in test files.
+        subclass lives. Without this, a base class whose subclasses live
+        mostly in test files (such as Django's Model) is badly underranked.
         """
         base_class = make_symbol("Model", path="src/models/base.py", kind="class")
         # Multiple test subclasses (like Django's test models)
@@ -3124,10 +3124,9 @@ class TestMinEdgeConfidence:
     def test_confidence_filter_changes_ranking(self):
         """Filtering low-confidence edges reorders symbols correctly.
 
-        Real scenario: DirLocker.Lock has 2 real calls (confidence 0.9)
-        plus 253 inferred .Lock() calls (confidence 0.35). Without filter,
-        Lock dominates. With filter, a domain function with 3 real callers
-        wins.
+        Scenario: Lock has 2 real calls (confidence 0.85-0.9) plus 5
+        inferred .Lock() calls (confidence 0.35). Without the filter, Lock
+        dominates. With it, a domain function with 3 real callers wins.
         """
         lock = make_symbol("Lock", path="src/locker.go", language="go")
         domain = make_symbol("Scrape", path="src/scrape.go", language="go")
@@ -3196,13 +3195,10 @@ class TestTrivialSinkDampening:
     """Tests that trivial sinks (high in-degree, near-zero out-degree,
     short body) are dampened in centrality rankings.
 
-    Bakeoff cohorts 16-17 showed that trivial accessors/stubs dominate
-    rankings purely through raw in-degree:
-      - Timer.Duration (in=98, out=0, LoC=3) ranked #1 in Prometheus
-      - noopMetric.Inc (in=109, out=0, LoC=1) ranked #2
-      - CheckError (in=195, out=1, LoC=3) ranked #2 in ArgoCD
-      - syncTask.name (in=109, out=0, LoC=2) ranked #3
-    These are plumbing — not architecture.
+    Undampened, trivial accessors and stubs (``Timer.Duration``,
+    ``noopMetric.Inc``, ``CheckError``: one to three lines, at most one
+    callee, around a hundred callers) reach the top ranks purely through raw
+    in-degree. They are plumbing, not architecture.
     """
 
     def _make_short_symbol(
@@ -3228,7 +3224,7 @@ class TestTrivialSinkDampening:
         """A short-bodied pure sink should rank below a connector that
         has lower in-degree but meaningful out-degree and body size.
 
-        Scenario modeled on Prometheus:
+        Scenario:
           - Timer.Duration: in=98, out=0, LoC=3 — 1-line accessor
           - evaluator.eval: in=15, out=30, LoC=200 — core evaluation loop
         Without dampening, sink score=98 beats connector score≈66.
@@ -3388,8 +3384,8 @@ class TestTrivialSinkDampening:
     def test_pure_sink_with_docstring_dampened(self):
         """Pure sinks (out=0) with moderate LOC are dampened.
 
-        Utility helpers like node_text (in=496, out=0, LoC=11 including
-        docstring) and find_child_by_type (in=291, out=0, LoC=16) should
+        Heavily called utility helpers like node_text (out=0, LoC=11
+        including docstring) and find_child_by_type (out=0, LoC=16) should
         be dampened despite exceeding the strict max_loc=5 threshold.
         Pure sinks call nothing — they're definitively leaf helpers.
         """
@@ -3518,7 +3514,7 @@ class TestApplyCommonMethodNameWeights:
     def test_integration_with_rank_symbols(self):
         """rank_symbols integrates common method name dampening.
 
-        When 'execute' is defined on 50+ classes (as in gitlab),
+        When 'execute' is defined on 50+ classes,
         the first execute symbol should have reduced weighted_centrality
         compared to its raw_centrality.
         """
@@ -3942,9 +3938,9 @@ class TestApplyFileKindWeights:
 
 
 class TestEventSubscribesEdgeWeight:
-    """event_subscribes is not a weighted edge type (audit-findings 0001,
-    DEPRECATE-NO-FOLD); the canonical event_publishes carries the full pub-sub
-    weighting (slice handles reverse traversal natively)."""
+    """event_subscribes is not a weighted edge type; the canonical
+    event_publishes carries the full pub-sub weighting (slice handles reverse
+    traversal natively). (history: audit-findings 0001)"""
 
     def test_event_subscribes_not_in_default_weights(self):
         """event_subscribes has no entry in DEFAULT_EDGE_TYPE_WEIGHTS."""
@@ -3963,16 +3959,16 @@ class TestEventSubscribesEdgeWeight:
 class TestOrchestrationHubRanking:
     """Orchestration hubs (low in, very high out) should not be buried by dampening.
 
-    A function like alertmanager's `run` (in=9 all from the same file,
-    out=128) has its effective in-degree crushed by within-file dampening
+    A top-level `run` loop with a handful of callers, mostly in its own file,
+    and 100+ callees has its effective in-degree crushed by within-file dampening
     (0.3x) and the per-file cap (5), and the ln-scaled out-degree boost alone
     cannot compensate; compute_centrality's orchestration floor keeps such
     hubs from sinking below moderate connectors.
     """
 
     def test_orchestration_hub_ranks_above_moderate_connector(self):
-        """A function with out=128 and in=2 (cross-file) should rank higher
-        than one with in=8 (cross-file) and out=9."""
+        """A function with out=50 and in=2 (one same-file, one cross-file)
+        should rank higher than one with in=8 (cross-file) and out=9."""
         # Orchestration hub: called from 2 files, calls 50 others
         hub = make_symbol("run", path="main.go", kind="function", language="go")
         # Moderate connector: called from 8 different files, calls 9

@@ -4,9 +4,9 @@
 WHAT THESE PIN, and why it is not "does hashing work". A coverage-directed
 selector maps CHANGED CODE back to the tests that executed it. Keying that map
 on ``(file, line number)`` makes every insertion above a function look like a
-change to it, so a one-line import addition selects the whole file's tests. The
-fix is to key on a hash of the block's STRUCTURE — but the naive version of that
-(hash each line's text) trades the false positive for a false NEGATIVE: move a
+change to it, so a one-line import addition selects the whole file's tests.
+Keying on a hash of the block's STRUCTURE avoids that — but the naive version of
+that (hash each line's text) trades the false positive for a false NEGATIVE: move a
 line from one function to another and its hash is unchanged, so nothing is
 selected while behaviour changed.
 
@@ -66,7 +66,7 @@ class TestWhatIsABlock:
 
 
 class TestStabilityUnderIrrelevantEdits:
-    """The reason line numbers were rejected as the key."""
+    """Why line numbers cannot be the key."""
 
     def test_inserting_a_line_above_does_not_perturb_a_later_block(self) -> None:
         after = BASE.replace("import os", "import os\n    import sys")
@@ -106,11 +106,12 @@ class TestSensitivityToRealChanges:
 
 
 class TestMovingCodeIsDetected:
-    """The failure mode that killed per-line hashing.
+    """Moving code is detected — the failure mode of per-line hashing.
 
     Moving a function between classes leaves the FunctionDef node byte-identical,
     so its digest alone cannot see the move. Detection comes from the KEY (its
-    qualified name) and from the parent's own digest, which lists its children.
+    qualified name), which vanishes under the old parent and appears under the
+    new one; the parents' digests do not list their children.
     """
 
     #: Both classes carry a stable non-def member on purpose. Using ``pass`` as
@@ -143,10 +144,10 @@ class TestMovingCodeIsDetected:
         """Children are removed from a parent's digest entirely, so a move is
         detected by the vanished/appeared KEY, not by the parents changing.
 
-        The earlier design kept a name marker so parents would change. It was
-        wrong: the parent of a module-level def is the import-time module
-        block, which is credited to EVERY test in the file, so any structural
-        edit selected the whole file's suite.
+        Keeping a name marker so parents change would be wrong: the parent of
+        a module-level def is the import-time module block, which is credited
+        to EVERY test in the file, so any structural edit would select the
+        whole file's suite.
         """
         before, after = _by_name(self.MOVED_FROM), _by_name(self.MOVED_TO)
         assert before["A"] == after["A"]
@@ -181,8 +182,8 @@ class TestNesting:
         assert "outer.inner" in _by_name(self.NESTED)
 
     def test_editing_the_inner_body_does_not_perturb_the_outer(self) -> None:
-        """The parent's digest elides its children's BODIES, keeping only their
-        names — so the child owns its own changes and the parent owns structure."""
+        """The parent's digest elides its nested blocks entirely — so the child
+        owns its own changes and the parent owns only its other structure."""
         after = self.NESTED.replace("return 1", "return 2")
         assert _by_name(self.NESTED)["outer"] == _by_name(after)["outer"]
         assert _by_name(self.NESTED)["outer.inner"] != _by_name(after)["outer.inner"]
@@ -190,8 +191,8 @@ class TestNesting:
     #: Written out rather than produced by ``.replace()`` on NESTED: the
     #: obvious target string matches INSIDE the deeper-indented line, so the
     #: inserted def lands at the wrong column and ``dedent`` then computes a
-    #: different common prefix. The first version of this test failed for that
-    #: reason and not because the digest was wrong.
+    #: different common prefix, failing the test for a reason unrelated to the
+    #: digest.
     NESTED_PLUS = """
         def outer():
             def inner():
@@ -215,8 +216,8 @@ class TestNesting:
 
 
 class TestAsyncDefs:
-    """``async def`` is a distinct AST node and needs its own elision arm — an
-    omission coverage caught, not review."""
+    """``async def`` is a distinct AST node and needs its own elision arm;
+    without one, async bodies stay inside the enclosing block's digest."""
 
     ASYNC = """
         async def fetch(url):
@@ -256,10 +257,9 @@ class TestLineOwnership:
         """Decorators and the ``def`` header execute at IMPORT, in the scope
         that contains them — so they are module-level code, not the callable's.
 
-        This is the inverse of what the first version asserted, and getting it
-        backwards was the bug: every ``def`` line runs at import, so while a
-        function owned its own header it looked like import-time code and was
-        credited to every test that touched the file.
+        Getting this backwards is a bug: every ``def`` line runs at import, so
+        a function that owned its own header would look like import-time code
+        and be credited to every test that touched the file.
         """
         src = dedent("""
             @property

@@ -1,25 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The ``external_potential`` bucket is produced again (INV-toguh).
+"""The ``external_potential`` bucket is populated (INV-toguh).
 
-It was empty on every repository measured (six, including hypergumbo itself),
-while the code hid it by default for "tending to dominate". The cause was two
-definitions of one field. F3 Filter 1 (2026-05-13) skipped every edge with
-``is_resolved=False``, reading ADR-0028's "the dst could not be resolved" as
-"a receiver-unresolved guess". ADR-0037 ruling 1 (2026-06-10) then made
-``is_resolved`` mean IN-REPO-NESS, so every edge into an external placeholder
-is ``is_resolved=False`` by definition (ir.py), and the bucket's own entry
-condition (the dst is an external boundary) admitted only edges Filter 1 then
-dropped: 1,851 of 1,851 on full-stack-fastapi-template, 76,015 of 76,015 on
-the self-survey.
+The bucket's purpose is "first-party code reaches into territory the catalogue
+cannot classify": a call into a named external module the catalogue does not
+classify (``sqlmodel.Session.exec``, ``react.useState``). F3 Filter 1 drops the
+noise, and it must key on a RECEIVER-UNRESOLVED target — one whose module slot
+names nothing (``python:external:0-0:frob``) — not on ``is_resolved=False``.
+Under ADR-0037 ruling 1 ``is_resolved`` means IN-REPO-NESS, so every edge into
+an external placeholder is ``is_resolved=False`` by definition (ir.py); a
+filter keyed on it drops every edge the bucket admits and leaves the bucket
+empty on every repository.
 
-Filter 1 is re-keyed to what it was written to drop: a RECEIVER-UNRESOLVED
-target, whose module slot names nothing (``python:external:0-0:frob``). A call
-into a named external module the catalogue does not classify
-(``sqlmodel.Session.exec``, ``react.useState``) is the bucket's stated purpose,
-"first-party code reaches into territory the catalogue cannot classify", and
-now reaches it. The unit test that pinned Filter 1 built an
-``is_resolved=True`` edge into an external dst, the cell ADR-0037 says is never
-produced, so these tests run the shipped command on a real survey.
+These tests run the shipped command on a real survey rather than hand-building
+edges: an ``is_resolved=True`` edge into an external dst is a cell ADR-0037
+says is never produced, so a unit test built on one would pin nothing real.
 """
 
 from __future__ import annotations
@@ -83,9 +77,8 @@ def test_a_receiver_unresolved_call_is_still_skipped(report: dict) -> None:
 
 
 def test_a_call_into_an_enumerated_module_is_not_disclosed(report: dict) -> None:
-    """Filter 2 (the closed-world skip) was dead while the bucket was empty.
-    ``json`` is enumerated in python.yaml, so an unrowed json call is a known
-    non-I/O, not a catalogue gap."""
+    """Filter 2, the closed-world skip: ``json`` is enumerated in python.yaml,
+    so an unrowed json call is a known non-I/O, not a catalogue gap."""
     assert not any(p.startswith("json.") for p in _external_potential(report))
 
 

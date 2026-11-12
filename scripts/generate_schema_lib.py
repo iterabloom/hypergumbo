@@ -1,14 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Introspection-driven $def builder for docs/schema.json (WI-kutas).
 
-Why this module exists: the previous generate-schema hand-coded the
-Symbol / Edge / Span / AnalysisRun ``$defs`` as literal Python dicts, so
-a dataclass field add / remove / retype could not propagate — that is
-how ``Symbol.language`` stayed typed as a required non-nullable string
-after ADR-0031 relaxed it to ``Optional[str]`` (WI-kufib, 262 violating
-nodes per self-analysis), how the ADR-0032-removed ``canonical_name``
-survived in the schema, and how four emitted-on-every-node axis fields
-went undeclared.
+Why this module exists: ``$defs`` hand-coded as literal Python dicts
+cannot follow a dataclass field add / remove / retype — a field relaxed
+to ``Optional`` stays required and non-nullable, a removed field
+survives in the schema, and a newly emitted field goes undeclared.
+Introspecting the dataclasses makes the schema follow the code.
 
 How it works: each $def is produced by :func:`build_def` from a
 :class:`ClassSpec` that separates the two sources of truth —
@@ -29,13 +26,14 @@ a composite JSON property (Symbol's seven supply-chain fields →
 schema is hand-authored in ``composites``, ``overrides`` for the few
 properties whose constraints live inside a ``oneOf`` branch and cannot
 be flat-merged, and ``conditional`` JSON keys that ``to_dict()`` omits
-when None (``Edge.dst_ref`` / ``derived_from``).
+when None or empty (``Edge.dst_ref`` / ``derived_from``, the
+present-when-populated reporting lists).
 
-Drift guards (the point of the rework): :func:`build_def` raises
-:class:`SchemaDriftError` when a decoration / override names a JSON key
-the dataclass no longer produces (the ``canonical_name`` failure mode)
-and when a dataclass field has no decoration / override / composite
-(the ``discovery_language`` failure mode). :func:`verify_round_trip`
+Drift guards: :func:`build_def` raises :class:`SchemaDriftError` when a
+decoration / override / composite names a JSON key the dataclass no
+longer produces (a removed field lingering in the schema) and when a
+dataclass field has no decoration / override / composite (a new field
+shipping undocumented). :func:`verify_round_trip`
 additionally asserts a fully-populated instance's ``to_dict()`` key set
 equals the schema property set, pinning the field→JSON mapping itself.
 """
@@ -62,14 +60,11 @@ from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 def registry_meta_properties(axis: str) -> Dict[str, Dict[str, Any]]:
     """Schema ``properties`` for every ``MetaKeySpec`` registered on ``axis``.
 
-    WI-zisig / WI-zamum. The ``meta`` blocks used to hand-list their documented
-    keys, which drifted immediately: of 32 registered edge-axis keys the schema
-    described 2, and of 47 symbol-axis keys it described 0 — so registered,
-    emitted, spec-documented keys (``resolution_quality`` on 1076 edges,
-    ``channel`` on 145) were absent from ``docs/schema.json`` and a consumer
-    reading the schema could not learn they exist. Deriving the list from
-    ``axis_meta_keys`` makes the registry the single home for the vocabulary, so
-    a newly registered key documents itself instead of accruing a new item.
+    Deriving the list from ``axis_meta_keys`` makes the registry the single
+    home for the vocabulary, so a newly registered key documents itself. A
+    hand-listed ``meta`` block drifts as soon as a key is registered, leaving
+    registered, emitted keys absent from ``docs/schema.json`` where a consumer
+    reading the schema cannot learn they exist. (history: WI-zisig, WI-zamum)
 
     Entries carry a ``description`` and **deliberately no ``type``**.
     ``MetaKeySpec`` records no type, and the values genuinely are not uniform —
@@ -78,8 +73,8 @@ def registry_meta_properties(axis: str) -> Dict[str, Dict[str, Any]]:
     board would be a claim the registry cannot support and would turn a
     documentation gap into a wrong constraint. A description-only entry is
     honest and, because both ``meta`` objects leave ``additionalProperties``
-    open, changes no validation outcome — it is purely descriptive, which is why
-    this needs no ``SCHEMA_VERSION`` bump.
+    open, changes no validation outcome — it is purely descriptive, so a key
+    entering or leaving the registry needs no ``SCHEMA_VERSION`` bump.
     """
     return {
         spec.name: {"description": spec.description}
@@ -169,7 +164,8 @@ class ClassSpec:
     overrides: Dict[str, Dict[str, Any]] = dataclasses.field(default_factory=dict)
     # JSON key -> dict merged onto the introspected type schema
     decorations: Dict[str, Dict[str, Any]] = dataclasses.field(default_factory=dict)
-    # JSON keys to_dict() omits when the value is None
+    # JSON keys to_dict() may omit (when None, or when an empty
+    # present-when-populated list); never listed as required
     conditional: Set[str] = dataclasses.field(default_factory=set)
     # JSON keys required beyond the no-default-and-not-Optional rule
     extra_required: List[str] = dataclasses.field(default_factory=list)
@@ -439,11 +435,10 @@ def _symbol_spec() -> ClassSpec:
             },
         },
         overrides={
-            # WI-zisig / WI-zamum: Symbol.meta is a bare Dict[str, Any], so the
-            # generator emitted a contentless {"type": "object"} and described
-            # 0 of the 47 registered symbol-axis meta keys. The registry now
-            # supplies them; additionalProperties stays open, so this documents
-            # without constraining.
+            # Symbol.meta is a bare Dict[str, Any], which introspects to a
+            # contentless {"type": "object"}; the registry supplies the
+            # documented keys. additionalProperties stays open, so this
+            # documents without constraining. (history: WI-zisig, WI-zamum)
             "meta": {
                 "type": "object",
                 "description": "Symbol metadata",
@@ -495,14 +490,12 @@ def _symbol_spec() -> ClassSpec:
                     "ADR is fixing."
                 ),
                 "x-axis-of-values": {spec.name: spec.axis for spec in SYMBOL_KINDS},
-                # ADR-0027 §"Phase 4a" (additive): every endpoint_shape
-                # Symbol.kind value is a deprecation candidate scheduled
-                # for removal in Phase 4b. Producers either no longer
-                # emit these (Phase 3 fold complete) or are scheduled to
-                # fold during Phase 3 sub-PRs. Values stay valid in the
-                # open schema for the deprecation window. Per-value
-                # migration guidance lives in the registry's
-                # SymbolKindSpec.description.
+                # Every Symbol.kind registry value on the endpoint_shape
+                # axis is deprecated (ADR-0027) and listed here; it stays
+                # valid in the open schema for the deprecation window.
+                # The list is empty while the registry holds no such
+                # value. Per-value migration guidance lives in the
+                # registry's SymbolKindSpec.description.
                 "x-deprecated": [
                     spec.name for spec in SYMBOL_KINDS
                     if spec.axis == AXIS_ENDPOINT_SHAPE
@@ -693,15 +686,13 @@ def _edge_spec() -> ClassSpec:
                         "x-axis-of-values": {
                             spec.name: spec.axis for spec in EVIDENCE_TYPES
                         },
-                        # ADR-0028 §"Phase 4a" (additive): every
-                        # endpoint_shape evidence_type value is a
-                        # deprecation candidate scheduled for removal in
-                        # Phase 4b. Cluster B canary fold (WI-nunal) has
-                        # shipped; Clusters C/D are mid-Phase-3 with
-                        # awaits_bakeoff_validation tags. Values stay
-                        # valid in the open schema for the deprecation
-                        # window. Per-value migration guidance lives in
-                        # the registry's EvidenceTypeSpec.description.
+                        # Every evidence_type registry value on the
+                        # endpoint_shape axis is deprecated (ADR-0028) and
+                        # listed here; it stays valid in the open schema
+                        # for the deprecation window. The list is empty
+                        # while the registry holds no such value. Per-value
+                        # migration guidance lives in the registry's
+                        # EvidenceTypeSpec.description.
                         "x-deprecated": [
                             spec.name for spec in EVIDENCE_TYPES
                             if spec.axis == AXIS_ENDPOINT_SHAPE
@@ -770,15 +761,15 @@ def _edge_spec() -> ClassSpec:
                 "description": "Relationship type",
                 "enum": [spec.name for spec in EDGE_TYPES],
                 "x-axis-of-values": {spec.name: spec.axis for spec in EDGE_TYPES},
-                # ADR-0023 §6 Phase 4a: every endpoint_shape value is
-                # a deprecation candidate scheduled for removal in a
-                # future SCHEMA_VERSION minor bump. Producers no
-                # longer emit these (Phase 3 / WI-mokam-jalig
-                # complete); the values stay in the enum for the
-                # one-minor-version dual-validity window so external
-                # consumers can adapt. Per-value migration guidance
-                # lives in the registry's spec.description (cited as
-                # "per ADR-0023 §6 fold to <canonical> + meta[...]").
+                # Every edge-type registry value on the endpoint_shape
+                # axis is deprecated (ADR-0023 §6) and listed here; it
+                # stays in the enum for a one-minor-version
+                # dual-validity window so external consumers can adapt,
+                # and is removed in a later SCHEMA_VERSION minor bump.
+                # The list is empty while the registry holds no such
+                # value. Per-value migration guidance lives in the
+                # registry's spec.description (cited as "per ADR-0023
+                # §6 fold to <canonical> + meta[...]").
                 "x-deprecated": [
                     spec.name for spec in EDGE_TYPES
                     if spec.axis == AXIS_ENDPOINT_SHAPE
@@ -849,8 +840,9 @@ def _edge_spec() -> ClassSpec:
             },
         },
         conditional={"dst_ref", "derived_from", "attribution", "alternatives"},
-        # confidence has a producer default (0.85) but is contractually
-        # always emitted; keep the pre-existing required guarantee.
+        # confidence has a producer default (0.85), which would make it
+        # optional under the introspection rule, but it is contractually
+        # always emitted, so it is declared required.
         extra_required=["confidence"],
         sample_factory=_sample_edge,
     )
@@ -981,7 +973,7 @@ def _analysis_run_spec() -> ClassSpec:
 
 
 # ---------------------------------------------------------------------------
-# Limits family (WI-kutas PR2 — the previously-opaque "limits" block)
+# Limits family (the "limits" block)
 # ---------------------------------------------------------------------------
 
 def _failed_file_spec() -> ClassSpec:
@@ -1180,8 +1172,9 @@ def _limits_spec() -> ClassSpec:
         },
         conditional={
             "max_tier_applied", "max_files_per_analyzer",
-            # test_files_excluded is now always emitted (WI-miron); partial_results_reason
-            # is emitted only when the analysis is incomplete (WI-tamop, spec §960/§994).
+            # test_files_excluded is always emitted, so it is not listed here
+            # (WI-miron); partial_results_reason is emitted only when the
+            # analysis is incomplete (WI-tamop, spec §960/§994).
             "partial_results_reason",
             # INV-virik: the diagnostic reporting lists are present ONLY when
             # non-empty (present-when-populated). skipped_passes stays always-
@@ -1194,7 +1187,7 @@ def _limits_spec() -> ClassSpec:
 
 
 # ---------------------------------------------------------------------------
-# Feature / SliceQuery (WI-kutas PR2 — the previously-untyped features[])
+# Feature / SliceQuery (features[] items)
 # ---------------------------------------------------------------------------
 
 def _slice_query_sample():
@@ -1315,7 +1308,7 @@ def _feature_spec() -> ClassSpec:
 
 
 # ---------------------------------------------------------------------------
-# ValidationViolation (WI-kutas PR2 — validation_report items)
+# ValidationViolation (validation_report items)
 # ---------------------------------------------------------------------------
 
 def _validation_violation_sample():
