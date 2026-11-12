@@ -155,6 +155,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`bakeoff-broad cohort --dry-run` lists the cohort instead of crashing.**
 - **Prose-only check: a moved pragma is code; a quoted one is prose.**
 - **Python I/O catalogue rows `tokenize` and stdlib `-m` entry points.**
+- **Three output strings no longer carry stale history or a dead path.**
 - **Archaeology corpus adds 480 random blind-labelled blocks; weights refit to all comments.**
 - **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
 - **smart-test: a comment-or-docstring-only change runs only tests that read the file.**

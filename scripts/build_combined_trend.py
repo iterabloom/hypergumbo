@@ -282,7 +282,7 @@ def main():
     out.append("<!-- Hand-edits will be backed up to a timestamped .bak.md sibling on next regeneration, then overwritten. Put your own annotations in a separate file. -->")
     out.append("# Dogfooding combined cross-tranche trend (Method C Σ-severity, per pass + 5-pass bucket)")
     out.append("")
-    out.append("> **AUTO-GENERATED.** Do not hand-edit this file. To re-run: `python3 ~/hypergumbo_lab_notebook/build_combined_trend.py`. Hand-edits will be backed up to a timestamped sibling (`dogfooding_trend_combined.<mtime>.bak.md`) before this file is overwritten, so prior content is recoverable; put your own annotations or analysis in a separate file (e.g., `dogfooding_trend_combined_notes.md`).")
+    out.append("> **AUTO-GENERATED.** Do not hand-edit this file. To re-run: `python3 scripts/build_combined_trend.py` from the repository root. Hand-edits will be backed up to a timestamped sibling (`dogfooding_trend_combined.<mtime>.bak.md`) before this file is overwritten, so prior content is recoverable; put your own annotations or analysis in a separate file (e.g., `dogfooding_trend_combined_notes.md`).")
     out.append("")
     out.append(f"Auto-built by `build_combined_trend.py` from every discovered `trend_cluster_aware.md` (one per tranche). Covers passes s{first_pass}-s{last_pass} ({total_passes} passes across {len(sources)} tranches).")
     out.append("")
