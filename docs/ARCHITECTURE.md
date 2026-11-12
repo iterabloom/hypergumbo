@@ -16,15 +16,15 @@ for focused LLM context.
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
 - **371** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 116 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **58527** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13121, of which 7510 are functions, methods or classes
-- **235045** edges, test code included, by type:
-  - calls: 132864
-  - contains: 54511
-  - imports: 20122
-  - instantiates: 12969
-  - references: 10524
-  - module_attr_ref: 2242
-  - other: 1813
+- **58543** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13128, of which 7513 are functions, methods or classes
+- **235180** edges, test code included, by type:
+  - calls: 132943
+  - contains: 54530
+  - imports: 20120
+  - instantiates: 12965
+  - references: 10576
+  - module_attr_ref: 2235
+  - other: 1811
 
 ## Package Architecture
 
@@ -548,8 +548,10 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
 | `measure_code_tree.py` | Which tree's hypergumbo does a measurement script measure? Chosen, never inherited. |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
+| `prose-only-files` | Print the ``.py`` files that differ from a commit in comments or docstrings only. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
+| `repin-line-citations` | Re-pin ``path=`` / ``line=`` / ``anchor=`` citations whose line moved. |
 | `score-readability` | Score the reader load of Python source files, one function at a time. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `show-site` | Print the code around one I/O allowlist site, for a human reviewing the sheet. |
@@ -995,8 +997,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d27f513325b3
-  commit_count: 9078
+  commit: 51a9edf1a552
+  commit_count: 9085
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
