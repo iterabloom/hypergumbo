@@ -87,6 +87,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     if args.source_reads and Path(args.source_reads).is_dir():
         stored = fold_run(conn, Path(args.source_reads), root, full_run=args.full,
                           skip=_failed(args, root))
+        _forget(Path(args.source_reads))
         if args.verbose:
             print(f"[coverage-select] stored source reads for {stored} tests",
                   file=sys.stderr)
@@ -103,22 +104,32 @@ def _failed(args: argparse.Namespace, root: Path) -> set[str]:
 
 
 def cmd_fold_reads(args: argparse.Namespace) -> int:
-    """Store a run's read record and nothing else, leaving out the tests that
-    failed. For a RED run, whose coverage is not folded into the index.
+    """Store a run's read record and nothing else, then remove the record
+    files. For a RED run, whose coverage is not folded into the index, and
+    for the record a KILLED run left behind.
 
-    Without a junit report the failed tests are unknown, and nothing is
-    stored.
+    The record names the tests that failed and they are not stored; a junit
+    report, when there is one, names them again.
     """
     root = Path(args.repo_root).resolve()
-    if not (args.junit and Path(args.junit).exists()):
+    reads = Path(args.source_reads)
+    if not any(reads.glob("*.json")):
         return 0
     conn = open_index(Path(args.index))
-    stored = fold_run(conn, Path(args.source_reads), root, skip=_failed(args, root))
+    stored = fold_run(conn, reads, root, skip=_failed(args, root))
     conn.close()
-    if args.verbose:
-        print(f"[coverage-select] stored source reads for {stored} tests",
+    _forget(reads)
+    if args.verbose or args.announce:
+        print(f"[coverage-select] stored the read record of {stored} test(s)",
               file=sys.stderr)
     return 0
+
+
+def _forget(reads: Path) -> None:
+    """Remove record files that have been stored, so that what is left in the
+    directory is always a record nobody stored yet."""
+    for part in reads.glob("*.json"):
+        part.unlink(missing_ok=True)
 
 
 def _base_source(root: Path, base: str, rel: str) -> str | None:
@@ -366,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
 
     fr = sub.add_parser("fold-reads")
     fr.add_argument("--source-reads", required=True)
+    fr.add_argument("--announce", action="store_true",
+                    help="say how many tests were stored")
     fr.set_defaults(func=cmd_fold_reads)
 
     sh = sub.add_parser("shadow")

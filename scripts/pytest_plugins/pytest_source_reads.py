@@ -28,6 +28,14 @@ WHAT IT RECORDS, per pytest process, into ``--source-reads-dir``:
   ``*``: it may have seen any of them.
 * the test ids each test file collects, so that a file with a test that never
   ran (a run cut short) is not mistaken for a file with complete evidence.
+* the tests that FAILED, which the consumer leaves out: a failed test may
+  have stopped before a read it would have made;
+* a hash of each test file as collected, so that a record stored later (after
+  a run that was killed) is not credited to a file edited in between.
+
+THE RECORD IS WRITTEN AS THE RUN GOES, every FLUSH_SECONDS (``--source-reads-flush``) and at the end, each
+time replacing the process's one file. A run that is killed leaves the tests
+it had finished; this machine stops long background runs when memory is short.
 
 ATTRIBUTION. An event belongs to the test running at the time. It also belongs
 to each fixture being set up at the time (other than function scope): a module
@@ -68,12 +76,14 @@ conftest -- and it buffers until the option is known.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import linecache
 import os
 import re
 import sys
 import threading
+import time
 import types
 from typing import Any, Optional
 
@@ -82,6 +92,9 @@ import pytest
 #: Bumped whenever what a record means changes. The consumer discards evidence
 #: recorded under any other version.
 VERSION = 2
+
+#: Seconds between writes of the record while tests run (--source-reads-flush).
+FLUSH_SECONDS = 30.0
 
 #: Audit events that start a process whose file reads this plugin cannot see.
 SPAWN_EVENTS = frozenset({
@@ -103,6 +116,10 @@ def pytest_addoption(parser: Any) -> None:
     parser.addoption(
         "--source-reads-dir", default=None, metavar="DIR",
         help="record per-test reads of repository .py files into DIR",
+    )
+    parser.addoption(
+        "--source-reads-flush", type=float, default=FLUSH_SECONDS, metavar="SECONDS",
+        help="write the record at most this often while tests run, and at the end",
     )
     parser.addoption(
         "--source-reads-hash-only", action="append", default=[],
@@ -249,8 +266,10 @@ def _line_owner(obj: Any) -> str:
 
 
 class SourceReads:
-    def __init__(self, out_dir: str, root: str, hash_only: list[str]) -> None:
+    def __init__(self, out_dir: str, root: str, hash_only: list[str],
+                 flush_seconds: float = FLUSH_SECONDS) -> None:
         self.out_dir = out_dir
+        self.flush_seconds = flush_seconds
         self.root = os.path.realpath(root) + os.sep
         self.prefix = os.path.realpath(sys.prefix) + os.sep
         self.hash_only = {tuple(item.split(":", 1)) for item in hash_only}
@@ -264,6 +283,9 @@ class SourceReads:
         self.modules: dict[str, _Bucket] = {}
         self.unattributed = _Bucket()
         self.expected: dict[str, list[str]] = {}
+        self.sources: dict[str, str] = {}
+        self.failed: set[str] = set()
+        self.written = time.monotonic()
         # Events from before this recorder existed (an initial conftest).
         for event, what, stack in _EARLY:
             self.audit(event, what, stack)
@@ -382,7 +404,22 @@ class SourceReads:
     @pytest.hookimpl(tryfirst=True)
     def pytest_collection_modifyitems(self, items: list[Any]) -> None:
         for item in items:
-            self.expected.setdefault(item.nodeid.split("::", 1)[0], []).append(item.nodeid)
+            test_file = item.nodeid.split("::", 1)[0]
+            self.expected.setdefault(test_file, []).append(item.nodeid)
+            if test_file not in self.sources:
+                self.sources[test_file] = self._hash(str(item.path))
+
+    @staticmethod
+    def _hash(path: str) -> str:
+        """SHA-256 of a file as it is now; empty when it cannot be read."""
+        _OWN_WORK.busy = True
+        try:
+            with open(path, "rb") as handle:
+                return hashlib.sha256(handle.read()).hexdigest()
+        except OSError:
+            return ""
+        finally:
+            _OWN_WORK.busy = False
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_make_collect_report(self, collector: Any) -> Any:
@@ -432,8 +469,14 @@ class SourceReads:
                 used.add(self._fixture_key(fixturedef))
         yield
 
+    def pytest_runtest_logreport(self, report: Any) -> None:
+        if report.failed:
+            self.failed.add(report.nodeid)
+
     def pytest_runtest_logfinish(self) -> None:
         self.test = None
+        if time.monotonic() - self.written >= self.flush_seconds:
+            self.write()
 
     # -- output ------------------------------------------------------------
     @pytest.hookimpl(tryfirst=True)
@@ -441,15 +484,23 @@ class SourceReads:
         # First, so that end-of-session work (reports) is not recorded.
         self.active = False
         _watch_sites(False)
+        self.write()
+
+    def write(self) -> None:
+        """Write everything recorded so far, replacing this process's file."""
         os.makedirs(self.out_dir, exist_ok=True)
         payload = {
             "version": VERSION,
             "observed": bool(_STATE["observing"]),
             "expected": self.expected,
+            "sources": self.sources,
+            "failed": sorted(self.failed),
             "tests": {
                 nodeid: {**bucket.dump(),
                          "fixtures": sorted(self.test_fixtures.get(nodeid, ()))}
                 for nodeid, bucket in self.tests.items()
+                # A test still running has not made all its reads.
+                if bucket is not self.test
             },
             "fixtures": {key: b.dump() for key, b in self.fixtures.items()},
             "modules": {key: b.dump() for key, b in self.modules.items()},
@@ -460,6 +511,7 @@ class SourceReads:
         with open(target + ".tmp", "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
         os.replace(target + ".tmp", target)
+        self.written = time.monotonic()
 
 
 #: The audit hook is installed when this module is imported (``-p`` imports
@@ -630,7 +682,8 @@ def pytest_configure(config: Any) -> None:
     if out_dir and not distributing:
         config.pluginmanager.register(
             SourceReads(out_dir, str(config.rootpath),
-                        config.getoption("--source-reads-hash-only")),
+                        config.getoption("--source-reads-hash-only"),
+                        config.getoption("--source-reads-flush")),
             "source-reads")
     else:
         _STATE["buffering"] = False

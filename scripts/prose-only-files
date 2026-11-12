@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Print the ``.py`` files that differ between two commits in comments or docstrings only.
+"""Print the ``.py`` files that differ from a commit in comments or docstrings only.
 
-    scripts/prose-only-files BASE HEAD
+    scripts/prose-only-files BASE [HEAD] [--code]
 
-One repo-relative path per line. A file is printed when it exists on both
-sides, parses on both, and its AST with docstrings removed and its machine-read
-comments (``# pragma:``, ``# type:`` ...) are equal: its executable lines are
-the base's. ``hypergumbo_core.prose_only.classify`` decides; this script only
-reads the two versions out of git.
+One repo-relative path per line. Without HEAD, BASE is compared with the
+working tree. A file is printed when it exists on both sides, parses on both,
+and its AST with docstrings removed and its machine-read comments
+(``# pragma:``, ``# type:`` ...) are equal: its executable lines are the
+base's. ``hypergumbo_core.prose_only.classify`` decides; this script only
+fetches the two versions.
 
-WHO USES IT. The CI pytest step. smart-test selects the tests of such a file
-from recorded evidence instead of the import graph, so the tests that cover
-its lines may not be in the manifest, and the step's 100%-coverage gate for
-changed source files would then fail on code nobody changed. The step asks
-this script which changed files are prose-only and leaves them out of that
-gate. It asks the DIFF, not the manifest, so a manifest cannot talk a code
-change out of the gate.
+``--code`` prints the OTHER changed ``.py`` files instead: the ones whose code
+changed, or that are new, deleted or unparsable. After a sweep that was meant
+to touch only comments and docstrings, that list should be empty.
 
-Exit status 0 with the list (possibly empty); 2 when either commit cannot be
-read, with nothing printed, so a caller that ignores the status exempts
-nothing.
+WHO USES IT. The CI pytest step. smart-test selects the tests of a prose-only
+file from recorded evidence instead of the import graph, so the tests that
+cover its lines may not be in the manifest, and the step's 100%-coverage gate
+for changed source files would then fail on code nobody changed. The step
+asks this script which changed files are prose-only and leaves them out of
+that gate. It asks the DIFF, not the manifest, so a manifest cannot talk a
+code change out of the gate.
+
+Exit status 0 with the list (possibly empty); 2 when a commit cannot be read
+or the arguments are wrong, with nothing printed, so a caller that ignores the
+status exempts nothing.
 """
 from __future__ import annotations
 
@@ -39,25 +44,40 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], capture_output=True, text=True)
 
 
-def _source(commit: str, path: str) -> str | None:
+def _source(commit: str | None, path: str) -> str | None:
+    """``path`` at ``commit``, or in the working tree for None; None if absent."""
+    if commit is None:
+        try:
+            return Path(path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
     shown = _git("show", f"{commit}:{path}")
     return shown.stdout if shown.returncode == 0 else None
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print(__doc__.split("\n\n")[1].strip(), file=sys.stderr)
+    want_code = "--code" in argv
+    commits = [arg for arg in argv if arg != "--code"]
+    if len(commits) not in (1, 2) or any(arg.startswith("-") for arg in commits):
+        print("usage: scripts/prose-only-files BASE [HEAD] [--code]", file=sys.stderr)
         return 2
-    base, head = argv
-    diff = _git("diff", "--name-only", "-z", base, head)
-    if diff.returncode != 0:
-        print(f"prose-only-files: cannot diff {base}..{head}: {diff.stderr.strip()}",
-              file=sys.stderr)
+    base, head = commits[0], (commits[1] if len(commits) == 2 else None)
+    top = _git("rev-parse", "--show-toplevel")
+    diff = _git("diff", "--name-only", "-z", *commits)
+    if top.returncode != 0 or diff.returncode != 0:
+        print(f"prose-only-files: cannot diff {' '.join(commits)}: "
+              f"{(top.stderr or diff.stderr).strip()}", file=sys.stderr)
         return 2
-    prose = [path for path in diff.stdout.split("\0")
-             if path.endswith(".py")
-             and classify(_source(base, path), _source(head, path)) != CODE]
-    sys.stdout.write("".join(f"{path}\n" for path in sorted(prose)))
+    root = Path(top.stdout.strip())
+    listed = []
+    for path in diff.stdout.split("\0"):
+        if not path.endswith(".py"):
+            continue
+        current = _source(head, path if head else str(root / path))
+        is_code = classify(_source(base, path), current) == CODE
+        if is_code == want_code:
+            listed.append(path)
+    sys.stdout.write("".join(f"{path}\n" for path in sorted(listed)))
     return 0
 
 

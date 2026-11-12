@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Re-pin ``path=`` / ``line=`` / ``anchor=`` citations whose line moved.
+
+    scripts/repin-line-citations [--check] [FILE ...]
+
+WHAT A CITATION IS. Some registries name a place in another source file by all
+three of its path, its line number and a piece of the text on that line
+(``EmissionSite(path=..., line=3059, anchor="module_path=path_hint")`` in
+``module_key_axis.py``; ``signature_axis.py`` has the same shape). A test checks
+that the anchor is still on the cited line. Any edit above that line moves it,
+a reworded docstring included, and the test goes red on a file whose code
+nobody touched.
+
+WHAT THIS DOES. For every call that carries the three keywords as literals, it
+looks at the cited line. If the anchor is not there, it finds the lines of that
+file that do contain the anchor and rewrites the ``line=`` literal to the one
+nearest the old number. It prints every change. An anchor that is found nowhere
+cannot be re-pinned: the cited code changed, and a person has to look.
+
+With no FILE it works on the tracked files under ``packages/*/src`` that
+contain both keywords. ``--check`` rewrites nothing.
+
+Exit status: 0 when every citation is on its anchor (after re-pinning, unless
+``--check``); 1 when ``--check`` found one that is off, or an anchor is missing
+from its file; 2 for a file that cannot be read or parsed.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import subprocess
+import sys
+from pathlib import Path
+
+KEYWORDS = ("path", "line", "anchor")
+
+
+def _default_files(root: Path) -> list[str]:
+    listed = subprocess.run(
+        ["git", "-C", str(root), "grep", "-l", "--all-match", "-e", "anchor=",
+         "-e", "line=", "--", "packages/*/src/*.py"], capture_output=True, text=True)
+    return listed.stdout.split()
+
+
+def repin(registry: Path, root: Path, *, write: bool) -> tuple[list[str], list[str]]:
+    """Re-pin one file. Returns ``(moved, lost)`` messages."""
+    source = registry.read_text(encoding="utf-8")
+    lines = source.splitlines(keepends=True)
+    edits: list[tuple[int, int, int, str]] = []
+    moved: list[str] = []
+    lost: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        given = {k.arg: k.value for k in node.keywords}
+        if not all(isinstance(given.get(k), ast.Constant) for k in KEYWORDS):
+            continue
+        path, line, anchor = (given[k].value for k in KEYWORDS)
+        if not (isinstance(path, str) and isinstance(line, int) and isinstance(anchor, str)):
+            continue
+        try:
+            target = (root / path).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lost.append(f"{registry}:{node.lineno}: {path} cannot be read")
+            continue
+        if 1 <= line <= len(target) and anchor in target[line - 1]:
+            continue
+        hits = [n for n, text in enumerate(target, 1) if anchor in text]
+        if not hits:
+            lost.append(f"{registry}:{node.lineno}: {path}:{line} has no line "
+                        f"containing {anchor!r}")
+            continue
+        new = min(hits, key=lambda hit: abs(hit - line))
+        nearest = "" if len(hits) == 1 else f"  (nearest of {hits})"
+        moved.append(f"{path}: {line} -> {new}  {anchor!r}{nearest}")
+        literal = given["line"]
+        edits.append((literal.lineno - 1, literal.col_offset,
+                      literal.end_col_offset or literal.col_offset, str(new)))
+    if write and edits:
+        for row, start, end, text in sorted(edits, reverse=True):
+            lines[row] = lines[row][:start] + text + lines[row][end:]
+        registry.write_text("".join(lines), encoding="utf-8")
+    return moved, lost
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--check", action="store_true",
+                        help="report citations that are off; rewrite nothing")
+    parser.add_argument("--root", default=".", help="repository root (default: .)")
+    parser.add_argument("files", nargs="*")
+    args = parser.parse_args(argv)
+    root = Path(args.root)
+    moved: list[str] = []
+    lost: list[str] = []
+    for name in args.files or _default_files(root):
+        registry = Path(name) if Path(name).is_absolute() else root / name
+        try:
+            got = repin(registry, root, write=not args.check)
+        except (OSError, SyntaxError, ValueError) as exc:
+            print(f"repin-line-citations: {name}: {exc}", file=sys.stderr)
+            return 2
+        moved += got[0]
+        lost += got[1]
+    verb = "off (not rewritten)" if args.check else "re-pinned"
+    for message in moved:
+        print(f"{verb}: {message}")
+    for message in lost:
+        print(f"CANNOT RE-PIN: {message}", file=sys.stderr)
+    return 1 if lost or (moved and args.check) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
