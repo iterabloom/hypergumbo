@@ -712,7 +712,7 @@ def cmd_cohort(args):
         print()
         for r in cohort:
             langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
-            print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+            print(f"  {r.name:40s} {r.size_mb:6.1f}MB  [{langs}]")
         remaining = len(available) - len(cohort) if not explicit_repos else 0
         print(f"\nRemaining in pool: {remaining}")
         return 0
