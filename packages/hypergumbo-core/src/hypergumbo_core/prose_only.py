@@ -5,35 +5,37 @@ WHAT IT IS. A changed ``.py`` file is PROSE-ONLY when its code is unchanged and
 only comments or docstrings differ. Such a change cannot alter what any test
 executes, so smart-test need not run every test that imports the file. It must
 still run the tests whose outcome can depend on the file's TEXT. This module
-decides which files are prose-only, stores the evidence about which tests read
-which files, and computes the tests that may be dropped.
+decides which files are prose-only, stores the evidence about which tests can
+see which text, and computes the tests such a change must run
+(:func:`select_for_prose`). The import graph plays no part: the selection is
+made from the record alone, over every test file in the repository.
 
-HOW A TEST CAN OBSERVE A PROSE-ONLY CHANGE. Three channels, each closed
-separately:
+HOW A TEST CAN OBSERVE A PROSE-ONLY CHANGE. The compiled code of a prose-only
+change differs from its baseline in three things only: the source text, the
+docstrings, and the line numbers. The pytest plugin
+``scripts/pytest_plugins/pytest_source_reads.py`` records each way of seeing
+one of them, per test, and :func:`fold_run` stores the record:
 
 1. **It reads the file as data** -- a gate that scans sources, a test that pins
-   a line number or greps a docstring, a generator. The pytest plugin
-   ``scripts/pytest_plugins/pytest_source_reads.py`` records every such read
-   per test; :func:`fold_run` stores it. A test with a recorded read of a
-   prose-only file is kept, and is ADDED when the import graph missed it.
-2. **It starts a process** whose reads the plugin cannot see. Such a test is
-   OPAQUE and is never dropped.
-3. **Runtime introspection**, with no file read at decision time:
-   ``__doc__`` and frame or code line numbers. :func:`introspection` finds
-   the code that does this. A test file that does it is never dropped. For a
-   source module that does it, the tests the coverage index saw executing
-   that block are kept, if they also loaded a changed file. A file whose own
-   ``__doc__`` is used (``description=__doc__``) is not prose-only when its
-   docstrings change. ``inspect.getsource`` and ``linecache`` read a file
-   once per process and then serve a cache; the plugin records such a read
-   as made by every test, so the file is not prose-only.
+   a line number or greps a docstring, a generator, ``inspect.getsource``, a
+   formatted traceback. A test with a recorded read of a prose-only file
+   runs, whether or not it imports the file.
+2. **It reads a docstring at runtime** (``x.__doc__``). The record names the
+   definition whose docstring was read, so the test runs only when THAT
+   docstring changed (:func:`changed_docstrings`). A read the plugin could not
+   tie to a definition counts for every docstring.
+3. **It reads a line number at runtime** (``frame.f_lineno``). The record
+   names the file; a read that could not be tied to one counts for every file.
+4. **It starts a process** whose reads the plugin cannot see. Such a test is
+   OPAQUE and always runs, unless every program it starts is in
+   :data:`INERT_PROGRAMS`.
+5. **It is the changed file.** A test file always runs when it changed.
 
-DROPPING NEEDS POSITIVE EVIDENCE. A test file is dropped only when
-:func:`narrow_for_prose` finds no reason to keep it: its read record was
-taken at its current code digest, every test it collects has a record, none is
-opaque, none read a prose-only file, the coverage index knows every one of its
-tests (rows, or recorded unmeasured on a full run), and none executed an
-introspecting block. Anything unknown is kept.
+LEAVING A TEST OUT NEEDS POSITIVE EVIDENCE. A test file is left out only when
+:func:`tests_for_prose` finds no reason to run it: its record was taken at
+its current code digest, every test it collects has a record, the record
+includes runtime observation (Python 3.12+), and none of the five ways above
+applies. Anything unknown runs.
 
 WHAT IS PROSE-ONLY. :func:`classify` compares the base and current source:
 the AST with docstrings removed must be equal, and so must the machine-read
@@ -43,23 +45,27 @@ matched by pattern per line, so prose that quotes one counts as one. Docstrings
 are located as the first statement of a module, class or function; a string
 anywhere else is code. A new, deleted or unparsable file is code.
 
-A file read outside any test (a conftest import, a module body that scans
-sources at import) is recorded as read by EVERY test: such a file is never
-prose-only (:func:`eligible_prose_files`). A process started that way by
+A read or observation made outside any test (a conftest import, a module body
+that scans sources at import) holds for EVERY test: a file seen that way is
+never prose-only (:func:`eligible_prose_files`). A process started that way by
 repository code makes the whole rule refuse (:func:`global_refusal`).
+
+THE EVIDENCE HAS A VERSION (:data:`RECORDER_VERSION`). When the plugin changes
+what a record means, every stored record is discarded: an old record cannot
+show that a test does NOT do something the old plugin never looked for.
 
 LIMITS, stated because they are where this would bite:
 
 * The evidence is as old as the last run that recorded each test. A code
   change elsewhere that makes an already-recorded test start reading a file is
-  invisible until that test runs again. This is the selection index's own
-  boundary, and the reason the rule is local-only: CI runs the committed
-  manifest, which this rule never touches.
+  invisible until that test runs again. Every local run records, and the
+  twice-daily full suite in CI runs every test regardless of this rule.
 * A value computed from a file's text by one test and kept in a module global
   for another (outside a fixture, outside import time, outside ``linecache``)
   is not seen.
-* Line numbers inside formatted traceback text are not treated as
-  introspection.
+* A docstring or line number read by third-party code (a CLI library that
+  builds help text from ``__doc__``), or through an attribute named plain
+  ``lineno`` (a ``LogRecord``, a ``FrameSummary``), is not seen.
 """
 from __future__ import annotations
 
@@ -70,22 +76,40 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Sequence
+from typing import Iterable, Mapping, Optional
 
-from hypergumbo_core.block_hash import blocks_for_source, line_owner
-from hypergumbo_core.selection_index import rebase_to_repo
+#: The record format this module reads; ``pytest_source_reads.VERSION``.
+RECORDER_VERSION = 2
+
+#: Programs that cannot read a repository ``.py`` file whatever they are
+#: given, so a test that starts only these is not opaque. ``rust-analyzer``
+#: is here because the pipeline probes for it in most tests, and it reads
+#: Rust projects only.
+INERT_PROGRAMS = frozenset({
+    "rust-analyzer", "rustup", "ldconfig", "sleep", "true", "false", "echo",
+    "pwd", "mktemp",
+})
+
+READ, DOC, LINE = "r", "d", "l"
+#: A docstring or line-number read the plugin could not tie to a definition.
+ANY = "*"
+
+_TABLES = ("read_test", "read_edge", "read_file", "read_expected",
+           "read_global", "read_meta")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS read_test (
     test_id   TEXT PRIMARY KEY,
     test_file TEXT NOT NULL,
-    opaque    TEXT NOT NULL
+    opaque    TEXT NOT NULL,
+    observed  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS read_test_by_file ON read_test (test_file);
 CREATE TABLE IF NOT EXISTS read_edge (
     test_id TEXT NOT NULL,
-    path    TEXT NOT NULL,
-    PRIMARY KEY (test_id, path)
+    kind    TEXT NOT NULL,
+    target  TEXT NOT NULL,
+    PRIMARY KEY (test_id, kind, target)
 );
 CREATE TABLE IF NOT EXISTS read_file (
     test_file TEXT PRIMARY KEY,
@@ -96,7 +120,11 @@ CREATE TABLE IF NOT EXISTS read_expected (
     test_id   TEXT NOT NULL,
     PRIMARY KEY (test_file, test_id)
 );
-CREATE TABLE IF NOT EXISTS read_global (path TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS read_global (
+    kind   TEXT NOT NULL,
+    target TEXT NOT NULL,
+    PRIMARY KEY (kind, target)
+);
 CREATE TABLE IF NOT EXISTS read_meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -106,13 +134,28 @@ _MACHINE_COMMENT = re.compile(
     r"isort:|SPDX-)[^#\n]*"
     r"|^#!.*|#.*coding[:=].*")
 
-_DOC_OWNERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+_FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 CODE, DOCSTRINGS, COMMENTS = "code", "docstrings", "comments"
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create the evidence tables, discarding any of another version.
+
+    The evidence is rebuilt by running tests, so a table from an older layout
+    or an older recorder is dropped rather than migrated.
+    """
+    row = None
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'read_meta'").fetchone():
+        row = conn.execute(
+            "SELECT value FROM read_meta WHERE key = 'recorder'").fetchone()
+    if row is None or row[0] != str(RECORDER_VERSION):
+        for table in _TABLES:
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT OR IGNORE INTO read_meta (key, value) VALUES ('recorder', ?)",
+        (str(RECORDER_VERSION),))
     conn.commit()
 
 
@@ -135,6 +178,49 @@ def _machine_comments(source: str) -> list[str]:
         for match in _MACHINE_COMMENT.finditer(line))
 
 
+def _take_docstrings(tree: ast.Module) -> dict[str, list[str]]:
+    """Remove every docstring from ``tree`` and return them by owner.
+
+    The owner is named as Python names it at runtime (``__qualname__``:
+    ``Class.method``, ``outer.<locals>.inner``), and the module's own is
+    ``<module>``, so a recorded read of ``x.__doc__`` can be matched to the
+    docstring that changed. A name defined twice (a property and its setter)
+    keeps every docstring, in order.
+    """
+    found: dict[str, list[str]] = {}
+
+    def take(node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+             name: str) -> None:
+        first = node.body[0] if node.body else None
+        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            found.setdefault(name, []).append(first.value.value)
+            node.body = node.body[1:] or [ast.Pass()]
+
+    def scan(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _FUNCTIONS):
+                take(child, prefix + child.name)
+                scan(child, f"{prefix}{child.name}.<locals>.")
+            elif isinstance(child, ast.ClassDef):
+                take(child, prefix + child.name)
+                scan(child, f"{prefix}{child.name}.")
+            else:
+                scan(child, prefix)
+
+    take(tree, "<module>")
+    scan(tree, "")
+    return found
+
+
+def _parse(source: str) -> Optional[tuple[ast.Module, dict[str, list[str]]]]:
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    return tree, _take_docstrings(tree)
+
+
 def prose_digests(source: str) -> Optional[tuple[str, str]]:
     """``(code digest, docstring digest)`` of ``source``; None if unparsable.
 
@@ -142,23 +228,14 @@ def prose_digests(source: str) -> Optional[tuple[str, str]]:
     machine-read comments. Two sources with equal code digests differ only in
     prose.
     """
-    try:
-        tree = ast.parse(source)
-    except (SyntaxError, ValueError):
+    parsed = _parse(source)
+    if parsed is None:
         return None
-    machine = _machine_comments(source)
-    docs: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, _DOC_OWNERS) or not node.body:
-            continue
-        first = node.body[0]
-        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
-                and isinstance(first.value.value, str)):
-            docs.append(first.value.value)
-            node.body = node.body[1:] or [ast.Pass()]
-    code = ast.dump(tree, include_attributes=False) + "\0" + "\n".join(machine)
+    tree, docs = parsed
+    code = (ast.dump(tree, include_attributes=False) + "\0"
+            + "\n".join(_machine_comments(source)))
     return (hashlib.sha256(code.encode()).hexdigest(),
-            hashlib.sha256(json.dumps(docs).encode()).hexdigest())
+            hashlib.sha256(json.dumps(docs, sort_keys=True).encode()).hexdigest())
 
 
 def classify(base: Optional[str], current: Optional[str]) -> str:
@@ -175,85 +252,16 @@ def classify(base: Optional[str], current: Optional[str]) -> str:
     return COMMENTS if old[1] == new[1] else DOCSTRINGS
 
 
-# ── Runtime introspection ───────────────────────────────────────────────────
-
-_DOC_NAMES = frozenset({"getdoc", "pydoc"})
-_LINE_NAMES = frozenset({
-    "f_lineno", "tb_lineno", "co_firstlineno", "co_lines", "co_positions",
-    "getframeinfo", "extract_stack", "extract_tb", "currentframe", "_getframe",
-    "walk_stack", "walk_tb", "getouterframes", "getinnerframes",
-    "format_stack", "StackSummary",
-})
-_SOURCE_NAMES = frozenset({
-    "getsource", "getsourcelines", "findsource", "getcomments", "linecache",
-    "getline", "getlines", "lazycache",
-})
-#: Cheap test before parsing: a file with none of these words has no marker.
-_ANY_MARKER = re.compile(
-    "|".join(sorted({"__doc__", "help", "lineno", *_DOC_NAMES, *_LINE_NAMES,
-                     *_SOURCE_NAMES})))
-
-
-@dataclass(frozen=True)
-class Introspection:
-    """Lines of one file that introspect docstrings, line numbers or source.
-
-    ``own_doc`` is a bare ``__doc__`` name: the file's own docstring, which
-    matters only when that file's docstrings change.
-    """
-
-    own_doc: bool = False
-    doc: frozenset[int] = frozenset()
-    line: frozenset[int] = frozenset()
-    source: frozenset[int] = frozenset()
-
-    def any(self) -> bool:
-        return bool(self.own_doc or self.doc or self.line or self.source)
-
-
-def introspection(source: str) -> Introspection:
-    """Find runtime introspection in ``source`` (unparsable: none found)."""
-    if not _ANY_MARKER.search(source):
-        return Introspection()
-    try:
-        tree = ast.parse(source)
-    except (SyntaxError, ValueError):
-        return Introspection()
-    own = False
-    doc: set[int] = set()
-    line: set[int] = set()
-    src: set[int] = set()
-
-    def note(name: str, lineno: int) -> None:
-        if name in _DOC_NAMES:
-            doc.add(lineno)
-        if name in _LINE_NAMES:
-            line.add(lineno)
-        if name in _SOURCE_NAMES:
-            src.add(lineno)
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
-            if node.id == "__doc__":
-                own = True
-            note(node.id, node.lineno)
-        elif isinstance(node, ast.Attribute):
-            if node.attr == "__doc__":
-                doc.add(node.lineno)
-            note(node.attr, node.lineno)
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value == "__doc__":
-                doc.add(node.lineno)
-            if "%(lineno)" in node.value:
-                line.add(node.lineno)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                for part in alias.name.split("."):
-                    note(part, node.lineno)
-        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-              and node.func.id == "help"):
-            doc.add(node.lineno)
-    return Introspection(own, frozenset(doc), frozenset(line), frozenset(src))
+def changed_docstrings(base: str, current: str) -> frozenset[str]:
+    """The owners (see :func:`_take_docstrings`) whose docstring differs
+    between two sources, added and removed ones included. Empty when either
+    side does not parse: :func:`classify` already calls that code."""
+    old, new = _parse(base), _parse(current)
+    if old is None or new is None:
+        return frozenset()
+    return frozenset(
+        name for name in old[1].keys() | new[1].keys()
+        if old[1].get(name) != new[1].get(name))
 
 
 # ── Storing a run's evidence ────────────────────────────────────────────────
@@ -269,54 +277,63 @@ def _file_digest(path: Path) -> str:
     return digests[0] if digests else hashlib.sha256(text.encode()).hexdigest()
 
 
+_CHANNELS = (("reads", READ), ("docs", DOC), ("lines", LINE))
+_Events = dict[str, set[str]]
+
+
+def _events() -> _Events:
+    return {"reads": set(), "docs": set(), "lines": set(), "opaque": set()}
+
+
+def _merge(into: _Events, bucket: Mapping[str, Iterable[str]]) -> None:
+    for key, values in into.items():
+        values.update(bucket.get(key, ()))
+
+
 def fold_run(
     conn: sqlite3.Connection, reads_dir: Path, repo_root: Path, *,
     full_run: bool = False,
 ) -> int:
-    """Store one run's recorded reads; returns the number of tests stored.
+    """Store one run's record; returns the number of tests stored.
 
-    ``reads_dir`` holds one JSON file per pytest process. Per test the stored
-    reads are its own, those of every fixture it used (unioned across
-    processes by fixture key, because one worker may build what another
-    reuses) and those made while its module was imported.
+    ``reads_dir`` holds one JSON file per pytest process; a file written by
+    another version of the plugin is skipped. Per test the stored events are
+    its own, those of every fixture it used (unioned across processes by
+    fixture key, because one worker may build what another reuses) and those
+    made while its module was imported.
 
     REPLACE PER TEST, like the coverage index: a test in this run replaces its
     earlier record, others are untouched. A test file whose code digest
     changed loses all its records first, since they describe other code.
-    Unattributed reads accumulate, and are reset only by a full run.
+    Unattributed events accumulate, and are reset only by a full run.
     """
     ensure_schema(conn)
-    tests: dict[str, dict[str, set[str]]] = {}
+    tests: dict[str, _Events] = {}
+    observed: dict[str, bool] = {}
     used: dict[str, set[str]] = {}
-    fixtures: dict[str, dict[str, set[str]]] = {}
-    modules: dict[str, dict[str, set[str]]] = {}
+    fixtures: dict[str, _Events] = {}
+    modules: dict[str, _Events] = {}
     expected: dict[str, set[str]] = {}
-    global_reads: set[str] = set()
-    global_opaque: set[str] = set()
-
-    def merge(into: dict[str, dict[str, set[str]]], key: str,
-              bucket: Mapping[str, Sequence[str]]) -> None:
-        slot = into.setdefault(key, {"reads": set(), "opaque": set()})
-        slot["reads"].update(bucket.get("reads", ()))
-        slot["opaque"].update(bucket.get("opaque", ()))
+    loose = _events()
 
     for part in sorted(reads_dir.glob("*.json")):
         try:
             data = json.loads(part.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        if data.get("version") != RECORDER_VERSION:
+            continue
         for test_id, bucket in data.get("tests", {}).items():
-            merge(tests, test_id, bucket)
+            _merge(tests.setdefault(test_id, _events()), bucket)
             used.setdefault(test_id, set()).update(bucket.get("fixtures", ()))
+            observed[test_id] = bool(data.get("observed")) and observed.get(test_id, True)
         for key, bucket in data.get("fixtures", {}).items():
-            merge(fixtures, key, bucket)
+            _merge(fixtures.setdefault(key, _events()), bucket)
         for key, bucket in data.get("modules", {}).items():
-            merge(modules, key, bucket)
+            _merge(modules.setdefault(key, _events()), bucket)
         for test_file, ids in data.get("expected", {}).items():
             expected.setdefault(test_file, set()).update(ids)
-        loose = data.get("unattributed", {})
-        global_reads.update(loose.get("reads", ()))
-        global_opaque.update(loose.get("opaque", ()))
+        _merge(loose, data.get("unattributed", {}))
 
     cur = conn.cursor()
     by_file: dict[str, list[str]] = {}
@@ -340,31 +357,32 @@ def fold_run(
             cur.executemany(
                 "INSERT OR IGNORE INTO read_expected (test_file, test_id) VALUES (?, ?)",
                 [(test_file, i) for i in sorted(expected[test_file])])
-        module = modules.get(test_file, {"reads": set(), "opaque": set()})
         for test_id in ids:
-            reads = set(tests[test_id]["reads"]) | module["reads"]
-            opaque = set(tests[test_id]["opaque"]) | module["opaque"]
+            events = _events()
+            _merge(events, tests[test_id])
+            _merge(events, modules.get(test_file, {}))
             for key in used.get(test_id, ()):
-                fixture = fixtures.get(key)
-                if fixture is not None:
-                    reads |= fixture["reads"]
-                    opaque |= fixture["opaque"]
+                _merge(events, fixtures.get(key, {}))
             cur.execute("DELETE FROM read_edge WHERE test_id = ?", (test_id,))
             cur.execute(
-                "INSERT INTO read_test (test_id, test_file, opaque) VALUES (?, ?, ?) "
-                "ON CONFLICT (test_id) DO UPDATE SET "
-                "test_file = excluded.test_file, opaque = excluded.opaque",
-                (test_id, test_file, ",".join(sorted(opaque))))
+                "INSERT INTO read_test (test_id, test_file, opaque, observed) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT (test_id) DO UPDATE SET "
+                "test_file = excluded.test_file, opaque = excluded.opaque, "
+                "observed = excluded.observed",
+                (test_id, test_file, ",".join(sorted(events["opaque"])),
+                 int(observed[test_id])))
             cur.executemany(
-                "INSERT OR IGNORE INTO read_edge (test_id, path) VALUES (?, ?)",
-                [(test_id, p) for p in sorted(reads)])
+                "INSERT OR IGNORE INTO read_edge (test_id, kind, target) VALUES (?, ?, ?)",
+                [(test_id, kind, target) for name, kind in _CHANNELS
+                 for target in sorted(events[name])])
 
     if full_run:
         cur.execute("DELETE FROM read_global")
         cur.execute("DELETE FROM read_meta WHERE key = 'global_opaque'")
-    cur.executemany("INSERT OR IGNORE INTO read_global (path) VALUES (?)",
-                    [(p,) for p in sorted(global_reads)])
-    spawned = sorted(global_opaque)
+    cur.executemany(
+        "INSERT OR IGNORE INTO read_global (kind, target) VALUES (?, ?)",
+        [(kind, target) for name, kind in _CHANNELS for target in sorted(loose[name])])
+    spawned = sorted(loose["opaque"])
     if spawned:
         row = cur.execute(
             "SELECT value FROM read_meta WHERE key = 'global_opaque'").fetchone()
@@ -380,194 +398,137 @@ def fold_run(
 # ── Deciding ────────────────────────────────────────────────────────────────
 
 
+def _not_inert(spawns: str) -> list[str]:
+    """The recorded spawns (``event:program``, comma-joined) that could read
+    a repository file."""
+    return [s for s in spawns.split(",")
+            if s and s.rpartition(":")[2] not in INERT_PROGRAMS]
+
+
 def global_refusal(conn: sqlite3.Connection) -> Optional[str]:
     """Why the rule must not act at all, or None."""
     ensure_schema(conn)
     row = conn.execute(
         "SELECT value FROM read_meta WHERE key = 'global_opaque'").fetchone()
-    if row and row[0]:
-        return f"a process was started outside any test ({row[0]})"
+    spawned = _not_inert(row[0]) if row and row[0] else []
+    if spawned:
+        return f"a process was started outside any test ({','.join(spawned)})"
     if conn.execute("SELECT 1 FROM read_test LIMIT 1").fetchone() is None:
         return "no read evidence recorded yet (run smart-test --full once)"
+    return None
+
+
+def _doc_hit(targets: Iterable[str],
+             changed_docs: Mapping[str, frozenset[str]]) -> Optional[str]:
+    """The changed docstring one of these recorded reads could have seen.
+
+    A target is ``path::owner``, ``path::*`` (any docstring of that file) or
+    ``*`` (any docstring at all).
+    """
+    for target in sorted(targets):
+        if target == ANY:
+            for path in sorted(changed_docs):
+                if changed_docs[path]:
+                    return f"a docstring it cannot be tied to (so that of {path})"
+            continue
+        path, _, owner = target.partition("::")
+        owners = changed_docs.get(path, frozenset())
+        if owners and (owner == ANY or owner in owners):
+            return f"the docstring of {path}::{sorted(owners)[0] if owner == ANY else owner}"
+    return None
+
+
+def _line_hit(targets: Iterable[str], prose: Mapping[str, str]) -> Optional[str]:
+    """The prose-only file whose line numbers one of these reads could have
+    seen. A target is a path, or ``*`` for any file."""
+    for target in sorted(targets):
+        if target == ANY and prose:
+            return f"line numbers it cannot be tied to (so those of {sorted(prose)[0]})"
+        if target in prose:
+            return f"the line numbers of {target}"
     return None
 
 
 def eligible_prose_files(
     conn: sqlite3.Connection,
     kinds: Mapping[str, str],
-    sources: Mapping[str, str],
+    changed_docs: Mapping[str, frozenset[str]],
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Split changed files into prose-only ones and the rest.
 
     ``kinds`` maps each changed repo-relative ``.py`` path to its
-    :func:`classify` result and ``sources`` to its current text. Returns
-    ``(prose, rejected)``: ``prose`` maps the eligible paths to DOCSTRINGS or
-    COMMENTS, ``rejected`` maps the other prose-changed paths to the reason.
-    Files classified as code appear in neither.
+    :func:`classify` result and ``changed_docs`` to its
+    :func:`changed_docstrings`. Returns ``(prose, rejected)``: ``prose`` maps
+    the eligible paths to DOCSTRINGS or COMMENTS, ``rejected`` maps the other
+    prose-changed paths to the reason. Files classified as code appear in
+    neither.
     """
     ensure_schema(conn)
-    everyone = {r[0] for r in conn.execute("SELECT path FROM read_global")}
+    everyone: dict[str, set[str]] = {READ: set(), DOC: set(), LINE: set()}
+    for kind, target in conn.execute("SELECT kind, target FROM read_global"):
+        everyone[kind].add(target)
     prose: dict[str, str] = {}
     rejected: dict[str, str] = {}
     for path, kind in sorted(kinds.items()):
         if kind == CODE:
             continue
-        if path in everyone:
+        own_docs = {path: changed_docs.get(path, frozenset())}
+        if path in everyone[READ]:
             rejected[path] = "read outside any test, so every test may depend on it"
-        elif kind == DOCSTRINGS and introspection(sources.get(path, "")).own_doc:
-            rejected[path] = "uses its own __doc__, and its docstrings changed"
+        elif _line_hit(everyone[LINE], {path: kind}):
+            rejected[path] = "its line numbers are read outside any test"
+        elif _doc_hit(everyone[DOC], own_docs):
+            rejected[path] = "a docstring it changed is read outside any test"
         else:
             prose[path] = kind
     return prose, rejected
 
 
-@dataclass(frozen=True)
-class ProseNarrowing:
-    """The outcome of applying the prose-only rule to a run set.
-
-    ``kept`` is what to run. ``reasons`` gives, for each candidate test file
-    that was kept, why it could not be dropped. ``added`` are readers of a
-    prose-only file that the candidate set did not contain.
-    """
-
-    kept: frozenset[str]
-    dropped: frozenset[str]
-    added: frozenset[str]
-    reasons: Mapping[str, str]
-
-
-def _ids_by_file(ids: Iterable[str]) -> dict[str, set[str]]:
-    out: dict[str, set[str]] = {}
-    for test_id in ids:
-        out.setdefault(test_id.split("::", 1)[0], set()).add(test_id)
-    return out
-
-
-def _introspecting_tests(
-    conn: sqlite3.Connection, repo_root: Path, prose: Mapping[str, str],
-    marker_files: Mapping[str, Introspection], sources: Mapping[str, str],
-) -> tuple[set[str], set[str]]:
-    """Tests that executed an introspecting block of a non-test module AND
-    could have been handed something from a prose-only file.
-
-    Returns ``(test ids, unspeakable marker files)``. A marker file under
-    ``packages/*/src`` is answered from the coverage index: the tests with a
-    row for the block that holds the marker. Any other marker file (a script,
-    a conftest) is outside coverage, and is returned for the caller to match
-    against test files by location and by name.
-
-    Docstring introspection counts only for the prose-only files whose
-    docstrings changed; line-number introspection counts for all of them. In
-    both cases a test can observe a file's docstring or line numbers only if
-    it loaded the file, so the block's tests are intersected with the tests
-    that have any coverage row for one of those files (import-time rows
-    included). A changed file the coverage index has never measured (a
-    script, a test file) could have been loaded by anyone, and then every
-    test executing the block counts.
-
-    ``getsource`` and ``linecache`` in a source module need nothing here: a
-    file read through linecache is recorded as read by every test and is not
-    prose-only at all.
-    """
-    changed_docs = {p for p, kind in prose.items() if kind == DOCSTRINGS}
-    relevant = {"line": set(prose), "doc": changed_docs}
-    observers: set[str] = set()
-    unspeakable: set[str] = set()
-    for rel, marks in sorted(marker_files.items()):
-        channels = {name: lines for name, lines in
-                    (("line", marks.line), ("doc", marks.doc))
-                    if lines and relevant[name]}
-        if not channels:
-            continue
-        parts = Path(rel).parts
-        if not (parts[:1] == ("packages",) and "src" in parts):
-            unspeakable.add(rel)
-            continue
-        owner = line_owner(blocks_for_source(rel, sources[rel]))
-        rows = conn.execute(
-            "SELECT test_id, name FROM test_block WHERE path = ?",
-            (str(repo_root / rel),)).fetchall()
-        for channel, lines in channels.items():
-            names = {owner[n] for n in lines}
-            executing = {t for t, name in rows if name in names}
-            loaded: set[str] = set()
-            for path in relevant[channel]:
-                absolute = str(repo_root / path)
-                if conn.execute("SELECT 1 FROM block WHERE path = ? LIMIT 1",
-                                (absolute,)).fetchone() is None:
-                    # Outside coverage (a script, a test file): who loaded
-                    # it is unknown, so every executing test counts.
-                    loaded = executing
-                    break
-                loaded.update(r[0] for r in conn.execute(
-                    "SELECT DISTINCT test_id FROM test_block WHERE path = ?",
-                    (absolute,)))
-            observers |= rebase_to_repo(executing & loaded, repo_root)
-    return observers, unspeakable
-
-
-def narrow_for_prose(
+def tests_for_prose(
     conn: sqlite3.Connection,
     repo_root: Path,
-    run_set: Iterable[str],
+    universe: Iterable[str],
     prose: Mapping[str, str],
-    *,
-    keep: Iterable[str] = (),
-    tracked_sources: Mapping[str, str],
-) -> ProseNarrowing:
-    """Drop from ``run_set`` the tests a prose-only change cannot affect.
+    changed_docs: Mapping[str, frozenset[str]],
+) -> dict[str, str]:
+    """The test files a prose-only change must run, each with the reason.
 
-    ``prose`` is :func:`eligible_prose_files`' first result. ``keep`` is the
-    selection for the NON-prose changed files, kept unconditionally.
-    ``tracked_sources`` maps every tracked repo-relative ``.py`` file that may
-    hold introspection to its text (the caller pre-filters nothing: this
-    function finds the markers).
+    ``universe`` is every test file on disk, ``prose`` is
+    :func:`eligible_prose_files`' first result and ``changed_docs`` gives
+    :func:`changed_docstrings` for each of its paths. A test file absent from
+    the result has a complete, current record that shows none of the ways of
+    seeing the change.
+
+    The import graph is not consulted. Importing a prose-only file gives a
+    test nothing the record does not show, and a test that reads the file
+    without importing it is found here where the import graph would miss it.
     """
     ensure_schema(conn)
-    candidates = frozenset(f for f in run_set if f)
-    keep_set = frozenset(f for f in keep if f)
-    prose_paths = set(prose)
+    docs = {path: changed_docs.get(path, frozenset()) for path in prose}
 
-    reads: dict[str, set[str]] = {}
-    for test_id, path in conn.execute("SELECT test_id, path FROM read_edge"):
-        reads.setdefault(test_id, set()).add(path)
-    records = {r[0]: (r[1], r[2]) for r in conn.execute(
-        "SELECT test_id, test_file, opaque FROM read_test")}
-    recorded = _ids_by_file(records)
+    edges: dict[str, dict[str, set[str]]] = {}
+    for test_file, kind, target in conn.execute(
+            "SELECT t.test_file, e.kind, e.target FROM read_edge e "
+            "JOIN read_test t ON t.test_id = e.test_id"):
+        edges.setdefault(test_file, {READ: set(), DOC: set(), LINE: set()})[kind].add(target)
+    recorded: dict[str, set[str]] = {}
+    spawns: dict[str, set[str]] = {}
+    unobserved: set[str] = set()
+    for test_id, test_file, opaque, observed in conn.execute(
+            "SELECT test_id, test_file, opaque, observed FROM read_test"):
+        recorded.setdefault(test_file, set()).add(test_id)
+        spawns.setdefault(test_file, set()).update(_not_inert(opaque))
+        if not observed:
+            unobserved.add(test_file)
     expected: dict[str, set[str]] = {}
     for test_file, test_id in conn.execute(
             "SELECT test_file, test_id FROM read_expected"):
         expected.setdefault(test_file, set()).add(test_id)
     digests = dict(conn.execute("SELECT test_file, digest FROM read_file"))
-    measured = rebase_to_repo(
-        {r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block")}
-        | {r[0] for r in conn.execute("SELECT test_id FROM unmeasured_test")},
-        repo_root)
 
-    marker_files = {
-        rel: marks for rel, text in tracked_sources.items()
-        if (marks := introspection(text)).any()
-    }
-    test_markers = {rel for rel in marker_files if _is_test_file(rel)}
-    observers, unspeakable = _introspecting_tests(
-        conn, repo_root, prose,
-        {rel: m for rel, m in marker_files.items() if rel not in test_markers},
-        tracked_sources)
-
-    def unspeakable_hit(test_file: str) -> Optional[str]:
-        text = tracked_sources.get(test_file, "")
-        for rel in sorted(unspeakable):
-            marker = Path(rel)
-            in_tests_dir = marker.name == "conftest.py" or "tests" in marker.parts
-            if in_tests_dir and test_file.startswith(f"{marker.parent}/"):
-                return rel
-            if marker.stem in text or marker.stem.replace("-", "_") in text:
-                return rel
-        return None
-
-    def reason_to_keep(test_file: str) -> Optional[str]:
-        if test_file in test_markers:
-            return "introspects docstrings, line numbers or source itself"
+    def reason(test_file: str) -> Optional[str]:
+        if test_file in prose:
+            return "is one of the changed files"
         ids = recorded.get(test_file)
         if not ids or test_file not in digests:
             return "no read record"
@@ -576,41 +537,53 @@ def narrow_for_prose(
         wanted = expected.get(test_file)
         if not wanted or not wanted <= ids:
             return "read record is incomplete"
-        for test_id in sorted(ids):
-            if records[test_id][1]:
-                return f"starts a process ({records[test_id][1]})"
-        hit = sorted(set().union(*(reads.get(i, set()) for i in ids)) & prose_paths)
-        if hit:
-            return f"reads {hit[0]}"
-        if not wanted <= measured:
-            return "coverage index does not know every test in it"
-        if ids & observers:
-            return "executes code that introspects docstrings, line numbers or source"
-        marker = unspeakable_hit(test_file)
-        if marker:
-            return f"may execute introspecting code in {marker}"
-        return None
+        if spawns[test_file]:
+            return f"starts a process ({','.join(sorted(spawns[test_file]))})"
+        if test_file in unobserved:
+            return "recorded without runtime observation (needs Python 3.12)"
+        mine = edges.get(test_file, {READ: set(), DOC: set(), LINE: set()})
+        hit = sorted(mine[READ] & prose.keys())
+        seen = (hit[0] if hit else None) or _line_hit(mine[LINE], prose) \
+            or _doc_hit(mine[DOC], docs)
+        return f"reads {seen}" if seen else None
 
-    reasons: dict[str, str] = {}
-    dropped: set[str] = set()
-    for test_file in sorted(candidates - keep_set):
-        why = reason_to_keep(test_file)
-        if why is None:
-            dropped.add(test_file)
-        else:
-            reasons[test_file] = why
+    return {test_file: why for test_file in sorted({f for f in universe if f})
+            if (why := reason(test_file)) is not None}
 
-    readers = {
-        records[test_id][0] for test_id, paths in reads.items()
-        if paths & prose_paths and test_id in records
+
+@dataclass(frozen=True)
+class ProseSelection:
+    """What the prose-only rule decides for one change.
+
+    ``files`` maps each prose-only changed path to DOCSTRINGS or COMMENTS;
+    ``rejected`` maps the prose-changed paths the rule may not treat that way
+    to the reason; ``tests`` maps each test file the prose-only files select
+    to why it must run.
+    """
+
+    files: Mapping[str, str]
+    rejected: Mapping[str, str]
+    tests: Mapping[str, str]
+
+
+def select_for_prose(
+    conn: sqlite3.Connection,
+    repo_root: Path,
+    changed: Mapping[str, tuple[Optional[str], Optional[str]]],
+    universe: Iterable[str],
+) -> ProseSelection:
+    """Apply the rule to a change.
+
+    ``changed`` maps each changed repo-relative ``.py`` path to its
+    ``(base, current)`` source, None for a side on which the file does not
+    exist. The caller selects tests for every changed file NOT in the
+    result's ``files`` by its usual means.
+    """
+    kinds = {path: classify(base, current) for path, (base, current) in changed.items()}
+    changed_docs = {
+        path: changed_docstrings(base or "", current or "")
+        for path, (base, current) in changed.items() if kinds[path] == DOCSTRINGS
     }
-    added = frozenset(
-        f for f in readers - candidates - keep_set
-        if (repo_root / f).is_file())
-    kept = (candidates - dropped) | keep_set | added
-    return ProseNarrowing(kept=frozenset(kept), dropped=frozenset(dropped),
-                          added=added, reasons=reasons)
-
-
-def _is_test_file(rel: str) -> bool:
-    return Path(rel).name.startswith(("test_", "BRANCHES_test_"))
+    files, rejected = eligible_prose_files(conn, kinds, changed_docs)
+    tests = tests_for_prose(conn, repo_root, universe, files, changed_docs) if files else {}
+    return ProseSelection(files=files, rejected=rejected, tests=tests)

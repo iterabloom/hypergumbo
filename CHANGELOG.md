@@ -154,6 +154,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
 - **smart-test: a comment-or-docstring-only change runs only tests that read the file.**
 - **The prose-only rule keeps fewer tests: exact directive comments, linecache reads, loaded-file checks.**
+- **Comment-or-docstring changes pick tests from recorded evidence, in CI too, skipping the slice.**
 - **A sketch test no longer leaks its redirected temp directory into later tests.**
 - **`scripts/smart-test-bed`**: scores smart-test's test selection on a small repo.
 - **`smart-test --full` on an unchanged tree now updates the selection index.**

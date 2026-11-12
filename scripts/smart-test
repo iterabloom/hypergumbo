@@ -52,8 +52,8 @@
 # TOOLS_ROOT's types), coverage roots are the target's packages/*/src, the
 # no-embeddings coverage config is used only if the target has one, and test
 # timings are not ingested into this machine's leaderboard.
-# SMART_TEST_SELECTION_OUT=<dir> writes manifest.txt, after-prose.txt, after-union.txt,
-# local.txt and run-order.txt there once the local run set is final, so a
+# SMART_TEST_SELECTION_OUT=<dir> writes manifest.txt, after-union.txt, local.txt and
+# run-order.txt there once the local run set is final, so a
 # caller can read every stage of one selection without parsing the log.
 #
 # FAILURE-FIRST, AND A RED RUN STOPS EARLY (WI-fipuf). A targeted run hands
@@ -176,12 +176,13 @@ SELECT_UNION=true
 SELECT_NARROW=false
 
 # THE PROSE-ONLY RULE: a changed .py file whose code is unchanged (comments
-# and docstrings only) selects just the tests with a reason to read its text,
-# not every test that imports it. On by default for the LOCAL run set, because
-# it drops a test only on recorded evidence that the test does not read the
-# file (see hypergumbo_core.prose_only for the evidence and its limits). The
-# manifest is untouched, so the merge-gating CI still runs the import-graph
-# selection. Opt out per run with --no-prose-rule.
+# and docstrings only) selects just the tests recorded seeing its text, its
+# docstrings or its line numbers, not every test that imports it. It leaves a
+# test out only on a complete, current record that the test sees none of them
+# (see hypergumbo_core.prose_only for the evidence and its limits). It is part
+# of the MANIFEST selection, so the merge-gating CI runs the same short list
+# (owner instruction, 2026-11-11: a docstring change must not cost a
+# thousand test files, locally or in CI). Opt out per run with --no-prose-rule.
 SELECT_PROSE=true
 
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
@@ -252,7 +253,8 @@ done
 # wiring, not to let a selector shrink the merge gate.
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
-    # The prose-only rule removes tests too, and its evidence is local state.
+    # The prose-only rule's evidence is recorded on a developer's machine;
+    # there is none here, and CI consumes the manifest rather than selecting.
     SELECT_PROSE=false
 fi
 
@@ -898,7 +900,11 @@ run_pytest() {
         mkdir -p "$reads_dir"
         rm -f "$reads_dir"/*.json
         plugin_path="$plugin_dir${PYTHONPATH:+:$PYTHONPATH}"
-        extra_args=("-p" "pytest_source_reads" "--source-reads-dir=$reads_dir" "${extra_args[@]}")
+        # compute_pass_version reads a pass module's source and returns only
+        # its hash; see the plugin's docstring for why that is not a read.
+        extra_args=("-p" "pytest_source_reads" "--source-reads-dir=$reads_dir"
+                    "--source-reads-hash-only=hypergumbo_core.ir:compute_pass_version"
+                    "${extra_args[@]}")
     fi
 
     mkdir -p "$MANIFEST_DIR"
@@ -1655,6 +1661,15 @@ if [[ -f "$REPO_ROOT/$CONFIDENCE_GATE_TEST" ]] \
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CONFIDENCE_GATE_TEST" | sed '/^$/d' | sort -u)
 fi
 
+# The prose-only files were taken out of $CHANGED_FILES before this function
+# ran (see THE PROSE-ONLY RULE below it); their tests come from recorded
+# evidence. Unioned before the emptiness check, so a change that is ALL prose
+# reaches the manifest writer with those tests instead of the nothing-to-run
+# exit.
+if [[ -n "${PROSE_TESTS:-}" ]]; then
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$PROSE_TESTS" | sed '/^$/d' | sort -u)
+fi
+
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
     if [[ -z "$CHANGED_SOURCE_FILES" ]]; then
@@ -1681,6 +1696,9 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             # success -- but "docs/config only" would misdescribe it, so it gets
             # its own words, naming what was removed.
             NOTHING_TO_RUN_REASON="no test-relevant files changed (docs/config only)"
+            if [[ -n "${PROSE_ONLY_FILES:-}" ]]; then
+                NOTHING_TO_RUN_REASON="the change is comments and docstrings only, and no test is recorded seeing the changed files (--no-prose-rule uses the import graph)"
+            fi
             if [[ -n "$DELETED_TEST_FILES" ]]; then
                 NOTHING_TO_RUN_REASON="the only test-relevant change deletes test file(s): $(echo "$DELETED_TEST_FILES" | tr '\n' ' ' | sed 's/ $//')"
             fi
@@ -1871,6 +1889,51 @@ if [[ -f "$COV_DEPS_HELPER" && -f "$COV_DEPS_MAP" ]] && command -v python3 &>/de
 fi
 
 }
+
+# ── THE PROSE-ONLY RULE ──────────────────────────────────────────────────────
+# A changed .py file is PROSE-ONLY when its AST with docstrings removed, and
+# its machine-read comments, equal the baseline's. Such a change cannot alter
+# what a test executes. The only tests it can affect are those that see the
+# file's TEXT: a read of the file as data, a docstring or line number read at
+# runtime, a spawned process, or a test with no usable record. Those are
+# listed from recorded evidence alone (hypergumbo_core.prose_only; recorded on
+# every local run by scripts/pytest_plugins/pytest_source_reads.py), over
+# every test file in the repository.
+#
+# SO THE PROSE-ONLY FILES NEVER REACH THE IMPORT-GRAPH SLICE. They are taken
+# out of $CHANGED_FILES here, select_static runs on what is left, and their
+# tests ($PROSE_TESTS) are unioned in inside it. A change that is all prose
+# therefore skips the slice, which costs minutes on this repository, and its
+# manifest is the short list. They also leave the coverage gate, here and in
+# CI (which re-checks from the diff that their code is unchanged): their
+# executable lines are the baseline's.
+#
+# IT REFUSES RATHER THAN GUESSES: if the helper fails or declines, nothing is
+# taken out and the import graph selects for every changed file, as before.
+ALL_CHANGED_FILES="$CHANGED_FILES"
+PROSE_ONLY_FILES=""
+PROSE_TESTS=""
+if [[ "$SELECT_PROSE" == "true" ]]; then
+    _prose_dir=$(mktemp -d)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_prose_dir/changed" || true
+    if [[ -s "$_prose_dir/changed" ]]; then
+        "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+            ${VERBOSE:+--verbose} prose-select \
+            --changed-files "$_prose_dir/changed" --base "${BASELINE:-HEAD}" \
+            --files-out "$_prose_dir/files" --tests-out "$_prose_dir/tests" \
+            2>"$_prose_dir/err" || true
+        if [[ -s "$_prose_dir/err" ]]; then log "$(cat "$_prose_dir/err")"; fi
+    fi
+    if [[ -s "$_prose_dir/files" ]] && [[ -e "$_prose_dir/tests" ]]; then
+        PROSE_ONLY_FILES=$(sed '/^$/d' "$_prose_dir/files")
+        PROSE_TESTS=$(sed '/^$/d' "$_prose_dir/tests" | sort -u)
+        CHANGED_FILES=$(echo "$CHANGED_FILES" | grep -vxFf <(echo "$PROSE_ONLY_FILES") || true)
+        echo "Prose-only rule: $(echo "$PROSE_ONLY_FILES" | wc -l) changed file(s) differ only in comments or docstrings;" \
+             "recorded evidence selects $(echo "$PROSE_TESTS" | sed '/^$/d' | wc -l) test file(s) for them (--no-prose-rule uses the import graph)"
+    fi
+    rm -f "$_prose_dir"/* 2>/dev/null || true
+    rmdir "$_prose_dir" 2>/dev/null || true
+fi
 select_static
 
 # ─── THE MANIFEST SET AND THE LOCAL RUN SET PART COMPANY HERE ──────────────
@@ -1887,9 +1950,12 @@ select_static
 #
 # So: everything ABOVE this line is the static import-graph slice plus its
 # declarative augmentations, and that is what the manifest publishes. Everything
-# BELOW may widen or narrow `AFFECTED_TESTS` for THIS machine only. The two are
-# byte-identical today — no phase has landed — which is the point: the seam is
-# cut before there is anything to misuse it.
+# BELOW may widen or narrow `AFFECTED_TESTS` for THIS machine only.
+#
+# ONE EXCEPTION, by owner instruction of 2026-11-11: the prose-only rule sits
+# ABOVE the line. A change that is only comments and docstrings selects its
+# tests from recorded evidence for the manifest too, and the manifest header
+# says so ("Prose-only files"), so the narrowing is never silent.
 #
 # Pinned by packages/hypergumbo-core/tests/test_smart_test_manifest_split.py,
 # because a future edit that "simplifies" these back into one variable would
@@ -1900,95 +1966,9 @@ MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 # less careful consumer, empties) the merge gate. Refuse before it is written.
 require_selection_on_disk "the manifest (.ci/affected-tests.txt)" "$MANIFEST_TESTS"
 
-# ── THE PROSE-ONLY RULE ──────────────────────────────────────────────────────
-# BELOW THE SEAM: it changes the local run set and nothing CI reads.
-#
-# A changed .py file is PROSE-ONLY when its AST with docstrings removed, and
-# its machine-read comments, equal the baseline's. Such a change cannot alter
-# what a test executes, so the tests it selected through the import graph are
-# dropped -- except those with a reason to depend on the file's TEXT: a
-# recorded read of the file as data, a spawned process, runtime introspection
-# of docstrings or line numbers, or missing evidence. The decision and the
-# evidence rules live in hypergumbo_core.prose_only; the evidence is recorded
-# on every run by scripts/pytest_plugins/pytest_source_reads.py.
-#
-# THREE SETS. $_prose_keep is what the changed files OTHER than the prose-only
-# ones select, asked of select_static in a subshell with every way of running
-# or writing stubbed out; it is kept whole. The rest of $AFFECTED_TESTS is
-# kept test by test only for a reason. Tests recorded reading a prose-only
-# file are ADDED even where the import graph did not select them.
-#
-# IT REFUSES RATHER THAN GUESSES: if the helper fails, or the second selection
-# falls back to the full suite or errors, the run set stands as it was.
-#
-# The prose-only files also leave the LOCAL coverage gate and the coverage
-# union below ($LOCAL_CHANGED_FILES): their executable lines are unchanged, and
-# the tests that covered them are the ones just dropped.
+# The prose-only files are already out of $CHANGED_FILES, so the local coverage
+# gate and the coverage union below do not see them.
 LOCAL_CHANGED_FILES="$CHANGED_FILES"
-PROSE_ONLY_FILES=""
-# A --manifest run executes nothing, so the rule is skipped there unless a
-# caller asked for every stage of the selection (scripts/smart-test-bed).
-if [[ "$SELECT_PROSE" == "true" ]] && [[ "$FULL_RUN" != "true" ]] \
-        && { [[ "$MANIFEST_ONLY" != "true" ]] || [[ -n "${SMART_TEST_SELECTION_OUT:-}" ]]; }; then
-    _prose_dir=$(mktemp -d)
-    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_prose_dir/changed" || true
-    if [[ -s "$_prose_dir/changed" ]]; then
-        "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" prose-split \
-            --changed-files "$_prose_dir/changed" --base "${BASELINE:-HEAD}" \
-            --out "$_prose_dir/prose" 2>"$_prose_dir/split.err" || true
-        if [[ -s "$_prose_dir/split.err" ]]; then log "$(cat "$_prose_dir/split.err")"; fi
-    fi
-    if [[ -s "$_prose_dir/prose" ]]; then
-        PROSE_ONLY_FILES=$(cut -f2 "$_prose_dir/prose")
-        _prose_rest=$(echo "$CHANGED_FILES" | grep -vxFf <(echo "$PROSE_ONLY_FILES") || true)
-        : > "$_prose_dir/keep"
-        _prose_rc=0
-        if [[ -n "$_prose_rest" ]]; then
-            # `set +e` around a subshell that sets -e itself: inside `( … ) ||`
-            # errexit would be ignored, and select_static is written for it.
-            set +e
-            (
-                set -e
-                run_full_suite() { : > "$_prose_dir/full"; exit 0; }
-                run_pytest() { exit 0; }
-                write_fallback_diagnostic() { :; }
-                log() { :; }
-                MANIFEST_FILE="$_prose_dir/manifest"
-                CHANGED_FILES="$_prose_rest"
-                select_static
-                echo "$AFFECTED_TESTS" > "$_prose_dir/keep"
-            ) >/dev/null 2>&1
-            _prose_rc=$?
-            set -e
-        fi
-        if [[ $_prose_rc -ne 0 ]] || [[ -e "$_prose_dir/full" ]]; then
-            log "Prose-only rule: not applied (the other changed files do not select a targeted set)"
-            PROSE_ONLY_FILES=""
-        else
-            echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_prose_dir/run"
-            "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
-                ${VERBOSE:+--verbose} prose-narrow \
-                --prose-files "$_prose_dir/prose" --run-set "$_prose_dir/run" \
-                --keep "$_prose_dir/keep" --out "$_prose_dir/kept" \
-                2>"$_prose_dir/narrow.err" || true
-            # No output FILE means the helper died; an EMPTY file is an answer.
-            if [[ -e "$_prose_dir/kept" ]]; then
-                _prose_before=$(wc -l < "$_prose_dir/run")
-                AFFECTED_TESTS=$(sed '/^$/d' "$_prose_dir/kept" | sort -u)
-                LOCAL_CHANGED_FILES="$_prose_rest"
-                echo "Prose-only rule: $(echo "$PROSE_ONLY_FILES" | wc -l) changed file(s) differ only in comments or docstrings;" \
-                     "running $(echo "$AFFECTED_TESTS" | sed '/^$/d' | wc -l) test file(s) instead of $_prose_before (--no-prose-rule runs them all)"
-                if [[ -s "$_prose_dir/narrow.err" ]]; then log "$(cat "$_prose_dir/narrow.err")"; fi
-            else
-                log "Prose-only rule: not applied ($(cat "$_prose_dir/narrow.err" 2>/dev/null))"
-                PROSE_ONLY_FILES=""
-            fi
-        fi
-    fi
-    rm -f "$_prose_dir"/* 2>/dev/null || true
-    rmdir "$_prose_dir" 2>/dev/null || true
-fi
-PROSE_RUN_SET="$AFFECTED_TESTS"
 
 # ── Coverage-directed selection, PHASE 2: UNION (WI-kuliv) ───────────────────
 # BELOW THE SEAM ON PURPOSE. This widens the LOCAL run only; the manifest above
@@ -2066,7 +2046,9 @@ if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$LOCAL_CHANGED_FILES" ]]; then
     # answer means the helper died, and then the run set must stand rather than
     # collapse to nothing (pytest exits 5 — green — on an empty collection).
     if [[ -n "$NARROWED" ]]; then
-        AFFECTED_TESTS=$(echo "$NARROWED" | sed '/^$/d' | sort -u)
+        # Narrowing judges tests against $LOCAL_CHANGED_FILES, which the
+        # prose-only files are not in; the tests they selected stay.
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$NARROWED" "$PROSE_TESTS" | sed '/^$/d' | sort -u)
     fi
 fi
 
@@ -2104,7 +2086,6 @@ RUN_ORDER=$( {
 if [[ -n "${SMART_TEST_SELECTION_OUT:-}" ]]; then
     mkdir -p "$SMART_TEST_SELECTION_OUT"
     echo "$MANIFEST_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/manifest.txt"
-    echo "$PROSE_RUN_SET" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/after-prose.txt"
     echo "$UNION_RUN_SET" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/after-union.txt"
     echo "$AFFECTED_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/local.txt"
     echo "$RUN_ORDER" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/run-order.txt"
@@ -2135,9 +2116,12 @@ mkdir -p "$MANIFEST_DIR"
     echo "# Generated by smart-test at $(date -Iseconds)"
     echo "# Mode: targeted"
     echo "# Baseline: $BASELINE"
-    echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
+    echo "# Changed files: $(echo "$ALL_CHANGED_FILES" | wc -l)"
     echo "# Changed source files: $SOURCE_COUNT"
     echo "# Selected tests: $MANIFEST_TEST_COUNT"
+    if [[ -n "$PROSE_ONLY_FILES" ]]; then
+        echo "# Prose-only files: $(echo "$PROSE_ONLY_FILES" | wc -l) (comments and docstrings only; their tests come from recorded evidence, not the import graph)"
+    fi
     echo "#"
     echo "# === CHANGED_SOURCE_FILES ==="
     if [[ -n "$CHANGED_SOURCE_FILES" ]]; then
@@ -2165,13 +2149,6 @@ if [[ "$FULL_RUN" == "true" ]]; then
     _full_rc=$?
     fold_selection_index full
     exit $_full_rc
-fi
-
-# The prose-only rule can leave nothing to run: every changed file is
-# prose-only and no test has a reason to read one.
-if [[ -n "$PROSE_ONLY_FILES" ]] && [[ -z "$(echo "$AFFECTED_TESTS" | sed '/^$/d')" ]]; then
-    echo "smart-test: 0 tests ran - the change is comments and docstrings only, and no test reads the changed files (--no-prose-rule runs the import-graph selection)"
-    exit 0
 fi
 
 # The source files the LOCAL coverage gate answers for: the changed ones whose

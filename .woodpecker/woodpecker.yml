@@ -584,7 +584,22 @@ steps:
         # Reuse the range computed above rather than re-running the diff: when it
         # failed, re-running it just fails again silently and this would size the
         # coverage gate off an empty set (WI-vilor).
-        ACTUAL_SOURCE_FILES=$(echo "$CHANGED_IN_RANGE" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
+        #
+        # PROSE-ONLY FILES LEAVE THE GATE. A changed .py file whose code equals
+        # the base's (comments and docstrings only; scripts/prose-only-files
+        # compares the two ASTs) has no changed executable line, and smart-test
+        # selected its tests from recorded evidence instead of the import
+        # graph, so the tests that cover it are mostly not in the manifest.
+        # Gating it would fail the step on code nobody changed. The list is
+        # computed HERE from the diff and never read from the manifest, so a
+        # manifest cannot talk a code change out of the gate; a helper that
+        # fails prints nothing and exempts nothing.
+        PROSE_ONLY_LIST="$(mktemp)"
+        python3 scripts/prose-only-files "$BASE" "$HEAD" > "$PROSE_ONLY_LIST" 2>/dev/null || : > "$PROSE_ONLY_LIST"
+        if [ -s "$PROSE_ONLY_LIST" ]; then
+          echo "=== $(wc -l < "$PROSE_ONLY_LIST") changed .py file(s) differ only in comments or docstrings: not coverage-gated ==="
+        fi
+        ACTUAL_SOURCE_FILES=$(echo "$CHANGED_IN_RANGE" | grep -E '^packages/.*/src/.*\.py$' | grep -vxF -f "$PROSE_ONLY_LIST" | sort || true)
         CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST_SRC" | grep -v '^#' | grep -v '^$' || true)
         # Trust the actual diff when the manifest is missing files (staged-before-run drift).
         for f in $ACTUAL_SOURCE_FILES; do
