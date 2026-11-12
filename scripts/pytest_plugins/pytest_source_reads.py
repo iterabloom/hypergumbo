@@ -29,16 +29,14 @@ conftest, or a source module that scans files at import) is UNATTRIBUTED
 whichever test triggered the import, because the module runs once per process
 and keeps the result; so is one made by repository code outside every test.
 The consumer treats a file read that way as read by every test, and an
-unattributed spawn as a reason not to act at all. A spawn outside every test
-with no repository code on the stack (``platform.uname()`` at worker start-up)
-is dropped.
+unattributed spawn as a reason not to act at all.
 
 WHAT IS NOT A READ. An ``open`` whose two innermost Python frames are frozen
 importlib/runpy code (``get_data`` called by ``get_code``): that is an import.
-And an ``open`` made for pytest or coverage.py, directly or through the
-standard library (pytest finds a test's line number with ``inspect``). A direct
-``loader.get_data()`` or ``pkgutil.get_data()`` call has one frozen frame and
-is recorded as a read.
+And an ``open`` or spawn that pytest or one of its plugins makes for itself:
+walking outward from the event, pytest's code is reached before any
+repository code (pytest reads a test module to find line numbers; coverage
+reads the sources it reports on).
 
 NOT SEEN: a value cached in a module global by one test and used by another
 (neither a fixture nor a read in the second test). The consumer's docstring
@@ -64,9 +62,9 @@ SPAWN_EVENTS = frozenset({
     "os.fork", "os.forkpty", "pty.spawn",
 })
 
-#: Modules whose reads of a source file are the test machinery's own.
-_MACHINERY = ("_pytest.", "coverage.", "pytest_cov.", "xdist.", "pluggy.")
-_STDLIB = (os.path.dirname(os.__file__) + os.sep, "<frozen ")
+#: pytest's own modules. Walking outward from an event, reaching one of these
+#: before any repository code means pytest (or a plugin it called) did it.
+_PYTEST = ("_pytest.", "pluggy.")
 
 
 def pytest_addoption(parser: Any) -> None:
@@ -88,21 +86,22 @@ class _Bucket:
 
 
 def _is_import(frame: Any) -> bool:
-    """True when ``frame`` (the caller of ``open``) is the import system or
-    the test machinery, not code under test."""
+    """True when ``frame`` (the caller of ``open``) is the import system:
+    ``get_data`` called by ``get_code``, both frozen."""
     outer = frame.f_back
-    if (frame.f_code.co_filename.startswith("<frozen ")
+    return (frame.f_code.co_filename.startswith("<frozen ")
             and outer is not None
-            and outer.f_code.co_filename.startswith("<frozen ")):
-        return True
-    # pytest reads a test module's source while collecting it (through
-    # inspect and linecache, to find line numbers), and coverage reads what it
-    # reports on. Skip the standard library's frames to see who asked.
-    probe = frame
-    while probe is not None and probe.f_code.co_filename.startswith(_STDLIB):
-        probe = probe.f_back
-    return probe is not None and probe.f_globals.get(
-        "__name__", "").startswith(_MACHINERY)
+            and outer.f_code.co_filename.startswith("<frozen "))
+
+
+def _stack(frame: Any) -> list[tuple[str, str, str]]:
+    """``(filename, module name, function name)`` per frame, innermost first."""
+    out = []
+    while frame is not None:
+        out.append((frame.f_code.co_filename,
+                    frame.f_globals.get("__name__", ""), frame.f_code.co_name))
+        frame = frame.f_back
+    return out
 
 
 class SourceReads:
@@ -120,73 +119,61 @@ class SourceReads:
         self.modules: dict[str, _Bucket] = {}
         self.unattributed = _Bucket()
         self.expected: dict[str, list[str]] = {}
-        for event, args, filenames in _EARLY:
-            self._early(event, args, filenames)
+        # Events from before this recorder existed (an initial conftest).
+        for event, what, stack in _EARLY:
+            self.audit(event, what, stack)
         _EARLY.clear()
         _STATE["recorder"] = self
 
     # -- the audit hook ----------------------------------------------------
-    def _early(self, event: str, args: tuple[Any, ...], filenames: list[str]) -> None:
-        """An event from before this recorder existed (an initial conftest).
-
-        No test was running, so it is everyone's -- if it concerns the
-        repository at all.
-        """
-        if event == "open":
-            real = os.path.realpath(args[0])
-            if real.startswith(self.root) and not real.startswith(self.prefix):
-                self.unattributed.reads.add(real[len(self.root):])
-        elif any(self._is_repo_code(name) for name in filenames):
-            self.unattributed.opaque.add(args[0])
-
     def _is_repo_code(self, filename: str) -> bool:
         return (filename.startswith(self.root)
                 and not filename.startswith(self.prefix)
                 and "site-packages" not in filename)
 
-    def _targets(self, frame: Any) -> list[_Bucket]:
-        """The buckets an event under ``frame`` belongs to.
+    def _targets(self, stack: list[tuple[str, str, str]]) -> list[_Bucket]:
+        """The buckets an event with this stack belongs to; none if it is
+        the test machinery's own.
 
-        A repository module's BODY (other than the test module being
-        collected) runs once per process and keeps what it computes in its
-        globals, whichever test happened to import it first. An event under
-        one is therefore everyone's, not that test's.
+        Walking outward, the first frame that is repository code or pytest
+        decides. pytest first: pytest or a plugin did this for itself (it
+        reads a test module's source to find line numbers; coverage reads
+        what it reports on), and no test's outcome depends on it. This does
+        not look at install paths, which differ between a virtualenv and a
+        system Python.
+
+        Repository code first, and it is a module BODY other than the test
+        module being collected: the body runs once per process and keeps
+        what it computes in its globals, whichever test happened to import
+        it first, so the event is everyone's.
         """
-        repo_code = False
-        probe = frame
-        while probe is not None:
-            filename = probe.f_code.co_filename
+        for filename, module, function in stack:
             if self._is_repo_code(filename):
-                repo_code = True
-                if probe.f_code.co_name == "<module>":
-                    if os.path.realpath(filename) != self.collecting:
-                        return [self.unattributed]
-                    break
-            probe = probe.f_back
-        targets = list(self.scopes)
-        if self.test is not None:
-            targets.append(self.test)
-        if targets:
-            return targets
-        # Outside every test: third-party start-up (platform.uname() under
-        # xdist) is nobody's; repository code (a conftest hook) is everyone's.
-        return [self.unattributed] if repo_code else []
+                if (function == "<module>"
+                        and os.path.realpath(filename) != self.collecting):
+                    return [self.unattributed]
+                targets = list(self.scopes)
+                if self.test is not None:
+                    targets.append(self.test)
+                # Repository code outside every test (a conftest hook).
+                return targets or [self.unattributed]
+            if module.startswith(_PYTEST):
+                return []
+        return []
 
-    def audit(self, event: str, args: tuple[Any, ...], frame: Any) -> None:
+    def audit(self, event: str, what: str, stack: list[tuple[str, str, str]]) -> None:
         if not self.active:
             return
         if event == "open":
-            real = os.path.realpath(args[0])
+            real = os.path.realpath(what)
             if not real.startswith(self.root) or real.startswith(self.prefix):
                 return
             rel = real[len(self.root):]
-            # A read outside every test and outside repository code is still
-            # a read of a repository file: keep it, as everyone's.
-            for bucket in self._targets(frame) or [self.unattributed]:
+            for bucket in self._targets(stack):
                 bucket.reads.add(rel)
         else:
-            for bucket in self._targets(frame):
-                bucket.opaque.add(args[0])
+            for bucket in self._targets(stack):
+                bucket.opaque.add(what)
 
     # -- collection --------------------------------------------------------
     @pytest.hookimpl(tryfirst=True)
@@ -273,7 +260,7 @@ class SourceReads:
 #: it before any conftest) and cannot be removed. Until a recorder exists it
 #: buffers; a run without the option never creates one and drops the buffer.
 _STATE: dict[str, Any] = {"recorder": None, "buffering": True}
-_EARLY: list[tuple[str, tuple[Any, ...], list[str]]] = []
+_EARLY: list[tuple[str, str, list[tuple[str, str, str]]]] = []
 
 
 def _hook(event: str, args: tuple[Any, ...]) -> None:
@@ -283,32 +270,26 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
         if isinstance(mode, str) and mode[:1] in "wxa" and "+" not in mode:
             return
         try:
-            path = os.fsdecode(path)
+            what = os.fsdecode(path)
         except TypeError:  # a file descriptor
             return
-        if not path.endswith(".py"):
+        if not what.endswith(".py"):
             return
         frame = sys._getframe(1)
         if _is_import(frame):
             return
-        args = (path,)
     elif event in SPAWN_EVENTS:
         what = event
         if event == "subprocess.Popen":
             what = f"{event}:{os.path.basename(os.fsdecode(args[0] or '?'))}"
         frame = sys._getframe(1)
-        args = (what,)
     else:
         return
     recorder = _STATE["recorder"]
     if recorder is not None:
-        recorder.audit(event, args, frame)
+        recorder.audit(event, what, _stack(frame))
     elif _STATE["buffering"]:
-        filenames = []
-        while frame is not None:
-            filenames.append(frame.f_code.co_filename)
-            frame = frame.f_back
-        _EARLY.append((event, args, filenames))
+        _EARLY.append((event, what, _stack(frame)))
 
 
 sys.addaudithook(_hook)
