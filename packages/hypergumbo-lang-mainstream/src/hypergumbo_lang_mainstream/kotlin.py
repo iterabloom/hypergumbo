@@ -198,6 +198,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
     visibility_from_modifiers,
+    declares_async,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
@@ -1250,6 +1251,7 @@ def _extract_symbols_from_file(
                     name=func_name,
                     qualified_name=".".join((*_kotlin_scope(node, source), func_name)),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 # Extract annotations (decorators)

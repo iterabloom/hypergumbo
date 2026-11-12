@@ -158,6 +158,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
     SymbolsAt,
     visibility_from_modifiers,
+    declares_async,
 )
 from hypergumbo_core.overload_arity import (
     OverloadChoice, choose_overload, parameter_entry, scoped_table_stable_id,
@@ -1130,6 +1131,7 @@ def _extract_symbols_from_file(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name, qualified_name=_swift_chain(node, source, func_name),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 type_ancestors = _get_swift_type_ancestors(node, source)
@@ -1706,6 +1708,7 @@ def _swift_lifecycle_symbol(
             visibility_from_modifiers(modifiers),
             name=member, qualified_name=qualified,
             file_stable_id=file_stable_id,
+            is_async=declares_async(node),
         ),
         signature=signature,
         docstring=extract_preceding_doc_comment(node, source, "swift"),

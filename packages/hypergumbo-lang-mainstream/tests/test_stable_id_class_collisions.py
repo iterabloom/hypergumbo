@@ -36,6 +36,7 @@ import ast
 import json
 from pathlib import Path
 
+from hypergumbo_core.analyze.base import assemble_stable_id
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_lang_mainstream.py import _compute_stable_id
 
@@ -296,41 +297,26 @@ class TestAsyncFunctionDistinguished:
     """Async functions get their real param_count + arity_flags, not the class branch's."""
 
     def test_async_and_sync_function_with_same_signature_distinct(self, tmp_path: Path) -> None:
-        """Async function with N params must not collide with sync function with N params.
+        """An async function and a sync function with the same signature get
+        different stable_ids: ``async`` is a hash input (ADR-0035 §1).
 
-        A check for ``ast.FunctionDef`` alone is False for ``AsyncFunctionDef``,
-        which would send async functions into the class branch of
-        ``_compute_stable_id`` with ``param_count=0``,
-        ``arity_flags="False,False,False"`` — losing all signature
-        information.
+        The async def must also take the FUNCTION branch, not the class one:
+        a check for ``ast.FunctionDef`` alone is False for ``AsyncFunctionDef``
+        and would hash it as a parameterless class.
         """
-        src_sync = (
-            "def handle(req, resp):\n"
-            "    pass\n"
-        )
-        src_async = (
-            "async def handle(req, resp):\n"
-            "    pass\n"
-        )
-        sync = ast.parse(src_sync).body[0]
-        async_ = ast.parse(src_async).body[0]
+        sync = ast.parse("def handle(req, resp):\n    pass\n").body[0]
+        async_ = ast.parse("async def handle(req, resp):\n    pass\n").body[0]
         assert isinstance(sync, ast.FunctionDef)
         assert isinstance(async_, ast.AsyncFunctionDef)
         sid_sync = _compute_stable_id(sync)
         sid_async = _compute_stable_id(async_)
-        # Sync and async defs both hash with kind "function" and the same
-        # param_count/arity_flags, so with no name or scope passed they hash
-        # identically; this assertion only requires a well-formed id. The
-        # check that matters is below.
-        assert sid_sync != sid_async or sid_sync.startswith("sha256:")
-        # A 2-arg async function must not hash like a 0-arg sync function,
-        # which is what dropping its parameters would produce.
-        zero_arg_sync = ast.parse("def empty():\n    pass\n").body[0]
-        assert _compute_stable_id(zero_arg_sync) != sid_async, (
-            "Async function with 2 args collides with zero-arg sync function "
-            "— isinstance check missing AsyncFunctionDef"
-        )
-
+        assert sid_sync != sid_async
+        # The async id is the sync formula plus the marker -- the function
+        # branch's parameter count and flags -- never the class branch's.
+        assert sid_async == assemble_stable_id(
+            "function", 2, "False,False,False", "", "", "", "", 0, is_async=True)
+        klass = ast.parse("class handle:\n    pass\n").body[0]
+        assert sid_async != _compute_stable_id(klass)
 
 class TestCrossModuleIdenticalSymbolsDistinct:
     """Structurally-identical symbols in different modules must get distinct

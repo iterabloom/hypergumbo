@@ -2194,7 +2194,9 @@ def _compute_stable_id(
     and the tree-sitter ``TreeSitterAnalyzer.compute_stable_id`` path emit the identical formula::
 
         sha256({kind}:{param_count}:{arity_flags}:{decorators}
-               :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index})
+               :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}[:async])
+
+    An ``async def`` takes the function branch and adds the ``:async`` marker.
 
     Two choices keep this producer on that shared formula (WI-gitun / INV-tazaj):
 
@@ -2235,6 +2237,7 @@ def _compute_stable_id(
         name,
         qualified_name,
         occurrence_index,
+        is_async=isinstance(node, ast.AsyncFunctionDef),
     )
 
 
@@ -2267,6 +2270,7 @@ def python_callable_stable_id(
             kind, norm_sig, visibility_from_modifiers(modifiers),
             containing_stable_id, _extract_py_decorator_names(node),
             name=name, qualified_name=qualified_name,
+            is_async=isinstance(node, ast.AsyncFunctionDef),
         )
     return _compute_stable_id(
         node, containing_stable_id=containing_stable_id,

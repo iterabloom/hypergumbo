@@ -1466,11 +1466,17 @@ def assemble_stable_id(
     name: str,
     qualified_name: str,
     occurrence_index: int = 0,
+    *,
+    is_async: bool = False,
 ) -> str:
     """The single stable_id v6 hash formula (ADR-0035 §1), shared by every producer.
 
     ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
-             :name:qualified_name:occurrence_index)``
+             :name:qualified_name:occurrence_index[:async])``
+
+    ``is_async`` appends ``:async`` for an async (Kotlin: ``suspend``)
+    declaration: the caller gets a coroutine or future, a different contract,
+    so the id changes; every non-async id is the formula without the suffix.
 
     This is the one place the formula lives; both :meth:`TreeSitterAnalyzer.compute_stable_id`
     (the tree-sitter path) and the Python analyzer's ``_compute_stable_id`` (the AST path)
@@ -1491,8 +1497,38 @@ def assemble_stable_id(
     sig = (
         f"{kind}:{param_count}:{arity_flags}:{decorators}"
         f":{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}"
+        f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
+
+
+#: Appended to either stable_id formula's hash input for an async declaration.
+_ASYNC_SUFFIX = ":async"
+
+#: Token types that mark a declaration async: ``async`` (JS/TS, Rust, C#,
+#: Swift, Hack, Dart's body marker), ``async*`` (a Dart async generator) and
+#: ``suspend`` (Kotlin).
+_ASYNC_MARKER_TOKENS = frozenset({"async", "async*", "suspend"})
+
+
+def declares_async(node: "tree_sitter.Node") -> bool:
+    """True when ``node`` declares itself async, read from its own tokens.
+
+    Looks at the node's direct children and inside its modifier wrappers
+    (Rust ``function_modifiers``, C# ``modifier``, Kotlin ``modifiers`` /
+    ``function_modifier``), never into a body or parameter list, so an async
+    closure inside a function does not make the function async. Pass the node
+    that carries the marker: the declaration in most grammars, the
+    ``function_body`` in Dart.
+    """
+    pending = list(node.children)
+    while pending:
+        child = pending.pop()
+        if child.type in _ASYNC_MARKER_TOKENS:
+            return True
+        if "modifier" in child.type:
+            pending.extend(child.children)
+    return False
 
 
 #: A declaration's symbol, keyed by where its declaration node starts.
@@ -2231,6 +2267,7 @@ def make_typed_stable_id(
     name: str,
     qualified_name: str,
     file_stable_id: str = "",
+    is_async: bool = False,
 ) -> str:
     """Compute a typed-tier stable_id from a normalized signature.
 
@@ -2274,6 +2311,9 @@ def make_typed_stable_id(
             in different files hash distinctly — mirroring py.py's ``file_containing_id``
             (ADR-0035 §1/§4). Produce it via :meth:`TreeSitterAnalyzer._file_anchor`. An
             explicit non-empty ``containing_stable_id`` always wins.
+        is_async: True for an async (Kotlin: ``suspend``) declaration; appends
+            ``:async`` to the hash input, as in :func:`assemble_stable_id`. Read
+            it from the node with :func:`declares_async`.
 
     Returns:
         Stable ID in ``sha256:{16-hex-chars}`` format.
@@ -2286,6 +2326,7 @@ def make_typed_stable_id(
     sig = (
         f"{kind}:{normalized_signature}:{visibility}"
         f":{decorators}:{containing_stable_id}:{name}:{qualified_name}"
+        f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
 
@@ -4432,7 +4473,8 @@ class TreeSitterAnalyzer:
         decorators = self._extract_decorator_names(node)
         decorators_str = ",".join(sorted(decorators))
 
-        # 3. Hash via the shared v6 formula (ADR-0035 §1).
+        # 3. Hash via the shared v6 formula (ADR-0035 §1); an async
+        # declaration's marker is read from the node itself.
         return assemble_stable_id(
             kind,
             flags.param_count,
@@ -4442,6 +4484,7 @@ class TreeSitterAnalyzer:
             name,
             qualified_name,
             occurrence_index,
+            is_async=declares_async(node),
         )
 
     def _find_params_node(

@@ -158,6 +158,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
+    declares_async,
 )
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -1509,6 +1510,7 @@ def _extract_symbols_from_file(
                     name=func_name,
                     qualified_name=rust_hashed_qualified_name(node, source, owner, func_name),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 mod_path = _get_rust_mod_path(node, source)
@@ -1934,6 +1936,7 @@ def _extract_symbols_from_file(
                         name=f_name,
                         qualified_name=rust_hashed_qualified_name(node, source, None, f_name),
                         file_stable_id=file_stable_id,
+                        is_async=declares_async(node),
                     ) if f_norm_sig else None,
                     docstring=extract_preceding_doc_comment(node, source, "rust"),
                     meta=f_meta,
@@ -1997,6 +2000,7 @@ def _extract_symbols_from_file(
                             node, source, trait_owner, sig_name,
                         ),
                         file_stable_id=file_stable_id,
+                        is_async=declares_async(node),
                     ) if s_norm_sig else None,
                     line_span=s_end - s_start + 1,
                     # Reachable exactly when the trait is; a trait method

@@ -281,6 +281,7 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     make_variable_stable_id,
     node_text as _node_text,
+    declares_async,
 )
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -4792,6 +4793,7 @@ def _extract_symbols(
                     name=name,
                     qualified_name=_jsts_chain(node, source, name, lang),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -4864,6 +4866,7 @@ def _extract_symbols(
                             name=name,
                             qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
+                            is_async=declares_async(value_node),
                         ) if norm_sig else None
 
                         symbol = Symbol(
@@ -5142,6 +5145,7 @@ def _extract_symbols(
                             name=name,
                             qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
+                            is_async=declares_async(node),
                         )
 
                 symbol = Symbol(
@@ -5245,6 +5249,7 @@ def _extract_symbols(
                             name=name,
                             qualified_name=_jsts_chain(child, source, name, lang),
                             file_stable_id=file_stable_id,
+                            is_async=declares_async(child),
                         ) if norm_sig else None
 
                         symbol = Symbol(
@@ -5299,6 +5304,7 @@ def _extract_symbols(
                     name=anon_name,
                     qualified_name=_jsts_chain(node, source, anon_name, lang),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
                 symbols.append(Symbol(
                     id=_make_symbol_id(
