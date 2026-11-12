@@ -49,6 +49,22 @@ def _stage(scores: dict, edit: str, stage: str) -> set[str]:
     return set(scores[edit]["selected"][stage])
 
 
+#: The recorder ties a docstring or line-number read to a test with
+#: ``sys.monitoring`` (Python 3.12+). On an older Python every record lacks
+#: that observation, no test can be shown not to see a change, and the rule
+#: gives way to the import graph. Each side is pinned on the Python it holds on.
+WATCHES = sys.version_info >= (3, 12)
+needs_watching = pytest.mark.skipif(
+    not WATCHES, reason="the rule gives way without sys.monitoring; see the test for that")
+
+
+@pytest.mark.skipif(WATCHES, reason="the rule applies here; see the tests for that")
+@pytest.mark.parametrize("edit", ["comment-only", "docstring-only", "comment-with-code"])
+def test_without_runtime_observation_the_rule_gives_way(scores: dict, edit: str) -> None:
+    assert _stage(scores, edit, "manifest") == _stage(scores, edit, "static")
+
+
+@needs_watching
 def test_a_comment_edit_runs_its_text_readers_and_not_its_importers(scores: dict) -> None:
     static = _stage(scores, "comment-only", "static")
     manifest = _stage(scores, "comment-only", "manifest")
@@ -63,6 +79,7 @@ def test_a_comment_edit_runs_its_text_readers_and_not_its_importers(scores: dict
     assert manifest == set(scores["comment-only"]["must"])
 
 
+@needs_watching
 def test_a_docstring_read_at_runtime_runs_the_tests_that_read_it(scores: dict) -> None:
     """misc.help_text() returns usage.__doc__: no file is read, and the
     recorder names the docstring each test saw."""
@@ -79,6 +96,7 @@ def test_control_a_code_or_machine_comment_edit_is_left_alone(scores: dict, edit
     assert _stage(scores, edit, "manifest") == _stage(scores, edit, "static")
 
 
+@needs_watching
 def test_a_code_edit_beside_a_comment_edit_keeps_its_whole_selection(scores: dict) -> None:
     mixed = _stage(scores, "comment-with-code", "manifest")
     # tables.py changed for real: its importer stays.
@@ -90,6 +108,7 @@ def test_a_code_edit_beside_a_comment_edit_keeps_its_whole_selection(scores: dic
     assert set(scores["comment-with-code"]["must"]) <= mixed
 
 
+@needs_watching
 def test_the_later_stages_keep_what_the_rule_selected(scores: dict) -> None:
     """The coverage union and the opt-in narrowing judge tests against the
     files whose code changed; the prose-only files are not among those."""
