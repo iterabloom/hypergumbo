@@ -164,7 +164,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=3075,
+                line=3059,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
@@ -178,7 +178,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/bash.py"
                 ),
-                line=1589,
+                line=1577,
                 anchor='module_path="redirect"',
                 note=(
                     "The SHELL'S OWN NAMESPACE for its redirection operators "
@@ -214,7 +214,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=1146,
+                line=1137,
                 anchor="_module = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
@@ -255,7 +255,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=2992,
+                line=2976,
                 anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
                     "WAS the conflation in its purest form, and the single "
@@ -304,7 +304,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2374,
+                line=2367,
                 anchor="module_hint = module_slot(_slots)",
                 note=(
                     "Every header the file can see (its own includes, quoted "
@@ -359,7 +359,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=7926,
+                line=7900,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -371,7 +371,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=1381,
+                line=1376,
                 anchor="JS_KNOWN_GLOBALS",
                 note=(
                     "The globals treated as addressable owners — 11 as of "
