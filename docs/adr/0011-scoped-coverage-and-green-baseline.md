@@ -124,6 +124,13 @@ The `ci.yml` workflow reads the manifest and performs the same scoped coverage c
 
 This ensures the same coverage rules apply both locally and on CI.
 
+**Prose-only files are not coverage-gated.** A changed source file whose code equals the base's, with only comments or docstrings different (the prose-only rule; see [ADR-0010](0010-modular-packages-and-smart-testing.md) §"What the Manifest Carries"), has no changed executable line, and its tests come from recorded evidence rather than the import graph, so the tests that cover its lines are mostly not selected. Gating it would fail on code nobody changed. Both gates leave it out:
+
+- **Locally**, `smart-test` drops it from `CHANGED_SOURCE_FILES` before writing the manifest, and from the scoped `coverage report --include`.
+- **In CI**, the coverage step runs `scripts/prose-only-files BASE HEAD` on the PR's own diff and removes those files from the gated set. The list comes from the diff, never from the manifest, so a manifest cannot talk a code change out of the gate; if the helper fails it prints nothing and exempts nothing.
+
+A file whose code changed is gated as before, including in a change that also edits prose elsewhere.
+
 ### Part 4: Infrastructure-Only PRs Skip pytest
 
 When a PR changes only shell scripts, YAML, or config files (no Python source):
@@ -146,7 +153,7 @@ This matches the intended architecture:
 
 | Mode | Test Scope | Coverage Scope | Threshold |
 |------|------------|----------------|-----------|
-| `pytest` (affected-only) | Tests depending on changed files | Changed source files only | 100% |
+| `pytest` (affected-only) | Tests depending on changed files (prose-only files: tests recorded seeing them) | Changed source files only, prose-only files excluded | 100% |
 | `pytest --full` | All tests | All packages | 100% |
 
 ### Per-Package Isolation Check

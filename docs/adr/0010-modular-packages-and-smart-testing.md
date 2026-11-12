@@ -279,6 +279,22 @@ fast-ci:
       run: pytest --rootdir=. $(cat .ci/affected-tests.txt) --cov=packages --cov-fail-under=100
 ```
 
+#### What the Manifest Carries
+
+CI does not run `scripts/smart-test`; it runs the committed `.ci/affected-tests.txt`. So whatever `smart-test` writes there is the merge gate's selection, and two selections are kept apart in `scripts/smart-test` (pinned by `packages/hypergumbo-core/tests/test_smart_test_manifest_split.py`):
+
+- **The manifest** carries the static import-graph slice of the changed files plus its declarative augmentations (conftest owners, coverage-only dependencies, and the like).
+- **The local run** may differ for this machine only: coverage-directed selection adds tests to it, and the opt-in `--narrow` removes tests from it. Neither reaches the manifest.
+
+**One exception: prose-only files.** A changed `.py` file is prose-only when its AST with docstrings removed, and its machine-read comments (`# pragma:`, `# covers:`, `# type:`, `# noqa` ...), equal the base's (`hypergumbo_core.prose_only.classify`). Such a file never enters the import-graph slice. Its tests come from recorded evidence instead (`select_for_prose`: the tests recorded reading the file, reading a changed docstring or its line numbers, or starting a process the recorder cannot see, plus any test file with no usable record), and those tests are what the manifest carries for it.
+
+- The decision is per file, over the branch's diff against its base: in a mixed change the files whose code changed get the import-graph slice, and the manifest is the union of the two lists.
+- The header line `# Prose-only files: N` appears whenever N > 0, so the exception is never silent.
+- The rule gives way to the import graph for every file when more than 10% of test files lack a usable record, and `--no-prose-rule` turns it off for one run.
+- The evidence is recorded on a developer's machine; the rule is off when `CI` is set, and CI only consumes the manifest.
+
+The coverage side of the same exception is in [ADR-0011](0011-scoped-coverage-and-green-baseline.md).
+
 #### Pytest Rootdir Pinning
 
 **Invariant:** CI must invoke pytest with `--rootdir=.` to ensure the repo root is used regardless of which packages appear in the manifest.
