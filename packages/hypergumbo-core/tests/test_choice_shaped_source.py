@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The choice-shaped source blindness, DECLARED rather than fixed (WI-jivih, arc T8).
 
-WI-jivih pre-registered its own decision rule before any number existed: if the
-finding-weighted share of choice-shaped sources is under 5%, the source half is
-not worth a per-row `value_shape` field and the honest output is a dated
-declared blindness. A 23-repository cohort sampled deliberately for socket
-ownership — chosen to be maximally favourable to the property — measured
-**2 of 568 findings, 0.35%**, while plainly seeing the population (87% of it
-reached a choice-shaped chain). So the field is not built, and this is the
-disclosure instead.
+A choice-shaped source is one whose value the far side merely CHOSE from a
+constrained set (an accepted peer, a DNS answer) rather than authored. The
+analysis does not model that distinction and emits no per-row ``value_shape``
+field: the finding-weighted share of such sources fell below the 5% line that
+decides whether the field is worth building. Instead, a violated taint verdict
+rooted at one carries a dated caveat with that measurement
+(``CAVEAT_CHOICE_SHAPED_SOURCE`` in ``verify_claims``). These tests pin the
+name registry, when the caveat fires, and that it is a disclosure, not a filter.
 """
 import pytest
 
@@ -46,8 +46,8 @@ def _claim(label="untrusted_input"):
 class TestTheRegistry:
     def test_the_two_families_are_declared(self):
         """accept (a peer the far side did not author) and the erlang inet DNS
-        answers. The audit's third, the exit status, left with its rows
-        (WI-lanos; test_exit_status_is_one_verdict.py)."""
+        answers. An exit status is not listed: the catalogue mints no source
+        for it (WI-lanos; test_exit_status_is_one_verdict.py)."""
         for name in ("accept", "gethostbyname"):
             assert name in CHOICE_SHAPED_SOURCE_NAMES
 

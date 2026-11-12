@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-midag, haskell: a function's span covers ALL of its equations.
+"""Haskell: a function's span covers ALL of its equations.
 
-A haskell function is written as consecutive equations, one per pattern. The
-analyzer emitted one symbol per NAME, from the FIRST equation only, so its span
-ended where the second equation began. Every call in a later equation was
-anchored to the right function by name, but fell outside that function's span:
-119 of 3,012 haskell call edges on a 26-repo run, e.g. xmonad's
-``handle`` (287-292) credited with calls at lines 326-414. Here the anchor was
-never wrong; the span was.
+A haskell function is written as consecutive equations, one per pattern, and
+the analyzer emits one symbol per NAME, from the first equation. Its span must
+run to the LAST equation: a span that stops at the first leaves every call in
+a later equation anchored to the right function by name but outside that
+function's span. The anchor is right either way; these tests pin the span.
+(history: INV-midag)
 """
 from __future__ import annotations
 

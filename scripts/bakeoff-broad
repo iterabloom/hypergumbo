@@ -36,7 +36,7 @@ Usage:
     # Initialize a new bakeoff session (creates timestamped dir in canonical default)
     ./scripts/bakeoff-broad init --pool ~/whole_bunch_of_repos
 
-    # Select next cohort (5 smallest unused repos)
+    # Select next cohort (default 6 small, language-diverse unused repos)
     ./scripts/bakeoff-broad cohort --count 5
 
     # Run hypergumbo on current cohort
@@ -92,7 +92,8 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import pool_utils  # noqa: E402
 
-# WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
+# Consumer-side .gz handling, so `hypergumbo run --gzip` outputs load too
+# (history: WI-mokim).
 from hypergumbo_core.survey_io import find_behavior_map, load_behavior_map  # noqa: E402
 
 
@@ -134,12 +135,16 @@ CALL_EDGE_EXPECTED_LANGS = {
     "dart", "julia", "r", "lua", "perl",
 }
 
-# Languages with shipped IO primitive catalogs (ADR-0016 Phase 2)
-# cpp→c and typescript→javascript aliases are resolved by load_catalog().
+# Languages for which the IO-boundary flags (NO_IO_BOUNDARY_TAGS,
+# LOW_IO_TAG_RATE, IO_OVER_TAGGING) are raised. A hand-maintained subset of
+# the shipped io_primitives/*.yaml catalogs (ADR-0016); languages outside it
+# never raise those flags. load_catalog() maps typescript to the javascript
+# catalog, and cpp has its own catalog that also inherits c's.
 IO_CATALOG_LANGS = {"python", "javascript", "typescript", "go", "c", "cpp", "java", "rust"}
 
 # Languages with dataflow access_mode YAML (ADR-0015 Tier 1).
-# Must match files in dataflow_patterns/*.yaml.
+# Meant to list every language with a dataflow_patterns/*.yaml file; nothing
+# enforces that, so update it by hand when a file is added.
 DATAFLOW_LANGS = {
     "python", "javascript", "typescript", "java", "kotlin", "scala",
     "c", "cpp", "rust", "go", "csharp", "swift", "ruby",
@@ -221,13 +226,14 @@ class BakeoffState:
 def _pool_repo_path(pool_path: str, repo_name: str) -> str:
     """Resolve a cohort repo name to its on-disk path.
 
-    WI-favav parity: cohort SELECTION resolves nested-collection pool repos via
+    Cohort SELECTION resolves nested-collection pool repos via
     ``pool_utils.resolve_repo_path`` (which descends one level into collection
     subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so the RUN must use
     the same resolver — a bare ``os.path.join(pool_path, repo_name)`` misses a
-    repo living one level down and ``get_dir_size`` then ``FileNotFoundError``s.
-    Falls back to the naive join so a genuinely-missing repo still errors as
-    before (rather than passing ``None`` downstream).
+    repo living one level down and ``get_dir_size`` then raises
+    ``FileNotFoundError``. Falls back to the plain join so a genuinely missing
+    repo still fails loudly rather than passing ``None`` downstream.
+    (history: WI-favav)
     """
     return (
         pool_utils.resolve_repo_path(pool_path, repo_name)
@@ -453,9 +459,8 @@ def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_WORKDIR",
         return workdir
 
     # Otherwise, take the most recent session of *this* command's mode.
-    # _find_latest_session already prefix-filters; the old inline scan mixed
-    # broad-/deep- and trusted a full-string sort that does not hold across
-    # prefixes.
+    # _find_latest_session filters by prefix first; sorting names across
+    # prefixes would rank every deep-* above every broad-*.
     latest = _find_latest_session(workdir, prefix=session_prefix)
     if latest is not None:
         return latest
@@ -488,9 +493,9 @@ def cmd_init(args):
     Always creates a new timestamped session by default. Use ``--resume``
     to explicitly continue working with the most recent existing session.
 
-    Previous behavior (silent reuse) was dangerous: it encouraged deleting
-    completed outputs to "re-run" instead of creating a new session for
-    before/after comparison.
+    Silently reusing the latest session would be dangerous: it encourages
+    deleting completed outputs to "re-run" instead of creating a new session
+    for before/after comparison.
     """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
     base_workdir = resolve_workdir(args.workdir, auto_discover=False)
@@ -530,7 +535,7 @@ def cmd_init(args):
                 return 0
         print("No existing session found. Creating a new one.")
 
-    # Backward compat: --force is now the default behavior, accept silently
+    # --force is accepted and ignored: a new session is already the default.
 
     # Create timestamped session directory to prevent artifact overwrites
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -593,9 +598,9 @@ def cmd_cohort(args):
         cohort = []
         missing = []
         for name in repo_names:
-            # WI-favav: resolve through pool_utils so explicit names without
-            # a collection prefix work when --pool points at a catalog like
-            # ~/ALL_REPOS/.
+            # Resolve through pool_utils so explicit names without a
+            # collection prefix work when --pool points at a catalog like
+            # ~/ALL_REPOS/ (history: WI-favav).
             repo_path = pool_utils.resolve_repo_path(pool_path, name)
             if repo_path is None:
                 missing.append(name)
@@ -629,9 +634,9 @@ def cmd_cohort(args):
         print(f"Scanning pool: {pool_path}")
         available = []
 
-        # WI-favav: pool_utils.iter_pool_repos descends one level into
-        # collection directories so --pool ~/ALL_REPOS works without
-        # flattening.
+        # pool_utils.iter_pool_repos descends one level into collection
+        # directories so --pool ~/ALL_REPOS works without flattening
+        # (history: WI-favav).
         for entry in pool_utils.iter_pool_repos(pool_path):
             if entry.name in state.tested_repos:
                 continue
@@ -746,13 +751,13 @@ def cmd_cohort(args):
 
 
 def _holds_output_files(path: str) -> bool:
-    """True when ``path`` has at least one FILE anywhere below it (WI-zilar).
+    """True when ``path`` has at least one FILE anywhere below it.
 
     A directory is not a result. A run that crashes after ``os.makedirs`` leaves
-    ``iter-NNN/<repo>/`` present and empty, and the batch guard used to check
-    ``os.listdir`` of the cohort directory, which an empty ``iter-001/``
-    satisfies, so a crashed cohort was skipped forever as "already has output".
-    Same helper, same reason, as ``bakeoff-deep``'s.
+    ``iter-NNN/<repo>/`` present and empty; a guard that only checks
+    ``os.listdir`` of the cohort directory is satisfied by that empty
+    ``iter-001/`` and skips the crashed cohort forever as "already has output".
+    Same helper, same reason, as ``bakeoff-deep``'s. (history: WI-zilar)
     """
     for _root, _dirs, files in os.walk(path):
         if files:
@@ -943,8 +948,8 @@ def cmd_run(args):
 
         for cmd_name, cmd in commands:
             print(f"  {cmd_name}...", end=" ", flush=True)
-            # Allow long analysis times - large repos (5000+ files) may take 15-30 min
-            # Use 1 hour as safety limit only for runaway processes
+            # Large repos can legitimately take tens of minutes; the 1-hour
+            # timeout exists only to stop runaway processes.
             rc, stdout, stderr = run_cmd(cmd, timeout=3600)
 
             # Capture post-run memory snapshot (for model building)
@@ -1072,19 +1077,20 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
             if dom_lang.lower() in CALL_EDGE_EXPECTED_LANGS:
                 flags.append("NO_CALL_EDGES")
 
-        # Only flag missing routes when name suggests a web app AND
-        # there's supporting evidence (route edges or framework signals).
-        # Bare name matching ("web" in "webtunnel") causes false positives.
-        # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv) routes_to folded to
-        # 'dispatches_to' + meta['dispatch_kind']='route'. handles_route
-        # is unrelated (different linker convention). Check both the
-        # canonical+meta form and the deprecated form.
+        # Flag missing routes when the repo name suggests a web app OR
+        # there is supporting evidence (route edges or web-framework
+        # signals). The name test is a bare substring match, so its word
+        # list stays narrow ("web" would hit "webtunnel").
+        # Route edges come in three forms: canonical 'dispatches_to' with
+        # meta['dispatch_kind']='route'; the deprecated 'routes_to' spelling
+        # it replaced; and 'handles_route', a separate linker convention.
+        # All three count. (history: ADR-0023 §6, WI-vasik-jofiv)
         def _is_route_edge(e: dict) -> bool:
             etype = e.get("type", "")
             if etype == "handles_route":
                 return True
             if etype == "routes_to":
-                return True  # deprecated; remove in WI-vomoj-suhaz Phase 4
+                return True  # deprecated spelling; removal tracked in WI-vomoj-suhaz
             if etype == "dispatches_to":
                 return (e.get("meta") or {}).get("dispatch_kind") == "route"
             return False
@@ -1567,7 +1573,7 @@ def cmd_loop(args):
     This is the main orchestrator for autonomous bakeoff runs. It:
     1. Checks current state
     2. If converged on current cohort: selects next cohort
-    3. Runs a cycle (run + diagnose)
+    3. Runs a cycle (run + diagnose, plus reflect unless --skip-reflect)
     4. Outputs structured status for agent consumption
 
     Use --max-iterations to limit total cycles. Use --dry-run to see what would happen.

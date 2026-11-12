@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """``--fail-grace``: a red run stops soon after its first failure.
 
-A failing per-PR pytest step ran its whole selection to the end. Measured on
-recent PRs, a selection of 200 to 760 files takes 11 to 28 minutes, and the
-verdict was already decided at the first failure. ``--fail-grace=N`` lets the
-run continue N seconds after the first failure, so failures that arrive
-together are all reported, and then stops it (WI-fipuf, the owner's rule).
+Without it, a failing pytest run executes its whole selection to the end —
+tens of minutes for a large per-PR selection — although the verdict was
+decided at the first failure. ``--fail-grace=N`` lets the run continue N
+seconds after the first failure, so failures that arrive together are all
+reported, and then stops it. (history: WI-fipuf)
 
 Each test here runs pytest on a throwaway project in a subprocess, with and
 without pytest-xdist, because the two stop a session by different switches.
@@ -170,15 +170,16 @@ def test_only_targeted_runs_use_the_rule() -> None:
 
 
 def test_the_per_pr_pytest_step_uses_the_rule() -> None:
-    """The step that motivated it. Only the per-PR gate: the cron suites exist
-    to list every failure."""
+    """Only the per-PR gate uses it: the cron suites exist to list every
+    failure."""
     step = (REPO_ROOT / ".woodpecker" / "woodpecker.yml").read_text(encoding="utf-8")
     runs = [line for line in step.splitlines() if "--junit-xml" in line and "pytest" in line]
     assert len(runs) == 1, runs
     assert "-p pytest_fail_grace --fail-grace=15" in runs[0]
     assert 'PYTHONPATH="scripts/pytest_plugins" \\\n' in step
-    # Woodpecker expands ${...} before the shell does; the first version's
-    # ${PYTHONPATH:+:$PYTHONPATH} reached the shell as ":$PYTHONPATH".
+    # Woodpecker expands ${...} before the shell does, so a
+    # ${PYTHONPATH:+:$PYTHONPATH} in the step reaches the shell as
+    # ":$PYTHONPATH".
     code = [line for line in step.splitlines() if not line.lstrip().startswith("#")]
     assert not [line for line in code if "${PYTHONPATH" in line]
     for cron in ("full-suite.yml", "nightly.yml"):

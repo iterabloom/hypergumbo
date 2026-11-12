@@ -14,17 +14,17 @@ Path classification uses pattern matching on file paths to identify:
 - Example code: Matches common example/demo directory conventions
 
 Symbol-kind filtering uses two parallel sets and one predicate,
-reflecting the ADR-0027 Phase-4b axis split between
-``Symbol.kind`` (the language-construct axis) and
-``Symbol.meta["framework_role"]`` (the framework-dispatch axis):
+reflecting the split (ADR-0027) between ``Symbol.kind`` (the
+language-construct axis) and ``Symbol.meta["framework_role"]`` (the
+framework-dispatch axis):
 
 - ``EXCLUDED_KINDS``: language-construct labels to suppress in
   centrality / compact output (``dependency``, ``file``, ``package``,
   build/config shapes, etc.).
 - ``EXCLUDED_FRAMEWORK_ROLES``: framework roles attached to otherwise-
   canonical ``method`` / ``function`` symbols that should be
-  suppressed (e.g., framework-dispatched event subscribers folded out
-  of the old ``kind="event_subscriber"`` shape by Wave 5 of ADR-0027).
+  suppressed (e.g., framework-dispatched event subscribers, emitted as
+  ``kind="method"`` with ``meta["framework_role"]="event_subscriber"``).
 - ``is_excluded_kind(kind, meta, *, language=None)``: the public
   predicate consumers should call. A ``section`` whose language is known
   is excluded only in a document language
@@ -32,10 +32,9 @@ reflecting the ADR-0027 Phase-4b axis split between
   a callable. Otherwise it is True when ``kind in EXCLUDED_KINDS``, or
   when ``kind`` is
   ``function`` / ``method`` and ``meta.get("framework_role")`` is in
-  ``EXCLUDED_FRAMEWORK_ROLES``. Only the post-fold shape of a framework
-  role is matched: ADR-0027 Phase 4b removed the legacy literals (such as
-  ``event_subscriber``) from ``EXCLUDED_KINDS``, so a symbol still emitted
-  as ``kind="event_subscriber"`` is not excluded.
+  ``EXCLUDED_FRAMEWORK_ROLES``. Only the canonical-kind-plus-role shape
+  is matched: a symbol that carries a role literal as its kind (such as
+  ``kind="event_subscriber"``) is not excluded.
 
 Key-symbol selection is the population policy sketch ranks over and compact
 applies (its centrality path filters to it; its connectivity path takes seeds
@@ -51,11 +50,11 @@ denylist: ``variable`` is in both.
 
 Why This Design
 ---------------
-Centralizing these filters ensures consistent behavior across all
-output modes. Previously, compact.py and ranking.py had duplicate
-implementations of is_test_path with different pattern sets. The
+Centralizing these filters keeps all output modes consistent: separate
+copies of a pattern set drift apart, and two views then disagree on which
+files are tests. The
 predicate lets consumers exclude framework-role symbols, which producers
-now emit as a canonical kind plus ``meta["framework_role"]``, without
+emit as a canonical kind plus ``meta["framework_role"]``, without
 widening ``EXCLUDED_KINDS`` to ``method`` (which would drop every real
 method).
 """
@@ -73,46 +72,17 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
 # Symbol kinds to exclude from tiered output.
 # These have high centrality but don't represent useful code.
 #
-# ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
-# - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``variable``.
-# - AXIS_ENDPOINT_SHAPE (Cluster D — Wave 5 fold target):
-#   ``event_subscriber``. WI-jukav slice 2 closes this leg via the
-#   :func:`is_excluded_kind` predicate below — post-Wave-5 producers
-#   emit ``kind="method"`` + ``meta["framework_role"]=
-#   "event_subscriber"``, which the predicate matches through
-#   ``EXCLUDED_FRAMEWORK_ROLES``. ADR-0027 Phase 4b removed the legacy
-#   label from this set, so a symbol still emitted as
-#   ``kind="event_subscriber"`` is not excluded.
-# - AXIS_PENDING (Clusters B/G/H residue): ``target``,
-#   ``special_target``, ``section``, ``code_block``, ``link``,
-#   ``class_selector``, ``id_selector``, ``keyframes``, ``media``,
-#   ``font_face``. Forward-compatibility verdict gates on per-cluster
-#   audit-findings outcomes (filed as Wave 6 follow-through in
-#   WI-runod).
-# - AXIS_LANGUAGE_CONSTRUCT post-promotion (Wave 6 PR 2, audit-findings
-#   0006): ``dependency``. The set keeps the canonical name because
-#   the policy excludes both production and dev dependencies from
-#   centrality tables.
-# - AXIS_ENDPOINT_SHAPE post-fold (Wave 6 PR 5, audit-findings 0006):
-#   ``devDependency``. Producer now emits ``kind="dependency"`` +
-#   ``meta["dependency_scope"]="dev"``; the post-fold shape is
-#   excluded automatically because the fold target (``dependency``)
-#   is already in the set; the legacy literal was removed from the
-#   set by ADR-0027 Phase 4b.
-# - AXIS_LANGUAGE_CONSTRUCT post-promotion (Wave 6 PR 1, audit-findings
-#   0005): ``file``, ``project``, ``package``. The set keeps these
-#   names because the policy is "synthetic file/package-shape nodes
-#   should not show up in centrality tables / compact output," and
-#   these canonical kinds carry the synthetic load.
-# - AXIS_ENDPOINT_SHAPE post-fold (Wave 6 PR 3, audit-findings 0005):
-#   ``script``, ``module_file``, ``npm_package``. Producers now emit
-#   ``kind="file"`` + ``meta["entry_role"]="script"`` (script),
-#   ``kind="file"`` + ``meta["module_system"]`` (module_file), and
-#   ``kind="package"`` + ``meta["package_ecosystem"]="npm"``
-#   (npm_package). The post-fold shapes are excluded automatically
-#   because their fold targets (``file`` / ``package``) are already
-#   in the set; the legacy literals were removed from the set by
-#   ADR-0027 Phase 4b, so an unmigrated producer is not excluded.
+# Every member is a language-construct kind in the symbol-kind registry
+# (``symbol_kinds.SYMBOL_KINDS``). Variants are excluded through their
+# canonical kind plus a meta key: dev dependencies are ``kind="dependency"``
+# with ``meta["dependency_scope"]="dev"``; scripts and module files are
+# ``kind="file"`` with ``meta["entry_role"]="script"`` or
+# ``meta["module_system"]``; npm packages are ``kind="package"`` with
+# ``meta["package_ecosystem"]="npm"``. A producer that still emits a variant
+# literal as its kind (``devDependency``, ``script``, ``module_file``,
+# ``npm_package``) is not excluded. Framework-dispatched event subscribers are
+# ``kind="method"`` and are excluded through ``EXCLUDED_FRAMEWORK_ROLES`` and
+# :func:`is_excluded_kind`, not through this set. (history: ADR-0027, WI-jukav)
 EXCLUDED_KINDS = frozenset({
     "dependency",       # package.json, pyproject.toml dependencies
     "file",             # file-level nodes (import targets)
@@ -131,16 +101,12 @@ EXCLUDED_KINDS = frozenset({
     "link",             # markdown links
 })
 
-# ``meta["framework_role"]`` values that the dual-shape predicate
-# below treats as excluded. Distinct from ``EXCLUDED_KINDS`` because
-# these values live on ``Symbol.meta`` post-Wave-5 framework-role
-# fold, not on ``Symbol.kind`` — so the L1 drift linter must not
-# enforce them against ``SYMBOL_KINDS`` (their canonical home is
-# :mod:`hypergumbo_core.axis_meta_keys`'s ``framework_role`` meta
-# key vocabulary, not the Symbol.kind registry). The dual predicate
-# previously folded both layers into ``EXCLUDED_KINDS``; after
-# Phase 4b (ADR-0027 §6) removed the Symbol.kind legacy literals,
-# the framework_role layer needs its own home.
+# ``meta["framework_role"]`` values that :func:`is_excluded_kind`
+# treats as excluded. Kept apart from ``EXCLUDED_KINDS`` because these
+# values live on ``Symbol.meta``, not on ``Symbol.kind``, so the
+# symbol-kind drift linter must not check them against ``SYMBOL_KINDS``;
+# their vocabulary is the ``framework_role`` meta key in
+# :mod:`hypergumbo_core.axis_meta_keys`.
 EXCLUDED_FRAMEWORK_ROLES = frozenset({
     "event_subscriber",  # CSS/JS event handlers (less useful in isolation)
 })
@@ -152,25 +118,22 @@ def is_excluded_kind(
     *,
     language: Optional[str] = None,
 ) -> bool:
-    """Dual-shape predicate for ``EXCLUDED_KINDS`` (WI-jukav slice 2).
+    """Whether a symbol is excluded by kind or by framework role.
 
-    Matches the post-fold shape of ADR-0027 §"Phase 3" Wave 5
-    framework_role fold: ``Symbol.kind`` is the canonical language
-    construct ``"function"`` or ``"method"`` and the role lives in
-    ``Symbol.meta["framework_role"]`` (checked against
-    ``EXCLUDED_FRAMEWORK_ROLES``). The pre-fold shape (``Symbol.kind``
-    directly carrying a legacy label such as ``"event_subscriber"``) is
-    no longer matched: ADR-0027 Phase 4b removed those literals from
-    ``EXCLUDED_KINDS``.
+    Besides ``kind in EXCLUDED_KINDS``, matches a symbol whose ``kind`` is
+    the canonical language construct ``"function"`` or ``"method"`` and
+    whose ``meta["framework_role"]`` is in ``EXCLUDED_FRAMEWORK_ROLES``. A
+    symbol carrying a role literal directly as its kind (such as
+    ``kind="event_subscriber"``) is not matched.
 
     Why this lives here rather than as ``sym.kind in EXCLUDED_KINDS``
-    inline: post-fold synthetic nodes (Phoenix Channels event subscribers,
-    Django signal receivers, etc.) emit ``kind="method"`` plus a
-    ``framework_role`` meta key. The bare set membership check would no
-    longer exclude them, silently inflating selection / compact output
-    with framework-emitted synthetics. Naively widening the set to
-    include ``"method"`` over-excludes every real method, so the
-    forward-compat path goes through this predicate instead.
+    inline: synthetic nodes (Phoenix Channels event subscribers, Django
+    signal receivers, etc.) emit ``kind="method"`` plus a
+    ``framework_role`` meta key. The bare set membership check does not
+    exclude them, silently inflating selection / compact output
+    with framework-emitted synthetics. Widening the set to
+    include ``"method"`` over-excludes every real method, so the check
+    goes through this predicate instead. (history: WI-jukav)
 
     Args:
         kind: Symbol's ``kind`` field.
@@ -184,9 +147,8 @@ def is_excluded_kind(
         ``True`` iff the symbol should be excluded by selection /
         compact filters.
 
-    Mirrors :func:`hypergumbo_core.linkers.registry._is_synthetic_node`
-    in shape — the slice 1 idiom for SYNTHETIC_FRAMEWORK_ROLES — applied here to
-    the slice 2 at-risk surface.
+    Same shape as :func:`hypergumbo_core.linkers.registry._is_synthetic_node`,
+    which matches ``SYNTHETIC_FRAMEWORK_ROLES`` the same way.
     """
     if kind == "section" and language is not None:
         return language in _NOISE_SECTION_LANGUAGES
@@ -214,12 +176,11 @@ EXAMPLE_PATH_PATTERNS = (
 def is_test_path(path: str) -> bool:
     """Whether *path* is a test file: :func:`paths.is_test_file`, by this name.
 
-    WI-dibuf: this used to add language-specific shapes (``tests.py``,
-    ``*Test.java``, ``*Tests.swift``, ``.test-d.ts``, Gradle's ``intTest/``)
-    on top of ``is_test_file``, so a view filtering with one and a view
-    filtering with the other disagreed on those files. The shapes now live in
-    ``paths.classify_test_file``, and the two names are one predicate. A
-    NODE's test-ness (annotations too) is :func:`paths.is_test_node`.
+    Do not add test-file shapes here: they belong in
+    ``paths.classify_test_file``, so that a view filtering with this name and
+    a view filtering with ``is_test_file`` agree on every file. A NODE's
+    test-ness (annotations too) is :func:`paths.is_test_node`.
+    (history: WI-dibuf)
     """
     return bool(path) and is_test_file(path)
 
@@ -227,15 +188,10 @@ def is_test_path(path: str) -> bool:
 # Symbol kinds that count as a "key symbol" — the declaration kinds a reader
 # is asking about when they ask what a repository contains.
 #
-# WI-zulij: this set and the four-clause predicate below were previously a
-# frozenset declared INSIDE ``sketch._format_symbols``'s body, with the clauses
-# as an inline comprehension beneath it. Nothing outside that one function could
-# reach either, so "what counts as a key symbol" had no home — and compact's
-# default selection, which advertises the same thing, filtered nothing at all.
-# The two surfaces disagreed on their top-10 for exactly that reason: not the
-# ranking function (both now rank with ``compute_dampened_centrality``) but the
-# POPULATION each ranks over. This module's own header already named sketch,
-# compact and tiered JSON as its consumers; the policy just never landed here.
+# Sketch and compact both rank with ``compute_dampened_centrality``; they agree
+# on their top symbols only if they also rank the same POPULATION, so both take
+# it from this set and the predicate below rather than keeping a private copy.
+# (history: WI-zulij)
 #
 # Include OOP kinds (function, class, method) plus language-specific
 # equivalents:
@@ -245,28 +201,14 @@ def is_test_path(path: str) -> bool:
 # - Elm/F#: module, type, port, record, union, value
 # - SQL: table, view, procedure, trigger
 # - Dockerfile: stage
-# - Lean: theorem, structure, inductive, instance
+# - Lean: theorem, inductive, instance
 # - Agda: data (algebraic data types)
 # - Fortran/COBOL: program, subroutine
 # - VHDL: entity, architecture, component
 # - Other: struct, enum, trait, interface, protocol, object
 #
-# ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
-# - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``function``, ``class``, ``method``,
-#   ``constructor``, ``struct``, ``enum``, ``type``, ``union``, ``interface``,
-#   ``trait``, ``module``, ``namespace``, ``object``, ``macro``, ``binding`` —
-#   stable across Phase 3.
-# - AXIS_PENDING (Clusters B/G/H — domain long-tail): ``record``, ``abstract``,
-#   ``protocol``, ``instance``, ``derivation``, ``input``, ``resource``,
-#   ``data``, ``variable``, ``output``, ``provider``, ``local``, ``port``,
-#   ``table``, ``view``, ``procedure``, ``trigger``, ``stage``, ``value``,
-#   ``theorem``, ``inductive``, ``program``, ``subroutine``, ``entity``,
-#   ``architecture``, ``component``, ``structure``. Audit-findings 0006/0007
-#   (Cluster G/H) recommend canonical promotions for many of these; the registry
-#   update is Wave 6 follow-through per WI-runod. Until then, none of these
-#   values is scheduled for fold/rename in Phase 3, so this set is
-#   forward-compatible — it captures the intent "key declaration kinds across
-#   all languages" and Phase 3 doesn't change which values populate that intent.
+# Every member is a language-construct kind in the symbol-kind registry
+# (``symbol_kinds.SYMBOL_KINDS``).
 #
 # NOTE the deliberate asymmetry with ``EXCLUDED_KINDS`` above: this is an
 # ALLOWLIST and that is a DENYLIST, and they are not complements. ``variable``
@@ -314,12 +256,10 @@ def is_key_symbol(symbol: "Symbol") -> bool:
     named like a test function, and not a derived artifact.
 
     The ``"test_" not in symbol.name`` clause is deliberately a SUBSTRING test
-    rather than a prefix test, and it is kept verbatim from the sketch original
-    rather than tightened here: it also catches ``helper_test_case`` and the
-    like. Narrowing it would change sketch's output, which this extraction is
-    specifically not doing — the whole point is that both surfaces now share one
-    definition, so any change to the definition is a separate, visible decision
-    that moves both together instead of one drifting from the other.
+    rather than a prefix test: it also catches ``helper_test_case`` and the
+    like. Sketch and compact share this one definition, so narrowing it changes
+    both surfaces' output together; make that a deliberate decision about both
+    rather than a local tweak.
     """
     return (
         symbol.kind in KEY_SYMBOL_KINDS
@@ -344,10 +284,9 @@ def production_edges(
     genuinely central code. Filtering by source only (not destination) is
     deliberate: an edge INTO test code is still evidence about the target.
 
-    Extracted alongside :func:`key_symbols` because the two are one policy —
-    sketch applied both and compact's default applied neither, so adopting the
-    symbol filter without the edge filter would leave the two surfaces ranking
-    the same population with different weights.
+    Apply it together with :func:`key_symbols`: the two are one policy, and a
+    surface that adopts the symbol filter without the edge filter ranks the
+    same population as the others with different weights.
     """
     by_id = {s.id: s for s in symbols}
 

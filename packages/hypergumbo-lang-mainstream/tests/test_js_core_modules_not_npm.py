@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""A Node core module is not an npm package (WI-tufob).
+"""A Node core module is not an npm package.
 
-The js_module linker minted ``javascript:npm:0-0:fs:package`` -- kind
-``package``, ``package_ecosystem: npm``, tier 3 "third-party dependency" -- for
-``require('fs')``: 540 of 2,771 package-node resolutions on 7 repositories were
-``path``, ``fs``, ``http``, ``child_process`` ... claimed as dependencies. The
-runtime's own modules get no package node; the import stays the analyzer's
-external stand-in. One core-module list (``js_package_entry.NODE_CORE_MODULES``)
-serves the linker and js_ts.
+``require('fs')`` must not make the js_module linker mint
+``javascript:npm:0-0:fs:package`` -- kind ``package``, ``package_ecosystem:
+npm``, tier 3 "third-party dependency" -- which would claim the runtime's own
+modules (``path``, ``fs``, ``http``, ``child_process`` ...) as dependencies.
+They get no package node; the import stays the analyzer's external stand-in.
+One core-module list (``js_package_entry.NODE_CORE_MODULES``) serves the
+linker and js_ts. (history: WI-tufob)
 """
 # covers: packages/hypergumbo-core/src/hypergumbo_core/linkers/js_module.py
 from __future__ import annotations

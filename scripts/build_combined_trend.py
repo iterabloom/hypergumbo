@@ -5,8 +5,8 @@
 Inputs (auto-discovered — see discover_sources()):
   ~/hypergumbo_lab_notebook/dogfooding_trend_cluster_aware.md          (tranche 01: passes 1-20)
   ~/hypergumbo_lab_notebook/dogfooding_trend_cluster_aware_2140.md     (tranche 02: passes 21-40)
-  ~/hypergumbo_lab_notebook/dogfood_tranch_NN/trend_cluster_aware.md   (frozen pre-rename spelling, e.g. 03/04)
-  ~/hypergumbo_lab_notebook/dogfood_tranche_NN/trend_cluster_aware.md  (post-PR#4073 spelling, future tranches)
+  ~/hypergumbo_lab_notebook/dogfood_tranch_NN/trend_cluster_aware.md   (older spelling, e.g. 03/04)
+  ~/hypergumbo_lab_notebook/dogfood_tranche_NN/trend_cluster_aware.md  (current spelling)
 
 BOTH directory spellings (dogfood_tranch_* and dogfood_tranche_*) are globbed, so a
 new tranche is picked up with no edit to this file. Each input must carry a
@@ -20,10 +20,9 @@ Output:
     - Per-tranche sub-totals + grand total
 
 Designed to be re-run after every new tranche's Phase 5 completes; auto-picks-up the new
-trend_cluster_aware.md without code changes.
-
-This script lives in the lab notebook (not the repo) per convention; the playbook's
-Phase 5.3 step invokes it.
+trend_cluster_aware.md without code changes. The twenty-pass-dogfood playbook's Phase 5
+runs it as ``scripts/build_combined_trend.py``; it reads and writes only under
+~/hypergumbo_lab_notebook/.
 """
 
 import re
@@ -37,12 +36,13 @@ OUT = LAB / "dogfooding_trend_combined.md"
 # INSTRUMENT (the procedure itself) changed, so a cross-seam difference confounds
 # the instrument change with genuine discovery dynamics. Descriptive only: each
 # entry states a fact about HOW the data was collected and predicts NOTHING about
-# direction. Audience = the human analyst reading this report, and the post-hoc
-# Phase 7 reconciliation agent. This caveat must NOT be injected into a run-time
+# direction. Audience = the human analyst reading this report, and a post-hoc
+# reconciliation agent. This caveat must NOT be injected into a run-time
 # discovery/audit worker, the orchestrating parent during a run, or the registry /
-# agent_notes — doing so would reinstall the expectation-prime the de-prime
-# redesign removed, at a higher-leverage point (see the twenty-pass-dogfood-
-# procedure playbook's Step 5.4 seam-handling rule).
+# agent_notes — doing so primes them with an expectation about the trend, which
+# the procedure's campaign-position blindness exists to prevent (see the
+# twenty-pass-dogfood-procedure playbook's "the agent must not perceive
+# convergence" rule).
 INSTRUMENT_SEAMS = [
     ("after tranche 04",
      "Tranches 01-04 ran under the PRIMED procedure (campaign-position cues in "
@@ -55,7 +55,9 @@ INSTRUMENT_SEAMS = [
      "not be read as the system under study getting better or worse."),
 ]
 
-# Discover all known tranches via filename convention + the historical pair.
+# Hand-curated tranche entries. 01 and 02 have no tranche directory, so
+# discover_sources() cannot find them; 03 and 04 carry hand-authored methodology
+# notes / card counts that cannot be reconstructed from the files.
 # Format: (label, file_path, first_pass, last_pass, judge_count, card_count, methodology_note, tranch_state_path_or_None)
 KNOWN_SOURCES = [
     ("01 (baseline)", LAB / "dogfooding_trend_cluster_aware.md", 1, 20, 3, 66,
@@ -70,9 +72,8 @@ KNOWN_SOURCES = [
      LAB / "dogfood_tranch_04" / "tranch_state.json"),
 ]
 
-# Curated entries above carry hand-authored methodology notes / card counts that
-# cannot be reconstructed from the files. Everything else is AUTO-DISCOVERED by
-# discover_sources() — so adding a tranche needs no edit to this file.
+# Everything else is AUTO-DISCOVERED by discover_sources(), so adding a tranche
+# needs no edit to this file.
 
 _ORDINAL_RE = re.compile(r"dogfood_tranche?_(\d+)$")
 
@@ -80,8 +81,8 @@ _ORDINAL_RE = re.compile(r"dogfood_tranche?_(\d+)$")
 def _read_state(dir_path):
     """Return (state_dict, state_path) reading either filename spelling, or ({}, None).
 
-    Frozen tranches 01-04 use ``tranch_state.json``; tranches created after the
-    PR #4073 ``tranch``->``tranche`` rename use ``tranche_state.json``.
+    Older tranche directories (e.g. 03-04) hold ``tranch_state.json``; newer ones
+    hold ``tranche_state.json``. The newer spelling wins if both exist.
     """
     import json
     for name in ("tranche_state.json", "tranch_state.json"):
@@ -97,13 +98,12 @@ def _read_state(dir_path):
 def discover_sources():
     """Curated KNOWN_SOURCES + auto-discovered tranche directories.
 
-    Globs BOTH directory spellings — ``dogfood_tranch_*`` (frozen tranches 01-04)
-    and ``dogfood_tranche_*`` (tranches created after the PR #4073 rename) — so a
-    new tranche is picked up purely by its directory existing, with NO edit to
-    this file. This is the F3 fix: the source list is no longer hardcoded.
-    Curated KNOWN_SOURCES entries win on path collision (they carry hand-authored
-    notes / card counts). If you ever re-hardcode a tranche list here, that is the
-    F3 regression — restore this glob instead.
+    Globs BOTH directory spellings — ``dogfood_tranch_*`` (older) and
+    ``dogfood_tranche_*`` (current) — so a new tranche is picked up purely by its
+    directory existing, with NO edit to this file. Curated KNOWN_SOURCES entries
+    win on path collision (they carry hand-authored notes / card counts). Do not
+    replace this glob with a hardcoded tranche list: any tranche missing from the
+    list would silently drop out of the combined trend.
     """
     sources = [s for s in KNOWN_SOURCES if s[1].exists()]
     known_paths = {s[1].resolve() for s in sources}
@@ -121,10 +121,9 @@ def discover_sources():
         if not trend.exists():
             # A real tranche (has a state file) with NO trend_cluster_aware.md is a
             # silent-omission hazard — the tranche would vanish from the combined
-            # trend (this is exactly how tranche 06 was first missed: it had a
-            # trend.md but not the trend_cluster_aware.md the builder consumes).
-            # Surface it loudly instead of skipping quietly. A bare dir with no
-            # state file is not a tranche; skip it silently.
+            # trend (e.g. one that wrote only a trend.md, which the builder does
+            # not consume). Surface it loudly instead of skipping quietly. A bare
+            # dir with no state file is not a tranche; skip it silently.
             if state:
                 missing.append(d.name)
             continue
@@ -177,8 +176,8 @@ def parse_method_c_severity_sum(path: Path, first_pass: int, last_pass: int) -> 
     """Return ({pass_num: method_c_severity_sum}, source_kind).
 
     Preferred parsing path: 'Per-pass SEVERITY SUM' table's Method C column (exact, with cluster fractions).
-    Fallback: 'Per-pass MEAN BLIND SEVERITY' × 'Per-pass COUNT' (or per-session equivalents) — small rounding error
-    introduced by display precision in the source markdown, but bucket-invariant per the 4-cycle CDKO observation.
+    Fallback: 'Per-pass MEAN BLIND SEVERITY' × 'Per-pass COUNT' (or per-session equivalents) — approximate, with
+    rounding error from the source markdown's display precision (small relative to 5-pass bucket totals).
     """
     text = path.read_text()
     direct = _parse_table_method_c(
@@ -201,7 +200,10 @@ def parse_method_c_severity_sum(path: Path, first_pass: int, last_pass: int) -> 
 
 
 def make_sparkline(values, width=60):
-    """ASCII sparkline (■ blocks). One char per pass."""
+    """Text sparkline using the ▁..█ block characters, scaled to the max value.
+
+    One char per pass; ``width`` is accepted but unused.
+    """
     if not values:
         return ""
     vmax = max(values) or 1
@@ -222,7 +224,7 @@ def main():
     all_passes = {}  # pass_num -> method_c_value
     per_tranche_subtotal = {}  # label -> sum
     parse_kinds = {}
-    # Per-tranche chunk-level resource stats (only for tranches with tranch_state.json)
+    # Per-tranche chunk-level resource stats (only for tranches with a state file)
     per_tranche_chunks = {}  # label -> [(chunk, passes, sub_agent_tokens, sub_agent_tool_uses, duration_ms)]
     per_tranche_other_phases = {}  # label -> [(phase_name, tokens, tool_uses, duration_ms)]
     for label, path, fp, lp, jc, cc, note, state_path in sources:
@@ -325,7 +327,7 @@ def main():
     out.append(f"^ first pass s{first_pass}                                                            ^ last pass s{last_pass}")
     out.append("```")
     out.append("")
-    # Per-chunk resource stats (only for tranches with tranch_state.json data)
+    # Per-chunk resource stats (only for tranches with state-file data)
     if per_tranche_chunks:
         out.append("## Per-chunk resource consumption")
         out.append("")

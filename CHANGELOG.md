@@ -141,6 +141,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The I/O allowlist matches traced runs of every subcommand**, and gates keep it so; it also sees descriptor writes, signals and environment writes.
 - **Every third-party library the shipped code imports is classified.**
 - **Core comments that contradicted the code now describe it.**
+- **History in 76 files' comments and docstrings becomes present-tense rules.**
 
 ### Development tools and CI
 

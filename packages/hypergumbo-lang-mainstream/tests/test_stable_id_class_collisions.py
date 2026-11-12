@@ -1,58 +1,34 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Property tests for INV-fusus + INV-zudob: stable_id must distinguish
-distinct symbols within the same compilation unit AND across distinct
-compilation units.
+"""Property tests: stable_id distinguishes symbols within and across compilation units.
 
-INV-fusus reported a 91% collision rate on hypergumbo's own self-analysis:
-``_compute_stable_id`` hashed only ``kind:param_count:arity_flags:decorators:
-containing_stable_id`` — five inputs that are identical for any pair of
-``@dataclass`` classes in the same module. Five classes in ``ir.py`` —
-``Symbol``, ``Edge``, ``Span``, ``AnalysisRun``, ``ExternalRef`` — all
-shared one ``stable_id``, and their four ``to_dict`` methods cascaded into
-a second collision because the containing class identity was already lost.
+The contract (stable_id v6, ADR-0035; ADR-0014):
 
-**Updated for stable_id v6 (ADR-0035):** the class ``body_sig`` (sorted
-method/field/base names) that v2→v3 folded into the ``ClassDef`` hash has
-been **dropped** — it churned the class id on every member add/remove,
-violating "survives body edits"; structural identity is ``shape_id``'s job.
-Distinctness now comes from the symbol ``name`` plus the full enclosing
-scope chain (v6). The cases below therefore split by *name*, not by body
-shape; ``test_method_order_irrelevant`` is now the "survives body edits"
-contract (the member set is absent from the hash entirely).
+* **Survives BODY edits** — same name, same shape, different body content
+  produces the same stable_id. The class hash carries no member set
+  (``body_sig``): that would churn the class id on every member add/remove;
+  structural identity is ``shape_id``'s job (``test_method_order_irrelevant``).
+* **Does NOT survive rename or move** — ``name`` and ``qualified_name`` (the
+  full enclosing scope chain) are hash inputs, so rename and move are
+  identity-changing operations. With shape-only inputs, every same-shape
+  symbol in a file would share one id — e.g. ``@dataclass`` classes such as
+  ir.py's ``Symbol``/``Edge``/``Span``, or zero-parameter test functions — and
+  their same-named methods (``to_dict``) would collide in turn.
 
-Phase 6 PR3 (INV-bazij) amended the contract: ``name`` and
-``qualified_name`` are now also in the hash inputs, so stable_id no
-longer survives renames. The promises this file pins are now:
+So two classes with identical body shapes in the same module split by *name*,
+and the cases below are built that way.
 
-* **Survives BODY edits** — same name, same shape, different body
-  content produces the same stable_id.
-* **Does NOT survive rename or move** — those are identity-changing
-  operations (the dogfood-corpus 60% collision rate forced this).
+Module identity is part of symbol identity under Python's import semantics, so
+structurally identical classes and top-level functions in *different* modules
+must also get distinct stable_ids. Top-level classes and functions take
+``make_file_stable_id("python", repo_relative_path)`` as their containing
+identity; without it the containing id is empty and module identity
+drops out of the hash.
 
-Two classes with identical body shapes in the same module now SPLIT by
-name (Phase 6 PR3); pre-Phase-6 they collided.
+``_compute_stable_id`` treats ``ast.AsyncFunctionDef`` as a function, so an
+async def gets its real ``param_count`` and ``arity_flags`` rather than the
+class branch's (``param_count=0``, ``arity_flags=False,False,False``).
 
-INV-zudob extends this: structurally-identical classes (and top-level
-untyped functions) in *different* modules must get distinct stable_ids
-because module identity IS part of symbol identity under Python's import
-semantics. Pre-INV-zudob the top-level call sites in ``py.py`` did not
-thread ``containing_stable_id``, so the field defaulted to the empty
-string and module identity was silently erased from the hash —
-``49x TestAdaAnalysisUnavailable`` and ``36x TestAnalysisRun`` collision
-groups on hypergumbo's own self-analysis (18.94% of class nodes). The
-fix threads ``make_file_stable_id("python", repo_relative_path)`` as the
-containing identity for top-level classes and untyped functions; the
-existing within-module discrimination from INV-fusus is preserved
-because identical-body classes in the SAME file still share that
-containing identity.
-
-A secondary fix in the INV-fusus change: ``isinstance(node, ast.FunctionDef)``
-in ``_compute_stable_id`` was broadened to ``isinstance(node, (ast.
-FunctionDef, ast.AsyncFunctionDef))`` so async functions get correct
-``param_count`` and ``arity_flags`` instead of being silently treated as
-classes (param_count=0, arity_flags=False,False,False). Async-vs-sync
-collision was a pre-existing structural bug; bumping ``STABLE_ID_SCHEME``
-to v3 covers both fixes.
+(history: INV-fusus, INV-zudob, INV-bazij)
 """
 from __future__ import annotations
 
@@ -104,7 +80,8 @@ class TestSameModuleDistinctClassesDistinct:
         )
 
     def test_two_dataclasses_with_different_fields_only(self, tmp_path: Path) -> None:
-        """Even when methods match, distinct field sets must split stable_id."""
+        """Classes with no methods and different fields get distinct stable_ids
+        (the split comes from the class name; fields are not hash inputs)."""
         data = _run_and_load(
             tmp_path,
             "from dataclasses import dataclass\n"
@@ -123,7 +100,8 @@ class TestSameModuleDistinctClassesDistinct:
         assert classes["A"]["stable_id"] != classes["B"]["stable_id"]
 
     def test_two_classes_with_different_bases(self, tmp_path: Path) -> None:
-        """Distinct base classes must split stable_id."""
+        """Same-body classes with distinct bases get distinct stable_ids (the
+        split comes from the class name; bases are not hash inputs)."""
         data = _run_and_load(
             tmp_path,
             "class Base1:\n"
@@ -139,7 +117,7 @@ class TestSameModuleDistinctClassesDistinct:
         assert classes["Child1"]["stable_id"] != classes["Child2"]["stable_id"]
 
     def test_five_distinct_dataclasses_all_distinct(self, tmp_path: Path) -> None:
-        """Mirror the ir.py collision case: five @dataclass classes, all distinct."""
+        """Five @dataclass classes in one module (the shape of ir.py's), all distinct."""
         data = _run_and_load(
             tmp_path,
             "from dataclasses import dataclass\n"
@@ -200,7 +178,8 @@ class TestMethodCascadeDistinct:
         assert sym_td["stable_id"] != edge_td["stable_id"]
 
     def test_init_methods_distinct_across_classes(self, tmp_path: Path) -> None:
-        """__init__ on different classes must not collide — the largest INV-fusus group."""
+        """__init__ on different classes must not collide — the most common
+        same-signature method across classes."""
         data = _run_and_load(
             tmp_path,
             "class A:\n"
@@ -226,17 +205,14 @@ class TestSurvivesRenamesAndMoves:
     """The two halves of the Symbol.stable_id docstring promise."""
 
     def test_class_rename_changes_stable_id(self, tmp_path: Path) -> None:
-        """Phase 6 PR3 (INV-bazij): renaming a class changes its stable_id.
+        """Renaming a class changes its stable_id.
 
-        The pre-Phase-6 semantic was "stable_id survives renames" (hash
-        inputs were shape-only). On the dogfood corpus that produced a
-        60% collision rate — 155 zero-parameter bash functions in one
-        file all shared one stable_id; 152 zero-parameter pytest tests
-        likewise. Per ADR-0014's amended rebrand, stable_id is now
-        "structural identity within a (qualified_name, module_path)
-        scope" — it survives BODY changes but NOT rename or move.
-
-        This test pins the new contract: rename must split stable_id.
+        Per ADR-0014, stable_id is "structural identity within a
+        (qualified_name, module_path) scope" — it survives BODY changes but
+        NOT rename or move. Shape-only hash inputs (which would survive a
+        rename) give every same-shape symbol in a file one stable_id, e.g. all
+        zero-parameter bash functions or pytest tests in a file.
+        (history: INV-bazij)
         """
         data_old = _run_and_load(
             tmp_path,
@@ -263,10 +239,9 @@ class TestSurvivesRenamesAndMoves:
     def test_method_order_irrelevant(self, tmp_path: Path) -> None:
         """Reordering methods within a class body must not change class stable_id.
 
-        Under v6 (ADR-0035) the class hash excludes the member set entirely (the
-        v2→v3 ``body_sig`` was dropped), so reordering — and indeed any member
-        add/remove — leaves the class id unchanged: the "survives body edits"
-        contract. Same-module reorder: rewrites the same file so containing
+        The class hash excludes the member set entirely (no ``body_sig``;
+        ADR-0035), so reordering — and indeed any member add/remove — leaves the
+        class id unchanged: the "survives body edits" contract. Same-module reorder: rewrites the same file so containing
         identity is held constant; only the body order changes.
         """
         data_a = _run_and_load(
@@ -291,19 +266,16 @@ class TestSurvivesRenamesAndMoves:
 
 
 class TestSemanticIdentitySplitsByName:
-    """Phase 6 PR3 (INV-bazij): identical-body classes split by name.
+    """Identical-body classes split by name.
 
-    The pre-Phase-6 semantic shared stable_id between two structurally
-    identical classes in the same file, on the theory that "same shape
-    means same identity". The dogfood corpus disagreed: 155 bash
-    functions and 152 pytest tests with identical zero-param shape all
-    sharing one stable_id is a useless identity, not a meaningful one.
-    Per the amended ADR-0014, name is now part of the hash inputs.
+    "Same shape means same identity" makes stable_id useless: every
+    zero-parameter function or test in a file would share one. Name is part
+    of the hash inputs (ADR-0014). (history: INV-bazij)
     """
 
     def test_two_truly_identical_classes_now_split_by_name(self, tmp_path: Path) -> None:
         """Two same-shape classes in the same file get distinct stable_ids
-        because name is now part of the hash inputs."""
+        because name is part of the hash inputs."""
         data = _run_and_load(
             tmp_path,
             "class A:\n"
@@ -321,14 +293,14 @@ class TestSemanticIdentitySplitsByName:
 
 
 class TestAsyncFunctionDistinguished:
-    """isinstance fix: async functions get correct param_count + arity_flags."""
+    """Async functions get their real param_count + arity_flags, not the class branch's."""
 
     def test_async_and_sync_function_with_same_signature_distinct(self, tmp_path: Path) -> None:
         """Async function with N params must not collide with sync function with N params.
 
-        Pre-fix, ``isinstance(node, ast.FunctionDef)`` returned False for
-        ``AsyncFunctionDef``, so async functions fell into the class branch
-        of ``_compute_stable_id`` and got ``param_count=0``,
+        A check for ``ast.FunctionDef`` alone is False for ``AsyncFunctionDef``,
+        which would send async functions into the class branch of
+        ``_compute_stable_id`` with ``param_count=0``,
         ``arity_flags="False,False,False"`` — losing all signature
         information.
         """
@@ -346,20 +318,13 @@ class TestAsyncFunctionDistinguished:
         assert isinstance(async_, ast.AsyncFunctionDef)
         sid_sync = _compute_stable_id(sync)
         sid_async = _compute_stable_id(async_)
-        # The signatures genuinely differ — async function should have its
-        # own identity tier or at minimum reflect the same arity_flags as
-        # sync (post-fix). Either way they should NOT collide via the bug
-        # path (param_count=0 + class branch).
-        # Concretely: after the fix, sid_async reflects an async function
-        # with 2 params, while sid_sync reflects a sync function with 2
-        # params. We document async-vs-sync as a separate identity dimension
-        # by including the kind label.
-        # The narrow assertion here is that the async path is not silently
-        # producing a class-branch hash.
+        # Sync and async defs both hash with kind "function" and the same
+        # param_count/arity_flags, so with no name or scope passed they hash
+        # identically; this assertion only requires a well-formed id. The
+        # check that matters is below.
         assert sid_sync != sid_async or sid_sync.startswith("sha256:")
-        # Verify the arity_flags-from-class-branch bug is gone: an async
-        # function with 2 args must not produce the same hash as a sync
-        # function with 0 args.
+        # A 2-arg async function must not hash like a 0-arg sync function,
+        # which is what dropping its parameters would produce.
         zero_arg_sync = ast.parse("def empty():\n    pass\n").body[0]
         assert _compute_stable_id(zero_arg_sync) != sid_async, (
             "Async function with 2 args collides with zero-arg sync function "
@@ -368,16 +333,16 @@ class TestAsyncFunctionDistinguished:
 
 
 class TestCrossModuleIdenticalSymbolsDistinct:
-    """INV-zudob: structurally-identical symbols in different modules must
-    get distinct stable_ids — module identity is part of symbol identity.
+    """Structurally-identical symbols in different modules must get distinct
+    stable_ids — module identity is part of symbol identity. (history: INV-zudob)
     """
 
     def test_two_identical_classes_in_different_files_distinct(
         self, tmp_path: Path
     ) -> None:
-        """Mirror the self-analysis ``49x TestAdaAnalysisUnavailable`` case.
+        """Two identical class bodies in distinct files must split stable_id.
 
-        Two identical class bodies in distinct files must split stable_id.
+        The shape of a test class copied across per-language test modules.
         """
         (tmp_path / "test_ada.py").write_text(
             "class TestAdaAnalysisUnavailable:\n"
@@ -405,8 +370,8 @@ class TestCrossModuleIdenticalSymbolsDistinct:
         )
 
     def test_same_class_in_two_test_files_distinct(self, tmp_path: Path) -> None:
-        """Mirror the ``36x TestAnalysisRun`` case: same class name, same
-        body shape, two different test modules — must be distinct symbols.
+        """Same class name, same body shape, two different test modules —
+        must be distinct symbols.
         """
         body = (
             "class TestAnalysisRun:\n"
@@ -426,13 +391,15 @@ class TestCrossModuleIdenticalSymbolsDistinct:
         assert len({c["stable_id"] for c in classes}) == 2
 
     def test_top_level_function_cross_module_distinct(self, tmp_path: Path) -> None:
-        """Top-level untyped functions in different modules must also split.
+        """Top-level functions with unannotated args in different modules must also split.
 
-        The fix at the untyped fallback (``_compute_stable_id`` call for
-        top-level functions) must thread containing identity too.
+        Functions take the file identity as their containing scope, just as
+        top-level classes do.
         """
-        # Use unannotated args so the untyped fallback path is taken
-        # rather than the typed ``make_typed_stable_id`` path.
+        # Unannotated args still normalize to a parameter-name signature, so
+        # this takes the typed ``make_typed_stable_id`` tier; the untyped
+        # ``_compute_stable_id`` fallback is only for a signature that does
+        # not normalize.
         body = "def helper(x, y):\n    return x + y\n"
         (tmp_path / "mod_a.py").write_text(body)
         (tmp_path / "mod_b.py").write_text(body)

@@ -3,12 +3,11 @@
 
 THE COST MODEL IS WHAT THESE MOSTLY PIN, because it is the part that would be
 silently wrong. A trajectory built on naive per-test durations optimises a cost
-function that does not exist: measured on this repo,
-``test_route_detected[annotation]`` records 286s and its fifteen siblings 0.0s,
-because a module-scoped fixture runs the full pipeline seventeen times and
-pytest bills the whole setup to whichever test triggered it. Drop the
-"expensive" one, keep the "cheap" ones, and you pay the 286s anyway. Every
-assertion about ``fixed`` / ``marginal`` below exists to stop that.
+function that does not exist: pytest bills a module-scoped fixture's whole
+setup to whichever test triggered it, so one test can record minutes and its
+siblings 0.0s. Drop the "expensive" one, keep the "cheap" ones, and you pay
+the setup anyway. Every assertion about ``fixed`` / ``marginal`` below exists
+to stop that.
 
 The greedy tests use hand-built indices with known optimal answers, because a
 search whose correctness is only checked against its own output is not checked.
@@ -151,7 +150,7 @@ class TestParseDurations:
 
 
 class TestFixtureAwareCost:
-    """THE measured defect: one test is billed for the whole module's fixture."""
+    """The hazard: one test is billed for the whole module's fixture."""
 
     @staticmethod
     def _route_shaped() -> list[PhaseDuration]:

@@ -67,8 +67,8 @@ Haskell-Specific Considerations
 - Only ``return`` is excluded from call edges (monadic lift, not a real call);
   I/O primitives like putStrLn, print, readFile are kept as edges
 
-Identity (WI-tusad)
--------------------
+Identity
+--------
 A function is one symbol per name (its equations fold into it, see INV-midag
 below), so a module-level name never repeats in a file. Its arity is the number
 of patterns of its first equation (every equation of a Haskell function has the
@@ -78,8 +78,7 @@ same number; a ``bind`` such as ``g = \\x -> x`` has none), recorded as
 ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
 (data types and instances with no arity; an instance's name, ``Shape Int``,
 already carries the type that tells it from another instance of the class).
-Before, all three rode the backstop floor key. Classes keep their table-formula
-ids.
+Classes keep their table-formula ids. (history: WI-tusad)
 """
 from __future__ import annotations
 
@@ -247,10 +246,9 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
 
-    # WI-buvun: parse the module header's export list so module-level
-    # symbols carry is_exported correctly. shellcheck had zero exports
-    # recognized before this — the `exports` and `tests` seed sets for
-    # `dead-code-maybe` were therefore useless on Haskell.
+    # Parse the module header's export list so module-level symbols carry
+    # is_exported correctly; the `exports` and `tests` seed sets for
+    # `dead-code-maybe` depend on it. (history: WI-buvun)
     exported_names = _extract_module_exports(tree, source)
 
     # First pass: collect type signatures
@@ -270,8 +268,7 @@ def _extract_symbols_from_file(
     # pattern, and each is its own ``function``/``bind`` node. The symbol is
     # emitted once per name, from the first equation, so its span must run to
     # the LAST one. Otherwise every call in a later equation is anchored to the
-    # right function but falls outside its span: xmonad's ``handle`` spanned
-    # 287-292 while its equations run to 414. Haskell requires a function's
+    # right function but falls outside its span. Haskell requires a function's
     # equations to be adjacent, so first-to-last is exactly the function.
     last_equation_end: dict[str, tuple[int, int]] = {}
     for node in iter_tree(tree.root_node):
@@ -434,9 +431,9 @@ _HS_STD_HANDLES: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
 #: Calls that produce a ``Handle`` over a PATH.
 #:
 #: ``hDuplicate`` and friends are deliberately absent: they take a Handle whose
-#: nature was established wherever THAT handle came from, which is INV-vaduk's
-#: whole point, so classifying them here would assert a filesystem read over a
-#: standard stream.
+#: nature was established wherever THAT handle came from, so classifying them
+#: here could assert a filesystem read over a standard stream. (history:
+#: INV-vaduk)
 _HS_PATH_HANDLE_PRODUCERS: tuple[str, ...] = ("openFile", "openBinaryFile")
 
 
@@ -462,13 +459,12 @@ def _hs_classify_handle_text(text: str) -> Optional[str]:
 
 #: Node types that can be the top-level definition enclosing a call.
 #:
-#: BOTH ARE REQUIRED and the second was found by a coverage gap rather than by
-#: reading the grammar. Haskell spells a definition with NO arguments
+#: BOTH ARE REQUIRED. Haskell spells a definition with NO arguments
 #: (``f = do ...``) as ``bind`` and one WITH arguments (``f p = do ...``) as
 #: ``function`` -- and the second is the common shape for exactly the code this
 #: seam is about, since a ``Handle`` usually arrives as a parameter or is opened
-#: from one. Searching only ``bind`` silently abstained on every parameterised
-#: function, which is a false NEGATIVE in the direction that loses a source.
+#: from one. Searching only ``bind`` would silently abstain on every
+#: parameterised function, a false NEGATIVE in the direction that loses a source.
 _HS_DEFINITION_TYPES: frozenset[str] = frozenset({"bind", "function"})
 
 
@@ -509,11 +505,9 @@ def _hs_binding_rhs(
     if body is None:  # pragma: no cover - see below
         # DEFENSIVE. Every call the analyzer emits an edge for sits inside a
         # ``bind`` or a ``function``, because the edge needs a CALLER and the
-        # caller symbol comes from one of those nodes. It was reachable while
-        # this searched only ``bind`` -- a parameterised definition has neither
-        # a bind ancestor nor, at that point, a resolvable origin -- and adding
-        # ``function`` closed it. Kept because the walk can return None and
-        # that must be handled where it is read.
+        # caller symbol comes from one of those nodes; with both in
+        # ``_HS_DEFINITION_TYPES`` this cannot be reached. Kept because the
+        # walk can return None and that must be handled where it is read.
         return None
     use_line = node.start_point[0]
     best_line = -1
@@ -590,11 +584,10 @@ def _hs_call_meta(
 #: getLine`` does not run ``getLine``. So the choice is a list or nothing, and
 #: the list is kept to combinators whose ONLY purpose is to run the action.
 #:
-#: ``liftIO`` carries this bucket almost by itself -- most of the 142
-#: catalogued sites measured over the corpus, nearly all ``liftIO
-#: getCurrentTime``. ``fmap``/``mapM``/``traverse`` are deliberately ABSENT:
-#: they take a function and a container, so their first argument is exactly the
-#: passed-as-a-value case.
+#: ``liftIO`` is by far the most common combinator in this position, typically
+#: as ``liftIO getCurrentTime``. ``fmap``/``mapM``/``traverse`` are
+#: deliberately ABSENT: they take a function and a container, so their first
+#: argument is exactly the passed-as-a-value case.
 _HS_ACTION_COMBINATORS: frozenset[str] = frozenset({
     "void", "forever", "liftIO", "try", "replicateM", "replicateM_",
 })
@@ -612,8 +605,8 @@ def _hs_bare_identifier(
     A ``qualified`` node keeps its alias separate rather than folded into the
     name, because the catalogue rows ``Data.Text.IO``'s ``getLine`` under a
     DIFFERENT boundary note from Prelude's and the alias is what tells them
-    apart. Folding would produce ``T.getLine``, which is INV-januj's defect
-    (a module-qualified name in the NAME slot) reproduced in a new place.
+    apart. Folding would produce ``T.getLine``, a module-qualified name in the
+    NAME slot (history: INV-januj).
     """
     if node.type == "variable":
         return node_text(node, source), None
@@ -654,10 +647,10 @@ def _hs_locally_bound_names(
 
     FAIL CLOSED, the same rule ``_hs_classify_handle_text`` states for the
     handle seam: this walker feeds a seam that ADDS edges, so a name the
-    definition binds for itself is left alone rather than guessed at. Measured
-    over eight repositories, 11.3% of ``pat <- act`` sites name something bound
-    in the enclosing definition -- ``act <- mkAction`` then ``act`` -- and an
-    edge there would assert a call to a local value.
+    definition binds for itself is left alone rather than guessed at. A
+    ``pat <- act`` site often names something bound in the enclosing
+    definition -- ``act <- mkAction`` then ``act`` -- and an edge there would
+    assert a call to a local value.
 
     THE DEFINITION'S OWN NAME IS NOT COLLECTED. A top-level ``main = do ...``
     is spelled ``bind`` exactly like a ``let`` binding, so this looks only at
@@ -691,32 +684,20 @@ def _hs_action_operands(
 ) -> list["tree_sitter.Node"]:
     """Sub-nodes of *node* that a bare identifier would be EXECUTED in.
 
-    Three positions, chosen by measurement over the EIGHT DISTINCT
-    repositories carrying INV-fofoj's population. Each site was classified as
-    catalogued / module-level-in-repo / bound-in-the-enclosing-definition:
+    Three positions: the action of ``pat <- act``, a bare ``do`` statement,
+    and the argument of a combinator in ``_HS_ACTION_COMBINATORS``
+    (``liftIO act``). These are where a bare identifier is a catalogued action
+    most often and a name bound in the enclosing definition least often, and
+    together they hold the large majority of catalogued sites.
 
-        position              catalogued   wrong (locally bound)
-        ``pat <- act``               267                  11.3%
-        bare ``do`` statement         33                  15.2%
-        ``liftIO act``               142                  15.5%
-        -- excluded --
-        ``<$>`` operand               23                  35.3%
-        ``>>=`` / ``=<<`` operand     16              32.9/26.1%
-        ``<*>`` / ``*>`` / ``<*``      1             32.6/18.0%
-
-    EIGHT, NOT NINE. ``cohort6_crypto`` and ``simplex-chat`` are the same
-    repository -- the second is a symlink into the first, and all 267 of
-    ``cohort6_crypto``'s ``.hs`` files live under ``simplex-chat/``. Counting
-    both inflated an earlier pass of this table from 505 catalogued sites to
-    794, and inflates INV-fofoj's own filed population (25 sites over 9
-    repositories) to the same degree; the honest figures are 505 and 19/8.
-
-    THE INFIX OPERATORS ARE EXCLUDED ON MEASUREMENT, NOT OVERSIGHT. They are
-    just as much execution positions semantically -- but Haskell spells
-    ``fmap`` over Maybe, lists and Either with the same operators it spells IO
-    with, and without types the two are indistinguishable. Together they add 63
-    catalogued sites for 3,812 more sites at 18-35% wrong, against the 442 the
-    three covered positions reach at the three lowest rates with real payoff.
+    THE INFIX OPERATORS ARE EXCLUDED DELIBERATELY, NOT BY OVERSIGHT. Operands
+    of ``<$>``, ``>>=``, ``=<<``, ``<*>``, ``*>`` and ``<*`` are just as much
+    execution positions semantically -- but Haskell spells ``fmap`` over
+    Maybe, lists and Either with the same operators it spells IO with, and
+    without types the two are indistinguishable. Their operands are wrong-edge
+    sites (a locally bound or non-IO value) markedly more often than the
+    covered positions', and they add few catalogued sites. ``test_infix_operand_is_deliberately_excluded`` pins the
+    exclusion. (history: INV-fofoj)
     """
     kind = node.type
     if kind == "bind" and any(child.type == "<-" for child in node.children):
@@ -738,11 +719,11 @@ def _derive_haskell_gated_names() -> frozenset[str]:
 
     ``gate_named_entry`` ends with ``if name in ambiguous_names: return None``,
     so a bare AMBIGUOUS name reaches nothing while a bare unambiguous one still
-    matches through the permissive short-name path. That asymmetry is the whole
-    scope of WI-lokun: these are the only names a module hint can HELP, and
-    stamping any other name would switch module filtering on for a call that
-    already classifies -- buying nothing and risking the fallback (WI-lajus
-    stamped too broadly and moved verdicts the wrong way).
+    matches through the permissive short-name path. So these are the only
+    names a module hint can HELP: stamping any other name switches module
+    filtering on for a call that already classifies -- buying nothing and
+    risking the fallback, which moves verdicts the wrong way. (history:
+    WI-lokun, WI-lajus)
 
     Derived from the catalogue rather than listed, so a row added to
     ``ambiguous_names`` later is covered without editing this module.
@@ -821,21 +802,20 @@ def _hs_bare_call_module(
     Only two routes count as evidence, and everything else abstains:
 
     (a) an unqualified import list names it -- ``import Network.Socket.ByteString
-        (recv)`` then bare ``recv``. This is the route WI-lokun filed.
-    (b) the IMPLICIT Prelude, which is where the filed INSTANCE actually lives:
-        ``print`` is catalogued under ``Prelude`` and Prelude is in no import
-        line at all. Taken only when nothing else claims the name and
-        ``import Prelude hiding (...)`` does not hide it -- ``import
-        Data.Text.IO (readFile)`` beside ``import Prelude hiding (readFile)``
-        must yield ``Data.Text.IO``, never ``Prelude``.
+        (recv)`` then bare ``recv``.
+    (b) the IMPLICIT Prelude: ``print`` is catalogued under ``Prelude`` and
+        Prelude is in no import line at all. Taken only when nothing else
+        claims the name and ``import Prelude hiding (...)`` does not hide
+        it -- ``import Data.Text.IO (readFile)`` beside
+        ``import Prelude hiding (readFile)`` must yield ``Data.Text.IO``,
+        never ``Prelude``.
 
     Abstaining is the safe direction: ``external`` keeps the permissive
     short-name path, and a WRONG module hint would switch module filtering on
     and kill it.
 
-    WHAT THE CORPUS ACTUALLY LOOKS LIKE, stated because route (b)'s name is
-    misleading there: all three servant sites this fixes are written
-    ``import Prelude ()`` + ``import Prelude.Compat`` -- the base-compat idiom,
+    ROUTE (b) ALSO COVERS THE base-compat IDIOM, where its name misleads:
+    ``import Prelude ()`` + ``import Prelude.Compat`` (servant writes this),
     where the empty import list SUPPRESSES the implicit Prelude and the name
     arrives re-exported from ``Prelude.Compat``. Stamping ``Prelude`` is still
     correct, because ``Prelude.Compat`` re-exports ``Prelude.print`` verbatim
@@ -887,8 +867,9 @@ def _hs_emit_call_edge(
     ONE BUILDER FOR BOTH CALL POSITIONS. An application and a bare monadic
     action differ only in which AST node carries the name and in *meta*'s
     ``call_construct``; giving each its own copy is how the resolved/external
-    split, the confidence numbers and the WI-nurun flag drift apart between
-    them -- the same reasoning ``_hs_call_meta`` records for its two arms.
+    split, the confidence numbers and the ``is_resolved`` flag (WI-nurun)
+    drift apart between them -- the same reasoning ``_hs_call_meta`` records
+    for its two arms.
     """
     caller = _find_enclosing_function_haskell(node, source, local_symbols)
     if caller is None:
@@ -908,12 +889,12 @@ def _hs_emit_call_edge(
         # comes from a qualified import when there is one, otherwise
         # "external" so the tagger uses unfiltered short-name matching (not
         # "?" which would fail module filtering and return None).
-        # WI-lokun: a bare AMBIGUOUS name is refused outright by the F3 gate
-        # with no module hint, so `print err` reached nothing while
-        # `putStrLn "x"` -- unambiguous, same module, same file -- classified
+        # A bare AMBIGUOUS name is refused outright by the F3 gate when it has
+        # no module hint, so unstamped `print err` would reach nothing while
+        # `putStrLn "x"` -- unambiguous, same module, same file -- classifies
         # fine. Only that population is stamped, and only from the file's own
         # import context; everything else keeps `external` and the permissive
-        # short-name path it exists to enable.
+        # short-name path it exists to enable. (history: WI-lokun)
         module_hint = path_hint
         if not module_hint and callee_name in HASKELL_GATED_NAMES:
             module_hint = _hs_bare_call_module(
@@ -1117,12 +1098,13 @@ def _extract_edges_from_file(
                     if call_edge is not None:
                         edges.append(call_edge)
 
-        # INV-fofoj: a zero-argument IO action is a BARE IDENTIFIER, not an
-        # application, so none of the branches above can see it. ``getLine``
-        # emitted no edge at all while ``readProcess "uname" [] ""`` in the
-        # identical flow shape emitted one -- which made every catalogued
+        # A zero-argument IO action is a BARE IDENTIFIER, not an application,
+        # so none of the branches above can see it. Without this loop
+        # ``getLine`` would emit no edge while ``readProcess "uname" [] ""`` in
+        # the identical flow shape emits one, leaving every catalogued
         # zero-argument row (getLine, getArgs, getEnvironment, exitFailure,
-        # getCurrentTime) unreachable no matter how it was classified.
+        # getCurrentTime) unreachable however it is classified.
+        # (history: INV-fofoj)
         for operand in _hs_action_operands(node, source):
             identifier = _hs_bare_identifier(operand, source)
             if identifier is None:

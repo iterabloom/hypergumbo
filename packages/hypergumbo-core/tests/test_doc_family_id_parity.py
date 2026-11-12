@@ -1,69 +1,56 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-dulah doc-family ``node.id`` grammar gate — the gate-before-sweep for the
-one limb of the invariant that the self-corpus structurally cannot measure.
+"""Doc-family ``node.id`` grammar gate: ``make_doc_symbol_ids`` ids follow ADR-0036.
 
-INV-dulah's statement enumerates four surviving limbs. Three are drained (the
-route-marker kind-slot via WI-zugob, the synthetic-linker name-slot via
-WI-vuzaf, the manifest-analyzer role fossils via the three config analyzers).
-This gate covers the fourth: the **doc-family slot ORDER**.
+The doc/markup/template analyzers (rst / scss / vue / svelte / puppet / robot /
+pony / twig / sparql / kdl / astro) and the config analyzers (ini / properties /
+requirements) mint their ids through the one shared
+``analyze.base.make_doc_symbol_ids`` chokepoint, which delegates to
+``make_symbol_id``. Those ids must have the ADR-0036 grammar
+(``{lang}:{path}:{start}-{end}:{name}:{kind}``): against the canonical
+right-anchored parse (``span, name, kind = parts[-3:]``) any other slot order
+puts a word in the span slot, so the id fails ``id_format`` with
+``malformed_span_segment`` and cannot be parsed back into its slots at all.
+This is the doc-family slot-ORDER limb of INV-dulah.
 
-The eleven doc/markup/template analyzers (rst / scss / vue / svelte / puppet /
-robot / pony / twig / sparql / kdl / astro) mint both their ids through the one
-shared ``analyze.base.make_doc_symbol_ids`` chokepoint, which emitted
-``{lang}:{path}:{kind}:{start_line}:{name}`` — kind third, no span, name last.
-That is deliberately NOT the ADR-0036 grammar (``{lang}:{path}:{start}-{end}:
-{name}:{kind}``), and the helper's own docstring recorded the deferral. Against
-the canonical right-anchored parse (``span, name, kind = parts[-3:]``) the kind
-word lands in the span slot, so every one of these ids failed ``id_format`` with
-``malformed_span_segment`` and could not be parsed back into its slots at all.
+**Why a fixture corpus is REQUIRED here.** Two independent reasons that
+compound:
 
-**Why a fixture corpus is REQUIRED here, and why it is staged out of the repo.**
-This limb was invisible for as long as it existed, for two independent reasons
-that compound:
-
-  1. *Nothing in this repo is written in these languages.* Zero of the eleven
-     file types are tracked here, so a self-analysis reports ``id_format: 0``
+  1. *Nothing in this repo is written in these languages.* None of these file
+     types are tracked here, so a self-analysis reports ``id_format: 0``
      while saying nothing whatsoever about the doc family. Reading that 0 as
      evidence about this limb is exactly the proxy closure the closure-evidence
      discipline exists to prevent.
   2. *Even with such files present, the default pipeline suppresses them.* Doc
      kinds are ``--include-docs``-gated, so rst emits its section symbols
-     through ``analyze_rst`` but NOT through a default ``run_behavior_map``
-     (measured: 2 sections direct, 0 in the pipeline). This gate therefore runs
-     the pipeline with ``include_docs=True``; without it, rst would be a
-     vacuous green.
+     through ``analyze_rst`` but NOT through a default ``run_behavior_map``.
+     This gate therefore runs the pipeline with ``include_docs=True``; without
+     it, rst would be a vacuous green.
 
 **Why the corpus is written at runtime instead of living in ``tests/fixtures/``.**
-Two independent reasons, the second measured the hard way:
+Two independent reasons:
 
-  1. The reason ``test_route_concept_parity`` records for *staging* its fixtures
-     out: analyzing under ``…/tests/fixtures/…`` subjects every case to the
-     pipeline's own test-path heuristics, which is not what this gate measures,
-     and it has been shown to suppress a producer outright (a byte-identical
-     ``.proto`` yields 4 route markers at an ordinary path and 0 under
-     ``tests/fixtures/``).
-  2. Staging out is not sufficient here, because a corpus that *lives* in the
-     repo is still part of hypergumbo's own tree, and the full-suite self-tree
-     ratchet (``scripts/check-self-tree-validation``, ceiling 0 for every
-     unbaselined ``(class, severity)`` cell) counts every violation in it. This
-     gate's whole design is to RECORD two known producer defects as strict-xfail
-     holes — so committing their fixtures would have added 1 axis_conformance
-     error and 3 id_format warnings to the self-tree matrix and broken that gate.
-     Measured, not predicted: a full self-analysis with the files committed
-     reported exactly those four, each keyed to
-     ``…/tests/fixtures/doc-family/…``. Generating the corpus into ``tmp_path``
-     keeps the recorded holes honest without making the tool's own tree carry
-     them, and satisfies (1) by construction.
+  1. Analyzing under ``…/tests/fixtures/…`` subjects every case to the
+     pipeline's own test-path heuristics, which is not what this gate
+     measures, and those heuristics can suppress a producer outright (a
+     byte-identical ``.proto`` yields route markers at an ordinary path and
+     none under ``tests/fixtures/``). ``test_route_concept_parity`` stages its
+     fixtures out for the same reason.
+  2. Staging out of ``tests/fixtures/`` is not sufficient here, because a
+     corpus that *lives* in the repo is still part of hypergumbo's own tree,
+     and the full-suite self-tree ratchet (``scripts/check-self-tree-validation``,
+     ceiling 0 for every unbaselined ``(class, severity)`` cell) counts every
+     violation in it. This gate RECORDS known producer defects as strict-xfail
+     holes, so committing their fixtures would add those violations to the
+     self-tree matrix and break that gate. Generating the corpus into
+     ``tmp_path`` keeps the recorded holes honest without making the tool's
+     own tree carry them, and satisfies (1) by construction.
 
-The general form, which is the inverse of the pt.41 in-place lesson: a gate that
-deliberately preserves a defect cannot host its corpus inside the tree the
-project ratchets against itself.
+The general form: a gate that deliberately preserves a defect cannot host its
+corpus inside the tree the project ratchets against itself.
 
-**The properties.** Each gets its own test and its own hole set, per the pt.40
-lesson that a gate's UNCHECKED properties are a blind spot exactly as much as an
-unwalked code path — the route gate checked three properties for months and the
-one it omitted (the id name-slot) turned out to be violated by its own anchor
-producer:
+**The properties.** Each gets its own test and its own hole set, because a
+property a gate does not check is a blind spot exactly as much as an unwalked
+code path:
 
   * ``canonical_grammar`` — the id parses as five anchored segments with a
     ``{start}-{end}`` span slot (ADR-0036).
@@ -72,13 +59,13 @@ producer:
 
 **The hole sets.** Every entry below was MEASURED by running this pipeline over
 these fixtures, never inferred from reading a producer. ``KIND_SLOT_HOLES``
-carries the two genuine residuals, both of which are **stable_id-scheme-gated
-rather than merely unfixed**: the ``kind`` argument to
-``make_doc_symbol_ids`` feeds ``make_doc_stable_id``, so correcting a wrong kind
-word changes that symbol's ``stable_id`` — an existing computed identity value,
-which under the scheme-bump principle requires a scheme bump, and those are
-sequenced behind WI-talos v9/v10 exactly as WI-banod T1 is. Recording them as
-strict xfails means the eventual scheme bump XPASSes and forces promotion.
+carries the genuine residuals, which are **stable_id-scheme-gated rather than
+merely unfixed**: the ``kind`` argument to ``make_doc_symbol_ids`` feeds
+``make_doc_stable_id``, so correcting a wrong kind word changes that symbol's
+``stable_id`` — an existing computed identity value, which under the
+scheme-bump principle requires a scheme bump, sequenced behind WI-talos v9/v10.
+Recording them as strict xfails means the eventual scheme bump XPASSes and
+forces promotion.
 """
 from __future__ import annotations
 
@@ -99,22 +86,14 @@ pytestmark = pytest.mark.xdist_group("test_doc_family_id_parity")
 
 # The analyzers that mint through ``make_doc_symbol_ids``. One fixture case
 # each, named for the language, carrying that language's canonical declaration
-# idioms.
+# idioms. ini / properties / requirements are the CONFIG family.
 #
-# The last three (ini / properties / requirements) are the CONFIG family, folded
-# onto the chokepoint by this same change. They were found by grepping for
-# hand-rolled id f-strings after the doc-family fold, not by the gate — a
-# reminder that the eleven named in INV-dulah's statement were the adopters of a
-# shared helper, while these three had copies of the same broken shape and so
-# were invisible to any measurement scoped to the helper's callers. Their
-# ``stable_id`` already came from ``make_doc_stable_id`` independently of
-# ``node.id``, which is exactly why they were safe to fold now.
+# This list is scoped to the helper's callers: a producer that builds its id
+# with a hand-rolled f-string instead is invisible to it, however broken its
+# shape. Grep for such f-strings when adding an analyzer of this family.
 #
-# NOT here, deliberately: ``bibtex`` and ``bitbake``, whose five sites
-# (bitbake 192/302/342/382, bibtex 125) set ``stable_id = symbol_id`` — the
-# composite id IS their stable identity, so correcting node.id would change
-# stable_id and falsify the WI-talos v9 unqualified digest-compatibility claim.
-# That is WI-banod T1, blocked on a RELEASE rather than on effort.
+# NOT here: ``bibtex`` and ``bitbake``, which mint ids with their own helpers
+# rather than through ``make_doc_symbol_ids``.
 DOC_FAMILY_CASES = [
     "astro",
     "ini",
@@ -173,9 +152,8 @@ CASE_FILES: dict[str, tuple[str, str]] = {
             url "postgres://localhost"
         }
     """),
-    # Carries an `actor` declaration deliberately: `actor` was the pony entry
-    # in KIND_SLOT_HOLES until WI-higik registered it, and the case keeps it
-    # so the kind slot is checked on the construct that used to fail.
+    # Carries an `actor` declaration deliberately, so the kind slot is checked
+    # on a pony-specific kind that must stay registered. (history: WI-higik)
     "pony": ("thing.pony", """\
         class Counter
           var _n: U64 = 0
@@ -209,8 +187,9 @@ CASE_FILES: dict[str, tuple[str, str]] = {
           include webserver
         }
     """),
-    # The url and editable forms exercise the two sites whose id kind-slot used
-    # to carry a ROLE (`url_requirement` / `editable`) rather than Symbol.kind.
+    # The url and editable forms exercise the two sites that must write
+    # Symbol.kind, not a ROLE (`url_requirement` / `editable`), into the id
+    # kind-slot.
     "requirements": ("requirements.txt", """\
         flask==2.3.0
         requests>=2.28.0
@@ -272,9 +251,9 @@ CASE_FILES: dict[str, tuple[str, str]] = {
           ?doc dc:title ?title .
         }
     """),
-    # The `on:click` handler is the case that produced a SIX-segment id before
-    # the fold: the event symbol's id name-slot was `button:click`, whose colon
-    # shifted every right-anchored slot. It is now sanitized to `button.click`.
+    # The `on:click` handler pins name-slot sanitization: an unsanitized
+    # `button:click` name would make a SIX-segment id and shift every
+    # right-anchored slot; it must come out as `button.click`.
     "svelte": ("Widget.svelte", """\
         <script>
           export let label = "hi";
@@ -325,18 +304,17 @@ CASE_FILES: dict[str, tuple[str, str]] = {
 _CANONICAL = re.compile(r"^[a-z][a-z0-9_]*:.*:\d+-\d+:[^:]*:[a-z][a-z0-9_]*$")
 
 # (case) -> strict-xfail reason for a MEASURED canonical-grammar hole.
-# Empty: the ``make_doc_symbol_ids`` chokepoint now delegates to
+# Empty: the ``make_doc_symbol_ids`` chokepoint delegates to
 # ``make_symbol_id``, so every adopter emits the canonical shape and inherits
-# the WI-sikar name-slot sanitization (which is what repairs svelte's
-# ``button:click`` event name, a genuine six-segment break before the fold).
+# its name-slot sanitization (which keeps svelte's ``button:click`` event name
+# from adding a sixth segment). (history: WI-sikar)
 CANONICAL_GRAMMAR_HOLES: dict[str, str] = {}
 
 # (case) -> strict-xfail reason for a MEASURED kind-slot hole.
 #
-# The same defect class the route sweep drained — a producer writing a word
-# into the kind-slot that is not the record's own registered kind — blocked
-# on the identity-scheme sequencing rather than on effort (pony's entry left
-# when WI-higik registered ``actor`` / ``primitive``):
+# Each is a producer writing a word into the kind-slot that is not the
+# record's own registered kind, blocked on the identity-scheme sequencing
+# rather than on effort (see the module docstring):
 KIND_SLOT_HOLES: dict[str, str] = {
     "robot": (
         "robot.py passes kind='test_case' to make_doc_symbol_ids while the "
@@ -422,9 +400,8 @@ def test_doc_family_emits_symbols(case: str, doc_family_maps: dict) -> None:
     """Non-vacuity guard: each case emits at least one doc-family symbol.
 
     Without this, a producer that regresses to emitting nothing would turn every
-    property test below green by emptying them — the failure mode that made the
-    old route-marker provenance check pass vacuously on an empty ``origin``
-    list.
+    property test below green by emptying them, the way a provenance check
+    passes vacuously on an empty ``origin`` list.
     """
     symbols = _doc_family_symbols(doc_family_maps[case], CASE_LANG[case])
     assert symbols, (

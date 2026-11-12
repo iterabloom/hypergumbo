@@ -1,26 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-sozoj: Django ORM database-I/O visibility (producer side).
+"""Django ORM database-I/O visibility (producer side).
 
-Django's ORM I/O is invisible to the io-boundary detector because it arrives as
-bare untyped method calls the catalog correctly refuses (INV-tapat/INV-maluk):
-``.save()`` / ``.filter()`` / ``.get()`` on a receiver hypergumbo cannot type.
+Django's ORM I/O arrives as bare untyped method calls the catalog correctly
+refuses (INV-tapat/INV-maluk): ``.save()`` / ``.filter()`` / ``.get()`` on a
+receiver hypergumbo cannot type. Left untyped, it is invisible to the
+io-boundary detector.
 
-These tests pin the sanctioned fix — TYPE the receiver via a framework-syntax
-marker and emit a ``django.db.models``-module-qualified ``calls`` edge, so
-io-boundary's module-filter path (never the short-name gate) can classify each
-method as ``db_read``/``db_write`` via python.yaml (producer identity → consumer
-classification, the WI-fuvuj division). Two type-verifying markers:
+These tests pin the producer's answer — TYPE the receiver via a
+framework-syntax marker and emit a ``django.db.models``-module-qualified
+``calls`` edge, so io-boundary's module-filter path (never the short-name gate)
+can classify each method as ``db_read``/``db_write`` via python.yaml (producer
+identity → consumer classification). Two type-verifying markers:
 
 * ``<Model>.objects.<method>()`` — the Manager/QuerySet query API. The
-  ``.objects`` attribute is Django's Manager-descriptor convention; the chained
-  receiver emits no edge at all today (measured), so this is net-new emission.
+  ``.objects`` attribute is Django's Manager-descriptor convention.
 * ``self.save()`` / ``self.delete()`` in a class that DIRECTLY extends
   ``models.Model`` — the ORM instance-write surface, re-keyed from the plain
-  external edge the analyzer already emits.
+  external edge the analyzer would otherwise emit.
 
 The io-boundary read/write CLASSIFICATION lives in the catalog (python.yaml), not
 here — the producer only supplies the ``django.db.models`` module identity. So
 these tests assert the emitted edge shape, not the boundary tag.
+(history: WI-sozoj, WI-fuvuj)
 """
 
 from pathlib import Path
@@ -252,21 +253,18 @@ class TestClassDirectlyExtendsDjangoModel:
 
 
 class TestAttributeChainReceiverEmitsACallEdge:
-    """INV-mumov: ``obj.deep.method()`` emitted NO call edge at all.
+    """``obj.deep.method()`` emits a call edge, whatever the chain is rooted at.
 
-    ``Item.objects.create(...)`` works — the Django marker above handles a
-    chain rooted at a *class*. But ``event.organizer.issued_gift_cards.create()``
-    is rooted at a local, and the analyzer emitted nothing for it. Measured on
-    pretix: four calls to the same Django manager sink on adjacent lines, two
-    emitting and two silent.
+    The Django marker above handles a chain rooted at a *class*
+    (``Item.objects.create(...)``). A chain rooted at a local —
+    ``event.organizer.issued_gift_cards.create()`` — needs an edge too.
 
     WHY IT MATTERS TWICE OVER. A function whose sink calls are ALL
     attribute-chain shaped has no sink edge, is never considered, and its flow
     is never reported — a false negative, the expensive direction. And the same
     absence makes the call invisible to ``callees_at``, so the §3a walk cannot
-    ask whether the callee consumes the value and records an ESCAPE instead;
-    measured 2026-08-06, a substantial share of INV-busis's "genuine non-call
-    escape sites" are calls in exactly this state.
+    ask whether the callee consumes the value and records an ESCAPE instead.
+    (history: INV-mumov, INV-busis)
     """
 
     def test_attribute_chain_on_a_local_emits_an_edge(
@@ -286,12 +284,12 @@ class TestAttributeChainReceiverEmitsACallEdge:
     def test_single_attribute_on_a_param_still_emits(
         self, tmp_path: Path
     ) -> None:
-        """In-fixture positive control — the shape that ALREADY worked.
+        """In-fixture positive control — the single-hop shape.
 
-        ``obj.bar()`` emits ``python:external:0-0:bar:unresolved`` today. Pinned
-        beside the broken case so a regression there cannot hide behind the new
-        assertion, and so the pair shows the defect is about chain DEPTH rather
-        than about attribute calls in general.
+        ``obj.bar()`` emits ``python:external:0-0:bar:unresolved``. Pinned
+        beside the chained case so a regression here cannot hide behind the
+        chain assertion, and so the pair isolates chain DEPTH from attribute
+        calls in general.
         """
         (tmp_path / "app2.py").write_text(
             "def handler(obj):\n"
@@ -332,19 +330,18 @@ class TestAttributeChainReceiverEmitsACallEdge:
 
 
 class TestQuerySetChainPropagation:
-    """INV-mumov, Phase 6 PR 1: the RESULT of ``<Model>.objects.<queryset-method>()``
-    carries the ORM module, so the NEXT hop matches too.
+    """The RESULT of ``<Model>.objects.<queryset-method>()`` carries the ORM
+    module, so the NEXT hop matches too.
 
-    WI-sozoj typed the first hop (``Order.objects.filter(...)``) and nothing after
-    it, so ``Order.objects.filter(...).exists()`` lost the type at ``.exists()`` --
-    942 sentinel method edges on pretix rooted at ``<Model>.objects``, 976 of the
-    1,625 ORM-chain edges on names the F3 gate refuses today (the 2026-09-06
-    derivability census on INV-mumov). The root rule lives in
+    Typing only the first hop (``Order.objects.filter(...)``) would lose the type
+    at ``.exists()`` in ``Order.objects.filter(...).exists()``, leaving an untyped
+    method edge the catalogue's gate refuses. The root rule lives in
     ``_preserved_receiver_type`` beside the constructor root; which members return
     a QuerySet is DATA (``library_signatures/python.yaml``), so the chained hops
     propagate through ``TYPE_PRESERVING_MEMBERS`` exactly as ``pathlib.Path`` does.
     A Model-returning hop (``get``/``first``/``create``) deliberately does not
     propagate: its value is a project class, which carries no module.
+    (history: INV-mumov)
     """
 
     _MODEL = (
@@ -362,7 +359,7 @@ class TestQuerySetChainPropagation:
             "    return Order.objects.filter(active=True).exists()\n"
         )
         dsts = _orm_dsts(analyze_python(tmp_path).edges)
-        assert "python:django.db.models:0-0:filter:unresolved" in dsts  # WI-sozoj, unchanged
+        assert "python:django.db.models:0-0:filter:unresolved" in dsts  # the first hop
         assert "python:django.db.models:0-0:exists:unresolved" in dsts
 
     def test_bound_queryset_variable_is_typed(self, tmp_path: Path) -> None:
@@ -387,8 +384,9 @@ class TestQuerySetChainPropagation:
 
     def test_model_returning_hop_does_not_propagate(self, tmp_path: Path) -> None:
         """``get`` returns a Model INSTANCE -- a project class, no module -- so the
-        ``.save()`` after it stays where WI-sozoj deliberately left instance
-        writes on typed locals: out of scope, disclosed, not mis-tagged."""
+        ``.save()`` after it is not module-qualified: an instance write outside
+        ``self`` in a Model subclass is out of the markers' scope -- a disclosed
+        gap, not a mis-tag."""
         (tmp_path / "app.py").write_text(
             self._MODEL
             + "def touch():\n"
@@ -401,8 +399,8 @@ class TestQuerySetChainPropagation:
     def test_untyped_receiver_with_queryset_method_name_stays_external(
         self, tmp_path: Path
     ) -> None:
-        """No ``.objects`` root, no type: a ``.filter(...).exists()`` on a parameter
-        is the by-name rule INV-nular warns about and is NOT shipped here."""
+        """No ``.objects`` root, no type: typing ``.filter(...).exists()`` on a
+        parameter would be the by-name rule INV-nular warns against."""
         (tmp_path / "app.py").write_text(
             "def view(d):\n"
             "    return d.filter(x=1).exists()\n"
@@ -410,7 +408,8 @@ class TestQuerySetChainPropagation:
         assert _orm_dsts(analyze_python(tmp_path).edges) == []
 
     def test_inline_and_bound_forms_agree(self, tmp_path: Path) -> None:
-        """The one-predicate parity WI-zilag pinned for pathlib, on the ORM root."""
+        """Inline and bound forms agree on the ORM root, as they do for pathlib
+        (one predicate serves both; history: WI-zilag)."""
         (tmp_path / "inline.py").write_text(
             self._MODEL + "def a():\n    return Order.objects.filter(x=1).values_list('id')\n"
         )
@@ -438,22 +437,20 @@ class TestQuerySetChainPropagation:
 
 
 class TestQuerySetEvaluationCallSites:
-    """WI-fasap (Phase 6 PR 2): the IMPLICIT evaluation of a lazy QuerySet gets a
-    call site.
+    """The IMPLICIT evaluation of a lazy QuerySet gets a call site.
 
     A Django QuerySet reads nothing when it is built -- ``filter``/``all``/
     ``order_by`` compose a query -- and reads when it is EVALUATED: iterated,
-    sliced by index, materialised by ``list()``. ``test_inv_nular_false_sources``
-    kept the lazy combinators under ``db_read`` for years on exactly that point:
-    "the execution is an IMPLICIT ``__iter__`` with NO CALL SITE TO CATALOGUE".
-    ADR-0049 ruling 3 licenses moving the combinators to a disclosure boundary
-    only once the read is represented where it happens, so this class is the
-    first half of that change: py.py emits a ``calls`` edge to
+    sliced by index, materialised by ``list()``. That execution is an implicit
+    ``__iter__`` with no call site of its own, so py.py emits a ``calls`` edge to
     ``django.db.models.__iter__`` / ``__aiter__`` / ``__getitem__`` at the
-    evaluation site, and the overlay rows those names under ``db_read``.
+    evaluation site, and the overlay rows those names under ``db_read``. Only
+    because the read is represented where it happens may the lazy combinators
+    sit under the disclosed ``db_compose`` boundary instead of ``db_read``
+    (ADR-0049).
 
-    Producer identity only, as with every other WI-sozoj marker: the boundary
-    classification stays in the catalogue.
+    Producer identity only, as with the other Django ORM markers: the boundary
+    classification stays in the catalogue. (history: WI-fasap)
     """
 
     _MODEL = (

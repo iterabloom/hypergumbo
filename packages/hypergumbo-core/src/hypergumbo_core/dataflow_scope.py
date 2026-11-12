@@ -5,7 +5,7 @@ WHY THIS EXISTS. The clause reads: "The output must state which flows were
 adjudicated by data flow and which by call reachability alone. A reader must be
 able to tell the two apart from the emitted record; the scope of data-flow
 coverage may not be left to assumption." Per-flow that is
-``TaintFlowFinding.analysis_method``. What no surface carried was the *scope* —
+``TaintFlowFinding.analysis_method``. This module publishes the *scope* —
 which languages the data-flow machinery can run on at all, and therefore what a
 ``structural`` label means for a given repository. Without it, "0 precise
 findings" is unreadable: it may mean the analysis looked everywhere and found
@@ -18,12 +18,10 @@ four hold: a ``cfg_nodes/<lang>.yaml`` mapping exists, that mapping declares
 ``atomic_statement`` (without it the CFG bottoms out at leaf tokens and def/use
 sees nothing), a def/use extractor is registered, and a ``LanguageDdgSpec`` is
 registered. They are independent, and each is *individually* sufficient to keep
-the walk silently inert — Rust shipped an extractor in March and produced zero
-DDG edges for months while failing three of the four at once. Reporting a
-single "supported?" boolean would have said "no" for Rust the whole time
-without ever saying which of the four to fix, and reporting only the CFG
-mapping would have said "yes" for Java, which shipped one with no def/use
-extractor behind it and could adjudicate nothing until WI-gotun wired it.
+the walk silently inert while the others look healthy. A single "supported?"
+boolean would say "no" without saying which of the four to fix, and reporting
+only the CFG mapping would say "yes" for a language with a mapping but no
+def/use extractor behind it, which can adjudicate nothing.
 
 REGISTRATION IS THE TRAP THIS MODULE MUST NOT FALL INTO. Both registries are
 populated as an *import side effect* of the language modules. A scope table
@@ -34,58 +32,47 @@ its caller to have done it, and ``test_dataflow_scope`` carries a non-vacuity
 floor asserting that the registered languages read capable.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — I. Capability is reported per
-LANGUAGE, and that is not a per-function completeness claim. Until WI-losod,
-Go's ``if err := do(); err != nil`` initializers were invisible to def/use — 700
-of caddy's 6,596 ``if`` statements carried a call there — so Go read
-``dataflow_capable`` while containing functions the walk could not see into.
-Constructs the CFG still does not model (a Go ``select`` case's ``v := <-ch``
-binding, a Python ``for ... else:`` clause) keep that true, and a reader who took the bit for
-coverage would be making exactly the assumption clause (a3) forbids. The finer signal is WI-joluk's per-function coverage gate
-(a function whose CFG statement extents miss a call node in its body forfeits
-refutation), which landed on 2026-08-26. So ``coverage_granularity`` reads
-``function`` in the emitted record, which counts the forfeiting functions, rather
-than leaving it here, where no consumer would find it.
+LANGUAGE, and that is not a per-function completeness claim. A capable language
+still contains constructs the CFG does not model (a Go ``select`` case's
+``v := <-ch`` binding, a Python ``for ... else:`` clause), and a reader who
+took the bit for coverage would be making exactly the assumption clause (a3)
+forbids. The finer signal is the per-function coverage gate: a function whose
+CFG statement extents miss a call node in its body forfeits refutation. So
+``coverage_granularity`` reads ``function``, and the emitted record counts the
+forfeiting functions rather than leaving that fact here, where no consumer
+would find it (history: WI-joluk).
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — II. ``inclusion_decided_by`` is a
-constant, not a measurement. **It changed on 2026-09-02, which is the R16
-trigger firing exactly as designed** — the previous text said that when §3a
-gained refutation this constant must change or its test fails, and WI-kabif
-granted §3a removal authority. It now reads
-``call_graph_reachability_minus_ddg_refutation``, and the compound name is the
-honest one because BOTH halves are still true: a flow is still *included* by
-call-graph reachability, and the walk can now *remove* one it refutes.
+constant, not a measurement. It reads
+``call_graph_reachability_minus_ddg_refutation`` because both halves are true:
+a flow is *included* by call-graph reachability, and the §3a walk can *remove*
+one it refutes. The constant has a test on it, so if §3a's authority changes
+again the declared value must change with it (R16; history: WI-kabif).
 
-The asymmetry matters more than the rename. The walk only ever SUBTRACTS: it
-adds no flow that reachability did not already report, and it removes only on
-``refuted`` — the walk exhausted every route with nothing unexplained.
-``escaped`` is ignorance and removes nothing. So reading ``analysis_method ==
-"ddg"`` as "this flow's inclusion was decided by data flow" is STILL the
-misreading INV-sadah exists for, and it has been made twice in this
-repository's own history: a surviving ``ddg`` flow was included by
-reachability and merely corroborated by the walk.
+The walk only ever SUBTRACTS: it adds no flow that reachability did not already
+report, and it removes only on ``refuted`` — the walk exhausted every route
+with nothing unexplained. ``escaped`` is ignorance and removes nothing. So
+reading ``analysis_method == "ddg"`` as "this flow's inclusion was decided by
+data flow" is the misreading INV-sadah exists for: a surviving ``ddg`` flow was
+included by reachability and merely corroborated by the walk.
 
-WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — III, and it is the argument at
-the top of this docstring applied to this module's OWN removal count.
-``flows_removed_by_walk`` is published beside a ``findings_by_analysis_method``
-rollup in which ``ddg_mixed`` collapses THREE walk verdicts and ``structural``
-covers a fourth (``unavailable`` — the walk did not run, because the DDG held no
-reaching-def data for that flow's source function). Only ``refuted`` can
-remove a flow.
+WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — III: the same argument applied
+to this module's own removal count. ``flows_removed_by_walk`` is published
+beside a ``findings_by_analysis_method`` rollup in which ``ddg_mixed``
+collapses THREE walk verdicts and ``structural`` covers a fourth
+(``unavailable`` — the walk did not run, because the DDG held no reaching-def
+data for that flow's source function). Only ``refuted`` can remove a flow.
 So a bare ``0`` could mean "the walk adjudicated every flow and refuted none" or
-"the walk never got to look at any of them", which is the same pair of opposite
-meanings on identical evidence that this module exists to prevent for "0 precise
-findings". :func:`count_walk_verdicts` publishes the finer axis so the zero is
-readable; MEASURED on hypergumbo's own repository the first time it ran, the
-answer was ``unavailable 224`` out of 224 — the DDG built 177,518 edges and
-covered none of the flows' source functions, a fact the previous output had no
-way to state.
+"the walk never got to look at any of them" — opposite meanings on identical
+evidence. :func:`count_walk_verdicts` publishes the finer axis so the zero is
+readable; a run whose every finding reads ``unavailable`` is the case it
+exists to expose.
 
-That gap is now a DECLARED limitation rather than a work item: the owner retired
-the goal of closing §3a's escape sites on 2026-09-09 (INV-busis option (c)),
-because most of them are not calls at all and no function summary can ever reach
-them. The capability is untouched — §3a still removes a flow it refutes — but
-the coverage it would need to fire at scale is not being pursued, and a reader
-is told so in the emitted record rather than discovering it from a zero.
+The walk's escape sites are a DECLARED limitation, not a work item: most of
+them are not calls at all, so no function summary can close them. §3a still
+removes a flow it refutes, but the coverage it would need to fire at scale is
+not being pursued, and the emitted record tells the reader so rather than
+leaving them to infer it from a zero (history: INV-busis option (c)).
 """
 from __future__ import annotations
 
@@ -101,27 +88,22 @@ from .taint import WALK_VERDICTS
 #: property of ADR-0017 §3a's adjudicating design, not a per-run measurement.
 INCLUSION_DECIDED_BY = "call_graph_reachability_minus_ddg_refutation"
 
-#: The granularity at which capability is reported. Was ``language`` — a
-#: statement of what was NOT claimed, since a capable language still holds
-#: functions the def/use extractor does not model. WI-joluk's per-function
-#: coverage gate landed (2026-08-26, wired to both walk arms), which is the
-#: condition this constant's own comment named, so it is now ``function``:
-#: coverage is decided per function, and the functions that forfeit are
-#: counted in the emitted record rather than left to inference.
+#: The granularity at which coverage is decided: ``function``. A capable
+#: language still holds functions the def/use extractor does not fully model,
+#: so the per-function coverage gate (wired to both walk arms) decides which
+#: functions may refute, and the functions that forfeit are counted in the
+#: emitted record rather than left to inference (history: WI-joluk).
 #:
-#: THE R16 TRIGGER FIRED AND WAS NOT HONOURED FOR NINETEEN DAYS. The mechanism
-#: works — a declared constant with a test on it cannot change silently — but
-#: it catches a change to the CONSTANT, not the arrival of the condition that
-#: makes the constant false. A trigger phrased "becomes X when Y lands" needs
-#: something that notices Y.
+#: The test on this constant catches a change to the CONSTANT, not a change in
+#: the code that makes it true or false: if the coverage gate is removed or
+#: coarsened, update this value by hand — nothing will flag it (R16).
 COVERAGE_GRANULARITY = "function"
 
 #: Buckets in :func:`count_walk_verdicts` that are not one of taint's five
 #: verdicts. ``mixed`` is a COLLAPSED row whose members disagreed: the scalar
-#: ``walk_verdict`` is ``grp[0]``'s, and measured on beads 63.9% of groups
-#: holding a ``sink_before_source`` member are not unanimous, so attributing
-#: such a row to its first member would publish a clean, plausible, entirely
-#: wrong breakdown — and in the flattering direction, since a row standing for
+#: ``walk_verdict`` is ``grp[0]``'s, and a collapsed group's members need not
+#: agree, so attributing such a row to its first member would publish a
+#: clean, plausible, entirely wrong breakdown — and in the flattering direction, since a row standing for
 #: one confirmed and three escaped members would read as fully adjudicated.
 #: ``unrecorded`` catches a finding whose verdict is ``""`` (deserialized from
 #: a map written before the field existed) or a value this module does not
@@ -134,22 +116,19 @@ WALK_VERDICT_UNRECORDED = "unrecorded"
 def count_walk_verdicts(findings: Iterable[Any]) -> dict[str, int]:
     """Break taint findings down by WHAT THE §3a WALK RETURNED.
 
-    WHY THIS EXISTS, and it is this module's own founding argument turned on
-    its own field. ``flows_removed_by_walk: 0`` is published beside a
+    WHY THIS EXISTS: this module's founding argument applied to its own
+    field. ``flows_removed_by_walk`` is published beside a
     ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
-    THREE verdicts — ``taint`` records a production split of 0 ``refuted``
-    / 14 ``escaped`` / 139 ``not_attempted``. Only ``refuted`` can remove a
-    flow. So a reader looking at a zero could not tell "the walk adjudicated
-    and refuted nothing" from "the walk never got to look", which is exactly
-    the pair of opposite meanings on identical evidence that this module was
-    written to prevent for ``0 precise findings``.
+    THREE verdicts (``refuted``, ``escaped``, ``not_attempted``), and only
+    ``refuted`` can remove a flow. Without this breakdown a reader looking at
+    a zero could not tell "the walk adjudicated and refuted nothing" from "the
+    walk never got to look" — opposite meanings on identical evidence.
 
-    IT IS ALSO A DECLARED BLINDNESS, not a gap awaiting work. INV-busis
-    measured that most points where the walk loses a tainted value are not
-    calls at all (66.7-90.6%), so no function summary can ever close them, and
-    the owner RETIRED the goal of closing them on 2026-09-09 (option (c):
-    accept confirm-only permanently). Retiring a goal without publishing its
-    consequence is how a limitation becomes a silent one — hence this.
+    It also publishes a DECLARED BLINDNESS, not a gap awaiting work: most
+    points where the walk loses a tainted value are not calls at all, so no
+    function summary can close them, and closing them is not pursued. A
+    limitation that is accepted but not published becomes a silent one
+    (history: INV-busis option (c)).
 
     Counts ROWS, on the same denominator as ``findings_by_analysis_method``:
     both describe findings the propagators produced, post-collapse.
@@ -168,8 +147,7 @@ def count_walk_verdicts(findings: Iterable[Any]) -> dict[str, int]:
         # reaches here only from a duck-typed input that carries no verdict at
         # all -- and ``""`` is exactly the ``unrecorded`` cell below. Reading
         # the scalar as a second source would give one fact two homes for a
-        # case that cannot occur, and CI's whole-file coverage gate is what
-        # surfaced it as unreachable.
+        # case that cannot occur, as an uncoverable branch.
         verdict = next(iter(distinct), "")
         if verdict in counts and verdict != WALK_VERDICT_MIXED:
             counts[verdict] += 1
@@ -208,8 +186,6 @@ class LanguageDataflowScope:
     number that matters to a reader is not "is this language covered" but "how
     many sinks does the uncovered language have" — an incapable language's
     sink count is the scope disclosure, and a bare capability boolean hides it.
-    (Java and JavaScript were the uncovered languages when this was written;
-    both are wired now.)
     """
 
     language: str  # axis: language
@@ -256,9 +232,9 @@ class SanitizerScope:
     entry is cryptographic. So "0 sanitized flows" across a whole repository is
     ambiguous in the way L58 is about — it may mean nothing was protected, or it
     may mean nothing *could* be, because the claim's taint labels and the
-    catalogue's input labels are disjoint sets. That has been measured and it is
-    the latter: a nine-repo cohort produced zero sanitized flows for exactly
-    this reason. ``sanitizable_labels`` is what makes the two readable apart.
+    catalogue's input labels are disjoint sets. With an all-cryptographic
+    catalogue the second reading is the common case, not a corner case.
+    ``sanitizable_labels`` is what makes the two readable apart.
     """
 
     total: int
@@ -326,16 +302,13 @@ def ensure_def_use_extractors_registered() -> bool:
 
     RE-REGISTERS AFTER A CLEAR, which a bare import cannot do. Registration is an
     import SIDE EFFECT, so once a module sits in ``sys.modules`` the import here
-    is a no-op and the decorators never re-run — meaning this function returned
-    ``True`` while the registry was empty and every language reported
-    ``dataflow_capable: False``. That is not hypothetical: ``test_cfg.py`` calls
-    ``clear_def_use_extractors()`` five times, and ``test_ddg_build.py`` already
-    carries a hand-rolled ``importlib.reload`` guard in one test with a docstring
-    explaining exactly this hazard. Every other consumer was unguarded, so
-    whether a taint claim reported the JavaScript extractor as wired depended on
-    which tests happened to share an xdist worker — a green suite and a red one
-    from the same tree. The guard belongs here, at the one place that owns the
-    registration, rather than being copied into each test that trips over it.
+    is a no-op and the decorators never re-run. Without the reload, a call made
+    after ``clear_def_use_extractors()`` (several tests call it) would return
+    ``True`` over an empty or partial registry, every affected language would
+    report ``dataflow_capable: False``, and the result would depend on which
+    tests shared an xdist worker. The guard belongs here, at the one place that
+    owns the registration, rather than being copied into each test that trips
+    over it.
     """
     import importlib
 
@@ -363,20 +336,17 @@ def ensure_def_use_extractors_registered() -> bool:
     # registration in the process records what a healthy registry looks like and
     # every later call checks against that.
     #
-    # A SUBSET CHECK, NOT A NON-EMPTY CHECK, and the difference is the whole
-    # defect. ``test_py_def_use.py`` clears the registry and reloads only its own
-    # module, leaving it populated but missing ``javascript`` — so an emptiness
-    # test reports health while the JavaScript extractor is gone. That is exactly
-    # how a full-suite run produced two JavaScript data-flow failures that every
-    # smaller scope passed.
+    # A SUBSET CHECK, NOT A NON-EMPTY CHECK. A caller that clears the registry
+    # and reloads only its own module (``test_py_def_use.py`` does) leaves it
+    # populated but missing other languages — so an emptiness test would report
+    # health while, say, the JavaScript extractor is gone.
+    #
     # THE BASELINE IS PRODUCED, NOT FOUND. Learning the expected set from
-    # whatever happened to be registered when this ran first has the same
-    # shape as the subset defect above, one level up: if an earlier test had
-    # imported the modules and then cleared the registry, the first call
-    # found a PARTIAL registry (the import is a no-op once the module is in
-    # ``sys.modules``), recorded that as healthy, and every later subset
-    # check passed against the clipped baseline — so ``go`` could stay
-    # missing for the rest of the process with nothing reporting it. The
+    # whatever happens to be registered on the first call has the same flaw one
+    # level up: if an earlier caller imported the modules and then cleared the
+    # registry, the first call would find a PARTIAL registry (the import is a
+    # no-op once the module is in ``sys.modules``), record it as healthy, and
+    # every later subset check would pass against the clipped baseline. The
     # first call therefore reloads unconditionally and learns from the state
     # it produced itself.
     if not _EXPECTED_DEF_USE_LANGUAGES:
@@ -446,26 +416,26 @@ def dataflow_scope_dict(
     return {
         "inclusion_decided_by": INCLUSION_DECIDED_BY,
         "coverage_granularity": COVERAGE_GRANULARITY,
-        # WI-mugop. What the per-function granularity above actually COSTS.
-        # A function lands in the forfeited count when the CFG's recorded
-        # statement extents miss code in its body — the extractor demonstrably
-        # did not see part of it — so its walk may not refute. On the measured
-        # cohort that is 18.8-51.6% of walkable functions, and a rate that high
-        # decides how much a clean verdict is worth. Emitted as a PAIR because
-        # a bare count is unreadable: 400 forfeits out of 800 and out of 40,000
-        # are different facts. Zero-filled like every other key here.
+        # What the per-function granularity above actually COSTS. A function
+        # lands in the forfeited count when the CFG's recorded statement
+        # extents miss code in its body — the extractor demonstrably did not
+        # see part of it — so its walk may not refute. The forfeit rate can be
+        # a large share of walkable functions, and it decides how much a clean
+        # verdict is worth. Emitted as a PAIR because a bare count is
+        # unreadable: 400 forfeits out of 800 and out of 40,000 are different
+        # facts. Zero-filled like every other key here (history: WI-mugop).
         "functions_walkable": functions_walkable,
         "functions_forfeited": functions_forfeited,
         "languages": [row.to_dict() for row in rows],
         "findings_by_analysis_method": counts,
         "findings_total": sum(counts.values()),
-        # WI-kabif. How many flows the §3a walk REFUTED and removed this run.
+        # How many flows the §3a walk REFUTED and removed this run.
         # Emitted always, and zero is a real answer: the alternative is a
         # security tool whose findings can silently be fewer than the analysis
         # produced, with no number a reader could check. ``findings_total``
         # counts what SURVIVED, so the two together say what the walk did.
         "flows_removed_by_walk": flows_removed_by_walk,
-        # INV-busis. What makes the number ABOVE readable: only ``refuted``
+        # What makes the number ABOVE readable: only ``refuted``
         # can remove a flow, so a zero beside a large ``escaped`` /
         # ``not_attempted`` count means the walk never got to look. Always
         # present and fully zero-filled, for the same reason as every other key
@@ -495,9 +465,7 @@ def render_dataflow_scope_text(
     """The same scope, for the text view. Empty when nothing was analyzed.
 
     Text mode gets this because a disclosure that exists only in ``--json`` is
-    half shipped — WI-bifob's exclusion bucket reached the dataclass and never
-    the text renderer, so a text reader of a violated claim never learned flows
-    had been set aside. The same mistake is not worth making twice.
+    half shipped: a text-mode reader never sees it.
     """
     if not rows:
         return []

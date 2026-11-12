@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Registered analyzer entry point for the SCIP-backed Rust backend (WI-duzul Slice C-final).
+"""Registered analyzer entry point for the SCIP-backed Rust backend.
 
-This module threads the three primitives the earlier slices delivered
-into the hypergumbo-core analyzer-registry surface:
+This module wires three primitives into the hypergumbo-core
+analyzer-registry surface:
 
 1. :func:`hypergumbo_lang_rust_analyzer.gate.should_use_rust_analyzer_backend`
    gates the whole function on the user's opt-in + binary availability.
@@ -14,10 +14,11 @@ into the hypergumbo-core analyzer-registry surface:
 3. The stable-id parity HELPER is threaded inside
    :func:`~hypergumbo_lang_rust_analyzer.translate.translate_scip_to_hg`.
    It does not make the emitted Symbols deduplicable against the
-   tree-sitter ``rust.py`` output today: it abstains on the identifier-
-   token span rust-analyzer supplies, so 0 of 52 shared functions carry
-   one id on aardvark-dns (INV-dolud). Cross-pass dedup, and whether the
-   two arms should share an identity at all, is WI-gojum (parked).
+   tree-sitter ``rust.py`` output: rust-analyzer supplies the identifier-
+   token span and the helper needs the item span, so it abstains for every
+   multi-line function and the SCIP-derived id stays (INV-dolud).
+   Cross-pass dedup, and whether the two arms should share an identity at
+   all, is an open question (WI-gojum).
 
 Registration
 ------------
@@ -38,9 +39,8 @@ backend not enabled"``) immediately. No file walk, no subprocess.
 
 Provenance
 ----------
-Successful SCIP-sourced Symbols already carry ``origin="scip"`` from
-:func:`~hypergumbo_core.scip.index.scip_index_to_symbols`, which
-preserves the provenance marker the WI-nohah description calls out.
+Successful SCIP-sourced Symbols carry ``origin="scip"`` from
+:func:`~hypergumbo_core.scip.index.scip_index_to_symbols`.
 Downstream tools can filter on ``symbol.origin`` to trust-weight SCIP-
 derived symbols separately from tree-sitter-derived ones.
 
@@ -53,10 +53,12 @@ that indexed nothing is not a skip (WI-luvud).
 Diagnostics
 -----------
 When the backend IS enabled but a SCIP run produces zero ``origin='scip'``
-edges despite the repo containing ``.rs`` files (the wasmtime-OOM-class silent
-fall-through), the analyzer surfaces a Python ``UserWarning`` (WI-todon) via
-the ``_emit_user_warning`` callback threaded into
-``try_analyze_with_rust_analyzer`` — the failure is no longer swallowed.
+edges despite the repo containing ``.rs`` files (rust-analyzer ran but its
+index carries nothing usable), the analyzer emits a Python ``UserWarning``
+through ``_emit_user_warning``. The same callable, wrapped by
+``run_recording_log``, is the ``log`` passed to
+``try_analyze_with_rust_analyzer``, so invoke and translate failures surface
+as warnings too instead of being swallowed (history: WI-todon).
 """
 
 from __future__ import annotations
@@ -102,20 +104,19 @@ def _disk_source_reader(path: str) -> bytes | None:
 
 def _repo_anchored_reader(repo_root: Path) -> Callable[[str], bytes | None]:
     """Build a source reader that resolves SCIP ``doc.relative_path`` against
-    ``repo_root``, not the process CWD (WI-kilih).
+    ``repo_root``, not the process CWD.
 
     ``rust-analyzer scip`` emits paths relative to the indexed workspace, so the
     reassignment pass hands this reader a repo-relative path like ``src/lib.rs``.
-    Reading it bare resolves against ``os.getcwd()``; when the survey runs from
+    Read bare, it resolves against ``os.getcwd()``: whenever the survey runs from
     anywhere other than ``repo_root`` (absolute-path surveys, monorepo sub-roots,
-    CI runners) the read fails, the stable_id parity reassignment is silently
-    skipped, and the SCIP symbol keeps a raw-moniker stable_id that diverges from
-    the tree-sitter ``rust.py`` anchor — breaking the WI-zakub byte-parity contract
-    (ADR-0035 v7). Anchoring at ``repo_root`` closes THAT gap; ``pathlib`` leaves an
-    already-absolute path unchanged. It did not make parity hold: with the read
-    succeeding, the helper still abstains on rust-analyzer's identifier-token span
-    for every multi-line function (INV-dolud), so the changelog entry that
-    described this fix as preserving parity is corrected in place.
+    CI runners) the read fails and the stable_id parity reassignment is silently
+    skipped, leaving a raw-moniker stable_id where the byte-parity contract
+    (ADR-0035) wants the tree-sitter ``rust.py`` anchor. ``pathlib`` leaves an
+    already-absolute path unchanged. A successful read is necessary but not
+    sufficient for parity: the helper still abstains on rust-analyzer's
+    identifier-token span for every multi-line function (INV-dolud).
+    (history: WI-kilih)
     """
 
     def _read(relative_path: str) -> bytes | None:
@@ -127,14 +128,15 @@ def _repo_anchored_reader(repo_root: Path) -> Callable[[str], bytes | None]:
 def _emit_user_warning(message: str) -> None:
     """Surface graceful-degrade diagnostics as Python ``UserWarning``.
 
-    WI-todon: the prior implementation passed no logger into
-    :func:`try_analyze_with_rust_analyzer`, which meant every
-    invoke/translate failure (including OOM-kills) was swallowed
-    silently. Wiring this real log callable as the default makes the
-    diagnostics from :mod:`graceful_degrade._format_invocation_failed`
-    visible to the user without requiring CLI plumbing changes.
-    ``stacklevel=3`` so the warning points at the analyzer call site
-    (registry dispatch) rather than this helper.
+    :func:`try_analyze_with_rust_analyzer`'s ``log`` defaults to a no-op,
+    so without a real log callable every invoke/translate failure
+    (including OOM-kills) is swallowed silently. Passing this one makes
+    the diagnostics from :mod:`graceful_degrade._format_invocation_failed`
+    visible to the user without CLI plumbing. ``stacklevel=3``: a direct
+    call from :func:`analyze_rust_with_scip` points the warning at the
+    registry dispatch that called the analyzer rather than this helper;
+    through the ``run_recording_log`` wrapper it points at the
+    graceful-degrade or translate code that logged.
     """
     warnings.warn(message, UserWarning, stacklevel=3)
 
@@ -160,25 +162,25 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
 
     The artifact-engagement check uses this signature: a successful
     rust-analyzer + SCIP translation produces edges with
-    ``origin='scip'``. A SCIP run that exits 0 but produces no usable
-    output (the wasmtime-OOM-class scenario) yields zero such edges,
-    even when ``.rs`` files are present — that is exactly the silent
-    fall-through WI-todon makes visible.
+    ``origin='scip'``. A SCIP run that completes but produces no usable
+    output yields zero such edges even when ``.rs`` files are present —
+    a silent engagement failure the caller turns into a warning
+    (history: WI-todon).
     """
     return any("scip" in getattr(edge, "origin", []) for edge in edges)
 
 
-# WI-juzig / ADR-0057 §10: a second BACKEND for the language ``rust`` — not a
-# language of its own. The registry can now see that ``rust`` and
-# ``rust_analyzer`` are two producers for one language, and (WI-hohuh) how
-# their records pair: this arm's ``Symbol.name`` is the SCIP descriptor name
-# as emitted (never ``::``-qualified) and its ``Symbol.span`` is the identifier
-# TOKEN rust-analyzer puts in the Definition ``range`` (INV-lodum), so the
-# pass tests token-inside-item against the tree-sitter arm. No measured
-# authority is declared: on the one attribute measured, ``kind``, this arm is
-# the wrong one (WI-gapup). ``executes_analysed_code`` (ADR-0045 §5): indexing
-# runs the analysed crate's ``build.rs`` and proc macros, so the opt-in is a
-# per-repository trust grant, never a config preference.
+# ADR-0057 §10: a second BACKEND for the language ``rust``, not a language of
+# its own — ``rust`` and ``rust_analyzer`` are two producers for one language,
+# and the merge anchor says how their records pair: this arm's ``Symbol.name``
+# is the SCIP descriptor name as emitted (never ``::``-qualified) and its
+# ``Symbol.span`` is the identifier TOKEN rust-analyzer puts in the Definition
+# ``range`` (INV-lodum), so the merge pass tests token-inside-item against the
+# tree-sitter arm. No authority is declared: on ``kind``, the one attribute
+# measured, this arm is the less accurate one (WI-gapup).
+# ``executes_analysed_code`` (ADR-0045 §5): indexing runs the analysed crate's
+# ``build.rs`` and proc macros, so the opt-in is a per-repository trust grant,
+# never a config preference. (history: WI-juzig, WI-hohuh)
 @register_analyzer(
     "rust_analyzer",
     priority=45,
@@ -190,32 +192,34 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
     # Edge.origin back to the registry reads a statement, not a coincidence.
     emits_origin="scip",
     executes_analysed_code=True,
-    # Nothing to declare: every tracked attribute's default is absent
-    # since INV-kubup, so an unassigned field is already an abstention.
+    # Nothing to declare: no tracked Symbol attribute has a concrete
+    # default, so an unassigned field already reads as an abstention.
     merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, observes=()),
 )
 def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     """Entry point for the SCIP-backed Rust analyzer.
 
-    Returns an empty result when the opt-in gate is False; otherwise
+    Returns a skipped result (``BACKEND_DISABLED``) when the opt-in gate
+    is False; otherwise
     shells out to ``rust-analyzer scip <repo_root>``, translates the
     emitted SCIP index into hypergumbo ``Symbol`` / ``Edge`` objects
     (through the rust.py stable_id parity helper, which abstains on
-    production spans — INV-dolud), and returns them. The WI-nohah
-    fall-through conditions are handled inside
+    production spans — INV-dolud), and returns them. The fall-through
+    conditions (missing binary, non-zero exit, exit-0-with-no-index,
+    undecodable blob) are handled inside
     :func:`try_analyze_with_rust_analyzer`, which returns a
     :class:`ScipAttempt`; a failed attempt surfaces here as a skipped
     AnalysisResult carrying the attempt's silence code (WI-luvud), and
     a run that indexed nothing is an empty, unskipped result.
 
-    WI-todon engagement diagnostics: a real log callable
+    Engagement diagnostics: a real log callable
     (:func:`_emit_user_warning`) is wired into
     :func:`try_analyze_with_rust_analyzer` so invoke/translate
     failures surface as ``UserWarning`` instead of being swallowed.
     After a successful translate, an artifact-level engagement check
     fires when zero ``origin='scip'`` edges were produced on a repo
-    that contains ``.rs`` files — catching the OOM-class scenario
-    where rust-analyzer exits 0 but emits no usable SCIP output.
+    that contains ``.rs`` files — catching a run that completes but
+    whose index carries nothing usable.
 
     The registry calls this with ``repo_root`` being the workspace
     root, which is exactly what ``cargo metadata`` + ``rust-analyzer
@@ -233,15 +237,13 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
             skip_reason_code=BACKEND_DISABLED,
         )
 
-    # WI-didag: mint the run BEFORE dispatching, so its execution_id can be
-    # threaded into the translator and every Symbol and Edge this pass emits
-    # names a run that is actually serialized. Previously the success path
-    # returned ``AnalysisResult(symbols, edges)`` with no run at all, and the
-    # translator fabricated an id to satisfy Edge's WI-higap guard: measured on
-    # aardvark-dns, 669 nodes and 637 edges whose provenance resolved to
-    # nothing, from a pass that appeared in NEITHER analysis_runs NOR
-    # limits.skipped_passes -- the only one of 118 registered analyzers for
-    # which that was true.
+    # Mint the run BEFORE dispatching, so its execution_id can be threaded
+    # into the translator and every Symbol and Edge this pass emits names a
+    # run that is actually serialized. Without a run id the translator
+    # fabricates one from a local, never-serialized run to satisfy Edge's
+    # WI-higap guard: the output's provenance resolves to nothing, and the
+    # pass appears in neither analysis_runs nor limits.skipped_passes.
+    # (history: WI-didag)
     run = AnalysisRun.create(  # nosec B106 — pass_id is a pass NAME, not a password;
         # bandit's B106 fires on any ``pass*=`` keyword holding a string literal.
         # Same false positive the analyzer registry already suppresses.
@@ -254,19 +256,17 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
         run_id=run.execution_id,
     )
     if result.failed:
-        # WI-luvud: this branch used to swallow FOUR states into one prose
-        # string and one code. A missing binary, a non-zero exit, an
-        # exit-0-with-no-index and an undecodable blob are different problems
-        # with different remedies, and the exception taxonomy had always told
-        # them apart — the information died at the graceful-degrade boundary.
-        # ``ScipAttempt`` carries it through; see that class for why each
-        # state gets the value it does.
+        # A missing binary, a non-zero exit, an exit-0-with-no-index and an
+        # undecodable blob are different problems with different remedies, so
+        # each keeps its own silence code: ``ScipAttempt`` carries the
+        # exception taxonomy's distinction through the graceful-degrade
+        # boundary instead of collapsing it into one string and one code. See
+        # that class for why each state gets the value it does.
         #
-        # These remain SKIPS, deliberately. ``dependency_unavailable`` and
+        # These are SKIPS, deliberately. ``dependency_unavailable`` and
         # ``pass_crashed`` are skip-host values under ADR-0056, and re-hosting
         # them onto an AnalysisRun is the question ADR-0056 §"What would change
-        # this decision" item 5 reserves to the OWNER. This change tells the
-        # states apart without pre-empting that ruling.
+        # this decision" item 5 reserves to the OWNER. (history: WI-luvud)
         return AnalysisResult(
             skipped=True,
             skip_reason=f"rust-analyzer backend: {result.detail}",

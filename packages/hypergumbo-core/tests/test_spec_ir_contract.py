@@ -2,39 +2,34 @@
 """The spec must not lie about the code, the schema, or itself.
 
 ``docs/hypergumbo-spec.md`` is the document consumers read before writing
-against a survey. Three drifts are guarded here, each of which had actually
-occurred when this test was written:
+against a survey. These drifts are guarded here:
 
-1. **Nullability parity (§6).** The §6 ``class Symbol`` block declared
-   ``language: str`` and ``span: Span`` as non-optional long after ADR-0031
-   made ``language`` ``None`` for Class-B synthetic stand-ins and WI-hafap
-   made ``span`` nullable at ``SCHEMA_VERSION`` 0.20.1. A consumer reading
-   §6 would not null-check. The spec even contradicted itself: §9's
-   per-language attribution paragraph already described falling back to
-   ``discovery_language`` "when ``node.language`` is ``None``".
+1. **Nullability parity (§6).** The §6 ``class Symbol`` block must declare a
+   field Optional when the dataclass is: ``language`` is ``None`` for Class-B
+   synthetic stand-ins (ADR-0031) and ``span`` is nullable (WI-hafap). A
+   consumer reading a non-optional type in §6 would not null-check.
 
 2. **Immutability claims (Appendix C).** Appendix C lists node fields that
    "cannot remove or change type". A field on that list which is Optional in
    the dataclass must say so on the spot — otherwise the compatibility
    contract promises a non-null string the producer does not emit.
 
-3. **Serialized-but-undocumented fields.** ``Edge.dst_ref`` shipped as
-   ADR-0037's canonical source of truth for external-target identity, was
-   serialized by ``Edge.to_dict`` and published in ``docs/schema.json``, and
-   appeared **zero** times in the spec. ``Symbol.cyclomatic_complexity`` had
-   the same gap.
+3. **Serialized-but-undocumented fields.** A field serialized by ``to_dict``
+   and published in ``docs/schema.json`` must appear in the spec, or
+   consumers never learn it exists — even one as central as ``Edge.dst_ref``,
+   ADR-0037's canonical source of truth for external-target identity.
 
 It lives in ``hypergumbo-core``'s suite rather than the repo-root one because
 it imports ``hypergumbo_core.ir`` — the placement rule in AGENTS.md — and
 because the root suite runs in a container that installs no hypergumbo
 package (``.woodpecker/full-suite.yml``), where that import would fail.
 
-Why a test rather than a proofread: all three failures are silent. The spec
+Why a test rather than a proofread: all of these failures are silent. The spec
 stays internally plausible, the schema stays valid, and nothing surfaces
 until a consumer trusts the prose and crashes on a null — or never learns a
-field exists. The existing ``scripts/check-schema-coverage`` gate does not
-help; it ratchets registry *value* coverage across a fixture corpus and says
-nothing about whether a schema *property* is documented.
+field exists. ``scripts/check-schema-coverage`` does not cover this; it
+ratchets registry *value* coverage across a fixture corpus and says nothing
+about whether a schema *property* is documented.
 """
 
 from __future__ import annotations
@@ -163,11 +158,12 @@ def test_appendix_c_immutable_node_fields_disclose_nullability() -> None:
 def test_spec_symbol_block_lists_every_dataclass_field() -> None:
     """§6 presents itself as ``class Symbol`` — so it must be the whole class.
 
-    The block had 17 of 30 fields. The omissions were not uniform: ADR-0032's
-    typed siblings (``display_label`` / ``qualified_name``) were listed while
-    ADR-0031's (``discovery_language`` / ``protocol_origin``) were not, and
-    ``meta`` was missing from the very block whose ``kind`` comment tells the
-    reader that framework-role and dispatch facts "live in meta".
+    A partial block misleads by what it leaves out, and omissions need not be
+    uniform: it can list ADR-0032's typed siblings (``display_label`` /
+    ``qualified_name``) but not ADR-0031's (``discovery_language`` /
+    ``protocol_origin``), or omit ``meta`` from the very block whose ``kind``
+    comment tells the reader that framework-role and dispatch facts "live in
+    meta".
     """
     from hypergumbo_core.ir import Symbol
 
@@ -221,16 +217,13 @@ def test_spec_names_every_cli_subcommand() -> None:
 
 # --- Entrypoint confidence bases -------------------------------------------
 #
-# 4. **One fact, three homes.** The entrypoint confidence bases were written
-#    out in §8 (a four-row table), in §9 (an eight-row list grouped by
-#    ``evidence_type``), and in §12 (prose asserting "the four standard tiers
-#    span [0.70, 0.99]"). WI-logad corrected §9 and left the other two. The
-#    result: §8 omitted the 0.75 ``library_export`` base that, by §9's own
-#    measurement, the plurality of entrypoints carry (45 of 118), and §12
-#    claimed the only non-tier values sat *below* [0.70, 0.99] when 0.90,
-#    0.80 and 0.75 sit inside it. Both surfaces were internally plausible.
-#    §12 no longer enumerates; §8 and §9 still do, so both are pinned here to
-#    the detector's literals.
+# 4. **One fact, two homes.** The entrypoint confidence bases are written out
+#    in §8 (the canonical table) and in §9 (a list grouped by
+#    ``evidence_type``). A hand-kept copy stays internally plausible while
+#    drifting from the detector — omitting the 0.75 ``library_export`` base
+#    that the plurality of entrypoints carry, say — so both are pinned here to the
+#    detector's literals. §12 deliberately does not enumerate them.
+#    (history: WI-logad)
 
 _SENTINEL_SUPPRESSION = 0.05
 """Frontend-route suppression: emitted, then filtered by MIN_ENTRYPOINT_CONFIDENCE.
@@ -244,8 +237,8 @@ def _detector_confidence_literals() -> set[float]:
     """Every ``confidence=<float>`` the entrypoint detector actually emits.
 
     Parsed from the AST, not grepped: a regex over the source also matches the
-    three ``confidence=0.9x`` mentions inside ``_detect_from_concepts``'s
-    docstring, which inflated the count that first surfaced this drift.
+    ``confidence=0.9x`` mentions inside ``_detect_from_concepts``'s
+    docstring, which are not emitted values.
     """
     import ast
 
@@ -326,8 +319,8 @@ def test_spec_section9_tier_list_agrees_with_section8() -> None:
 def test_spec_symbol_meta_key_count_matches_the_registry() -> None:
     """§9's ``(N keys)`` for the symbol_meta axis must be the registry's count.
 
-    The spec said 47 while the registry held 50; the count is written by hand
-    and nothing recomputed it.
+    The count is written by hand in the spec, and nothing else recomputes it
+    when the registry grows.
     """
     from hypergumbo_core import axis_meta_keys
 

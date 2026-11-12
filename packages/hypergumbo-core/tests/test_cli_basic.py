@@ -74,11 +74,9 @@ def test_main_uses_sys_argv_when_argv_not_provided(tmp_path, monkeypatch):
 def test_usage_metavar_includes_every_registered_subparser():
     """WI-zunos: every registered subparser must appear in the usage line.
 
-    Previously the metavar was a hardcoded string that drifted as new
-    subcommands were added (config, dead-code-maybe, verify-claims,
-    cache-status, cache-clear were all silently omitted). The fix
-    builds the metavar dynamically from the registered subparsers,
-    so every command shows up in `hypergumbo --help`.
+    A hardcoded metavar drifts as subcommands are added and silently drops
+    them from `hypergumbo --help`; the metavar must be built from the
+    registered subparsers.
     """
     parser = build_parser()
     sub_action = next(
@@ -94,7 +92,8 @@ def test_usage_metavar_includes_every_registered_subparser():
         if name == "run":
             continue
         assert name in metavar, f"{name!r} missing from sub.metavar={metavar!r}"
-    # Explicit guards for the five that were previously missing.
+    # Explicit guards for five named commands, so the test still fails if a
+    # command drops out of the choices and the metavar together.
     for previously_missing in (
         "config", "dead-code-maybe", "verify-claims",
         "cache-status", "cache-clear",

@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The third python completeness leg: rows for the working set, then grants (WI-dupok).
 
-WI-lutuh's order was rust -> javascript -> python. After the 2026-08-15 climb
-(77 grants) the 08-24 scope audit still found 41 stdlib module strings reaching
-the coverage gate uncatalogued across 11 corpus repositories -- glob, threading,
-unittest, struct, pickle, errno, atexit, queue, string, ctypes, multiprocessing,
-xml.dom.minidom, socket, ssl and 27 singletons. WI-dupok's own rule sequences
-the work: rows FIRST for every I/O-capable module (recall that stands on its
-own), grants after, each dated and citing its probe verdict.
+These tests pin the python catalogue's coverage of the stdlib modules that reach
+the uncatalogued-module gate in real code (glob, threading, unittest, struct,
+pickle, errno, atexit, queue, string, ctypes, multiprocessing, xml.dom.minidom,
+ssl and others). The order is the rule: rows FIRST for every I/O-capable module
+(recall that stands on its own), grants after, each dated and citing its probe
+verdict (sequence: WI-lutuh, WI-dupok).
 
 THE PROBE (``~/hypergumbo_lab_notebook/dupok_python_09062026/probe_py.py``, the
 python twin of the rust-src and node probes): public members one level deep,
@@ -16,24 +15,24 @@ signals; a C-implemented member is NATIVE and opaque. It never grants. Its
 signals are what the rows below answer -- glob walks directories, mimetypes
 opens the mime.types files, pprint / traceback / unittest / doctest / optparse
 write default streams, cProfile / pstats dump and load paths, codecs.open and
-ctypes.CDLL open paths, multiprocessing.Process launches and signals, ssl had
-NO rows at all (INV-buzab's live false confirm) -- and the grants are the
-modules whose remaining surface is in-memory.
+ctypes.CDLL open paths, multiprocessing.Process launches and signals, ssl's
+socket surface sends and receives (without rows it would be a false confirm,
+INV-buzab) -- and the grants are the modules whose remaining surface is
+in-memory.
 
-TWO RULES THE 08-15 SURVEY SET AND THIS LEG FOLLOWS. A read from a
-CALLER-OPENED object is the caller's I/O (tomllib): pickle.load, marshal.load,
-xml.dom.minidom.parse(fileobj) and -- since INV-kazuk -- ssl.SSLObject.read get
-no row. A WRITE into a caller-opened object is rowed where the value enters it
-(json.dump): pickle.dump keeps its fs_write row, but only because a file object
-is a boundary; SSLObject.write enters a MemoryBIO, and memory is not.
+TWO RULES THE ROWS FOLLOW. A read from a CALLER-OPENED object is the caller's
+I/O (tomllib): pickle.load, marshal.load, xml.dom.minidom.parse(fileobj) and
+ssl.SSLObject.read (INV-kazuk) get no row. A WRITE into a caller-opened object
+is rowed where the value enters it (json.dump): pickle.dump keeps its fs_write
+row, but only because a file object is a boundary; SSLObject.write enters a
+MemoryBIO, and memory is not.
 
-REFUSED, so the list can be checked: tkinter (a display is a boundary the
-vocabulary does not name), socket (its DNS functions are UNRULED -- net_recv
-by ADR-0049's question or host_info_read; escalated), ssl (rowed, and its
-descriptor plumbing still not read one by one -- but its MemoryBIO surface HAS
-now been read, one member at a time, and the three ssl.SSLObject rows it
-carried were kind-asserted by name and are gone: INV-kazuk), unittest.mock,
-multiprocessing's Manager / shared_memory / connection surface.
+WITHHELD, so the list can be checked: tkinter (a display is a boundary the
+vocabulary does not name), ssl (rowed, but its descriptor plumbing is not read
+one by one; its MemoryBIO surface has been read member by member and rows
+nothing, INV-kazuk), unittest.mock, multiprocessing's Manager / shared_memory /
+connection surface, and select (outside this leg's working set). ``socket`` is
+granted separately, with its own date (see ``WITHHELD``'s comment).
 """
 from __future__ import annotations
 
@@ -103,10 +102,8 @@ class TestTheRowsCameFirst:
     def test_the_rule_reaches_ssl_sslobject_too(self) -> None:
         """INV-kazuk. ``SSLContext.wrap_bio`` is handed two ``MemoryBIO``s the
         CALLER made and feeds, so ``SSLObject`` is a caller-opened object and
-        rows nothing -- while its socket-backed twin keeps every row. This
-        leg's REFUSED list said ssl's MemoryBIO surface "were not read one by
-        one"; it has now been read, and the three rows it had were wrong.
-        The finding-level proof lives in ``test_sslobject_bio_rows.py``."""
+        rows nothing -- while its socket-backed twin keeps every row. The
+        finding-level proof lives in ``test_sslobject_bio_rows.py``."""
         assert _boundary("ssl.SSLObject", "read") is None
         assert _boundary("ssl.SSLObject", "write") is None
         assert _boundary("ssl.SSLObject", "do_handshake") is None
@@ -123,13 +120,13 @@ GRANTED = [
     "doctest", "doctest.DocTestRunner", "unittest", "unittest.TestLoader", "unittest.TextTestRunner",
     "multiprocessing.Process", "multiprocessing.Pool",
 ]
-#: 2026-09-08 (WI-dozul): ``socket`` GRADUATED off this list. Its withholding
-#: reason -- "DNS resolvers unruled: net_recv or host_info_read" -- was
-#: discharged by the owner ruling of 2026-09-06 (net_recv), and the grant went
-#: in only after all 35 module-level callables were adjudicated against the
-#: live module. It is asserted below with its own date rather than folded into
-#: GRANTED, because GRANTED is this leg's dated cohort and socket is not one of
-#: them: a grant that borrowed 2026-09-06 would misdate its own audit.
+#: ``socket`` is not on this list. Its withholding reason -- "DNS resolvers
+#: unruled: net_recv or host_info_read" -- is discharged by the ruling that
+#: they are net_recv, and its grant rests on all 35 module-level callables
+#: adjudicated against the live module (WI-dozul). It is asserted below with
+#: its own date (2026-09-08) rather than folded into GRANTED, because GRANTED
+#: is the cohort dated 2026-09-06: a grant that borrowed that date would
+#: misdate its own audit.
 WITHHELD = [
     ("tkinter", "GUI I/O to a display; out of scope"),
     ("ssl", "rowed but not read one by one; PARTIAL"),
@@ -153,10 +150,9 @@ class TestTheGrants:
     ) -> None:
         """The withheld reason was discharged, not waived (WI-dozul).
 
-        This leg REFUSED socket on 2026-09-06 with a specific reason, and the
-        refusal was right at the time. Asserting the grant here, dated
-        separately, keeps the discharge visible: a reader of this file can see
-        both that it was withheld and why it stopped being.
+        socket was withheld for a specific reason (unruled DNS resolvers),
+        which a ruling discharged. Asserting the grant here, with its own date
+        and the enumeration it rests on, keeps that discharge checkable.
         """
         import datetime as _d
 

@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for WI-jozan: top-level-source → matching-test mapper.
+"""Tests for the top-level-source → matching-test mapper (WI-jozan).
 
 smart-test's reverse-slice via ``hypergumbo slice --files`` only reaches
-source inside the ``packages/*/src/**`` tree. Any PR that only touches
-``.agent/hooks/_shared/*.py`` or ``scripts/*`` produced an empty slice
-and the per-PR CI gate was silent. This module maps those top-level
-source files to their matching ``tests/test_<basename>.py`` files so
-smart-test can run them alongside the slice-found tests.
+source inside the ``packages/*/src/**`` tree, so a PR that only touches
+``.agent/hooks/**`` or ``scripts/*`` gets an empty slice. The mapper
+maps those top-level source files to their matching
+``tests/test_<basename>*.py`` files (plus the vendor-hook parity floor
+and any test whose header ``covers:`` marker declares the path) so smart-test
+can run them alongside the slice-found tests.
 
 The predicate is file-existence-based: a match is reported only when
-the target test file actually exists on disk. The tests build an
+the target test file actually exists on disk. Most tests build an
 isolated tmp tree so they do not depend on the repo's current test
-layout and so new top-level tests do not silently change test
-behaviour.
+layout; the reachability ratchet and a few pinned cases run against
+the real tree on purpose.
 """
 from __future__ import annotations
 
@@ -264,17 +265,15 @@ def test_main_returns_two_on_missing_arg() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WI-bisar: the map is separator-insensitive and prefix-based
+# The map is separator-insensitive and prefix-based
 #
-# The original rule was exact (``scripts/<name>`` → ``tests/test_<name>.py``
-# with hyphens collapsed), which meant a script whose tests were split across
-# several files had all but one of them selected by nothing. Measured on this
-# repo at the time: 27 of 73 root tests were reachable from any top-level
-# source, and ``scripts/auto-pr`` — the script that merges every PR here —
-# reached 0 of its 11 test files, because they are named ``test_autopr_*``
-# while the collapse rule produces ``auto_pr``. A plain prefix match does NOT
-# fix that (``test_autopr_x`` does not start with ``test_auto_pr``); comparing
-# with separators removed is what does.
+# Prefix, because a script's tests are routinely split across several files
+# and an exact name (``scripts/<name>`` → ``tests/test_<name>.py``) reaches
+# only one of them. Separator-insensitive, because separator placement differs
+# between a script and its tests: ``scripts/auto-pr`` collapses to ``auto_pr``
+# while its test files are named ``test_autopr_*``. A plain prefix match does
+# NOT reach those (``test_autopr_x`` does not start with ``test_auto_pr``);
+# comparing with separators removed does. (history: WI-bisar)
 # ---------------------------------------------------------------------------
 
 
@@ -293,7 +292,7 @@ def test_map_matches_suffixed_test_files(tmp_path: Path) -> None:
 
 
 def test_map_is_separator_insensitive(tmp_path: Path) -> None:
-    """``scripts/auto-pr`` reaches ``test_autopr_*`` — the motivating case.
+    """``scripts/auto-pr`` reaches ``test_autopr_*``.
 
     The separator placement differs between the script name and its tests,
     so any rule that compares underscores literally misses every one of them.
@@ -322,9 +321,9 @@ def test_map_does_not_match_an_unrelated_name(tmp_path: Path) -> None:
 def test_map_shared_shell_helper_maps(tmp_path: Path) -> None:
     """``_shared/*.sh`` maps just as ``_shared/*.py`` does.
 
-    The directory holds 13 shell helpers against 8 Python ones, so requiring
-    ``.py`` there left most of a covered directory unreachable — while
-    ``scripts/`` already accepted ``.py``, ``.sh`` and extensionless names.
+    Most helpers in that directory are shell scripts, so requiring ``.py``
+    there would leave most of a covered directory unreachable; ``scripts/``
+    likewise accepts ``.py``, ``.sh`` and extensionless names.
     """
     mod = _import_module()
     (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
@@ -349,29 +348,25 @@ def test_map_stem_with_no_alphanumerics_matches_nothing(tmp_path: Path) -> None:
 # Reachability ratchet against the REAL tree
 #
 # The tests above run against isolated tmp trees so they do not depend on the
-# repo's layout — deliberate, and the reason this gap survived: nothing ever
-# compared the mapping against the actual filenames, so the unit was correct
-# while the wiring was inert. This ratchet closes that by measuring the real
-# directory, and it is two-sided: a newly-added unreachable test fails, and an
-# exempt test that becomes reachable also fails so the list cannot rot.
+# repo's layout, which also means they cannot see whether the mapping reaches
+# the actual filenames: the unit can be correct while the wiring is inert. This
+# ratchet measures the real directory, and it is two-sided: a newly-added
+# unreachable test fails, and an exempt test that becomes reachable also fails
+# so the list cannot rot.
 # ---------------------------------------------------------------------------
 
-#: Root tests no name-based rule can reach, with the reason each is exempt.
-#: Shrink-only — removing an entry is the goal, adding one needs justification.
-#: Root tests no rule can reach. EMPTY, and the ratchet is what keeps it so.
+#: Root tests that neither a name rule nor a ``covers:`` declaration reaches,
+#: each with the reason it is exempt. EMPTY, and the ratchet is what keeps it
+#: so.
 #:
-#: It held 25 entries, each carrying a reason and most of them asking, in their
-#: own words, for the declarative marker that now exists. The last three went
-#: when the objection to declaring them turned out to be aesthetic rather than
-#: real: two have another TEST as their subject (a standalone re-run of a
-#: pinning module; a shared harness), and `# covers:` expresses that exactly --
+#: A test the name rules cannot reach declares its subjects in its header
+#: instead of landing here -- including a test whose subject is another TEST
+#: (a shared harness, a standalone re-run of a pinning module), and
+#: `# covers:` expresses that exactly --
 #: "when this path changes, run me" is true of a test file as much as of a
-#: source. The third pins four package modules by import path and can simply
-#: name them.
-#:
-#: Adding an entry here is still allowed and still needs a reason. But the bar
-#: moved: a test that cannot say what it covers is now the exception, not the
-#: rule, and "no name-based rule reaches it" stopped being one.
+#: source. A test that pins package modules by import path can simply name
+#: them. Adding an entry still needs a reason, and "no name-based rule reaches
+#: it" is not one.
 KNOWN_UNREACHABLE: set[str] = set()
 
 
@@ -387,9 +382,9 @@ def _real_top_level_sources() -> list[str]:
         for p in sorted((REPO_ROOT / ".agent" / "hooks" / "_shared").iterdir())
         if p.is_file() and p.suffix in (".py", ".sh")
     ]
-    # Vendor hook dirs are part of the claimed domain since the INV-lizor
-    # extension; enumerating them keeps the two-sided ratchet honest about
-    # what the map can actually reach.
+    # Vendor hook dirs are part of the claimed domain (INV-lizor); enumerating
+    # them keeps the two-sided ratchet honest about what the map can actually
+    # reach.
     hooks_dir = REPO_ROOT / ".agent" / "hooks"
     for vendor in sorted(hooks_dir.iterdir()):
         if vendor.is_dir() and vendor.name != "_shared":
@@ -460,12 +455,12 @@ def test_the_motivating_case_is_actually_fixed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Vendor hook dirs (INV-lizor re-scope, 2026-08-01). The mapper now claims
-# .agent/hooks/<vendor>/<name>.(sh|py): every vendor hook is a thin wrapper
-# sourcing _shared logic (the AGENTS.md Vendor Parity table), so any change
-# there must at minimum select the cross-vendor parity tests — the "floor" —
-# plus whatever the name-based rule reaches. Before this, a change confined
-# to a vendor dir selected NOTHING and ci.yml skipped pytest.
+# Vendor hook dirs. The mapper claims .agent/hooks/<vendor>/<name>.(sh|py):
+# every vendor hook is a thin wrapper sourcing _shared logic (the AGENTS.md
+# Vendor Parity table), so any change there must at minimum select the
+# cross-vendor parity tests — the "floor" — plus whatever the name-based rule
+# reaches. Without the floor, a vendor hook whose name matches no test would
+# select none of the tests that pin its wiring. (history: INV-lizor)
 # ---------------------------------------------------------------------------
 
 
@@ -533,8 +528,8 @@ def test_githooks_stays_unmapped_by_decision() -> None:
     marker naming ``.githooks/*`` is legitimate — test_ci_failover_retired.py
     really does scan that directory — but it must not make the path count as
     MAPPED, because smart-test keys its root-suite union on exactly this
-    question and would trade 108 tests for one. This test failed the moment
-    that marker landed, which is how the distinction came to exist."""
+    question and would trade the whole root suite for the one declaring
+    test. Hence ``declarations=False`` below."""
     mod = _import_module()
     root = Path(__file__).parent.parent
     assert mod.map_to_tests(
@@ -569,11 +564,11 @@ def test_smart_test_asks_the_name_rules_for_its_fallback() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The declarative `covers:` marker (INV-lizor limb (a), 2026-09-16). Name-based
-# mapping has a floor: a test named for the BEHAVIOUR it pins, or covering
-# several sources, or whose subject is a pipeline YAML rather than a source at
-# all, cannot be reached by any rule of that shape. Twenty-two entries on
-# KNOWN_UNREACHABLE said so in their own words and asked for this by name.
+# The declarative `covers:` marker. Name-based mapping has a floor: a test
+# named for the BEHAVIOUR it pins, or covering several sources, or whose
+# subject is a pipeline YAML rather than a source at all, cannot be reached by
+# any rule of that shape, so it names its subjects itself. (history: INV-lizor
+# limb (a))
 # ---------------------------------------------------------------------------
 
 
@@ -641,11 +636,10 @@ def test_no_declared_glob_has_rotted() -> None:
 
 
 def test_the_ci_config_surface_is_no_longer_dark() -> None:
-    """Four KNOWN_UNREACHABLE entries recorded this and none closed it.
+    """Editing a workflow YAML selects the CI tests that declare it.
 
-    "Editing a workflow does NOT select this test per-PR" appears verbatim on
-    test_ci_pytest_selection_gate, test_ci_clone_is_complete,
-    test_ci_self_claims_gate_scope and test_full_suite_coverage_teeth.
+    No name rule maps ``.woodpecker/*.yml`` to tests named for the gate
+    behaviour they pin; only their ``covers:`` declarations do.
     """
     mod = _import_module()
     hits = mod.map_to_tests([".woodpecker/woodpecker.yml"], REPO_ROOT)
@@ -655,7 +649,11 @@ def test_the_ci_config_surface_is_no_longer_dark() -> None:
 
 
 def test_the_original_demonstration_is_reachable_now() -> None:
-    """test_watcher_lifecycle.py was INV-lizor's own 2026-07-29 red test."""
+    """A test named for a behaviour, not a file, is reached by declaration.
+
+    test_watcher_lifecycle.py shares no name with the transcript helpers it
+    pins; its ``covers:`` glob is what selects it. (history: INV-lizor)
+    """
     mod = _import_module()
     hits = mod.map_to_tests(
         [".agent/hooks/_shared/launch-transcript-sync.sh"], REPO_ROOT
@@ -669,10 +667,10 @@ def test_a_marker_survives_a_docstring_that_starts_a_line_with_import(
     """The header scan must not stop inside prose.
 
     ``test_rct_public_api_pinned.py`` has a docstring line beginning "import
-    path + signature", and the first implementation of the header scan cut
-    there — before the marker. The declaration then did nothing, and the
-    failure named the TEST as unreachable rather than the parser as wrong,
-    which is the expensive kind of wrong.
+    path + signature". A scan that cut there would stop before the marker,
+    the declaration would do nothing, and the failure would name the TEST as
+    unreachable rather than the parser as wrong, which is the expensive kind
+    of wrong.
     """
     mod = _import_module()
     tests_dir = tmp_path / "tests"
@@ -692,10 +690,8 @@ def test_a_marker_survives_a_docstring_that_starts_a_line_with_import(
 
 
 def test_the_exempt_list_is_empty_and_the_ratchet_is_what_keeps_it_so() -> None:
-    """INV-lizor limb (a), closed rather than narrowed.
-
-    An empty list is a claim: every root test is selected by some change that
-    can break it. It is only worth anything because the two tests above fail
+    """An empty list is a claim: every root test is selected by some change
+    that can break it. It is only worth anything because the two tests above fail
     when it stops being true — one when a test becomes unreachable, one when
     an entry here has gone stale.
     """

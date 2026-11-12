@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""A linker stand-in inside a minified bundle leaves with the bundle (WI-zuzud).
+"""A linker stand-in inside a minified bundle leaves with the bundle.
 
-The tier filter drops a DERIVED (tier 4) file's symbols by default. Linker
-stand-ins were never tiered -- ``_classify_symbols`` skipped every symbol with
-a ``protocol_origin`` -- so they kept the default tier 1 and stayed in the
-output while the analyzer symbols around them were removed. Measured on
-livebook before the fix: 249 of 450 stand-ins sat in static/assets/ bundles,
-reported as first-party, on 836 edges.
+The tier filter drops a DERIVED (tier 4) file's symbols by default. A linker
+stand-in (a symbol with a ``protocol_origin``) must take its file's tier too:
+if ``_classify_symbols`` skips stand-ins, they keep the default tier 1 and stay
+in the output, reported as first-party, while the analyzer symbols around them
+are removed. (history: WI-zuzud)
 
 Through the production ``run_behavior_map``: the same Electron send, once in a
 source file and once in a bundle carrying a source-map reference (the

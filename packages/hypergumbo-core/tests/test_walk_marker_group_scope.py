@@ -1,44 +1,30 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-muhij Finding A: a walk marker must describe the row it is printed on.
 
-WHAT WAS WRONG. ``collapse_unadjudicated_flows`` unions six fields across the
-members of a group -- ``source_primitives``, ``sink_primitives``,
-``sink_symbols``, ``sink_call_sites``, ``sanitized_by``,
-``sanitized_by_user_supplied`` -- so the surviving row names every site it
-stands for. ``walk_verdict`` and ``walk_blocked_by`` were NOT among them: the
-collapsed row silently inherited ``grp[0]``'s, and there was no field anywhere
-saying what the other members reported.
+THE HAZARD. ``collapse_unadjudicated_flows`` unions its per-site fields across
+the members of a group -- ``source_primitives``, ``sink_primitives``,
+``sink_symbols``, ``sink_call_sites``, ``sanitized_by`` and others -- so the
+surviving row names every site it stands for. The scalars ``walk_verdict`` and
+``walk_blocked_by`` are ``grp[0]``'s; without a companion union the collapsed
+row would silently carry one member's verdict, with no field saying what the
+other members reported.
 
-WHY THAT MATTERS RATHER THAN BEING UNTIDY. INV-muhij's remedy is to stop a
-``sink_before_source`` row from moving a verdict on its own. Such a rule keyed
-on the ROW's scalar would act on a fact true of a minority of what the row
-represents. Measured on beads through the production ``verify-claims`` path,
-spying on the real collapse function (this tree, 2026-09-02):
+WHY THAT MATTERS RATHER THAN BEING UNTIDY. A rule that stops a
+``sink_before_source`` row from moving a verdict on its own, if keyed on the
+ROW's scalar, would act on a fact that may be true of only a minority of what
+the row represents: a group containing a ``sink_before_source`` member need not
+be unanimous, and the members carrying the marker can be a small share of the
+group.
 
-    1,870 groups / 6,857 members
-      396 groups (21.2%) disagree internally about walk_blocked_by,
-          and 2,519 members (36.7%) sit inside one
-      171 groups disagree about walk_verdict -- the SIBLING field, inherited
-          by the identical mechanism, which is why both move here
-      208 groups contain a sink_before_source member
-      133 of those 208 (63.9%) are NOT unanimous
-      349 of the 1,073 members under them (32.5%) actually carry the marker
-
-So a suppression rule keyed on the scalar would act on a fact true of about
-one member in three. The census filed on the item measured 35.7% on beads'
-production groups alone; 32.5% over all groups is the same number, re-derived
-on today's tree rather than read off the thread.
-
-THE SHAPE OF THE FIX is the one this function already uses five times: a
+THE SHAPE is the one this function uses for its other per-site fields: a
 companion tuple carrying the union, with the scalar kept as the representative
 witness. The names take the ``_values`` suffix rather than a plural because
 ``walk_blocked_by`` does not pluralise, and ``_values`` is the spelling this
-project already uses when collapsed sites disagree about a per-site key.
+project uses when collapsed sites disagree about a per-site key.
 
-WHAT THIS DOES NOT DO. It does not suppress anything, and no verdict moves.
-ADR-0017 section 3a stays confirm-only. This makes the record honest enough
-that a suppression rule COULD be written against it -- which the item names as
-a precondition, and which was the actual finding of its census.
+WHAT THIS DOES NOT DO. It does not suppress anything, and no verdict moves:
+collapsing changes the record, not a verdict. It makes the record honest enough
+that a suppression rule COULD be written against it.
 """
 from hypergumbo_core.taint import (
     TaintFlowFinding,
@@ -94,9 +80,9 @@ class TestTheMarkerBecomesAGroupProperty:
     def test_an_empty_marker_is_a_value_not_an_absence(self) -> None:
         """A member whose walk RAN must not vanish from the union.
 
-        15 members in the item's own census sat inside a group labelled "the
-        walk never ran" with the walk having run. Dropping the empty string
-        would make such a group read as unanimous.
+        A group can be labelled "the walk never ran" while one of its members'
+        walks did run. Dropping the empty string would make such a group read
+        as unanimous.
         """
         out = collapse_unadjudicated_flows([
             _make_finding(walk_blocked_by="sink_before_source",
@@ -127,7 +113,7 @@ class TestTheScalarIsUnchanged:
         assert out[0].walk_blocked_by == "sink_before_source"
 
     def test_no_verdict_moves(self) -> None:
-        """Section 3a stays confirm-only. This changes the record, not a verdict."""
+        """Collapsing changes the record, not a verdict."""
         findings = [
             _make_finding(walk_blocked_by="sink_before_source",
                           sink_primitive="remove"),

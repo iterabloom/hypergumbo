@@ -1,27 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-lajus: a bare ``send()`` must carry the file's ``#include`` set.
+"""A bare ``send()`` carries the file's ``#include`` set (WI-lajus).
 
 C has no namespaces, so ``c.yaml`` lists ``send`` / ``recv`` / ``read`` /
 ``write`` / ``open`` / ``close`` under ``ambiguous_names`` — a bare call could
 be libc or a project-local function of the same name — and
 ``gate_named_entry`` refuses an ambiguous short name outright when there is no
-module evidence. THAT GUARD IS CORRECT. What was missing is the evidence that
-lifts the ambiguity: the file ``#include <sys/socket.h>`` and the repository
-defines no ``send`` of its own.
+module evidence. THAT GUARD IS CORRECT. The evidence that lifts the ambiguity
+is the file's include set, here its ``#include <sys/socket.h>``.
 
-THE MECHANISM ALREADY EXISTED AND C WAS THE ONLY ONE NOT USING IT. ``cpp.py``
-has stamped the comma-joined ``#include`` set into the module slot since
-WI-rupik / WI-mafik, and ``_module_hint_candidates`` (INV-funuf) already splits
-that slot on commas and normalises ``sys/socket.h`` to the ``sys/socket``
-spelling ``c.yaml`` declares. C — whose catalogue cpp *inherits* — emitted
-``module_hint="external"`` on every unresolved call. This is a parity gap, not
-a new design.
+The mechanism is the one ``cpp.py`` uses (WI-rupik / WI-mafik): the
+comma-joined ``#include`` set goes into the module slot, and
+``_module_hint_candidates`` (INV-funuf) splits that slot on commas and
+normalises ``sys/socket.h`` to the ``sys/socket`` spelling ``c.yaml``
+declares. C's catalogue is the one cpp *inherits*.
 
-WHY THE IN-REPO GUARD NEEDS NO NEW CODE: the stamp is applied on the
-``else`` branch of ``resolver.lookup(...).found``, and the resolver is built
-over repo-wide ``global_symbols``. A project that defines its own ``send``
-resolves to it and never reaches the stamp — which is the fluent-bit vendored
-nuttx shim, the live example the item filed this guard for.
+WHEN AN IN-REPO ``send`` WINS. The stamp is applied only on the unresolved
+branch, and the resolver is built over repo-wide ``global_symbols``. A
+``send`` defined in the CALLING file resolves to it and never reaches the
+stamp. A ``send`` defined in ANOTHER file does not capture a call whose
+declaring header the caller includes (WI-rimon): it is an interposer or a
+platform shim of that same contract, so the call stays the libc one and is
+stamped.
 """
 from __future__ import annotations
 
@@ -74,8 +73,8 @@ class TestTheIncludeSetReachesTheModuleSlot:
         assert set(slots[0].split(",")) == {"sys/socket.h", "unistd.h"}
 
     def test_the_unistd_analogues_are_stamped_too(self, tmp_path: Path) -> None:
-        """LIVE rule 4: read/write/close are in ambiguous_names for the same
-        reason send/recv are, so they are the same defect, not a follow-up."""
+        """read/write/close are in ambiguous_names for the same reason
+        send/recv are, so they take the same stamp."""
         (tmp_path / "io.c").write_text(
             "#include <unistd.h>\n"
             "int copy(int a, int b, char *buf, int n) {\n"
@@ -95,7 +94,7 @@ class TestTheAmbiguityGuardStillHolds:
     def test_a_project_local_send_in_the_calling_file_is_not_stamped(
         self, tmp_path: Path,
     ) -> None:
-        """THE GUARD THIS ITEM EXISTS TO PRESERVE. A file defining its own
+        """THE GUARD THE STAMP MUST PRESERVE. A file defining its own
         ``send`` calls it, not a sys/socket owner path."""
         (tmp_path / "use.c").write_text(
             "static int send(int fd, const char *b, int n, int f) { return 0; }\n"
@@ -108,14 +107,13 @@ class TestTheAmbiguityGuardStillHolds:
     def test_a_same_named_send_in_another_file_does_not_capture_the_libc_call(
         self, tmp_path: Path,
     ) -> None:
-        """WI-rimon REVERSED this case, which used to assert the opposite.
+        """A same-named definition elsewhere does not capture the call (WI-rimon).
 
         ``use.c`` includes ``<sys/socket.h>``, so the ``send`` it calls is the
         one that header declares; ``shim.c``'s is a link-time interposer or a
-        platform stub (fluent-bit's nuttx shim returns ``-1``/``ENOTSUP`` like
-        this one returns 0), and name resolution cannot see which the build
-        links. Resolving to the stub hid the socket I/O: a false all-clear, the
-        direction the old docstring meant to guard against but produced.
+        platform stub (a vendored shim returning ``-1``/``ENOTSUP``, as this
+        one returns 0), and name resolution cannot see which the build links.
+        Resolving to the stub would hide the socket I/O: a false all-clear.
         """
         (tmp_path / "shim.c").write_text(
             "int send(int fd, const char *b, int n, int f) { return 0; }\n"
@@ -138,14 +136,16 @@ class TestTheAmbiguityGuardStillHolds:
 
 
 class TestPartialEvidenceIsWorseThanNone:
-    """The regression that stamping unconditionally caused, pinned.
+    """Why the stamp is restricted to ``ambiguous_names``.
 
     A module hint SUPPRESSES the permissive short-name fallback. C reaches most
     of libc through QUOTED project headers, so a slot naming only the system
-    includes is partial evidence, and partial evidence makes the module filter
-    refuse a row that used to match. Measured on qemu-dtc: an unconditional
-    stamp moved stdio.fclose 5 -> 2, stdio.fopen 1 -> 0, stdio.fprintf 35 -> 34,
-    stdio.fputc 6 -> 5. Names outside ``ambiguous_names`` never needed the hint.
+    includes can be partial evidence, and partial evidence makes the module
+    filter refuse a row the fallback would match: stamped unconditionally,
+    some real ``stdio`` calls (``fopen``, ``fclose``, ``fprintf``) stop
+    matching.
+    Names outside ``ambiguous_names`` match by short name and never need the
+    hint.
     """
 
     def test_a_non_ambiguous_name_keeps_the_external_sentinel(

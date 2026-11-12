@@ -345,10 +345,9 @@ def all_known_entrypoint_kinds() -> frozenset[str]:
 
     Distinct from the ``entrypoint_meta`` ``evidence_type`` axis (WI-rukam):
     ``kind`` names WHAT the entrypoint is (an HTTP route, a CLI command),
-    while ``evidence_type`` names HOW it was detected. The empirically
-    dark-on-self-corpus kinds (e.g. ``cli_command`` for argparse CLIs —
-    a detection gap tracked under WI-lubap) are still *known* kinds and
-    appear here.
+    while ``evidence_type`` names HOW it was detected. A kind that detection
+    does not yet reach in practice (e.g. ``cli_command`` for argparse CLIs,
+    a gap tracked under WI-lubap) is still a *known* kind and appears here.
     """
     return frozenset(k.value for k in EntrypointKind)
 
@@ -1985,7 +1984,7 @@ def detect_entrypoint_candidates(
     # Boost rank_score (not confidence) based on connectivity (outgoing edges).
     # Uses one-hop transitive reach: an entrypoint's effective out-degree
     # includes the out-degree of its immediate callees (at 50% weight).
-    # This handles the "thin wrapper" pattern: main() → tryMain() (178 edges)
+    # This handles the "thin wrapper" pattern: main() → tryMain() (many edges)
     # gets credit for tryMain's connectivity, outranking utility mains that
     # call many small functions directly.
     #
@@ -2020,7 +2019,7 @@ def detect_entrypoint_candidates(
         # entrypoint in a test file.  Without this, a test function with
         # 0.80 * 0.1 (test penalty) = 0.08 gets boosted to 0.33 by
         # connectivity, passing the MIN_ENTRYPOINT_CONFIDENCE filter and
-        # flooding entries.txt with hundreds of test functions.
+        # flooding the entrypoint list with test functions.
         if ep.kind == EntrypointKind.TEST_FUNCTION:
             continue
         sym = symbol_lookup.get(ep.symbol_id)
@@ -2038,8 +2037,9 @@ def detect_entrypoint_candidates(
 
         # For library_export entrypoints, in-degree (how many callers
         # depend on this) is more relevant than out-degree. A class like
-        # ByteBuf (in-degree 787) should rank above a microbenchmark main
-        # (in-degree 0) even though both have high out-degree. Cap at 0.35
+        # ByteBuf (called from hundreds of sites) should rank above a
+        # microbenchmark main (in-degree 0) even though both have high
+        # out-degree. Cap at 0.35
         # (higher than the 0.25 out-degree cap) because in-degree directly
         # measures architectural importance.
         if ep.kind == EntrypointKind.LIBRARY_EXPORT and in_degree > 0:

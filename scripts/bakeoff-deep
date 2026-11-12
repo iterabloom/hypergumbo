@@ -63,7 +63,7 @@ Graph:
 | Metric          | Good Range | Warning        |
 |-----------------|------------|----------------|
 | centrality_gini | 30%-85%    | <10% or >95%   |
-| orphan_rate     | <15%       | >35%           | (non-test code nodes)
+| orphan_rate     | <20%       | >35%           | (non-test code nodes)
 
 Environment:
     BAKEOFF_FEATURES_WORKDIR: Override workdir location
@@ -118,8 +118,10 @@ SEVERITY_LOW = "LOW"
 # not callable code), scalar (GraphQL scalar types — no call edges),
 # type (TypeScript type aliases — type-level declarations, not callable),
 # interface (TypeScript/Java interface declarations — structural types, may have
-# implements/extends edges but are not callable code themselves; on GrowthBook
-# 2,133 type+interface nodes were 100% orphaned, inflating rate from ~23% to 39%).
+# implements/extends edges but are not callable code themselves). Type and
+# interface nodes rarely get call edges, so counting them would make a
+# type-heavy TypeScript repo's orphan rate track its type declarations rather
+# than gaps in its call graph.
 _CODE_NODE_KINDS = frozenset({
     "function", "method", "class", "module", "struct",
     "enum", "trait", "constructor", "getter", "setter",
@@ -129,28 +131,18 @@ _CODE_NODE_KINDS = frozenset({
     "subprocess_call", "graphql_resolver", "db_query",
 })
 
-# Path segments that indicate test files. Used to filter entrypoints before
-# slicing with --exclude-tests (test-file entries yield empty slices).
-# Covers: Python (tests/, test_), JS (__tests__/, spec/, _test.),
-# JVM (Test*.java, *IT.java, *Tests.java, src/test/, src/integration/),
-# Go (unittest/), C/Perl (t/, test-*.c).
-#
-# IMPORTANT: Each directory-name pattern MUST require a trailing `/` to
-# avoid false positives on partial matches.  Without this, `/spec` inside
-# `/special_repos/` (the bakeoff pool path) matched, filtering out ALL
-# entrypoints and producing zero forward slices for every repo in the pool.
+# Used to filter entrypoints before slicing with --exclude-tests (test-file
+# entries yield empty slices).
 def _is_test_path(path: str) -> bool:
     """Whether *path* is a test file: hypergumbo's own path predicate.
 
-    WI-dibuf: this script used to carry a private regex (and a copy of the
-    test-annotation names below it), which drifted from the analyzer's in both
-    directions. The shapes it knew that the analyzer lacked (Maven
-    Failsafe's ``FooIT.java``, ``*Test.scala``, ``unittest/``) moved into
-    ``paths.classify_test_file``. Two did not, so those measurements narrow:
-    its bare ``integration/`` directory rule (the analyzer reads
-    ``src/integration/`` and Gradle's ``intTest/`` / ``integrationTest/``),
-    and its ``TestFoo.java`` prefix rule (the analyzer pins ``TestConfig.java``
-    as not a test).
+    Delegates to ``paths.is_test_file`` rather than keeping a private pattern
+    list, so the bakeoff measures test code exactly as the analyzer classifies
+    it; a separate list drifts from the analyzer's in both directions. Two
+    shapes are deliberately not tests: a bare ``integration/`` directory (only
+    ``src/integration/`` and Gradle's ``intTest/`` / ``integrationTest/``
+    count) and a ``Test`` filename prefix (``TestConfig.java`` is not a test).
+    (history: WI-dibuf)
     """
     from hypergumbo_core.paths import is_test_file
     return is_test_file(path)
@@ -183,14 +175,15 @@ QUALITY_THRESHOLDS = {
     "tier4_pct": {"good_max": 5, "warn_max": 10},
     "centrality_gini": {"good_min": 30, "good_max": 85, "warn_min": 10, "warn_max": 95},
     # Polyglot repos have a structural orphan floor from languages without
-    # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
-    # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
+    # cross-language edges (e.g., an Elm frontend or Jsonnet config beside a
+    # Go service stays orphaned until a Go-Elm HTTP or Jsonnet-Go config
+    # linker connects it).
     "orphan_rate": {"good_max": 20, "warn_max": 35},
     # IO boundary: 5-60% of call edges tagged is healthy. good_min scales down
     # for larger repos (see assess_metric). warn_min is a hard floor for FAIL:
     # <0.1% means essentially zero IO detection, suggesting a catalog gap or
-    # analyzer bug. Previously 1%, but large Java/Go repos (50K+ nodes) with
-    # 100K+ call edges legitimately have 0.5-1% IO rates.
+    # analyzer bug. The floor sits well below 1% because large Java/Go repos
+    # (50K+ nodes, 100K+ call edges) legitimately have 0.5-1% IO rates.
     "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 0.1, "warn_max": 80},
     # Dataflow slice should be meaningfully tighter than regular slice (ratio <90%)
     # but not degenerate (ratio >10%). Ratio of 100% means --dataflow adds no value.
@@ -456,17 +449,18 @@ def compute_hypergumbo_code_hash() -> str:
 def _pool_repo_path(pool_path: str, repo_name: str) -> str:
     """Resolve a cohort repo name to its on-disk path.
 
-    WI-favav parity, extended by WI-havit: cohort SELECTION resolves nested pool
-    repos via ``pool_utils.resolve_repo_path`` (which descends one level into
-    collection subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so every
-    downstream consumer must use the SAME resolver. A bare
-    ``os.path.join(pool_path, repo_name)`` misses a repo living one level down.
-    In the run loop that surfaced as ``get_dir_size`` raising FileNotFoundError;
-    in the reflect scripts it is quieter and worse -- the agent is handed a source
-    path that does not exist.
+    Cohort selection resolves nested pool repos via
+    ``pool_utils.resolve_repo_path`` (which descends one level into collection
+    subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so every
+    downstream consumer must use the same resolver. A bare
+    ``os.path.join(pool_path, repo_name)`` misses a repo living one level down:
+    in the run loop ``get_dir_size`` raises FileNotFoundError, and in the
+    reflect scripts the agent is quietly handed a source path that does not
+    exist.
 
-    Falls back to the naive join so a genuinely-missing repo still errors where it
-    errored before, rather than passing ``None`` downstream.
+    Falls back to the naive join so a genuinely-missing repo fails loudly at
+    the point of use, rather than passing ``None`` downstream.
+    (history: WI-favav, WI-havit)
     """
     return (
         pool_utils.resolve_repo_path(pool_path, repo_name)
@@ -830,7 +824,7 @@ _COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
 
 # Minimum fraction of nodes for a secondary language to count as polyglot.
 # Repos where the second-most-common language has < 5% of nodes are not
-# meaningfully polyglot (e.g., Swift repo with 22 C header nodes out of 2334).
+# meaningfully polyglot (e.g., a Swift repo with a handful of C header nodes).
 _POLYGLOT_MIN_SECONDARY_FRACTION = 0.05
 
 
@@ -839,7 +833,7 @@ def is_meaningfully_polyglot(lang_count: dict, total_nodes: int) -> bool:
 
     Returns True only if the second-most-common language has at least 5% of all
     nodes. This prevents false positives on repos that are 99% one language with
-    incidental build/config files in another (e.g., Vapor: 99% Swift + 1% C headers).
+    incidental build/config files in another (e.g., 99% Swift + 1% C headers).
     """
     if len(lang_count) < 2 or total_nodes <= 0:
         return False
@@ -863,10 +857,9 @@ def assess_metric(
     with 72 nodes cannot realistically average 20 nodes per slice.
 
     For ``io_tag_rate``, the ``good_min`` threshold scales down continuously
-    from 5% (at 1K nodes) to ~0.3% (at 100K+ nodes) using log-linear scaling.
-    All repos get scaling — the prior 10K threshold left mid-sized repos
-    (3K-10K nodes like mitmproxy and tokenizers) with an unrealistically high
-    5% requirement.
+    from 5% (at 500 nodes) to a 0.3% floor (at 100K+ nodes) using log-linear
+    scaling. Scaling applies at every size above 500 nodes: a fixed 5%
+    requirement is unrealistic even for mid-sized (3K-10K node) repos.
 
     For ``dataflow_slice_ratio``, two suppressions apply:
 
@@ -878,13 +871,11 @@ def assess_metric(
     2. When ``slice_access_mode_coverage`` (call edges in slice.0 with
        access_mode set / total call edges in slice.0) is at or above 50%,
        a low ratio is treated as a denominator effect rather than a real
-       dataflow gap.  Example (prometheus deep-20260407-030917): the
-       INV-kunam route resolver fix grew slice.0 from ~962 to 1689 nodes
-       by adding more reachable Go call edges; the dataflow slice didn't
-       shrink but the regular-slice denominator grew, dropping the ratio
-       from 6.3% to 6.0%.  Meanwhile 70.7% of call edges in the new slice
-       still carried access_mode — the slice itself was well-annotated,
-       so the WARN was a false alarm caused by an unrelated quality fix.
+       dataflow gap.  An unrelated quality fix that adds reachable call
+       edges grows the regular slice (the denominator) without shrinking
+       the dataflow slice, lowering the ratio; if the slice itself is still
+       well-annotated, a WARN there would be a false alarm.
+       (history: INV-kunam)
     """
     thresholds = QUALITY_THRESHOLDS.get(name, {})
     unit = "" if name in _COUNT_METRICS else "%"
@@ -902,13 +893,12 @@ def assess_metric(
     # Scale io_tag_rate threshold continuously for all repo sizes.
     # IO edges are a small fraction of total edges in any non-trivial repo,
     # and the fraction shrinks as repos grow (more internal plumbing edges).
-    # Log-linear from 5% at 500 nodes down to ~0.3% at 100K+ nodes.
-    # Prior scaling only kicked in above 10K nodes, leaving mid-sized repos
-    # (3K-10K like mitmproxy) with an unrealistically high 5% threshold.
+    # Log-linear from 5% at 500 nodes down to a 0.3% floor at 100K+ nodes,
+    # so mid-sized repos (3K-10K nodes) are not held to the full 5%.
     if name == "io_tag_rate" and good_min is not None and total_nodes is not None:
         if total_nodes > 500:
             import math
-            # Log-scale: 5% at 500, ~2.5% at 5K, ~1.8% at 10K, ~0.3% at 100K
+            # Log-scale: 5% at 500, ~2.75% at 5K, ~2.1% at 10K, 0.3% at 100K
             scale_factor = max(0.05, 1.0 - math.log10(total_nodes / 500) * 0.45)
             good_min = max(0.3, good_min * scale_factor)
 
@@ -927,12 +917,12 @@ def assess_metric(
             return ("GOOD", None)
 
     # Scale limit_hit_frequency threshold up for large repos.
-    # Large repos with deeply interconnected call graphs (gvisor: 35K nodes,
-    # netty: 49K nodes) naturally hit slice limits more often because the
+    # Large repos with deeply interconnected call graphs (30K+ nodes)
+    # naturally hit slice limits more often because the
     # call graph is broader. Forward slices from any entrypoint fan out
     # quickly, hitting --max-files or --max-hops. This is expected behavior,
     # not a quality issue.
-    # Scale: 50% at <10K nodes, up to ~70% at 35K, ~75% at 100K.
+    # Scale: 50% at <10K nodes, ~64% at 35K, 75% at 100K+.
     if name == "limit_hit_frequency" and good_max is not None and total_nodes is not None:
         if total_nodes > 10000:
             import math
@@ -961,7 +951,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     """Pick domain-relevant symbols as reverse slice seeds.
 
     Pure in-degree ranking selects infrastructure sinks (die, strbuf_release,
-    GetEngine) that produce massive, useless reverse slices covering 50-70%
+    GetEngine) that produce massive, useless reverse slices covering much
     of the codebase.  Good seeds are functions with both callers (high in-degree)
     AND callees (meaningful out-degree) — indicating domain logic rather than
     utility wrappers.
@@ -992,7 +982,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
 
     # Build node lookup and identify test nodes (by path AND annotation).
     # Annotation-based detection catches Rust #[test]/#[cfg(test)] functions
-    # in non-test files (e.g. src/lib.rs) that path-only regex misses.
+    # in non-test files (e.g. src/lib.rs) that a path-only check misses.
     node_map = {n["id"]: n for n in nodes}
     test_node_ids = {n["id"] for n in nodes if _is_test_node(n)}
 
@@ -1004,9 +994,9 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # Edge types that represent actual function calls (not structural
     # relationships).  Only these count toward out-degree for seed scoring.
     # Without this filter, interface methods accumulate dispatches_to edges
-    # that inflate their out-degree: prometheus genericSeriesSet.Err (1 line)
-    # had out=20 from dispatches_to edges, passing _MIN_OUT_DEGREE=3 and
-    # getting selected as a seed over real domain functions.
+    # that inflate their out-degree: a one-line interface method can clear
+    # _MIN_OUT_DEGREE on dispatches_to edges alone and be selected as a seed
+    # over real domain functions.
     #
     # `dispatches_to` is intentionally EXCLUDED from this set, matching the
     # treatment in `hypergumbo_core/slice.py` (see slice.py:596-616 — the
@@ -1022,18 +1012,18 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # promotes interface stubs over real domain functions. Real-dispatch
     # cases that ARE genuinely flow-bearing (route → handler, gRPC route →
     # service) get scored via the API-handler / route boosts below; their
-    # out-degree was already typically 1-2 even when included here.
+    # out-degree is low (1-2) even with dispatches_to counted, so excluding
+    # it costs them little.
     #
-    # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv / WI-mifor-vabul): the
-    # FFI bridges, IPC calls, message-bus dispatch, ActiveJob enqueues,
-    # and protocol calls (HTTP/gRPC/GraphQL) all fold to `calls` (with a
-    # meta key carrying the kind) — those continue to count via `calls`.
-    # Only the `dispatches_to` half of the fold is excluded here.
+    # FFI bridges, IPC calls, message-bus dispatch, ActiveJob enqueues, and
+    # protocol calls (HTTP/gRPC/GraphQL) are emitted as `calls` (with a meta
+    # key carrying the kind), so they count via `calls`; only
+    # `dispatches_to` is excluded. (history: ADR-0023 §6 Phase 3)
     _CALL_FLOW_EDGE_TYPES = {
         "calls", "wraps",
-        # pending_classification awaiting per-family audit (implements_rpc).
-        # Protocol-call family (WI-vumum-juvil) folds to canonical 'calls'
-        # + meta['protocol']; HTTP/gRPC/GraphQL flows transfer via 'calls'.
+        # implements_rpc is still pending per-family classification. Protocol
+        # calls themselves are canonical 'calls' + meta['protocol'], so
+        # HTTP/gRPC/GraphQL flows are counted via 'calls'.
         "implements_rpc",
     }
 
@@ -1082,12 +1072,13 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # join in=150) without a hard cutoff, while domain functions
     # (in=20-50) keep their full linear score.
     #
-    #   effective_in(30)  = 30      (linear, domain function)
-    #   effective_in(100) = 50 + sqrt(50)*~7 = 85   (moderate compression)
-    #   effective_in(200) = 50 + sqrt(150)*~12 = 62  (wait, let's compute)
-    #
     # Formula: in_deg if in_deg <= knee, else knee + sqrt(in_deg - knee)
-    # At in=200: 50 + sqrt(150) ≈ 62.  At in=500: 50 + sqrt(450) ≈ 71.
+    #
+    #   effective_in(30)  = 30                     (linear, domain function)
+    #   effective_in(100) = 50 + sqrt(50)  ≈ 57
+    #   effective_in(200) = 50 + sqrt(150) ≈ 62
+    #   effective_in(500) = 50 + sqrt(450) ≈ 71
+    #
     # This compresses the 200→500 range into 62→71, preventing mega-hubs
     # from dominating over moderate-in-degree domain functions.
     _IN_DEGREE_KNEE = 50
@@ -1099,9 +1090,9 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
 
     # Architectural concept boost: middleware, controller, and application
     # symbols are architecturally meaningful in framework repos even with
-    # moderate in-degree.  DEEP bakeoff assessment showed OutputBuffer.append
-    # outranking FileMiddleware.handle for Hummingbird because pure hub
-    # scoring ignores architectural role.
+    # moderate in-degree.  Pure hub scoring ignores architectural role and
+    # can rank a buffer utility (OutputBuffer.append) above a middleware
+    # handler (FileMiddleware.handle).
     _CONCEPT_BOOST = 1.3
     _BOOSTED_CONCEPTS = {"middleware", "controller", "application", "model"}
 
@@ -1114,18 +1105,17 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # endpoint touch?".
     #
     # The boost replaces the pure in-degree base with a bidirectional
-    # formula: max(capped_in, out_deg / 2) * out_factor.  This lets
-    # postAlertsHandler (in=3, out=23) compete with Integration.Notify
-    # (in=18, out=12).
+    # formula: max(effective_in, out_deg / 2) * out_factor.  This lets a
+    # handler with in=3, out=23 compete with a domain function at in=18,
+    # out=12.
     _API_HANDLER_BOOST = 1.5
 
     # Library export boost: entrypoint symbols tagged as library_export
     # represent the public API surface — the functions external consumers
     # call.  For library repos (age, polars, tokenizers), reverse-slicing
     # from Encrypt/Decrypt is more useful than from internal bech32.Encode.
-    # DEEP bakeoff assessment (deep-20260330-164900) showed domain_score
-    # picking Encode (in=11) over Encrypt (in=17) because Encode had
-    # better out-degree ratio.  This boost compensates.
+    # Without this boost, an internal helper with a better out-degree ratio
+    # can outscore a public export that has more callers.
     _LIBRARY_EXPORT_BOOST = 1.4
 
     # Identify library_export entrypoints for boosting.
@@ -1137,11 +1127,10 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
                 library_export_ids.add(sid)
 
     # Identify API handler targets: nodes that are dst of route-flavored
-    # dispatch edges. Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv) routes_to
-    # folded to 'dispatches_to' + meta['dispatch_kind']='route'; the
-    # query checks both the canonical + meta form and the deprecated
-    # form (until Phase 4 / WI-vomoj-suhaz prunes the producer-side
-    # dead values).
+    # dispatch edges. Route dispatch is emitted as 'dispatches_to' +
+    # meta['dispatch_kind']='route'; the deprecated 'routes_to' edge type
+    # is also accepted so behavior maps written before that form still
+    # score. (history: ADR-0023 §6 Phase 3, WI-vomoj-suhaz)
     api_handler_ids: set = set()
     for e in edges:
         etype = e.get("type")
@@ -1221,8 +1210,9 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     candidates.sort(key=lambda x: (-x[0], -x[1], x[3]))
 
     # Name-based deduplication: allow at most 1 seed per method name.
-    # Without this, 19 Notifier.Notify variants crowd out other
-    # architectural axes (API handlers, dispatchers, etc.).
+    # Without this, many implementations of one interface method (e.g. every
+    # Notifier.Notify) crowd out other architectural axes (API handlers,
+    # dispatchers, etc.).
     result = []
     seen_names: set = set()
     for score, in_deg, entry, name in candidates:
@@ -1292,16 +1282,14 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
                     result_set.add(best)
 
     if result:
-        # WI-gapom: defensive hub-collision warning. After WI-fuhaj (Java)
-        # and WI-jopar (Go) fixed the underlying short-name collision bugs
-        # that produced 6054-edge POJO hubs on Kafka, the rslice seed picker
-        # should still surface a warning when any picked seed has a
-        # production in-degree well above the typical hub range. This is
-        # either (a) a legitimate framework-level hub worth knowing about
-        # (sync.Mutex.Lock, slf4j.Logger.info, etc.) or (b) a future name
-        # collision that slipped through analyzer fixes — both are worth
-        # an explicit signal in the bakeoff log so the LLM assessment
-        # agent and the human reviewer can investigate.
+        # Defensive hub-collision warning: flag any picked seed whose
+        # production in-degree is far above the ordinary hub range. Such a
+        # seed is either (a) a legitimate framework-level hub worth knowing
+        # about (sync.Mutex.Lock, slf4j.Logger.info, etc.) or (b) an analyzer
+        # short-name collision that merged unrelated callers into one fake
+        # hub — both are worth an explicit signal in the bakeoff log so the
+        # LLM assessment agent and the human reviewer can investigate.
+        # (history: WI-gapom, WI-fuhaj, WI-jopar)
         _HUB_WARN_THRESHOLD = 1000
         for picked in result:
             pin = prod_in_degree.get(picked, 0)
@@ -1379,9 +1367,8 @@ def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_W
         return workdir
 
     # Otherwise, take the most recent session of *this* command's mode.
-    # _find_latest_session already prefix-filters; the old inline scan mixed
-    # broad-/deep- and trusted a full-string sort that does not hold across
-    # prefixes.
+    # _find_latest_session prefix-filters before sorting; sorting broad- and
+    # deep- names together would not be timestamp-ordered.
     latest = _find_latest_session(workdir, prefix=session_prefix)
     if latest is not None:
         return latest
@@ -1513,7 +1500,7 @@ def cmd_init(args):
     Always creates a new timestamped session by default. Use ``--resume``
     to explicitly continue working with the most recent existing session.
 
-    Previous behavior (silent reuse) was dangerous: it encouraged deleting
+    Silently reusing a session would be dangerous: it encourages deleting
     completed outputs to "re-run" instead of creating a new session for
     before/after comparison.
     """
@@ -1557,8 +1544,8 @@ def cmd_init(args):
                 return 0
         print("No existing session found. Creating a new one.")
 
-    # Backward compat: --force is now the default behavior, accept silently
-    # (flag kept so existing scripts/docs don't break)
+    # --force is accepted and ignored: a new session is already the default,
+    # and the flag stays so existing scripts and docs keep working.
 
     # WI-kumub: warn when a recent same-pool + same-code session exists.
     # This guards against the "init-between-every-run" anti-pattern where
@@ -1846,14 +1833,14 @@ def _load_cohort_metadata(workdir: str, cohort_num: int) -> list | None:
 
 
 def _holds_output_files(path: str) -> bool:
-    """True when ``path`` has at least one FILE anywhere below it (WI-zilar).
+    """True when ``path`` has at least one FILE anywhere below it.
 
     A directory is not a result. A run that crashes after ``os.makedirs`` leaves
-    ``iter-NNN/<repo>/`` present and empty, and both skip guards used to read
-    that as "already analysed": the single-cohort guard checked only the code
-    hash, and the batch guard checked ``os.listdir`` of the cohort directory,
-    which an empty ``iter-001/`` satisfies. Each then exited 0 pointing at
-    "previous results" holding zero files.
+    ``iter-NNN/<repo>/`` present and empty, so a skip guard that checks only the
+    code hash, or only that the cohort directory is non-empty (``os.listdir``),
+    reads a crashed run as "already analysed" and exits 0 pointing at
+    "previous results" that hold zero files. Both skip guards in ``cmd_run``
+    use this predicate instead. (history: WI-zilar)
     """
     for _root, _dirs, files in os.walk(path):
         if files:
@@ -1911,7 +1898,8 @@ def cmd_run(args):
             if not repos:
                 print(f"\n[cohort-{cohort_num:03d}] No metadata — skipping")
                 continue
-            # Check if already analysed at current code hash
+            # Skip cohorts that already hold output files, whatever code hash
+            # produced them: re-runs belong in a new session.
             out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
             if os.path.isdir(out_dir) and _holds_output_files(out_dir):
                 print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
@@ -2097,14 +2085,14 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
         # Use --exclude-tests to focus on production dependencies
         # Note: Don't use --exclude-utility here - entry points may be in utility
         # dirs (e.g., docs_src for FastAPI) but their dependencies are still useful
-        # Use --max-hops 10 and --max-files 200 for quality assessment.
-        # Default 3 hops is too shallow for large repos (10K+ nodes), and the
-        # default 100-file limit naturally constrains output size even at high
-        # hop counts. Using 200 files in bakeoff to measure quality potential.
+        # Use --max-hops 10 and --max-files 200 for quality assessment: the
+        # hop cap keeps depth comparable across repos (the CLI default is
+        # unlimited, bounded only by --max-files), and 200 files (vs the
+        # default 100) measures quality potential rather than the default cap.
         # Use --hub-threshold 100 (vs default 50) for enterprise Java repos
-        # where service interfaces commonly have 50-100+ outgoing edges.
-        # WI-sivun: cohort-019 forward slices stopped at 18-66 nodes because
-        # intermediate service hubs exceeded the default threshold.
+        # where service interfaces commonly have 50-100+ outgoing edges; at
+        # the default, intermediate service hubs get pruned and forward
+        # slices stop after a few dozen nodes. (history: WI-sivun)
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -2126,9 +2114,8 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
 
         # 4. Reverse slices (top 3 high-in-degree symbols)
         # Use high-in-degree non-test symbols as reverse-slice seeds. For
-        # library repos, entrypoints are overwhelmingly test methods (e.g.,
-        # iceberg: 6905/6912 test entries), making them poor reverse-slice
-        # seeds that produce trivial 2-node results.  High-in-degree symbols
+        # library repos, entrypoints are overwhelmingly test methods, making
+        # them poor reverse-slice seeds that produce trivial 2-node results.  High-in-degree symbols
         # (Schema, Types.get, Table.refresh) are the core API surface —
         # "who calls this?" is the interesting question for developers.
         # Fall back to entrypoints if no high-in-degree seeds found.
@@ -2148,10 +2135,11 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
         for i, entry in enumerate(rslice_seeds):
             print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
             # Reverse slices need more permissive parameters than forward slices:
-            # - hub_threshold 200 (vs 50 forward): in reverse direction, hub pruning
-            #   severs cross-layer edges.  Find (in=710) is the seed (exempt), but
-            #   intermediate nodes like model helpers (in=60-100) get pruned, trapping
-            #   the traversal in models/ and never reaching routers/ or services/.
+            # - hub_threshold 200 (vs 100 for forward slices here; CLI default 50):
+            #   in reverse direction, hub pruning severs cross-layer edges.  The
+            #   seed itself is exempt, but intermediate nodes like model helpers
+            #   (in=60-100) get pruned, trapping the traversal in models/ and
+            #   never reaching routers/ or services/.
             # - max_files 500 (vs 200 forward): a layered app (models+services+routers)
             #   spans many directories.  200 files fills up within a single layer,
             #   preventing cross-layer discovery.
@@ -2245,16 +2233,14 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
             print("OK" if rc == 0 else f"FAIL({rc})")
 
         # 5. Tier-bounded slices
-        # WI-puvab: use the same explicit non-test entry as slice.0 (the first
-        # entry in entries.txt has already been filtered against _is_test_path)
-        # and DO NOT pass --exclude-tests during traversal.  Previous code used
-        # --entry auto --exclude-tests, which caused tier-2 slices on
-        # test-dominated repos (e.g., alertmanager: 800/801 tier-2 nodes are
-        # tests) to come out byte-identical to tier-1 slices because the test
-        # supply chain was filtered out before tier counting.  The reflect
-        # agent then misread this as "tier filter broken".  Picking the same
-        # explicit entry as slice.0 keeps test entries out of the seed while
-        # allowing the BFS to walk into tier-2 test code.
+        # Use the same explicit non-test entry as slice.0 (entries[0] has
+        # already been filtered against _is_test_path) and DO NOT pass
+        # --exclude-tests during traversal.  With --exclude-tests, test code
+        # is filtered out before tier counting, so on test-dominated repos
+        # (where nearly all tier-2 nodes are tests) the tier-2 slice comes
+        # out byte-identical to tier-1 and reads as "tier filter broken".
+        # The explicit entry keeps test entries out of the seed while
+        # allowing the BFS to walk into tier-2 test code. (history: WI-puvab)
         if entries:
             tier_entry = entries[0]
             for tier in [1, 2]:
@@ -2707,15 +2693,13 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         # 0% because there are no direct cross-language function calls.
         # Gate: require (1) meaningful polyglot, (2) IO boundaries found,
         # and (3) at least one FFI bridge edge in the graph.
-        # Same-process cross-language function calls (Go→C via cgo,
-        # Java→C via JNI, ctypes, NAPI, WASM bridges, etc.). Per
-        # ADR-0023 §6 Phase 3 (WI-mifor-vabul), bridges now emit as
-        # 'calls' with the bridge mechanism in meta['bridge_kind'].
-        # The query is the canonical relationship plus the meta
-        # discriminator — Phase-2-shape consumer pattern. The
-        # discriminator set is closed (see edge_types.BRIDGE_KINDS)
-        # but inlined here to keep this script self-contained when
-        # invoked outside the package install.
+        # Bridges (cgo, JNI, ctypes, NAPI, WASM, etc.) are emitted as
+        # 'calls' with the bridge mechanism in meta['bridge_kind'], so the
+        # query is the 'calls' type plus that meta discriminator. The
+        # discriminator set is closed (see edge_types.BRIDGE_KINDS) but
+        # inlined here to keep this script self-contained when invoked
+        # outside the package install; keep the two in sync.
+        # (history: ADR-0023 §6 Phase 3)
         _BRIDGE_KIND_DISCRIMINATORS = frozenset({
             "cgo", "ffi", "napi", "wasm", "native", "context_bridge",
         })
@@ -2784,10 +2768,10 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
 def cmd_diagnose(args):
     """Diagnose issues and generate quality metrics report.
 
-    Iterates over all cohort output directories in the session, diagnosing
-    each one and producing per-cohort reports plus a combined summary.
-    When only one cohort exists, the behavior is identical to the original
-    single-cohort mode.
+    Diagnoses the latest cohort by default (``--all`` for every cohort
+    output directory in the session, ``--some N`` for the latest N), using
+    each cohort's latest iteration. Writes a per-cohort ``report.yaml`` and
+    prints a combined summary.
     """
     workdir = resolve_workdir(args.workdir)
     print(f"Workdir: {workdir}")
@@ -2903,10 +2887,12 @@ def cmd_compress(args):
     Scans all cohort output directories for hg.json files where derived
     artifacts (entries.txt, symbols.txt, routes.txt) exist and have been
     around for at least 8 hours. Qualifying hg.json files are gzipped
-    in-place (hg.json -> hg.json.gz), typically achieving 5-10x compression.
+    in-place (hg.json -> hg.json.gz); the ratio is printed per file.
 
-    All code that reads hg.json uses _find_hg_json/_open_hg_json, so
-    compressed files are transparently readable by diagnose, run, etc.
+    ``diagnose`` and the reverse-slice seed picker read hg.json through
+    _find_hg_json/_open_hg_json, so compressed files stay readable there.
+    ``run`` reads the plain hg.json it has just written with ``open()``, so
+    it never sees a compressed file.
     """
     workdir = resolve_workdir(getattr(args, "workdir", None))
     if workdir is None:
@@ -3260,12 +3246,10 @@ _DEFAULT_COMPARE_METRICS = [
 def _select_key_metrics(metrics_a, metrics_b, common_repos, max_count=6):
     """Pick which metrics ``cmd_compare`` should display.
 
-    Replaces the legacy hardcoded ``KEY_METRICS`` list (WI-lazat). The
-    selection is dynamic so that any metric introduced after the script
-    was last edited (e.g. ``slice_access_mode_coverage``, the field that
-    actually drove a verdict change in deep-20260407-050552 vs
-    deep-20260407-030917) becomes visible automatically when it has a
-    nonzero delta between sessions.
+    The selection is dynamic rather than a hardcoded list, so that any
+    newly added metric (e.g. ``slice_access_mode_coverage``, which can
+    drive a verdict change) becomes visible automatically when it has a
+    nonzero delta between sessions. (history: WI-lazat)
 
     Algorithm:
       1. Compute the intersection of *numeric* metric keys present in
@@ -3365,7 +3349,8 @@ def cmd_compare(args):
         sess_path = session_a if sess_var == "a" else session_b
         state_path = os.path.join(sess_path, "state.json")
         if not os.path.exists(state_path):
-            # Try to find state.json in subdirectories (up to 3 levels)
+            # Try to find state.json in subdirectories at any depth; take the
+            # lexically last match.
             candidates = sorted(glob.glob(os.path.join(sess_path, "**", "state.json"), recursive=True))
             if candidates:
                 resolved = os.path.dirname(candidates[-1])
@@ -3413,7 +3398,7 @@ def cmd_compare(args):
 
     # Key metrics to compare — dynamically selected by mean absolute delta
     # so newly-added verdict-driving fields (e.g. slice_access_mode_coverage)
-    # surface automatically. WI-lazat / PR following deep-20260407-050552.
+    # surface automatically.
     key_metrics = _select_key_metrics(metrics_a, metrics_b, common_repos)
 
     # Print header

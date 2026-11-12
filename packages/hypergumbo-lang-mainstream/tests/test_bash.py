@@ -213,13 +213,11 @@ source lib/common.sh
     def test_sources_dst_is_well_formed_5part_id(
         self, tmp_path: Path,
     ) -> None:
-        """WI-hugom: 'sources' edges previously emitted dst as the raw
-        sourced_path (e.g. '/etc/kafka/docker/launch'), which fell through
-        ir._parse_dangling_id and stuffed the path into the language slot
-        of the synthesized boundary node (8 such leaks observed on kafka
-        cohort-001/iter-001). Fix uses a properly-formed 5-part dst id
-        (bash:{path}:0-0:{basename}:file); raw sourced_path preserved on
-        edge.meta."""
+        """A 'sources' edge's dst is a well-formed 5-part id
+        (bash:{path}:0-0:{basename}:file), with the raw sourced_path kept on
+        edge.meta. A raw path as dst (e.g. '/etc/kafka/docker/launch') falls
+        through ir._parse_dangling_id, which puts the path into the language
+        slot of the synthesized boundary node. (history: WI-hugom)"""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "run.sh"
@@ -542,8 +540,8 @@ three() { echo 3; }
 
 class TestBashTopLevelCallEdges:
     """Top-level code (outside any function) should produce call edges
-    attributed to the file pseudo-node (INV-kokaj: kind='file', not
-    kind='module' anymore)."""
+    attributed to the file pseudo-node (kind='file', not kind='module';
+    history: INV-kokaj)."""
 
     def test_file_symbol_created(self, tmp_path: Path) -> None:
         """Every bash file gets a kind='file' Symbol with the canonical
@@ -560,7 +558,7 @@ class TestBashTopLevelCallEdges:
         assert len(file_syms) == 1
         assert file_syms[0].name == "script.sh"
         assert file_syms[0].id == "bash:script.sh:1-1:file:file"
-        # No legacy kind='module' Symbol for the file pseudo-node.
+        # No kind='module' Symbol for the file pseudo-node.
         mod_syms = [
             s for s in result.symbols
             if s.kind == "module" and s.language == "bash"
@@ -658,11 +656,10 @@ class TestInvTajapShellScriptConcept:
     """INV-tajap: every bash file Symbol carries a ``shell_script`` concept so
     entrypoint detection treats the script as an executable entry.
 
-    Pre-fix bug: ``entrypoints.py`` was Python-only — on hypergumbo self-analysis
-    it detected 0 of ~50 bash scripts as entrypoints (all 153 bash functions
-    looked unreachable, inflating dead-code FPs to 92.6%). Bash files were
-    parsed and a ``kind="file"`` Symbol was emitted, but no ``concept`` rode
-    on its meta, so the YAML-driven entrypoint pipeline had nothing to match.
+    Without a ``concept`` on the ``kind="file"`` Symbol's meta, the YAML-driven
+    entrypoint pipeline has nothing to match: no bash script counts as an
+    entrypoint, so every bash function looks unreachable and lands in the
+    dead-code report as a false positive.
     """
 
     def test_shebang_sh_file_emits_shell_script_concept(self, tmp_path: Path) -> None:
@@ -726,13 +723,12 @@ class TestInvTajapShellScriptConcept:
 
 
 class TestWiPulorFunctionLinesOfCode:
-    """WI-pulor: bash function Symbols must populate line_span.
+    """Bash function Symbols must populate line_span.
 
-    Pre-fix, every bash function Symbol had line_span=None despite valid
-    spans. The convention (see ir.py:349 and py.py:_compute_line_span) is
+    The convention (see ir.py:349 and py.py:_compute_line_span) is
     end_line - start_line + 1. The dead-code-maybe formatter renders ``?`` when
-    LOC is None, so without this fix bash functions appear in the dead-code
-    report as ``? LOC`` instead of e.g. ``8 LOC``.
+    LOC is None, so a missing line_span shows a bash function in the dead-code
+    report as ``? LOC`` instead of e.g. ``8 LOC``. (history: WI-pulor)
     """
 
     def test_single_line_function_loc_is_one(self, tmp_path: Path) -> None:
@@ -794,9 +790,8 @@ class TestWiPulorFunctionLinesOfCode:
 
 
 class TestBashCyclomaticComplexity:
-    """INV-loguk: bash function Symbols populate cyclomatic_complexity.
+    """Bash function Symbols populate cyclomatic_complexity (INV-loguk).
 
-    Bash already populated line_span (WI-pulor); this closes the CC half.
     Short-circuit ``&&``/``||`` between commands are NOT counted (they live in
     ``list`` nodes, outside the shared binary-expression scope) — only
     if/elif/for/while/case decision points contribute.

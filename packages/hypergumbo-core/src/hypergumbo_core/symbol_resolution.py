@@ -70,19 +70,15 @@ Design Rationale
   candidate is defined in the caller's own file (``caller_path``), which is
   returned as ``match_type="caller_file"``. A path hint that matches is still
   evidence (``path_hint``); with ``soft_hint`` a LONE candidate outside the hint
-  is still returned (see ``ListNameResolver.lookup``). Measured
-  on an 11-repo corpus (Go, JS, TS, Java, Rust, Python, C, C++; 266 edges judged
-  against the source), such picks bound the wrong target in 45 of 57 cases
-  without in-file or import evidence and in 0 of 13 with it; the same
-  directory was not evidence enough. A guess among candidates reads, to every
-  consumer, as a real in-repo call, so the resolver leaves it unresolved for
-  the analyzer's unresolved path rather than grading it lower (ADR-0039
-  ruling 6 grades a resolution; it does not license a guess).
+  is still returned (see ``ListNameResolver.lookup``). Without in-file or
+  import evidence such a pick binds the wrong target far more often than the
+  right one, and sharing the caller's directory is not evidence enough. A
+  guess among candidates reads, to every consumer, as a real in-repo call, so
+  the resolver leaves it unresolved for the analyzer's unresolved path rather
+  than grading it lower (ADR-0039 ruling 6 grades a resolution; it does not
+  license a guess).
 - **Strategy composition**: Multiple strategies can be combined per lookup
 - **Language agnostic**: Core logic works for any language; strategies adapt
-
-This replaces per-analyzer implementations with a shared, tested, optimizable
-component.
 """
 
 from __future__ import annotations
@@ -107,8 +103,11 @@ class LookupResult:
     Attributes:
         symbol: The resolved symbol, or None if not found.
         confidence: Confidence multiplier (1.0 for exact, lower for fuzzy).
-        match_type: How the symbol was matched ("exact", "suffix", "path_hint").
-        candidates: For ambiguous matches, all candidates found.
+        match_type: How the symbol was matched ("exact", "suffix",
+            "path_hint", "caller_file", "soft_hint_fallback"), or why it was
+            not ("ambiguous", "suffix_ambiguous").
+        candidates: The candidates found, where the strategy records them
+            (an exact-key hit records none); an ambiguous lookup keeps all.
     """
 
     symbol: Symbol | None
@@ -450,14 +449,12 @@ class SymbolResolver:
         if self._suffix_index is not None:
             return
 
-        # WI-bavuz: the index describes the REGISTRY, so it is cached against
-        # the registry rather than against this resolver. ``lookup_symbol``
-        # builds a fresh resolver per call, so a resolver-local index was
-        # rebuilt per lookup: O(lookups x registry), both factors growing with
-        # file count. Measured on pretix, N=300 -> N=600: this function's own
-        # time 40.1s -> 269.9s (6.73x for 2x the files), 61% of all growth,
-        # with SymbolResolver.__init__ called 5,827 -> 16,065 times tracking
-        # lookup_symbol to within the one legitimate resolver.
+        # The index describes the REGISTRY, so it is cached against the
+        # registry rather than against this resolver. ``lookup_symbol`` builds
+        # a fresh resolver per call, so a resolver-local index would be rebuilt
+        # per lookup: O(lookups x registry), both factors growing with file
+        # count, which dominates runtime on large repositories.
+        # (history: WI-bavuz)
         entry = _registry_indexes(self.registry)
         if entry.suffix is None:
             index: dict[str, list[tuple[str, str]]] = {}
@@ -901,7 +898,8 @@ class ListNameResolver:
     # Confidence multipliers for different match types
     CONFIDENCE_EXACT = 1.0
     CONFIDENCE_PATH_HINT = 0.90
-    # Legacy constant; ambiguous confidence now scales as 1/sqrt(N)
+    # Not used by ``lookup``: a ``variants`` tie is graded 1/sqrt(N). Kept so
+    # the three resolvers expose the same constants.
     CONFIDENCE_AMBIGUOUS = 0.70
 
     def __init__(
@@ -916,9 +914,10 @@ class ListNameResolver:
             registry: Dict mapping symbol_name -> list of Symbol objects.
             ambiguity_threshold: When set, if the candidate count for a name
                 meets or exceeds this value and no path_hint disambiguates,
-                return an unresolved result instead of picking an arbitrary
-                candidate. Set to 3 to guard against common method name
-                false positives (Get, Set, Close, String).
+                return an unresolved result even when one candidate is in the
+                caller's own file or ``variants`` would pick one. Set to 3 to
+                guard against common method name false positives (Get, Set,
+                Close, String).
             variants: The registry's same-named entries are VARIANTS of one
                 declaration, not different symbols -- Go's package scope, where
                 two package-level ``func platform`` can only be build-constraint
@@ -938,12 +937,13 @@ class ListNameResolver:
         # Multiple candidates - try to disambiguate with path hint.
         # Track the best (smallest) narrowed candidate set: narrowing from
         # 10 -> 2 candidates means only 2 symbols are in the matching package,
-        # which is what the ambiguity guard below counts.
+        # which is what the ambiguity guard in ``lookup`` / ``too_ambiguous``
+        # counts.
         #
         # Path matching is COMPONENT-ANCHORED: the hint must match a
         # path-component suffix of the candidate's containing directory,
         # not a free-form substring.  Substring matching admits false
-        # positives — e.g., hint ``api`` matched every file under
+        # positives — e.g., hint ``api`` would match every file under
         # ``api/v2/client/<x>/`` because the substring ``api`` appears
         # anywhere in the path.  Component anchoring requires the hint's
         # segments to be the LAST segments of the dirname.
@@ -1012,11 +1012,11 @@ class ListNameResolver:
             soft_hint: The hint is a PREFERENCE (a Rust caller's directory),
                 not import evidence (a Go import path): a lone candidate
                 outside it is still returned, as ``soft_hint_fallback`` at
-                reduced confidence. Kept although the phase-1 corpus judged
-                10 of 10 such hits wrong: on the recorded aardvark-dns arm
-                rust-analyzer confirms 20 of 20 (``backend.lookup()`` on a
-                parameter typed ``DNSBackend``). The two differ in the
-                receiver's type, which the resolver cannot see (WI-jomik).
+                reduced confidence. Such a hit is right when the receiver is
+                of the candidate's type (``backend.lookup()`` on a parameter
+                typed ``DNSBackend``) and wrong when it is not; the resolver
+                cannot see the receiver's type, so it keeps the hit, marked
+                by its match type, rather than dropping it. (history: WI-jomik)
             caller_path: The calling file, for the in-file evidence a pick
                 among several candidates needs.
             admit: The call's SHAPE, as a filter on what it can reach
@@ -1119,8 +1119,9 @@ def lookup_symbol(
 ) -> Symbol | None:
     """Convenience function for one-off lookups.
 
-    For repeated lookups, prefer creating a SymbolResolver instance
-    to benefit from index caching.
+    Repeated calls over one registry share its suffix and name indexes
+    (``_INDEX_CACHE``), so they do not rebuild them; a long-lived
+    SymbolResolver instance still saves the per-call construction.
 
     Args:
         registry: The symbol registry.

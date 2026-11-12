@@ -6,16 +6,10 @@ WHY THIS EXISTS
 ---------------
 INV-rahib asks whether ``auto-pr`` always ends in a declared terminal state.
 That is not a property of one run, so ``auto-pr`` writes one JSON line per
-invocation to ``.git/AUTOPR_HISTORY.jsonl``. The ledger was added because the
-item's validation criterion ("observe auto-pr converge during a real concurrent
-nightly") was *organic* — nobody was withholding the measurement, there was
-nothing to measure.
+invocation to ``.git/AUTOPR_HISTORY.jsonl``.
 
-Then nothing read it. 483 rows accumulated over six weeks holding two live
-violation classes — 41 runs that merged and exited 1, and 14 that ended with no
-declared terminal state — and they surfaced only because someone opened the
-file by hand. An instrument with no reader is the same organic criterion in a
-different costume, which is the defect this script closes.
+A ledger with no reader detects nothing: violations accumulate in it unseen
+until someone happens to open the file by hand. This script is the reader.
 
 WHY A SCRIPT AND NOT A CI GATE
 ------------------------------
@@ -39,23 +33,28 @@ THE TWO VIOLATION CLASSES
 -------------------------
 1. **A converged-merged state with a nonzero exit.** The merge landed and the
    run reported failure. ``merged`` and ``already_merged`` both count: they are
-   reached from different code paths that carried the same defect.
+   reached from different code paths and both assert the work landed. A merged
+   run that then took a signal exits 128+n by design and is exempt.
 2. **An undeclared terminal state.** ``unknown`` is the initializer and is
    overwritten before any deliberate exit, so reaching it means the run fell
-   off the end. Owner ruling 2026-08-03 makes this *the* violation signal, in
-   place of the original "merged or explicit failure, no third state" wording
-   that no conforming implementation could satisfy (``queued_vpr``,
-   ``governance_pending`` and ``noop_empty_queue`` are deliberate outcomes).
+   off the end. This, not "merged or explicit failure, no third state", is
+   *the* violation signal: ``queued_vpr``, ``governance_pending`` and
+   ``noop_empty_queue`` are deliberate non-merge outcomes that a two-state rule
+   would condemn.
    An undeclared run that exited **0** is counted and reported separately: it
    claimed success for a run that recorded neither a terminal state nor a
    merge, which is a different thing to have told the caller.
 
+A run killed by a signal before it decided (a ``terminated_sig*`` state) is
+neither: it is left out of the population the verdict is about and disclosed
+on its own line.
+
 ATTRIBUTION (WI-nazoj)
 ----------------------
-An undeclared row used to say only that a run fell off the end. Since WI-nazoj,
 ``auto-pr`` runs under ``errtrace`` with an ERR trap that records the file and
-line it died on, and the row carries ``abort_site`` / ``abort_command``. Rows
-are reported three ways, because the difference matters:
+line it died on, and an undeclared row carries ``abort_site`` /
+``abort_command``. Rows are reported three ways, because the difference
+matters:
 
 * a **site** — the ERR trap fired and named the line; identical sites are
   tallied together, since two runs dying at the same line are one bug;
@@ -65,9 +64,9 @@ are reported three ways, because the difference matters:
 * **not instrumented** — the row predates the instrumentation and has no
   ``abort_site`` KEY at all.
 
-The last two would be one bucket if the schema used a null default, and the
-historical backlog would then read as a fleet of live instrument failures.
-Absent is not empty, one level further in.
+With a null default the last two would be one bucket, and every
+pre-instrumentation row would read as a live instrument failure. Absent is not
+empty, one level further in.
 
 WINDOWING
 ---------
@@ -102,12 +101,11 @@ UNDECLARED = "unknown"
 #: fleet of live instrument failures -- ABSENT is not EMPTY.
 UNINSTRUMENTED = object()
 
-#: A FOURTH bucket (WI-katap): the run was KILLED before it could decide.
-#: Not converged and not a violation -- it never got to converge. Measured
-#: 2026-09-20, 22 of 84 post-instrumentation runs carried ``unknown`` and 14 of
-#: the 15 PRs behind them had MERGED: the violation signal was firing on runs
-#: that succeeded, because a kill from the caller's ``timeout`` wrapper was
-#: indistinguishable from auto-pr falling off the end.
+#: A FOURTH bucket: the run was KILLED before it could decide. Not converged
+#: and not a violation -- it never got to converge. Without it, a kill from the
+#: caller's ``timeout`` wrapper is indistinguishable from auto-pr falling off
+#: the end, and the violation signal fires on runs whose PRs merged.
+#: (history: WI-katap)
 EXTERNALLY_TERMINATED = frozenset(
     {"terminated_sigterm", "terminated_sigint", "terminated_sighup"}
 )
@@ -118,9 +116,10 @@ def terminated_by(row: dict):
 
     A signal name, ``None`` (this run was not signalled), or ``UNINSTRUMENTED``
     (the row predates the signal traps, so whether it was signalled is
-    unknowable). The third value is load-bearing: the 22 rows that prompted
-    this work carry no ``terminated_by`` key and MOST OF THEM WERE SIGNALLED,
-    so reporting them as unsignalled would state the opposite of the truth.
+    unknowable). The third value is load-bearing: rows written before the
+    signal traps carry no ``terminated_by`` key, yet many of them WERE
+    signalled, so reporting them as unsignalled would state the opposite of
+    the truth.
     """
     if "terminated_by" not in row:
         return UNINSTRUMENTED
@@ -139,7 +138,7 @@ def default_ledger_path(repo_root: Path) -> Path:
 
     Kept as a function so the default is pinned by a test: a default that
     silently pointed elsewhere would make every unattended invocation a no-op,
-    which is the shape of the defect being fixed.
+    leaving the real ledger unread.
     """
     return repo_root / ".git" / "AUTOPR_HISTORY.jsonl"
 
@@ -196,9 +195,8 @@ def classify(rows: list[dict]) -> dict:
         by_state[state][str(code)] += 1
 
         # Recorded independently of the state, so a run that MERGED and was
-        # then killed during its housekeeping is disclosed too -- that is the
-        # fact INV-rahib's Class 1 investigation had to recover from a
-        # surviving terminal log because nothing had written it down.
+        # then killed during its housekeeping is disclosed too rather than
+        # hidden behind its merged state.
         sig = terminated_by(row)
         if sig is not UNINSTRUMENTED and sig is not None:
             by_signal[sig] = by_signal.get(sig, 0) + 1

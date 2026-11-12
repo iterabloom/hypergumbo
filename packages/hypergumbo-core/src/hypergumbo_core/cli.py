@@ -2434,10 +2434,10 @@ def _count_related_endpoint_kinds(
     matches. Returns an empty list when no related nodes are present so
     callers can leave the existing single-line message unchanged.
 
-    Post-fold lookup (ADR-0027 Phase 3 / audit-findings 0013): Cluster D
-    framework-role values (``mq_publisher``, ``websocket_endpoint``,
+    Framework-role values (``mq_publisher``, ``websocket_endpoint``,
     ``event_publisher``, ``event_subscriber``, ``http_client``) ride
-    on ``kind="function"`` + ``meta["framework_role"]=<value>``. The
+    on ``kind="function"`` + ``meta["framework_role"]=<value>`` (ADR-0027;
+    audit-findings 0013). The
     matching here checks ``meta.framework_role`` first, falling back to
     ``kind`` so values that remain kinds (``graphql_resolver``,
     ``db_query``, ``subprocess_call``) also match.
@@ -4249,9 +4249,9 @@ _SOFT_DELETE_SURVEYS_DIR = "soft-deleted-surveys"
 _SOFT_DELETE_SKETCHES_DIR = "soft-deleted-sketches"
 _ARCHIVE_PARTIAL_SUFFIX = ".partial"
 
-# The one heavy artifact in a cache entry: survey.json is about 99.6% of an
+# The one heavy artifact in a cache entry: survey.json is nearly all of an
 # entry's bytes. Everything else in the entry (sketch markdown, the
-# 4k/16k/64k tier previews, per-route handler slices) totals about 0.4%. That
+# 4k/16k/64k tier previews, per-route handler slices) is a sliver. That
 # asymmetry is why soft-deleted surveys and soft-deleted sketches are separate
 # folders with separate caps: keeping every sketch ever evicted costs almost
 # nothing, while keeping every survey is the whole disk problem again.
@@ -4381,12 +4381,11 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> bool:
     WHY SOFT DELETE RATHER THAN ``rm``. The cache lives under the user's
     ``$HOME``, and an automatic irreversible delete there is a different kind
     of act from bounding a cache. Compression makes reversibility nearly free:
-    deflate level 6 shrinks an entry to about 6% of its size (16x) in about a
-    second. Paying 6% to make every eviction undoable is an obviously good
-    trade, and a second sits inside a run that already took minutes.
+    deflate level 6 shrinks a JSON-heavy entry to a small fraction of its size
+    in seconds, a cost that sits inside a run that already took minutes.
 
-    WHY TWO FOLDERS. ``survey.json`` is 99.6% of an entry; everything else —
-    sketch markdown, tier previews, handler slices — is 0.4%. Splitting them
+    WHY TWO FOLDERS. ``survey.json`` is nearly all of an entry; everything
+    else — sketch markdown, tier previews, handler slices — is a sliver. Splitting them
     lets sketches, which are cheap and human-readable, be retained far longer
     than the surveys that are the actual disk problem.
 
@@ -4459,7 +4458,7 @@ def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
     """Bound each soft-delete folder, oldest archive first. Returns bytes freed.
 
     THIS IS THE HARD DELETE, and it is the reason soft-delete is a real policy
-    rather than a way of deferring the disk problem by 16x. An archive that is
+    rather than a way of deferring the disk problem. An archive that is
     never removed is still growth. What soft-delete buys is a window in which an
     eviction can be undone, not immortality — so each folder has its own cap and
     the oldest archives leave first.
@@ -5599,8 +5598,8 @@ def cmd_compact(args: argparse.Namespace) -> int:
     # compact departs from D12's centrality-ranked default here). Compact's
     # output is consumed as a GRAPH (its in-tree diagnostic,
     # hypergumbo_diag.analyze_compact, scores it on connected components), and
-    # centrality-ranked crops leave far more isolated nodes (42% vs 8.5% at a
-    # 25-symbol budget), worsening as the budget grows. sketch keeps
+    # centrality-ranked crops leave far more isolated nodes, more so as the
+    # budget grows. sketch keeps
     # centrality-ranked — it is a reading surface, not a graph.
     connectivity_aware = getattr(args, "connectivity", True)
 
@@ -6834,10 +6833,10 @@ def _sink_zone_gaps(
     whether a language has a taint catalogue at all, not whether it has a sink
     in THIS claim's zone, and any zone can be empty for a language whose
     catalogue is otherwise full: Go has no ``code_execution`` sink and no
-    ``database`` sink, so "untrusted input never reaches a database" read
-    ``confirmed`` on a Go repo calling ``db.Exec``. A zone a language can never
-    have (``browser_storage`` outside JS) withholds too, as ``code_execution``
-    always did: the tool cannot tell "no such sink exists" from "no row
+    ``database`` sink, so without this check "untrusted input never reaches a
+    database" would read ``confirmed`` on a Go repo calling ``db.Exec``. A zone
+    a language can never have (``browser_storage`` outside JS) withholds too,
+    as ``code_execution`` does: the tool cannot tell "no such sink exists" from "no row
     names it". A zone only a project catalogue declares is not judged: its
     sinks are where the project put them. A zone whose sinks for a language
     are all COMMUNITY rows is reported apart (``community_only_languages``)
@@ -6961,7 +6960,7 @@ def _taint_blind_reason(
 
     * **Catalogue but blind.** Kotlin HAS a taint catalogue, so it never
       appears in the list above, yet it emits no call edge at all for an
-      external instance-method call — about 95% of its catalogued sinks. A
+      external instance-method call — most of its catalogued sinks. A
       Kotlin file reading a socket and writing it to disk would also return
       ``confirmed``, with nothing flagged anywhere in the output. This is the
       worse of the two: the tool claims support, finds nothing, and reports
@@ -7537,7 +7536,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python
         # .get() call) that would otherwise flood the findings with
-        # tens of thousands of false positives on multi-language repos.
+        # false positives on multi-language repos.
         per_lang_sources: dict[str, list["TaintSource"]] = {}
         per_lang_sinks = {}
         per_lang_sanitizers: dict[str, list["TaintSanitizer"]] = {}
@@ -8391,8 +8390,8 @@ def cmd_config(args: argparse.Namespace) -> int:
 # Per-language test-coverage blind spots (WI-hular).
 #
 # `hypergumbo test-coverage` is a static analysis with high precision but
-# limited recall: roughly 20% of tested functions are reported as untested
-# (see _TEST_COVERAGE_RECALL_DISCLAIMER for the measurement). The dispatch
+# limited recall: some tested functions are reported as untested (see
+# _TEST_COVERAGE_RECALL_DISCLAIMER for the measured rate). The dispatch
 # patterns below are the documented per-language sources of that
 # recall gap. Surfacing them in --help, the human output footer, and
 # the JSON ``caveats`` field gives users a concrete reason to discount
@@ -9035,8 +9034,8 @@ def production_callables(
         # ADR-0031 Class-B synthetic linker stand-ins carry a truthy
         # protocol_origin (and language=None) (INV-disin). They are not real source callables
         # — they are placeholder targets synthesized by linkers — so they must
-        # not enter the dead-code candidate universe. Left in, they are ~100%
-        # flagged dead because language-scoped seeds/entrypoints can never match
+        # not enter the dead-code candidate universe. Left in, they are all but
+        # certainly flagged dead because language-scoped seeds/entrypoints can never match
         # a language=None node. Keyed on protocol_origin (the canonical Class-B
         # marker, biconditional-enforced by the spec validator), NOT framework_role
         # and NOT language-is-None. (Route markers are Class B too, WI-mupal,
@@ -9318,11 +9317,10 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
 # one-fact-two-homes shape INV-lalad found in taint and verify-claims).
 # Making the drift impossible is stronger than detecting it.
 #
-# calls:          direct function/method calls (post-Phase-3, also covers
-#                 FFI/IPC/RPC bridges via meta['bridge_kind']/['protocol'])
+# calls:          direct function/method calls (also covers FFI/IPC/RPC
+#                 bridges via meta['bridge_kind']/['protocol'])
 # dispatches_to:  interface/abstract method → concrete implementation
-#                 (post-Phase-3, also covers HTTP routes via
-#                 meta['dispatch_kind']='route')
+#                 (also covers HTTP routes via meta['dispatch_kind']='route')
 # wraps:          middleware wrapper → inner handler
 # instantiates:   object creation. Constructing an object makes its
 #                 constructor reachable (INV-kahig). Without this type, on
@@ -10579,8 +10577,8 @@ Cache location:
              f"the ``<out-stem>.slices/slice.handler.index.json`` companion "
              f"file with pointers to re-derive on demand.",
     )
-    # Large repos produce 300MB-500MB raw JSON outputs that gzip to ~5% of
-    # their uncompressed size (WI-kojob). `--gzip` writes the main output and any
+    # Large repos produce JSON outputs of hundreds of MB that gzip to a small
+    # fraction of their uncompressed size (WI-kojob). `--gzip` writes the main output and any
     # budget-tier outputs as `.gz`; pair with `--out foo.json.gz`.
     p_run.add_argument(
         "--gzip",
@@ -12071,10 +12069,10 @@ what I could not check" -- and decide per repository whether that is acceptable.
     return p
 
 
-# Symbol kinds that are dependency declarations. ADR-0027 Phase-2 audit
-# (WI-jukav): AXIS_PENDING (Cluster G — build/config-shape); the set is
-# forward-compatible because none of its values is scheduled for
-# fold/rename (registry axis update: audit-findings 0006, WI-runod).
+# Symbol kinds that are dependency declarations. Their kind axis is
+# AXIS_PENDING (Cluster G — build/config-shape; audit-findings 0006); the set
+# is forward-compatible because none of its values is scheduled for
+# fold/rename.
 _DEPENDENCY_KINDS = frozenset({"dependency"})
 
 
@@ -12206,14 +12204,13 @@ def _classify_symbols(
         symbol.is_generated_file = classification.is_generated
         # Fold in modifier-derived export signal (WI-zimum). The analyzer
         # may have already set Symbol.is_exported at extraction time
-        # (WI-gipag: Python __all__; WI-nimug / WI-zimum Phase 2b: TS/JS
-        # ``export`` keyword); this step additionally picks up modifier-
+        # (Python ``__all__``; the TS/JS ``export`` keyword); this step additionally picks up modifier-
         # based signals for Go ("exported"), Rust ("pub"/"pub(...)"),
         # and languages that emit "public" via visibility_from_modifiers.
         # An export modifier is a positive signal and fills the field; its
         # ABSENCE is not (INV-kubup). Resolving every unobserved record to
         # False would read downstream as "measured, not public API" for the
-        # ninety-odd analyzers that have no rule.
+        # many analyzers that have no rule.
         if is_exported_from_modifiers(symbol.modifiers):
             symbol.is_exported = True
         # A fall-through to the "outside repo" default-bucket classification
@@ -12427,10 +12424,8 @@ def _compute_supply_chain_summary(
 # slice.handler.index.json for the overflow list.
 _DEFAULT_MAX_HANDLER_SLICES = 25
 
-# Forward-slice parameters for per-handler slices, matching the tuned
-# config used by the bakeoff's top-entry forward slices (see
-# scripts/bakeoff-deep around line 2060 and WI-sivun for the hub-threshold
-# choice).
+# Forward-slice parameters for per-handler slices, matching the top-entry
+# forward-slice tuning in scripts/bakeoff-deep (hub threshold: WI-sivun).
 _HANDLER_SLICE_MAX_HOPS = 10
 _HANDLER_SLICE_MAX_FILES = 200
 _HANDLER_SLICE_HUB_THRESHOLD = 100
@@ -12522,7 +12517,7 @@ def _emit_handler_slices(
     test-file handlers. Handlers are deduplicated by symbol id; when the
     same id is registered under multiple routes, all registrations appear
     in the emitted file's meta.routes list. Slice parameters mirror the
-    bakeoff's proven forward-slice tuning.
+    forward-slice tuning in ``scripts/bakeoff-deep``.
 
     When `enabled=False`, returns an empty list without touching the
     filesystem — the caller opts out via --no-handler-slices.
@@ -13001,7 +12996,7 @@ def run_survey(
     # Enrich symbols with framework concept metadata (ADR-3aaa)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
-    # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
+    # usage contexts for call-based frameworks like Django URLs.
     run_status.phase("Enriching symbols")
     detected_frameworks = set(profile.frameworks)
     # Enrichment is a pass like any other, so it is recorded (WI-tivif), with
@@ -13579,8 +13574,8 @@ def run_survey(
     )
 
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
-    # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
-    # symbols, 505k edges), this can free several GB of memory before final write.
+    # All data is now in behavior_map as dicts. On a large repo this can free
+    # several GB of memory before the final write.
     del all_symbols
     del all_edges
     del ranked_symbols

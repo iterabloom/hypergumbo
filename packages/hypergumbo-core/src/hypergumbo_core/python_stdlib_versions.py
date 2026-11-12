@@ -5,17 +5,15 @@ WHY THIS EXISTS (WI-gisan, WI-jojuz). "Is ``M`` the standard library?" has a
 different answer on each Python. ``tomllib`` joined in 3.11 (PEP 680) and
 ``binhex`` left in 3.11; ``distutils``, ``imp``, ``asyncore``, ``asynchat`` and
 ``smtpd`` left in 3.12; the rest of the PEP 594 batch and ``lib2to3`` left in
-3.13. Two places answered the question from ONE interpreter, and each answer
-moved with it:
+3.13. An answer taken from ONE interpreter moves with it:
 
-* ``io_primitives/python.yaml``'s ``stdlib_modules`` was generated from 3.12
-  alone, so ``import distutils`` in a 3.10 project was stamped
-  ``ecosystem=third_party``. That contradicts ADR-0041 §3's own axis
-  definition: ``stdlib`` means shipped with the language runtime, and the 3.10
-  runtime ships ``distutils``.
-* The built-in catalogue scope gate (``test_catalogue_scope_gates.py``) read
-  ``sys.stdlib_module_names`` of whichever Python ran it, so python.yaml's
-  ``tomllib`` row failed the nightly 3.10 leg.
+* a ``stdlib_modules`` list generated from 3.12 alone stamps ``import
+  distutils`` in a 3.10 project ``ecosystem=third_party``, contradicting
+  ADR-0041 §3's own axis definition: ``stdlib`` means shipped with the
+  language runtime, and the 3.10 runtime ships ``distutils``;
+* a scope gate (``test_catalogue_scope_gates.py``) that reads
+  ``sys.stdlib_module_names`` of whichever Python runs it fails python.yaml's
+  ``tomllib`` row on the 3.10 leg.
 
 HOW. The stdlib line is the UNION over :data:`SUPPORTED_PYTHONS`. Because the
 differences are few and only change when a Python is added to the matrix,
