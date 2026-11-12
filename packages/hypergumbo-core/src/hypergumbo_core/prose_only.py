@@ -292,9 +292,14 @@ def _merge(into: _Events, bucket: Mapping[str, Iterable[str]]) -> None:
 
 def fold_run(
     conn: sqlite3.Connection, reads_dir: Path, repo_root: Path, *,
-    full_run: bool = False,
+    full_run: bool = False, skip: Iterable[str] = (),
 ) -> int:
     """Store one run's record; returns the number of tests stored.
+
+    ``skip`` names tests whose record must not be stored: the ones that
+    failed. A failed test may have stopped before the read it would have
+    made, so its record from this run shows less than the test does. Its
+    earlier record, if any, stands.
 
     ``reads_dir`` holds one JSON file per pytest process; a file written by
     another version of the plugin is skipped. Per test the stored events are
@@ -334,6 +339,8 @@ def fold_run(
         for test_file, ids in data.get("expected", {}).items():
             expected.setdefault(test_file, set()).update(ids)
         _merge(loose, data.get("unattributed", {}))
+    for test_id in skip:
+        tests.pop(test_id, None)
 
     cur = conn.cursor()
     by_file: dict[str, list[str]] = {}

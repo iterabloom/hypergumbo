@@ -14,6 +14,7 @@ shadowing would be retired within a day and rightly so. Every entry point
 catches broadly and exits 0 — see `main`.
 
     update  fold one run's coverage contexts into the index
+    fold-reads  store only a run's read record, for a run with failures
     shadow  report what coverage WOULD have selected, without acting on it
     select  print the selection, for a caller that intends to ACT on it
     narrow  print a run set with provably-irrelevant test files REMOVED
@@ -84,13 +85,39 @@ def cmd_update(args: argparse.Namespace) -> int:
     # After the coverage fold, not before: a full run resets both, and the
     # prose-only rule reads the two together.
     if args.source_reads and Path(args.source_reads).is_dir():
-        stored = fold_run(conn, Path(args.source_reads), root, full_run=args.full)
+        stored = fold_run(conn, Path(args.source_reads), root, full_run=args.full,
+                          skip=_failed(args, root))
         if args.verbose:
             print(f"[coverage-select] stored source reads for {stored} tests",
                   file=sys.stderr)
     conn.close()
     if args.verbose:
         print(f"[coverage-select] indexed {len(ran or ())} ran tests", file=sys.stderr)
+    return 0
+
+
+def _failed(args: argparse.Namespace, root: Path) -> set[str]:
+    if args.junit and Path(args.junit).exists():
+        return failed_tests_from_junit(Path(args.junit), root)
+    return set()
+
+
+def cmd_fold_reads(args: argparse.Namespace) -> int:
+    """Store a run's read record and nothing else, leaving out the tests that
+    failed. For a RED run, whose coverage is not folded into the index.
+
+    Without a junit report the failed tests are unknown, and nothing is
+    stored.
+    """
+    root = Path(args.repo_root).resolve()
+    if not (args.junit and Path(args.junit).exists()):
+        return 0
+    conn = open_index(Path(args.index))
+    stored = fold_run(conn, Path(args.source_reads), root, skip=_failed(args, root))
+    conn.close()
+    if args.verbose:
+        print(f"[coverage-select] stored source reads for {stored} tests",
+              file=sys.stderr)
     return 0
 
 
@@ -336,6 +363,10 @@ def main(argv: list[str] | None = None) -> int:
     up.add_argument("--source-reads", default=None,
                     help="directory of pytest_source_reads output to store")
     up.set_defaults(func=cmd_update)
+
+    fr = sub.add_parser("fold-reads")
+    fr.add_argument("--source-reads", required=True)
+    fr.set_defaults(func=cmd_fold_reads)
 
     sh = sub.add_parser("shadow")
     sh.add_argument("--changed-files", default=None)

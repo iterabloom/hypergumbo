@@ -1013,6 +1013,21 @@ run_pytest() {
             "$SCRIPT_DIR/test-leaderboard" ingest "$JUNIT_XML" 2>/dev/null || true
         fi
 
+        # A RED RUN STILL LEAVES ITS READ RECORD. The caller folds the
+        # selection index after a green run. A red one ends the script at
+        # this return (set -e), so a long run with one failing test used to
+        # record nothing about the thousands that passed. The tests that
+        # FAILED are left out: a failed test may have stopped before a read
+        # it would have made. Coverage is not folded here; that stays a
+        # green-run matter.
+        local reads_root="${REPO_ROOT:-$PWD}"
+        if [[ $exit_code -ne 0 ]] && [[ "${SELECT_SHADOW:-false}" == "true" ]] \
+                && [[ -f "$JUNIT_XML" ]] && [[ -d "$reads_root/.ci/source-reads" ]]; then
+            "${TOOLS_ROOT:-$reads_root}/scripts/coverage-select" \
+                --repo-root "$reads_root" --junit "$JUNIT_XML" fold-reads \
+                --source-reads "$reads_root/.ci/source-reads" || true
+        fi
+
         return $exit_code
     fi
 }

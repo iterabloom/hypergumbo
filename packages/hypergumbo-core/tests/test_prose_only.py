@@ -491,3 +491,19 @@ def test_select_for_prose_with_no_prose_only_file_selects_nothing(tmp_path: Path
     result = po.select_for_prose(
         conn, root, {SRC: (OLD, OLD.replace("return 1", "return 2"))}, [TEST_A])
     assert (result.files, result.rejected, result.tests) == ({}, {}, {})
+
+
+def test_fold_leaves_out_a_failed_test_and_keeps_its_earlier_record(tmp_path: Path) -> None:
+    """A failed test may have stopped before a read it would have made."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    one, two = f"{TEST_A}::test_one", f"{TEST_A}::test_two"
+    _fold(conn, root, tmp_path, {one: _bucket(reads=[SRC]), two: _bucket()})
+    reads = tmp_path / "red"
+    reads.mkdir()
+    (reads / "main-1.json").write_text(json.dumps({
+        "version": po.RECORDER_VERSION, "observed": True,
+        "expected": {TEST_A: [one, two]},
+        "tests": {one: _bucket(), two: _bucket(reads=["pkg/other.py"])}}))
+    assert po.fold_run(conn, reads, root, skip=[one, "tests/test_gone.py::t"]) == 1
+    assert _edges(conn, one) == {(po.READ, SRC)}
+    assert _edges(conn, two) == {(po.READ, "pkg/other.py")}
