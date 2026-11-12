@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Print the ``.py`` files that differ between two commits in comments or docstrings only.
+
+    scripts/prose-only-files BASE HEAD
+
+One repo-relative path per line. A file is printed when it exists on both
+sides, parses on both, and its AST with docstrings removed and its machine-read
+comments (``# pragma:``, ``# type:`` ...) are equal: its executable lines are
+the base's. ``hypergumbo_core.prose_only.classify`` decides; this script only
+reads the two versions out of git.
+
+WHO USES IT. The CI pytest step. smart-test selects the tests of such a file
+from recorded evidence instead of the import graph, so the tests that cover
+its lines may not be in the manifest, and the step's 100%-coverage gate for
+changed source files would then fail on code nobody changed. The step asks
+this script which changed files are prose-only and leaves them out of that
+gate. It asks the DIFF, not the manifest, so a manifest cannot talk a code
+change out of the gate.
+
+Exit status 0 with the list (possibly empty); 2 when either commit cannot be
+read, with nothing printed, so a caller that ignores the status exempts
+nothing.
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent
+                       / "packages" / "hypergumbo-core" / "src"))
+
+from hypergumbo_core.prose_only import CODE, classify  # noqa: E402
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    """git in the current directory's repository (CI runs this at its root)."""
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def _source(commit: str, path: str) -> str | None:
+    shown = _git("show", f"{commit}:{path}")
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print(__doc__.split("\n\n")[1].strip(), file=sys.stderr)
+        return 2
+    base, head = argv
+    diff = _git("diff", "--name-only", "-z", base, head)
+    if diff.returncode != 0:
+        print(f"prose-only-files: cannot diff {base}..{head}: {diff.stderr.strip()}",
+              file=sys.stderr)
+        return 2
+    prose = [path for path in diff.stdout.split("\0")
+             if path.endswith(".py")
+             and classify(_source(base, path), _source(head, path)) != CODE]
+    sys.stdout.write("".join(f"{path}\n" for path in sorted(prose)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

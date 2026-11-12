@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The prose-only rule: classification, stored evidence, and what may be dropped.
+"""The prose-only rule: classification, stored evidence, and the tests selected.
 
-Each rule in ``hypergumbo_core.prose_only`` removes tests from a run, so each
-is pinned from both sides: the case where a test is dropped, and the case one
-fact away where it must be kept.
+Each rule in ``hypergumbo_core.prose_only`` leaves tests out of a run, so each
+is pinned from both sides: the case where a test is left out, and the case one
+fact away where it must run.
 """
 from __future__ import annotations
 
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from hypergumbo_core import prose_only as po
 from hypergumbo_core.selection_index import open_index
@@ -84,369 +85,409 @@ def test_a_quoted_directive_counts_but_a_word_in_prose_does_not() -> None:
     assert po.classify(shebang, shebang.replace("utf-8", "latin-1")) == po.CODE
 
 
-# ── introspection ───────────────────────────────────────────────────────────
+# ── changed_docstrings ──────────────────────────────────────────────────────
+
+NESTED = '''"""Module."""
 
 
-def test_introspection_finds_each_channel() -> None:
-    found = po.introspection(
-        "import inspect\n"
-        "from linecache import getline\n"
-        "A = __doc__\n"
-        "B = f.__doc__\n"
-        "C = getattr(f, '__doc__')\n"
-        "D = inspect.getdoc(f)\n"
-        "E = frame.f_lineno\n"
-        "F = '%(lineno)d'\n"
-        "G = inspect.getsource(f)\n"
-        "help(f)\n"
-        "import pydoc.x\n"
-    )
-    assert found.own_doc
-    assert found.doc == {4, 5, 6, 10, 11}
-    assert found.line == {7, 8}
-    assert found.source == {2, 9}
-    assert found.any()
+class A:
+    """A."""
+
+    class B:
+        """B."""
+
+    def m(self):
+        """m."""
+
+        def inner():
+            """inner."""
+
+    @property
+    def p(self):
+        """getter."""
+
+    @p.setter
+    def p(self, value):
+        """setter."""
 
 
-def test_introspection_ignores_ordinary_code() -> None:
-    # "lineno" passes the cheap word test; the AST finds no marker.
-    assert not po.introspection("x = node.lineno\nhelp_text = 1\nobj.help()\n").any()
-    assert not po.introspection("x = 1\n").any()
-    assert not po.introspection("__doc__ (\n").any()
+async def co():
+    """co."""
 
 
-# ── fold_run ────────────────────────────────────────────────────────────────
+if True:
+    def guarded():
+        """guarded."""
+'''
 
 
-def _repo(tmp_path: Path) -> Path:
+def test_changed_docstrings_names_owners_as_python_does() -> None:
+    """The names must be ``__qualname__``s: that is what the recorder stores
+    for ``x.__doc__``."""
+    for old, owner in (("Module.", "<module>"), ("A.", "A"), ("B.", "A.B"),
+                       ("m.", "A.m"), ("inner.", "A.m.<locals>.inner"),
+                       ("co.", "co"), ("guarded.", "guarded")):
+        changed = NESTED.replace(f'"""{old}"""', '"""Rewritten."""', 1)
+        assert po.changed_docstrings(NESTED, changed) == {owner}, owner
+
+
+def test_changed_docstrings_sees_each_definition_of_one_name() -> None:
+    assert po.changed_docstrings(NESTED, NESTED.replace("setter.", "sets it.")) == {"A.p"}
+    assert po.changed_docstrings(NESTED, NESTED.replace("getter.", "gets it.")) == {"A.p"}
+
+
+def test_changed_docstrings_counts_added_and_removed() -> None:
+    bare = "def f():\n    return 1\n"
+    with_doc = 'def f():\n    """New."""\n    return 1\n'
+    assert po.changed_docstrings(bare, with_doc) == {"f"}
+    assert po.changed_docstrings(with_doc, bare) == {"f"}
+    assert po.changed_docstrings(NESTED, NESTED) == frozenset()
+
+
+def test_changed_docstrings_of_unparsable_source_is_empty() -> None:
+    assert po.changed_docstrings("def (:\n", NESTED) == frozenset()
+    assert po.changed_docstrings(NESTED, "def (:\n") == frozenset()
+
+
+# ── the stored evidence ─────────────────────────────────────────────────────
+
+TEST_A = "tests/test_a.py"
+TEST_B = "tests/test_b.py"
+SRC = "pkg/mod.py"
+
+
+def _repo(tmp_path: Path, *test_files: str) -> Path:
     root = tmp_path / "repo"
-    (root / "tests").mkdir(parents=True)
-    (root / "packages" / "p" / "src" / "p").mkdir(parents=True)
-    for name in ("test_a.py", "test_b.py", "test_c.py"):
-        (root / "tests" / name).write_text("def test_x():\n    pass\n")
+    for rel in test_files:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("def test_one():\n    pass\n")
     return root
 
 
-def _conn(tmp_path: Path) -> sqlite3.Connection:
+def _bucket(**events: list[str]) -> dict[str, list[str]]:
+    return {"reads": [], "opaque": [], "docs": [], "lines": [], "fixtures": [], **events}
+
+
+def _fold(conn: sqlite3.Connection, root: Path, tmp_path: Path,
+          tests: dict[str, dict[str, list[str]]], *, full_run: bool = False,
+          **extra: Any) -> int:
+    """Fold one process's record. ``expected`` defaults to exactly ``tests``."""
+    reads = tmp_path / f"reads{len(list(tmp_path.glob('reads*')))}"
+    reads.mkdir(parents=True)
+    expected: dict[str, list[str]] = {}
+    for test_id in tests:
+        expected.setdefault(test_id.split("::")[0], []).append(test_id)
+    payload = {"version": po.RECORDER_VERSION, "observed": True,
+               "expected": expected, "tests": tests, "fixtures": {},
+               "modules": {}, "unattributed": _bucket(), **extra}
+    (reads / "main-1.json").write_text(json.dumps(payload))
+    return po.fold_run(conn, reads, root, full_run=full_run)
+
+
+def _index(tmp_path: Path) -> sqlite3.Connection:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     return open_index(tmp_path / "index.sqlite")
 
 
-def _write_run(directory: Path, name: str, **payload: object) -> None:
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / f"{name}.json").write_text(json.dumps(payload))
+def _edges(conn: sqlite3.Connection, test_id: str) -> set[tuple[str, str]]:
+    return set(conn.execute(
+        "SELECT kind, target FROM read_edge WHERE test_id = ?", (test_id,)))
 
 
-def _bucket(reads: tuple[str, ...] = (), opaque: tuple[str, ...] = (),
-            fixtures: tuple[str, ...] = ()) -> dict[str, list[str]]:
-    return {"reads": list(reads), "opaque": list(opaque), "fixtures": list(fixtures)}
+def test_fold_stores_each_kind_of_event(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    stored = _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket(
+        reads=[SRC], docs=[f"{SRC}::f"], lines=["pkg/other.py"],
+        opaque=["subprocess.Popen:git"])})
+    assert stored == 1
+    assert _edges(conn, f"{TEST_A}::test_one") == {
+        (po.READ, SRC), (po.DOC, f"{SRC}::f"), (po.LINE, "pkg/other.py")}
+    assert conn.execute("SELECT opaque, observed FROM read_test").fetchall() == [
+        ("subprocess.Popen:git", 1)]
 
 
-def _edges(conn: sqlite3.Connection) -> dict[str, set[str]]:
-    out: dict[str, set[str]] = {}
-    for test_id, path in conn.execute("SELECT test_id, path FROM read_edge"):
-        out.setdefault(test_id, set()).add(path)
-    return out
+def test_fold_gives_a_test_its_modules_and_fixtures_events(tmp_path: Path) -> None:
+    """A module-scoped fixture and the module's import run once; every test
+    that relies on them inherits what they saw."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path,
+          {f"{TEST_A}::test_one": _bucket(fixtures=["::built", "::never_recorded"]),
+           f"{TEST_A}::test_two": _bucket()},
+          fixtures={"::built": _bucket(reads=["pkg/by_fixture.py"])},
+          modules={TEST_A: _bucket(docs=[po.ANY])})
+    assert _edges(conn, f"{TEST_A}::test_one") == {
+        (po.READ, "pkg/by_fixture.py"), (po.DOC, po.ANY)}
+    assert _edges(conn, f"{TEST_A}::test_two") == {(po.DOC, po.ANY)}
 
 
-def test_fold_unions_fixture_and_module_reads_across_processes(tmp_path: Path) -> None:
-    root, conn, run = _repo(tmp_path), _conn(tmp_path), tmp_path / "run"
-    _write_run(
-        run, "gw0",
-        expected={"tests/test_a.py": ["tests/test_a.py::test_x"]},
-        tests={"tests/test_a.py::test_x": _bucket(("own.py",), fixtures=("::built", "::unknown"))},
-        fixtures={"::built": _bucket()},
-        modules={"tests/test_a.py": _bucket(("at_import.py",), ("os.system",))},
-        unattributed=_bucket(("everyone.py",)),
-    )
-    # Another worker built the fixture this test used.
-    _write_run(run, "gw1", fixtures={"::built": _bucket(("built_from.py",), ("os.fork",))})
-    (run / "broken.json").write_text("{")
-    assert po.fold_run(conn, run, root) == 1
-    assert _edges(conn) == {
-        "tests/test_a.py::test_x": {"own.py", "at_import.py", "built_from.py"}}
-    assert conn.execute("SELECT opaque FROM read_test").fetchall() == [("os.fork,os.system",)]
-    assert conn.execute("SELECT path FROM read_global").fetchall() == [("everyone.py",)]
+def test_fold_replaces_a_tests_record_and_leaves_the_others(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A, TEST_B)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket(reads=[SRC]),
+                                 f"{TEST_B}::test_one": _bucket(reads=[SRC])})
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()})
+    assert _edges(conn, f"{TEST_A}::test_one") == set()
+    assert _edges(conn, f"{TEST_B}::test_one") == {(po.READ, SRC)}
 
 
-def test_fold_replaces_per_test_and_leaves_absent_tests(tmp_path: Path) -> None:
-    root, conn = _repo(tmp_path), _conn(tmp_path)
-    _write_run(tmp_path / "r1", "main", tests={
-        "tests/test_a.py::test_x": _bucket(("old.py",)),
-        "tests/test_b.py::test_x": _bucket(("kept.py",)),
-    })
-    po.fold_run(conn, tmp_path / "r1", root)
-    _write_run(tmp_path / "r2", "main", tests={"tests/test_a.py::test_x": _bucket(("new.py",))})
-    po.fold_run(conn, tmp_path / "r2", root)
-    assert _edges(conn) == {"tests/test_a.py::test_x": {"new.py"},
-                            "tests/test_b.py::test_x": {"kept.py"}}
-
-
-def test_fold_discards_records_taken_at_other_code(tmp_path: Path) -> None:
-    """A code edit to the test file invalidates its other tests' records; a
-    prose edit does not."""
-    root, conn = _repo(tmp_path), _conn(tmp_path)
-    test_a = root / "tests" / "test_a.py"
-    test_a.write_text("def test_x():\n    pass\n\ndef test_y():\n    pass\n")
-    _write_run(tmp_path / "r1", "main", tests={
-        "tests/test_a.py::test_x": _bucket(), "tests/test_a.py::test_y": _bucket(("y.py",))})
-    po.fold_run(conn, tmp_path / "r1", root)
-    _write_run(tmp_path / "r2", "main", tests={"tests/test_a.py::test_x": _bucket()})
-
-    test_a.write_text(test_a.read_text() + "# a comment\n")
-    po.fold_run(conn, tmp_path / "r2", root)
-    assert "tests/test_a.py::test_y" in _edges(conn)
-
-    test_a.write_text(test_a.read_text() + "X = 1\n")
-    po.fold_run(conn, tmp_path / "r2", root)
-    assert _edges(conn) == {}
+def test_fold_forgets_a_test_file_whose_code_changed(tmp_path: Path) -> None:
+    """The old records describe other code, including for the tests this run
+    did not repeat."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket(),
+                                 f"{TEST_A}::test_two": _bucket(reads=[SRC])})
+    (root / TEST_A).write_text("def test_one():\n    assert True\n")
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()})
     assert [r[0] for r in conn.execute("SELECT test_id FROM read_test")] == [
-        "tests/test_a.py::test_x"]
+        f"{TEST_A}::test_one"]
+    assert conn.execute("SELECT COUNT(*) FROM read_edge").fetchone() == (0,)
 
 
-def test_fold_global_facts_accumulate_until_a_full_run(tmp_path: Path) -> None:
-    root, conn = _repo(tmp_path), _conn(tmp_path)
-    one = {"tests/test_a.py::test_x": _bucket()}
-    _write_run(tmp_path / "r1", "main", tests=one, unattributed=_bucket(("a.py",), ("os.system",)))
-    _write_run(tmp_path / "r2", "main", tests=one, unattributed=_bucket(("b.py",), ("os.fork",)))
-    _write_run(tmp_path / "r3", "main", tests=one)
-    po.fold_run(conn, tmp_path / "r1", root)
-    assert "os.system" in (po.global_refusal(conn) or "")
-    po.fold_run(conn, tmp_path / "r2", root)
-    assert {r[0] for r in conn.execute("SELECT path FROM read_global")} == {"a.py", "b.py"}
+def test_fold_skips_another_versions_record_and_a_broken_file(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    assert _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()},
+                 version=po.RECORDER_VERSION - 1) == 0
+    reads = tmp_path / "broken"
+    reads.mkdir()
+    (reads / "main-1.json").write_text("{not json")
+    assert po.fold_run(conn, reads, root) == 0
+    assert conn.execute("SELECT COUNT(*) FROM read_test").fetchone() == (0,)
+
+
+def test_fold_marks_a_test_unobserved_if_any_process_did_not_watch(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    reads = tmp_path / "two"
+    reads.mkdir()
+    for name, observed in (("gw0-1.json", True), ("gw1-2.json", False)):
+        (reads / name).write_text(json.dumps({
+            "version": po.RECORDER_VERSION, "observed": observed,
+            "expected": {TEST_A: [f"{TEST_A}::test_one"]},
+            "tests": {f"{TEST_A}::test_one": _bucket()}}))
+    po.fold_run(conn, reads, root)
+    assert conn.execute("SELECT observed FROM read_test").fetchall() == [(0,)]
+
+
+def test_unattributed_events_accumulate_until_a_full_run(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    one = {f"{TEST_A}::test_one": _bucket()}
+    _fold(conn, root, tmp_path, one, unattributed=_bucket(
+        reads=["pkg/a.py"], opaque=["os.system"]))
+    _fold(conn, root, tmp_path, one, unattributed=_bucket(
+        docs=[po.ANY], opaque=["os.fork"]))
+    assert set(conn.execute("SELECT kind, target FROM read_global")) == {
+        (po.READ, "pkg/a.py"), (po.DOC, po.ANY)}
     assert "os.fork,os.system" in (po.global_refusal(conn) or "")
-    po.fold_run(conn, tmp_path / "r3", root, full_run=True)
-    assert conn.execute("SELECT path FROM read_global").fetchall() == []
+    _fold(conn, root, tmp_path, one, full_run=True,
+          unattributed=_bucket(lines=["pkg/b.py"]))
+    assert set(conn.execute("SELECT kind, target FROM read_global")) == {
+        (po.LINE, "pkg/b.py")}
     assert po.global_refusal(conn) is None
 
 
-def test_global_refusal_without_any_evidence(tmp_path: Path) -> None:
-    assert "no read evidence" in (po.global_refusal(_conn(tmp_path)) or "")
+def test_the_rule_refuses_without_evidence_but_not_for_an_inert_spawn(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    assert "no read evidence" in (po.global_refusal(conn) or "")
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()},
+          unattributed=_bucket(opaque=["subprocess.Popen:rust-analyzer"]))
+    assert po.global_refusal(conn) is None
 
 
-def test_a_test_file_that_cannot_be_read_or_parsed_still_gets_a_digest(tmp_path: Path) -> None:
-    root, conn = _repo(tmp_path), _conn(tmp_path)
-    (root / "tests" / "test_b.py").write_text("def (:\n")
-    _write_run(tmp_path / "r1", "main", tests={
-        "tests/test_gone.py::test_x": _bucket(), "tests/test_b.py::test_x": _bucket()})
-    po.fold_run(conn, tmp_path / "r1", root)
-    digests = dict(conn.execute("SELECT test_file, digest FROM read_file"))
-    assert digests["tests/test_gone.py"] == ""
-    assert len(digests["tests/test_b.py"]) == 64
-
-
-# ── eligible_prose_files ────────────────────────────────────────────────────
-
-
-def test_eligibility(tmp_path: Path) -> None:
-    conn = _conn(tmp_path)
+def test_evidence_of_another_layout_or_recorder_is_discarded(tmp_path: Path) -> None:
+    """An old record cannot show that a test does NOT do something the old
+    recorder never looked for."""
+    conn = sqlite3.connect(tmp_path / "old.sqlite")
+    conn.executescript(
+        "CREATE TABLE read_edge (test_id TEXT, path TEXT);"
+        "INSERT INTO read_edge VALUES ('t', 'p');"
+        "CREATE TABLE read_meta (key TEXT PRIMARY KEY, value TEXT);")
     po.ensure_schema(conn)
-    conn.execute("INSERT INTO read_global (path) VALUES ('everyone.py')")
+    assert conn.execute("SELECT COUNT(*) FROM read_edge").fetchone() == (0,)
+    conn.execute("INSERT INTO read_edge VALUES ('t', 'r', 'p')")
+    po.ensure_schema(conn)
+    assert conn.execute("SELECT COUNT(*) FROM read_edge").fetchone() == (1,)
+    conn.execute("UPDATE read_meta SET value = '1' WHERE key = 'recorder'")
+    po.ensure_schema(conn)
+    assert conn.execute("SELECT COUNT(*) FROM read_edge").fetchone() == (0,)
+
+
+# ── which files are prose-only ──────────────────────────────────────────────
+
+
+def test_a_file_seen_outside_any_test_is_not_prose_only(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()},
+          unattributed=_bucket(reads=["pkg/read.py"], lines=["pkg/lined.py"],
+                               docs=["pkg/doc.py::f", "pkg/own.py::*"]))
+    kinds = {"pkg/read.py": po.COMMENTS, "pkg/lined.py": po.COMMENTS,
+             "pkg/doc.py": po.DOCSTRINGS, "pkg/own.py": po.DOCSTRINGS,
+             "pkg/free.py": po.DOCSTRINGS, "pkg/code.py": po.CODE}
+    docs = {"pkg/doc.py": frozenset({"f"}), "pkg/own.py": frozenset({"g"}),
+            "pkg/free.py": frozenset({"f"})}
+    prose, rejected = po.eligible_prose_files(conn, kinds, docs)
+    assert prose == {"pkg/free.py": po.DOCSTRINGS}
+    assert set(rejected) == {"pkg/read.py", "pkg/lined.py", "pkg/doc.py", "pkg/own.py"}
+    assert "read outside any test" in rejected["pkg/read.py"]
+    assert "line numbers" in rejected["pkg/lined.py"]
+    assert "docstring" in rejected["pkg/doc.py"]
+
+
+def test_a_docstring_read_outside_tests_blocks_only_that_docstring(tmp_path: Path) -> None:
+    """The control for the test above: another owner's docstring changed, or
+    only comments did."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()},
+          unattributed=_bucket(docs=["pkg/doc.py::f"]))
     prose, rejected = po.eligible_prose_files(
-        conn,
-        {"a.py": po.COMMENTS, "b.py": po.DOCSTRINGS, "code.py": po.CODE,
-         "everyone.py": po.COMMENTS, "cli.py": po.DOCSTRINGS, "cli2.py": po.COMMENTS},
-        {"cli.py": "p = Parser(description=__doc__)\n",
-         "cli2.py": "p = Parser(description=__doc__)\n"},
-    )
-    # A file using its own __doc__ is rejected only when its docstrings changed.
-    assert prose == {"a.py": po.COMMENTS, "b.py": po.DOCSTRINGS, "cli2.py": po.COMMENTS}
-    assert set(rejected) == {"everyone.py", "cli.py"}
+        conn, {"pkg/doc.py": po.DOCSTRINGS, "pkg/c.py": po.COMMENTS},
+        {"pkg/doc.py": frozenset({"g"})})
+    assert (set(prose), rejected) == ({"pkg/doc.py", "pkg/c.py"}, {})
 
 
-# ── narrow_for_prose ────────────────────────────────────────────────────────
-
-SRC = "packages/p/src/p/mod.py"
-INTRO = "packages/p/src/p/intro.py"
-INTRO_TEXT = (
-    "import inspect\n"
-    "def version(m):\n"
-    "    return inspect.getsource(m)\n"
-    "def doc(k):\n"
-    "    return k.__doc__\n"
-    "def where(frame):\n"
-    "    return frame.f_lineno\n"
-)
-
-
-def _evidence(tmp_path: Path, tests: dict[str, dict[str, list[str]]],
-              expected: dict[str, list[str]] | None = None) -> tuple[Path, sqlite3.Connection]:
-    root, conn = _repo(tmp_path), _conn(tmp_path)
-    if expected is None:
-        expected = {}
-        for test_id in tests:
-            expected.setdefault(test_id.split("::")[0], []).append(test_id)
-    _write_run(tmp_path / "run", "main", tests=tests, expected=expected)
-    po.fold_run(conn, tmp_path / "run", root, full_run=True)
-    # The coverage index knows every recorded test unless a test says otherwise.
-    conn.executemany("INSERT OR IGNORE INTO unmeasured_test (test_id) VALUES (?)",
-                     [(t,) for t in tests])
-    conn.commit()
-    return root, conn
+def test_an_untied_read_outside_tests_blocks_every_file(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()},
+          unattributed=_bucket(docs=[po.ANY]))
+    prose, rejected = po.eligible_prose_files(
+        conn, {"pkg/d.py": po.DOCSTRINGS, "pkg/c.py": po.COMMENTS},
+        {"pkg/d.py": frozenset({"f"})})
+    assert (set(prose), set(rejected)) == ({"pkg/c.py"}, {"pkg/d.py"})
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()},
+          unattributed=_bucket(lines=[po.ANY]))
+    prose, rejected = po.eligible_prose_files(conn, {"pkg/c.py": po.COMMENTS}, {})
+    assert (prose, set(rejected)) == ({}, {"pkg/c.py"})
 
 
-ALL = ("tests/test_a.py", "tests/test_b.py", "tests/test_c.py")
-PLAIN = {f"{f}::test_x": {"reads": [], "opaque": [], "fixtures": []} for f in ALL}
+# ── which tests a prose-only change runs ────────────────────────────────────
+
+PROSE = {SRC: po.DOCSTRINGS}
+DOCS = {SRC: frozenset({"f"})}
 
 
-def _narrow(root: Path, conn: sqlite3.Connection, prose: dict[str, str],
-            sources: dict[str, str] | None = None, **kw: object) -> po.ProseNarrowing:
-    return po.narrow_for_prose(conn, root, ALL, prose,
-                               tracked_sources=sources or {}, **kw)  # type: ignore[arg-type]
+def _selected(tmp_path: Path, bucket: dict[str, list[str]],
+              prose: dict[str, str] | None = None,
+              docs: dict[str, frozenset[str]] | None = None, **extra: Any) -> dict[str, str]:
+    """What a change selects when TEST_A's one test has ``bucket`` on record."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": bucket}, **extra)
+    return po.tests_for_prose(conn, root, [TEST_A, ""], PROSE if prose is None else prose,
+                              DOCS if docs is None else docs)
 
 
-def test_a_test_with_complete_clean_evidence_is_dropped(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    result = _narrow(root, conn, {SRC: po.COMMENTS})
-    assert result.dropped == set(ALL)
-    assert result.kept == frozenset()
-    assert result.reasons == {}
+def test_a_test_with_a_clean_record_is_left_out(tmp_path: Path) -> None:
+    """The reach check for every test below: the same setup with nothing on
+    record selects nothing."""
+    assert _selected(tmp_path, _bucket()) == {}
 
 
-def test_a_reader_is_kept_and_an_unselected_reader_is_added(tmp_path: Path) -> None:
-    tests = {**PLAIN,
-             "tests/test_a.py::test_x": _bucket((SRC,)),
-             "tests/test_gate.py::test_x": _bucket((SRC,)),
-             "tests/test_deleted.py::test_x": _bucket((SRC,))}
-    root, conn = _evidence(tmp_path, tests)
-    (root / "tests" / "test_gate.py").write_text("def test_x():\n    pass\n")
-    result = _narrow(root, conn, {SRC: po.COMMENTS})
-    assert result.reasons == {"tests/test_a.py": f"reads {SRC}"}
-    # The gate was not in the run set; the deleted reader is not resurrected.
-    assert result.added == {"tests/test_gate.py"}
-    assert result.kept == {"tests/test_a.py", "tests/test_gate.py"}
+def test_a_test_that_reads_the_file_runs(tmp_path: Path) -> None:
+    assert _selected(tmp_path, _bucket(reads=[SRC])) == {TEST_A: f"reads {SRC}"}
 
 
-def test_a_reader_of_some_other_file_is_dropped(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, {**PLAIN, "tests/test_a.py::test_x": _bucket(("other.py",))})
-    assert _narrow(root, conn, {SRC: po.COMMENTS}).dropped == set(ALL)
+def test_a_read_of_another_file_does_not_select(tmp_path: Path) -> None:
+    assert _selected(tmp_path, _bucket(reads=["pkg/other.py"])) == {}
 
 
-def test_an_opaque_test_is_kept(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, {
-        **PLAIN, "tests/test_a.py::test_x": _bucket(opaque=("subprocess.Popen:git",))})
-    result = _narrow(root, conn, {SRC: po.COMMENTS})
-    assert result.reasons == {"tests/test_a.py": "starts a process (subprocess.Popen:git)"}
+def test_a_test_that_reads_the_changed_docstring_runs(tmp_path: Path) -> None:
+    for n, target in enumerate((f"{SRC}::f", f"{SRC}::*", po.ANY)):
+        got = _selected(tmp_path / str(n), _bucket(docs=[target]))
+        assert list(got) == [TEST_A] and "docstring" in got[TEST_A], target
 
 
-def test_missing_stale_and_incomplete_records_are_kept(tmp_path: Path) -> None:
-    tests = {k: v for k, v in PLAIN.items() if not k.startswith("tests/test_a.py")}
-    expected = {"tests/test_b.py": ["tests/test_b.py::test_x", "tests/test_b.py::test_never_ran"],
-                "tests/test_c.py": ["tests/test_c.py::test_x"]}
-    root, conn = _evidence(tmp_path, tests, expected)
-    (root / "tests" / "test_c.py").write_text("def test_x():\n    assert True\n")
-    result = _narrow(root, conn, {SRC: po.COMMENTS})
-    assert result.reasons == {
-        "tests/test_a.py": "no read record",
-        "tests/test_b.py": "read record is incomplete",
-        "tests/test_c.py": "read record predates a code change to the test",
-    }
-    assert result.dropped == frozenset()
+def test_a_read_of_an_unchanged_docstring_does_not_select(tmp_path: Path) -> None:
+    assert _selected(tmp_path / "a", _bucket(docs=[f"{SRC}::g"])) == {}
+    assert _selected(tmp_path / "b", _bucket(docs=["pkg/other.py::f"])) == {}
+    # Comments changed and no docstring did: nothing for a docstring reader.
+    comments = {SRC: po.COMMENTS}
+    assert _selected(tmp_path / "c", _bucket(docs=[po.ANY, f"{SRC}::*"]),
+                     prose=comments, docs={}) == {}
 
 
-def test_a_record_with_no_collection_list_is_incomplete(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN, expected={})
-    assert set(_narrow(root, conn, {SRC: po.COMMENTS}).reasons.values()) == {
-        "read record is incomplete"}
+def test_a_test_that_reads_line_numbers_runs(tmp_path: Path) -> None:
+    for n, target in enumerate((SRC, po.ANY)):
+        got = _selected(tmp_path / str(n), _bucket(lines=[target]),
+                        prose={SRC: po.COMMENTS}, docs={})
+        assert list(got) == [TEST_A] and "line numbers" in got[TEST_A], target
+    assert _selected(tmp_path / "other", _bucket(lines=["pkg/other.py"])) == {}
 
 
-def test_a_test_the_coverage_index_does_not_know_is_kept(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    conn.execute("DELETE FROM unmeasured_test WHERE test_id LIKE 'tests/test_a.py%'")
-    result = _narrow(root, conn, {SRC: po.COMMENTS})
-    assert result.reasons == {
-        "tests/test_a.py": "coverage index does not know every test in it"}
+def test_a_test_that_starts_a_process_runs_unless_the_program_is_inert(tmp_path: Path) -> None:
+    got = _selected(tmp_path / "a", _bucket(
+        opaque=["subprocess.Popen:python", "subprocess.Popen:rust-analyzer"]))
+    assert got == {TEST_A: "starts a process (subprocess.Popen:python)"}
+    assert _selected(tmp_path / "b", _bucket(
+        opaque=["subprocess.Popen:rust-analyzer", "subprocess.Popen:sleep"])) == {}
+    assert _selected(tmp_path / "c", _bucket(opaque=["os.fork"])) == {
+        TEST_A: "starts a process (os.fork)"}
 
 
-def test_the_non_prose_selection_is_kept_whole(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    result = _narrow(root, conn, {SRC: po.COMMENTS}, keep=["tests/test_b.py", "tests/test_z.py", ""])
-    assert result.kept == {"tests/test_b.py", "tests/test_z.py"}
-    assert result.dropped == {"tests/test_a.py", "tests/test_c.py"}
+def test_a_test_recorded_without_runtime_observation_runs(tmp_path: Path) -> None:
+    got = _selected(tmp_path, _bucket(), observed=False)
+    assert list(got) == [TEST_A] and "runtime observation" in got[TEST_A]
 
 
-def test_a_test_file_that_introspects_is_kept(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    result = _narrow(root, conn, {SRC: po.COMMENTS},
-                     {"tests/test_a.py": "def test_x():\n    assert f.__doc__\n"})
-    assert result.reasons == {
-        "tests/test_a.py": "introspects docstrings, line numbers or source itself"}
+def test_a_changed_test_file_runs_itself(tmp_path: Path) -> None:
+    got = _selected(tmp_path, _bucket(), prose={TEST_A: po.COMMENTS}, docs={})
+    assert got == {TEST_A: "is one of the changed files"}
 
 
-def _ran(conn: sqlite3.Connection, root: Path, test_id: str, rel: str, block: str) -> None:
-    """The coverage index saw ``test_id`` execute ``block`` of ``rel``."""
-    path = str(root / rel)
-    conn.execute("INSERT OR IGNORE INTO block (path, name, digest) VALUES (?, ?, 'd')",
-                 (path, block))
-    conn.execute("INSERT OR IGNORE INTO test_block (test_id, path, name) VALUES (?, ?, ?)",
-                 (f"{root}/{test_id}", path, block))
-    conn.commit()
+def test_a_test_file_with_no_record_runs(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A, TEST_B)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()})
+    assert po.tests_for_prose(conn, root, [TEST_A, TEST_B], PROSE, DOCS) == {
+        TEST_B: "no read record"}
 
 
-A, B = "tests/test_a.py::test_x", "tests/test_b.py::test_x"
-KEPT_FOR_INTROSPECTION = "executes code that introspects docstrings, line numbers or source"
+def test_a_record_older_than_the_tests_code_does_not_count(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket()})
+    (root / TEST_A).write_text("def test_one():\n    assert True\n")
+    assert po.tests_for_prose(conn, root, [TEST_A], PROSE, DOCS) == {
+        TEST_A: "read record predates a code change to the test"}
+    # A prose-only edit of the test file keeps the record current.
+    (root / TEST_A).write_text("def test_one():\n    pass  # same code\n")
+    assert po.tests_for_prose(conn, root, [TEST_A], PROSE, DOCS) == {}
+    (root / TEST_A).write_text("def (:\n")
+    assert list(po.tests_for_prose(conn, root, [TEST_A], PROSE, DOCS)) == [TEST_A]
+    (root / TEST_A).unlink()
+    assert list(po.tests_for_prose(conn, root, [TEST_A], PROSE, DOCS)) == [TEST_A]
 
 
-def test_line_number_introspection_keeps_the_tests_that_execute_it(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    for test_id in (A, B):
-        _ran(conn, root, test_id, INTRO, "where")
-    _ran(conn, root, A, SRC, "<module>")
-    _ran(conn, root, B, "packages/p/src/p/unrelated.py", "<module>")
-    result = _narrow(root, conn, {SRC: po.COMMENTS}, {INTRO: INTRO_TEXT})
-    # B executes the same block but never loaded the changed file.
-    assert result.reasons == {"tests/test_a.py": KEPT_FOR_INTROSPECTION}
-    assert result.dropped == {"tests/test_b.py", "tests/test_c.py"}
+def test_a_file_with_a_test_that_never_ran_is_incomplete(tmp_path: Path) -> None:
+    """A run cut short records some of a file's tests; the others may read
+    anything."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A, TEST_B)
+    _fold(conn, root, tmp_path,
+          {f"{TEST_A}::test_one": _bucket(), f"{TEST_B}::test_one": _bucket()},
+          expected={TEST_A: [f"{TEST_A}::test_one", f"{TEST_A}::test_two"]})
+    assert po.tests_for_prose(conn, root, [TEST_A, TEST_B], PROSE, DOCS) == {
+        TEST_A: "read record is incomplete", TEST_B: "read record is incomplete"}
 
 
-def test_docstring_introspection_counts_only_for_changed_docstrings(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    _ran(conn, root, A, INTRO, "doc")
-    _ran(conn, root, A, SRC, "<module>")
-    other = "packages/p/src/p/other.py"
-    _ran(conn, root, B, other, "<module>")
-    assert _narrow(root, conn, {SRC: po.COMMENTS}, {INTRO: INTRO_TEXT}).dropped == set(ALL)
-    assert "tests/test_a.py" in _narrow(
-        root, conn, {SRC: po.DOCSTRINGS}, {INTRO: INTRO_TEXT}).reasons
-    # The docstring that changed is in a file A never loaded; SRC changed in
-    # a comment only.
-    assert _narrow(root, conn, {SRC: po.COMMENTS, other: po.DOCSTRINGS},
-                   {INTRO: INTRO_TEXT}).dropped == set(ALL)
+# ── select_for_prose ────────────────────────────────────────────────────────
+
+OLD = 'def f():\n    """Old."""\n    return 1\n'
+NEW = 'def f():\n    """New."""\n    return 1\n'
 
 
-def test_a_changed_file_outside_coverage_counts_for_every_executing_test(tmp_path: Path) -> None:
-    """The index has no rows for a script or a test file, so it cannot say
-    who loaded it."""
-    root, conn = _evidence(tmp_path, PLAIN)
-    _ran(conn, root, A, INTRO, "where")
-    result = _narrow(root, conn, {"scripts/tool.py": po.COMMENTS}, {INTRO: INTRO_TEXT})
-    assert result.reasons == {"tests/test_a.py": KEPT_FOR_INTROSPECTION}
+def test_select_for_prose_splits_the_change_and_selects_from_evidence(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A, TEST_B)
+    _fold(conn, root, tmp_path,
+          {f"{TEST_A}::test_one": _bucket(docs=[f"{SRC}::f"]),
+           f"{TEST_B}::test_one": _bucket(docs=[f"{SRC}::g"])},
+          unattributed=_bucket(reads=["pkg/global.py"]))
+    result = po.select_for_prose(conn, root, {
+        SRC: (OLD, NEW),
+        "pkg/code.py": (OLD, OLD.replace("return 1", "return 2")),
+        "pkg/new.py": (None, NEW),
+        "pkg/global.py": (OLD, OLD + "# trailing comment\n"),
+    }, [TEST_A, TEST_B])
+    assert result.files == {SRC: po.DOCSTRINGS}
+    assert set(result.rejected) == {"pkg/global.py"}
+    assert result.tests == {TEST_A: f"reads the docstring of {SRC}::f"}
 
 
-def test_getsource_in_a_source_module_keeps_nothing_here(tmp_path: Path) -> None:
-    """A file read through linecache is recorded as read by every test and is
-    never prose-only, so the block that calls getsource needs no rule."""
-    root, conn = _evidence(tmp_path, PLAIN)
-    _ran(conn, root, A, INTRO, "version")
-    _ran(conn, root, A, SRC, "<module>")
-    assert _narrow(root, conn, {SRC: po.DOCSTRINGS},
-                   {INTRO: "import inspect\ndef version(m):\n    return inspect.getsource(m)\n"}
-                   ).dropped == set(ALL)
-
-
-def test_introspection_outside_coverage_is_matched_by_place_and_name(tmp_path: Path) -> None:
-    root, conn = _evidence(tmp_path, PLAIN)
-    line_marker = "x = frame.f_lineno\n"
-    by_name = _narrow(root, conn, {SRC: po.COMMENTS}, {
-        "scripts/measure-thing.py": line_marker,
-        "tests/test_a.py": "run('scripts/measure-thing.py')\n",
-        "tests/test_b.py": "import measure_thing\n",
-    })
-    assert by_name.reasons == {
-        "tests/test_a.py": "may execute introspecting code in scripts/measure-thing.py",
-        "tests/test_b.py": "may execute introspecting code in scripts/measure-thing.py",
-    }
-    by_place = _narrow(root, conn, {SRC: po.COMMENTS}, {"tests/conftest.py": line_marker})
-    assert set(by_place.reasons) == set(ALL)
-    # A file that only uses its own __doc__ introspects nobody else.
-    assert _narrow(root, conn, {SRC: po.DOCSTRINGS},
-                   {"scripts/tool.py": "d = __doc__\n"}).dropped == set(ALL)
+def test_select_for_prose_with_no_prose_only_file_selects_nothing(tmp_path: Path) -> None:
+    """The tests of a code change are the caller's to select."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    result = po.select_for_prose(
+        conn, root, {SRC: (OLD, OLD.replace("return 1", "return 2"))}, [TEST_A])
+    assert (result.files, result.rejected, result.tests) == ({}, {}, {})

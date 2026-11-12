@@ -229,7 +229,8 @@ def test_the_pre_union_set_exists_before_the_shadow_reads_it() -> None:
 
 
 def _run_narrow(tmp_path: Path, *, stub: str, affected: str,
-                select_narrow: str = "true", changed: str = "a.py") -> str:
+                select_narrow: str = "true", changed: str = "a.py",
+                prose: str = "") -> str:
     scripts = tmp_path / "scripts"
     scripts.mkdir(parents=True, exist_ok=True)
     sel = scripts / "coverage-select"
@@ -241,6 +242,8 @@ def _run_narrow(tmp_path: Path, *, stub: str, affected: str,
         f'TOOLS_ROOT="{tmp_path}"',
         f'SELECT_NARROW="{select_narrow}"',
         f'LOCAL_CHANGED_FILES="{changed}"',
+        # What the prose-only rule selected; narrowing must not remove it.
+        f'PROSE_TESTS="{prose}"',
         'BASELINE="HEAD"',
         'VERBOSE=""',
         "log() { :; }",
@@ -264,6 +267,18 @@ def test_narrowing_removes_what_the_helper_drops(tmp_path) -> None:
         affected="a/test_one.py\nb/test_two.py\nc/test_three.py",
     )
     assert out.split() == ["a/test_one.py"]
+
+
+def test_narrowing_keeps_what_the_prose_only_rule_selected(tmp_path) -> None:
+    """Narrowing judges tests against the files whose code changed. A test
+    the prose-only rule selected is there for a file that is not one of them."""
+    out = _run_narrow(
+        tmp_path,
+        stub='echo "a/test_one.py"',
+        affected="a/test_one.py\nb/test_two.py\nc/test_three.py",
+        prose="c/test_three.py",
+    )
+    assert out.split() == ["a/test_one.py", "c/test_three.py"]
 
 
 def test_a_dead_helper_leaves_the_run_set_standing(tmp_path) -> None:

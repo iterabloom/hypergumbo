@@ -783,7 +783,11 @@ jobs:
           # Sanity check: verify manifest's changed source files match actual PR diff
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
-          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || echo "")
+          # Prose-only files (comments and docstrings only) leave the gate: see
+          # the same step in .woodpecker/woodpecker.yml for why and how.
+          PROSE_ONLY_LIST="$(mktemp)"
+          python3 scripts/prose-only-files "$BASE" "$HEAD" > "$PROSE_ONLY_LIST" 2>/dev/null || : > "$PROSE_ONLY_LIST"
+          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | grep -vxF -f "$PROSE_ONLY_LIST" | sort || echo "")
           MANIFEST_SOURCE_FILES=$(echo "$CHANGED_SOURCE_FILES" | sort || echo "")
 
           echo "=== Sanity check: changed source files ==="
@@ -1104,7 +1108,11 @@ jobs:
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
-          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || echo "")
+          # Prose-only files (comments and docstrings only) leave the gate: see
+          # the same step in .woodpecker/woodpecker.yml for why and how.
+          PROSE_ONLY_LIST="$(mktemp)"
+          python3 scripts/prose-only-files "$BASE" "$HEAD" > "$PROSE_ONLY_LIST" 2>/dev/null || : > "$PROSE_ONLY_LIST"
+          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | grep -vxF -f "$PROSE_ONLY_LIST" | sort || echo "")
 
           if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$CHANGED_SOURCE_FILES" ]; then
             echo "✅ No Python source files changed - skipping pytest"

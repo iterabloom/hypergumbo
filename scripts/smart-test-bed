@@ -21,14 +21,17 @@ base, then:
      with history no scenario controls is the noise this exists to remove.
   2. The edit is applied to the working tree and ``smart-test --manifest
      --narrow`` computes one selection. ``SMART_TEST_SELECTION_OUT`` hands back
-     all four stages: the MANIFEST (static slice plus its declarative
-     unions, what CI runs), PROSE (the manifest after the prose-only rule,
-     which drops the tests a comment-or-docstring change cannot affect), the
-     UNION (plus coverage's picks, WI-kuliv), and the NARROWED local run set
-     (WI-bolot). Each later stage starts from the one before it. A run that exits early (a
-     full-suite fallback, nothing to run) writes no stages, and every
-     selector is then read from the manifest, which is what such a run
-     actually executes.
+     its stages: the MANIFEST (what CI runs: the import-graph slice plus its
+     declarative unions for the files whose code changed, and the tests the
+     prose-only rule lists from recorded evidence for the files that changed
+     in comments or docstrings only), the UNION (plus coverage's picks,
+     WI-kuliv), and the NARROWED local run set (WI-bolot). Each later stage
+     starts from the one before it. STATIC is a second ``--manifest`` run with
+     ``--no-prose-rule``: the import-graph selection for every changed file,
+     which is what the manifest was before the rule and the yardstick for what
+     the rule leaves out. A run that exits early (a full-suite fallback,
+     nothing to run) writes no stages, and every selector is then read from
+     the manifest, which is what such a run actually executes.
   3. The ORACLE. ``mutate`` edits: every block the edit changed
      (hypergumbo_core.block_hash digests, the selection index's own unit)
      gets a ``raise`` as its first statement, every changed data file is
@@ -49,7 +52,7 @@ holds one of each shape, so totals over edits are not a forecast of savings
 on real PRs; they compare selectors on the same shapes.
 
 Usage:
-    scripts/smart-test-bed run [all|manifest|prose|union|narrow] [--edit NAME]...
+    scripts/smart-test-bed run [all|static|manifest|union|narrow] [--edit NAME]...
                                [--jobs N] [--json FILE] [--keep]
     scripts/smart-test-bed materialize DIR      # a committed bed to poke at
     scripts/smart-test-bed list                 # the edits
@@ -77,9 +80,9 @@ import yaml
 REPO = Path(__file__).resolve().parent.parent
 BED = REPO / "tests" / "fixtures" / "smart-test-bed"
 SMART_TEST = REPO / "scripts" / "smart-test"
-SELECTORS = ("manifest", "prose", "union", "narrow")
-STAGE_FILES = {"manifest": "manifest.txt", "prose": "after-prose.txt",
-               "union": "after-union.txt", "narrow": "local.txt"}
+SELECTORS = ("static", "manifest", "union", "narrow")
+STAGE_FILES = {"manifest": "manifest.txt", "union": "after-union.txt",
+               "narrow": "local.txt"}
 TEST_ROOTS = ("packages/bed-core/tests", "packages/bed-app/tests", "tests")
 
 sys.path.insert(0, str(REPO / "packages" / "hypergumbo-core" / "src"))
@@ -282,14 +285,19 @@ def score_edit(edit: dict, readers: dict[str, list[str]], work: Path) -> Score:
     base_pass = passing_tests(root)
 
     touched = apply_edit(root, edit)
+    stages = root / ".ci" / "selection"
+    static = run_smart_test(root, index, "--manifest", "--no-prose-rule")
+    if static.returncode != 0:
+        raise BedError(f"{edit['name']}: smart-test --manifest --no-prose-rule "
+                       f"failed:\n{static.stderr[-2000:]}")
+    selected = {"static": read_manifest(root)[1]}
+    shutil.rmtree(stages, ignore_errors=True)
     sel = run_smart_test(root, index, "--manifest", "--narrow")
     if sel.returncode != 0:
         raise BedError(f"{edit['name']}: smart-test --manifest failed:\n{sel.stderr[-2000:]}")
     mode, manifest = read_manifest(root)
-    stages = root / ".ci" / "selection"
-    selected = {}
-    for name in SELECTORS:
-        stage = stages / STAGE_FILES[name]
+    for name, filename in STAGE_FILES.items():
+        stage = stages / filename
         selected[name] = sorted(stage.read_text().split()) if stage.exists() else manifest
     order_file = stages / "run-order.txt"
     run_order = order_file.read_text().split() if order_file.exists() else []
