@@ -886,10 +886,10 @@ def _extract_method_short_name(callee_name: str) -> str:
     "inherited-calls-linker",
     priority=18,  # Between inheritance (15) and type_hierarchy (60).
     description=(
-        "Walks ancestor chains to resolve unresolved calls that carry the "
-        "enclosing_class hint added by make_unresolved_edge (PR-1). PR-2 "
-        "registers the Ruby/Groovy insertion-order walker; later PRs add "
-        "Java/Kotlin/Python/etc walkers and Site-2/3 receiver resolvers."
+        "Resolves unresolved calls by walking the ancestor chain in each "
+        "language's own method-resolution order: a bare call inside a class "
+        "(enclosing_class hint), a call on a typed receiver "
+        "(receiver_type_hint) and a call on an inherited field."
     ),
     activation=LinkerActivation(always=True),
     # CNF: the analyzers whose output can make this linker emit ANYTHING.

@@ -515,7 +515,7 @@ def render_dataflow_scope_text(
         + "."
     )
     lines.append(
-        "  Only an 'refuted' verdict can REMOVE a flow: 'escaped' and "
+        "  Only a 'refuted' verdict can REMOVE a flow: 'escaped' and "
         "'not_attempted' are ignorance, not absence of dependence. So a "
         "removal count of 0 beside a large 'escaped' or 'not_attempted' count "
         "means the walk did not get to look — NOT that it looked and found "
@@ -527,7 +527,8 @@ def render_dataflow_scope_text(
     lines.append(
         f"  Coverage is reported per {COVERAGE_GRANULARITY}: 'wired' means the "
         "machinery runs for that language, NOT that every function in it is "
-        "modelled (Go if-statement initializers, for one, are not)."
+        "modelled (Go type switches and select statements, for one, are "
+        "walked as straight-line code)."
     )
     if functions_walkable:
         _pct = 100.0 * functions_forfeited / functions_walkable
