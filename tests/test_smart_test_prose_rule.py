@@ -153,3 +153,57 @@ def test_opt_in_narrowing_cannot_remove_what_the_rule_selected() -> None:
 
 def test_the_recorder_is_told_the_pass_version_hash_is_not_a_read() -> None:
     assert '"--source-reads-hash-only=hypergumbo_core.ir:compute_pass_version"' in _text()
+
+
+# ── a run with failures still leaves its record ─────────────────────────────
+
+def test_a_red_run_stores_the_record_inside_run_pytest() -> None:
+    """smart-test exits at run_pytest's non-zero return (set -e), so the
+    caller's fold is never reached on a red run."""
+    text = _text()
+    body = text[text.index("\nrun_pytest() {"):]
+    fold = body.index(" fold-reads ")
+    assert body.index("if [[ $exit_code -ne 0 ]] && [[ \"${SELECT_SHADOW:-false}\" == \"true\" ]]") < fold
+    assert fold < body.index("return $exit_code", fold)
+
+
+def test_fold_reads_leaves_out_the_tests_that_failed(tmp_path: Path) -> None:
+    """A failed test may have stopped before a read it would have made."""
+    import sqlite3
+
+    root = tmp_path / "repo"
+    (root / "tests").mkdir(parents=True)
+    (root / "tests" / "test_x.py").write_text("def test_ok():\n    pass\n")
+    reads = tmp_path / "reads"
+    reads.mkdir()
+    bucket = {"reads": [], "opaque": [], "docs": [], "lines": [], "fixtures": []}
+    ids = ["tests/test_x.py::test_ok", "tests/test_x.py::test_bad"]
+    (reads / "main-1.json").write_text(json.dumps({
+        "version": 2, "observed": True, "expected": {"tests/test_x.py": ids},
+        "tests": {test_id: bucket for test_id in ids}}))
+    junit = tmp_path / "junit.xml"
+    junit.write_text(
+        '<testsuites><testsuite>'
+        '<testcase classname="tests.test_x" name="test_ok"/>'
+        '<testcase classname="tests.test_x" name="test_bad"><failure/></testcase>'
+        '</testsuite></testsuites>')
+    index = tmp_path / "index.sqlite"
+    select = REPO_ROOT / "scripts" / "coverage-select"
+
+    def stored(*junit_args: str) -> list[str]:
+        done = subprocess.run(
+            [sys.executable, str(select), "--repo-root", str(root), "--index", str(index),
+             *junit_args, "fold-reads", "--source-reads", str(reads)],
+            capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        if not index.exists():
+            return []
+        conn = sqlite3.connect(index)
+        try:
+            return [r[0] for r in conn.execute("SELECT test_id FROM read_test")]
+        finally:
+            conn.close()
+
+    # No junit report: which tests failed is unknown, so nothing is stored.
+    assert stored() == []
+    assert stored("--junit", str(junit)) == ["tests/test_x.py::test_ok"]
