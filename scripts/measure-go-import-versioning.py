@@ -65,10 +65,15 @@ def _module_slot(dst: str) -> str:
 def run_arm(repo: pathlib.Path, legacy: bool) -> dict:
     from hypergumbo_lang_mainstream import go as go_mod
 
+    # The legacy arm rebinds a production global for this call only; it is
+    # restored so a caller in the same process gets production back (INV-nuvib).
+    real = go_mod._go_package_identifier
     if legacy:
         go_mod._go_package_identifier = _legacy_identifier
-
-    analysis = go_mod.analyze_go(repo)
+    try:
+        analysis = go_mod.analyze_go(repo)
+    finally:
+        go_mod._go_package_identifier = real
     edges = [e for e in analysis.edges if e.edge_type == "calls"]
     kinds = {s.id: s.kind for s in analysis.symbols}
     sites: dict[str, list[str]] = {}

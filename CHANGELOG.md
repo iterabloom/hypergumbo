@@ -151,6 +151,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`archaeology_heuristic.py --kind`** also scores docstrings, separately or with comments.
 - **Archaeology corpus: 240 blind-labelled docstrings of 100+ words replace 60.**
 - **Archaeology heuristic: narrower provenance, numbers and rule-voice families; weights refitted.**
+- **Two measurement scripts restore the production globals they rebind in-process.**
 - **Archaeology corpus adds 480 random blind-labelled blocks; weights refit to all comments.**
 - **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
 - **smart-test: a comment-or-docstring-only change runs only tests that read the file.**
