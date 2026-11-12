@@ -181,7 +181,7 @@ def test_fold_reads_stores_the_passed_tests_and_removes_the_record(tmp_path: Pat
     ids = [f"tests/test_x.py::{name}" for name in ("test_ok", "test_bad", "test_worse")]
     record = json.dumps({
         "version": 2, "observed": True, "expected": {"tests/test_x.py": ids},
-        "failed": [ids[1]], "tests": {test_id: bucket for test_id in ids}})
+        "failed": [ids[1]], "tests": dict.fromkeys(ids, bucket)})
     junit = tmp_path / "junit.xml"
     junit.write_text(
         '<testsuites><testsuite>'
