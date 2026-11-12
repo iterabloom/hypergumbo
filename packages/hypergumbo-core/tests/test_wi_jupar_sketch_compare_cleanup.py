@@ -36,6 +36,26 @@ def _tmp_sketch_compare_dir() -> Path:
     return Path(tempfile.gettempdir()) / "hypergumbo_sketch_compare"
 
 
+def _redirect_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point ``tempfile.gettempdir()`` at ``tmp_path / _tmp`` until the
+    monkeypatch is undone.
+
+    ``tempfile`` caches its answer in ``tempfile.tempdir``, so setting
+    ``TMPDIR`` alone changes nothing once any code has asked. The cache is
+    cleared THROUGH monkeypatch, which puts the previous value back; assigning
+    ``tempfile.tempdir = None`` directly left the redirected directory cached
+    for every later test in the same worker, and the zone-enforced
+    ``tmp_artifact_*`` tests then refused their own ``tmp_path``.
+    """
+    import tempfile
+
+    tmp_root = tmp_path / "_tmp"
+    tmp_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(tmp_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    return tmp_root
+
+
 @pytest.fixture
 def isolated_tmpdir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -43,19 +63,24 @@ def isolated_tmpdir(
     """Redirect ``tempfile.gettempdir()`` so we can prove the producer
     doesn't write to it.
 
-    Pointing ``TMPDIR`` at ``tmp_path / _tmp`` means any legacy code that
-    writes to ``Path(tempfile.gettempdir()) / "hypergumbo_sketch_compare"``
-    lands inside the per-test sandbox, and the test can assert that path
-    was *not* created.
+    Any legacy code that writes to
+    ``Path(tempfile.gettempdir()) / "hypergumbo_sketch_compare"`` lands
+    inside the per-test sandbox, and the test can assert that path was *not*
+    created.
     """
-    tmp_root = tmp_path / "_tmp"
-    tmp_root.mkdir()
-    monkeypatch.setenv("TMPDIR", str(tmp_root))
-    # tempfile caches gettempdir() on first call; clear so the env var
-    # actually takes effect this session.
+    return _redirect_tmpdir(tmp_path, monkeypatch)
+
+
+def test_the_tmpdir_redirect_ends_with_the_test(tmp_path: Path) -> None:
+    """The redirect must not outlive the test that asked for it."""
     import tempfile
-    tempfile.tempdir = None
-    return tmp_root
+
+    before = tempfile.gettempdir()
+    with pytest.MonkeyPatch.context() as patch:
+        redirected = _redirect_tmpdir(tmp_path, patch)
+        # Reach: the redirect took effect, and gettempdir() cached it.
+        assert tempfile.gettempdir() == str(redirected)
+    assert tempfile.gettempdir() == before
 
 
 def test_sketch_run_does_not_create_tmp_sketch_compare_dir(
