@@ -162,7 +162,7 @@ def test_a_red_run_stores_the_record_inside_run_pytest() -> None:
     caller's fold is never reached on a red run."""
     text = _text()
     body = text[text.index("\nrun_pytest() {"):]
-    fold = body.index(" fold-reads ")
+    fold = body.index('--junit "$JUNIT_XML" fold-reads ')
     assert body.index("if [[ $exit_code -ne 0 ]] && [[ \"${SELECT_SHADOW:-false}\" == \"true\" ]]") < fold
     assert fold < body.index("return $exit_code", fold)
 
