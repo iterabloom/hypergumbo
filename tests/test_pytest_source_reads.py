@@ -402,3 +402,73 @@ def test_xdist_writes_one_file_per_worker_and_none_for_the_controller(
 def test_without_the_option_nothing_is_written(tmp_path: Path) -> None:
     assert _run(tmp_path)["files"] == 0
     assert not (tmp_path / "reads").exists()
+
+
+# ── a run that fails, and a run that is killed ──────────────────────────────
+
+_SMALL = {
+    "seen.py": "J = 10\n",
+    "test_d.py": (
+        "import json, os, pathlib\n"
+        "HERE = pathlib.Path(__file__).parent\n"
+        "def test_first():\n"
+        "    assert (HERE / 'seen.py').read_text()\n"
+        "def test_looks_at_the_record_so_far():\n"
+        "    parts = list(pathlib.Path(os.environ['RECORD_DIR']).glob('*.json'))\n"
+        "    assert len(parts) == 1\n"
+        "    tests = json.loads(parts[0].read_text())['tests']\n"
+        "    assert tests['test_d.py::test_first']['reads'] == ['seen.py']\n"
+        "    assert 'test_d.py::test_looks_at_the_record_so_far' not in tests\n"
+        "def test_fails():\n"
+        "    (HERE / 'seen.py').read_text()\n"
+        "    assert os.environ.get('LET_IT_PASS')\n"
+    ),
+}
+
+
+def _small(tmp_path: Path, flush: str) -> tuple[int, dict[str, Any], Path]:
+    project = tmp_path / "project"
+    project.mkdir()
+    for name, text in _SMALL.items():
+        (project / name).write_text(text)
+    out = tmp_path / "reads"
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(("PYTEST_", "COV_CORE_", "COVERAGE_"))}
+    env.update(PYTHONPATH=str(PLUGIN_DIR), RECORD_DIR=str(out))
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "pytest_source_reads",
+         "-o", "addopts=", "-p", "no:cacheprovider", "-q", "--rootdir", str(project),
+         f"--source-reads-dir={out}", f"--source-reads-flush={flush}", "-n", "0",
+         str(project)],
+        capture_output=True, text=True, cwd=project, env=env)
+    (part,) = out.glob("*.json")
+    return done.returncode, json.loads(part.read_text()), project
+
+
+def test_the_record_is_written_while_the_run_goes(tmp_path: Path) -> None:
+    """A killed run must leave what it had finished. The project's second
+    test reads the record directory and finds the first test there."""
+    returncode, data, _project = _small(tmp_path, "0")
+    assert returncode == 1
+    assert data["failed"] == ["test_d.py::test_fails"]
+    assert "test_d.py::test_looks_at_the_record_so_far" in data["tests"]
+
+
+def test_without_a_due_flush_the_record_is_written_once_at_the_end(tmp_path: Path) -> None:
+    """The control: with a long interval the second test finds no file, and
+    fails."""
+    returncode, data, _project = _small(tmp_path, "3600")
+    assert returncode == 1
+    assert data["failed"] == ["test_d.py::test_fails",
+                              "test_d.py::test_looks_at_the_record_so_far"]
+
+
+def test_the_record_carries_each_test_files_hash(tmp_path: Path) -> None:
+    import hashlib
+
+    _returncode, data, project = _small(tmp_path, "3600")
+    assert data["sources"] == {
+        "test_d.py": hashlib.sha256((project / "test_d.py").read_bytes()).hexdigest()}
+    # Hashing the test file is the recorder's own read, not a test's.
+    assert all("test_d.py" not in bucket["reads"] for bucket in data["tests"].values())
+    assert data["unattributed"]["reads"] == []

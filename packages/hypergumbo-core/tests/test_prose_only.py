@@ -507,3 +507,46 @@ def test_fold_leaves_out_a_failed_test_and_keeps_its_earlier_record(tmp_path: Pa
     assert po.fold_run(conn, reads, root, skip=[one, "tests/test_gone.py::t"]) == 1
     assert _edges(conn, one) == {(po.READ, SRC)}
     assert _edges(conn, two) == {(po.READ, "pkg/other.py")}
+
+
+def test_fold_leaves_out_the_tests_the_record_says_failed(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    one, two = f"{TEST_A}::test_one", f"{TEST_A}::test_two"
+    assert _fold(conn, root, tmp_path, {one: _bucket(), two: _bucket()},
+                 failed=[two]) == 1
+    assert [r[0] for r in conn.execute("SELECT test_id FROM read_test")] == [one]
+
+
+def test_fold_leaves_out_a_test_file_edited_since_the_run_collected_it(tmp_path: Path) -> None:
+    """A killed run's record is stored by the next run, which may be much
+    later. It must not be credited to code it never saw."""
+    import hashlib
+
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A, TEST_B)
+    as_collected = hashlib.sha256((root / TEST_A).read_bytes()).hexdigest()
+    tests = {f"{TEST_A}::test_one": _bucket(), f"{TEST_B}::test_one": _bucket()}
+    # Reach: with both hashes current, both are stored.
+    assert _fold(conn, root, tmp_path, tests,
+                 sources={TEST_A: as_collected, TEST_B: as_collected}) == 2
+    (root / TEST_A).write_text("def test_one():\n    pass  # edited\n")
+    (root / TEST_B).unlink()
+    assert _fold(conn, root, tmp_path, tests,
+                 sources={TEST_A: as_collected, TEST_B: as_collected}) == 0
+
+
+def test_with_too_little_on_record_the_rule_gives_way(tmp_path: Path) -> None:
+    """A test file with no record must run. When that is most of the suite,
+    the import graph selects fewer tests than the rule would."""
+    conn = _index(tmp_path)
+    recorded = [f"tests/test_r{n}.py" for n in range(9)]
+    root = _repo(tmp_path, *recorded, TEST_A, TEST_B)
+    _fold(conn, root, tmp_path, {f"{f}::test_one": _bucket() for f in recorded})
+    change = {SRC: (OLD, NEW)}
+    # One unknown file in ten is within the allowance.
+    within = po.select_for_prose(conn, root, change, [*recorded, TEST_A])
+    assert within.files == {SRC: po.DOCSTRINGS}
+    assert within.tests == {TEST_A: po.NO_RECORD}
+    # Two in eleven is not.
+    beyond = po.select_for_prose(conn, root, change, [*recorded, TEST_A, TEST_B, ""])
+    assert (beyond.files, beyond.tests) == ({}, {})
+    assert "2 of 11 test files have no usable record" in beyond.rejected[SRC]

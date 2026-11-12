@@ -78,6 +78,27 @@ def test_only_comment_and_docstring_changes_are_printed(tmp_path: Path) -> None:
     assert done.stdout.split() == ["comment.py", "docstring.py"]
 
 
+def test_code_lists_the_other_changed_python_files(tmp_path: Path) -> None:
+    """What a comments-and-docstrings sweep must leave empty."""
+    repo, base, head = _repo(tmp_path)
+    done = _run(repo, base, head, "--code")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.split() == [
+        "added.py", "code.py", "deleted.py", "pragma.py", "unparsable.py"]
+
+
+def test_without_a_head_the_working_tree_is_compared(tmp_path: Path) -> None:
+    repo, _base, head = _repo(tmp_path)
+    (repo / "same.py").write_text("x = 1  # a new comment, not committed\n")
+    (repo / "code.py").write_text("x = 3\n")
+    sub = repo / "sub"
+    sub.mkdir()
+    done = subprocess.run([sys.executable, str(SCRIPT), head], cwd=sub,
+                          capture_output=True, text=True)
+    assert (done.returncode, done.stdout.split()) == (0, ["same.py"]), done.stderr
+    assert _run(repo, head, "--code").stdout.split() == ["code.py"]
+
+
 def test_an_unreadable_commit_prints_nothing_and_fails(tmp_path: Path) -> None:
     """The CI step ignores the exit status, so nothing printed is what makes
     a failure exempt nothing."""
@@ -88,9 +109,10 @@ def test_an_unreadable_commit_prints_nothing_and_fails(tmp_path: Path) -> None:
 
 
 def test_wrong_arguments_print_nothing_and_fail(tmp_path: Path) -> None:
-    repo, base, _head = _repo(tmp_path)
-    done = _run(repo, base)
-    assert (done.returncode, done.stdout) == (2, "")
+    repo, base, head = _repo(tmp_path)
+    for args in ((), (base, head, head), (base, "--unknown")):
+        done = _run(repo, *args)
+        assert (done.returncode, done.stdout) == (2, ""), args
 
 
 # ── how CI uses the answer ───────────────────────────────────────────────────

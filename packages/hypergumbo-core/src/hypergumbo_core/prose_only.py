@@ -90,6 +90,19 @@ INERT_PROGRAMS = frozenset({
     "pwd", "mktemp",
 })
 
+#: Above this share of test files with no usable record, the rule gives way
+#: to the import graph. Both selections are safe; this is about cost. A test
+#: file the record says nothing about must run, and with few records "must
+#: run" is most of the suite, which is more than the import graph selects.
+MAX_UNKNOWN_SHARE = 0.10
+
+#: Why a test file runs for lack of a usable record (see tests_for_prose).
+NO_RECORD = "no read record"
+STALE_RECORD = "read record predates a code change to the test"
+INCOMPLETE_RECORD = "read record is incomplete"
+UNOBSERVED_RECORD = "recorded without runtime observation (needs Python 3.12)"
+_UNKNOWN = frozenset({NO_RECORD, STALE_RECORD, INCOMPLETE_RECORD, UNOBSERVED_RECORD})
+
 READ, DOC, LINE = "r", "d", "l"
 #: A docstring or line-number read the plugin could not tie to a definition.
 ANY = "*"
@@ -277,6 +290,14 @@ def _file_digest(path: Path) -> str:
     return digests[0] if digests else hashlib.sha256(text.encode()).hexdigest()
 
 
+def _raw_digest(path: Path) -> str:
+    """SHA-256 of a file's bytes, as the recorder takes it; empty if unreadable."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
 _CHANNELS = (("reads", READ), ("docs", DOC), ("lines", LINE))
 _Events = dict[str, set[str]]
 
@@ -296,10 +317,12 @@ def fold_run(
 ) -> int:
     """Store one run's record; returns the number of tests stored.
 
-    ``skip`` names tests whose record must not be stored: the ones that
-    failed. A failed test may have stopped before the read it would have
-    made, so its record from this run shows less than the test does. Its
-    earlier record, if any, stands.
+    NOT STORED: a test that failed (named in the record, or in ``skip`` by a
+    caller that knows from elsewhere), because it may have stopped before a
+    read it would have made; and every test of a file that no longer hashes
+    as it did when the run collected it, because the record may be stored
+    long after the run (one that was killed) and would be credited to code
+    it never saw. An earlier record of such a test stands.
 
     ``reads_dir`` holds one JSON file per pytest process; a file written by
     another version of the plugin is skipped. Per test the stored events are
@@ -320,6 +343,8 @@ def fold_run(
     modules: dict[str, _Events] = {}
     expected: dict[str, set[str]] = {}
     loose = _events()
+    untrusted = set(skip)
+    edited: set[str] = set()
 
     for part in sorted(reads_dir.glob("*.json")):
         try:
@@ -328,6 +353,10 @@ def fold_run(
             continue
         if data.get("version") != RECORDER_VERSION:
             continue
+        untrusted.update(data.get("failed", ()))
+        for test_file, digest in data.get("sources", {}).items():
+            if digest != _raw_digest(repo_root / test_file):
+                edited.add(test_file)
         for test_id, bucket in data.get("tests", {}).items():
             _merge(tests.setdefault(test_id, _events()), bucket)
             used.setdefault(test_id, set()).update(bucket.get("fixtures", ()))
@@ -339,8 +368,9 @@ def fold_run(
         for test_file, ids in data.get("expected", {}).items():
             expected.setdefault(test_file, set()).update(ids)
         _merge(loose, data.get("unattributed", {}))
-    for test_id in skip:
-        tests.pop(test_id, None)
+    for test_id in list(tests):
+        if test_id in untrusted or test_id.split("::", 1)[0] in edited:
+            del tests[test_id]
 
     cur = conn.cursor()
     by_file: dict[str, list[str]] = {}
@@ -538,16 +568,16 @@ def tests_for_prose(
             return "is one of the changed files"
         ids = recorded.get(test_file)
         if not ids or test_file not in digests:
-            return "no read record"
+            return NO_RECORD
         if digests[test_file] != _file_digest(repo_root / test_file):
-            return "read record predates a code change to the test"
+            return STALE_RECORD
         wanted = expected.get(test_file)
         if not wanted or not wanted <= ids:
-            return "read record is incomplete"
+            return INCOMPLETE_RECORD
         if spawns[test_file]:
             return f"starts a process ({','.join(sorted(spawns[test_file]))})"
         if test_file in unobserved:
-            return "recorded without runtime observation (needs Python 3.12)"
+            return UNOBSERVED_RECORD
         mine = edges.get(test_file, {READ: set(), DOC: set(), LINE: set()})
         hit = sorted(mine[READ] & prose.keys())
         seen = (hit[0] if hit else None) or _line_hit(mine[LINE], prose) \
@@ -585,6 +615,9 @@ def select_for_prose(
     ``(base, current)`` source, None for a side on which the file does not
     exist. The caller selects tests for every changed file NOT in the
     result's ``files`` by its usual means.
+
+    With too little on record (:data:`MAX_UNKNOWN_SHARE`) no file is treated
+    as prose-only and each is rejected with that reason.
     """
     kinds = {path: classify(base, current) for path, (base, current) in changed.items()}
     changed_docs = {
@@ -592,5 +625,14 @@ def select_for_prose(
         for path, (base, current) in changed.items() if kinds[path] == DOCSTRINGS
     }
     files, rejected = eligible_prose_files(conn, kinds, changed_docs)
-    tests = tests_for_prose(conn, repo_root, universe, files, changed_docs) if files else {}
+    if not files:
+        return ProseSelection(files={}, rejected=rejected, tests={})
+    everything = sorted({f for f in universe if f})
+    tests = tests_for_prose(conn, repo_root, everything, files, changed_docs)
+    unknown = sum(1 for why in tests.values() if why in _UNKNOWN)
+    if unknown > MAX_UNKNOWN_SHARE * len(everything):
+        why = (f"{unknown} of {len(everything)} test files have no usable record "
+               "(smart-test --full records them all)")
+        return ProseSelection(
+            files={}, rejected={**rejected, **dict.fromkeys(files, why)}, tests={})
     return ProseSelection(files=files, rejected=rejected, tests=tests)

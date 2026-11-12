@@ -167,8 +167,9 @@ def test_a_red_run_stores_the_record_inside_run_pytest() -> None:
     assert fold < body.index("return $exit_code", fold)
 
 
-def test_fold_reads_leaves_out_the_tests_that_failed(tmp_path: Path) -> None:
-    """A failed test may have stopped before a read it would have made."""
+def test_fold_reads_stores_the_passed_tests_and_removes_the_record(tmp_path: Path) -> None:
+    """A failed test may have stopped before a read it would have made. The
+    record names its failures; a junit report can name more."""
     import sqlite3
 
     root = tmp_path / "repo"
@@ -177,33 +178,39 @@ def test_fold_reads_leaves_out_the_tests_that_failed(tmp_path: Path) -> None:
     reads = tmp_path / "reads"
     reads.mkdir()
     bucket = {"reads": [], "opaque": [], "docs": [], "lines": [], "fixtures": []}
-    ids = ["tests/test_x.py::test_ok", "tests/test_x.py::test_bad"]
-    (reads / "main-1.json").write_text(json.dumps({
+    ids = [f"tests/test_x.py::{name}" for name in ("test_ok", "test_bad", "test_worse")]
+    record = json.dumps({
         "version": 2, "observed": True, "expected": {"tests/test_x.py": ids},
-        "tests": {test_id: bucket for test_id in ids}}))
+        "failed": [ids[1]], "tests": {test_id: bucket for test_id in ids}})
     junit = tmp_path / "junit.xml"
     junit.write_text(
         '<testsuites><testsuite>'
         '<testcase classname="tests.test_x" name="test_ok"/>'
-        '<testcase classname="tests.test_x" name="test_bad"><failure/></testcase>'
+        '<testcase classname="tests.test_x" name="test_worse"><error/></testcase>'
         '</testsuite></testsuites>')
-    index = tmp_path / "index.sqlite"
     select = REPO_ROOT / "scripts" / "coverage-select"
 
-    def stored(*junit_args: str) -> list[str]:
+    def stored(index: Path, *junit_args: str) -> list[str]:
+        (reads / "main-1.json").write_text(record)
         done = subprocess.run(
             [sys.executable, str(select), "--repo-root", str(root), "--index", str(index),
              *junit_args, "fold-reads", "--source-reads", str(reads)],
             capture_output=True, text=True)
         assert done.returncode == 0, done.stderr
-        if not index.exists():
-            return []
+        # Stored records are removed: what is left is never-stored by definition.
+        assert list(reads.glob("*.json")) == []
         conn = sqlite3.connect(index)
         try:
-            return [r[0] for r in conn.execute("SELECT test_id FROM read_test")]
+            return sorted(r[0] for r in conn.execute("SELECT test_id FROM read_test"))
         finally:
             conn.close()
 
-    # No junit report: which tests failed is unknown, so nothing is stored.
-    assert stored() == []
-    assert stored("--junit", str(junit)) == ["tests/test_x.py::test_ok"]
+    assert stored(tmp_path / "a.sqlite") == [ids[0], ids[2]]
+    assert stored(tmp_path / "b.sqlite", "--junit", str(junit)) == [ids[0]]
+
+
+def test_a_record_left_by_a_killed_run_is_stored_before_the_next_run_replaces_it() -> None:
+    text = _text()
+    body = text[text.index("\nrun_pytest() {"):]
+    fold = body.index("fold-reads --announce")
+    assert fold < body.index('rm -f "$reads_dir"/*.json')
