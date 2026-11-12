@@ -353,7 +353,11 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "(UnixStreamServer, UnixDatagramServer and their Threading / "
             "Forking variants), rowed ipc_listen beside the admitted "
             "socketserver.TCPServer -- all defined in CPython's "
-            "Lib/socketserver.py (the Forking pair from 3.12)."
+            "Lib/socketserver.py (the Forking pair from 3.12). ADDED "
+            "2026-11-12 (WI-kamav): ast, tokenize and uuid -- CPython stdlib "
+            "modules (sys.stdlib_module_names on 3.12) whose `-m` entry points "
+            "(and tokenize.open) are rowed so their completeness grants "
+            "enumerate every I/O callable."
         ),
         modules=frozenset({
             "cProfile", "cProfile.Profile", "codecs", "ctypes", "ctypes.cdll",
@@ -386,7 +390,7 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "sys.stderr", "sys.stdin", "sys.stdout", "tarfile", "tempfile",
             "time", "typing", "urllib.request", "warnings",
             "xml.etree.ElementTree", "xmlrpc.server.SimpleXMLRPCServer",
-            "zipfile",
+            "zipfile", "ast", "tokenize", "uuid",
             # The CLASS-QUALIFIED receivers the self-claims gate reaches
             # (WI-jabus). Each is a CPython class whose MODULE is already admitted
             # two lines above, and each is listed separately for the same
