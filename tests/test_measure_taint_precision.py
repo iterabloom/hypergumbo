@@ -193,6 +193,66 @@ class TestTheNonProductionSourceArmIsReachable:
         assert args.include_non_production_sources is True
 
 
+class TestTheLiftedCapDoesNotOutliveTheRun:
+    """``run_verify_claims`` lifts the evidence cap and, for the no-collapse
+    arm, replaces the collapse; both are module globals of production code.
+    Run in-process, they must be back as found when it returns, or any later
+    caller in the same process (a test relying on the 100-row cap) reads the
+    instrument's settings instead of production's (INV-nuvib).
+    """
+
+    def _run(self, collector: ModuleType, monkeypatch, *, raises: bool):
+        import hypergumbo_core.cli as cli_mod
+        from hypergumbo_core import taint as taint_mod
+        from hypergumbo_core import verify_claims as vc_mod
+
+        during: dict[str, object] = {}
+
+        def fake_cmd(args):
+            during["cap"] = vc_mod._MAX_EVIDENCE_ROWS
+            during["collapse"] = taint_mod.collapse_unadjudicated_flows
+            if raises:
+                raise RuntimeError("verify-claims failed")
+            print("{}")
+            return 0
+
+        monkeypatch.setattr(cli_mod, "cmd_verify_claims", fake_cmd)
+        before = (vc_mod._MAX_EVIDENCE_ROWS,
+                  taint_mod.collapse_unadjudicated_flows)
+        if raises:
+            with pytest.raises(RuntimeError):
+                collector.run_verify_claims(
+                    Path("/repo"), Path("/claims.yaml"), no_collapse=True)
+        else:
+            collector.run_verify_claims(
+                Path("/repo"), Path("/claims.yaml"), no_collapse=True)
+        after = (vc_mod._MAX_EVIDENCE_ROWS,
+                 taint_mod.collapse_unadjudicated_flows)
+        return before, during, after
+
+    def test_the_run_sees_the_lifted_cap(
+        self, collector: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reach: the instrument still does what it exists to do."""
+        before, during, _ = self._run(collector, monkeypatch, raises=False)
+        assert during["cap"] == collector.EVIDENCE_LIMIT
+        assert during["collapse"] is not before[1]
+
+    def test_both_globals_are_restored_on_return(
+        self, collector: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        before, _, after = self._run(collector, monkeypatch, raises=False)
+        assert after[0] == before[0]
+        assert after[1] is before[1]
+
+    def test_both_globals_are_restored_when_the_run_raises(
+        self, collector: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        before, _, after = self._run(collector, monkeypatch, raises=True)
+        assert after[0] == before[0]
+        assert after[1] is before[1]
+
+
 # --------------------------------------------------------------------------
 # WI-tumog: which tree's analyzer runs is CHOSEN, never inherited silently.
 # --------------------------------------------------------------------------

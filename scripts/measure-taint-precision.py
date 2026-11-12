@@ -182,21 +182,6 @@ def run_verify_claims(
     from hypergumbo_core import verify_claims as vc_mod
     from hypergumbo_core.cli import build_parser, cmd_verify_claims
 
-    vc_mod._MAX_EVIDENCE_ROWS = EVIDENCE_LIMIT
-    if no_collapse:
-        # THE ROW UNIT, MEASURED RATHER THAN APPORTIONED. INV-karud's collapse
-        # groups pair findings into situations and reports only how many it
-        # swallowed (`collapsed_flow_count`), which is enough to count rows
-        # but not to ADJUDICATE them — a reader cannot tell which primitive
-        # pair each swallowed row named. 0004 had to hand-block that; here the
-        # same run is repeated with the collapse turned off, so both units are
-        # adjudicated on their own records. Production is untouched: this
-        # rebinds a module global inside this process only, and `collect`
-        # prints which arm it ran.
-        taint_mod.collapse_unadjudicated_flows = (  # type: ignore[assignment]
-            lambda findings: list(findings)
-        )
-
     parser = build_parser()
     argv = ["verify-claims", str(repo), "--claims", str(claims), "--json"]
     if include_non_production:
@@ -211,9 +196,34 @@ def run_verify_claims(
         # reported as a SEPARATE arm, never pooled with a default-mode figure.
         argv.append("--include-non-production-sources")
     args = parser.parse_args(argv)
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = cmd_verify_claims(args)
+
+    # The cap and the collapse are production module globals, rebound for
+    # this run only and restored in ``finally``: a caller in the same process
+    # (a test) must get production's values back, or it measures this
+    # instrument's settings instead (INV-nuvib).
+    real_cap = vc_mod._MAX_EVIDENCE_ROWS
+    real_collapse = taint_mod.collapse_unadjudicated_flows
+    vc_mod._MAX_EVIDENCE_ROWS = EVIDENCE_LIMIT
+    if no_collapse:
+        # THE ROW UNIT, MEASURED RATHER THAN APPORTIONED. INV-karud's collapse
+        # groups pair findings into situations and reports only how many it
+        # swallowed (`collapsed_flow_count`), which is enough to count rows
+        # but not to ADJUDICATE them — a reader cannot tell which primitive
+        # pair each swallowed row named. 0004 had to hand-block that; here the
+        # same run is repeated with the collapse turned off, so both units are
+        # adjudicated on their own records. `collect` prints which arm it ran.
+        taint_mod.collapse_unadjudicated_flows = (  # type: ignore[assignment]
+            lambda findings: list(findings)
+        )
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cmd_verify_claims(args)
+    finally:
+        vc_mod._MAX_EVIDENCE_ROWS = real_cap
+        taint_mod.collapse_unadjudicated_flows = (  # type: ignore[assignment]
+            real_collapse
+        )
     payload = json.loads(buf.getvalue())
     payload["_exit_code"] = rc
     return payload
