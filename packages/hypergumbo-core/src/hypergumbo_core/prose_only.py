@@ -40,10 +40,12 @@ applies. Anything unknown runs.
 WHAT IS PROSE-ONLY. :func:`classify` compares the base and current source:
 the AST with docstrings removed must be equal, and so must the machine-read
 comments (``# pragma:``, ``# covers:``, ``# type:``, ``# noqa`` ...), because a
-changed ``# pragma: no cover`` changes the coverage gate's answer. Those are
-matched by pattern per line, so prose that quotes one counts as one. Docstrings
-are located as the first statement of a module, class or function; a string
-anywhere else is code. A new, deleted or unparsable file is code.
+changed ``# pragma: no cover`` changes the coverage gate's answer. A directive
+is a real comment token, never text quoted in a docstring, and it is compared
+WHERE it is: with the scope it sits in and the code on its line (or, alone on
+a line, the next code), so moving a pragma to another line is a code change.
+Docstrings are located as the first statement of a module, class or function;
+a string anywhere else is code. A new, deleted or unparsable file is code.
 
 A read or observation made outside any test (a conftest import, a module body
 that scans sources at import) holds for EVERY test: a file seen that way is
@@ -71,9 +73,11 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import io
 import json
 import re
 import sqlite3
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
@@ -176,19 +180,115 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def _machine_comments(source: str) -> list[str]:
-    """Machine-read comments in ``source``: a ``#`` directly followed by a
-    directive (``# pragma: no cover``, ``# type: ignore``), a shebang, or an
-    encoding line.
+    """Machine-read comments in ``source`` by pattern, for the STORED digest.
 
-    A pattern, not a parser: a directive quoted in a docstring or a string
-    (``# noqa``) is included. That errs toward calling a change code, which
-    only costs the rule an opportunity. Prose that merely contains a
-    directive's word ("the node type: ...") is not one.
+    A ``#`` directly followed by a directive (``# pragma: no cover``,
+    ``# type: ignore``), a shebang, or an encoding line, matched per line and
+    sorted, so text quoted in a docstring counts and position does not. This
+    feeds :func:`prose_digests`, whose code digest is stored per test file to
+    tell whether a read record still describes that file; changing the formula
+    would mark every stored record stale. Position does not change what a
+    test reads, so it is not needed there. :func:`classify` uses the precise
+    :func:`_positioned_directives` instead.
     """
     return sorted(
         match.group(0).strip()
         for line in source.splitlines()
         for match in _MACHINE_COMMENT.finditer(line))
+
+
+def _scope_by_line(tree: ast.Module) -> dict[int, str]:
+    """Each line inside a function or class, mapped to its innermost owner's
+    qualified name (``Class.method``); module-level lines are absent."""
+    scope: dict[int, str] = {}
+
+    def walk(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (*_FUNCTIONS, ast.ClassDef)):
+                name = prefix + child.name
+                for line in range(child.lineno, (child.end_lineno or child.lineno) + 1):
+                    scope[line] = name
+                walk(child, name + ".")
+            else:
+                walk(child, prefix)
+
+    walk(tree, "")
+    return scope
+
+
+def _docstring_lines(tree: ast.Module) -> set[int]:
+    """The physical lines docstrings occupy, before they are removed."""
+    lines: set[int] = set()
+    owners = [tree, *(n for n in ast.walk(tree)
+                      if isinstance(n, (*_FUNCTIONS, ast.ClassDef)))]
+    for node in owners:
+        first = node.body[0] if node.body else None
+        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    return lines
+
+
+_LAYOUT_TOKENS = frozenset({tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE,
+                            tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER})
+
+
+def _positioned_directives(source: str, tree: ast.Module) -> Optional[list[str]]:
+    """Directive comments in ``source``, each with where it applies, in order.
+
+    Only real ``COMMENT`` tokens count, so a directive quoted in a docstring is
+    prose. Each directive is keyed to its scope (:func:`_scope_by_line`) and
+    the code on its line with comments removed; a directive alone on its line
+    is keyed to the next line that holds code. A docstring line is keyed as
+    ``<docstring>``, so rewording one leaves its neighbours' keys alone, and so
+    do added comment lines or docstrings. Two textually identical lines in one
+    scope share a key, so a directive moved between them is not seen. None
+    when ``source`` does not tokenize.
+    """
+    scope = _scope_by_line(tree)
+    doc_lines = _docstring_lines(tree)
+    lines = source.splitlines()
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except (tokenize.TokenError, SyntaxError):  # pragma: no cover - ast parsed it
+        return None
+    comment_col = {t.start[0]: t.start[1] for t in tokens
+                   if t.type == tokenize.COMMENT}
+
+    def code_on(row: int) -> str:
+        if row in doc_lines:
+            return "<docstring>"
+        text = lines[row - 1]
+        return text[:comment_col.get(row, len(text))].strip()
+
+    found: list[str] = []
+    for i, tok in enumerate(tokens):
+        if tok.type != tokenize.COMMENT:
+            continue
+        hits = [m.group(0).strip() for m in _MACHINE_COMMENT.finditer(tok.string)]
+        if not hits:
+            continue
+        row = tok.start[0]
+        if not code_on(row):
+            row = next((t.start[0] for t in tokens[i + 1:]
+                        if t.type not in _LAYOUT_TOKENS), row)
+        where = f"{scope.get(row, '<module>')}|{code_on(row)}"
+        found.extend(f"{where}|{hit}" for hit in hits)
+    return found
+
+
+def _code_identity(source: str) -> Optional[str]:
+    """The AST with docstrings removed plus the positioned directives: equal
+    for two sources that differ only in prose. None if unparsable."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+    directives = _positioned_directives(source, tree)
+    if directives is None:  # pragma: no cover - ast parsed it
+        return None
+    _take_docstrings(tree)
+    return ast.dump(tree, include_attributes=False) + "\0" + "\n".join(directives)
 
 
 def _take_docstrings(tree: ast.Module) -> dict[str, list[str]]:
@@ -259,9 +359,11 @@ def classify(base: Optional[str], current: Optional[str]) -> str:
     """
     if base is None or current is None:
         return CODE
-    old, new = prose_digests(base), prose_digests(current)
-    if old is None or new is None or old[0] != new[0]:
+    old_code, new_code = _code_identity(base), _code_identity(current)
+    if old_code is None or new_code is None or old_code != new_code:
         return CODE
+    old, new = prose_digests(base), prose_digests(current)
+    assert old is not None and new is not None  # both parsed above
     return COMMENTS if old[1] == new[1] else DOCSTRINGS
 
 

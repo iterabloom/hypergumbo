@@ -71,11 +71,58 @@ def test_a_docstring_only_body_keeps_its_shape() -> None:
     assert po.classify(one, "def f():\n    return 1\n") == po.CODE
 
 
-def test_a_quoted_directive_counts_but_a_word_in_prose_does_not() -> None:
-    """Directives are matched by pattern. One quoted in a docstring errs
-    toward ``code``; a comment that merely contains the word is prose."""
+def test_a_directive_quoted_in_a_docstring_is_prose() -> None:
+    """Only a real comment is a directive: rewording a docstring that quotes
+    one, even on the quoted line, is a docstring edit."""
     quoted = 'def f():\n    """Mark it ``# noqa`` to silence."""\n'
-    assert po.classify(quoted, quoted.replace("silence", "quiet it")) == po.CODE
+    assert po.classify(quoted, quoted.replace("silence", "quiet it")) == po.DOCSTRINGS
+    pinned = 'def g():\n    """Mark it # pragma: no cover when unreachable."""\n'
+    assert po.classify(pinned, pinned.replace("unreachable", "dead")) == po.DOCSTRINGS
+
+
+MOVABLE = '''def f(x):
+    if x:  # pragma: no cover
+        return 1
+    return 2
+
+
+def g(x):
+    if x:
+        return 1
+    return 2
+'''
+
+
+def test_a_directive_moved_to_another_line_is_code() -> None:
+    """Coverage exclusion follows the line a pragma is on, so moving it is a
+    code change even though the set of directives is the same."""
+    within = MOVABLE.replace(
+        "    if x:  # pragma: no cover\n        return 1\n    return 2\n\n\ndef g",
+        "    if x:\n        return 1\n    return 2  # pragma: no cover\n\n\ndef g")
+    assert within != MOVABLE
+    assert po.classify(MOVABLE, within) == po.CODE
+    # To a textually identical line in another function: the scope differs.
+    across = MOVABLE.replace("    if x:  # pragma: no cover", "    if x:", 1)
+    across = across.replace("def g(x):\n    if x:", "def g(x):\n    if x:  # pragma: no cover")
+    assert po.classify(MOVABLE, across) == po.CODE
+    # A standalone directive line moved above another statement.
+    alone = "x = 1\n# fmt: off\ny = 2\nz = 3\n"
+    assert po.classify(alone, "x = 1\ny = 2\n# fmt: off\nz = 3\n") == po.CODE
+
+
+def test_prose_around_a_directive_leaves_it_in_place() -> None:
+    """Adding a docstring or comment lines before a directive does not move it."""
+    documented = MOVABLE.replace("def f(x):\n", 'def f(x):\n    """Now documented."""\n')
+    assert po.classify(MOVABLE, documented) == po.DOCSTRINGS
+    commented = MOVABLE.replace("def f(x):\n", "# a note\n# on two lines\ndef f(x):\n")
+    assert po.classify(MOVABLE, commented) == po.COMMENTS
+    # A header directive above a module docstring is keyed to "a docstring",
+    # not to its text, so rewording the docstring leaves the directive put.
+    headed = '# covers: scripts/x\n"""Old first line."""\nx = 1\n'
+    assert po.classify(headed, headed.replace("Old", "New")) == po.DOCSTRINGS
+
+
+def test_a_word_in_prose_is_not_a_directive() -> None:
     prose = "x = 1  # the node type: a leaf\n"
     assert po.classify(prose, prose.replace("a leaf", "a branch")) == po.COMMENTS
     chained = "x = 1  # noqa: E501  # pragma: no cover\n"
