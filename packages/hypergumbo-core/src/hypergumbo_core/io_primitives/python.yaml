@@ -236,6 +236,12 @@ fs_read:
   - module: tokenize
     functions: [open]
     notes: "tokenize.open(path) opens the path read-only ('rb', then decodes by the detected encoding)."
+  - module: tarfile
+    functions: [is_tarfile]
+    notes: "Given a path (not a file object) it opens the file to read the header."
+  - module: zipfile
+    functions: [is_zipfile]
+    notes: "Given a path (not a file object) it opens the file to read the end-of-archive record."
   - module: codecs
     functions: [open]
     notes: "codecs.open(path, mode) opens a path, builtins.open's shape: fs_read AND fs_write, settled by io_mode (python's producer knows codecs.open's mode sits at positional 1 like open)."
@@ -948,6 +954,30 @@ logging:
   - module: tokenize
     functions: [main]
     notes: "The python -m tokenize entry point; opens the named file (or reads stdin) and writes tokens to stdout, errors to stderr."
+  - module: ast
+    functions: [main]
+    notes: "The python -m ast entry point; reads the named file (or stdin) and prints the dump to stdout."
+  - module: uuid
+    functions: [main]
+    notes: "The python -m uuid entry point; prints a generated UUID to stdout."
+  - module: gzip
+    functions: [main]
+    notes: "The python -m gzip entry point; compresses or decompresses the named files (or stdin to stdout), writing the output files."
+  - module: tarfile
+    functions: [main]
+    notes: "The python -m tarfile entry point; lists, tests, creates or extracts archives on the filesystem and prints to stdout/stderr."
+  - module: zipfile
+    functions: [main]
+    notes: "The python -m zipfile entry point; lists, tests, creates or extracts archives on the filesystem and prints to stdout/stderr."
+  - module: cProfile
+    functions: [main]
+    notes: "The python -m cProfile entry point; runs the named script or module in-process and prints (or writes with -o) the profile."
+  - module: ctypes.util
+    functions: [test]
+    notes: "A self-test that prints find_library results to stdout."
+  - module: doctest
+    functions: [debug_script]
+    notes: "Runs pdb over the script: the debugger reads commands from stdin and prints to stdout."
   - module: xml.etree.ElementTree
     functions: [dump]
   # WI-tolif: stdio writes are terminal output / log destinations, not
@@ -1704,7 +1734,9 @@ module_completeness:
   - module: ast
     completeness: complete
     retrieved: "2026-08-15"
-    notes: Parses source STRINGS; ast.parse never opens a path.
+    notes: >-
+      Parses source STRINGS; ast.parse never opens a path. main (the -m entry)
+      rowed under logging.
   - module: re
     completeness: complete
     retrieved: "2026-08-15"
