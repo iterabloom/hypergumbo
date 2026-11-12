@@ -40,6 +40,7 @@ _PROJECT = {
     "read_at_module_import.py": "D = 4\n",
     "read_by_helper_body.py": "E = 5\n",
     "only_imported.py": "F = 6\n",
+    "read_by_getsource.py": "H = 8\n",
     "helper.py": (
         "import pathlib\n"
         "CACHED = pathlib.Path(__file__).with_name('read_by_helper_body.py').read_text()\n"
@@ -64,6 +65,9 @@ _PROJECT = {
         "def test_loader_get_data():\n"
         "    import only_imported\n"
         "    assert only_imported.__loader__.get_data(only_imported.__file__)\n"
+        "def test_getsource():\n"
+        "    import inspect, read_by_getsource\n"
+        "    assert 'H' in inspect.getsource(read_by_getsource)\n"
         "def test_plain():\n"
         "    pass\n"
     ),
@@ -192,9 +196,18 @@ def test_a_read_in_any_other_module_body_is_everyones(tmp_path: Path, workers: s
 
 
 @WORKERS
+def test_a_read_through_linecache_is_everyones(tmp_path: Path, workers: str) -> None:
+    """inspect.getsource reads once per process and then serves its cache, so
+    the first caller's read stands for every later caller."""
+    data = _recorded(tmp_path, workers)
+    assert "read_by_getsource.py" in data["unattributed"]["reads"]
+    assert data["tests"]["test_a.py::test_getsource"]["reads"] == []
+
+
+@WORKERS
 def test_every_collected_test_is_listed(tmp_path: Path, workers: str) -> None:
     data = _recorded(tmp_path, workers)
-    assert len(data["expected"]["test_a.py"]) == 8
+    assert len(data["expected"]["test_a.py"]) == 9
     assert data["expected"]["test_b.py"] == {
         "test_b.py::test_uses_fixture_too", "test_b.py::test_lazy_import",
         "test_b.py::test_b_plain"}

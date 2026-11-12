@@ -19,15 +19,14 @@ separately:
 2. **It starts a process** whose reads the plugin cannot see. Such a test is
    OPAQUE and is never dropped.
 3. **Runtime introspection**, with no file read at decision time:
-   ``__doc__``, frame and code line numbers, and ``inspect.getsource`` /
-   ``linecache`` (which read once per process and then serve a cache, so only
-   the first caller's read is recorded). :func:`introspection` finds the code
-   that does this. A test file that does it is never dropped. For a source
-   module that does it, the tests the coverage index saw executing that block
-   are kept -- for ``getsource`` blocks only when one of those tests has a
-   recorded read of the changed file, since that is the only way the cache
-   could hold it. A file whose own ``__doc__`` is used (``description=__doc__``)
-   is not prose-only when its docstrings change.
+   ``__doc__`` and frame or code line numbers. :func:`introspection` finds
+   the code that does this. A test file that does it is never dropped. For a
+   source module that does it, the tests the coverage index saw executing
+   that block are kept, if they also loaded a changed file. A file whose own
+   ``__doc__`` is used (``description=__doc__``) is not prose-only when its
+   docstrings change. ``inspect.getsource`` and ``linecache`` read a file
+   once per process and then serve a cache; the plugin records such a read
+   as made by every test, so the file is not prose-only.
 
 DROPPING NEEDS POSITIVE EVIDENCE. A test file is dropped only when
 :func:`narrow_for_prose` finds no reason to keep it: its read record was
@@ -103,8 +102,9 @@ CREATE TABLE IF NOT EXISTS read_meta (key TEXT PRIMARY KEY, value TEXT);
 
 #: Comments a tool reads. A change to one is a code change for this rule.
 _MACHINE_COMMENT = re.compile(
-    r"#!|#.*(?:coding[:=]|SPDX-|pragma|type:|noqa|covers:|axis:|fmt:|pylint:|"
-    r"mypy:|nosec|isort:)")
+    r"#\s*(?:pragma\b|type:|noqa\b|covers:|axis:|fmt:|pylint:|mypy:|nosec\b|"
+    r"isort:|SPDX-)[^#\n]*"
+    r"|^#!.*|#.*coding[:=].*")
 
 _DOC_OWNERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -120,18 +120,19 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def _machine_comments(source: str) -> list[str]:
-    """Machine-read comments in ``source``, found line by line.
+    """Machine-read comments in ``source``: a ``#`` directly followed by a
+    directive (``# pragma: no cover``, ``# type: ignore``), a shebang, or an
+    encoding line.
 
-    A pattern, not a parser: text that merely LOOKS like one (``# noqa``
-    quoted in a docstring) is included. That errs toward calling a change
-    code, which only costs the rule an opportunity.
+    A pattern, not a parser: a directive quoted in a docstring or a string
+    (``# noqa``) is included. That errs toward calling a change code, which
+    only costs the rule an opportunity. Prose that merely contains a
+    directive's word ("the node type: ...") is not one.
     """
-    out = []
-    for line in source.splitlines():
-        match = _MACHINE_COMMENT.search(line)
-        if match:
-            out.append(line[match.start():].strip())
-    return sorted(out)
+    return sorted(
+        match.group(0).strip()
+        for line in source.splitlines()
+        for match in _MACHINE_COMMENT.finditer(line))
 
 
 def prose_digests(source: str) -> Optional[tuple[str, str]]:
@@ -445,9 +446,9 @@ def _ids_by_file(ids: Iterable[str]) -> dict[str, set[str]]:
 def _introspecting_tests(
     conn: sqlite3.Connection, repo_root: Path, prose: Mapping[str, str],
     marker_files: Mapping[str, Introspection], sources: Mapping[str, str],
-    reads: Mapping[str, set[str]], recorded: Iterable[str],
 ) -> tuple[set[str], set[str]]:
-    """Tests that executed an introspecting block of a non-test module.
+    """Tests that executed an introspecting block of a non-test module AND
+    could have been handed something from a prose-only file.
 
     Returns ``(test ids, unspeakable marker files)``. A marker file under
     ``packages/*/src`` is answered from the coverage index: the tests with a
@@ -455,23 +456,28 @@ def _introspecting_tests(
     a conftest) is outside coverage, and is returned for the caller to match
     against test files by location and by name.
 
-    Docstring introspection counts only when a prose-only file's docstrings
-    changed. A ``getsource``/``linecache`` block counts only when one of the
-    tests executing it has a recorded read of a prose-only file: the cache is
-    filled by a read, so if no such test ever read the file, none can be
-    served it. That argument needs a read record for every one of those
-    tests; without it the block counts.
+    Docstring introspection counts only for the prose-only files whose
+    docstrings changed; line-number introspection counts for all of them. In
+    both cases a test can observe a file's docstring or line numbers only if
+    it loaded the file, so the block's tests are intersected with the tests
+    that have any coverage row for one of those files (import-time rows
+    included). A changed file the coverage index has never measured (a
+    script, a test file) could have been loaded by anyone, and then every
+    test executing the block counts.
+
+    ``getsource`` and ``linecache`` in a source module need nothing here: a
+    file read through linecache is recorded as read by every test and is not
+    prose-only at all.
     """
-    docs_changed = DOCSTRINGS in prose.values()
-    prose_paths = set(prose)
-    known = set(recorded)
+    changed_docs = {p for p, kind in prose.items() if kind == DOCSTRINGS}
+    relevant = {"line": set(prose), "doc": changed_docs}
     observers: set[str] = set()
     unspeakable: set[str] = set()
     for rel, marks in sorted(marker_files.items()):
-        channels = {"line": marks.line, "source": marks.source}
-        if docs_changed:
-            channels["doc"] = marks.doc
-        if not any(channels.values()):
+        channels = {name: lines for name, lines in
+                    (("line", marks.line), ("doc", marks.doc))
+                    if lines and relevant[name]}
+        if not channels:
             continue
         parts = Path(rel).parts
         if not (parts[:1] == ("packages",) and "src" in parts):
@@ -483,11 +489,20 @@ def _introspecting_tests(
             (str(repo_root / rel),)).fetchall()
         for channel, lines in channels.items():
             names = {owner[n] for n in lines}
-            ids = rebase_to_repo({t for t, name in rows if name in names}, repo_root)
-            if (channel == "source" and ids <= known
-                    and not any(reads.get(i, set()) & prose_paths for i in ids)):
-                continue
-            observers |= ids
+            executing = {t for t, name in rows if name in names}
+            loaded: set[str] = set()
+            for path in relevant[channel]:
+                absolute = str(repo_root / path)
+                if conn.execute("SELECT 1 FROM block WHERE path = ? LIMIT 1",
+                                (absolute,)).fetchone() is None:
+                    # Outside coverage (a script, a test file): who loaded
+                    # it is unknown, so every executing test counts.
+                    loaded = executing
+                    break
+                loaded.update(r[0] for r in conn.execute(
+                    "SELECT DISTINCT test_id FROM test_block WHERE path = ?",
+                    (absolute,)))
+            observers |= rebase_to_repo(executing & loaded, repo_root)
     return observers, unspeakable
 
 
@@ -537,7 +552,7 @@ def narrow_for_prose(
     observers, unspeakable = _introspecting_tests(
         conn, repo_root, prose,
         {rel: m for rel, m in marker_files.items() if rel not in test_markers},
-        tracked_sources, reads, records)
+        tracked_sources)
 
     def unspeakable_hit(test_file: str) -> Optional[str]:
         text = tracked_sources.get(test_file, "")
