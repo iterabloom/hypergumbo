@@ -70,10 +70,18 @@ def test_a_docstring_only_body_keeps_its_shape() -> None:
     assert po.classify(one, "def f():\n    return 1\n") == po.CODE
 
 
-def test_prose_that_quotes_a_machine_comment_counts_as_one() -> None:
-    """The comments are matched by pattern, so this errs toward ``code``."""
+def test_a_quoted_directive_counts_but_a_word_in_prose_does_not() -> None:
+    """Directives are matched by pattern. One quoted in a docstring errs
+    toward ``code``; a comment that merely contains the word is prose."""
     quoted = 'def f():\n    """Mark it ``# noqa`` to silence."""\n'
     assert po.classify(quoted, quoted.replace("silence", "quiet it")) == po.CODE
+    prose = "x = 1  # the node type: a leaf\n"
+    assert po.classify(prose, prose.replace("a leaf", "a branch")) == po.COMMENTS
+    chained = "x = 1  # noqa: E501  # pragma: no cover\n"
+    assert po.classify(chained, chained.replace("  # pragma: no cover", "")) == po.CODE
+    shebang = "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\nx = 1\n"
+    assert po.classify(shebang, shebang.replace("python3", "python")) == po.CODE
+    assert po.classify(shebang, shebang.replace("utf-8", "latin-1")) == po.CODE
 
 
 # ── introspection ───────────────────────────────────────────────────────────
@@ -364,49 +372,65 @@ def test_a_test_file_that_introspects_is_kept(tmp_path: Path) -> None:
         "tests/test_a.py": "introspects docstrings, line numbers or source itself"}
 
 
-def _block_edge(conn: sqlite3.Connection, root: Path, test_id: str, block: str) -> None:
-    conn.execute("INSERT INTO test_block (test_id, path, name) VALUES (?, ?, ?)",
-                 (f"{root}/{test_id}", str(root / INTRO), block))
+def _ran(conn: sqlite3.Connection, root: Path, test_id: str, rel: str, block: str) -> None:
+    """The coverage index saw ``test_id`` execute ``block`` of ``rel``."""
+    path = str(root / rel)
+    conn.execute("INSERT OR IGNORE INTO block (path, name, digest) VALUES (?, ?, 'd')",
+                 (path, block))
+    conn.execute("INSERT OR IGNORE INTO test_block (test_id, path, name) VALUES (?, ?, ?)",
+                 (f"{root}/{test_id}", path, block))
     conn.commit()
+
+
+A, B = "tests/test_a.py::test_x", "tests/test_b.py::test_x"
+KEPT_FOR_INTROSPECTION = "executes code that introspects docstrings, line numbers or source"
 
 
 def test_line_number_introspection_keeps_the_tests_that_execute_it(tmp_path: Path) -> None:
     root, conn = _evidence(tmp_path, PLAIN)
-    _block_edge(conn, root, "tests/test_a.py::test_x", "where")
+    for test_id in (A, B):
+        _ran(conn, root, test_id, INTRO, "where")
+    _ran(conn, root, A, SRC, "<module>")
+    _ran(conn, root, B, "packages/p/src/p/unrelated.py", "<module>")
     result = _narrow(root, conn, {SRC: po.COMMENTS}, {INTRO: INTRO_TEXT})
-    assert result.reasons == {
-        "tests/test_a.py": "executes code that introspects docstrings, line numbers or source"}
+    # B executes the same block but never loaded the changed file.
+    assert result.reasons == {"tests/test_a.py": KEPT_FOR_INTROSPECTION}
     assert result.dropped == {"tests/test_b.py", "tests/test_c.py"}
 
 
-def test_docstring_introspection_counts_only_when_docstrings_changed(tmp_path: Path) -> None:
+def test_docstring_introspection_counts_only_for_changed_docstrings(tmp_path: Path) -> None:
     root, conn = _evidence(tmp_path, PLAIN)
-    _block_edge(conn, root, "tests/test_a.py::test_x", "doc")
+    _ran(conn, root, A, INTRO, "doc")
+    _ran(conn, root, A, SRC, "<module>")
+    other = "packages/p/src/p/other.py"
+    _ran(conn, root, B, other, "<module>")
     assert _narrow(root, conn, {SRC: po.COMMENTS}, {INTRO: INTRO_TEXT}).dropped == set(ALL)
     assert "tests/test_a.py" in _narrow(
         root, conn, {SRC: po.DOCSTRINGS}, {INTRO: INTRO_TEXT}).reasons
+    # The docstring that changed is in a file A never loaded; SRC changed in
+    # a comment only.
+    assert _narrow(root, conn, {SRC: po.COMMENTS, other: po.DOCSTRINGS},
+                   {INTRO: INTRO_TEXT}).dropped == set(ALL)
 
 
-def test_a_getsource_block_counts_only_if_one_of_its_tests_read_the_file(tmp_path: Path) -> None:
-    """linecache serves later callers a copy, so the first caller's read stands
-    for all of them -- and if none read the file, none can be served it."""
-    tests = {**PLAIN, "tests/test_b.py::test_x": _bucket(("elsewhere.py",))}
-    root, conn = _evidence(tmp_path, tests)
-    _block_edge(conn, root, "tests/test_a.py::test_x", "version")
-    _block_edge(conn, root, "tests/test_b.py::test_x", "version")
-    assert _narrow(root, conn, {SRC: po.COMMENTS}, {INTRO: INTRO_TEXT}).dropped == set(ALL)
-
-    result = _narrow(root, conn, {"elsewhere.py": po.COMMENTS}, {INTRO: INTRO_TEXT})
-    assert result.reasons["tests/test_b.py"] == "reads elsewhere.py"
-    assert result.reasons["tests/test_a.py"].startswith("executes code that introspects")
-    assert result.dropped == {"tests/test_c.py"}
-
-
-def test_a_getsource_block_counts_when_a_test_executing_it_has_no_record(tmp_path: Path) -> None:
+def test_a_changed_file_outside_coverage_counts_for_every_executing_test(tmp_path: Path) -> None:
+    """The index has no rows for a script or a test file, so it cannot say
+    who loaded it."""
     root, conn = _evidence(tmp_path, PLAIN)
-    _block_edge(conn, root, "tests/test_a.py::test_x", "version")
-    _block_edge(conn, root, "tests/test_unrecorded.py::test_x", "version")
-    assert "tests/test_a.py" in _narrow(root, conn, {SRC: po.COMMENTS}, {INTRO: INTRO_TEXT}).reasons
+    _ran(conn, root, A, INTRO, "where")
+    result = _narrow(root, conn, {"scripts/tool.py": po.COMMENTS}, {INTRO: INTRO_TEXT})
+    assert result.reasons == {"tests/test_a.py": KEPT_FOR_INTROSPECTION}
+
+
+def test_getsource_in_a_source_module_keeps_nothing_here(tmp_path: Path) -> None:
+    """A file read through linecache is recorded as read by every test and is
+    never prose-only, so the block that calls getsource needs no rule."""
+    root, conn = _evidence(tmp_path, PLAIN)
+    _ran(conn, root, A, INTRO, "version")
+    _ran(conn, root, A, SRC, "<module>")
+    assert _narrow(root, conn, {SRC: po.DOCSTRINGS},
+                   {INTRO: "import inspect\ndef version(m):\n    return inspect.getsource(m)\n"}
+                   ).dropped == set(ALL)
 
 
 def test_introspection_outside_coverage_is_matched_by_place_and_name(tmp_path: Path) -> None:

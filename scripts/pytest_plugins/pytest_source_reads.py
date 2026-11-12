@@ -38,8 +38,11 @@ walking outward from the event, pytest's code is reached before any
 repository code (pytest reads a test module to find line numbers; coverage
 reads the sources it reports on).
 
+A read through ``linecache`` (``inspect.getsource``) is UNATTRIBUTED too:
+linecache serves every later caller in the process from its cache.
+
 NOT SEEN: a value cached in a module global by one test and used by another
-(neither a fixture nor a read in the second test). The consumer's docstring
+(neither a fixture, nor a module body, nor ``linecache``). The consumer's docstring
 states this limit.
 
 Use: ``PYTHONPATH=scripts/pytest_plugins pytest -p pytest_source_reads
@@ -145,12 +148,18 @@ class SourceReads:
         Repository code first, and it is a module BODY other than the test
         module being collected: the body runs once per process and keeps
         what it computes in its globals, whichever test happened to import
-        it first, so the event is everyone's.
+        it first, so the event is everyone's. The same holds for a read that
+        repository code makes through ``linecache``.
         """
+        cached = False
         for filename, module, function in stack:
+            # linecache keeps what it reads for the life of the process
+            # (inspect.getsource goes through it), so a later caller is
+            # served the copy and makes no read of its own.
+            cached = cached or module == "linecache"
             if self._is_repo_code(filename):
-                if (function == "<module>"
-                        and os.path.realpath(filename) != self.collecting):
+                if cached or (function == "<module>"
+                              and os.path.realpath(filename) != self.collecting):
                     return [self.unattributed]
                 targets = list(self.scopes)
                 if self.test is not None:
