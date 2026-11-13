@@ -1,0 +1,23 @@
+- op: create  # 10f0
+  at: '2026-11-13T13:53:40Z'  # 10f0
+  by: agent  # 10f0
+  actor: jgstern_agent  # 10f0
+  clock: 1  # 10f0
+  nonce: 10f0  # 10f0
+  data:  # 10f0
+    kind: work_item  # 10f0
+    title: "Sketch Additional Files gives a slot to the first README link and to the file that lists the most symbol names, whatever they are, and prints the README cut to 500 tokens while the next file goes in whole"  # 10f0
+    status: todo_hard  # 10f0
+    priority: 3  # 10f0
+    parent:  # 10f0
+    tags:  # 10f0
+    - outside_reader_review_20261113  # 10f0
+    - dogfood  # 10f0
+    - sketch  # 10f0
+    - ranking  # 10f0
+    isbefore: []  # 10f0
+    duplicate_of: []  # 10f0
+    not_duplicate_of: []  # 10f0
+    pr_ref:  # 10f0
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13. Re-checked on dev ad78277020, after the Additional Files ranking stopped using embeddings (PR #2170, measurement 0033), with fresh sketches at 8k, 32k and 128k.\n\nOBSERVED (self-run, 8k). The list is: README.md, docs/INTEL_MAC.md, CONTRIBUTING.md, docs/hypergumbo-self-catalog/user_state_sinks.yaml, docs/example-output.md, AGENTS.md, docs/hypergumbo-self-catalog/user_cache_sinks.yaml, SECURITY.md. docs/hypergumbo-spec.md is 41st and docs/ARCHITECTURE.md 58th (visible from 32k up). The content printed at 8k is the README cut at about 1.8 KB, inside its example-output block, followed by docs/INTEL_MAC.md whole (a platform install note that pins a version seven majors old: WI-zodif).\n\nTHREE MECHANISMS, each independent of the others.\n\n1. README LINKS IN DOCUMENT ORDER. _select_additional_files takes one README-linked file per round, in the order the links appear. The first link in this README is the Intel Mac note, so it is second in every sketch. Where a link sits in a README says how early the author mentions it, not how much it explains.\n\n2. THE CENTRALITY LIST REWARDS LISTS OF NAMES. compute_symbol_mention_centrality_batch scores a file by the central symbols it mentions. A catalogue or data file that enumerates function names (here two self-catalogue YAMLs; at 32k also frameworks/jax-rs.yaml and dataflow_patterns/rust.yaml) outscores prose that discusses a few of them. Every third pick comes from this list.\n\n3. THE CONTENT RULE CUTS THE FIRST FILE HARDEST. _format_additional_files prints files in selection order. A file that does not fit is cut to the median size of the files already printed, with a floor of 500 tokens; for the first file there is no median, so a README longer than the budget is cut to the floor, and the next, smaller file is then printed whole. The README is the one file known to be the project's own overview.\n\nALSO OPEN FROM MEASUREMENT 0033. The overview order (the third list) was chosen against README links as the label, and README links favour community-health files; CONTRIBUTING.md and SECURITY.md lead it here. Whether a different outside label (\"explains the code\") would rank differently was not measured.\n\nASK. Measure before choosing, on repositories that are not hypergumbo:\n- For (1): do README-linked files earn a per-round slot in document order, or should they be ordered by the same order as everything else and merely boosted? What share of first README links are install or badge-adjacent pages?\n- For (2): restrict the centrality list to documentation-role files, or weight mentions by prose around them; report what the list's top picks are on several repositories either way.\n- For (3): give the first file (the README) a real share of the content budget and cut later files to fit, and cut at a section boundary; state the rule in ADR-0005.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nAll three mechanisms are independent of language. (1) depends on how a README is written, (2) on a repository having data files that name code (catalogues, route tables, schema dumps, generated indexes), (3) on a README longer than the budget, which is the common case at 8k. Acceptance: the Additional Files list and the content files at 8k and 32k on at least four repositories that are not hypergumbo, before and after, with what each change moved."  # 10f0
+    fields: {}  # 10f0
