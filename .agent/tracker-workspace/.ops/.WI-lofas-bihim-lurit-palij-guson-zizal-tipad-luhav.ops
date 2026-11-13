@@ -1,0 +1,22 @@
+- op: create  # bc73
+  at: '2026-11-13T09:20:47Z'  # bc73
+  by: agent  # bc73
+  actor: jgstern_agent  # bc73
+  clock: 1  # bc73
+  nonce: bc73  # bc73
+  data:  # bc73
+    kind: work_item  # bc73
+    title: "Sketch Additional Files lists and prints content-identical files as separate entries: no comparison of content before selection"  # bc73
+    status: todo_hard  # bc73
+    priority: 3  # bc73
+    parent:  # bc73
+    tags:  # bc73
+    - outside_reader_review_20261113  # bc73
+    - dogfood  # bc73
+    - sketch  # bc73
+    isbefore: []  # bc73
+    duplicate_of: []  # bc73
+    not_duplicate_of: []  # bc73
+    pr_ref:  # bc73
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nOBSERVED. README.md and packages/hypergumbo/README.md are byte-identical (21,474 B each, cmp reports no difference). Both are listed at 8k and both are printed in full at 32k and 128k. At 32k the two copies are 43 KB of a 129 KB sketch; the second copy alone is 17% of the budget. At 128k they are 8%.\n\nMECHANISM. sketch._select_additional_files and _format_additional_files hold no content comparison (no hash, no seen-set on content), so each path with the same bytes is selected and charged to the budget separately.\n\nASK. Before spending budget on a file's content, detect that the same content was already chosen. Print it once and name the other paths that hold it (for example \"also at: <path>\"), so the reader still learns the copy exists. Decide the same for near-identical content (a file that differs only in a header line or trailing whitespace): state the rule and where it stops.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nRepeated files are common outside this repo: a per-package README or LICENSE copied from the root in a monorepo, vendored copies of one document, generated docs beside their source, the same config in many example directories. The rule must compare content, never file names or the literal README. It applies to the Source Files Content section as well if that section can print two files with the same bytes. Acceptance: a fixture with identical files under different names and directories, in the listing and in the content section, plus one real monorepo that is not hypergumbo."  # bc73
+    fields: {}  # bc73
