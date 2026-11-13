@@ -1,0 +1,21 @@
+- op: create  # 30fd
+  at: '2026-11-13T08:54:01Z'  # 30fd
+  by: agent  # 30fd
+  actor: jgstern_agent  # 30fd
+  clock: 1  # 30fd
+  nonce: 30fd  # 30fd
+  data:  # 30fd
+    kind: work_item  # 30fd
+    title: "smart-test read-record union cannot see a read made by a process the test starts (364 opaque test files); measure which of them depend on source text"  # 30fd
+    status: todo_soft  # 30fd
+    priority: 3  # 30fd
+    parent:  # 30fd
+    tags:  # 30fd
+    - smart_test  # 30fd
+    - ci  # 30fd
+    isbefore: []  # 30fd
+    duplicate_of: []  # 30fd
+    not_duplicate_of: []  # 30fd
+    pr_ref:  # 30fd
+    description: "RESIDUAL OF WI-nifif-rokav-ropik-hinos-vutag-vihig-ladod-dinag (closed 2026-11-13, PR #2164), filed under the ruling CLOSE ON THE FILED ROW, FILE THE RESIDUAL.\n\nWHAT. The read-record union adds, for a code change, the test files RECORDED reading a changed file as data. The recorder (scripts/pytest_plugins/pytest_source_reads.py) sees a read only in the pytest process. A test that starts a process (a tests/ file that runs a scripts/check-* gate, a CLI run) is marked opaque and its child's reads are not recorded, so if the child reads a source file the test is not added for a change to that file.\n\nSIZE, as far as measured (2026-11-13, index on dev e12978ccd5): 364 test files have at least one test with a non-inert spawn; by program, tests: bash 521, python 289, git 271, grep 16, tracker 13. NOT MEASURED: how many of those depend on the text of packages/*/src files, and how many are already selected by another rule (the import graph, a covers: header, the citation gate) or are recorded readers in-process as well (tests/test_check_io_allowlist.py is).\n\nTHE PROSE-ONLY RULE treats the same tests the safe way (an opaque test always runs for a prose-only change). Doing that for every code change would add all 364 files to most manifests, so the question is which of them can be shown to read sources.\n\nFIRST STEP. Measure: for each opaque test file, does a change to a package source file it does not import change its outcome? One instrument: run the child under the recorder (or strace -e openat) on one full run and store the child's reads against the test."  # 30fd
+    fields: {}  # 30fd
