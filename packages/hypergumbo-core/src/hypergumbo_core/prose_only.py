@@ -56,6 +56,14 @@ THE EVIDENCE HAS A VERSION (:data:`RECORDER_VERSION`). When the plugin changes
 what a record means, every stored record is discarded: an old record cannot
 show that a test does NOT do something the old plugin never looked for.
 
+THE SAME RECORD SERVES A CODE CHANGE, in the other direction
+(:func:`tests_reading`). A test that reads a source file as data (way 1 above)
+imports nothing from it, so the import graph does not select it when that
+file's code changes, and coverage has no row for it either: a gate that walks
+the tree and checks every producer is the usual case. smart-test adds the test
+files recorded reading a changed file to the manifest. That step only adds, so
+it uses whatever the record holds, current or not.
+
 LIMITS, stated because they are where this would bite:
 
 * The evidence is as old as the last run that recorded each test. A code
@@ -688,6 +696,41 @@ def tests_for_prose(
 
     return {test_file: why for test_file in sorted({f for f in universe if f})
             if (why := reason(test_file)) is not None}
+
+
+def tests_reading(
+    conn: sqlite3.Connection, paths: Iterable[str],
+) -> dict[str, str]:
+    """Test files recorded reading any of ``paths`` as data, each mapped to
+    one of the paths it reads (the first in sorted order).
+
+    ``paths`` are repo-relative, as the record stores them. Only a READ
+    counts. A docstring or line number observed at runtime means the file's
+    code was loaded in the test's process, where the import graph and
+    coverage can see the test; a file opened as data leaves no import and no
+    coverage row, which is the gap this fills.
+
+    NO FRESHNESS CHECK, unlike :func:`tests_for_prose`. That function LEAVES
+    TESTS OUT and so needs a complete, current record for each one. This one
+    only names tests to ADD: a stale record costs a test that no longer reads
+    the file, and a missing one leaves the selection as it was.
+
+    NOT COVERED: a test whose read happens in a process it starts (the record
+    marks it opaque and cannot see the child), and a read made at import by a
+    module that is not a test (stored unattributed, tied to no test file).
+    """
+    ensure_schema(conn)
+    wanted = set(paths)
+    found: dict[str, str] = {}
+    if not wanted:
+        return found
+    for test_file, target in conn.execute(
+            "SELECT t.test_file, e.target FROM read_edge e "
+            "JOIN read_test t ON t.test_id = e.test_id "
+            "WHERE e.kind = ? ORDER BY t.test_file, e.target", (READ,)):
+        if target in wanted:
+            found.setdefault(test_file, target)
+    return found
 
 
 @dataclass(frozen=True)

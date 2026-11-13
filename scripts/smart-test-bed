@@ -22,16 +22,17 @@ base, then:
   2. The edit is applied to the working tree and ``smart-test --manifest
      --no-narrow`` computes the unnarrowed selection. ``SMART_TEST_SELECTION_OUT``
      hands back its stages: the MANIFEST (the import-graph slice plus its
-     declarative unions for the files whose code changed, and the tests the
+     declarative unions for the files whose code changed, the tests recorded
+     reading one of those files as data (WI-nifif), and the tests the
      prose-only rule lists from recorded evidence for the files that changed
      in comments or docstrings only) and the UNION (plus coverage's picks,
      WI-kuliv). A second ``smart-test --manifest`` with narrowing on (the
      default, WI-zirus) gives the NARROWED local run set (WI-bolot); its
      manifest, which is what CI runs, is that run set without the union's
      additions. STATIC is a third ``--manifest`` run, with
-     ``--no-prose-rule --no-narrow``: the import-graph selection for every changed file,
-     which is what the manifest was before the rule and the yardstick for what
-     the rule leaves out. A run that exits early (a full-suite fallback,
+     ``--no-prose-rule --no-narrow --no-read-union``: the import-graph
+     selection for every changed file, the yardstick for what the prose-only
+     rule leaves out and for what the read record adds. A run that exits early (a full-suite fallback,
      nothing to run) writes no stages, and every selector is then read from
      the manifest, which is what such a run actually executes.
   3. The ORACLE. ``mutate`` edits: every block the edit changed
@@ -260,10 +261,20 @@ def readers_of(touched: list[str], readers: dict[str, list[str]]) -> set[str]:
 
 def run_smart_test(root: Path, index: Path, *args: str) -> subprocess.CompletedProcess:
     env = _clean_env()
+    # ITS OWN RESULTS CACHE PER BED COPY. smart-test slices with the installed
+    # hypergumbo, whose results cache is keyed by content. Bed copies of one
+    # edit are identical, so two of them running at once (edits run in
+    # parallel here, and each xdist worker that builds a bed-backed fixture
+    # starts its own harness) share an entry, and one can read a survey.json
+    # the other is still writing. That slice fails ("not valid JSON"),
+    # smart-test falls back to the full suite, and the stage's selection
+    # becomes every test in the bed. Out of the bed, beside the index, so it
+    # is never a change.
     env.update(SMART_TEST_TARGET_ROOT=str(root), BASE_BRANCH="HEAD",
                HG_SELECTION_INDEX=str(index),
                HG_SELECTION_LOG=str(index.with_suffix(".jsonl")),
-               SMART_TEST_SELECTION_OUT=str(root / ".ci" / "selection"))
+               SMART_TEST_SELECTION_OUT=str(root / ".ci" / "selection"),
+               XDG_CACHE_HOME=str(index.parent / "xdg-cache"))
     return subprocess.run([str(SMART_TEST), *args, "-n0"], cwd=root,
                           capture_output=True, text=True, env=env)
 
@@ -288,10 +299,11 @@ def score_edit(edit: dict, readers: dict[str, list[str]], work: Path) -> Score:
 
     touched = apply_edit(root, edit)
     stages = root / ".ci" / "selection"
-    static = run_smart_test(root, index, "--manifest", "--no-prose-rule", "--no-narrow")
+    static = run_smart_test(root, index, "--manifest", "--no-prose-rule", "--no-narrow",
+                            "--no-read-union")
     if static.returncode != 0:
         raise BedError(f"{edit['name']}: smart-test --manifest --no-prose-rule --no-narrow "
-                       f"failed:\n{static.stderr[-2000:]}")
+                       f"--no-read-union failed:\n{static.stderr[-2000:]}")
     selected = {"static": read_manifest(root)[1]}
     shutil.rmtree(stages, ignore_errors=True)
     sel = run_smart_test(root, index, "--manifest", "--no-narrow")

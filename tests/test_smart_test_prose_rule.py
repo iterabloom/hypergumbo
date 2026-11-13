@@ -27,6 +27,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SMART_TEST = REPO_ROOT / "scripts" / "smart-test"
 HARNESS = REPO_ROOT / "scripts" / "smart-test-bed"
 
+#: The ``scores`` fixture runs the bed harness (six edits, several smart-test
+#: runs each). One worker builds it once; spread over workers, each builds it
+#: again (tests/test_smart_test_loadgroup.py).
+pytestmark = pytest.mark.xdist_group("test_smart_test_prose_rule")
+
 CORE = "packages/bed-core/tests/"
 APP = "packages/bed-app/tests/"
 TEXT_READERS = {f"{CORE}test_docstrings.py", "tests/test_tree_gate.py"}
@@ -92,8 +97,13 @@ def test_a_docstring_read_at_runtime_runs_the_tests_that_read_it(scores: dict) -
 @pytest.mark.parametrize("edit", ["pragma", "comment-marker", "body-edit-c"])
 def test_control_a_code_or_machine_comment_edit_is_left_alone(scores: dict, edit: str) -> None:
     """``# pragma: no cover`` and ``# axis:`` are comments a tool reads; an
-    edit to one is not prose, and the rule must not touch the selection."""
-    assert _stage(scores, edit, "manifest") == _stage(scores, edit, "static")
+    edit to one is not prose, and the rule must not touch the selection:
+    every test the import graph selects is still in the manifest. What the
+    manifest holds beyond that is the read-record union's (WI-nifif), and
+    each such test is one the oracle says must run."""
+    static, manifest = _stage(scores, edit, "static"), _stage(scores, edit, "manifest")
+    assert static <= manifest
+    assert manifest - static <= set(scores[edit]["must"])
 
 
 @needs_watching

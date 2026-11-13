@@ -147,6 +147,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A change to comments or docstrings only runs the tests recorded reading that file**, locally and in CI, instead of everything that imports it. While more than a tenth of test files have no record it falls back to the import graph; a moved pragma counts as code (ADR-0010, ADR-0011).
 - **Coverage narrowing is on by default and narrows the CI test list**; `--no-narrow` turns it off, and the twice-daily full suite is never narrowed. It refuses when import-time code changed and never drops a test file the change edits.
+- **A code change also selects the tests recorded reading the changed file from disk**, which the import graph cannot see: a check that scans every analyzer now runs in the PR that edits one. `--no-read-union` turns it off.
 - **A failing run stops 15 seconds after its first failure**, locally and in per-PR CI, and the likeliest failures run first. A failed or killed run keeps the evidence it gathered on which tests read which files.
 - **One OpenMP thread per parallel worker**: a measured full-suite run fell from 46 to 35 minutes. Tests with an expensive shared setup build it once per session or run on one worker.
 - **The test-selection index is 18× smaller** (3.8 GB → 210 MB on this repository): each test, file and block name is stored once. An old index converts itself on first use and is kept beside the new one as `.format-1`.
