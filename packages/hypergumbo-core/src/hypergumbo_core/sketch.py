@@ -60,9 +60,10 @@ Sections in emission order:
 11. Additional Files — always emitted when the budget allows;
     ``--with-source`` shrinks its budget to 5% rather than gating it.
     ``_select_additional_files`` chooses files README first, then
-    round-robin over README-linked files, 5W1H embedding-similarity rank
-    (when sentence-transformers is available) and symbol-mention-centrality
-    rank; already-chosen files skip ranking
+    round-robin over README-linked files, the ``overview_rank`` order
+    (documentation before configuration, shallower first, overview wording
+    as the tie-break; no model) and symbol-mention-centrality rank;
+    already-chosen files skip ranking
     (``_select_additional_files_preselected``)
 12. Source Files Content — full source for the top-ranked files
     (only when ``with_source=True``)
@@ -450,7 +451,7 @@ class SketchProgress:
         "config": "Extracting config",
         "analysis": "Running static analysis",
         "symbols": "Ranking symbols",
-        "embedding": "Embedding additional files",
+        "additional": "Ranking additional files",
         "centrality": "Computing symbol centrality",
         "format": "Formatting output",
     }
@@ -462,7 +463,6 @@ class SketchProgress:
         "config": "Loading cached config",
         "analysis": "Loading cached analysis",
         "symbols": "Using cached symbols",
-        "embedding": "Using cached embeddings",
         "centrality": "Using cached centrality",
     }
 
@@ -486,7 +486,7 @@ class SketchProgress:
         """Phase ends are implied by the next ``start_phase``; kept for callers."""
 
     def update_item_progress(self, label: str, current: int, total: int) -> None:
-        """Attach a real count (``Embedding files 41/53``) to the current phase."""
+        """Attach a real count (``Computing centrality 41/53``) to the current phase."""
         if self._enabled:
             run_status.item(label, current, total)
 
@@ -4597,28 +4597,24 @@ def _select_additional_files(
     symbols: list[Symbol],
     in_degree: dict[str, int],
     max_files: int = 200,
-    semantic_top_n: int = 10,
-    progress_callback: Callable[..., Any] | None = None,
+    rank_overviews: bool = True,
     centrality_progress_callback: Callable[..., Any] | None = None,
     cached_centrality_scores: dict[str, float] | None = None,
 ) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
     """Select additional files using README-first hybrid ordering.
 
-    Discovers candidate files (non-source, non-excluded), ranks them via
-    semantic similarity and symbol-mention centrality, then selects via
-    round-robin from README links, similarity, and centrality rankings.
+    Discovers candidate files (non-source, non-excluded), then selects via
+    round-robin from three lists: the files the README links to, the
+    ``overview_rank`` order (documentation before configuration, shallower
+    first; ``rank_overviews=False`` leaves this list empty) and the
+    symbol-mention-centrality rank.
 
     Returns:
         (selected_files, candidate_files, symbols_per_file, name_to_in_degree)
     """
     from fnmatch import fnmatch
 
-    from .sketch_embeddings import (
-        batch_embed_files,
-        compute_5w1h_similarity,
-        _get_cache_dir,
-        _has_sentence_transformers,
-    )
+    from .overview_rank import rank_overview_files
 
     # Combine exclusion patterns
     all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
@@ -4693,27 +4689,13 @@ def _select_additional_files(
         # Filter to only additional file candidates
         readme_links = [f for f in all_readme_links if _is_additional_candidate(f)]
 
-    # Build similarity rankings (only if semantic_top_n > 0)
-    similarity_ranked: list[Path] = []
-    if semantic_top_n > 0 and _has_sentence_transformers():
-        cache_dir = _get_cache_dir(repo_root)
-        embeddings = batch_embed_files(
-            candidate_files,
-            cache_dir=cache_dir,
-            progress_callback=progress_callback,
-        )
-
-        file_scores: list[tuple[Path, float]] = []
-        for f in candidate_files:
-            embedding = embeddings.get(f)
-            if embedding is not None:
-                score = compute_5w1h_similarity(embedding)
-                file_scores.append((f, score))
-            else:  # pragma: no cover
-                file_scores.append((f, 0.0))
-
-        file_scores.sort(key=lambda x: x[1], reverse=True)
-        similarity_ranked = [f for f, _ in file_scores]
+    # The files most likely to explain the project. No model: this list was
+    # an embedding ranking until WI-patof measured that it cost a quarter of
+    # a second per candidate, did not reproduce itself, and found fewer of
+    # the files READMEs link to than role and depth do (overview_rank).
+    overview_ranked: list[Path] = (
+        rank_overview_files(candidate_files, repo_root) if rank_overviews else []
+    )
 
     # Build centrality rankings
     # Compute centrality to get per-file symbol data for accurate representativeness
@@ -4750,7 +4732,7 @@ def _select_additional_files(
 
     # Iterators for round-robin sources
     readme_iter = iter(readme_links)
-    similarity_iter = iter(similarity_ranked)
+    overview_iter = iter(overview_ranked)
     centrality_iter = iter(centrality_ranked)
 
     def next_from_iter(it: Iterator[Path]) -> Optional[Path]:
@@ -4768,8 +4750,8 @@ def _select_additional_files(
         selected_files.append(readme_path)
         selected_set.add(readme_path)
 
-    # Round-robin: readme_link, similarity, centrality, readme_link, ...
-    sources_exhausted = [False, False, False]  # readme_links, similarity, centrality
+    # Round-robin: readme_link, overview, centrality, readme_link, ...
+    sources_exhausted = [False, False, False]  # readme_links, overview, centrality
 
     while len(selected_files) < max_files and not all(sources_exhausted):
         # README link
@@ -4784,9 +4766,9 @@ def _select_additional_files(
         if len(selected_files) >= max_files:  # pragma: no cover - defensive
             break
 
-        # Similarity
+        # Overview order
         if not sources_exhausted[1]:
-            f = next_from_iter(similarity_iter)
+            f = next_from_iter(overview_iter)
             if f is not None:
                 selected_files.append(f)
                 selected_set.add(f)
@@ -4814,8 +4796,7 @@ def _format_additional_files(
     symbols: list[Symbol],
     in_degree: dict[str, int],
     max_files: int = 200,
-    semantic_top_n: int = 10,
-    progress_callback: Callable[..., Any] | None = None,
+    rank_overviews: bool = True,
     centrality_progress_callback: Callable[..., Any] | None = None,
     cached_centrality_scores: dict[str, float] | None = None,
     exclude_tests: bool = False,
@@ -4827,7 +4808,7 @@ def _format_additional_files(
     """Format additional files (non-source) as a Markdown section.
 
     Delegates to ``_select_additional_files`` for file discovery and ranking
-    (README-first hybrid ordering with semantic similarity and centrality),
+    (README-first hybrid ordering with the overview order and centrality),
     or accepts ``preselected_files`` to skip selection entirely.
 
     Two output modes controlled by ``include_content``:
@@ -4840,10 +4821,8 @@ def _format_additional_files(
         symbols: List of symbols from analysis.
         in_degree: Raw in-degree counts for symbols.
         max_files: Maximum files to show (ignored when preselected_files set).
-        semantic_top_n: Files to pick by semantic similarity (ignored when
-            preselected_files set).
-        progress_callback: Embedding progress callback (ignored when
-            preselected_files set).
+        rank_overviews: Take every other pick from the ``overview_rank``
+            order (ignored when preselected_files set).
         centrality_progress_callback: Centrality progress callback (ignored
             when preselected_files set).
         cached_centrality_scores: Pre-computed centrality scores (ignored when
@@ -4874,8 +4853,7 @@ def _format_additional_files(
             _select_additional_files(
                 repo_root, source_files, symbols, in_degree,
                 max_files=max_files,
-                semantic_top_n=semantic_top_n,
-                progress_callback=progress_callback,
+                rank_overviews=rank_overviews,
                 centrality_progress_callback=centrality_progress_callback,
                 cached_centrality_scores=cached_centrality_scores,
             )
@@ -7041,8 +7019,9 @@ def _generate_sketch_impl(
     prog.complete_phase("symbols")
 
     # Section 8: Additional files (if we still have budget after everything else)
-    # These are files NOT in source_files, ordered by hybrid semantic + centrality
-    prog.start_phase("embedding")
+    # These are files NOT in source_files, ordered by README links, the
+    # overview order and centrality
+    prog.start_phase("additional")
     additional_files_selected: list[Path] = []  # Track for Additional Files Content section
     if _section_ok("Additional Files", remaining_tokens):
         # ADR-0005: --with-source mode reduces Additional Files budget
@@ -7054,15 +7033,11 @@ def _generate_sketch_impl(
             budget_for_files = remaining_tokens - 10
         max_additional_files = max(1, budget_for_files // tokens_per_file)
 
-        # Create progress callback for embedding telemetry
-        def embedding_progress(current: int, total: int) -> None:  # pragma: no cover
-            prog.update_item_progress("Embedding files", current, total)
-
         # Create progress callback for centrality computation
         def centrality_progress(current: int, total: int) -> None:  # pragma: no cover
-            # Complete embedding phase when starting centrality
+            # The ranking phase ends where centrality starts
             if current == 0:
-                prog.complete_phase("embedding")
+                prog.complete_phase("additional")
                 prog.start_phase("centrality")
             prog.update_item_progress("Computing centrality", current, total)
 
@@ -7081,8 +7056,6 @@ def _generate_sketch_impl(
             symbols=symbols,
             in_degree=raw_in_degree,
             max_files=max_additional_files,
-            semantic_top_n=10,
-            progress_callback=embedding_progress,
             centrality_progress_callback=centrality_progress,
             cached_centrality_scores=cached_centrality,
             exclude_tests=exclude_tests,
@@ -7097,7 +7070,7 @@ def _generate_sketch_impl(
                 # This is more meaningful than symbol definitions for doc/config files
                 stats_out.additional_files_in_degree = int(additional_centrality)
 
-    prog.complete_phase("embedding")  # In case centrality was skipped
+    prog.complete_phase("additional")  # In case centrality was skipped
     prog.complete_phase("centrality")  # Complete centrality if it ran
     prog.start_phase("format")
 
