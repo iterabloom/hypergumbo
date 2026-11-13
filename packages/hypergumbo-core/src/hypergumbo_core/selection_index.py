@@ -66,36 +66,111 @@ records); and
 ``narrow_run_set`` applies them, returning a :class:`Narrowing` whose
 ``refusal`` is set, with the run set left whole, when a blocker fires or the
 result would be empty.
+
+STORAGE. Each test, source file and block is stored ONCE and numbered; the
+``test -> block`` pairs are two integers each, in a ``WITHOUT ROWID`` table with
+a second index by block. Spelling the three names out per pair (a pytest node
+id, an absolute path, a block name: about 236 bytes, held again in the
+primary-key index) is what made this repository's index 3.8 GB for 4.5 million
+pairs. ``PRAGMA user_version`` holds :data:`FORMAT`. :func:`open_index` converts
+a file of the earlier, spelled-out format (:func:`convert_format_1`) and refuses
+a format it does not know (:class:`IndexFormatError`), because a file read with
+the wrong schema looks like an EMPTY index, and to narrowing an empty index
+says "no test runs this code". Callers read and write through the functions
+here (:func:`store_edges`, :func:`stored_edges`, :func:`touching_tests`,
+:func:`measured_tests`), never through the tables.
 """
 from __future__ import annotations
 
+import fcntl
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Sequence
+from typing import Iterable, Iterator, Mapping, Optional, Sequence
 
 from hypergumbo_core.block_hash import blocks_for_source, line_owner
 
 #: ``(path, block name)`` — the join key. Deliberately not line-based.
 BlockKey = tuple[str, str]
 
+#: The storage format, held in ``PRAGMA user_version``. Format 1 predates the
+#: marker and reads as 0, like a file SQLite has only just created; the two are
+#: told apart by format 1's ``test_block.test_id`` column (:func:`_format_of`).
+FORMAT = 2
+
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS file (
+    id   INTEGER PRIMARY KEY,
+    path TEXT NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS block (
-    path   TEXT NOT NULL,
+    id     INTEGER PRIMARY KEY,
+    file   INTEGER NOT NULL,
     name   TEXT NOT NULL,
     digest TEXT NOT NULL,
-    PRIMARY KEY (path, name)
+    UNIQUE (file, name)
+);
+CREATE TABLE IF NOT EXISTS test (
+    id      INTEGER PRIMARY KEY,
+    test_id TEXT NOT NULL UNIQUE
 );
 CREATE TABLE IF NOT EXISTS test_block (
-    test_id TEXT NOT NULL,
-    path    TEXT NOT NULL,
-    name    TEXT NOT NULL,
-    PRIMARY KEY (test_id, path, name)
-);
-CREATE INDEX IF NOT EXISTS test_block_by_block ON test_block (path, name);
+    test  INTEGER NOT NULL,
+    block INTEGER NOT NULL,
+    PRIMARY KEY (test, block)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS test_block_by_block ON test_block (block, test);
 CREATE TABLE IF NOT EXISTS unmeasured_test (test_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
+
+#: The tables :func:`convert_format_1` rewrites. Every other table in the file
+#: belongs to another module and is copied as it stands.
+_OWN_TABLES = frozenset({"block", "test_block", "unmeasured_test", "meta"})
+
+# The queries below are module constants so that the tests can ask SQLite for
+# each one's plan: all three must be index lookups, never a scan of the pairs.
+
+#: Tests observed executing any block of one file. ``?`` = the file's path.
+_TOUCHING = (
+    "SELECT DISTINCT t.test_id FROM file f "
+    "JOIN block b ON b.file = f.id "
+    "JOIN test_block tb ON tb.block = b.id "
+    "JOIN test t ON t.id = tb.test "
+    "WHERE f.path = ?"
+)
+
+#: Tests observed executing one block. ``?, ?`` = the file's path, the block.
+_TESTS_OF_BLOCK = (
+    "SELECT t.test_id FROM file f "
+    "JOIN block b ON b.file = f.id "
+    "JOIN test_block tb ON tb.block = b.id "
+    "JOIN test t ON t.id = tb.test "
+    "WHERE f.path = ? AND b.name = ?"
+)
+
+#: Tests with at least one pair: one primary-key probe per test.
+_MEASURED = (
+    "SELECT t.test_id FROM test t "
+    "WHERE EXISTS (SELECT 1 FROM test_block tb WHERE tb.test = t.id)"
+)
+
+#: Format 1's pairs as integers. ``old`` is the attached format-1 file; a module
+#: constant so a test can make the copy lose a pair and watch the count check
+#: refuse the result.
+_COPY_PAIRS = (
+    "INSERT INTO test_block (test, block) "
+    "SELECT t.id, b.id FROM old.test_block tb "
+    "JOIN test t ON t.test_id = tb.test_id "
+    "JOIN file f ON f.path = tb.path "
+    "JOIN block b ON b.file = f.id AND b.name = tb.name"
+)
+
+
+class IndexFormatError(RuntimeError):
+    """The file is not an index this code can read, or a conversion of one
+    did not produce every pair. The file on disk is left as it was."""
 
 
 @dataclass(frozen=True)
@@ -125,14 +200,248 @@ class Selection:
     import_time_changed: frozenset[BlockKey] = frozenset()
 
 
+def _format_of(conn: sqlite3.Connection) -> int:
+    """The format a file holds; 0 for a file with no index in it yet."""
+    stamped = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if stamped:
+        return stamped
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(test_block)")}
+    return 1 if "test_id" in columns else 0
+
+
 def open_index(path: Path) -> sqlite3.Connection:
-    """Open (creating if absent) the index database."""
+    """Open the index database, creating or converting it as needed.
+
+    A format-1 file is converted first (:func:`convert_format_1`). A file
+    stamped with any other format than :data:`FORMAT` raises
+    :class:`IndexFormatError` and is left alone: creating this format's empty
+    tables beside another format's data would make every lookup miss.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
+    found = _format_of(conn)
+    if found == 1:
+        conn.close()
+        convert_format_1(path)
+        conn = sqlite3.connect(str(path))
+        found = _format_of(conn)
+    if found not in (0, FORMAT):
+        conn.close()
+        raise IndexFormatError(
+            f"{path} holds selection-index format {found}; "
+            f"this code reads format {FORMAT}")
     conn.executescript(_SCHEMA)
+    conn.execute(f"PRAGMA user_version = {FORMAT}")
     conn.commit()
     return conn
+
+
+def _sibling(path: Path, suffix: str) -> Path:
+    return path.with_name(path.name + suffix)
+
+
+def _free_backup_name(path: Path) -> Path:
+    """``<name>.format-1``, or the first ``<name>.format-1.N`` not taken."""
+    first = _sibling(path, ".format-1")
+    candidate, n = first, 1
+    while candidate.exists():
+        n += 1
+        candidate = _sibling(first, f".{n}")
+    return candidate
+
+
+def _quoted(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _write_format_2(source: Path, work: Path) -> None:
+    """Write ``source``'s (format 1) content to a new file ``work`` in format 2.
+
+    One pass in SQL, reading ``source`` through ATTACH and writing nothing to
+    it. Names get their numbers in sorted order, so the tests of one test file
+    and the blocks of one source file are neighbours in both pair indexes.
+    """
+    with closing(sqlite3.connect(str(work))) as new:
+        new.executescript(_SCHEMA)
+        new.execute("ATTACH DATABASE ? AS old", (str(source),))
+        new.execute(
+            "INSERT INTO file (path) "
+            "SELECT path FROM old.block UNION SELECT path FROM old.test_block")
+        new.execute(
+            "INSERT INTO block (file, name, digest) "
+            "SELECT f.id, b.name, b.digest FROM old.block b "
+            "JOIN file f ON f.path = b.path")
+        # A pair whose block has no ``block`` row still needs a number.
+        new.execute(
+            "INSERT OR IGNORE INTO block (file, name, digest) "
+            "SELECT DISTINCT f.id, tb.name, '' FROM old.test_block tb "
+            "JOIN file f ON f.path = tb.path")
+        new.execute(
+            "INSERT INTO test (test_id) "
+            "SELECT DISTINCT test_id FROM old.test_block")
+        new.execute(_COPY_PAIRS)
+        want = new.execute("SELECT count(*) FROM old.test_block").fetchone()[0]
+        got = new.execute("SELECT count(*) FROM test_block").fetchone()[0]
+        if got != want:
+            raise IndexFormatError(
+                f"converting {source} kept {got} of {want} test-block pairs; "
+                "the format-1 file is unchanged")
+        new.execute(
+            "INSERT INTO unmeasured_test (test_id) "
+            "SELECT test_id FROM old.unmeasured_test")
+        new.execute(
+            "INSERT INTO meta (key, value) SELECT key, value FROM old.meta")
+        # Tables other modules keep in this file (the read evidence of
+        # prose_only), copied as they stand: tables first, then their indexes.
+        others = new.execute(
+            "SELECT type, name, tbl_name, sql FROM old.sqlite_master "
+            "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY type != 'table'").fetchall()
+        for kind, name, table, sql in others:
+            if table in _OWN_TABLES:
+                continue
+            new.execute(sql)
+            if kind == "table":
+                # The one identifier comes from the source file's own schema
+                # and is quoted; nothing else is interpolated.
+                q = _quoted(name)
+                copy = f"INSERT INTO main.{q} SELECT * FROM old.{q}"  # noqa: S608  # nosec B608
+                new.execute(copy)
+        new.execute(f"PRAGMA user_version = {FORMAT}")
+        new.commit()
+        new.execute("DETACH DATABASE old")
+
+
+def convert_format_1(path: Path) -> Optional[Path]:
+    """Rewrite a format-1 index at ``path`` as format 2, keeping the old file.
+
+    Returns the path the format-1 file was kept under (``<name>.format-1``, or
+    ``.format-1.N`` when that is taken), or ``None`` when ``path`` was not
+    format 1 by the time this call held the lock. No test is run: format 1
+    holds every fact format 2 needs.
+
+    THE NEW FILE IS WRITTEN BESIDE THE OLD ONE AND SWAPPED IN. Until the swap
+    ``path`` is the untouched format-1 file, so a conversion that fails or is
+    killed loses nothing, and the next open starts it again. The swap is a hard
+    link (the backup name) followed by an atomic replace, so ``path`` exists at
+    every instant.
+
+    ONE CONVERTER AT A TIME, by ``flock`` on ``<name>.lock``. An opener that
+    waited for the lock re-reads the format under it: converting the file a
+    winner has just swapped in would move the NEW index over the backup. The
+    lock file is removed only once ``path`` is no longer format 1, because from
+    then on nobody takes the lock; removing it after a failed conversion would
+    let a waiter and a newcomer hold two different lock files at once.
+
+    A process that is writing to the format-1 file while it is being converted
+    loses those writes. smart-test folds a run under its own lock, and this is
+    called from inside that, so the case needs two tools run by hand at once.
+    """
+    path = Path(path)
+    lock_path = _sibling(path, ".lock")
+    work = _sibling(path, ".converting")
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with closing(sqlite3.connect(str(path))) as probe:
+            still_format_1 = _format_of(probe) == 1
+        kept: Optional[Path] = None
+        if still_format_1:
+            # A killed conversion leaves the work file and perhaps its journal;
+            # SQLite would replay a stale journal into the new work file.
+            leftovers = [_sibling(work, s) for s in ("", "-journal", "-wal", "-shm")]
+            for leftover in leftovers:
+                leftover.unlink(missing_ok=True)
+            try:
+                _write_format_2(path, work)
+                kept = _free_backup_name(path)
+                kept.hardlink_to(path)
+                work.replace(path)
+            finally:
+                for leftover in leftovers:
+                    leftover.unlink(missing_ok=True)
+        lock_path.unlink(missing_ok=True)
+        return kept
+
+
+def _numbered(
+    cur: sqlite3.Cursor, insert: str, select: str, names: Iterable[str],
+) -> dict[str, int]:
+    """Store each name once and return its number."""
+    wanted = sorted(set(names))
+    cur.executemany(insert, [(n,) for n in wanted])
+    return {n: cur.execute(select, (n,)).fetchone()[0] for n in wanted}
+
+
+def store_edges(
+    conn: sqlite3.Connection,
+    edges: Mapping[str, Iterable[BlockKey]],
+    *,
+    digests: Optional[Mapping[str, Mapping[str, str]]] = None,
+) -> None:
+    """Replace the edges of each test in ``edges``; record ``digests``.
+
+    ``edges`` maps a test id to the ``(path, block name)`` keys it executed.
+    A test named here has its earlier edges REMOVED first (semantic 1 of the
+    module docstring); a test not named keeps what it had. ``digests`` maps a
+    path to ``{block name: digest}`` and may name blocks no test executed. A
+    block that appears only in ``edges`` is stored with an empty digest.
+
+    Does not commit: :func:`update_from_run` stores a run's edges, its
+    unmeasured tests and the full-run marker in one transaction.
+    """
+    digests = digests or {}
+    keys = {key for per_test in edges.values() for key in per_test}
+    cur = conn.cursor()
+    file_ids = _numbered(
+        cur, "INSERT OR IGNORE INTO file (path) VALUES (?)",
+        "SELECT id FROM file WHERE path = ?",
+        [*digests, *(path for path, _ in keys)])
+    cur.executemany(
+        "INSERT INTO block (file, name, digest) VALUES (?, ?, ?) "
+        "ON CONFLICT (file, name) DO UPDATE SET digest = excluded.digest",
+        [(file_ids[path], name, digest)
+         for path, per_name in digests.items()
+         for name, digest in per_name.items()])
+    cur.executemany(
+        "INSERT OR IGNORE INTO block (file, name, digest) VALUES (?, ?, '')",
+        sorted((file_ids[path], name) for path, name in keys))
+    block_ids: dict[BlockKey, int] = {}
+    for path in sorted({path for path, _ in keys}):
+        for name, block_id in cur.execute(
+                "SELECT name, id FROM block WHERE file = ?", (file_ids[path],)):
+            block_ids[(path, name)] = block_id
+    test_ids = _numbered(
+        cur, "INSERT OR IGNORE INTO test (test_id) VALUES (?)",
+        "SELECT id FROM test WHERE test_id = ?", edges)
+    for test_id, per_test in edges.items():
+        cur.execute("DELETE FROM test_block WHERE test = ?", (test_ids[test_id],))
+        cur.executemany(
+            "INSERT OR IGNORE INTO test_block (test, block) VALUES (?, ?)",
+            sorted((test_ids[test_id], block_ids[key]) for key in set(per_test)))
+
+
+def stored_edges(conn: sqlite3.Connection) -> Iterator[tuple[str, str, str]]:
+    """Every ``(test id, path, block name)`` pair in the index, unordered."""
+    yield from conn.execute(
+        "SELECT t.test_id, f.path, b.name FROM test_block tb "
+        "JOIN test t ON t.id = tb.test "
+        "JOIN block b ON b.id = tb.block "
+        "JOIN file f ON f.id = b.file")
+
+
+def measured_tests(conn: sqlite3.Connection) -> frozenset[str]:
+    """Test ids with at least one coverage edge."""
+    return frozenset(r[0] for r in conn.execute(_MEASURED))
+
+
+def touching_tests(
+    conn: sqlite3.Connection, paths: Iterable[str],
+) -> frozenset[str]:
+    """Test ids observed executing ANY block of ``paths`` (as stored)."""
+    return frozenset(
+        r[0] for path in sorted(set(paths))
+        for r in conn.execute(_TOUCHING, (path,)))
 
 
 def _strip_phase(context: str) -> str:
@@ -239,21 +548,9 @@ def update_from_run(
         for path in {p for p, _ in keys}:
             keys.update((path, n) for n in import_blocks.get(path, ()))
 
-    cur = conn.cursor()
-    for path, per_name in digests.items():
-        cur.executemany(
-            "INSERT INTO block (path, name, digest) VALUES (?, ?, ?) "
-            "ON CONFLICT (path, name) DO UPDATE SET digest = excluded.digest",
-            [(path, name, digest) for name, digest in per_name.items()],
-        )
     # REPLACE per test, and only for tests that appear in THIS run.
-    for test_id, keys in edges.items():
-        cur.execute("DELETE FROM test_block WHERE test_id = ?", (test_id,))
-        cur.executemany(
-            "INSERT OR IGNORE INTO test_block (test_id, path, name) "
-            "VALUES (?, ?, ?)",
-            [(test_id, p, n) for p, n in keys],
-        )
+    store_edges(conn, edges, digests=digests)
+    cur = conn.cursor()
     # Producing edges is positive evidence at ANY coverage scope, so clearing
     # is always safe.
     cur.executemany(
@@ -353,14 +650,13 @@ def select_tests(
     unknown = {
         p for p in base_sources
         if not conn.execute(
-            "SELECT 1 FROM block WHERE path = ? LIMIT 1", (p,)).fetchone()
+            "SELECT 1 FROM block b JOIN file f ON f.id = b.file "
+            "WHERE f.path = ? LIMIT 1", (p,)).fetchone()
     }
     changed, new, import_time = _diff_blocks(base_sources)
     tests: set[str] = set()
     for path, name in changed:
-        tests.update(r[0] for r in conn.execute(
-            "SELECT test_id FROM test_block WHERE path = ? AND name = ?",
-            (path, name)))
+        tests.update(r[0] for r in conn.execute(_TESTS_OF_BLOCK, (path, name)))
     unmeasured = {r[0] for r in conn.execute(
         "SELECT test_id FROM unmeasured_test")}
     missing = {p for p in base_sources
@@ -443,19 +739,11 @@ def touching_test_files(
     uncovered and fails the gate. These are exactly the tests that produced the
     file's coverage rows.
 
-    THE FILTER IS IN PYTHON RATHER THAN IN AN ``IN (?,?,…)`` CLAUSE. The
-    placeholder list has to be built from ``len(paths)``, which is string-built
-    SQL as far as ruff (S608) and bandit (B608) can tell, and the honest answer
-    to a static-analysis finding is to remove the construct rather than to
-    annotate it twice. The table is a few tens of thousands of rows and this runs
-    once per invocation, so scanning it costs nothing worth defending.
+    ONE INDEXED QUERY PER PATH (:func:`touching_tests`), walking from the file
+    to its blocks to their tests, so the cost follows the changed files and not
+    the size of the index.
     """
-    if not paths:
-        return frozenset()
-    want = set(paths)
-    rows = conn.execute("SELECT DISTINCT test_id, path FROM test_block")
-    return files_of(rebase_to_repo(
-        {test_id for test_id, path in rows if path in want}, repo_root))
+    return files_of(rebase_to_repo(touching_tests(conn, paths), repo_root))
 
 
 def speakable_test_files(
@@ -475,9 +763,7 @@ def speakable_test_files(
     hundreds — so this rule keeps considerably more than node-granularity
     would.
     """
-    measured = files_of(rebase_to_repo(
-        {r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block")},
-        repo_root))
+    measured = files_of(rebase_to_repo(measured_tests(conn), repo_root))
     unmeasured = files_of(rebase_to_repo(
         {r[0] for r in conn.execute("SELECT test_id FROM unmeasured_test")},
         repo_root))

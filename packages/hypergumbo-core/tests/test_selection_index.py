@@ -36,6 +36,7 @@ import pytest
 
 from hypergumbo_core.selection_index import (
     changed_blocks,
+    measured_tests,
     normalize_test_id,
     open_index,
     select_tests,
@@ -272,7 +273,8 @@ class TestPersistence:
         conn = open_index(tmp_path / "brand-new.sqlite")
         names = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"block", "test_block", "unmeasured_test", "meta"} <= names
+        assert {"file", "block", "test", "test_block", "unmeasured_test",
+                "meta"} <= names
 
     def test_a_full_run_marker_is_recorded(self, tmp_path) -> None:
         """Selection is only sound as of the last FULL run; this marker
@@ -403,7 +405,7 @@ class TestNodeIdNormalisation:
         pkg.mkdir(parents=True)
         (pkg / "test_a.py").write_text("")
         update_from_run(conn, db, repo_root=tmp_path)
-        stored = {r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block")}
+        stored = measured_tests(conn)
         assert stored == {"test_a"}, stored
 
 
