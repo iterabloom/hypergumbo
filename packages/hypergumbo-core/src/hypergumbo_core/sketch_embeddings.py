@@ -22,9 +22,13 @@ Two models back these. ``microsoft/unixcoder-base`` (``_load_embedding_model``)
 serves README description extraction, and ``sketch.py``'s config discovery
 and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``
 from here directly. ``nomic-ai/modernbert-embed-base``
-(``_load_modernbert_model``) serves the Additional Files semantic ranking:
-``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
-probe embeddings. Before every sentence_transformers import (in
+(``_load_modernbert_model``) served the Additional Files semantic ranking
+(``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
+probe embeddings) and HAS NO PRODUCTION CALLER since that ranking became
+``overview_rank`` (measurement 0033); what remains of it here is tested dead
+code whose removal, with the model ``install-embeddings`` still fetches for
+it, is WI-kilod-dinim-sisoj-pafub-mazof-badul-gajuv-jison.
+``ADDITIONAL_FILES_PROBES`` is live: it is ``overview_rank``'s query. Before every sentence_transformers import (in
 ``_has_sentence_transformers`` and in both loaders),
 ``_ensure_hf_offline_for_cached_models`` sets ``HF_HUB_OFFLINE=1`` for the
 whole process unless the variable already holds a value huggingface_hub reads

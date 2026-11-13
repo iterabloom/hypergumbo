@@ -1697,7 +1697,7 @@ class TestFormatAdditionalFiles:
             source_files=[source_file],
             symbols=[foo, bar],
             in_degree=in_degree,
-            semantic_top_n=0,  # Disable semantic ranking
+            rank_overviews=False,  # Only the other two lists
         )
 
         # doc_mentions should appear before doc_none due to symbol mentions
@@ -1736,7 +1736,7 @@ class TestFormatAdditionalFiles:
             symbols=[],
             in_degree={},
             max_files=3,
-            semantic_top_n=0,
+            rank_overviews=False,
         )
 
         assert "## Additional Files" in result
@@ -1893,126 +1893,72 @@ class TestFormatAdditionalFiles:
         )
         assert result == ""
 
-    @pytest.mark.skipif(
-        not _has_sentence_transformers(),
-        reason="sentence-transformers not available"
-    )
-    def test_semantic_ranking_with_empty_file(self, tmp_path: Path) -> None:
-        """Verifies semantic ranking handles empty files (returns None embedding).
-
-        This test is skipped on CI where sentence-transformers isn't installed,
-        but runs locally to verify the defensive code path works correctly.
-        The line is marked with pragma:no cover for CI coverage.
-        """
-        # Create an empty file - embedding will return None
-        # Use .md extension for DOCUMENTATION role (ADR-0004)
-        empty_file = tmp_path / "empty.md"
-        empty_file.write_text("")
-        # Create a file with content
-        content_file = tmp_path / "content.md"
-        content_file.write_text("This file has content for embedding")
-        # Create source file (excluded from additional files)
+    def test_an_empty_file_is_still_listed(self, tmp_path: Path) -> None:
+        """A file with no words has no wording score; its role and depth
+        still place it."""
+        (tmp_path / "empty.md").write_text("")
+        (tmp_path / "content.md").write_text("This file has content")
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        # Run with semantic ranking enabled - empty file should get 0.0 score
         result, _, _ = _format_additional_files(
-            tmp_path,
-            source_files=[src],
-            symbols=[],
-            in_degree={},
-            semantic_top_n=3,  # Enable semantic ranking
+            tmp_path, source_files=[src], symbols=[], in_degree={},
         )
 
-        # Both files should be in output
         assert "## Additional Files" in result
         assert "empty.md" in result
         assert "content.md" in result
 
-    def test_semantic_ranking_fallback_when_embedding_none(
-        self, tmp_path: Path
+    def test_the_overview_order_fills_every_other_slot(self, tmp_path: Path) -> None:
+        """With no README the README-link list is empty, so the first pick
+        is the overview order's: a root-level document, ahead of the deep
+        configuration file the centrality list would have picked."""
+        from hypergumbo_core.sketch import _select_additional_files
+
+        for name in ("a", "b", "c", "d"):
+            deep = tmp_path / "conf" / "deep" / f"{name}.yaml"
+            deep.parent.mkdir(parents=True, exist_ok=True)
+            deep.write_text("key: value\n")
+        guide = tmp_path / "zz-guide.md"
+        guide.write_text("How this project works, and who it is for.")
+
+        central = {"conf/deep/c.yaml": 1.0}
+        with_order, candidates, _, _ = _select_additional_files(
+            tmp_path, [], [], {}, max_files=1, cached_centrality_scores=central)
+        without, _, _, _ = _select_additional_files(
+            tmp_path, [], [], {}, max_files=1, rank_overviews=False,
+            cached_centrality_scores=central)
+
+        assert guide in candidates and len(candidates) == 5  # reach
+        assert with_order == [guide]
+        assert without == [tmp_path / "conf" / "deep" / "c.yaml"]
+
+    def test_selection_needs_no_embedding_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Tests semantic ranking path with mocked embedding returning None.
+        """Additional Files used to embed every candidate (WI-patof). The
+        selection must work, and be the same, with the embedding stack
+        present, absent or broken."""
+        from hypergumbo_core import sketch_embeddings
+        from hypergumbo_core.sketch import _select_additional_files
 
-        This ensures the embedding code path is covered on CI where
-        sentence-transformers isn't installed, by mocking the availability.
-        """
-        from unittest.mock import patch
+        (tmp_path / "README.md").write_text("# Project\n")
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "design.md").write_text("How it works.")
+        (tmp_path / "settings.yaml").write_text("a: 1\n")
+        plain = _select_additional_files(tmp_path, [], [], {})[0]
 
-        # Create files with recognized roles (ADR-0004)
-        (tmp_path / "readme.md").write_text("# Project documentation")
-        (tmp_path / "notes.md").write_text("# Some notes")
-        src = tmp_path / "main.py"
-        src.write_text("pass")
+        def refuse(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("an embedding model was requested")
 
-        # Mock _has_sentence_transformers to return True
-        # and batch_embed_files to return None for all files (simulating failure)
-        def mock_batch_embed(files, **kwargs):
-            return dict.fromkeys(files, None)
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True
-        ), patch(
-            "hypergumbo_core.sketch_embeddings.batch_embed_files",
-            side_effect=mock_batch_embed
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._get_cache_dir",
-            return_value=tmp_path / ".cache"
-        ):
-            result, _, _ = _format_additional_files(
-                tmp_path,
-                source_files=[src],
-                symbols=[],
-                in_degree={},
-                semantic_top_n=2,
-            )
-
-        # Files should still appear (with 0.0 score)
-        assert "## Additional Files" in result
-        assert "readme.md" in result
-        assert "notes.md" in result
-
-    def test_semantic_ranking_with_mock_embeddings(self, tmp_path: Path) -> None:
-        """Tests semantic ranking with mocked embeddings.
-
-        This ensures the full embedding code path is covered on CI.
-        """
-        from unittest.mock import patch, MagicMock
-
-        # Create files with recognized roles (ADR-0004)
-        (tmp_path / "readme.md").write_text("# Project documentation")
-        (tmp_path / "notes.md").write_text("# Some notes")
-        src = tmp_path / "main.py"
-        src.write_text("pass")
-
-        # Use a MagicMock for the embedding - we don't need actual numpy
-        fake_embedding = MagicMock()
-
-        def mock_batch_embed(files, **kwargs):
-            return dict.fromkeys(files, fake_embedding)
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True
-        ), patch(
-            "hypergumbo_core.sketch_embeddings.batch_embed_files",
-            side_effect=mock_batch_embed
-        ), patch(
-            "hypergumbo_core.sketch_embeddings.compute_5w1h_similarity", return_value=0.5
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._get_cache_dir",
-            return_value=tmp_path / ".cache"
-        ):
-            result, _, _ = _format_additional_files(
-                tmp_path,
-                source_files=[src],
-                symbols=[],
-                in_degree={},
-                semantic_top_n=2,
-            )
-
-        assert "## Additional Files" in result
+        for name in ("_load_modernbert_model", "_load_embedding_model",
+                     "batch_embed_files", "embed_file_for_semantic_ranking"):
+            monkeypatch.setattr(sketch_embeddings, name, refuse)
+        for available in (True, False):
+            monkeypatch.setattr(
+                sketch_embeddings, "_has_sentence_transformers", lambda a=available: a)
+            assert _select_additional_files(tmp_path, [], [], {})[0] == plain
+        assert len(plain) == 3  # reach: something was selected
 
     def test_uses_cached_centrality_scores(self, tmp_path: Path) -> None:
         """Uses pre-computed centrality scores from cached results."""
@@ -2035,7 +1981,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,  # Disable semantic ranking to use only centrality
+            rank_overviews=False,  # Only the other two lists
             cached_centrality_scores=cached_scores,
         )
 
@@ -2062,7 +2008,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,  # Disable semantic to focus on README links
+            rank_overviews=False,  # Disable semantic to focus on README links
         )
 
         # README should be first, linked file should be included
@@ -2085,7 +2031,7 @@ class TestFormatAdditionalFiles:
             symbols=[],
             in_degree={},
             max_files=3,
-            semantic_top_n=0,
+            rank_overviews=False,
         )
 
         # Should show "... and N more files"
@@ -2108,7 +2054,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,
+            rank_overviews=False,
             token_budget=600,  # Small budget
             include_content=True,
         )
@@ -2132,7 +2078,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,
+            rank_overviews=False,
             token_budget=800,
             include_content=True,
         )
@@ -2154,7 +2100,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,
+            rank_overviews=False,
             token_budget=100,  # Very small budget
             include_content=True,
         )

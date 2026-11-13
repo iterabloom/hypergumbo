@@ -22,7 +22,7 @@ Used for config file semantic ranking and code understanding.
 
 ### ModernBERT (Additional Files Ranking)
 
-Used for semantic ranking of additional files using 5W1H similarity scoring.
+No command loads this model since the Additional Files ranking stopped using embeddings ([measurement 0033](measurements/0033-additional-files-embedding-vs-location.md)). `hypergumbo install-embeddings` still fetches it until the unused code is removed.
 
 ```bibtex
 @misc{modernbert,
@@ -59,7 +59,7 @@ The ModernBERT model we use is based on the Nomic Embed training methodology.
 
 1. **Config extraction** (`--config`): UniXcoder embeddings identify configuration-relevant files by comparing them against semantic probes like "what is the project structure" and "how to build the project".
 
-2. **Additional files ranking**: ModernBERT embeddings rank non-source files (docs, configs, data) by relevance using 5W1H (Who, What, Where, When, Why, How) similarity scoring.
+2. **Additional files ranking** uses no model. It did until measurement 0033: ModernBERT embeddings ranked non-source files by 5W1H (Who, What, Where, When, Why, How) similarity.
 
 3. **All embedding computation is local** — no data is sent to external services.
 
