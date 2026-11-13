@@ -17,6 +17,7 @@ from hypergumbo_core.sketch import (
     _format_additional_files,
     _format_language_stats,
     _run_analysis,
+    _entry_label,
     _format_entrypoints,
     _format_datamodels,
     _format_symbols,
@@ -3064,6 +3065,147 @@ class TestRouteMarkerEntryLine:
     def test_no_handler_known(self, tmp_path: Path) -> None:
         out = self._render(tmp_path, {})
         assert "- `GET /feed` — `lib/app_web/router.ex`" in out
+
+
+class TestEntryPointLinesIdentifyTheirEntry:
+    """An Entry Points line says which entry it is, in any language.
+
+    A docstring replaces the path on the line (WI-kipod), which leaves the
+    entry unlocated. That is harmless for a unique name and not for a shared
+    one: every Go command has a ``main``, every Go package a ``New``, every
+    serverless function a ``handler``. The rule is about names shown twice,
+    never about a particular name or language.
+    """
+
+    @staticmethod
+    def _entry(tmp_path: Path, sid: str, name: str, rel: str, *,
+               language: str = "go", line: int = 1, docstring: str | None = None,
+               kind: EntrypointKind = EntrypointKind.CLI_MAIN,
+               label: str = "Go main()") -> tuple[Symbol, Entrypoint]:
+        sym = Symbol(id=sid, name=name, kind="function", language=language,
+                     path=str(tmp_path / rel), span=Span(line, line + 3, 1, 2),
+                     docstring=docstring)
+        return sym, Entrypoint(symbol_id=sid, kind=kind, confidence=0.9, label=label)
+
+    def _render(self, tmp_path: Path, *entries: tuple[Symbol, Entrypoint],
+                max_entries: int = 20) -> str:
+        return _format_entrypoints([e for _s, e in entries], [s for s, _e in entries],
+                                   tmp_path, max_entries=max_entries)
+
+    def test_go_commands_sharing_a_name_each_show_their_file(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "main", "cmd/server/main.go",
+                        docstring="Start the server."),
+            self._entry(tmp_path, "b", "main", "cmd/ctl/main.go",
+                        docstring="Run the control tool."))
+        assert "- `main` (Go main()) — `cmd/server/main.go` — Start the server." in out
+        assert "- `main` (Go main()) — `cmd/ctl/main.go` — Run the control tool." in out
+
+    def test_js_handlers_sharing_a_name_each_show_their_file(self, tmp_path: Path) -> None:
+        """One has a docstring and one has none: both are located."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "handler", "functions/signup/index.js",
+                        language="javascript", kind=EntrypointKind.HTTP_ROUTE,
+                        label="Lambda handler", docstring="Create an account."),
+            self._entry(tmp_path, "b", "handler", "functions/login/index.js",
+                        language="javascript", kind=EntrypointKind.HTTP_ROUTE,
+                        label="Lambda handler"))
+        assert ("- `handler` (Lambda handler) — `functions/signup/index.js` — "
+                "Create an account.") in out
+        assert "- `handler` (Lambda handler) — `functions/login/index.js`" in out
+
+    def test_a_name_shown_in_two_groups_is_shared(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "run", "src/bin/tool.rs", language="rust",
+                        label="Rust main()", docstring="Parse the arguments."),
+            self._entry(tmp_path, "b", "run", "src/lib.rs", language="rust",
+                        kind=EntrypointKind.LIBRARY_EXPORT, label="Library export: run",
+                        docstring="Run one job."))
+        assert "### CLI & Scripts" in out and "### Library API" in out
+        assert "- `run` (Rust main()) — `src/bin/tool.rs` — Parse the arguments." in out
+        assert "- `run` (Library export) — `src/lib.rs` — Run one job." in out
+
+    def test_two_entries_of_one_name_in_one_file_show_their_lines(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "handler", "api.ts", language="typescript",
+                        line=12, label="Handler", docstring="List the items."),
+            self._entry(tmp_path, "b", "handler", "api.ts", language="typescript",
+                        line=40, label="Handler"))
+        assert "- `handler` (Handler) — `api.ts:12` — List the items." in out
+        assert "- `handler` (Handler) — `api.ts:40`" in out
+
+    def test_an_entry_with_no_span_shows_its_path_alone(self, tmp_path: Path) -> None:
+        one, two = (self._entry(tmp_path, sid, "handler", "api.ts",
+                                language="typescript", label="Handler")
+                    for sid in ("a", "b"))
+        one[0].span = None
+        out = self._render(tmp_path, one, two)
+        assert "- `handler` (Handler) — `api.ts`\n" in out
+        assert "- `handler` (Handler) — `api.ts:1`" in out
+
+    def test_a_unique_name_with_a_docstring_shows_no_path(self, tmp_path: Path) -> None:
+        """Control: the path is added for a shared name only."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "main", "cmd/server/main.go",
+                        docstring="Start the server."),
+            self._entry(tmp_path, "b", "migrate", "cmd/ctl/main.go",
+                        docstring="Apply the migrations."))
+        assert "- `main` (Go main()) — Start the server." in out
+        assert "- `migrate` (Go main()) — Apply the migrations." in out
+        assert "main.go" not in out
+
+    def test_a_name_shared_only_with_an_entry_not_shown_is_unique(self, tmp_path: Path) -> None:
+        """The reader sees one ``main``: nothing to tell it apart from."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "main", "cmd/server/main.go",
+                        docstring="Start the server."),
+            self._entry(tmp_path, "b", "main", "cmd/ctl/main.go",
+                        docstring="Run the control tool."),
+            max_entries=1)
+        assert out.count("- `main`") == 1
+        assert "... and 1 more" in out
+        assert "main.go" not in out
+
+    def test_a_script_named_by_its_path_says_the_path_once(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "scripts/build.sh", "scripts/build.sh",
+                        language="shell", kind=EntrypointKind.SHELL_SCRIPT,
+                        label="Shell script (scripts/build.sh)"))
+        line = next(ln for ln in out.splitlines() if ln.startswith("- "))
+        assert line == "- `scripts/build.sh` (Shell script)"
+
+    def test_a_label_drops_the_path_the_line_shows(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "index.html", "ui/app/index.html",
+                        language="html", kind=EntrypointKind.HTML_ENTRY,
+                        label="HTML entry (ui/app/index.html)"))
+        assert "- `index.html` (HTML entry) — `ui/app/index.html`" in out
+
+    def test_a_label_keeps_the_path_the_line_does_not_show(self, tmp_path: Path) -> None:
+        """With a docstring and a unique name the label holds the only copy."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "index.html", "ui/app/index.html",
+                        language="html", kind=EntrypointKind.HTML_ENTRY,
+                        label="HTML entry (ui/app/index.html)",
+                        docstring="The dashboard shell."))
+        assert ("- `index.html` (HTML entry (ui/app/index.html)) — "
+                "The dashboard shell.") in out
+
+    def test_a_label_that_is_only_the_repeat_is_kept(self) -> None:
+        """An empty label would print ``()``."""
+        assert _entry_label(": New", "New", "") == ": New"
+        assert _entry_label("Library export: New", "New", "") == "Library export"
+        assert _entry_label("React app bootstrap", "src/main.tsx", "src/main.tsx") == (
+            "React app bootstrap")
 
 
 class TestFormatDatamodels:
