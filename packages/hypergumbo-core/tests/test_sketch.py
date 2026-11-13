@@ -14,6 +14,7 @@ from hypergumbo_core.sketch import (
     truncate_to_tokens,
     _collect_source_files,
     _format_source_files,
+    _MIN_LISTED_FILES,
     _format_additional_files,
     _format_language_stats,
     _run_analysis,
@@ -1479,6 +1480,120 @@ class TestCollectSourceFiles:
         assert "test_core.py" not in names
 
 
+class TestSourceFilesListingIsSizedByItsEntries:
+    """The Source Files listing holds the share it is given (WI-borap).
+
+    The number of entries used to be the share divided by a constant 12
+    tokens, set when an entry was a bare path. An entry with its module
+    docstring costs about 32, so the section took 2.6 times its share where
+    files carry docstrings. The listing is now cut by what its entries
+    cost, in any language, and a cut listing ends by saying what it left
+    out.
+    """
+
+    @staticmethod
+    def _entries(section: str) -> list[str]:
+        return [ln for ln in section.splitlines()
+                if ln.startswith("- `")]
+
+    def test_the_same_share_shows_fewer_long_entries_than_short_ones(
+            self, tmp_path: Path) -> None:
+        files = [tmp_path / f"m{i:02d}.go" for i in range(30)]
+        described = {f.name: "Package doc: " + "what this file is for. " * 4 for f in files}
+        share = 300  # tokens
+
+        bare = self._entries(_format_source_files(tmp_path, files, max_files=None,
+                                                  max_tokens=share))
+        long = self._entries(_format_source_files(tmp_path, files, max_files=None,
+                                                  max_tokens=share, docstrings=described))
+
+        assert len(bare) == 30
+        assert _MIN_LISTED_FILES < len(long) < 30
+        # The entries shown fit the share; one more would not.
+        cost = len(long[0]) + 1
+        assert len(long) * cost <= share * 4 < (len(long) + 1) * cost
+
+    def test_a_share_too_small_for_one_entry_still_lists_a_few(self, tmp_path: Path) -> None:
+        files = [tmp_path / f"m{i:02d}.rs" for i in range(12)]
+        section = _format_source_files(tmp_path, files, max_files=None, max_tokens=1)
+        assert len(self._entries(section)) == _MIN_LISTED_FILES
+        assert section.splitlines()[-1] == "- ... and 7 more files: top level 7"
+
+    def test_the_listing_is_cut_in_rank_order(self, tmp_path: Path) -> None:
+        files = [tmp_path / f"m{i:02d}.py" for i in range(12)]
+        scores = {f.name: float(i) for i, f in enumerate(files)}
+        section = _format_source_files(tmp_path, files, max_files=None, max_tokens=1,
+                                       density_scores=scores)
+        assert self._entries(section) == [f"- `m{i:02d}.py`" for i in (11, 10, 9, 8, 7)]
+
+    def test_a_cut_listing_says_what_it_left_out(self, tmp_path: Path) -> None:
+        """How many files, how many of them tests, and where they are."""
+        rels = (["src/a.ts", "src/b.ts"]
+                + [f"tests/test_{i}.py" for i in range(4)]
+                + [f"pkg/m{i}.go" for i in range(3)]
+                + ["cmd/x.go", "cmd/y.go", "lib/z.rs", "build.rs"])
+        files = [tmp_path / rel for rel in rels]
+        section = _format_source_files(tmp_path, files, max_files=2)
+        assert self._entries(section) == ["- `src/a.ts`", "- `src/b.ts`"]
+        assert section.splitlines()[-1] == (
+            "- ... and 11 more files (4 of them tests): "
+            "`tests/` 4, `pkg/` 3, `cmd/` 2, 2 elsewhere")
+
+    def test_one_file_left_out_and_no_tests(self, tmp_path: Path) -> None:
+        files = [tmp_path / "a.py", tmp_path / "lib" / "b.py"]
+        section = _format_source_files(tmp_path, files, max_files=1)
+        assert section.splitlines()[-1] == "- ... and 1 more file: `lib/` 1"
+
+    def test_a_listing_that_fits_ends_with_its_last_file(self, tmp_path: Path) -> None:
+        """Control: the closing line appears only when something is left out."""
+        files = [tmp_path / "a.py", tmp_path / "b.py"]
+        section = _format_source_files(tmp_path, files, max_files=None, max_tokens=500)
+        assert section.splitlines()[-1] == "- `b.py`"
+
+    def test_the_in_degree_statistic_covers_the_files_listed_and_no_others(
+            self, tmp_path: Path) -> None:
+        """Every file's function is called once. A budget that lists every
+        file counts every call; one that cuts the listing counts fewer."""
+        text = "what this module is for, said at some length for the reader"
+        count = 40
+        for i in range(count):
+            nxt = (i + 1) % count
+            (tmp_path / f"mod_{i:02d}.py").write_text(
+                f'"""Module {i:02d}: {text}."""\n'
+                f"from mod_{nxt:02d} import f{nxt}\n\n\n"
+                f"def f{i}():\n    return f{nxt}()\n")
+
+        def listed_and_stat(budget: int) -> tuple[int, int]:
+            stats = SketchStats()
+            sketch = generate_sketch(tmp_path, max_tokens=budget, stats_out=stats)
+            section = sketch.split("## Source Files\n", 1)[1].split("\n## ", 1)[0]
+            return len(self._entries(section)), stats.source_files_in_degree
+
+        few, small = listed_and_stat(3000)
+        every, large = listed_and_stat(60000)
+        assert 0 < few < every == count
+        assert 0 < small < large
+
+    def test_a_sketch_keeps_source_files_within_its_share(self, tmp_path: Path) -> None:
+        """End to end: forty files with module docstrings. Without
+        ``--with-source`` the listing's share is a quarter of what is left
+        of the budget, so it is under a quarter of the budget. Sized at 12
+        tokens an entry it was about three times that."""
+        text = "what this module is for, said at some length for the reader"
+        for i in range(40):
+            (tmp_path / f"mod_{i:02d}.py").write_text(
+                f'"""Module {i:02d}: {text}."""\n\n\ndef f{i}():\n    return {i}\n')
+        budget = 3000
+        sketch = generate_sketch(tmp_path, max_tokens=budget)
+        section = sketch.split("## Source Files\n", 1)[1].split("\n## ", 1)[0]
+        entries = self._entries(section)
+        # Reach: entries carry their docstring, and the listing was cut.
+        assert entries and all(" — Module " in entry for entry in entries)
+        assert len(entries) < 40
+        assert "more files" in section
+        assert len(section) // 4 <= budget // 4
+
+
 class TestFormatSourceFiles:
     """Tests for source file formatting."""
 
@@ -1501,7 +1616,7 @@ class TestFormatSourceFiles:
         assert "file_0.py" in result
         assert "file_1.py" in result
         assert "file_2.py" in result
-        assert "... and 7 more files" in result
+        assert result.splitlines()[-1] == "- ... and 7 more files: top level 7"
 
     def test_empty_files_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty file list."""
