@@ -246,7 +246,7 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped and generated_output_skipped, and vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape and generated_output_skipped a {dirs, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped, generated_output_skipped and vcs_ignored_skipped, and vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape, generated_output_skipped a {dirs, entries} shape and vcs_ignored_skipped a {paths, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
       "properties": {
         "installed_deps_skipped": {
           "type": "object",
@@ -333,6 +333,28 @@
                     "description": "Label of the rule whose evidence claimed it, e.g. Cargo build, MkDocs site, coverage report."
                   }
                 }
+              }
+            }
+          }
+        },
+        "vcs_ignored_skipped": {
+          "type": "object",
+          "description": "Files and directories left out because the repository's VCS ignores them and does not track them: local outputs, editor state, secrets files (ADR-0004 \u00a7\"Installed dependency source\" point 9). paths counts the entries the walk met (a pruned directory is one, whatever it holds); entries names them, a directory with a trailing slash, sorted and capped at 10. {paths: 0, entries: []} when nothing was left out, which is also the answer outside a git work tree.",
+          "required": [
+            "paths",
+            "entries"
+          ],
+          "properties": {
+            "paths": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "string",
+                "description": "Repo-relative path."
               }
             }
           }

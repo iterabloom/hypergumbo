@@ -12339,17 +12339,20 @@ def _compute_supply_chain_summary(
     derived_paths: list[str],
     installed_deps_skipped: Optional[Dict[str, Any]] = None,
     generated_output_skipped: Optional[Dict[str, Any]] = None,
+    vcs_ignored_skipped: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus the three exclusion-disclosure
+    Returns a dict with counts per tier plus the four exclusion-disclosure
     buckets and ``vendored_analysed`` (ADR-0004 point 3a: tier-3 vendored
     directories analysed but not summarised, WI-pasan):
     ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
     §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
-    ``{dirs, packages, entries}``, empty when nothing was skipped) and
+    ``{dirs, packages, entries}``, empty when nothing was skipped),
     ``generated_output_skipped`` (point 7 --
-    ``discovery.generated_output_summary``'s ``{dirs, entries}``). Tier-3
+    ``discovery.generated_output_summary``'s ``{dirs, entries}``) and
+    ``vcs_ignored_skipped`` (point 9 -- ``discovery.vcs_ignored_summary``'s
+    ``{paths, entries}``). Tier-3
     (external_dep) carries two sub-buckets counting its symbols by ``meta``
     provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
@@ -12405,6 +12408,9 @@ def _compute_supply_chain_summary(
     }
     summary["generated_output_skipped"] = generated_output_skipped or {
         "dirs": 0, "entries": [],
+    }
+    summary["vcs_ignored_skipped"] = vcs_ignored_skipped or {
+        "paths": 0, "entries": [],
     }
     # ADR-0004 point 3a (WI-pasan): committed vendored code was analysed but
     # left out of the summaries, so say which directories.
@@ -12878,9 +12884,10 @@ def run_survey(
     # own rglob() calls.
     from hypergumbo_core.discovery import (
         DEFAULT_EXCLUDES, FileIndex, format_generated_output_disclosure,
-        format_installed_deps_disclosure, generated_output_summary,
-        installed_deps_summary, resolve_trace_deps, set_active_trace_deps,
-        set_file_index, set_max_file_bytes,
+        format_installed_deps_disclosure, format_vcs_ignored_disclosure,
+        generated_output_summary, installed_deps_summary, resolve_trace_deps,
+        set_active_trace_deps, set_file_index, set_max_file_bytes,
+        vcs_ignored_summary,
     )
     # ADR-0057 §5 (WI-hukuf): the arbitration policy is a preference in the
     # ADR-0045 config tiers. Resolved BEFORE any analysis so a bad `[merge]`
@@ -12914,6 +12921,14 @@ def run_survey(
     _output_disclosure = format_generated_output_disclosure(generated_output_skipped)
     if _output_disclosure:
         print(_output_disclosure, file=sys.stderr)
+    # ADR-0004 point 9: files the VCS ignores and does not track are not
+    # part of what is described; name them, so a wrong exclusion is visible.
+    vcs_ignored_skipped = vcs_ignored_summary(
+        file_index.vcs_ignored_skipped, repo_root,
+    )
+    _ignored_disclosure = format_vcs_ignored_disclosure(vcs_ignored_skipped)
+    if _ignored_disclosure:
+        print(_ignored_disclosure, file=sys.stderr)
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
@@ -13356,6 +13371,7 @@ def run_survey(
         all_symbols, derived_paths=_find_derived_skipped(repo_root),
         installed_deps_skipped=installed_deps_skipped,
         generated_output_skipped=generated_output_skipped,
+        vcs_ignored_skipped=vcs_ignored_skipped,
     )
     _vendored_disclosure = format_vendored_disclosure(
         behavior_map["supply_chain_summary"]["vendored_analysed"],

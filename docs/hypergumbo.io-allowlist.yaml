@@ -478,7 +478,8 @@ modules:
       count: 1
       zone: repo_inspection
       target: git (rev-parse HEAD, rev-list --max-parents=0 HEAD, config --get remote.origin.url;
-        ls-tree HEAD for discovery's submodule and HEAD-tree checks; ls-files --error-unmatch and
+        ls-tree HEAD for discovery's submodule and HEAD-tree checks; check-ignore --no-index --stdin
+        for discovery's ignored-and-untracked rule; ls-files --error-unmatch and
         status --porcelain for an in-repo catalogue's committed / modified state)
       commands:
       - <analysis>

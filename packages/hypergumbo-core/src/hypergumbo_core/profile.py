@@ -96,7 +96,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from .discovery import find_files, under_content_rule_dir
+from .discovery import find_files, under_content_rule_dir, vcs_ignored
 
 if TYPE_CHECKING:
     from .ir import Edge, Symbol
@@ -1054,6 +1054,15 @@ def _in_non_project_dir(repo_root: Path, dir_parts: tuple[str, ...]) -> bool:
     return under_content_rule_dir(repo_root, dir_parts)
 
 
+def _project_glob(base: Path, pattern: str, repo_root: Path | None = None) -> list[Path]:
+    """``base.glob(pattern)``, less what the repository's VCS ignores and does
+    not track (ADR-0004 point 9). Every manifest this module finds by name or
+    glob comes through here or through :func:`_find_manifest_files`: a
+    manifest git ignores declares no framework for the project."""
+    root = base if repo_root is None else repo_root
+    return [p for p in base.glob(pattern) if not vcs_ignored(p, root)]
+
+
 def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> list[Path]:
     """Find manifest files recursively up to max_depth.
 
@@ -1072,14 +1081,14 @@ def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> 
 
     # Check root first
     root_file = repo_root / filename
-    if root_file.exists() and root_file.is_file():
+    if root_file.is_file() and not vcs_ignored(root_file, repo_root):
         found.append(root_file)
 
     # Search subdirectories up to max_depth
     # Use glob pattern that respects depth
     for depth in range(1, max_depth + 1):
         pattern = "/".join(["*"] * depth) + f"/{filename}"
-        for path in repo_root.glob(pattern):
+        for path in _project_glob(repo_root, pattern):
             if path.is_file():
                 # Skip common non-project directories
                 parts = path.relative_to(repo_root).parts
@@ -1336,7 +1345,7 @@ def _collect_pip_requirements_deps(repo_root: Path, max_depth: int = 3) -> set[s
     for pattern in ("requirements/*.txt", "requirements-*.txt"):
         for depth in range(max_depth + 1):
             glob_pattern = "/".join(["*"] * depth + [pattern]) if depth else pattern
-            for path in repo_root.glob(glob_pattern):
+            for path in _project_glob(repo_root, glob_pattern):
                 if not path.is_file():  # pragma: no cover - glob('*.txt') shouldn't return dirs
                     continue
                 parts = path.relative_to(repo_root).parts
@@ -2216,7 +2225,7 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     gradle_dir = repo_root / "gradle"
     if gradle_dir.is_dir():
         for aux_pattern in ("*.gradle", "*.gradle.kts"):
-            for aux_file in gradle_dir.glob(aux_pattern):
+            for aux_file in _project_glob(gradle_dir, aux_pattern, repo_root):
                 text = _read_manifest_text(aux_file)
                 if text:
                     deps |= _parse_gradle_deps(text)
@@ -2228,7 +2237,7 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     if gradle_dir.is_dir():
         aux_parts: list[str] = []
         for aux_pattern in ("*.gradle", "*.gradle.kts"):
-            for aux_file in gradle_dir.glob(aux_pattern):
+            for aux_file in _project_glob(gradle_dir, aux_pattern, repo_root):
                 aux_parts.append(_read_manifest_text(aux_file).lower())
         if aux_parts:
             marker_content = marker_content + "\n" + "\n".join(aux_parts)
@@ -2302,7 +2311,7 @@ def _detect_scala_frameworks(repo_root: Path) -> list[str]:
 
     project_dir = repo_root / "project"
     if project_dir.is_dir():
-        for child in project_dir.iterdir():
+        for child in _project_glob(project_dir, "*", repo_root):
             if child.is_file() and child.suffix in (".scala", ".sbt"):
                 text = _read_manifest_text(child)
                 if text:
@@ -2472,7 +2481,7 @@ def _detect_haskell_frameworks(repo_root: Path) -> list[str]:
 
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.cabal" if depth > 0 else "*.cabal"
-        for cabal_file in repo_root.glob(pat):
+        for cabal_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(cabal_file)
             if text:
                 deps |= _parse_cabal_deps(text)
@@ -2605,7 +2614,7 @@ def _detect_lua_frameworks(repo_root: Path) -> list[str]:
     deps: set[str] = set()
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.rockspec" if depth > 0 else "*.rockspec"
-        for rockspec_file in repo_root.glob(pat):
+        for rockspec_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(rockspec_file)
             if text:
                 deps |= _parse_rockspec_deps(text)
@@ -2692,7 +2701,7 @@ def _detect_cpp_frameworks(repo_root: Path) -> list[str]:
     deps |= _collect_parsed_deps(repo_root, "CMakeLists.txt", _parse_cmake_deps)
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
-        for pro_file in repo_root.glob(pat):
+        for pro_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(pro_file)
             if text:
                 deps |= _parse_qmake_deps(text)
@@ -2701,7 +2710,7 @@ def _detect_cpp_frameworks(repo_root: Path) -> list[str]:
     marker_content = _read_all_manifest_files(repo_root, "CMakeLists.txt")
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
-        for pro_file in repo_root.glob(pat):
+        for pro_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(pro_file)
             if text:
                 marker_content = marker_content + "\n" + text.lower()
@@ -2790,7 +2799,7 @@ def _detect_fsharp_frameworks(repo_root: Path) -> list[str]:
     deps: set[str] = set()
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.fsproj" if depth > 0 else "*.fsproj"
-        for fsproj_file in repo_root.glob(pat):
+        for fsproj_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(fsproj_file)
             if text:
                 deps |= _parse_msbuild_proj_deps(text)
@@ -2840,7 +2849,7 @@ def _detect_csharp_frameworks(repo_root: Path) -> list[str]:
     deps: set[str] = set()
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.csproj" if depth > 0 else "*.csproj"
-        for csproj_file in repo_root.glob(pat):
+        for csproj_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(csproj_file)
             if text:
                 deps |= _parse_msbuild_proj_deps(text)
@@ -2936,7 +2945,7 @@ def _detect_ocaml_frameworks(repo_root: Path) -> list[str]:
     deps = _collect_parsed_deps(repo_root, "dune-project", _parse_dune_project_deps)
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.opam" if depth > 0 else "*.opam"
-        for opam_file in repo_root.glob(pat):
+        for opam_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(opam_file)
             if text:
                 deps |= _parse_opam_deps(text)
@@ -2975,7 +2984,7 @@ def _detect_nim_frameworks(repo_root: Path) -> list[str]:
     deps: set[str] = set()
     for depth in range(4):
         pat = "/".join(["*"] * depth) + "/*.nimble" if depth > 0 else "*.nimble"
-        for nimble_file in repo_root.glob(pat):
+        for nimble_file in _project_glob(repo_root, pat):
             text = _read_manifest_text(nimble_file)
             if text:
                 deps |= _parse_nimble_deps(text)
