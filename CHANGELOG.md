@@ -115,6 +115,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch Entry Points lines locate entries that share a name**, and no longer repeat the name or path.
 - **Tiered and compact views compute `metrics` from their own selection**: real supply-chain tiers, repository figures under `metrics.repository`.
 - **Sketch Data Models and Key Symbols count each shown file's hidden entries under that file**, not as "other files".
+- **Sketch Source Files holds its budget share**: sized by entry cost; the closing line says what was left out.
 - **A budget-tier survey file fits its budget as written**, records the size it reached in `tier_tokens_used`, and no longer leaves budget unused while dropping nodes.
 
 #### Run reporting and graph integrity

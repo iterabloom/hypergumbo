@@ -1483,6 +1483,8 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 
 **A list cut by rank and grouped by file says whose entries it left out.** Data Models and Key Symbols rank their entries across the repository, cut, and then group what is left by file, so a file heading can show part of that file's entries. Under each file shown, a line counts the file's entries that are not shown (`... and N more in this file`; `(... +N more, top score: X)` in Key Symbols), and the section's last line counts only the entries of files that are not shown at all, with the number of those files. Bullets plus the file's line are the file's entries. A file's group is not kept whole when most of it made the cut: rank decides what is shown.
 
+**The Source Files listing is sized by its entries.** Entries (a path and the file's module docstring when it has one) are taken in rank order until the next would pass the section's share of the budget (ADR-0005), and never fewer than five; the count is not derived from a per-entry constant, so the section holds its share whether or not files carry docstrings. A cut listing ends with what it left out: the number of files, how many of them are tests, and the top-level directories that hold them.
+
 ### Additional Files selection
 
 The Additional Files section uses a README-first hybrid ranking algorithm:

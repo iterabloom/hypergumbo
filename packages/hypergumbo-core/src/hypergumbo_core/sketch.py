@@ -170,6 +170,7 @@ from .selection.filters import (
     production_edges as select_production_edges,
 )
 from .selection.token_budget import (
+    CHARS_PER_TOKEN,
     estimate_tokens,
     truncate_to_tokens,
 )
@@ -4492,13 +4493,93 @@ def _collect_source_files(
     return files
 
 
+#: A file listing shows at least this many entries, whatever its share.
+_MIN_LISTED_FILES = 5
+#: The line that ends a cut listing names at most this many directories.
+_LEFT_OUT_DIRS = 3
+
+
+def _source_file_entry(rel_path: str, docstring: str | None) -> str:
+    """One Source Files line: the path, and the module docstring when the
+    file has one (WI-kipod)."""
+    if docstring:
+        return f"- `{rel_path}` — {docstring}"
+    return f"- `{rel_path}`"
+
+
+def _listed_source_files(
+    repo_root: Path,
+    files: list[Path],
+    density_scores: dict[str, float] | None,
+    docstrings: dict[str, str],
+    max_files: int | None,
+    max_tokens: int | None,
+) -> tuple[list[Path], list[Path]]:
+    """Split ``files`` into the ones the listing shows and the ones it
+    leaves out, both in rank order.
+
+    With ``max_tokens`` the listing is sized by what its entries cost
+    (WI-borap): entries are taken in rank order until the next one would
+    pass the share, and never fewer than ``_MIN_LISTED_FILES``. The count
+    used to be the share divided by a constant 12 tokens per entry, set when
+    an entry was a bare path. An entry with its docstring costs about 32, so
+    the section took 2.6 times its share on a repository whose files carry
+    docstrings, and a little under its share on one whose files do not. A
+    measured size is right for both, in any language.
+
+    ``max_files`` is a plain count, for callers that have one.
+    """
+    if density_scores:
+        files = sorted(
+            files,
+            key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
+            reverse=True,
+        )
+    shown = len(files)
+    if max_tokens is not None:
+        room = max_tokens * CHARS_PER_TOKEN
+        for count, f in enumerate(files):
+            rel_path = str(f.relative_to(repo_root))
+            room -= len(_source_file_entry(rel_path, docstrings.get(rel_path))) + 1
+            if room < 0 and count >= _MIN_LISTED_FILES:
+                shown = count
+                break
+    if max_files is not None:
+        shown = min(shown, max_files)
+    return files[:shown], files[shown:]
+
+
+def _left_out_line(repo_root: Path, left_out: list[Path]) -> str:
+    """The line that ends a cut listing: how many files are not listed, how
+    many of them are tests, and which top-level directories hold them.
+
+    "... and 588 more files" told a reader the list was cut and nothing
+    about what the cut removed (WI-borap).
+    """
+    rel_paths = [str(f.relative_to(repo_root)) for f in left_out]
+    tests = sum(1 for rel_path in rel_paths if _is_test_path(rel_path))
+    by_dir = Counter(
+        f"`{rel_path.split('/', 1)[0]}/`" if "/" in rel_path else "top level"
+        for rel_path in rel_paths
+    )
+    named = sorted(by_dir.items(), key=lambda item: (-item[1], item[0]))
+    parts = [f"{where} {count}" for where, count in named[:_LEFT_OUT_DIRS]]
+    elsewhere = sum(count for _where, count in named[_LEFT_OUT_DIRS:])
+    if elsewhere:
+        parts.append(f"{elsewhere} elsewhere")
+    plural = "s" if len(rel_paths) != 1 else ""
+    of_tests = f" ({tests} of them tests)" if tests else ""
+    return f"- ... and {len(rel_paths)} more file{plural}{of_tests}: {', '.join(parts)}"
+
+
 def _format_source_files(
     repo_root: Path,
     files: list[Path],
-    max_files: int = 50,
+    max_files: int | None = 50,
     density_scores: dict[str, float] | None = None,
     exclude_tests: bool = False,
     docstrings: dict[str, str] | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Format source files as a Markdown section.
 
@@ -4510,32 +4591,24 @@ def _format_source_files(
     :func:`_file_docstrings` from the file-anchor Symbols) has an entry for
     a file, its module docstring is rendered after the path so the section
     reports what each file is for, not just a bare path list (WI-kipod).
+
+    The listing is cut to ``max_tokens`` of entries when given, else to
+    ``max_files`` entries (:func:`_listed_source_files`), and a cut listing
+    ends with what it left out (:func:`_left_out_line`).
     """
     if not files:
         return ""
 
     docstrings = docstrings or {}
-
-    # Sort by density if scores are provided
-    if density_scores:
-        files = sorted(
-            files,
-            key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
-            reverse=True,
-        )
+    shown, left_out = _listed_source_files(
+        repo_root, files, density_scores, docstrings, max_files, max_tokens)
 
     lines = [_section_header("Source Files", exclude_tests), ""]
-
-    for f in files[:max_files]:
-        rel_path = f.relative_to(repo_root)
-        docstring = docstrings.get(str(rel_path))
-        if docstring:
-            lines.append(f"- `{rel_path}` — {docstring}")
-        else:
-            lines.append(f"- `{rel_path}`")
-
-    if len(files) > max_files:
-        lines.append(f"- ... and {len(files) - max_files} more files")
+    for f in shown:
+        rel_path = str(f.relative_to(repo_root))
+        lines.append(_source_file_entry(rel_path, docstrings.get(rel_path)))
+    if left_out:
+        lines.append(_left_out_line(repo_root, left_out))
 
     return "\n".join(lines)
 
@@ -7152,15 +7225,17 @@ def _generate_sketch_impl(
         else:
             # Default mode, larger budgets: limit files to 25% for analysis
             budget_for_files = remaining_tokens // 4  # 25% at larger budgets
-        max_source_files = max(5, budget_for_files // tokens_per_file)
-
+        # The listing is sized by what its entries cost, not by a count
+        # derived from a per-entry constant (WI-borap).
+        file_docstrings = _file_docstrings(symbols, repo_root)
         source_section = _format_source_files(
             repo_root,
             source_files,
-            max_files=max_source_files,
+            max_files=None,
+            max_tokens=budget_for_files,
             density_scores=density_scores if density_scores else None,
             exclude_tests=exclude_tests,
-            docstrings=_file_docstrings(symbols, repo_root),
+            docstrings=file_docstrings,
         )
         if source_section:
             sections.append(source_section)
@@ -7168,16 +7243,12 @@ def _generate_sketch_impl(
             if stats_out is not None:
                 stats_out.has_source_files = True
                 if raw_in_degree:
-                    # Replicate sorting logic to determine which files were selected
-                    if density_scores:
-                        sorted_files = sorted(
-                            source_files,
-                            key=lambda f: density_scores.get(str(f.relative_to(repo_root)), 0.0),
-                            reverse=True,
-                        )
-                    else:  # pragma: no cover - defensive, density_scores usually exists
-                        sorted_files = source_files
-                    selected_files = {str(f) for f in sorted_files[:max_source_files]}
+                    # The files the listing shows, by the listing's own rule.
+                    listed, _left_out = _listed_source_files(
+                        repo_root, source_files,
+                        density_scores if density_scores else None,
+                        file_docstrings, None, budget_for_files)
+                    selected_files = {str(f) for f in listed}
                     # Sum in-degree for symbols in selected files
                     stats_out.source_files_in_degree = sum(
                         raw_in_degree.get(s.id, 0)

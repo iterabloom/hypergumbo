@@ -119,13 +119,21 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 | Structure | — | — | 10 root dirs | Tree expands until N root dirs shown |
 | Entry Points | ~25 | 5 | 20 | Shows CLI commands + HTTP routes |
 | Data Models | ~15 | 3 | 30 | ORM models, entities, grouped by file |
-| Source Files | ~15 | 5 | 50 | Paths only; shrinks with --with-source |
+| Source Files | measured | 5 | — | Path and module docstring; entries are taken until the share is used (below) |
 | Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
 | Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
 | Source Content | varies | 1 | — | Harmonic truncation (depth-over-breadth) |
 | Additional File Content | varies | 1 | — | Dynamic truncation with median floor |
 
 The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source Files Content uses harmonic truncation (top-ranked files get proportionally more space); Additional Files Content uses median-based truncation.
+
+### Source Files: Sized by Its Entries
+
+The Source Files listing is cut by what its entries cost. Entries are taken in rank order (importance density) until the next one would pass the section's share, and never fewer than five. An entry is a path and, when the file has one, its module docstring, so entries differ in size several-fold between repositories and languages; the count is therefore not derived from a per-entry constant. (It used to be the share divided by 12 tokens, a figure set when an entry was a bare path. An entry with a docstring costs about 32, and the section took 2.6 times its share on a repository whose files carry docstrings.)
+
+**Past the files worth naming one by one, the listing stops at its share and summarises.** There is no second cut-off by score: the share is what bounds the list, and a score threshold would need a value nobody has measured. The line that ends a cut listing says what was left out: how many files, how many of them are tests, and which top-level directories hold them (the three largest, then a count for the rest), as in `- ... and 588 more files (553 of them tests): `packages/` 540, `scripts/` 40, 8 elsewhere`.
+
+Additional Files still sizes its listing at 12 tokens an entry; its entries are bare paths, for which the figure is close.
 
 ### Structure: Tree Built from Important Files
 
