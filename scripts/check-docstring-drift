@@ -43,18 +43,20 @@ Four sub-checks are available:
    verified.
 
 2. **Tracker-ID cross-ref** (``--tracker-refs``). Extract ``WI-`` /
-   ``INV-`` / ``BUG-`` IDs from docstrings and inline comments,
-   cross-reference each against ``scripts/tracker --json show <ID>``
+   ``INV-`` / ``BUG-`` IDs from every source line (in practice they
+   sit in docstrings and comments), cross-reference each against ``scripts/tracker --json show <ID>``
    to learn its status. Flag references that frame done /
    satisfied / wont_do items as "deferred", "not yet", "future",
    "will land".
 
 3. **Phase-marker grep** (``--phase-markers``). Plain regex over
-   docstrings + comments for strings like ``Two-pass``,
+   every source line for strings like ``Two-pass``,
    ``Phase 2b``, ``Slice B``, ``not yet implemented``,
    ``deferred to``, ``arrives in``, ``will ship``, ``TODO`` /
-   ``FIXME`` / ``XXX``. Intersection with the closed-tracker-ID
-   set from check #2 is the highest-signal subset.
+   ``FIXME`` / ``XXX``. Hits that sit next to a closed tracker ID
+   from check #2 are the highest-signal subset; the script reports
+   the two lists separately and leaves that intersection to the
+   reviewer.
 
 4. **Registry cross-reference** (``--registry-refs``). The one
    sub-check that does not key on change. Checks #1-#3 read blame
@@ -84,8 +86,8 @@ the candidate pool the semantic step operates on.
 Exit codes
 ----------
 - 0: no candidates flagged
-- 1: co-change or tracker-ref candidates flagged (drift suspected,
-  review recommended). Phase-marker and registry hits are reported
+- 1: co-change candidates (flagged or pinned) or tracker-ref
+  candidates found (drift suspected, review recommended). Phase-marker and registry hits are reported
   but never set it.
 - 2: usage / configuration error
 
@@ -169,8 +171,9 @@ def default_scope(repo_root: str) -> tuple[str, ...]:
 
 TRACKER_ID_RE = re.compile(r"\b(WI|INV|BUG)-[a-z0-9]+(?:-[a-z]+){0,7}")
 
-# Phrases that frame work as still-pending; intersected with closed
-# tracker IDs in --phase-markers mode.  Case-insensitive.
+# Phrases that frame work as still-pending, reported by --phase-markers
+# (which does not itself intersect them with tracker status).
+# Case-insensitive.
 PHASE_MARKER_RE = re.compile(
     r"\b(Slice [A-Z]|Phase [0-9]\w*"
     r"|not yet (?:implemented|wired|shipped|ready|supported|invoked|hooked)"

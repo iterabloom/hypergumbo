@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Gate: every ``Edge.meta['receiver']`` value a producer writes is placed.
 
-WI-sibup. The magnet detector decides whether a call's target type was known
-from this one key. It used to read a hand-written subset of the values, and
-the subset did not grow with the vocabulary: C++'s ``declared_type``
-(WI-lamij) was never added, so ``Logger lg; lg.Close();`` read as an untyped
-call and finalize replaced a correct bind with an unresolved stub. A value
-missing from a subset is silent; a value missing from a partition that every
-value must be in fails here.
+The magnet detector decides whether a call's target type was known from this
+one key (WI-sibup). A hand-written subset of the values does not grow with the
+vocabulary: leave out a value such as C++'s ``declared_type`` and
+``Logger lg; lg.Close();`` reads as an untyped call, so finalize replaces a
+correct bind with an unresolved stub. A value missing from a subset is silent;
+a value missing from a partition that every value must be in fails here.
 
 AST-based for the reason ``test_skip_reason_code_declaration`` gives: docstrings
 quote ``meta["receiver"]="typed_field"`` and a grep would count them.

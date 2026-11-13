@@ -2,8 +2,8 @@
 """Bounded cache: evict LRU entries, but never carelessly (WI-sidin).
 
 The state hash is whole-tree, so every edit misses and mints a fresh entry
-(~200 MB for a large repo). Without eviction one repo's cache grows by gigabytes
-a day, and a size warning alone only hands the user a chore.
+(hundreds of MB for a large repo). Without eviction one repo's cache can grow by
+gigabytes a day, and a size warning alone only hands the user a chore.
 
 The counter-pressure, and it is the whole reason this file is long: eviction
 DELETES FILES FROM THE USER'S HOME DIRECTORY. That is not something to do
@@ -18,20 +18,20 @@ refuse to touch:
   * never without saying what it took
 
 SOFT DELETE, NOT ``rm``. Eviction zips the entry into a soft-delete folder and
-removes the original, so the act is reversible. A real ~211 MB entry
-compresses to 12.7 MB with deflate-6 in about 1s — 6% of the original, 16x —
-so reversibility costs almost nothing and the 1s sits inside a run that
-already takes minutes.
+removes the original, so the act is reversible. An entry is mostly JSON and
+deflates to a small fraction of its size in about a second, so reversibility
+costs almost nothing and the zip time sits inside a run that already takes
+minutes.
 
-TWO FOLDERS, because the two artifact classes are nothing alike. Across large
-real entries ``survey.json`` is ~99.6% of the bytes, while sketches, tier
-previews and handler slices together are ~0.4%. Keeping every sketch ever
+TWO FOLDERS, because the two artifact classes are nothing alike. In a large
+entry ``survey.json`` is nearly all of the bytes, while sketches, tier previews
+and handler slices together are a tiny fraction. Keeping every sketch ever
 evicted is nearly free; keeping every survey would reproduce the disk problem
 eviction exists to solve. So each folder carries its own cap.
 
 The archives are bounded too. Soft delete buys a window in which an eviction
 can be undone, not immortality — an archive nobody ever removes is still
-growth, just 16x slower.
+growth, just slower.
 
 The enabling invariant is that everything under the cache root is
 tool-generated and regenerable. Reclamation is admissible ONLY within that
@@ -477,7 +477,7 @@ def test_an_evicted_entry_is_recoverable_not_destroyed(monkeypatch, cache_dir):
 
 
 def test_surveys_and_sketches_go_to_separate_folders(monkeypatch, cache_dir):
-    """The 99.6% / 0.4% split is the reason the two folders exist.
+    """The survey/sketch size split is the reason the two folders exist.
 
     If both classes landed in one folder, a single cap would have to be sized
     for the surveys, and the cheap sketches would be evicted on the same
@@ -514,7 +514,7 @@ def test_surveys_and_sketches_go_to_separate_folders(monkeypatch, cache_dir):
 def test_the_archives_are_bounded_too(monkeypatch, cache_dir):
     """Soft delete buys a window, not immortality.
 
-    An archive nobody ever removes is still unbounded growth — just 16x
+    An archive nobody ever removes is still unbounded growth — just
     slower. Without this the feature would trade a disk problem for a slower
     disk problem and call it solved.
     """
@@ -537,7 +537,7 @@ def test_the_archives_are_bounded_too(monkeypatch, cache_dir):
 
 
 def test_the_two_archive_caps_are_independent(monkeypatch, cache_dir):
-    """Sketches are ~0.4% of the bytes, so they get their own, longer leash."""
+    """Sketches are a tiny fraction of the bytes, so they get their own, longer leash."""
     monkeypatch.setenv("HYPERGUMBO_CACHE_MAX_GB", "0")
     monkeypatch.setenv("HYPERGUMBO_SOFT_DELETE_SURVEYS_GB", str(400 / (1024 ** 3)))
     monkeypatch.delenv("HYPERGUMBO_SOFT_DELETE_SKETCHES_GB", raising=False)

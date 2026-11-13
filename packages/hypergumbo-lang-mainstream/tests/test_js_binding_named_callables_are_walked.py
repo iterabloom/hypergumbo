@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A JS callable named after its binding is walked by the DDG (WI-mufag).
 
-The JS/TS DDG walked ``function_declaration`` and ``method_definition`` only.
-Every other callable -- ``const handler = (req) => {...}``, ``obj.f = function
-(){}``, an anonymous callback -- is named by ``js_ts.py`` after its BINDING, and
-the DDG never walked it, so its findings fell to the ``structural`` arm. On
-dash.js, 3,981 of 7,592 callable symbols were never walked.
+Besides ``function_declaration`` and ``method_definition``, the JS/TS DDG
+walks every callable ``js_ts.py`` names after its BINDING -- ``const handler =
+(req) => {...}``, ``obj.f = function (){}``, an anonymous callback. In JS these
+are a large share of all callables, and an unwalked callable's findings fall to
+the ``structural`` arm.
 
-THE COST WAS FALSE POSITIVES, NOT ONLY LOST PRECISION. Measured on the shipped
-CLI before this change: a key read and only its LENGTH logged, then an unrelated
-``fetch(url)`` -- as a ``function`` declaration, CONFIRMED (the walk refutes
-it); the same body as an arrow, VIOLATED (structural/unavailable).
+THE COST IS FALSE POSITIVES, NOT ONLY LOST PRECISION. A key read and only its
+LENGTH logged, then an unrelated ``fetch(url)``: as a walked ``function``
+declaration it reads CONFIRMED (the walk refutes the flow); the same body as an
+unwalked arrow would read VIOLATED (structural/unavailable).
 
 ONE HOME FOR THE NAME. js_ts names these callables half a dozen ways
 (``handler``, ``_cb_<callee>``, ``_iife``, ...); re-deriving that in the DDG
@@ -81,6 +81,6 @@ def test_a_real_leak_is_confirmed_by_the_walk(
 def test_no_leak_is_no_finding_whatever_the_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str,
 ) -> None:
-    """THE ITEM'S FALSE POSITIVE: the arrow read VIOLATED, the declaration did not."""
+    """WI-mufag's false positive: the arrow must not read VIOLATED where the declaration does not."""
     verdict = _verdict(tmp_path, monkeypatch, _SHAPES[shape].format(body=_NO_LEAK))
     assert verdict["verdict"] == "confirmed", verdict["evidence"]

@@ -781,9 +781,9 @@ def test_run_behavior_map_gzip_and_no_sketch_fan_out_combine(tmp_path):
 
 
 def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
-    """synthetic:F1 behavioral closure: the two synthetic-node producers
-    (orchestrator file-symbol synthesis + boundary external_symbol synthesis)
-    emit a real AnalysisRun and stamp resolvable provenance on their nodes.
+    """The two synthetic-node producers (orchestrator file-symbol synthesis +
+    boundary external_symbol synthesis) emit a real AnalysisRun and stamp
+    resolvable provenance on their nodes (synthetic:F1).
 
     Every synthetic node must carry a non-empty ``origin`` (a
     synthesis-mechanism pass-id) and an ``origin_run_id`` that resolves to a
@@ -866,7 +866,7 @@ def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
 
 
 def test_synthesis_runs_are_recorded_when_they_mint_nothing(tmp_path):
-    """synthetic:F1's two synthesis passes, on a repo where neither mints a
+    """The two synthesis passes (synthetic:F1), on a repo where neither mints a
     node, are still recorded as AnalysisRuns with ``nodes_emitted == 0`` and
     a silence reason, so a consumer can tell "ran, found nothing" from
     "never ran" (WI-tivif)."""
@@ -889,10 +889,10 @@ def test_synthesis_runs_are_recorded_when_they_mint_nothing(tmp_path):
 
 
 def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
-    """WI-dagif (file-anchor:F1, node-bearing slice): a file with content nodes
-    but no imports/calls (hence no make_file_id edge) still gets a kind="file"
-    anchor at the orchestrator chokepoint, and the containment linker's
-    span-based pass roots its top-level members at it (rootful contains tree)."""
+    """A file with content nodes but no imports/calls (hence no make_file_id
+    edge) still gets a kind="file" anchor at the orchestrator chokepoint, and
+    the containment linker's span-based pass roots its top-level members at it
+    (rootful contains tree). (WI-dagif; file-anchor:F1, node-bearing slice)"""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # Class-only Java file: class + fields, NO imports/calls -> no make_file_id
@@ -921,10 +921,10 @@ def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
 
 
 def test_additional_file_candidate_anchored_and_subset_invariant_f1_f4(tmp_path):
-    """file-anchor:F1+F4: every Additional-File candidate (config/doc) gets a
-    kind="file" anchor even with NO content nodes (F1), and every
+    """Every Additional-File candidate (config/doc) gets a kind="file" anchor
+    even with NO content nodes (F1), and every
     additional_file_centrality_scores key is a real file-anchor node path —
-    the WI-rajod subset invariant (F4)."""
+    the WI-rajod subset invariant (F4). (F1/F4: file-anchor audit findings)"""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # `helper` is called twice -> in_degree 2 -> qualifies for mention centrality;
@@ -1070,9 +1070,9 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
         if ep.get("kind") == "cli_command"
         and (ep.get("meta") or {}).get("evidence_type") == "manifest_declared"
     ]
-    # This assertion has failed only in the full-suite CI container, never
-    # locally (INV-kazij), so a failure must carry its own diagnosis: it
-    # reports which link of the chain broke — (a) did the toml-config pass
+    # This assertion is environment-sensitive (it can fail in the CI
+    # container yet pass locally; history: INV-kazij), so a failure must
+    # carry its own diagnosis: it reports which link of the chain broke — (a) did the toml-config pass
     # run at all, (b) did it emit the script symbol and with which concepts,
     # (c) what entrypoints were derived.
     if not cli_eps:  # pragma: no cover — diagnostic path, exercised only on failure

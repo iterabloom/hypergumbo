@@ -22,9 +22,9 @@ A definition's name is read at any declarator depth by the C-family walk
 shared with c.py / cpp.py (``hypergumbo_core.analyze.c_family``): a function
 returning a pointer (``float **f()``), a member, qualified (``A::run``),
 operator or destructor leaf, and an explicit specialisation (named by its
-template) each get a symbol. Before WI-fohuh only a ``function_declarator``
-directly under the definition was read, so all of them got none and every
-call in them was dropped. A call's caller is the enclosing definition found
+template) each get a symbol. Reading only a ``function_declarator`` directly
+under the definition would give all of them none and drop every call in them
+(history: WI-fohuh). A call's caller is the enclosing definition found
 by POSITION (INV-midag), not by name. A call inside a definition with no
 honest name (``PFX(f)(args)``, a macro tree-sitter cannot expand) is drawn
 from the nearest enclosing definition that has a symbol, else the file
@@ -35,9 +35,9 @@ Each definition records its parameters, types included, in
 ``meta["parameters"]`` (``c_family_parameters``) and mints the ADR-0035
 producer stable_id over them with ``overload_arity.declared_arity_stable_id``,
 its qualified name carrying the enclosing namespaces and classes
-(``c_family_scope_chain``). Before WI-tusad CUDA computed no stable_id: the
-backstop floor key (kind, path, name) was all it had, so the overloads
-``f(int)`` / ``f(float)`` shared one key and both went null.
+(``c_family_scope_chain``). Without that stable_id only the backstop floor
+key (kind, path, name) would remain, which the overloads ``f(int)`` /
+``f(float)`` share, so both would go null (history: WI-tusad).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the CUDA-specific
@@ -128,8 +128,8 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
 
     The shared C-family walk (``c_family_declarator``, WI-fohuh): ``float *f()``
     and ``float **f()`` put the ``function_declarator`` under one or two
-    ``pointer_declarator`` s, and the reader that looked for it as a DIRECT child
-    gave every pointer-returning function no symbol. The leaf decides the name:
+    ``pointer_declarator`` s, so a reader that looks for it only as a DIRECT
+    child gives every pointer-returning function no symbol. The leaf decides the name:
     a plain, member (``field_identifier``) or qualified (``A::run``) identifier,
     an operator or destructor as written, and an explicit specialisation by its
     template's name. A macro-call-shaped declarator (``PFX(x)(args)``) and a
@@ -210,17 +210,14 @@ def _determine_function_kind(
 ) -> tuple[str, str | None]:
     """Determine the function kind based on CUDA attributes.
 
-    Returns a (canonical_kind, cuda_execution_space) pair per WI-vibaz's
-    ADR-0027 fold: every CUDA function is canonically a Python-style
-    ``function`` symbol; the GPU/CPU execution space lives on
-    ``Symbol.meta["cuda_execution_space"]``. The legacy bare kinds
-    ``kernel`` / ``device_function`` / ``host_device_function`` were
-    never in the canonical ``SYMBOL_KINDS`` registry, so the
-    pre-WI-vibaz YAML rules in ``language-conventions.yaml`` (keyed on
-    ``^global$`` / ``^device$`` / ``^host$``) silently no-op'd against
-    the producer output. After the fold, those rules switch to
-    ``^function$`` + ``meta_match: {cuda_execution_space: ...}`` and
-    actually match.
+    Returns a (canonical_kind, cuda_execution_space) pair per the ADR-0027
+    fold: every CUDA function is canonically a Python-style ``function``
+    symbol; the GPU/CPU execution space lives on
+    ``Symbol.meta["cuda_execution_space"]``. Bare kinds such as ``kernel`` /
+    ``device_function`` / ``host_device_function`` are not in the canonical
+    ``SYMBOL_KINDS`` registry. The CUDA rules in ``language-conventions.yaml``
+    match ``^function$`` plus ``meta_match: {cuda_execution_space: ...}``, so
+    they depend on this pair (history: WI-vibaz).
     """
     if is_global:
         return "function", "global"
@@ -257,12 +254,12 @@ def _extract_cuda_symbols(
             func_name = _get_function_name(node, source)
             if func_name:
                 is_global, is_device, is_host = _get_cuda_attributes(node)
-                # WI-vibaz: canonical fold — every CUDA function is
-                # kind="function"; GPU/CPU execution space lives on
-                # meta["cuda_execution_space"]. WI-lusoh: the id's kind slot
-                # is that kind too. It carried the space (`:global`, ...),
-                # which id-format:F3's round-trip flags. Path, span and name
-                # already make one definition's id unique.
+                # Canonical fold — every CUDA function is kind="function";
+                # GPU/CPU execution space lives on meta["cuda_execution_space"]
+                # (history: WI-vibaz). The id's kind slot is that kind too: a
+                # space there (`:global`, ...) fails id-format:F3's round-trip
+                # check, and path, span and name already make one
+                # definition's id unique (history: WI-lusoh).
                 kind, exec_space = _determine_function_kind(is_global, is_device, is_host)
                 symbol_id = make_symbol_id(
                     "cuda",
@@ -284,10 +281,10 @@ def _extract_cuda_symbols(
                         # consumers; no in-tree code reads it (launch edges
                         # are detected from the call-site syntax instead).
                         meta["is_kernel"] = True
-                # WI-tusad: the parameters (with their types) are the arity
-                # fact's home and the identity input that tells overloads
-                # apart: f(int) / f(float) rode the floor key and nulled each
-                # other.
+                # The parameters (with their types) are the arity fact's
+                # home and the identity input that tells overloads apart:
+                # without them f(int) / f(float) would share the floor key
+                # and null each other (history: WI-tusad).
                 param_list = c_family_parameter_list(node)
                 if param_list is not None:
                     meta[PARAMETERS_KEY] = c_family_parameters(param_list, source)
@@ -341,8 +338,8 @@ def _extract_cuda_edges(
 
     Uses NameResolver for callee resolution to enable cross-file symbol lookup.
     The caller is the enclosing ``function_definition``'s symbol, found by its
-    POSITION in ``file_symbols`` (INV-midag): the name-keyed lookup this replaced
-    drew every call in one of two same-named definitions (an ``#ifdef`` pair, a
+    POSITION in ``file_symbols`` (INV-midag): a name-keyed lookup would draw
+    every call in one of two same-named definitions (an ``#ifdef`` pair, a
     method name in two structs) from the other. A call inside a definition with
     no symbol -- one named by a macro tree-sitter cannot expand -- is drawn from
     the nearest enclosing definition that has one, else the file anchor, and
@@ -383,7 +380,7 @@ def _extract_cuda_edges(
             if func_node and caller:
                 called_name = node_text(func_node, source)
                 # ADR-0023 fold: a CUDA kernel launch IS a call; the launch
-                # mechanism moves to meta['mechanism']='kernel_launch' (set on
+                # mechanism lives in meta['mechanism']='kernel_launch' (set on
                 # the is_kernel_launch branch below) rather than the edge_type.
                 # Spelled as a literal so the call-anchor gate enumerates this
                 # module (test_call_anchor_gate_common::_CALLS).

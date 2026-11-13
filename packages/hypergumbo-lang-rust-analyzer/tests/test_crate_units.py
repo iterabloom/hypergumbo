@@ -3,10 +3,11 @@
 
 rust-analyzer names the cargo package, not the crate target, in a moniker,
 so aardvark-dns's ``build.rs``, ``src/lib.rs`` and ``src/main.rs`` all define
-``crate/``. Before this change the translator's flat map kept ``src/lib.rs``:
-4 edges of ``src/main.rs`` (line 6's ``use aardvark_dns::commands::{run,
-version};``, line 90's ``mod test;``) and 3 of ``src/test/test.rs`` (a bin
-module) were credited to the lib crate.
+``crate/``. A flat moniker-to-record map would keep one of them and credit the
+others' code to it. On the recorded index, the references in ``src/main.rs``
+(line 6's ``use aardvark_dns::commands::{run, version};``, line 90's
+``mod test;``) and in ``src/test/test.rs`` (a bin module) belong to the bin
+crate, not the lib crate.
 """
 
 from __future__ import annotations

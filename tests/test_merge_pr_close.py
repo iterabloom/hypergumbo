@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the ``merge-pr close`` subcommand (WI-vonis).
 
-The close subcommand adds a sanctioned path to close a PR without
-merging it, filling a coverage gap in the CI-interaction policy (see
-``AGENTS.md`` §"CI Interaction Policy"). Before this, agents had to
-either ask a human to click a button on the forge UI or violate the
-policy by sourcing ``lib/forgejo-api.sh`` inline.
+The close subcommand is the sanctioned path to close a PR without
+merging it under the CI-interaction policy (see ``AGENTS.md`` §"CI
+Interaction Policy"); without it, an agent could only ask a human to use
+the forge UI or violate the policy by sourcing ``lib/forgejo-api.sh``
+inline.
 
 Strategy
 --------
@@ -405,13 +405,13 @@ class TestMergePrClose:
 class TestStubMirrorsTheRealLibrary:
     """The stub replaces the WHOLE library, so it can silently fall behind it.
 
-    WHY THIS EXISTS. ``merge-pr``'s close path was migrated to the C9 credential
-    helper (``resolve_forge_token``); the stub did not have that function, so
-    bash exited 127 and FIVE tests failed with messages about PATCH bodies and
-    return codes that said nothing about the real cause. A stub that mirrors a
-    library by hand is the same "N places that should share one rule" shape this
-    project keeps meeting — this asserts the mirror covers what the script
-    actually calls, so the next migration fails HERE with a readable message.
+    WHY THIS EXISTS. When ``merge-pr`` calls a library function the stub lacks
+    (e.g. the C9 credential helper ``resolve_forge_token``), bash exits 127
+    inside whichever tests reach it, and they fail with messages about PATCH
+    bodies and return codes that say nothing about the real cause. A stub that
+    mirrors a library by hand is the "N places that should share one rule"
+    shape — this asserts the mirror covers what the script actually calls, so
+    the next migration fails HERE with a readable message.
     """
 
     @staticmethod

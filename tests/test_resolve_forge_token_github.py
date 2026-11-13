@@ -1,16 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tier-B tests for ``resolve_forge_token``'s GitHub token source (PR-C2).
+"""Tier-B tests for ``resolve_forge_token``'s GitHub token source.
 
-PR-C landed ``resolve_forge_token`` but not github-aware: for the
-github backend it fell through to ``FORGEJO_TOKEN``, which won't authenticate
-against GitHub. PR-C2 closes that: github reads a dedicated local PAT
-(``HG_GITHUB_TOKEN``, provisioned/documented in PR-D), falling back to
-``FORGEJO_TOKEN`` so an unset env stays dormant-safe. Forgejo path stays
-byte-identical.
-
-WI-hajif removed the third arm: under the retired CI failover the self-hosted
-Forgejo token used to take precedence over both. There is no failover any more,
-so that precedence — and its test — are gone.
+``FORGEJO_TOKEN`` does not authenticate against GitHub, so for the github
+backend ``resolve_forge_token`` reads a dedicated local PAT
+(``HG_GITHUB_TOKEN``), falling back to ``FORGEJO_TOKEN`` only so an unset env
+degrades instead of erroring. The Forgejo backend uses ``FORGEJO_TOKEN``.
+There are exactly these two sources; no third (self-hosted failover) token
+takes precedence (history: WI-hajif).
 """
 
 # covers: scripts/lib/forgejo-api.sh

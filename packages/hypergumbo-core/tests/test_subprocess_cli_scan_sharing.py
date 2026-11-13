@@ -1,22 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The subprocess-CLI linker walks every python file ONCE per run, not four times.
 
-WHAT WAS HAPPENING. ``_scan_argparse_commands`` and ``_scan_fire_commands`` each
-did their own ``for file_path in _find_python_files(root): ... ast.parse(...)``
-over the SAME file set — and each is called from two places: the linker proper
-(which needs the resolved commands) and ``_count_cli_command_symbols`` (a
-requirement-check diagnostic that only wants a COUNT). Four full parse-and-walk
-passes over every python file per survey, two of them purely to produce a number.
-
-Measured on this monorepo before the change (scripts/measure-parse-redundancy.py,
-per-call-site attribution):
-
-    subprocess_cli.py:532   2244 calls   7.6s   3.8s of it re-parsing
-    subprocess_cli.py:629   2244 calls   8.4s   8.4s of it re-parsing
-
-2244 = 2 x 1122 python files, i.e. each scan running twice. The file-walking half
-of both scans is a pure function of the files on disk — it is only the RESOLUTION
-half that depends on the symbol table — so one walk can serve all four callers.
+``_scan_argparse_commands`` and ``_scan_fire_commands`` walk the SAME python
+file set, and each is called from two places: the linker proper (which needs
+the resolved commands) and ``_count_cli_command_symbols`` (a requirement-check
+diagnostic that only wants a COUNT). Separate walks would mean four full
+parse-and-walk passes over every python file per survey, two of them purely to
+produce a number. The file-walking half of both scans is a pure function of the
+files on disk — only the RESOLUTION half depends on the symbol table — so one
+walk serves all four callers.
 
 WHY THESE TESTS AND NOT JUST THE EQUIVALENCE ONES. A shared/memoized scan has
 exactly one dangerous failure mode, and it is the one WI-madut names for its much
@@ -26,8 +18,8 @@ facts from a tree that no longer exists, and nothing in the output says so.
 the equivalence tests would all pass against a cache that never invalidates.
 
 ``test_walks_each_file_once_across_both_scans`` is the other half: without it, a
-"fix" that kept the four walks and merely returned the same answers would satisfy
-every correctness test in this file while saving nothing.
+change back to four walks that returned the same answers would satisfy every
+correctness test in this file while costing the redundant parses again.
 """
 from __future__ import annotations
 
@@ -160,7 +152,7 @@ def test_the_two_scans_do_not_contaminate_each_other(tmp_path: Path) -> None:
     assert set(fire_commands) == {"deploy"}
 
 
-# --- the point of the change ------------------------------------------------
+# --- one walk serves every caller ------------------------------------------
 
 
 def test_walks_each_file_once_across_both_scans(
@@ -168,9 +160,9 @@ def test_walks_each_file_once_across_both_scans(
 ) -> None:
     """Both scans, called twice each, must parse each file exactly once.
 
-    Four calls x 2 python files used to mean 8 parses. Without this assertion a
-    change that preserved every answer while keeping all four walks would look
-    like a success and save nothing.
+    Separate walks would mean four calls x 2 python files = 8 parses. Without
+    this assertion a change that preserved every answer while restoring all
+    four walks would go unnoticed.
     """
     _project(tmp_path)
     symbols = [_handler_symbol(), _class_symbol(), _method_symbol()]
@@ -235,12 +227,11 @@ def test_a_new_file_is_picked_up(tmp_path: Path) -> None:
 def test_fire_target_assigned_to_a_variable_is_still_found(tmp_path: Path) -> None:
     """``cli = fire.Fire(Service)`` must still register its target.
 
-    REGRESSION GUARD for the merge itself. The fire probe originally ran over
-    every ``ast.Call`` node; the argparse probe runs over an if/elif where a Call
-    that is an Assign's VALUE takes the first branch. Folding the fire probe into
-    that elif — the obvious way to merge two loops — silently stops matching this
-    shape, and no other test in the suite uses it. Found while writing the merge,
-    not after.
+    The fire probe must see every ``ast.Call`` node. The argparse probe runs
+    over an if/elif where a Call that is an Assign's VALUE takes the first
+    branch, so folding the fire probe into that elif — the obvious way to share
+    one loop — silently stops matching this shape, and no other test in the
+    suite uses it.
     """
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
     src = tmp_path / "myapp"

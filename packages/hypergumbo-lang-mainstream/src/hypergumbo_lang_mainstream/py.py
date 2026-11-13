@@ -45,8 +45,8 @@ Analysis proceeds in two passes for cross-file resolution:
 - Resolve callees using local symbols first, then imports. Methods sit in the
   local table under their QUALIFIED name (``Class.method``) only: a bare-name
   call cannot reach a method (a class body is not an enclosing scope), and a
-  bare key bound ``open(...)`` / ``list(...)`` to same-named methods and
-  overwrote same-named module functions (WI-barip)
+  bare key would bind ``open(...)`` / ``list(...)`` to same-named methods and
+  overwrite same-named module functions (WI-barip)
 - Detect ``self.method()`` calls from the OWN body of the class ``self``
   denotes, found by POSITION per code block -- the innermost frame binding
   ``self`` must be a non-static method (``_self_receiver_class_id`` over
@@ -744,9 +744,11 @@ def _derive_external_constructor_types() -> dict[str, str]:
     A leaf name claimed by two distinct types is WITHHELD rather than resolved to
     whichever the iteration reached first — a silently mis-typed receiver mints a
     boundary and a taint sink for the wrong module, which is the fabricated-finding
-    direction. There are no such collisions today; the guard is here so that adding
-    a colliding type to the YAML degrades to "unreachable" (safe) instead of
-    "attributed to its namesake" (a false positive nobody would look for).
+    direction. ``csv.DictWriter`` and ``defusedcsv.csv.DictWriter`` collide on
+    ``DictWriter``, so a bare ``DictWriter(...)`` stays untyped while both dotted
+    forms resolve. A colliding type added to the YAML degrades the same way, to
+    "unreachable" (safe) instead of "attributed to its namesake" (a false positive
+    nobody would look for).
     """
     from hypergumbo_core.io_boundary import load_catalog
 
@@ -827,17 +829,15 @@ PY_BUILTIN_CALLABLES: frozenset[str] = frozenset(
 #: analyzer puts in a symbol id's module slot. ``__truediv__`` carries the ``/``
 #: operator under Python's own name for it, so an operator needs no separate vocabulary.
 #:
-#: DEFAULT-DENY, AND THAT IS MEASURED RATHER THAN CAUTIOUS. Most members of a typed
-#: receiver do not return that type: ``read_text`` → ``str``, ``stat`` →
-#: ``os.stat_result``, ``exists`` → ``bool``, ``open`` → a file object,
-#: ``glob``/``iterdir`` → iterators, ``name``/``stem``/``suffix``/``as_posix`` → ``str``.
-#: Propagating by default scores 25.9% precision on adversarial fixtures (7 of 27 added
-#: boundaries correct) and mints 16 false taint sinks including 2 ``database`` and 2
-#: ``network``; across 8 Python repos 1,955 of 2,296 (85.1%) hop≥1 propagations are
-#: provably wrong or unverifiable, 20 of the 21 provably-wrong ones being a Path→``str``
-#: transition. This allowlist scores 85.7% on the same fixtures and costs 3 boundaries out
-#: of 427 (0.7%). Enumerating the PERMITTING case is also the standing default-deny rule:
-#: a table of blockers fails open the moment the stdlib grows a member.
+#: DEFAULT-DENY. Most members of a typed receiver do not return that type:
+#: ``read_text`` → ``str``, ``stat`` → ``os.stat_result``, ``exists`` → ``bool``,
+#: ``open`` → a file object, ``glob``/``iterdir`` → iterators,
+#: ``name``/``stem``/``suffix``/``as_posix`` → ``str``. Propagating by default keeps
+#: the receiver's type across such a member (a ``Path`` carried onto a ``str``), which
+#: mints false boundaries and false taint sinks, ``database`` and ``network`` ones
+#: included; most propagations past the first hop are wrong or unverifiable. Enumerating
+#: the PERMITTING case is also the standing default-deny rule: a table of blockers
+#: fails open the moment the stdlib grows a member.
 #:
 #: KEYED BY EXACT TYPE STRING, looked up with ``dict``/``in`` and never through
 #: :func:`io_boundary._module_matches`. That predicate is permissive by design — it accepts
@@ -915,8 +915,8 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 #     a local bound from a manager or a constructor, an annotated parameter
 #     (WI-gamas).
 #   * ``super().save()`` / ``super().delete()`` inside an override is typed,
-#     and on a real Django project that is where the write actually lands:
-#     most typed ``save`` calls reach a project override, and the override
+#     because that is where the write lands when a model overrides ``save``:
+#     a typed ``save`` call resolves to the project override, and the override
 #     calls ``super().save()`` (WI-sihoh). It puts a taint SINK inside a model method, which is sound
 #     only because the ADR-0017 walk does not reach a method from a function
 #     that merely MENTIONS its class by crossing a ``dispatches_to`` edge
@@ -939,13 +939,13 @@ DJANGO_ORM_MANAGER_METHODS = frozenset({
     "get_or_create", "update_or_create",
 })
 DJANGO_ORM_INSTANCE_WRITE_METHODS = frozenset({"save", "delete"})
-# WI-gulaz (INV-mumov candidate 2): the RelatedManager's OWN write surface --
+# The RelatedManager's OWN write surface --
 # ``order.items.add(item)`` / ``.remove(item)`` / ``.clear()`` / ``.set([...])``
 # on a reverse-FK or many-to-many manager. Not a Manager method: ``.objects``
 # has no ``add``, so the set is recognised only at a root the relation index
 # owns (``_DjangoReceiverOracle.manager_root`` == ``"related"``). Rowed
 # ``db_write`` in the overlay; a parity test pins the two so a hand-restated
-# set cannot drift.
+# set cannot drift (WI-gulaz, INV-mumov).
 DJANGO_RELATED_MANAGER_WRITE_METHODS = frozenset({"add", "remove", "clear", "set"})
 # The manager members that return ONE MODEL INSTANCE -- the binding site of
 # ``x = Order.objects.get(...)`` / ``x = order.payments.create(...)``. They
@@ -965,7 +965,7 @@ DJANGO_ORM_INSTANCE_TUPLE_METHODS = frozenset({"get_or_create", "update_or_creat
 # the target; ``fk`` and ``m2m`` declare a manager on the target under
 # ``related_name`` (or Django's default ``<model>_set``); ``m2m`` is a manager
 # on the declaring side too. An ``o2o`` reverse accessor is an INSTANCE, not a
-# manager, and is deliberately not registered here (filed).
+# manager, and is deliberately not registered here.
 DJANGO_RELATION_CONSTRUCTORS: dict[str, str] = {
     "ForeignKey": "fk", "OneToOneField": "o2o", "ManyToManyField": "m2m",
 }
@@ -998,7 +998,7 @@ DJANGO_ORM_EVALUATING_BUILTINS = frozenset({
 DJANGO_MODEL_BASES = frozenset({"models.Model", "django.db.models.Model"})
 
 # Django URL pattern functions (call-based routing)
-# These emit UsageContext records for YAML pattern matching (v1.1.x)
+# These emit UsageContext records for YAML pattern matching
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
 # Flask/FastAPI call-based URL routing functions.
@@ -2446,17 +2446,17 @@ class FileAnalysis:
     # anchors a class-body call on the class that lexically holds it. A name
     # lookup cannot: every Django model's ``Meta`` shares one name.
     class_symbol_by_node_id: dict[int, "Symbol"] = field(default_factory=dict)
-    # identity:F1/F4a: maps every function/method Symbol.id to its NEAREST
+    # Maps every function/method Symbol.id to its NEAREST
     # enclosing FUNCTION Symbol.id (ClassDef ancestors are passed through).
     # Materializes the lexical scope chain for _build_scope_stack; unlike
     # nested_by_parent_id it records methods AS CHILDREN (a method's enclosing
     # function is a real scope) though never as a nested-scope VALUE.
     enclosing_func_id: dict[str, str] = field(default_factory=dict)
-    # identity:F1/F4a: maps a function/method Symbol.id to the set of names it
+    # Maps a function/method Symbol.id to the set of names it
     # binds locally (params/assignments/imports/global, minus nonlocal) — the
     # LEGB "L" shadow set consulted by ScopeStack.lookup_enclosing.
     local_names_by_func_id: dict[str, frozenset[str]] = field(default_factory=dict)
-    # WI-supat (D3): AUTHORITATIVE method Symbol.id -> enclosing class Symbol.id.
+    # WI-supat: AUTHORITATIVE method Symbol.id -> enclosing class Symbol.id.
     # Built where both symbols are lexically in hand, so it is immune to the
     # bare-name last-write-wins clobber a symbol_by_name lookup would suffer on
     # same-short-name / nested classes. Lets the Site-1 / Site-3 producers stamp a
@@ -2779,11 +2779,12 @@ def _extract_import_edges(
     For 'from X import Y', links to the resolved symbol if known, else to module.
     For 'import X', links to the module.
 
-    supply:F4 (INV-nuzas): when an import names an in-tree MODULE rather than a
+    When an import names an in-tree MODULE rather than a
     resolvable symbol, the edge dst is the module's first-party file-anchor node
     (looked up in ``module_to_file_id``) instead of a dangling ExternalRef that
     would collapse to a phantom ``external_symbol`` boundary node. Genuine
-    third-party modules are absent from the map, so they keep their ExternalRef.
+    third-party modules are absent from the map, so they keep their ExternalRef
+    (INV-nuzas).
 
     Args:
         tree: The parsed AST
@@ -2827,7 +2828,7 @@ def _extract_import_edges(
                         dst_ref = None
                     elif (
                         in_repo_fid := (
-                            # supply:F4 — `from PKG import SUBMOD` where SUBMOD is
+                            # `from PKG import SUBMOD` where SUBMOD is
                             # an in-tree submodule (not a symbol), or `from MOD
                             # import X` where MOD is in-tree but X was not pinned
                             # as a symbol. Resolve to the in-tree file node so the
@@ -2869,7 +2870,7 @@ def _extract_import_edges(
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 module_name = alias.name
-                # supply:F4 — `import pkg.sub.mod` of an in-tree module resolves
+                # `import pkg.sub.mod` of an in-tree module resolves
                 # to its first-party file-anchor node; otherwise it stays an
                 # external module reference.
                 # INV-tugim: or a module beside the importer, reached through
@@ -2910,8 +2911,8 @@ def _resolve_base_class(
 ) -> Symbol | None:
     """Resolve a base class name to a specific Symbol, disambiguating collisions.
 
-    When multiple classes share the same name (e.g., 238 classes named 'Model'
-    in Django), uses a priority cascade:
+    When multiple classes share the same name (e.g., the many test classes
+    named 'Model' in Django), uses a priority cascade:
 
     1. Same-file match: base class defined in the same file as the child
     2. Import match: child's file imports match a candidate's module path
@@ -2971,12 +2972,11 @@ def _base_module_is_in_tree(
     in-tree module.
 
     Mirrors the import-edge resolver's in-tree test (``_extract_import_edges``),
-    but tolerates the module-name-form difference between the two import maps:
-    ``analysis.imports`` stores a *repo-root-relative* dotted path for RELATIVE
-    imports (``_collect_module_constants`` line ~1035), whereas
-    ``module_to_file_id`` keys are *source-root-relative* (``_module_name_from_path``).
-    The former is a suffix superset of the latter, so a suffix match catches a
-    relative-imported in-tree base whose form otherwise would not equal any key.
+    but also accepts a module path that carries extra LEADING segments beyond the
+    key form: ``module_to_file_id`` keys are source-root-relative
+    (``_module_name_from_path``), so a path spelled with a prefix above the source
+    root (``src.pkg.mod`` against the key ``pkg.mod``) matches through one of its
+    dotted suffixes.
 
     Biases to True on any suffix hit by design: a false positive merely DROPS an
     external ``extends`` edge (a small recall loss), whereas a false negative
@@ -3040,8 +3040,8 @@ def _import_target_in_tree(
 
     1. :func:`_base_module_is_in_tree` on the full module path -- the guard the
        from-imported external base also uses (exact key, ``module.name``
-       key, or a suffix of the module path, for the repo-root-relative form of
-       a relative import).
+       key, or a dotted suffix of the module path, for a path spelled with a
+       prefix above the source root).
     2. A dotted prefix of the module path (the full path included) is exactly
        an in-tree key. An import need not name a module: ``from pkg.ser import
        OrderSerializer`` + ``class Meta(OrderSerializer.Meta)`` qualifies to
@@ -3125,8 +3125,8 @@ def _extract_inheritance_edges(
     the type hierarchy honest ("what is this a subclass of" does not answer
     "nothing" for a class whose bases are all external).
 
-    When multiple classes share the same name (common in large repos like Django
-    where 238 test stubs are named 'Model'), uses import-aware disambiguation
+    When multiple classes share the same name (common in large repos like Django,
+    where many test stubs are named 'Model'), uses import-aware disambiguation
     via ``_resolve_base_class()`` to find the correct target.
 
     A base named THROUGH AN IMPORT (bare ``TestCase`` from ``from unittest
@@ -3368,9 +3368,9 @@ def _extract_file_analysis(
     # docstring — the orchestrator
     # file-symbol synthesizer is language-agnostic — so the file node is
     # emitted whenever the module has executable code OR a docstring. Per
-    # the INV-hojus dedup above, broadening the condition only changes WHICH
-    # producer emits the single file node (py.py vs the synthesizer); it
-    # never doubles it.
+    # the INV-hojus dedup above, this condition only decides WHICH producer
+    # emits the single file node (py.py vs the synthesizer); it never
+    # doubles it.
     _module_docstring = ast.get_docstring(tree)
     _module_docstring_line = (
         _module_docstring.split("\n")[0].strip()[:80] if _module_docstring else None
@@ -3433,7 +3433,7 @@ def _extract_file_analysis(
         for _c in ast.iter_child_nodes(_p):
             parent_map[id(_c)] = _p
     func_symbol_by_node_id: dict[int, Symbol] = {}
-    # WI-supat (D3): authoritative method Symbol.id -> enclosing class Symbol.id,
+    # WI-supat: authoritative method Symbol.id -> enclosing class Symbol.id,
     # populated at method creation where both symbols are lexically in hand.
     method_to_enclosing_class_id: dict[str, str] = {}
     # WI-kutal: class Symbol.id -> {short name -> Symbol} for the ``def`` and
@@ -3563,7 +3563,7 @@ def _extract_file_analysis(
                     node.name, symbol,
                 )
 
-            # WI-jusus (emission-parity F5): emit kind="field" Symbols for CLASS
+            # WI-jusus: emit kind="field" Symbols for CLASS
             # ATTRIBUTES — class-body Assign / AnnAssign with Name targets (incl.
             # dataclass fields `x: int` and bare annotations). Instance
             # attributes (`self.x = ...` inside methods) are NOT class-body
@@ -3758,7 +3758,7 @@ def _extract_file_analysis(
                     # so same-short-name sibling methods (to_dict, __init__, ...)
                     # each own their own call lines instead of each other's.
                     func_symbol_by_node_id[id(item)] = method_symbol
-                    # WI-supat (D3): record the AUTHORITATIVE method->enclosing
+                    # WI-supat: record the AUTHORITATIVE method->enclosing
                     # class link. ``symbol`` is the ClassDef's own class Symbol
                     # (this loop iterates that class's body), so this is exact for
                     # nested / same-short-name classes where a bare-name
@@ -3778,11 +3778,10 @@ def _extract_file_analysis(
                 continue
 
             # INV-mofav: every FunctionDef / AsyncFunctionDef is emitted as a
-            # Symbol, at any nesting depth. Top-level and nested-with-decorator
-            # cases are unchanged in name (`node.name`). Nested-undecorated
-            # cases use a qualified name `outer.inner` (recursively
-            # `outermost.middle.inner`) to disambiguate same-named nested
-            # functions in different parents.
+            # Symbol, at any nesting depth. A top-level function is named
+            # `node.name`; a nested one, decorated or not, takes the qualified
+            # name `outer.inner` (recursively `outermost.middle.inner`) to
+            # disambiguate same-named nested functions in different parents.
             is_top_level = node.col_offset == 0
             func_chain = _enclosing_function_chain(node)
             is_nested = bool(func_chain)
@@ -3811,7 +3810,7 @@ def _extract_file_analysis(
                 )
 
                 # Build rich metadata for function (ADR-3aaa)
-                # Route detection moved to FRAMEWORK_PATTERNS phase
+                # (route detection happens in the FRAMEWORK_PATTERNS phase, not here)
                 func_meta: dict[str, object] = {}
 
                 # Extract decorators with arguments
@@ -3900,7 +3899,7 @@ def _extract_file_analysis(
                     symbol_by_name[node.name] = symbol
                 func_symbol_by_node_id[id(node)] = symbol
 
-    # Extract usage contexts for call-based frameworks (v1.1.x).
+    # Extract usage contexts for call-based frameworks.
     # UsageContext records feed into YAML-driven enrichment (concept tagging on
     # handler symbols). Route symbols are derived from the same contexts for the
     # route_handler linker, which needs route-marker symbols to create
@@ -4039,7 +4038,7 @@ def _extract_file_analysis(
     # function Symbol whose AST node has an enclosing FunctionDef ancestor,
     # register it under its short name in the parent function's scope.
     nested_by_parent_id: dict[str, dict[str, Symbol]] = {}
-    # identity:F1/F4a: enclosing_func_id maps every func/method Symbol.id to its
+    # enclosing_func_id maps every func/method Symbol.id to its
     # nearest enclosing FUNCTION Symbol.id — the SAME parent_map ancestry walk as
     # nested_by_parent_id, but NOT gated on kind (a method's enclosing function
     # IS a real lexical scope). Computed here so _build_scope_stack can
@@ -4067,7 +4066,7 @@ def _extract_file_analysis(
                 break
             _parent = parent_map.get(id(_parent))
 
-    # identity:F1/F4a: per-function LEGB "L" shadow sets (needs the AST nodes, so
+    # Per-function LEGB "L" shadow sets (needs the AST nodes, so
     # a dedicated walk — func_symbol_by_node_id is keyed by node id only).
     local_names_by_func_id: dict[str, frozenset[str]] = {}
     for _fn_node in ast.walk(tree):
@@ -4113,13 +4112,13 @@ def _collect_call_func_attr_ids(block_nodes: list[ast.AST]) -> set[int]:
 def _collect_attr_carriers(block_nodes: list[ast.AST]) -> dict[int, str]:
     """Map each Attribute node a call USES to that call, as ``<callee>@<line>``.
 
-    INV-hopib. A stream-object row (``sys.stderr``) is matched through the
+    A stream-object row (``sys.stderr``) is matched through the
     ``module_attr_ref`` edge wherever the object appears, so in
-    ``print(k, file=sys.stderr)`` the stream became a taint sink of its own
-    beside ``print`` -- one write, two findings, one of them naming a sink with
-    no arguments. The call that CARRIES the stream is what makes the record
-    checkable and what lets taint recognise the duplicate
-    (``taint._subsume_sink_sites``). Three positions, each DIRECT: a positional
+    ``print(k, file=sys.stderr)`` the stream is a taint sink of its own beside
+    ``print`` -- one write, two findings, one of them naming a sink with no
+    arguments. Recording the call that CARRIES the stream is what makes the
+    record checkable and what lets taint recognise the duplicate
+    (``taint._subsume_sink_sites``; INV-hopib). Three positions, each DIRECT: a positional
     argument, a keyword value, and the receiver of a method call
     (``sys.stderr.write`` -- whose own callee attribute is skipped by
     :func:`_collect_call_func_attr_ids`, so its receiver is the node that
@@ -4474,12 +4473,13 @@ def _make_param_type_helpers(
 
         BINDING-CHECKED, and that is the whole design rather than a precaution. A minted
         module hint is trusted downstream — it bypasses both ``gate_named_entry`` and the
-        ``ambiguous_names`` net by design (gating the hinted path was measured to destroy
-        61.5-87.2% of all reported boundaries for zero gain), so a wrong hint is a
+        ``ambiguous_names`` net by design (gating the hinted path would drop most
+        reported boundaries for no precision gain), so a wrong hint is a
         confident false boundary AND a false taint sink, never silence.
 
-        Emitting the RAW annotation text instead produces false boundaries: ``conn: Connection`` matched ``sqlite3.Connection.execute`` and minted
-        a database-zone taint sink, because ``_module_matches`` accepts an unqualified
+        Emitting the RAW annotation text instead produces false boundaries: ``conn:
+        Connection`` would match ``sqlite3.Connection.execute`` and mint a
+        database-zone taint sink, because ``_module_matches`` accepts an unqualified
         reference as a component suffix. Resolved through its import binding the same
         annotation yields ``sqlalchemy.engine.Connection``, which does not match.
 
@@ -4504,12 +4504,10 @@ def _make_param_type_helpers(
     ) -> dict[str, str]:
         """WI-zilag: parameters whose annotation names an external catalogued type.
 
-        Scoped to PARAMETERS deliberately. Measured over six Python repos: of 95,245
-        method-call edges carrying the ``external`` placeholder, 4,160 have a receiver
-        with a resolvable annotation and 63 actually reach the catalogue — and 96% of that
-        payload is this one shape. Return-annotated factories, attribute reads and
-        generics contribute nothing here, so routing them would add trust surface for
-        no recall. (An annotated assignment, ``d: Path = raw``, is typed separately in
+        Scoped to PARAMETERS deliberately: an annotated parameter is the shape that
+        carries nearly all annotated receivers that reach the catalogue. Return-annotated
+        factories, attribute reads and generics add little or nothing here, so routing
+        them would add trust surface for no recall. (An annotated assignment, ``d: Path = raw``, is typed separately in
         the assignment walk, where it can seed a derivation chain.)
 
         ``param_types`` wins: a parameter already resolved to an in-repo class is
@@ -4523,13 +4521,13 @@ def _make_param_type_helpers(
             hint = _annotation_module_hint(arg.annotation)
             if hint is not None:
                 external[arg.arg] = hint
-        # INV-fibis residual: a receiver that arrives as a BARE parameter names
-        # no module, so `sock.sendall(x)` emitted the `external` placeholder and
-        # every consumer refused it as an untyped method call. The type is not
+        # A receiver that arrives as a BARE parameter names no module, so
+        # without this `sock.sendall(x)` emits the `external` placeholder and
+        # every consumer refuses it as an untyped method call. The type is not
         # inferable from the body — that is what makes this interprocedural —
         # but the repository's own call sites carry it, and
         # ``interprocedural_param_types`` holds the positions where every
-        # observed call site agreed. THE ANNOTATION WINS: the declaration is
+        # observed call site agreed (INV-fibis). THE ANNOTATION WINS: the declaration is
         # better evidence and it is binding-checked, so this only fills
         # parameters the loop above left empty, and never overrides an in-repo
         # class (``param_types``), which is first-party and carries no
@@ -4567,7 +4565,7 @@ def _make_param_type_helpers(
 
 
 def _class_name_counts(tree: ast.AST) -> dict[str, int]:
-    """Per-file class SHORT-NAME multiplicity (WI-supat D3), nested included."""
+    """Per-file class SHORT-NAME multiplicity (WI-supat), nested included."""
     counts: dict[str, int] = {}
     for _cnode in ast.walk(tree):
         if isinstance(_cnode, ast.ClassDef):
@@ -4620,7 +4618,7 @@ def _collect_class_field_maps(
     # inherited, so excluding it prevents a confidently-wrong Site-3 resolution
     # to a same-named PARENT field of a different type.
     class_own_field_names: dict[str, frozenset[str]] = {}
-    #: INV-fibis recall half: the EXTERNAL counterpart to ``class_field_types``,
+    #: The EXTERNAL counterpart to ``class_field_types`` (INV-fibis),
     #: mapping class -> field -> catalogued module path. It exists because
     #: ``class_field_types`` is ``Symbol``-valued and therefore, BY CONSTRUCTION,
     #: can only ever hold an in-repo class. Locals have both halves
@@ -4769,7 +4767,7 @@ def _collect_class_field_maps(
             _cls_sym.meta["fields"] = {
                 _fn: _ft.name for _fn, _ft in field_types.items()
             }
-            # WI-supat (D3): parallel {field: type_id} map so
+            # WI-supat: parallel {field: type_id} map so
             # inherited_calls Site-3 can disambiguate a same-short-name field
             # TYPE precisely instead of biasing to unresolved. Per-field gated by
             # the SAME trustworthiness check as receiver_type_id (file-unique type
@@ -4815,7 +4813,7 @@ class DjangoRelationIndex:
       manager on a ``C`` instance yields: a reverse FK accessor
       (``related_name`` or Django's default ``<model>_set``), a reverse M2M
       accessor, or a forward M2M field. A ``OneToOneField`` reverse accessor is
-      an INSTANCE, not a manager, and is deliberately absent (filed).
+      an INSTANCE, not a manager, and is deliberately absent.
     * ``relation_fields[C][field]`` -- the target model a forward ``ForeignKey``
       / ``OneToOneField`` field on ``C`` holds an instance of, so
       ``self.order.payments`` types through two declared hops.
@@ -4911,8 +4909,8 @@ class DjangoRelationIndex:
     def fixture_field_model(self, cls: Symbol, name: str) -> Symbol | None:
         """The model ``<cls instance>.<name>`` is when a setUp-family method
         bound it. Walks the project bases, which is what makes the INHERITED
-        case work -- 679 of the 1,155 filed sites consume a fixture their base
-        test class built, and the lineage walk is the same one
+        case work -- a test commonly consumes a fixture its base test class
+        built, and the lineage walk is the same one
         :meth:`accessor_model` and :meth:`relation_target` already use, so a
         deep test-mixin chain resolves without a second inheritance rule.
         """
@@ -5054,8 +5052,8 @@ def _is_django_manager_constructor(call: ast.Call, callee: str | None) -> bool:
     ``Manager.from_queryset(<QuerySet>)()``. The rule is admitted because the
     class it applies to is separately verified to be a Django model
     (:attr:`DjangoRelationIndex.model_ids`) and the emission it licenses is
-    bounded to the closed ORM method set -- the same two guards WI-sozoj put
-    around ``.objects``.
+    bounded to the closed ORM method set -- the same two guards the
+    ``.objects`` marker has (WI-sozoj).
     """
     func = call.func
     leaf = callee.rpartition(".")[2] if callee else (
@@ -5636,10 +5634,10 @@ def _bound_names(target: ast.expr) -> set[str]:
     """The names a target expression actually BINDS.
 
     ``d[k] = v`` binds neither ``d`` nor ``k``; ``a.b = v`` binds neither ``a``
-    nor ``b``. Walking the whole target subtree and taking every ``Name`` leaf
-    collected those too, so ``self._cache[item, subevent] = x`` registered
-    ``self``, ``item`` and ``subevent`` as assigned and refused ``item``, a
-    plain parameter, at its next use.
+    nor ``b``. Taking every ``Name`` leaf of the target subtree would collect
+    those too, so ``self._cache[item, subevent] = x`` would register ``self``,
+    ``item`` and ``subevent`` as assigned and refuse ``item``, a plain
+    parameter, at its next use.
     """
     if isinstance(target, ast.Name):
         return {target.id}
@@ -5784,13 +5782,11 @@ class _DjangoReceiverOracle:
             # (``event.seats.filter(...)``) or an unresolved dotted path
             # (``request.event.seats``) would never consult it at all.
             #
-            # The rule is keyed on Django and not on names: a shuffled-index
-            # ablation (size- and frequency-matched WRONG accessor sets) fires
-            # far less often than the true index does. A root with positive
-            # evidence AGAINST it is still refused: see
-            # :meth:`_refuted_by_a_known_owner`. The name must be one THIS
-            # project declares, so the rule is silent in a repository with no
-            # Django models rather than merely unlikely to fire.
+            # The rule is keyed on this project's Django declarations, not on
+            # name shapes: the name must be one THIS project declares, so the
+            # rule is silent in a repository with no Django models rather than
+            # merely unlikely to fire. A root with positive evidence AGAINST it
+            # is still refused: see :meth:`_refuted_by_a_known_owner`.
             if self.index.declares_accessor_anywhere(expr.attr):
                 return "related", "accessor_name"
             # WI-valav: the same rule for a model PROPERTY the index admitted on
@@ -5822,14 +5818,14 @@ class _DjangoReceiverOracle:
                 # We are always inside SOME class; reaching here means the
                 # enclosing class did not resolve. Tried and failed.
                 return True
-            # ASYMMETRY, DELIBERATE AND MEASURED: this consults
+            # ASYMMETRY, DELIBERATE: this consults
             # ``assigned_names`` while the Attribute branch below does not, so
             # ``device.events`` is refused when ``device`` was assigned while
             # ``device.organizer.events`` is allowed. The check exists for one
             # failure class -- a Name bound to a NON-model (``label =
             # Order.LABELS.get("a")``) -- which is always one hop. Propagating
-            # it down deeper chains costs 99 sites on pretix to catch a shape
-            # nobody has observed, and "assigned but untyped" is weak evidence:
+            # it down deeper chains would refuse real sites to catch a shape
+            # not seen in practice, and "assigned but untyped" is weak evidence:
             # the walker types very few bindings, so most of them mean nothing.
             # Compounding a weak signal across hops would refuse on silence.
             return expr.id in self.assigned_names and expr.id not in self.var_types
@@ -6024,7 +6020,7 @@ def _extract_edges(
     if interprocedural_param_types is None:
         interprocedural_param_types = {}
 
-    # WI-luhah residual: the per-function STATEMENT-bound shadow set that
+    # WI-luhah: the per-function STATEMENT-bound shadow set that
     # `_enclosing_shadow` unions alongside the LEGB `local_names_by_func_id`.
     # Built here rather than threaded through FileAnalysis because everything
     # it needs (the tree + the node->symbol map) is already in scope, and the
@@ -6047,7 +6043,7 @@ def _extract_edges(
                     _snode, _stmt_shadow_by_func_id[_ssym.id],
                 )
 
-    # WI-supat (D3): per-file class SHORT-NAME multiplicity. A receiver-type id
+    # WI-supat: per-file class SHORT-NAME multiplicity. A receiver-type id
     # is only trustworthy when its short name resolves to a SINGLE in-file class:
     # with >=2 same-short-name classes the bare-name inference (symbol_by_name is
     # last-write-wins) that produced the receiver's type Symbol could have hit
@@ -6057,7 +6053,7 @@ def _extract_edges(
     # from the authoritative method->class map, not a name lookup.
     class_name_counts = _class_name_counts(tree)
 
-    #: The file's class-root rule (file-unique short name, WI-supat D3; else
+    #: The file's class-root rule (file-unique short name, WI-supat; else
     #: the import-bound class), shared with WI-zamud's setUp pre-pass through
     #: :func:`_make_class_name_resolver` rather than restated here.
     _resolve_class_name = _make_class_name_resolver(
@@ -6084,7 +6080,7 @@ def _extract_edges(
             symbol = _lookup_symbol_by_module(
                 global_symbols, mod_name, original_name, resolver=resolver
             )
-        # identity:F1/F4a step-4: last-resort enclosing-scope lookup for a bare
+        # Last-resort enclosing-scope lookup for a bare
         # reference to a helper defined in a grandparent enclosing function.
         # Additive — fires only when unresolved above; returns only functions.
         if symbol is None and stack is not None:
@@ -6121,17 +6117,17 @@ def _extract_edges(
         local ``import foo as bar`` rebinds ``bar`` off a same-named module
         variable. For the WI-huhum ``module_attr_ref`` retarget it must NOT:
         there ``local_name`` IS a module alias (that is why it is in
-        ``module_imports``), and a function-local ``import pkg.mod as m`` — the
-        dominant self-corpus shape (``m.CONST`` inside a test method) — is the
+        ``module_imports``), and a function-local ``import pkg.mod as m`` — a
+        common shape (``m.CONST`` inside a test method) — is the
         alias we want to resolve, not a shadow of it. ``from``-import value
         rebinds and param/assignment shadows are still collected either way —
         EXCEPT that on the retarget path (``include_import_aliases=False``) a
         ``from``-import that is a *co-referent module alias* (its absolute target
         equals the same name's ``module_imports`` binding) is excluded, since it
         names the very in-tree module the read resolves against, not a value
-        shadowing it (INV-nuzas: the ``rust._analyzer`` self-corpus phantom,
-        where a sibling method plain-imports the analyzer module and this one
-        from-imports it under the same name).
+        shadowing it: a sibling method plain-imports a module and this one
+        from-imports it under the same name, and treating the from-import as a
+        shadow leaves the read a phantom (INV-nuzas).
         """
         names: set[str] = set()
         for arg in func_node.args.args:
@@ -6193,9 +6189,9 @@ def _extract_edges(
         return frozenset(names)
 
     def _enclosing_shadow(caller_id: str) -> frozenset[str]:
-        """WI-luhah gap 1c / INV-fahub: the union of every STRICT enclosing
-        function's locally-bound names (the existing LEGB ``local_names_by_func_id``
-        set — params / assignments / imports).
+        """The union of every STRICT enclosing function's locally-bound names
+        (the LEGB ``local_names_by_func_id`` set — params / assignments /
+        imports), plus their statement-bound names (WI-luhah, INV-fahub).
 
         A read ``m.attr`` (``_emit_module_attr_refs``) or bare ``m``
         (``_emit_variable_refs``) inside a NESTED function whose ``m`` is a
@@ -6203,8 +6199,7 @@ def _extract_edges(
         must not retarget to a module symbol. The nested scope's own
         ``_collect_local_bindings`` sees only its immediate bindings and misses
         the enclosing param, so thread the ``enclosing_func_id`` chain and union
-        each ancestor's local names (the WI-luhah plan names this set as the
-        intended union source). The set also carries an enclosing plain-``import``
+        each ancestor's local names. The set also carries an enclosing plain-``import``
         alias, so a nested read of an enclosing *function-local* in-tree import
         stays phantom rather than resolving — an accepted, INV-fahub-safe
         over-approximation (a missed retarget, never a confidently-wrong edge).
@@ -6214,10 +6209,10 @@ def _extract_edges(
         The LEGB set alone omits enclosing ``def``/``class`` statement names and
         ``except E as X`` handler names — deliberately, since the lookup resolves
         those to their ``NestedDef`` bindings directly — so each is also unioned
-        from the dedicated ``_stmt_shadow_by_func_id`` shadow collector this
-        residual called for. Without it, an enclosing ``def cfg(): ...`` whose
-        name collides with a module import alias left a nested ``cfg.CONFIG``
-        read confidently-wrong-RESOLVED against the module symbol.
+        from the dedicated ``_stmt_shadow_by_func_id`` shadow collector. Without
+        it, an enclosing ``def cfg(): ...`` whose name collides with a module
+        import alias would leave a nested ``cfg.CONFIG`` read
+        confidently-wrong-RESOLVED against the module symbol.
         """
         names: set[str] = set()
         cur = enclosing_func_id.get(caller_id)
@@ -6283,7 +6278,7 @@ def _extract_edges(
         Without this edge the nested closure has zero reachability in-edges and
         ``dead-code-maybe`` falsely flags it dead. We emit ``F -> nested`` of type ``dispatches_to`` with
         ``meta["dispatch_kind"] == "closure_factory"`` so the closure inherits
-        F's reachability (dispatch:F8 PR-A).
+        F's reachability.
 
         Scope is narrow on purpose to avoid edge proliferation:
 
@@ -6483,7 +6478,7 @@ def _extract_edges(
                 # SUBMODULE / subpackage of the imported module (``import
                 # hypergumbo_core as hc; hc.linkers``), not a variable/function —
                 # resolve it to the submodule's first-party file/package node via
-                # ``module_to_file_id`` (the supply-verdict:F4 import mechanism)
+                # ``module_to_file_id`` (the map ``_extract_import_edges`` uses)
                 # instead of a workspace-prefixed phantom external. EXACT dotted
                 # match only (no suffix), and ``references`` (not module_attr_ref)
                 # keeps it taint-safe. The shadow guard (local_bindings) already
@@ -6538,14 +6533,13 @@ def _extract_edges(
     ) -> None:
         """Bind ``<prefix>.<field>`` to the module ``cls`` typed that field with.
 
-        INV-mumov, attribute-chain slice. ``class_external_field_types[C]`` is
-        filled from ``C.__init__`` (``self.conn = sqlite3.connect(p)``) and
-        already reaches ``self.conn.execute()`` INSIDE ``C`` through the
-        ``self.<field>`` keys the FunctionDef arm writes; a caller holding an
-        instance of ``C`` in a local or parameter (``svc = Service();
-        svc.conn.execute(q)``) never asked that map, so its chain emitted the
-        ``external`` placeholder and a catalogued method-kind sink stayed
-        unmatchable. Same map, same namespaced key shape, written at the
+        ``class_external_field_types[C]`` is filled from ``C.__init__``
+        (``self.conn = sqlite3.connect(p)``) and reaches ``self.conn.execute()``
+        INSIDE ``C`` through the ``self.<field>`` keys the FunctionDef arm
+        writes; a caller holding an instance of ``C`` in a local or parameter
+        (``svc = Service(); svc.conn.execute(q)``) needs this binding too, or its
+        chain emits the ``external`` placeholder and a catalogued method-kind
+        sink stays unmatchable (INV-mumov). Same map, same namespaced key shape, written at the
         BINDING site so a rebinding of ``prefix`` (any of the three typed
         assignment arms, or an external one) replaces the stale paths first --
         which is also why ``cls=None`` is a pure purge.
@@ -6589,8 +6583,8 @@ def _extract_edges(
     ) -> None:
         """Process AST nodes within a code block, tracking variable types.
 
-        ``stack`` is the caller's materialized LEGB frame chain (identity:F1/F4a;
-        ``None`` at module level). Its immediate frame is the enclosing-function
+        ``stack`` is the caller's materialized LEGB frame chain
+        (``None`` at module level). Its immediate frame is the enclosing-function
         inner scope (INV-mofav — nested helpers of ``caller_symbol``, consulted
         before ``local_symbols``); its outer frames add the last-resort
         enclosing-scope lookup for bare calls to grandparent helpers. The type
@@ -6640,9 +6634,9 @@ def _extract_edges(
         def _bind_awaited_producer(targets: list[ast.expr], call: ast.Call) -> None:
             """``x = await f(...)`` / ``a, b = await f(...)`` (WI-himim).
 
-            An AWAITED call was never typed, and a TUPLE target never was, so
-            ``reader, writer = await asyncio.open_connection(h, p)`` left both
-            untyped and ``reader.read()`` reached no row. A Name target takes
+            The plain assignment arms type neither an AWAITED call nor a
+            producer's TUPLE target, so without this ``reader, writer = await
+            asyncio.open_connection(h, p)`` leaves both untyped and ``reader.read()`` reaches no row. A Name target takes
             the producer's ``signatures`` row through the constructor resolver
             (its binding check included); a Tuple target takes the producer's
             ``tuple_returns`` row position by position.
@@ -7064,19 +7058,20 @@ def _extract_edges(
                     if isinstance(kw.value, ast.Name):
                         _emit_function_ref(kw.value, caller_symbol, stack=stack)
 
-            # WI-gubar (D2): a @property attribute READ (obj.prop) is an
+            # WI-gubar: a @property attribute READ (obj.prop) is an
             # ast.Attribute in Load context, NOT an ast.Call, so the calls
             # pipeline never sees it and the getter (Symbol.end_line,
             # ValidationResult.ok) looks dead. Emit an unresolved `calls` edge
-            # carrying receiver_type_hint — mirroring the WI-noham Part A method
-            # producer — and let the inherited_calls linker mint the resolved
-            # edge (strict Site-2 Step-1 finds the getter, kind 'method', on the
-            # concrete type). Gated on a var_types-typed INSTANCE receiver whose
-            # target attribute is a @property getter; a bare-CLASS receiver
-            # (ClassName.prop yields the descriptor, not the value) is
-            # deliberately excluded, so no INV-fahub scope guard is needed
-            # (var_types is per-function scope-local, unlike the file-global
-            # local_symbols the Part A bare-class branch consults).
+            # carrying receiver_type_hint — mirroring the method-call hint
+            # producer in _process_call (WI-noham) — and let the inherited_calls
+            # linker mint the resolved edge (its strict Site-2 lookup finds the
+            # getter, kind 'method', on the concrete type). Gated on a
+            # var_types-typed INSTANCE receiver whose target attribute is a
+            # @property getter; a bare-CLASS receiver (ClassName.prop yields the
+            # descriptor, not the value) is deliberately excluded, so no
+            # INV-fahub scope guard is needed (var_types is per-function
+            # scope-local, unlike the file-global local_symbols the bare-class
+            # hint branch in _process_call consults).
             # call_construct='method' keeps the unresolved edge taint-safe.
             # Restricted to function/method callers: at MODULE scope
             # caller_symbol is the <module> pseudo-node (kind='file'), and a
@@ -7084,7 +7079,7 @@ def _extract_edges(
             # runtime_coherence offender in the (file, python, external_symbol,
             # python) partition — which already carries `imports` — breaking the
             # ADR-0023 §3 shrink-only ratchet (module-level property reads are
-            # rare and none of the flagship reads are module-scope).
+            # rare, so the restriction costs little).
             if (
                 caller_symbol.kind in ("function", "method")
                 and isinstance(node, ast.Attribute)
@@ -7105,7 +7100,7 @@ def _extract_edges(
                         "resolution_quality": "type_inferred",
                         "receiver_type_hint": _prop_recv.name,
                     }
-                    # WI-supat (D3): stamp the concrete receiver-type id only when
+                    # WI-supat: stamp the concrete receiver-type id only when
                     # trustworthy (file-unique short name AND not import-shadowed),
                     # as in the method-call Site-2 producer. class_name_counts /
                     # imports / module_imports are closure-visible from
@@ -7372,8 +7367,7 @@ def _extract_edges(
     # WI-gulot: resolve module-level function aliases (`f = g` where g is a
     # function/method, incl. an imported g). The LHS is extracted as a
     # kind=variable node, so a call through the alias otherwise dead-ends at a
-    # 0-out-degree variable and the target appears uncalled (a dispatch:F3 /
-    # INV-pohik instance). This name->target map is consumed by _process_call to
+    # 0-out-degree variable and the target appears uncalled (INV-pohik). This name->target map is consumed by _process_call to
     # resolve an alias call straight to the real body (so callers reach it and
     # the target is genuinely `calls`-reachable).
     # Scan MODULE-LEVEL statements only (``tree.body``), NOT ``ast.walk`` — a
@@ -7398,7 +7392,7 @@ def _extract_edges(
             if isinstance(_al_tgt, ast.Name):
                 function_aliases[_al_tgt.id] = _alias_target
 
-    # WI-gubar (D2): whole-tree set of Attribute-node ids that are a call
+    # WI-gubar: whole-tree set of Attribute-node ids that are a call
     # callee, so the @property-read producer inside process_code_block skips
     # them (a method-call callee is handled by _process_call, not a read). ids
     # are unique per-parse, so one whole-tree set covers every function body
@@ -7415,10 +7409,10 @@ def _extract_edges(
 
         The statements of a class body run when the class is defined, and a
         call there -- ``f = models.CharField(...)``, ``requests.get(...)`` --
-        was in no walked block: module code skips every ClassDef, and each
-        method is walked under the method. INV-foluz (every parsed call site
-        emits a calls edge) failed for them, and verify-claims read a
-        class-body flow as a clean all-clear.
+        is in no other walked block: module code skips every ClassDef, and each
+        method is walked under the method. Without this walk such a call emits
+        no calls edge (breaking INV-foluz: every parsed call site emits one),
+        and verify-claims reads a class-body flow as a clean all-clear.
 
         The block is processed like module code, under the class's own symbol
         (the innermost class, as Java's static initializer is anchored,
@@ -7486,8 +7480,9 @@ def _extract_edges(
                 # Extract types from parameter annotations
                 param_types = _extract_param_types(node)
                 # INV-mumov: the DECLARED parameters, captured before the
-                # class-field merge below adds bare field names -- a field
-                # path is bound only under a name the code can actually write.
+                # class-field merge below adds its ``self.<field>`` keys -- a
+                # field path is bound only under a name the code can actually
+                # write.
                 _declared_params = dict(param_types)
                 # Merge class field types for self.field.method() resolution,
                 # keyed ``self.<field>`` (WI-bufud / INV-hovoj). A field and a
@@ -7505,14 +7500,14 @@ def _extract_edges(
                 # function helpers, keyed by short name. The RAW dict is kept for
                 # closure-factory dispatch (which must see only the caller's OWN
                 # inner closures, never a grandparent's); call/reference
-                # resolution uses the materialized LEGB stack (identity:F1/F4a).
+                # resolution uses the materialized LEGB stack.
                 inner_scope = nested_by_parent_id.get(caller_symbol.id)
                 stack = _build_scope_stack(
                     caller_symbol.id, enclosing_func_id, nested_by_parent_id,
                     local_names_by_func_id, _value_names_by_func_id,
                 )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
-                # WI-luhah gap 1c: add the enclosing-scope binding union so a
+                # WI-luhah: add the enclosing-scope binding union so a
                 # closure-captured enclosing param/local shadowing a module alias
                 # suppresses the (otherwise confidently-wrong) retarget.
                 _enclosing = _enclosing_shadow(caller_symbol.id)
@@ -7526,18 +7521,15 @@ def _extract_edges(
                 _ext_var_types = _extract_external_param_types(
                     node, param_types, caller_symbol,
                 )
-                # INV-fibis recall half, mirroring the ``class_field_types`` ->
-                # ``param_types`` merge a few lines above -- with one deliberate
-                # difference: the key is NAMESPACED ``self.<field>`` rather than
-                # the bare field name. The in-repo merge uses the bare name and
-                # guards with ``if fname not in param_types``, which resolves the
-                # collision at merge time but cannot survive a LOCAL of the same
-                # name assigned later in the body: ``external_var_types`` is
-                # mutated as the body is walked, so a bare-keyed field type would
-                # be overwritten by that local's type, and thereafter answer for
-                # the field. A field and a local of the same name are different
-                # variables; namespacing makes them structurally unable to
-                # collide instead of relying on an ordering that holds today.
+                # The external field types (INV-fibis), keyed NAMESPACED
+                # ``self.<field>`` exactly as the ``class_field_types`` ->
+                # ``param_types`` merge above keys the in-repo ones.
+                # ``external_var_types`` is mutated as the body is walked, so
+                # under a bare key a LOCAL of the same name assigned later in
+                # the body would overwrite the field's type and thereafter
+                # answer for the field. A field and a local of the same name
+                # are different variables; namespacing makes them structurally
+                # unable to collide instead of relying on statement order.
                 if caller_symbol.kind == "method":
                     _own_cls = caller_symbol.name.split(".")[0]
                     for _fld, _mod in class_external_field_types.get(
@@ -7578,7 +7570,7 @@ def _extract_edges(
             node for node in tree.body
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
-        # WI-luhah gap 2: guard the module-scope retarget with the module-level
+        # WI-luhah: guard the module-scope retarget with the module-level
         # reassignment set so a module-level `import config as cfg; cfg = ...`
         # rebind suppresses the (otherwise confidently-wrong) `cfg.attr` retarget.
         _emit_module_attr_refs(
@@ -7596,7 +7588,7 @@ def _extract_edges(
             local_names=_collect_module_local_names(tree),
         )])
         process_code_block(module_level_nodes, module_symbol, stack=module_stack)
-        # WI-luhah gap 2 (references sibling): a module-level import that rebinds
+        # WI-luhah (references sibling): a module-level import that rebinds
         # a same-named module VARIABLE shadows the bare-name read, so it must not
         # resolve to the variable.
         _emit_variable_refs(
@@ -7614,7 +7606,7 @@ def _collect_scope_local_names(
     OWN body (nested function/class bodies excluded), minus ``nonlocal`` names.
 
     Feeds ``Scope.local_names`` so the scope-stack enclosing lookup honors LEGB
-    local shadowing (identity:F1/F4a): a name in this set shadows any same-named
+    local shadowing: a name in this set shadows any same-named
     def in a further-out scope (Python calls the local/global, not the enclosing
     def). ``def``/``class`` statement names are excluded — those are the
     ``NestedDef`` bindings the lookup resolves to directly. Distinct from the
@@ -7684,8 +7676,8 @@ def _scope_live(
     ``imports`` and ``module_imports`` are built by an ``ast.walk`` over the
     whole file. Narrowing them by the scope's value-shadowed names here, once,
     is what makes every consumer downstream honor the scope without each one
-    growing its own guard -- the per-consumer guard is how this file ended up
-    with one consumer guarded (WI-hotug) and four not. The original map is
+    growing its own guard -- a per-consumer guard gets applied to one consumer
+    and missed on the others (history: WI-hotug). The original map is
     returned, uncopied, when nothing in it is shadowed: the common case.
     """
     if not shadowed or shadowed.isdisjoint(mapping):
@@ -7804,8 +7796,8 @@ def _collect_statement_binding_names(child_nodes: list[ast.AST]) -> frozenset[st
     This is deliberately NOT folded into ``_collect_scope_local_names``: that
     set feeds the LEGB *lookup*, which resolves ``def``/``class`` names to
     their ``NestedDef`` bindings directly and would break if they were
-    treated as opaque locals. This is a *shadow* set — the distinct
-    per-function collector WI-luhah's residual note called for. Every name it
+    treated as opaque locals. This is a separate per-function *shadow* set
+    (WI-luhah). Every name it
     adds can only turn a retarget resolved -> phantom (a missed retarget),
     never phantom -> resolved, so it is INV-fahub-safe by construction.
     """
@@ -7835,7 +7827,7 @@ def _collect_module_rebound_names(tree: ast.Module) -> frozenset[str]:
     """Module-level names REASSIGNED via an assignment target (``ast.Store``),
     skipping nested function/class scopes.
 
-    Feeds the module-scope ``module_attr_ref`` retarget shadow (WI-luhah gap 2 /
+    Feeds the module-scope ``module_attr_ref`` retarget shadow (WI-luhah /
     INV-fahub): a module-level ``import config as cfg`` followed by ``cfg =
     make_cfg()`` rebinds the alias off its module, so a later ``cfg.CONFIG`` read
     must NOT retarget to the module ``CONFIG``. The module-scope caller otherwise
@@ -7886,7 +7878,7 @@ def _collect_module_import_aliases(tree: ast.Module) -> frozenset[str]:
     """Module-level names bound by an ``import`` / ``from`` import, skipping
     nested function/class scopes.
 
-    Feeds the module-scope ``references`` retarget shadow (WI-luhah gap 2, the
+    Feeds the module-scope ``references`` retarget shadow (WI-luhah, the
     ``_emit_variable_refs`` sibling / INV-fahub): a module-level ``import mod as
     X`` (or ``from pkg import mod as X``) rebinds the bare name ``X`` off a
     same-named module-level VARIABLE, so a bare ``X`` read must NOT resolve to
@@ -7931,7 +7923,7 @@ def _build_scope_stack(
     local_names_by_func_id: dict[str, frozenset[str]],
     value_names_by_func_id: dict[str, frozenset[str]] | None = None,
 ) -> ScopeStack:
-    """Materialize the caller's LEGB frame chain (identity:F1/F4a).
+    """Materialize the caller's LEGB frame chain.
 
     Walks ``enclosing_func_id`` from the caller outward to the outermost
     enclosing function, then builds one :class:`Scope` frame per link
@@ -8238,8 +8230,8 @@ def _derived_receiver_module(
     (a module function, not a receiver derivation), and every member with no row.
 
     ``ctor_type`` resolves a CONSTRUCTOR CALL used as the chain's root —
-    ``Path(raw) / "out.txt"`` rather than ``d / "out.txt"``, a real share of the
-    assign-from-``Path``-constructor sites rather than a rounding error. It is a parameter instead of a
+    ``Path(raw) / "out.txt"`` rather than ``d / "out.txt"``, a common way to build a
+    path from a ``Path`` constructor. It is a parameter instead of a
     direct call because the resolver needs this file's per-file import maps, which live
     in an enclosing scope; passing ``None`` keeps the pure-derivation behaviour for any
     caller that has no import context. The signature rows still gate which members
@@ -8294,25 +8286,25 @@ def _external_constructor_type(
     WI-kozaj: besides a CONSTRUCTION, a call to a library FACTORY whose
     ``library_signatures`` row declares its return type is typed too
     (``csv.writer(f)`` → ``_csv.Writer``); see :func:`_library_producer_type`.
-    The name is kept because every consumer asks the same question of both:
-    "what external type does this call's result have?".
+    One function covers both despite its name, because every consumer asks the
+    same question of both: "what external type does this call's result have?".
 
-    WI-lifol: THE ATTRIBUTE BRANCH USED TO REQUIRE A BARE ``ast.Name`` BASE, which
-    made a constructor under a DOTTED module structurally unreachable no matter
-    what the table held — ``http.client.HTTPConnection(h)`` bases at an
-    ``ast.Attribute`` (``http.client``), not a ``Name``. Table coverage and
-    reachability are different claims, and the parity test asserting the former
-    passed throughout. Generalizing via :func:`_unwind_attribute_chain` SUBSUMES
-    the single-segment case rather than sitting beside it: ``socket.socket``
-    unwinds to a one-element ``attrs`` and takes the same path, so there is one
-    rule here and not two that can drift. Depth is not special-cased anywhere —
-    a five-segment type added to the YAML tomorrow resolves without a code change.
+    THE ATTRIBUTE BRANCH WALKS THE WHOLE CHAIN (:func:`_unwind_attribute_chain`).
+    Requiring a bare ``ast.Name`` base would make a constructor under a DOTTED
+    module structurally unreachable no matter what the table held —
+    ``http.client.HTTPConnection(h)`` bases at an ``ast.Attribute``
+    (``http.client``), not a ``Name``. Table coverage and reachability are
+    different claims; a parity test over the table proves only the former. The
+    single-segment case is not special: ``socket.socket`` unwinds to a
+    one-element ``attrs`` and takes the same path, so there is one rule here and
+    not two that can drift. Depth is not special-cased anywhere — a five-segment
+    type added to the YAML resolves without a code change (WI-lifol).
 
     INV-dulum: ``module_imports`` and ``imports`` are built by an ``ast.walk``
     over the WHOLE FILE, so on their own they cannot see a local binding that
-    shadows an imported name -- a parameter named ``socket`` typed
+    shadows an imported name -- a parameter named ``socket`` would type
     ``socket.socket(h)`` as the stdlib type, at any chain depth, and a parameter
-    named ``open`` typed ``open(p)`` as a file. *shadowed* is the call site's
+    named ``open`` would type ``open(p)`` as a file. *shadowed* is the call site's
     value-shadowed names (:meth:`ScopeStack.value_shadowed`); a ROOT name in it
     withholds the type on both branches. It is the only thing that can refuse
     the builtin case, which consults no map. Default empty: a caller with no
@@ -8336,9 +8328,8 @@ def _external_constructor_type(
     LIVES AT MODULE LEVEL because it has two consumers in different scopes: the
     per-block closure that types an ASSIGNMENT (``p = Path(raw)``) and
     :func:`_process_call`, which types a chain ROOT (``Path(raw).write_text(x)``).
-    It took its import maps from an enclosing scope while it had one consumer; making
-    them parameters is what lets the second consumer share the binding check instead
-    of growing a second copy of it.
+    Its import maps are parameters rather than closure state, which is what lets both
+    consumers share the one binding check instead of each growing a copy of it.
     """
     func = call.func
     if isinstance(func, ast.Name):
@@ -8397,7 +8388,7 @@ def _bound_call_type(bound: str | None) -> str | None:
        A convention, so it yields to a declared row.
 
     A lowercase callee with no row types nothing, which is the safe direction:
-    ``json.dumps`` names a function, not a type (the 7-of-19 measurement in
+    ``json.dumps`` names a function, not a type (see
     :func:`_call_site_argument_type`).
     """
     return _library_producer_type(bound) or _imported_class_instance(bound)
@@ -8406,17 +8397,18 @@ def _bound_call_type(bound: str | None) -> str | None:
 def _library_producer_type(qualified: str | None) -> str | None:
     """WI-kozaj: the type a LIBRARY PRODUCER call returns, read from its signature row.
 
-    THE GAP. A receiver could be typed from an external call only when the call
-    was a CONSTRUCTION: a catalogued type name (:data:`EXTERNAL_CONSTRUCTOR_TYPES`)
-    or a PascalCase import (:func:`_imported_class_instance`). A FACTORY FUNCTION
-    builds an object too, and its name says nothing about the type:
-    ``w = csv.writer(f)`` returns a ``_csv.Writer``, so ``w.writerow(row)`` --
-    the call that actually carries the data into the file -- arrived as
-    ``python:external:0-0:writerow`` and no row could reach it. The catalogue
-    compensated by rowing the FACTORY (``csv.writer`` under ``fs_write``), which
-    credits the write one call early and taints the file argument instead of the
-    row (INV-gujoh's shape); ADR-0049 Ruling 3 forbids moving that row to the
-    executor until the executor is reachable. This is what makes it reachable.
+    WHY. The construction routes -- a catalogued type name
+    (:data:`EXTERNAL_CONSTRUCTOR_TYPES`) or a PascalCase import
+    (:func:`_imported_class_instance`) -- do not cover a FACTORY FUNCTION, which
+    builds an object too while its name says nothing about the type:
+    ``w = csv.writer(f)`` returns a ``_csv.Writer``, so without this
+    ``w.writerow(row)`` -- the call that actually carries the data into the file
+    -- arrives as ``python:external:0-0:writerow`` and no row can reach it.
+    Rowing the FACTORY instead (``csv.writer`` under ``fs_write``) credits the
+    write one call early and taints the file argument instead of the row
+    (INV-gujoh's shape). Typing the factory's result is what makes the EXECUTOR
+    (``_csv.Writer.writerow``) reachable, which ADR-0049 Ruling 3 requires before
+    a factory row may be moved to it.
 
     THE KEY IS THE CALLEE'S IMPORT-RESOLVED QUALIFIED NAME, which is the shape
     ``library_signatures/python.yaml`` already uses for its member rows
@@ -8432,12 +8424,12 @@ def _library_producer_type(qualified: str | None) -> str | None:
     in the user's ``library_signatures.d`` takes effect in the run that loads
     it (ADR-0047 ruling 3: a channel nothing reads is a lie).
 
-    HOW A LATER ITEM REUSES IT. Add ``<qualified producer>: <returned type>`` to
+    TO TYPE ANOTHER FACTORY. Add ``<qualified producer>: <returned type>`` to
     the signature rows, and row the executor's methods under that type in
-    ``io_primitives``; no analyzer change is needed. WI-dibit's
+    ``io_primitives``; no analyzer change is needed. For example,
     ``opener = urllib.request.build_opener(); opener.open(url, data)`` is
     ``urllib.request.build_opener: urllib.request.OpenerDirector`` plus an
-    ``OpenerDirector.open`` row. Moving a factory's row to the executor is a
+    ``OpenerDirector.open`` row (WI-dibit). Moving a factory's row to the executor is a
     Ruling 3 removal and still needs its finding-level A/B.
 
     A MEMBER row answers here for a call written on the class itself
@@ -8505,7 +8497,7 @@ def _receiver_type(
     * a DOTTED FIELD PATH off a Name -- ``svc.conn`` after ``svc = Service()``,
       ``self.conn`` inside ``Service`` -- keyed by :func:`_dotted_receiver_name`
       and written by the walker's ``_bind_project_class_fields`` from the map
-      the class's own ``__init__`` filled (INV-mumov, attribute-chain slice);
+      the class's own ``__init__`` filled (INV-mumov);
     * an ``ast.Call`` that IS a recognized constructor (``Path(raw)``) — the chain
       ROOT, resolved through ``ctor_type`` so it inherits that resolver's INV-kipor
       binding check rather than re-implementing it; and
@@ -8593,8 +8585,8 @@ def _is_django_manager_root(
     :func:`_preserved_receiver_type` and the emission in :func:`_process_call`
     must agree or a chain types where its root did not emit (or the reverse):
 
-    * the literal ``.objects`` attribute -- WI-sozoj's syntactic marker, kept
-      exactly as it was (no index needed, any root); and
+    * the literal ``.objects`` attribute -- WI-sozoj's syntactic marker, which
+      needs no index and accepts any root; and
     * an expression the block's :class:`_DjangoReceiverOracle` resolves to an
       accessor the relation index owns (``order.payments``, ``self.seat_set``,
       ``event.sponsors``) or to a class-level manager under another name
@@ -8696,8 +8688,8 @@ def _binding_checked_type_hint(
 
     NOT CATALOGUE-GATED, and that is deliberate rather than an oversight:
     ``requests.Session`` has zero rows in python.yaml (INV-fotav), and
-    refusing to name it would keep exactly the case INV-fibis was filed for
-    invisible to the uncovered-module disclosure.
+    refusing to name it would keep such an uncatalogued external receiver
+    invisible to the uncovered-module disclosure (INV-fibis).
     """
     if isinstance(node, ast.Name):
         return _import_binding_for(node.id, imports, module_imports)
@@ -8719,9 +8711,9 @@ def _call_site_argument_type(
     CONSTRUCTION — that is what an annotation is. ``x = json.dumps(y)`` has the
     identical AST shape (``module.attr(...)``) and names a FUNCTION, so
     resolving it through import bindings alone asserts ``json.dumps`` is a
-    type. Measured on poetry: of 19 agreed call-site hints, **7 (37%) were
-    function results** — ``json.dumps``, ``typing.cast``,
-    ``tomlkit.inline_table``, ``parse_constraint``, two ``get_*`` helpers.
+    type. Function results are a large share of agreed call-site arguments in
+    real code — ``json.dumps``, ``typing.cast``, ``tomlkit.inline_table``,
+    ``parse_constraint``, ``get_*`` helpers.
 
     That is not merely useless. A minted hint lands in the dst's module slot,
     and ``io_boundary._module_matches`` does BIDIRECTIONAL SUBSTRING matching,
@@ -8739,7 +8731,7 @@ def _call_site_argument_type(
        convention, and about as strong as naming conventions get in Python.
        This is the route that admits ``requests.Session``, which route 1
        CANNOT: requests has zero rows in python.yaml (INV-fotav), and refusing
-       it would keep the precise case INV-fibis was filed for invisible.
+       it would keep that receiver invisible (INV-fibis).
 
     A convention is a heuristic and this says so rather than dressing it up.
     What makes it acceptable here is the direction of its errors: a
@@ -8767,8 +8759,8 @@ def _scope_local_external_types(
     A miniature of what ``process_code_block`` tracks, needed BEFORE edge
     extraction runs because the call-site pass has to know what
     ``send(s, ...)`` is passing. Deliberately small: constructor assignments
-    only, no derivation chains and no ``with`` binding, because the measured
-    residual shape is ``s = socket.socket(); send(s, ...)`` and every widening
+    only, no derivation chains and no ``with`` binding, because the shape this
+    serves is ``s = socket.socket(); send(s, ...)`` and every widening
     here mints a hint that is TRUSTED downstream.
 
     A name assigned two different external types in one scope is DROPPED
@@ -8814,7 +8806,8 @@ def _collect_call_site_param_types(
       (``obj.send(...)``) needs receiver typing to resolve its callee, which is
       the thing being computed; using it would be circular.
     * **Positional arguments only.** A keyword argument could be bound by
-      parameter name, but no measured payload justified the extra surface.
+      parameter name, but no shape this serves needs it, and each widening adds
+      trusted-hint surface.
     * **Callee kind ``function`` OR ``class``.** A bare-name call cannot target
       a bound METHOD, so a method callee's positions would be off by one against
       ``self`` with nothing to tell us so. A ``class`` callee is a CONSTRUCTOR
@@ -8874,11 +8867,11 @@ def _import_binding_for(
     """The dotted path ``name`` is import-bound to in this file, else ``None``.
 
     The single answer to "does an import in this file rebind this bare name, and
-    to what?" — the question both bare-name inferences here must ask before
-    treating an identifier as evidence: the WI-supat D3 receiver-type guard
-    (:func:`_receiver_type_id_trustworthy`) and the WI-fuvuj external-constructor
-    inference (``_external_constructor_module``). One answer for both keeps them
-    from drifting apart (INV-kipor).
+    to what?" — the question every bare-name inference here must ask before
+    treating an identifier as evidence, among them the WI-supat receiver-type
+    guard (:func:`_receiver_type_id_trustworthy`) and the WI-fuvuj
+    external-constructor inference (:func:`_external_constructor_type`). One
+    answer for all keeps them from drifting apart (INV-kipor).
 
     ``None`` means *unbound*, which for a bare name means the builtin — that is
     what makes plain ``open(p)`` still infer a file receiver.
@@ -8887,7 +8880,7 @@ def _import_binding_for(
     :func:`io_boundary._module_matches`. That predicate answers a deliberately
     permissive question — "could this module *hint* refer to the catalogued
     module?" — and so accepts an unqualified reference as a component suffix of a
-    qualified name. Measured, it returns True for ``mylib.pathlib.Path`` against
+    qualified name. It returns True for ``mylib.pathlib.Path`` against
     ``pathlib.Path`` and for ``mypkg.file`` against ``file``, i.e. it trusts
     exactly the vendored/shadowed bindings a binding check exists to refuse.
     Binding identity is a different question from hint compatibility, so it gets
@@ -8969,7 +8962,7 @@ def _receiver_type_id_trustworthy(
     module_imports: dict[str, str],
     local_symbols: dict[str, Symbol],
 ) -> bool:
-    """WI-supat (D3): whether a concrete receiver-type id is safe to stamp.
+    """WI-supat: whether a concrete receiver-type id is safe to stamp.
 
     The Site-2 receiver-type inference is bare-name-based (last-write-wins
     ``symbol_by_name`` / local-first annotation resolution), so a concrete id is
@@ -9069,7 +9062,7 @@ def _django_lineage_overrides(
     Django's own, and the override's ``super()`` call is where the ORM write
     is typed (WI-sihoh). The one refusal both instance-write re-key sites
     apply: the attribute receiver (WI-kufok) and the bare ``Name`` receiver,
-    which needed it once Case 2a stopped binding an inherited override by
+    which needs it because Case 2a does not bind an inherited override by
     bare name (WI-kutal).
     """
     if oracle is None:
@@ -9112,7 +9105,7 @@ def _class_directly_extends_django_model(
 # derived from the catalogue (``mode_discriminated_names``) so the data stays
 # the single source of truth. Where the argument SITS is Python call-signature
 # knowledge, which belongs with the Python analyzer — a catalogue shared across
-# fourteen languages is the wrong home for "``open``'s mode is positional
+# many languages is the wrong home for "``open``'s mode is positional
 # argument 1". ``TestCatalogueParity`` enforces that this table covers every
 # name the live catalogue flags, so the two cannot drift apart silently.
 _MODE_ARG_POSITION: dict[str, tuple[int, str]] = {
@@ -9238,8 +9231,9 @@ def _call_arg_shape(call_node: ast.Call) -> str | None:
 
     A call with NO arguments is the vacuous case and is stamped: ``all([])`` is
     True, and a call passing nothing cannot pass the tainted value. That is the
-    case that dominates the measured false positives (docs/measurements/0003:
-    ``tempfile.TemporaryDirectory()``, ``TemporaryFile()``).
+    shape of the common false positives this stamp removes
+    (``tempfile.TemporaryDirectory()``, ``TemporaryFile()``; see
+    docs/measurements/0003).
     """
     if any(isinstance(arg, ast.Starred) for arg in call_node.args):
         return None
@@ -9315,7 +9309,7 @@ def _process_call(
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: stub.method() (using var_types for type inference)
 
-    ``stack`` is the caller's materialized LEGB frame chain (identity:F1/F4a):
+    ``stack`` is the caller's materialized LEGB frame chain:
     bare-name calls resolve through its immediate frame (INV-mofav) before
     ``local_symbols``/imports, then via a last-resort enclosing-scope lookup.
 
@@ -9408,7 +9402,7 @@ def _process_call(
             if callee_symbol and callee_symbol.kind == "class":
                 is_instantiation = True
 
-        # identity:F1/F4a step-4: last-resort enclosing-scope lookup — resolves a
+        # Last-resort enclosing-scope lookup — resolves a
         # bare call to a helper defined in a GRANDPARENT (or higher) enclosing
         # function that the flat immediate frame missed. It fires only when
         # nothing above resolved, and returns only nested FUNCTIONS (never a
@@ -9419,9 +9413,9 @@ def _process_call(
     # Case 2: Attribute calls - self.method(), module.ClassName(), variable.method()
     elif isinstance(func, ast.Attribute):
         attr_name = func.attr
-        # Cluster 28D (audit-findings 0012): a method call folds to the
-        # ``ast_call`` apex + ``meta['call_construct']='method'`` (WI-nibis),
-        # not the parked peer ``ast_call_method``.
+        # A method call is evidence ``ast_call`` with
+        # ``meta['call_construct']='method'``, not the parked peer
+        # ``ast_call_method`` (WI-nibis; docs/audits/0012).
         evidence_type = "ast_call"
         call_meta = {"call_construct": "method"}
 
@@ -9558,7 +9552,7 @@ def _process_call(
         # INV-foluz: the LEGB shadow, which is `_caller_locals` UNIONED OVER
         # EVERY ENCLOSING FRAME. `ScopeStack.frames` is the materialized chain
         # outermost-first, so this is the same fact `_enclosing_shadow`
-        # (INV-fahub / WI-luhah gap 1c) computes for the module-attr path,
+        # (INV-fahub / WI-luhah) computes for the module-attr path,
         # taken from the structure `_process_call` already receives rather than
         # recomputed — one fact, one home.
         #
@@ -9589,9 +9583,10 @@ def _process_call(
         # module-qualified dst so io-boundary's module-filter path (never the
         # short-name gate) classifies each method db_read/db_write via
         # python.yaml. Bounded to the closed ORM method set, so a stray
-        # non-Django ``.objects.x()`` stays invisible. This chained receiver
-        # (``func.value`` is itself an ``ast.Attribute``) emits no edge in any
-        # branch below, so this is net-new emission, not a re-key.
+        # non-Django ``.objects.x()`` stays invisible. This branch heads the
+        # chain, so a chained receiver (``func.value`` is itself an
+        # ``ast.Attribute``) on the marker gets this module-qualified edge
+        # rather than the ``external`` chain placeholder a later branch emits.
         #
         # WI-gulaz: the same emission at the relation index's managers --
         # ``order.payments.create(...)``, ``event.sponsors.add(s)``,
@@ -9654,11 +9649,10 @@ def _process_call(
             and django_oracle.super_write_owner(func.attr) is not None
         ):
             # ``super().save()`` / ``super().delete()`` inside a Django model is
-            # THE ORM WRITE, and on a real project it is where the write
-            # actually is (WI-sihoh). Most ``x.save()`` sites on a model call a
-            # ``save`` the project OVERRIDES -- that call correctly resolves to
-            # the project's own method and is not an I/O primitive at all --
-            # and the override then calls ``super().save()``. Without this
+            # THE ORM WRITE, and when a model overrides ``save`` it is where the
+            # write actually is (WI-sihoh): an ``x.save()`` site on such a model
+            # resolves to the project's own method, which is not an I/O
+            # primitive at all, and the override then calls ``super().save()``. Without this
             # branch that call would reach this function's last branch and emit
             # the bare ``external`` placeholder, hiding the write chokepoint of
             # the whole codebase: a false NEGATIVE on a write primitive, which
@@ -9666,7 +9660,7 @@ def _process_call(
             # is sound because the ADR-0017 walk does not cross
             # ``dispatches_to`` out of a type node (INV-putug).
             #
-            # ``super()`` receives no ``func.value`` Name, so it never reached
+            # ``super()`` is not a ``func.value`` Name, so it never reaches
             # the receiver-typing branches below; the enclosing class comes from
             # the oracle, which holds the lexical class for this block.
             # ``super_write_owner`` refuses when a PROJECT BASE defines the
@@ -9709,7 +9703,7 @@ def _process_call(
             # The CONSTRUCTOR ROOT — ``Path(raw).write_text(x)``, ``open(p,"w")
             # .write(x)`` — arrives here too, via ``_receiver_type``, so the I/O
             # written inline is typed exactly as its assigned form is. Passing
-            # ``_external_constructor_module`` gives the root its binding check,
+            # ``_ctor_type_here`` gives the root its binding check,
             # so a local ``class Path`` and a ``from decoy_lib import Path`` are
             # refused here exactly as they are at an assignment. Call-result roots
             # of genuinely unknown type get no edge from this branch: an untyped
@@ -9932,8 +9926,8 @@ def _process_call(
                 #   * ``receiver_name not in var_types`` — an EXPLICIT ``self: T``
                 #     annotation is a deliberate static-type declaration whose
                 #     methods may live OFF the enclosing class's MRO (the mixin/
-                #     host idiom). It must route to Site-2 on ``T`` (the demoted
-                #     elif), not Site-1 on the enclosing class — else a legit edge
+                #     host idiom). It must route to Site-2 on ``T`` (the
+                #     ``var_types`` elif below), not Site-1 on the enclosing class — else a legit edge
                 #     is lost, or (namesake case) a confidently-wrong 0.90 edge is
                 #     minted. Only an UNANNOTATED ``self`` (not in var_types) is
                 #     lexically the enclosing class.
@@ -9958,7 +9952,7 @@ def _process_call(
                     unresolved_meta["enclosing_class"] = (
                         caller_symbol.qualified_name.split(".")[-2]
                     )
-                    # WI-supat (D3): stamp the AUTHORITATIVE enclosing class id
+                    # WI-supat: stamp the AUTHORITATIVE enclosing class id
                     # (the lexical method->class map, clobber-immune) so the
                     # linker resolves a same-short-name / cross-language namesake
                     # precisely instead of biasing to unresolved.
@@ -9968,7 +9962,7 @@ def _process_call(
                 elif receiver_name in var_types:
                     _rt = var_types[receiver_name]
                     unresolved_meta["receiver_type_hint"] = _rt.name
-                    # WI-supat (D3): stamp the concrete receiver-type id only when
+                    # WI-supat: stamp the concrete receiver-type id only when
                     # it is trustworthy (file-unique short name AND not shadowed by
                     # a same-name import); else omit and fall back to name+guard.
                     if _receiver_type_id_trustworthy(
@@ -10055,7 +10049,7 @@ def _process_call(
             and isinstance(func.value.value, ast.Name)
             and func.value.value.id == "self"
         ):
-            # WI-hiziz PR-3 (Site 3): self.field.method() that Case 2f could not
+            # WI-hiziz (Site 3): self.field.method() that Case 2f could not
             # resolve. An INHERITED field lives in class_field_types[parent] and
             # is never merged into this method's var_types (only the class's OWN
             # fields are), so it misses Case 2f and lands here. Stamp
@@ -10129,7 +10123,7 @@ def _process_call(
                     _site3_meta["enclosing_class"] = (
                         caller_symbol.qualified_name.split(".")[-2]
                     )
-                    # WI-supat (D3): the authoritative enclosing-class id (same
+                    # WI-supat: the authoritative enclosing-class id (same
                     # contract as Site-1) lets the linker start the parent-field
                     # walk from exactly the caller's lexical class, skipping the
                     # enclosing ambiguity guard on a same-short-name collision.
@@ -10304,7 +10298,7 @@ def _process_call(
                     )
                     if chain_cls is not None:
                         chain_meta["receiver_type_hint"] = chain_cls.name
-                        # WI-supat (D3): the concrete id only when it is safe —
+                        # WI-supat: the concrete id only when it is safe —
                         # same gate as the one-hop branch, not a looser one.
                         if _receiver_type_id_trustworthy(
                             chain_cls, class_name_counts, imports,
@@ -10497,21 +10491,21 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     )
 
 
-# ADR-0057 §10 (WI-kokiz): the Python incumbent declares its merge anchor
-# ahead of the second Python producer WI-nanom names (pyright / scip-python):
+# ADR-0057 §10 (WI-kokiz): this analyzer declares its merge anchor so a second
+# Python producer (pyright / scip-python, WI-nanom) can pair with its records:
 # a method is named ``Class.method`` here, so the declaration key is the last
 # segment under the taxonomy's declared ``.`` separator, over the ITEM span.
-# The sole producer today; the declaration costs nothing until a partner
-# registers, and lets a plugin backend pair with this analyzer's records
-# without a change here.
+# While it is the sole Python producer the declaration costs nothing, and it
+# lets a plugin backend pair with this analyzer's records without a change
+# here.
 @register_analyzer(
     "python",
     supports_max_files=True,
     merge=MergeAnchor(
         name_key=last_segment(QUALIFIED_NAME_SEPARATORS["python"]),
         span_role=SPAN_ROLE_ITEM,
-        # Nothing to declare: since INV-kubup every tracked attribute's
-        # default is absent, so each record says for itself whether this
+        # Nothing to declare: every tracked attribute's default is absent
+        # (INV-kubup), so each record says for itself whether this
         # producer observed it (ADR-0057 §10).
         observes=(),
     ),
@@ -10640,7 +10634,7 @@ def analyze_python(
         if not changed:
             break
 
-    # supply:F4 (INV-nuzas) — map every in-tree dotted module name to its
+    # INV-nuzas: map every in-tree dotted module name to its
     # first-party file-anchor id, so imports of workspace-sibling modules resolve
     # to real in-repo nodes instead of dangling to phantom external_symbol
     # boundary nodes. Built from the absolute py_file paths (the same form
@@ -10661,8 +10655,7 @@ def analyze_python(
     resolver = SymbolResolver(global_symbols)
 
     # Build (path, name) -> symbol index for O(1) lookups in typed method
-    # resolution. Replaces O(n) scans of global_symbols.items() that check
-    # sym.path == target_path and sym_name == target_name.
+    # resolution, instead of an O(n) scan of global_symbols.items() per lookup.
     # WI-fihun: each file's import table, keyed by the ``Symbol.path`` its
     # symbols carry, so a declared return type resolves in the DEFINING
     # module's namespace (``_resolve_return_type_class``).
@@ -10719,7 +10712,7 @@ def analyze_python(
     # edges, re-keyed by class-symbol id so ``svc.conn.execute()`` in a file
     # that only imports ``Service`` binds through the class's own map. A
     # same-short-name class twice in one file is dropped from the by-id maps
-    # (its per-file inference is last-write-wins, WI-supat D3).
+    # (its per-file inference is last-write-wins, WI-supat).
     _class_maps_by_file: dict[Path, tuple[
         dict[str, dict[str, Symbol]],
         dict[str, frozenset[str]],
@@ -10822,13 +10815,13 @@ def analyze_python(
         )
         all_edges.extend(import_edges)
 
-        # Collect usage contexts (v1.1.x)
+        # Collect usage contexts
         all_usage_contexts.extend(analysis.usage_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
     # Build multi-value class lookup: name -> list of candidates
-    # (a single-value dict would be last-writer-wins: in Django, 238 classes
-    # named 'Model' would all resolve to one test stub instead of
+    # (a single-value dict would be last-writer-wins: in Django, the many
+    # classes named 'Model' would all resolve to one test stub instead of
     # django.db.models.base.Model)
     class_by_name: dict[str, list[Symbol]] = {}
     for sym in all_symbols:

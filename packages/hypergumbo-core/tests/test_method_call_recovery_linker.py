@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the method-call-recovery linker (WI-gigoz / Path B').
+"""Tests for the method-call-recovery linker (history: WI-gigoz).
 
 When a caller has both:
   - a `calls`/`instantiates` edge to a Class node, and
@@ -65,10 +65,10 @@ def _ctx(symbols: list[Symbol], edges: list[Edge]) -> LinkerContext:
 
 
 class TestMethodCallRecovery:
-    """Path B' rewrites for chained calls like ``CliRunner().run(args)``."""
+    """Recovery for chained calls like ``CliRunner().run(args)``."""
 
     def test_recovers_method_call_from_unresolved_sibling(self) -> None:
-        """The canonical WI-gigoz / BUG-14 case."""
+        """The canonical case: ``CliRunner().run(args)``."""
         main = _sym("k:App.kt:5-9:main:function", "main", "function", start=5, end=9)
         cls = _sym("k:CliRunner.kt:1-30:CliRunner:class", "CliRunner", "class",
                    path="CliRunner.kt", start=1, end=30)
@@ -384,10 +384,10 @@ class TestInvZuhubMethodCallRecoveryFallback:
 
 
 # ---------------------------------------------------------------------------
-# WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
-# Promote _short_name and _parse_unresolved_name to public names so the
-# upcoming inherited_calls linker can share the unresolved-dst parsing
-# and qualified-name short-form helpers without re-implementing them.
+# _short_name and _parse_unresolved_name have public aliases so other linkers
+# can share the unresolved-dst parsing and qualified-name short-form helpers
+# without re-implementing them (inherited_calls imports
+# parse_unresolved_name). (history: WI-gifar)
 # ---------------------------------------------------------------------------
 
 
@@ -455,26 +455,20 @@ class TestTheHintMustNotContradictTheDeclaredReceiver:
     """A class hint that DISAGREES with the edge's own ``receiver_type_hint``
     is evidence against the recovery, not permission to guess (INV-nakut-guard).
 
-    FOUND BY MEASUREMENT, not by reading. WI-nakut stopped java gluing the
-    receiver identifier into an unresolved call's name slot, which was the only
-    reason this linker had never seen java's variable-receiver calls: it reads
-    ``parts[-2]`` verbatim, so ``audio.getSampleRate`` matched no class member
-    and ``getSampleRate`` matches six. The A/B measured 9 newly-recovered rows
-    on sherpa-onnx and 241 on jenkins, and reading them back against source
-    found the failure this guard closes:
+    The failure it refuses (Java, where the linker sees variable-receiver calls
+    by their bare method name):
 
         float d = audio.getSamples().length / (float) audio.getSampleRate();
 
     ``audio`` is a ``GeneratedAudio``; the enclosing ``main`` also instantiates
-    ``OfflineTts``; six classes in that repository declare ``getSampleRate``;
-    and the line-proximity tiebreaker chose ``OfflineTts``. The edge itself
-    carried ``receiver_type_hint="GeneratedAudio"`` the whole time -- the
-    evidence to refuse was already stamped and nothing read it.
+    ``OfflineTts``; several classes declare ``getSampleRate``; and the
+    line-proximity tiebreaker would choose ``OfflineTts``. The edge itself
+    carries ``receiver_type_hint="GeneratedAudio"`` — the evidence to refuse.
 
     THE GUARD IS ONLY AS WIDE AS THE EVIDENCE. An edge with no stamp is
-    unchanged, which is the WI-gigoz shape this linker was built for
+    unchanged: that is the shape this linker was built for
     (``CliRunner().run()`` has no receiver variable to declare a type for), and
-    every language that stamps nothing keeps exactly the behaviour it had.
+    every language that stamps no receiver type is unaffected. (history: WI-nakut)
     """
 
     @staticmethod
@@ -511,14 +505,14 @@ class TestTheHintMustNotContradictTheDeclaredReceiver:
         return [main, tts, tts_m, audio, audio_m], edges
 
     def test_a_contradicting_hint_recovers_nothing(self) -> None:
-        """The measured failure: the receiver is declared ``Audio`` and the
+        """The failure shape: the receiver is declared ``Audio`` and the
         only class hint is ``Tts``."""
         symbols, edges = self._fixture("Audio")
         result = link_method_call_recovery(_ctx(symbols, edges))
         assert result.edges == [], [e.dst for e in result.edges]
 
     def test_an_agreeing_hint_still_recovers(self) -> None:
-        """CONTROL, and the majority of the measured population: ``wi.leave()``
+        """CONTROL, and the common case: ``wi.leave()``
         where ``wi`` is declared ``WaitingItem`` and ``WaitingItem`` is the
         hint. The guard must cost these nothing."""
         symbols, edges = self._fixture("Tts")
@@ -553,8 +547,7 @@ class TestAProducerThatNamedTheModuleIsNotOverridden:
     claim from strictly more evidence than a name match, and this linker has
     nothing to refute it with.
 
-    Measured on a single-backend Python self-survey: 28 of this linker's 92
-    edges overrode such a claim, and all 28 were wrong —
+    Overriding such a claim yields edges like
     ``tree_sitter.Language(tree_sitter_rust.language())`` bound to
     ``Symbol.language``, ``id(stub)`` to ``Symbol.id``, ``type(e).__name__``
     to ``IpcPattern.type``. It is the same rule ADR-0057 §11 applies to a
@@ -615,11 +608,10 @@ class TestAProducerThatNamedTheModuleIsNotOverridden:
         assert [e.dst for e in recovered] == [other_member.id]
 
 
-# ── WI-fihun cure (2): a declared non-callable is evidence AGAINST a binding ──
+# ── A declared non-callable is evidence AGAINST a binding (WI-fihun) ──
 #
-# Measured on a single-backend Python self-survey, this linker emitted 64 edges
-# of which 16 were wrong. Two of the 16 bound a `calls` edge to a FIELD:
-# ``m.start()`` / ``m.end()`` on a ``re.Match`` became ``ItemIdMatch.start`` /
+# Without this gate the linker binds `calls` edges to FIELDS:
+# ``m.start()`` / ``m.end()`` on a ``re.Match`` become ``ItemIdMatch.start`` /
 # ``ItemIdMatch.end``, both declared ``int``. An int instance is not callable,
 # so the binding is outside this linker's own premise — it stamps
 # ``call_construct="method"``.
@@ -632,14 +624,13 @@ class TestAProducerThatNamedTheModuleIsNotOverridden:
 # type, never when it is absent or when any arm is something we cannot vouch for.
 #
 # READING ``Symbol.signature`` IS DELIBERATE AND DECLARED. Its ``# axis:
-# free-text`` justification claims no consumer branches on the value; that claim
-# is false today at eight shipped sites (five analyzers plus jackson_dispatch's
-# arity filter) and is filed as INV-lotoh. ADR-0033 §1 gives ``free-text`` "no
-# value check", and ADR-0051 records that such a justification "is required to be
-# present, not true" — so this is an eighth instance of an existing pattern, not
-# a new liberty. It is also the ONLY place a Python field's declared type is
-# recorded: field symbols carry exactly three meta keys corpus-wide
-# (visibility_signal, concepts, decorators) and no declared-type key.
+# free-text`` justification claims no consumer branches on the value; other
+# consumers (analyzers, jackson_dispatch's arity filter) already do, which
+# INV-lotoh tracks. ADR-0033 §1 gives ``free-text`` "no value check", and
+# ADR-0051 records that such a justification "is required to be present, not
+# true" — so this read follows an existing pattern rather than taking a new
+# liberty. It is also the ONLY place a Python field's declared type is
+# recorded: field symbols carry no declared-type meta key.
 
 
 def _typed_sym(
@@ -674,10 +665,10 @@ def _one_candidate_ctx(member: Symbol) -> LinkerContext:
 
 
 class TestDeclaredNonCallableTargetIsRefused:
-    """WI-fihun: the 2 field mis-bindings, and the arms that must survive."""
+    """WI-fihun: field mis-bindings the gate refuses, and the arms that must survive."""
 
     def test_an_int_declared_member_is_not_a_call_target(self) -> None:
-        """THE regression: ``m.start()`` -> ``ItemIdMatch.start: int``."""
+        """The core case: ``m.start()`` -> ``ItemIdMatch.start: int``."""
         member = _typed_sym("py:Holder.start", "start", "field", "int")
         recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
         assert recovered == [], (
@@ -697,7 +688,7 @@ class TestDeclaredNonCallableTargetIsRefused:
         )
 
     def test_an_undeclared_member_is_still_recovered(self) -> None:
-        """Absent is not evidence. The item's own polarity: never when absent."""
+        """Absent is not evidence: the gate never refuses when the type is absent."""
         member = _typed_sym("py:Holder.start", "start", "field", None)
         recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
         assert [e.dst for e in recovered] == [member.id]
@@ -709,7 +700,7 @@ class TestDeclaredNonCallableTargetIsRefused:
         assert [e.dst for e in recovered] == [member.id]
 
     def test_a_callable_typed_member_is_still_recovered(self) -> None:
-        """The case a blanket field refusal would have destroyed."""
+        """The case a blanket field refusal would destroy."""
         member = _typed_sym(
             "py:Holder.start", "start", "field", "Callable[[], None]",
         )
@@ -771,10 +762,9 @@ class TestDeclaredNonCallableTargetIsRefused:
 class TestAMemberChainReceiverIsNotTheClassHint:
     """WI-sulas. A producer stamping ``meta.receiver == "field_chain"`` says the
     call is ``v.p.m()``: its receiver is ``v.p``, so a class the caller
-    instantiates is not the receiver and this linker's premise fails. Measured
-    on hummingbird once swift stopped naming the chain head:
-    ``router.middlewares.add(..)`` recovered into ``Router.add`` 46 times,
-    every sampled one wrong."""
+    instantiates is not the receiver and this linker's premise fails. Without
+    the check, Swift's ``router.middlewares.add(..)`` recovers into
+    ``Router.add``, which is wrong."""
 
     @staticmethod
     def _fixture(receiver: str | None) -> tuple[list[Symbol], list[Edge]]:

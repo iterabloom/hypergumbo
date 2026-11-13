@@ -14,23 +14,19 @@ INV-maluk (``str.replace`` matching ``pathlib.Path.replace``). It is the only
 thing separating a real POSIX ``wait()`` from ``std::future::wait()``, because
 with no receiver type the two are the same short name.
 
-WHY C++ COULD NOT REACH IT. The analyzer computes ``is_member_call`` while
-walking the call — it must, to suppress the STL-method fallback — and then
-throws the fact away: every unresolved call edge left this file with the
-construct unset, so the refusal above was unreachable for the whole language.
-Measured on whisper.cpp before this change: **34,983 cpp call edges, 1 of them
-carrying ``call_construct="method"``.** The one came from a two-level
-``this->field->method()`` chain, the only branch that stamped it.
+THE ANALYZER MUST CARRY THE FACT TO THE EDGE. The C++ analyzer computes
+``is_member_call`` while walking the call -- it must, to suppress the STL-method
+fallback -- and must stamp it on the unresolved call edge as
+``call_construct="method"``; an edge left with the construct unset makes the
+refusal above unreachable.
 
-``function`` IS NOT A PARTIAL FIX, WHICH IS WHY THE COUNT ABOVE IS THE ONE THAT
-MATTERS. 41.1% of those edges *did* carry a construct — ``function``, 14,360 of
-them. The gate falls through on anything that is not the literal string
-``"method"``, so ``function`` and absent are the same value to it. A census
-that counts "edges carrying call_construct" therefore reports C++ as 41%
-covered for a gate that sees 0.003%.
+``function`` IS NOT ENOUGH. The gate falls through on anything that is
+not the literal string ``"method"``, so ``function`` and absent are the same
+value to it. A census that counts "edges carrying call_construct" therefore
+overstates what the gate can see; only ``method`` counts.
 
-THE FILED FALSE POSITIVE, reproduced on a fixture with a passing positive
-control (``hypergumbo io-boundaries``, before this change)::
+THE FALSE POSITIVE, on a fixture with a positive control
+(``hypergumbo io-boundaries``, construct unstamped)::
 
     positive_control()  wait(&status)   -> sys/wait.wait [subprocess]  TRUE
     the_defect()        cv.wait(guard)  -> sys/wait.wait [subprocess]  FALSE
@@ -38,10 +34,10 @@ control (``hypergumbo io-boundaries``, before this change)::
 
 The file genuinely includes ``<sys/wait.h>`` and genuinely calls the POSIX
 function elsewhere, so the include-set module evidence is correct; the call
-construct is the only discriminator, and it was absent.
+construct is the only discriminator.
 
-SCOPE, STATED. This fixes the *emission* half for C++ only. It does not touch
-the ``non_method`` filter — the gate's second job, where a method-KIND
+SCOPE, STATED. This file pins the *emission* half for C++ only. It does not
+cover the ``non_method`` filter — the gate's second job, where a method-KIND
 catalogue entry is dropped for want of a module hint — which is INV-linub's
 class and a false-NEGATIVE channel in the opposite direction. The two are
 routinely conflated because they are two branches of one function.
@@ -120,9 +116,8 @@ def test_free_function_call_is_not_marked_method(tmp_path: Path) -> None:
     """POSITIVE CONTROL: a genuine free function must NOT be refused.
 
     Without this, stamping every call ``method`` would 'fix' the false
-    positive by destroying the true positives beside it — the direction this
-    project has paid for before. ``wait(&status)`` is real POSIX I/O and must
-    stay matchable.
+    positive by destroying the true positives beside it. ``wait(&status)`` is
+    real POSIX I/O and must stay matchable.
     """
     (tmp_path / "c.cpp").write_text("""
 #include <sys/wait.h>
@@ -139,11 +134,10 @@ void h() {
 
 
 def test_both_constructs_coexist_in_one_translation_unit(tmp_path: Path) -> None:
-    """The filed repro: same name, both constructs, one file.
+    """Same name, both constructs, one file.
 
-    The discriminator has to work *within* a translation unit — the filed
-    whisper.cpp instance is exactly this, which is why the include-set module
-    evidence cannot settle it and the construct must.
+    The discriminator has to work *within* a translation unit, which is why
+    the include-set module evidence cannot settle it and the construct must.
     """
     (tmp_path / "d.cpp").write_text("""
 #include <sys/wait.h>

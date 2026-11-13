@@ -4,10 +4,10 @@
 The end-to-end test in :class:`TestGoDdgEndToEnd` is the load-bearing one.
 A def/use extractor can be perfectly correct against hand-picked AST nodes
 and still contribute nothing, because the CFG builder decides which nodes
-ever reach ``extract()``. Before ``atomic_statement`` was added to go.yaml
-the Go CFG emitted bare ``identifier`` leaves, so an extractor keyed on
-``short_var_declaration`` was never called with one and produced exactly
-zero DDG edges — while every unit test below would have passed.
+ever reach ``extract()``. Without ``atomic_statement`` in go.yaml the Go
+CFG emits bare ``identifier`` leaves, so an extractor keyed on
+``short_var_declaration`` is never called with one and produces zero DDG
+edges — while every unit test below still passes.
 """
 from __future__ import annotations
 
@@ -275,7 +275,7 @@ def _go_extractor_registered() -> Any:
 class TestGoDdgEndToEnd:
     """The extractor must produce DDG edges through the real pipeline.
 
-    This is the test that would have caught the inert-extractor failure.
+    This is the test that catches an inert extractor.
     It exercises go.yaml's ``atomic_statement`` and the extractor together;
     either one missing yields zero edges.
     """
@@ -320,8 +320,8 @@ class TestGoDdgEndToEnd:
         self, tmp_path: Path,
     ) -> None:
         """WI-sitaf: the positional left side reaches ``stmt_targets``, and
-        ``stmt_defuse`` keeps only the variables bound -- ``_`` in defines was
-        an heir and a seed with no definition (concept audit 2026-10-21)."""
+        ``stmt_defuse`` keeps only the variables bound -- ``_`` in defines
+        would be an heir and a seed with no definition."""
         from hypergumbo_core.ddg_build import build_repo_ddg
 
         (tmp_path / "main.go").write_text(

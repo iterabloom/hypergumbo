@@ -210,12 +210,10 @@ def test_iter_axis_set_assignments_skips_empty_set(tmp_path: Path):
 def test_iter_axis_set_assignments_skips_a_computed_value(tmp_path: Path):
     """An RHS the walker cannot enumerate statically must be skipped.
 
-    THIS TEST MOVED RATHER THAN BEING DELETED (WI-jinuj). It used to assert
-    that a LIST is skipped, which was true and is no longer: a bare list or
-    tuple is now collected, because a hardcoded copy of a vocabulary is a
-    hardcoded copy however it is bracketed. What remains genuinely skipped is
-    a value produced by a CALL — and that case is not a gap, since a constant
-    DERIVED from the registry cannot drift from it.
+    A bare list or tuple IS collected, because a hardcoded copy of a
+    vocabulary is a hardcoded copy however it is bracketed (WI-jinuj). What is
+    genuinely skipped is a value produced by a CALL — and that case is not a
+    gap, since a constant DERIVED from the registry cannot drift from it.
     """
     p = tmp_path / "demo.py"
     p.write_text('_X_KIND = frozenset(_A_KINDS + _B_KINDS)\n')
@@ -328,9 +326,9 @@ def test_find_drift_strict_reports_both_drift_and_off_axis(tmp_path: Path):
 
 
 def test_find_drift_default_does_not_enforce_axis_principle(tmp_path: Path):
-    """Default mode (allowed_axis_names=None) keeps the original
-    'subset of registry' behavior — off-axis registry values are
-    silently allowed. Preserves backward compatibility."""
+    """Default mode (allowed_axis_names=None) is the plain
+    'subset of registry' check — off-axis registry values are
+    allowed."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_X_KIND = {"alpha", "deprecated_x"}\n',
@@ -358,14 +356,14 @@ def test_find_drift_strict_requires_name_to_axis():
 
 
 # --------------------------------------------------------------------------
-# WI-jinuj: the collector saw only string-literal SETS, so a hardcoded copy
-# of a vocabulary written as a TUPLE, a LIST, a DICT or a set of module-local
-# NAME references was invisible to all four drift linters at once.
+# Collected shapes beyond string-literal sets (WI-jinuj): a hardcoded copy of
+# a vocabulary written as a TUPLE, a LIST, a DICT or a set of module-local NAME
+# references is a consumer like any literal set, and a collector blind to it
+# leaves it invisible to every drift linter at once.
 #
-# Each widening below was first run in REPORT-ONLY mode over the live tree
-# (the item's mandatory first step) before any gate changed; the measured
-# yield is recorded in the item. The tests here pin the SHAPES, not that
-# yield, because the yield is a property of today's tree.
+# The tests here pin the SHAPES, not how many hits the live tree yields,
+# because the yield is a property of today's tree. Run a further widening in
+# REPORT-ONLY mode over the live tree before it gates.
 # --------------------------------------------------------------------------
 
 
@@ -381,7 +379,8 @@ def _collect(tmp_path, source: str, *, name_filter: str = "EDGE_TYPE"):
 
 
 def test_bare_tuple_is_collected(tmp_path):
-    """``CATALOG_BOUNDARY_TYPES`` was exactly this shape and was invisible."""
+    """A bare tuple of literals (``CATALOG_BOUNDARY_TYPES``'s shape) is a
+    consumer set."""
     got = _collect(tmp_path, 'EDGE_TYPE_ORDER = ("calls", "imports")\n')
     assert got == {"EDGE_TYPE_ORDER": frozenset({"calls", "imports"})}
 
@@ -438,8 +437,8 @@ def test_a_uniform_dict_still_reports_under_its_plain_name(tmp_path):
 
 
 def test_module_local_name_references_resolve(tmp_path):
-    """``VALID_BOUNDARY_RULINGS`` is ``frozenset({NAME, NAME})``; the whole
-    assignment used to be dropped because the elements are not literals."""
+    """``VALID_BOUNDARY_RULINGS`` is ``frozenset({NAME, NAME})``; its elements
+    are names, not literals, and resolve to the string constants they name."""
     got = _collect(
         tmp_path,
         'A = "calls"\nB: str = "imports"\n'
@@ -466,7 +465,7 @@ def test_a_computed_set_remains_invisible_and_that_is_correct(tmp_path):
 
 
 def test_a_bare_exclusion_silences_both_sides_of_a_dict(tmp_path: Path):
-    """Exclusions written before the side split keep their meaning."""
+    """A bare-name exclusion still silences the whole constant, both sides."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_FOO_KIND_MAP = {"phantom_key": "phantom_value"}\n',

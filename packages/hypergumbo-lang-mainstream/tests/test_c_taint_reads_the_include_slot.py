@@ -2,15 +2,12 @@
 """A C secret sent over a socket is a taint flow, not a clean verdict (INV-foda).
 
 The c analyzer puts the file's ``#include`` headers in an unresolved call's
-module slot (``stdlib.h,string.h,sys/socket.h``). io-boundaries has split that
-slot into candidates since INV-funuf; taint's lookup was a separate copy that
-compared the joined string, so neither ``getenv`` nor ``send`` had a taint
-entry. Measured on the shipped CLI before this change, both files below:
-
-* io-boundaries: ``env_read stdlib.getenv``, ``net_send sys/socket.send``;
-* verify-claims ``host_secret -> network``: CONFIRMED, 0 flows.
-
-Both consumers now take the row from one rule (``io_boundary.named_lookup_arm``).
+module slot (``stdlib.h,string.h,sys/socket.h``), which must be split into
+stemmed candidates. io-boundaries and taint take the row from one rule
+(``io_boundary.named_lookup_arm``); a taint lookup comparing the joined string
+would find no taint entry for ``getenv`` or ``send``, and verify-claims would
+report ``host_secret -> network`` CONFIRMED with 0 flows while io-boundaries
+shows ``env_read stdlib.getenv`` and ``net_send sys/socket.send``.
 """
 
 from __future__ import annotations
@@ -32,7 +29,7 @@ _BODY = (
 )
 
 _FILES = {
-    # Three headers: the joined slot taint could not split.
+    # Three headers: a joined slot that must be split.
     "include_list": "#include <stdlib.h>\n#include <string.h>\n#include <sys/socket.h>\n\n" + _BODY,
     # One header: the slot keeps ``sys/socket.h`` while c.yaml says ``sys/socket``.
     "single_include": "#include <sys/socket.h>\n\nextern char *getenv(const char *);\n" + _BODY,

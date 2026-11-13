@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """"Unclassified" is an explicit flag, not tier 1 with an empty reason (WI-lidig).
 
-The supply-chain annotator used to classify every node whose tier was the
-default 1 AND whose reason was empty. That made the emptiness of
-``supply_chain_reason`` -- declared free text that no consumer branches on --
-the branch, and a producer that deliberately stamped tier 1 without a reason
-could not be told from one that stamped nothing (the F78.A3 sentinel watch-item,
-unexercised on the substrate but undecidable by construction).
-``Symbol.supply_chain_classified`` now answers the question directly.
+Inferring "unclassified" from the default tier 1 AND an empty reason would make
+the emptiness of ``supply_chain_reason`` -- declared free text that no consumer
+branches on -- the branch, and a producer that deliberately stamps tier 1
+without a reason could not be told from one that stamped nothing.
+``Symbol.supply_chain_classified`` answers the question directly, and the
+supply-chain annotator classifies only nodes where it is False.
 """
 from __future__ import annotations
 
@@ -52,7 +51,8 @@ def test_the_annotator_classifies_only_unclassified_nodes(tmp_path: Path) -> Non
     (tmp_path / "src" / "app.py").write_text("def f(): pass\n")
     fresh = _sym()
     deliberate = _sym(id="python:src/app.py:3-4:g:function", name="g")
-    # A deliberate tier-1 stamp with no reason: the old guard re-classified it.
+    # A deliberate tier-1 stamp with no reason: a guard keyed on the empty
+    # reason would re-classify it.
     deliberate.supply_chain_classified = True
     stand_in = _sym(id="x:syn:0-0:s:function", name="s", protocol_origin="crypto_flow")
 

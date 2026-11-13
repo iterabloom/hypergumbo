@@ -1,39 +1,32 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-lanos: a child's exit status gets ONE verdict, whichever call hands it back.
+"""A child's exit status gets ONE verdict, whichever call hands it back (WI-lanos).
 
-THE DISAGREEMENT. Two catalogue rows minted an ``untrusted_input`` source for an
-exit status -- python's ``os`` wait family and rust's ``Child.wait`` /
-``try_wait``, rowed ``ipc_recv`` "Reaping a child collects its exit status" --
-while every call that returns the SAME value one step earlier minted nothing:
-``subprocess.call``, ``os.system``, ``Command::status``, ``Cmd.Run``,
-``rawSystem``. INV-lozat had already ruled the second reading: "an exit status
-is not the child's message". One value, two verdicts.
-
-THE RULING (owner, 2026-10-22; ADR-0049 §Ruling 4, "An exit status is not the
-child's message"). The rows go, so every status-only call mints nothing. A
-finding needs the value to reach a sink's ARGUMENT, and an exit status is
-consumed as a branch condition; the opposite direction (mint at every
-status-returning call) was measured twice and 0 of 120 sampled added findings
-carried a status to a sink argument. Ruling 3's finding-level test was run
-before this merged: 11 repositories, 0 situations removed or added, 0 verdicts
-moved (lab notebook ``lanos_removal_10222026/``).
+THE RULE (ADR-0049 §Ruling 4, "An exit status is not the child's message";
+owner ruling, INV-lozat). No call mints a taint source for an exit status
+alone. A finding needs the value to reach a sink's ARGUMENT, and an exit status
+is consumed as a branch condition; sampled, the findings that minting at every
+status-returning call would add carry no status to a sink argument. Rowing the
+reaping calls (python's ``os`` wait family, rust's ``Child.wait`` /
+``try_wait``) under ``ipc_recv`` while the calls that return the SAME value one
+step earlier -- ``subprocess.call``, ``os.system``, ``Command::status``,
+``Cmd.Run``, ``rawSystem`` -- mint nothing would give one value two verdicts,
+so the reaping rows are absent.
 
 THE POPULATION IS CUT BY RETURN VALUE, NOT BY NAME, each member read against its
-API (ported from the omission-side branch, whose rows were not merged):
-``call`` / ``Popen.wait`` / ``Popen.poll`` return ``returncode``; ``os.system``
-the wait status; ``Command::status`` an ``ExitStatus``; ``Cmd.Run`` an
-``error`` that is an ``*exec.ExitError`` carrying the status; ``system`` /
-``rawSystem`` / ``waitForProcess`` an ``ExitCode``. Three status-only calls
-have no row on dev at all and are not asserted on, since "mints nothing" would
-pass vacuously for them: go ``Cmd.Wait`` and ``os.Process.Wait``, haskell
-``getProcessExitCode``. ``subprocess.run`` is not a member: its
-``CompletedProcess`` also carries captured stdout (WI-lojar).
+API: ``call`` / ``Popen.wait`` / ``Popen.poll`` return ``returncode``;
+``os.system`` the wait status; ``Command::status`` an ``ExitStatus``;
+``Cmd.Run`` an ``error`` that is an ``*exec.ExitError`` carrying the status;
+``system`` / ``rawSystem`` / ``waitForProcess`` an ``ExitCode``. Three
+status-only calls have no row at all and are not asserted on, since "mints
+nothing" would pass vacuously for them: go ``Cmd.Wait`` and
+``os.Process.Wait``, haskell ``getProcessExitCode``. ``subprocess.run`` is not
+a member: its ``CompletedProcess`` also carries captured stdout (WI-lojar).
 
 THE RESIDUAL, PINNED (INV-sozak). A status read out of an OUTPUT-carrying result
 still mints, because the row taints the whole returned value:
 ``getstatusoutput()[0]``, ``wait_with_output().status``. That is one value with a
 second verdict, accepted for now (ADR-0052's field-sensitivity cost). The pins
-below assert TODAY'S state, so they go red when INV-sozak lands and are
+below assert the current state, so they go red when INV-sozak lands and are
 re-pointed then.
 """
 
@@ -62,7 +55,7 @@ _CATALOG_DIR = (
 
 Key = tuple[str, str, str, str]
 
-#: The rows this change REMOVED: no catalogue row of any boundary names them now.
+#: The reaping rows: no catalogue row of any boundary may name them.
 REMOVED: tuple[Key, ...] = (
     ("python", "os", "wait", "function"),
     ("python", "os", "waitpid", "function"),
@@ -74,7 +67,7 @@ REMOVED: tuple[Key, ...] = (
 )
 
 #: Status-only calls that keep their LAUNCH row (a subprocess sink) and mint no
-#: source -- the reading REMOVED is brought into line with.
+#: source -- the reading the reaping calls must share.
 STATUS_ONLY_LAUNCHES: tuple[Key, ...] = (
     ("python", "subprocess", "call", "function"),
     ("python", "os", "system", "function"),
@@ -138,8 +131,8 @@ class TestOneValueOneVerdictInTheCatalogue:
     def test_a_status_only_launch_is_a_sink_and_mints_no_source(
         self, derived: Any, member: Key,
     ) -> None:
-        """Rowed (so the absence below is not vacuous), still the subprocess
-        sink it was, and no source: the same answer as the reaping calls."""
+        """Rowed (so the absence below is not vacuous), a subprocess sink, and
+        no source: the same answer as the reaping calls."""
         assert _rowed(member), f"{_ids(member)} lost its launch row"
         sink = derived[1].get(member)
         assert sink is not None and sink.zone == "subprocess"
@@ -160,10 +153,9 @@ class TestOneValueOneVerdictInTheCatalogue:
 
 
 class TestNoChoiceShapedEntryOutlivesItsSource:
-    """WI-jivih's ``choice_shaped_source`` caveat named the exit-status family
-    because those rows minted. With no source left under those names, the
-    entries would only ever match something else that happens to be called
-    ``wait``."""
+    """The ``choice_shaped_source`` caveat (WI-jivih) must not name the
+    exit-status family: no source is left under those names, so such an entry
+    would only ever match something else that happens to be called ``wait``."""
 
     @pytest.mark.parametrize(
         "name", ["wait", "waitpid", "wait3", "wait4", "waitid", "try_wait"],
@@ -278,9 +270,8 @@ def test_the_status_reaching_a_launch_reads_one_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     filename: str, reaping: str, launching: str,
 ) -> None:
-    """The item's own repro: os.waitpid read ``violated`` and subprocess.call
-    ``confirmed_with_caveats`` for the same flow. Now both give one answer,
-    with no evidence row."""
+    """WI-lanos's repro: the same flow through ``os.waitpid`` and through
+    ``subprocess.call`` must give one answer, with no evidence row."""
     a = _verify(tmp_path / "a", monkeypatch, filename, reaping)
     b = _verify(tmp_path / "b", monkeypatch, filename, launching)
     assert _shape(a) == _shape(b), (a["verdict"], b["verdict"])

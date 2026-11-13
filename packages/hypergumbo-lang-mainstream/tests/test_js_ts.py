@@ -3596,8 +3596,8 @@ class InternalController {
 class TestKoaRouteDetection:
     """Tests for Koa Router route detection.
 
-    Koa Router uses the same pattern as Express: router.get('/path', handler).
-    The existing route detection should work for Koa out of the box.
+    Koa Router uses the same pattern as Express: router.get('/path', handler),
+    so the Express route detection covers Koa with no Koa-specific code.
     """
 
     @pytest.fixture(autouse=True)
@@ -3609,7 +3609,7 @@ class TestKoaRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_koa_router_get_route(self, tmp_path: Path) -> None:
-        """Koa Router router.get() route handler sets stable_id to 'get'."""
+        """Koa Router router.get() handler is detected as a GET route."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
@@ -3636,7 +3636,7 @@ module.exports = router;
         assert handler.meta.get("route_path") == "/users"
 
     def test_koa_router_post_route(self, tmp_path: Path) -> None:
-        """Koa Router router.post() route handler sets stable_id to 'post'."""
+        """Koa Router router.post() handler is detected as a POST route."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
@@ -3688,8 +3688,8 @@ router.delete('/users/:id', async (ctx) => {
 class TestFastifyRouteDetection:
     """Tests for Fastify route detection.
 
-    Fastify uses the same pattern as Express: fastify.get('/path', handler).
-    The existing route detection should work for Fastify out of the box.
+    Fastify uses the same pattern as Express: fastify.get('/path', handler),
+    so the Express route detection covers Fastify with no Fastify-specific code.
     """
 
     @pytest.fixture(autouse=True)
@@ -3701,7 +3701,7 @@ class TestFastifyRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_fastify_get_route(self, tmp_path: Path) -> None:
-        """Fastify fastify.get() route handler sets stable_id to 'get'."""
+        """Fastify fastify.get() handler is detected as a GET route."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "server.js"
@@ -3725,7 +3725,7 @@ fastify.get('/users', function getUsers(request, reply) {
         assert handler.meta.get("route_path") == "/users"
 
     def test_fastify_post_route(self, tmp_path: Path) -> None:
-        """Fastify fastify.post() route handler sets stable_id to 'post'."""
+        """Fastify fastify.post() handler is detected as a POST route."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "server.js"
@@ -4254,8 +4254,8 @@ function run() {
 
         The bare-name table keeps whichever same-named function is enumerated
         LAST, and file discovery follows directory order, which is not
-        alphabetical: on tmpfs it follows creation order, on ext4 a name hash
-        (WI-sipoj). So the fixture is built in BOTH creation orders; the call
+        alphabetical: on tmpfs it depends on creation order, on ext4 on a name
+        hash (WI-sipoj). So the fixture is built in BOTH creation orders; the call
         must reach the file the relative import names in each (WI-povub).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -4368,8 +4368,8 @@ function run() {
 
         When ``error()`` is called without any import in two different packages,
         each should resolve to their own package's ``error()`` function.
-        Previously, ``global_symbols`` used last-one-wins, so one of the two
-        callers would incorrectly resolve to the other package's function.
+        ``global_symbols`` is last-one-wins, so resolving through it alone
+        sends one of the two callers to the other package's function.
 
         Uses two packages (each with its own package.json) and two callers
         to make the test filesystem-order-independent.
@@ -4479,19 +4479,20 @@ function run() {
     def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
         """When same class name exists in multiple modules, namespace import disambiguates.
 
-        This test uses directory structure to control file discovery order, ensuring
-        the "wrong" file is processed last (overwriting global_classes). The namespace
-        import path_hint must be used to resolve to the correct target.
+        ``global_classes`` is last-one-wins, so whenever z_late/service.js
+        (WRONG) is enumerated after a_early/service.js (CORRECT) it overwrites
+        the correct class, and only the namespace import's path_hint leads
+        back to a_early.
 
-        rglob discovery order: main.js -> a_early/service.js -> z_late/service.js
-        So z_late (WRONG) overwrites a_early (CORRECT) in global_classes.
-        Without path_hint, resolution incorrectly picks z_late.
+        Discovery order is filesystem-dependent, not alphabetical (WI-sipoj),
+        and this fixture is built in one creation order only, so it exercises
+        the overwrite only where z_late is enumerated last. The
+        same-name-function test above builds both orders.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
-        # Create two modules with same class name in different directories
-        # rglob processes alphabetically: a_early/ before z_late/
-        # So z_late/service.js (WRONG) will be processed LAST, overwriting global_classes
+        # Two modules with the same class name in different directories;
+        # whichever is enumerated last owns the name in global_classes.
         correct_dir = tmp_path / "a_early"
         correct_dir.mkdir()
         (correct_dir / "service.js").write_text("""
@@ -4901,15 +4902,18 @@ class CatsController {
         disambiguate which one to use. This is essential for monorepos (e.g., NestJS
         with multiple sample apps each defining CatsService).
 
-        The controller is in dir_b (alphabetically later) and imports from its own
-        directory, while dir_a has a decoy CatsService. Without import-aware
-        disambiguation, the resolver would pick dir_a (alphabetically first).
+        The controller is in dir_b and imports from its own directory, while
+        dir_a has a decoy CatsService. Without import-aware disambiguation the
+        resolver falls back to the last-one-wins name table, which holds
+        whichever CatsService is enumerated last; discovery order is
+        filesystem-dependent, not alphabetical (on tmpfs the later-created
+        dir_b is enumerated first, so the fallback picks the decoy).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
-        # dir_a has a decoy CatsService (alphabetically first = default pick)
+        # dir_a has a decoy CatsService
         (tmp_path / "dir_a").mkdir()
-        # dir_b has the correct CatsService (alphabetically later)
+        # dir_b has the correct CatsService
         (tmp_path / "dir_b").mkdir()
 
         decoy_service = tmp_path / "dir_a" / "cats.service.ts"
@@ -4987,7 +4991,7 @@ class CatsController {
         (tmp_path / "dir_a").mkdir()
         (tmp_path / "dir_b").mkdir()
 
-        # Decoy in dir_a (alphabetically first)
+        # Decoy in dir_a
         (tmp_path / "dir_a" / "cats.service.ts").write_text(
             "export class CatsService {\n    create() { return 1; }\n}\n"
         )
@@ -5087,10 +5091,10 @@ class CatsController {
         """All instances of a duplicate-named method must produce call edges.
 
         In monorepos where multiple files define the same class/method name
-        (e.g., NestJS with CatsController.create in 11 sample apps), each
-        controller's method must produce its own call edges. Previously,
-        _get_enclosing_function used global_symbols which keeps only one
-        symbol per name, so only the last-processed file produced edges.
+        (e.g., NestJS sample apps that each define CatsController.create), each
+        controller's method must produce its own call edges. Finding the
+        enclosing function through ``global_symbols``, which keeps one symbol
+        per name, would give edges to the last-processed file only.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -9473,7 +9477,7 @@ class TestJSTSQualifiedName:
 
 
 class TestJsTsCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity populated on JS/TS callables."""
+    """cyclomatic_complexity is populated on JS/TS callables."""
 
     def test_function_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -9963,7 +9967,7 @@ class TestWizavadGeneratorFnExprEmission:
 
     def test_js_and_ts_emit_same_function_names(self, tmp_path: Path) -> None:
         """Symmetry: the same construct set yields the same function-symbol
-        names for .js and .ts (the gaps were identical across both)."""
+        names for .js and .ts."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         src = (
@@ -10528,8 +10532,9 @@ class TestWizavadAnonCallbackFunctionNode:
         """A call-wrapped variable binding ``const handler = catchAsync((req,
         res) => {...})`` is extracted ONCE (named after the variable) — the
         ``processed_handlers`` guard keeps the anon-callback branch from also
-        emitting a ``_cb_catchAsync`` for the same arrow node (the real
-        double-emission risk that the vacuous bare-identifier test missed)."""
+        emitting a ``_cb_catchAsync`` for the same arrow node. A bare-identifier
+        argument cannot exercise this double-emission risk; it needs an arrow
+        inside the wrapping call."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "a.js").write_text(
@@ -10831,7 +10836,7 @@ class TestJsTsUnresolvedExternalInheritance:
         assert ":" not in _normalize_import_module_hint("jsr:@std/foo")
         assert ":" not in _normalize_import_module_hint("https://cdn.skypack.dev/lit")
         assert ":" not in _normalize_import_module_hint("https://host:8080/pkg")
-        # existing behavior preserved
+        # scheme-less specifiers: node: prefix stripped, scoped names unchanged
         assert _normalize_import_module_hint("node:fs") == "fs"
         assert _normalize_import_module_hint("@scope/pkg") == "@scope/pkg"
 
@@ -11055,14 +11060,14 @@ class TestJsTsBareMethodMagnetGate:
 
 
 class TestTypeScriptAbstractModifier:
-    """`abstract class` records its abstractness in modifiers (audit 0018).
+    """`abstract class` records its abstractness in modifiers.
 
-    Five languages (java, csharp, php, scala, kotlin) record an abstract
-    class as `kind="class"` plus `modifiers=["abstract"]`, which is where the
-    type-family predicate `is_abstract_type` reads it. TypeScript emitted
-    `modifiers=[]`, so its abstract classes were indistinguishable from
-    concrete ones — even though the grammar hands the analyzer a distinct
-    `abstract_class_declaration` node, so nothing had to be inferred.
+    An abstract class is `kind="class"` plus `modifiers=["abstract"]`, as in
+    java, csharp, php, scala and kotlin; that modifier is where the
+    type-family predicate `is_abstract_type` reads it. Without it a
+    TypeScript abstract class is indistinguishable from a concrete one. The
+    grammar's distinct `abstract_class_declaration` node is the source, so
+    nothing has to be inferred. (history: audit 0018)
     """
 
     def test_abstract_class_carries_the_modifier(self, tmp_path: Path) -> None:
@@ -11079,7 +11084,7 @@ class TestTypeScriptAbstractModifier:
         assert "abstract" not in by_name["Square"].modifiers
 
     def test_predicate_now_classifies_it(self, tmp_path: Path) -> None:
-        """The point of the fix: the shared predicate can answer correctly."""
+        """The shared is_abstract_type predicate classifies TS abstract classes."""
         from hypergumbo_core.symbol_kinds import is_abstract_type
 
         (tmp_path / "s.ts").write_text("abstract class Base { }\nclass C { }\n")

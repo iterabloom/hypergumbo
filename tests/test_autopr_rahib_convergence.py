@@ -60,7 +60,7 @@ def test_pre_scenario_b_gate_function_defined() -> None:
 
 def test_pre_scenario_b_gate_uses_check_pr_merged() -> None:
     """The gate must consult `_check_pr_merged` for the merged-during-timeout
-    sub-case (Decision 1 from the human triage, sub-case 1)."""
+    sub-case."""
     text = FORGEJO_LIB.read_text()
     gate_start = text.index("_pre_scenario_b_gate()")
     # Find the body — read up to the next top-level helper definition.
@@ -72,7 +72,7 @@ def test_pre_scenario_b_gate_uses_check_pr_merged() -> None:
 
 def test_pre_scenario_b_gate_uses_mergeable_plus_poll_retry() -> None:
     """The gate must consult mergeable + retry poll_ci once for the
-    about-to-merge / poll-endpoint-flake sub-case (Decision 1 sub-case 2)."""
+    about-to-merge / poll-endpoint-flake sub-case."""
     text = FORGEJO_LIB.read_text()
     gate_start = text.index("_pre_scenario_b_gate()")
     gate_body_end = text.index("\n# ---", gate_start + 1)
@@ -134,8 +134,8 @@ def test_autopr_gate_branches_handle_merged_and_about_to_merge() -> None:
 
 
 def test_post_rebase_loop_uses_labeled_while_with_max() -> None:
-    """The post-rebase block must be a labeled while-loop with a max-iter cap
-    (Decision 2: labeled loop, NOT recursion)."""
+    """The post-rebase block must be a labeled while-loop with a max-iter cap,
+    not recursion."""
     text = FORGEJO_LIB.read_text()
     assert "WI-rahib Surface 2" in text
     assert 'while [ "$rebase_attempts" -lt "$rebase_max" ]; do' in text
@@ -157,8 +157,8 @@ def test_post_rebase_loop_re_polls_ci_on_new_sha() -> None:
 
 
 def test_post_rebase_loop_has_continue_after_re_rebase() -> None:
-    """The 'base advanced again' branch must `continue` so the loop re-polls
-    on the post-re-rebase SHA — Decision 2's 'explicit continue' shape."""
+    """The 'base advanced again' branch must explicitly `continue` so the loop
+    re-polls on the post-re-rebase SHA."""
     text = FORGEJO_LIB.read_text()
     loop_start = text.index('while [ "$rebase_attempts" -lt "$rebase_max" ]; do')
     loop_end = text.index("\n\t\t\t\t\tdone", loop_start)
@@ -173,8 +173,8 @@ def test_post_rebase_loop_has_continue_after_re_rebase() -> None:
 
 
 def test_post_rebase_loop_no_recursion() -> None:
-    """The fix must NOT introduce recursion or a guard-flag re-entry pattern
-    (Decision 2 explicitly rejected this shape)."""
+    """The post-rebase path must not use recursion with a guard-flag re-entry;
+    the labeled loop with `continue` is the required shape."""
     text = FORGEJO_LIB.read_text()
     assert "AUTOPR_FROM_REBASE" not in text, (
         "Decision 2 explicitly rejected the recursion-with-guard-flag shape "
@@ -748,7 +748,7 @@ def _emitted_states() -> set[str]:
 def test_every_emitted_terminal_state_is_declared() -> None:
     """No auto-pr exit may record a state outside the declared vocabulary.
 
-    This is the executable half of the refined invariant. A new terminal
+    This is the executable half of the invariant. A new terminal
     state added without classifying it fails here, which is the point:
     it forces the state list to be looked at whenever it grows.
     """
@@ -786,7 +786,7 @@ def test_declared_vocabulary_has_no_dead_entries() -> None:
 def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
     """`unknown` must remain the initializer, unset by any deliberate exit.
 
-    The refined invariant leans on this: an auto-pr run that ends without
+    The invariant leans on this: an auto-pr run that ends without
     reaching one of its declared terminal states self-reports as `unknown`,
     which is exactly the non-converged "third state" the invariant forbids.
     If the default ever becomes a real state, non-convergence stops being
@@ -938,9 +938,9 @@ def test_control_bare_post_merge_call_really_does_abort(tmp_path: Path) -> None:
 
     This is the arm that can fail: if the fixture stops inducing an abort,
     it goes red instead of letting the boundary test pass vacuously. Only
-    the checkout-collision fixture is a control; the `read -p` fixture no
-    longer aborts (cleanup_local's tty guard), and its property is pinned by
-    `test_non_interactive_cleanup_skips_instead_of_aborting`.
+    the checkout-collision fixture is a control; the `read -p` fixture does
+    not abort (cleanup_local skips the prompt without a tty), and its property
+    is pinned by `test_non_interactive_cleanup_skips_instead_of_aborting`.
     """
     repo = _build_post_merge_repo(tmp_path, collide=True)
     rc, _ = _run_post_merge_tail(repo, wrapped=False)

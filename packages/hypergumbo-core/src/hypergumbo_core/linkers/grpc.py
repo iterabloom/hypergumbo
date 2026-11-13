@@ -11,9 +11,9 @@ those edges join. The Go analyzer's output IS read, by two OPTIONAL Go-only
 sub-families -- Go methods implementing a minted RPC route, and resolving an
 unresolved ``Register*Server`` call -- but CNF has no optional form:
 ``[["go"]]`` would be falsified on every Python/Java/TS gRPC repo whose
-scan-built edges arrive with no Go pass. The twelve-language clause this
-replaced named seven languages the linker never scans and a ``proto`` pass
-whose output it never reads.
+scan-built edges arrive with no Go pass. A clause naming the scanned
+languages or a ``proto`` pass would be just as false: the core edges read
+none of those passes' output.
 
 Detected Patterns
 -----------------
@@ -50,11 +50,11 @@ How It Works
    before the linkers and would leave it null (INV-fufij)
 4. Create route-marker symbols for each proto RPC method, using the
    real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>. These
-   carry ``kind="function"`` + ``meta['framework_role']='route'`` (the
-   ADR-0027 Phase-3 route→function fold); there is no ``route`` kind.
+   carry ``kind="function"`` + ``meta['framework_role']='route'``
+   (ADR-0027); there is no ``route`` kind.
 5. Match clients to servers by service name
 6. Create canonical 'calls' edges with meta['protocol']='grpc' linking
-   client stubs to servicers (post WI-vumum-juvil; pre-fold was grpc_calls)
+   client stubs to servicers (ADR-0023 §6; history: WI-vumum-juvil)
 7. Create ``dispatches_to`` edges (``meta['dispatch_kind']='route'``) from
    RPC route symbols to service symbols
 
@@ -76,8 +76,8 @@ Also emitted, beyond the numbered flow above:
 - ``dispatches_to`` from a servicer or server registration to the proto
   service it implements, bridging the two components.
 - ``calls`` edges under the WI-ropoz fallback, for a client stub whose
-  servicer is absent from the repository — the alternative was emitting
-  nothing and reporting a clean graph.
+  servicer is absent from the repository — emitting nothing there would
+  report a clean graph for a disconnected client.
 - ``implements`` edges from a Go method to the proto route it satisfies.
 - ttrpc ``Register*Service`` registrations alongside gRPC's
   ``Register*Server``.
@@ -456,13 +456,12 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
     return patterns
 
 
-#: ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): each gRPC pattern type
-#: folds to a canonical Cluster A construct plus ``meta["framework_role"]``:
-#: ``interface`` for the proto service declaration, ``class`` for a server-side
-#: implementation, ``function`` for a client-side call site.
+#: Each gRPC pattern type maps to a canonical Cluster A construct plus
+#: ``meta["framework_role"]`` (ADR-0027; audit-findings 0013; history:
+#: WI-nitil): ``interface`` for the proto service declaration, ``class`` for a
+#: server-side implementation, ``function`` for a client-side call site.
 #:
-#: The service's kind is a scalar, as it was before this table existed: it
-#: names the ONE kind a ``.proto`` service is, not a set of abstract kinds a
+#: The service's kind is a scalar: it names the ONE kind a ``.proto`` service is, not a set of abstract kinds a
 #: consumer selects on, so ``find_partial_abstract_family_literals`` (which
 #: flags a partial ``interface``/``trait``/``protocol`` enumeration) has
 #: nothing to say about it. proto declares no trait or protocol.
@@ -480,10 +479,10 @@ _PATTERN_FOLDS: dict[str, tuple[str, str]] = {
 def _make_symbol_id(pattern: "GrpcPattern") -> str:
     """The node id of the symbol this linker mints for *pattern*.
 
-    WI-fotad: ADR-0036 Ruling 2 puts ``node.kind`` in the kind slot and the
-    node's own language in the language slot; this linker used to put the
-    framework role and the literal ``grpc`` there. The role is kept as a
-    name-segment suffix, as the websocket linker does (INV-dulah), so a
+    ADR-0036 Ruling 2 puts ``node.kind`` in the kind slot and the node's own
+    language in the language slot, never the framework role or the literal
+    ``grpc`` (history: WI-fotad). The role rides as a name-segment suffix, as
+    in the websocket linker (INV-dulah), so a
     servicer and a registration of one service at one line, or a node this
     linker mints and the analyzer's own node for the same declaration, keep
     distinct ids.
@@ -552,9 +551,9 @@ def _link_go_methods_to_rpc_routes(
     When a Go struct embeds ``UnimplementedXxxServer``, methods on that struct
     with names matching proto RPC definitions are implementations of those RPCs.
     This function creates canonical ``implements`` + ``meta['protocol']='grpc'``
-    edges (folded from the former ``implements_rpc`` edge type per audit-findings
-    0016) connecting the Go method symbols to the proto RPC route symbols. The
-    folded form keeps its call-like taint / io / ranking / slice coupling via
+    edges (audit-findings 0016; there is no separate ``implements_rpc`` type)
+    connecting the Go method symbols to the proto RPC route symbols. Their
+    call-like taint / io / ranking / slice coupling comes from
     ``edge_types.is_grpc_rpc_implementation``.
 
     Args:
@@ -577,14 +576,13 @@ def _link_go_methods_to_rpc_routes(
             go_server_files.add(pattern.file_path)
 
     # Build (file, struct_type) → service_name mapping by re-scanning Go files.
-    # WI-kunoz / BUG-05: keyed by (file_path, struct_name) rather than the
-    # short struct name alone, because multiple Go files commonly declare a
-    # struct with the same conventional name (e.g. eight containerd plugin
-    # packages each define ``type service struct { ... UnimplementedXxxServer
-    # ... }``). The previous short-name dict overwrote on registration order
-    # so all eight collapsed onto whichever ``go_server_files`` set iteration
-    # processed last — every ``service.Create`` edge landed on the wrong
-    # service's RPC family. File-scoped keys decouple them.
+    # Keyed by (file_path, struct_name), not the short struct name: several Go
+    # files commonly declare a struct with the same conventional name (e.g.
+    # containerd plugin packages each define ``type service struct { ...
+    # UnimplementedXxxServer ... }``). A short-name key collapses them onto
+    # whichever file ``go_server_files`` iteration processes last, landing
+    # every ``service.Create`` edge on the wrong service's RPC family.
+    # (history: WI-kunoz)
     #
     # Uses brace-depth tracking to handle structs with nested braces
     # (e.g., chan struct{}) and supports package-prefixed embeddings
@@ -673,12 +671,10 @@ def _link_go_methods_to_rpc_routes(
             continue
         struct_name, method_name = parts
 
-        # WI-kunoz / BUG-05: file-scoped (path, struct_name) key so a method
-        # on ``service`` in ``plugins/containers/service.go`` doesn't pick
-        # up the Leases mapping from ``plugins/leases/service.go``. The
-        # short-name dict that this replaced collapsed all eight containerd
-        # plugin services onto whichever file ``go_server_files`` iteration
-        # processed last.
+        # File-scoped (path, struct_name) key so a method on ``service`` in
+        # ``plugins/containers/service.go`` doesn't pick up the Leases
+        # mapping from ``plugins/leases/service.go`` (see struct_to_service
+        # above).
         service_name = struct_to_service.get((sym.path, struct_name))
         if not service_name:
             continue
@@ -692,13 +688,13 @@ def _link_go_methods_to_rpc_routes(
         if not route_id:
             continue
 
-        # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-        # audit-findings 0016 FOLD: implements_rpc -> implements +
-        # meta['protocol']='grpc'. A Go method on a struct embedding
-        # UnimplementedXxxServer literally IS a Go interface implementation
-        # (impl->contract). Its call-like consumer coupling (taint / io /
-        # ranking / slice) is preserved via edge_types.is_grpc_rpc_implementation
-        # so gRPC reachability is not silently demoted (finding 3).
+        # Canonical ``implements`` + meta['protocol']='grpc' (audit-findings
+        # 0016): a Go method on a struct embedding UnimplementedXxxServer IS a
+        # Go interface implementation (impl->contract). Its call-like consumer
+        # coupling (taint / io / ranking / slice) comes from
+        # edge_types.is_grpc_rpc_implementation, so gRPC reachability is not
+        # demoted. The framework rides in meta["framework_dispatch"], not in
+        # evidence_type (ADR-0028; audit-findings 0014).
         edges.append(Edge.create(
             src=sym.id,
             dst=route_id,
@@ -776,7 +772,7 @@ def link_grpc(
     servicers: list[GrpcPattern] = []
 
     # The framework role stays the disambiguator in the id's NAME segment
-    # (see ``_make_symbol_id``), so cross-PR identity is stable.
+    # (see ``_make_symbol_id``), so ids stay stable across runs.
     for pattern in all_patterns:
         if pattern.type not in _PATTERN_FOLDS:  # pragma: no cover
             continue
@@ -855,12 +851,10 @@ def link_grpc(
             stub_id = _make_symbol_id(stub)
             servicer_id = _make_symbol_id(servicer)
 
-            # ADR-0023 §6 Phase 3 (WI-vumum-juvil): gRPC is a wire
-            # protocol, not a relationship. The fold target is
-            # canonical 'calls' + meta['protocol']='grpc'.
-            #
-            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-            # Fold evidence_type to ast_call_direct + meta key.
+            # gRPC is a wire protocol, not a relationship: canonical
+            # 'calls' + meta['protocol']='grpc' (ADR-0023 §6). Evidence is
+            # ast_call_direct with the framework in
+            # meta["framework_dispatch"] (ADR-0028; audit-findings 0014).
             edges.append(Edge.create(
                 src=stub_id,
                 dst=servicer_id,
@@ -931,10 +925,10 @@ def link_grpc(
     # Create route symbols for proto RPC definitions.
     # gRPC RPCs are accessed via HTTP/2 at /<package>.<Service>/<Method>.
     # Build a lookup for service symbols to create dispatches_to edges.
-    # WI-patiz (INV-zuhub item 1): multi-value index. Two .proto files
-    # in different packages can each declare ``service Foo`` — pre-fix
-    # single-value dict overwrote silently and pointed every cross-
-    # package edge at one surviving service symbol.
+    # Multi-value index: two .proto files in different packages can each
+    # declare ``service Foo``, and a single-value dict would silently keep
+    # one and point every cross-package edge at it. (history: WI-patiz,
+    # INV-zuhub item 1)
     service_sym_by_name: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") == "grpc_service":
@@ -982,7 +976,8 @@ def link_grpc(
                 if is_fallback
                 else {"framework_dispatch": "grpc_server_to_service"}
             )
-            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # Framework in meta["framework_dispatch"], not evidence_type
+            # (ADR-0028; audit-findings 0014).
             edges.append(Edge.create(
                 src=sym.id,
                 dst=target_svc.id,
@@ -1001,13 +996,12 @@ def link_grpc(
         prefix = f"{rpc.package}.{rpc.service_name}" if rpc.package else rpc.service_name
         route_path = f"/{prefix}/{rpc.rpc_name}"
 
-        # WI-zugob: minted through the shared chokepoint. Two id-format fixes
-        # ride along with the migration: the kind-slot was the literal ``route``
-        # fossil (unregistered; Symbol.kind was already ``function``), and the
-        # lang-slot was the PROTOCOL ``grpc`` rather than a language — the
-        # protocol now lives in the typed ``protocol_origin`` field, and the
-        # lang-slot names the host file's language like every other Class-B
-        # linker id. ``discovery_language`` stays None deliberately: a gRPC
+        # Minted through the shared chokepoint (history: WI-zugob). The id's
+        # kind slot is ``function`` (there is no registered ``route`` kind)
+        # and its language slot names the host file's language (``proto``)
+        # like every other Class-B linker id; the PROTOCOL ``grpc`` lives in
+        # the typed ``protocol_origin`` field, not the language slot.
+        # ``discovery_language`` stays None deliberately: a gRPC
         # route is fabricated from a service definition, not discovered inside
         # a host file, which is why the factory takes it explicitly.
         route_sym = make_route_symbol(
@@ -1048,13 +1042,11 @@ def link_grpc(
             else:
                 target_svc = min(svc_candidates, key=lambda c: c.id)
                 route_is_fallback = True
-            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
-            # gRPC RPC definition routes a route → service; "route"
-            # is the dispatch mechanism. Canonical 'dispatches_to'
-            # + meta['dispatch_kind']='route'.
-            #
-            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-            # Fold evidence_type to ast_call_direct + meta key.
+            # An RPC definition routes route → service, with "route" as
+            # the dispatch mechanism: canonical 'dispatches_to' +
+            # meta['dispatch_kind']='route' (ADR-0023 §6; audit-findings
+            # 0001). Evidence is ast_call_direct with the framework in
+            # meta["framework_dispatch"] (ADR-0028; audit-findings 0014).
             route_confidence = 0.5 if route_is_fallback else 0.90
             route_meta = (
                 {
@@ -1207,7 +1199,8 @@ def _resolve_unresolved_grpc_edges(
         best_candidate = None
 
         for candidate in candidates:
-            # First match wins for now; could add package matching later
+            # The first candidate is the default; one whose path contains
+            # the package hint replaces it.
             if best_candidate is None:
                 best_candidate = candidate
             # If package hint matches the candidate's path, prefer it

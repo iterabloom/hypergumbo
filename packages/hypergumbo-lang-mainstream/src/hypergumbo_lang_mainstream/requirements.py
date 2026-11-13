@@ -32,10 +32,10 @@ ends at the requirement symbol the same line declares, as package.json's
 project depends on its dependency symbols; an ``includes`` / ``constrains``
 ends at the named file's id, its path resolved against the including file's
 directory as pip resolves it (``meta.include_file`` keeps the path as
-written). WI-tikon: the endpoints were hand-built strings
-(``requirements:<path>``, ``pypi:package:<name>``, ``vcs:package:<name>``,
-``requirements:file:<path>``), not ids, so finalize minted them as
-``<unknown>``-path external stand-ins, an in-tree manifest among them.
+written). Both endpoints must be real ids: a hand-built string
+(``requirements:<path>``, ``pypi:package:<name>``) is not one, and finalize
+mints such a dst as an ``<unknown>``-path external stand-in, even when it
+names an in-tree manifest (history: WI-tikon).
 
 Why This Design
 ---------------
@@ -201,13 +201,10 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: both ids minted together by the shared factory, so node.id
-        # carries the canonical ADR-0036 grammar instead of the local
-        # "requirements:{path}:{kind}:{name}" composite (four segments, no span,
-        # kind in the span slot — it did not parse, and the comment below used to
-        # note it could not distinguish same-named requirements on different
-        # lines). stable_id is byte-identical: the factory calls
-        # make_doc_stable_id with exactly these arguments.
+        # Both ids are minted together by the shared factory, so node.id
+        # carries the canonical ADR-0036 grammar -- span included, so
+        # same-named requirements on different lines stay distinct -- and
+        # stable_id is derived from the same arguments (history: INV-dulah).
         symbol_id, stable_id = make_doc_symbol_ids(
             "requirements", str(rel_path), "requirement", package_name,
             span.start_line, span.end_line,
@@ -282,12 +279,9 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: as the requirement site above. This site additionally
-        # dropped a ROLE fossil — the local id put "url_requirement" in the kind
-        # slot while Symbol.kind is "requirement" (and make_doc_stable_id was
-        # already passed "requirement", so stable_id is unchanged). The role is
-        # not lost: it stays in meta["source_type"] below, the same lossless fold
-        # the three manifest analyzers used for their entry_role fossils.
+        # As the requirement site above. The id's kind slot is "requirement",
+        # matching Symbol.kind, not a role such as "url_requirement"; the role
+        # lives in meta["source_type"] below (history: INV-dulah).
         symbol_id, stable_id = make_doc_symbol_ids(
             "requirements", str(rel_path), "requirement",
             package_name or url_text[:40],
@@ -385,10 +379,9 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 end_col=node.end_point[1],
             )
 
-            # INV-dulah: as above. This site also dropped an "editable" ROLE
-            # fossil from the id kind slot (Symbol.kind is "requirement", and
-            # make_doc_stable_id already received "requirement"); the role stays
-            # in meta["editable"] / meta["install_mode"] below.
+            # As above: the id's kind slot is "requirement" (Symbol.kind), not
+            # an "editable" role; the role lives in meta["editable"] /
+            # meta["install_mode"] below (history: INV-dulah).
             symbol_id, stable_id = make_doc_symbol_ids(
                 "requirements", str(rel_path), "requirement", option_path,
                 span.start_line, span.end_line,

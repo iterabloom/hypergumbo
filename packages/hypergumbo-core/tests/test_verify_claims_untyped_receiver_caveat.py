@@ -355,7 +355,7 @@ class TestItComposesWithTheSiblingCaveat:
 
 
 class TestTheDisclosureScales:
-    """At poetry's scale the sites are not the fact; the method names are."""
+    """At real-repo scale the sites are not the fact; the method names are."""
 
     def test_a_small_site_list_is_spelled_out(self) -> None:
         cav = _untyped_receiver_caveat("net_send", ["a.py:1 sendall()"])
@@ -363,11 +363,12 @@ class TestTheDisclosureScales:
         assert "distinct method" not in cav["detail"]
 
     def test_a_large_site_list_names_the_methods_and_keeps_every_entry(self) -> None:
-        """On poetry, for example, 306 ``fs_read`` sites are 16 names, and 103
-        ``ipc_recv`` sites are ONE name (``get``). Five arbitrary line numbers
-        out of three hundred is not a disclosure a reader can act on; the names
-        are, because ``group`` is almost all ``re.Match`` and ``read_text`` is
-        almost all ``pathlib``. ``entries`` keeps everything."""
+        """On a real repo hundreds of sites collapse to a handful of method
+        names, and one name (``get``) can be a boundary's every site. Five
+        arbitrary line numbers out of hundreds is not a disclosure a reader
+        can act on; the names are, because ``group`` is almost all
+        ``re.Match`` and ``read_text`` is almost all ``pathlib``.
+        ``entries`` keeps everything."""
         sites = [f"a.py:{i} read()" for i in range(4)] + [
             f"b.py:{i} exists()" for i in range(4)
         ]

@@ -1,31 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-vopuh: a broken pipe must not silently kill the whole process.
 
-``hypergumbo sketch -t N`` for large ``N`` reproducibly returned exit 141
-(SIGPIPE) with **zero bytes** of output. The 12-pass investigation pinned the
-death to *inside* ``ranking._compute_centrality_with_python`` — but that path
-spawns no pipes (it is pure-Python regex over a ``ThreadPoolExecutor`` of
-*threads*), so it could not itself raise SIGPIPE. The real mechanism is one
-layer up and structural:
+THE HAZARD. With the **process-wide** SIGPIPE disposition set to ``SIG_DFL``, an
+``EPIPE`` on *any* pipe in the process is delivered as a fatal signal 13 to the
+whole process, regardless of which thread provoked it. The ``transformers``
+safetensors auto-conversion fires a *background thread* during
+``model.encode()`` (see ``sketch_embeddings._load_st_model_offline_first``
+docstring); when that thread hits a broken pipe, the interpreter dies with exit
+141 and **zero bytes** of output — e.g. ``hypergumbo sketch -t N`` for large
+``N``, where a bigger budget means more text to encode and a wider race window.
+The death shows up wherever the *main* thread happens to be when the async
+signal arrives (such as ``ranking._compute_centrality_with_python``, which
+spawns no pipes at all), and a ``> file`` redirect does not help, because the
+broken pipe is not stdout.
 
-``main()`` reset the **process-wide** SIGPIPE disposition to ``SIG_DFL``
-(cli.py). Under ``SIG_DFL`` an ``EPIPE`` on *any* pipe in the process is
-delivered as a fatal signal 13 to the whole process, regardless of which thread
-provoked it. The ``transformers`` safetensors auto-conversion fires a
-*background thread* during ``model.encode()`` (see
-``sketch_embeddings._load_st_model_offline_first`` docstring); when that thread
-hits a broken pipe it killed the interpreter, and pass-10 saw it "die in
-centrality" only because that is where the *main* thread happened to be when the
-async signal arrived. Budget sensitivity = more text to encode = a wider race
-window. ``> file`` redirect did not help because the broken pipe was never
-stdout.
-
-The fix leaves SIGPIPE at Python's default disposition (``SIG_IGN``), under
-which a write to a closed pipe raises a *catchable* ``BrokenPipeError`` instead
-of killing the process. A background thread's ``BrokenPipeError`` is confined to
-that thread, so the sketch completes. The single case ``SIG_DFL`` was installed
-for — ``hypergumbo explain | head`` exiting quietly — is handled explicitly by
-catching ``BrokenPipeError`` around command dispatch in ``main()``.
+THE RULE. ``main()`` leaves SIGPIPE at Python's default disposition
+(``SIG_IGN``), under which a write to a closed pipe raises a *catchable*
+``BrokenPipeError`` instead of killing the process. A background thread's
+``BrokenPipeError`` is confined to that thread, so the sketch completes. The
+one case ``SIG_DFL`` would serve — ``hypergumbo explain | head`` exiting
+quietly — is handled explicitly by catching ``BrokenPipeError`` around command
+dispatch in ``main()``.
 """
 
 from __future__ import annotations
@@ -41,12 +36,13 @@ from hypergumbo_core import cli
 # --------------------------------------------------------------------------
 # Behavioral regression (subprocess): the real production mechanism.
 #
-# We drive the real ``cli.main()`` prologue (the former SIG_DFL install site)
-# and then inject the exact failure the transformers background thread caused —
-# a write to a closed pipe from a worker thread. Under the old code the process
-# is killed (exit -13 / 141) before it can print; under the fix the main thread
-# survives and exits 0. This reproduces INV-vopuh's symptom deterministically,
-# without depending on the flaky encode()/centrality timing race.
+# We drive the real ``cli.main()`` prologue (where a SIG_DFL install would
+# sit) and then inject the failure the transformers background thread causes —
+# a write to a closed pipe from a worker thread. Under SIG_DFL the process is
+# killed (exit -13 / 141) before it can print; under the default disposition
+# the main thread survives and exits 0. This reproduces INV-vopuh's symptom
+# deterministically, without depending on the flaky encode()/centrality timing
+# race.
 # --------------------------------------------------------------------------
 
 _BG_PIPE_SCRIPT = textwrap.dedent(
@@ -94,8 +90,8 @@ def test_background_thread_broken_pipe_does_not_kill_process() -> None:
         text=True,
         timeout=120,
     )
-    # Was: returncode -13 (SIGPIPE / 141) with no "SURVIVED". After the fix the
-    # main thread survives the background broken pipe and exits cleanly.
+    # Under SIG_DFL: returncode -13 (SIGPIPE / 141) with no "SURVIVED". The
+    # main thread must survive the background broken pipe and exit cleanly.
     assert proc.returncode == 0, (
         f"process died (rc={proc.returncode}); "
         f"stdout={proc.stdout!r} stderr={proc.stderr[-800:]!r}"
@@ -149,7 +145,7 @@ def test_suppress_broken_stdout_pipe_redirects_stdout_to_devnull(
 
 
 def test_main_does_not_install_sigpipe_sig_dfl(monkeypatch) -> None:
-    # Structural guard: main() must not flip SIGPIPE to SIG_DFL (that was the
+    # Structural guard: main() must not flip SIGPIPE to SIG_DFL (the
     # process-wide kill switch behind INV-vopuh). Record any signal.signal call
     # and assert SIGPIPE is never set to SIG_DFL.
     import signal as _signal

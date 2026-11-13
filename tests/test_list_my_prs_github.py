@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tier-B behavioral tests for the GitHub arm of ``scripts/list-my-prs`` (PR-C2).
+"""Tier-B behavioral tests for the GitHub arm of ``scripts/list-my-prs``.
 
 ``list-my-prs`` has two backend-divergent sites: the pulls-list query string
 (Forgejo ``sort=recentupdate&limit=50`` vs GitHub
 ``sort=updated&direction=desc&per_page=100``) and the merged marker (Forgejo's
 list objects carry a ``merged`` bool; GitHub's carry ``merged_at``). The
-github arm is dormant (default forgejo while Codeberg is origin) and forced
-here via ``HYPERGUMBO_FORGE_BACKEND=github``. The Forgejo path must stay
-byte-identical. Bash contributes no Python coverage (Tier B).
+backend is detected from the origin URL; the GitHub tests also force it via
+``HYPERGUMBO_FORGE_BACKEND=github``, and the Forgejo tests use a codeberg.org
+remote. The Forgejo query must keep exactly its own parameters. Bash
+contributes no Python coverage (Tier B).
 """
 
 from __future__ import annotations

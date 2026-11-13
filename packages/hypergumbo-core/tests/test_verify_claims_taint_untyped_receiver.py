@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A clean TAINT verdict must disclose the sink calls whose receiver it could not type.
 
-INV-nuhun: INV-fibis's defect in the other arm. Reproduced on the shipped CLI at dev
-aa7e878572 -- the tree on which INV-fibis's fix was already merged -- with a control
-firing in the SAME run:
+INV-nuhun: INV-fibis's defect in the other arm. The case, with a control that
+must fire in the same run::
 
     def control_fswrite(p):
         secret = os.environ["API_KEY"]
@@ -16,11 +15,11 @@ firing in the SAME run:
 
     $ hypergumbo verify-claims . --claims docs/example-claims/generic-taint-claims.yaml
       x [host-secret-no-host-fs]  violated              <- the run WORKED
-      v [host-secret-no-network]  confirmed             <- FALSE
+      v [host-secret-no-network]  confirmed             <- FALSE without a disclosure
 
-WHAT MAKES THIS ITS OWN ITEM RATHER THAN A RESIDUE OF INV-fibis: the two arms now
-DISAGREE ABOUT ONE CALL, in ONE invocation. Running the boundary and taint claims
-together over that same file printed these two verdicts adjacent:
+WHY THE TWO ARMS MUST AGREE. Run together over that same file, the boundary
+arm qualifies its verdict about ONE call that an undisclosed taint arm would
+certify:
 
     ! [NET-SEND] confirmed_with_caveats
       CAVEAT (untyped_receiver): ... At 1 call site(s) -- leak.py:12 sendall() -- a
@@ -29,22 +28,20 @@ together over that same file printed these two verdicts adjacent:
     v [host-secret-no-network] confirmed
       No unsanitized host_secret data reaches network zone.
 
-The tool says it could not determine whether ``leak.py:12 sendall()`` reaches the
-network, and then certifies that nothing reaches the network zone -- and the second
-carries a tick where the first carries a warning, so the SILENT arm reads as the more
-confident one. A reader who sees a disclosure on one verdict is entitled to infer the
-other got equal scrutiny.
+The tool would say it could not determine whether ``leak.py:12 sendall()`` reaches
+the network, and then certify that nothing reaches the network zone -- and the
+second carries a tick where the first carries a warning, so the SILENT arm reads as
+the more confident one. A reader who sees a disclosure on one verdict is entitled to
+infer the other got equal scrutiny.
 
-WHY THE FIX IS NOT "WIDEN RECALL", pinned here because the item's own ``root_cause``
-field invites it. ``socket.socket.sendall`` is a METHOD-kind catalogue row, and the
-untyped receiver supplies no module, so the sink lookup is refused TWICE over: first
-by ``gate_named_entry``'s ``call_construct == "method"`` arm, then -- even with that
-removed -- by its ``non_method`` filter, because the bucket for ``sendall`` holds only
-method-kind rows. BOTH refusals are the deliberate closure of INV-tapat and INV-maluk
-(satisfied P2, and INV-maluk was REOPENED precisely because taint.py's sink matcher
-was the third consumer that did not honour it, a ~5541-violation false-positive
-cascade). Matching a method-kind sink on a bare short name is the exact "unfiltered
-short-name fallback" INV-maluk's statement forbids. So the flow CANNOT be built by
+WHY THE FIX IS NOT "WIDEN RECALL". ``socket.socket.sendall`` is a METHOD-kind
+catalogue row, and the untyped receiver supplies no module, so the sink lookup is
+refused TWICE over: first by ``gate_named_entry``'s ``call_construct == "method"``
+arm, then -- even with that removed -- by its ``non_method`` filter, because the
+bucket for ``sendall`` holds only method-kind rows. BOTH refusals are deliberate
+(INV-tapat, INV-maluk): matching a method-kind sink on a bare short name is the
+"unfiltered short-name fallback" INV-maluk's statement forbids, and a sink matcher
+that does it produces a false-positive cascade. So the flow CANNOT be built by
 relaxing the gate; it can only be built by TYPING THE RECEIVER (INV-fibis's recall
 half), and where the receiver cannot be typed the verdict must say so.
 ``test_a_typed_receiver_is_matched_not_caveated`` is the positive control that the
@@ -176,10 +173,9 @@ class TestZoneScoping:
     """The scoping that made the boundary arm shippable, in the taint vocabulary."""
 
     def test_a_sink_for_another_zone_cannot_touch_this_verdict(self) -> None:
-        """``.get`` is catalogued -- for DATABASE. The 2026-08-11 measurement that
-        refused the unscoped downgrade turned on exactly this: ``get`` is the most
-        common method name in Python, and an unrelated dict ``.get`` must not
-        qualify a NETWORK verdict."""
+        """``.get`` is catalogued -- for DATABASE. ``get`` is the most common
+        method name in Python, so an unscoped match would qualify nearly every
+        verdict; an unrelated dict ``.get`` must not qualify a NETWORK one."""
         cov = _coverage([_untyped("get")])
         v = verify_taint_claim(_claim(zone="network"), [], coverage=cov)
         # The verdict IS qualified — by the UNSCOPED closed-world caveat, which
@@ -234,8 +230,9 @@ class TestItDoesNotFireWhereThereIsNothingToDisclose:
     def test_a_producer_stamped_launch_raises_nothing(self) -> None:
         """A launch is an EXAMINED call, disclosed by name through
         CAVEAT_OPAQUE_BOUNDARY. Saying "and its receiver was untyped" about the same
-        edge is the contradictory second statement that made rc 3 unreachable once
-        already -- excluded in the same position the boundary arm excludes it."""
+        edge is a contradictory second statement that makes rc 3 unreachable
+        (INV-vokog) -- excluded in the same position the boundary arm excludes
+        it."""
         e = _untyped("sendall")
         e["meta"]["io_boundary"] = "command_launch"
         cov = _coverage([e])
@@ -351,9 +348,9 @@ class TestEndToEndOnTheShippedCommand:
     def test_the_untyped_arm_exits_3_and_names_the_method(
         self, tmp_path, capsys,
     ) -> None:
-        """Was exit 0, "Verdict: confirmed", "No unsanitized host_secret data
-        reaches network zone." -- about a call the tool had already told the reader,
-        one verdict earlier in the same output, that it could not adjudicate."""
+        """Without the disclosure this exits 0 with "Verdict: confirmed", "No
+        unsanitized host_secret data reaches network zone." -- about a call the
+        tool cannot adjudicate. It must exit 3 and name the method."""
         rc, out = self._run(tmp_path, capsys, [_untyped("sendall")])
         assert rc == 3
         assert "sendall" in out

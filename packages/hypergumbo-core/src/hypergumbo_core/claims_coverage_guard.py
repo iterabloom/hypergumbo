@@ -1,27 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-jojog: the per-PR arm of the self-claims COVERAGE question.
+"""Per-PR guard for the self-claims COVERAGE question (INV-jojog).
 
-WHAT THIS PREVENTS. Four times a shipped-code call into a Python name the I/O
-catalogue neither rows nor enumerates reached ``dev`` and withheld every one of
-the 18 self-claim verdicts at once -- ``confirmed_with_caveats`` ->
-``inconclusive``, the ``opaque_boundary`` caveat gone from all of them:
-``builtins`` (INV-bofab, 09-03), ``datetime.date.today`` (INV-fugus, 09-23),
-``datetime.date.fromisoformat`` (INV-jojog, 10-14) and ``threading.Event``
-(INV-konad, 10-15). Each was seen only by the twice-daily cron
-``self-claims-gate``, because the per-PR arm of that gate was removed on
-2026-08-30 at ~14 minutes of critical path (``test_ci_self_claims_gate_scope``
-carries both decisions). Up to twelve hours of red ``dev`` per occurrence, and a
-bisect each time.
+WHAT THIS PREVENTS. A shipped-code call into a Python name the I/O catalogue
+neither rows nor enumerates makes the cron ``self-claims-gate`` withhold every
+self-claim verdict at once -- ``confirmed_with_caveats`` -> ``inconclusive``,
+the ``opaque_boundary`` caveat gone from all of them. The full gate runs only on
+the twice-daily cron (its per-PR arm costs too much critical path;
+``test_ci_self_claims_gate_scope`` carries that decision), so without this
+guard such a call reaches ``dev`` and leaves it red for up to twelve hours,
+followed by a bisect. (history: INV-bofab, INV-fugus, INV-jojog, INV-konad)
 
 WHY THE WHOLE GATE IS TOO SLOW AND THIS IS NOT. ``verify-claims`` needs the full
-behaviour map -- every language, the linkers, taint; 1009 s cold with
-``--minimal``. The question these four regressions ask needs none of that.
+behaviour map -- every language, the linkers, taint -- which takes many minutes
+cold. The coverage question needs none of that.
 ``_call_production_coverage`` decides ``qualifying_only`` from the EDGE SET
 alone: which external modules the shipped Python calls into, and whether the
 catalogue rows or enumerates each. The Python analyzer produces that edge set
 by itself, receiver typing included -- ``resolution_quality: type_inferred`` is
-stamped in ``py.py``, not by a later pass -- in 26 s over the 382 shipped files
-on 2026-10-17, against ~6 minutes for the map.
+stamped in ``py.py``, not by a later pass -- in tens of seconds, and the three
+pipeline stages below add little to that.
 
 NOT A SECOND RULE. This module runs the registered ``python`` analyzer over the
 packaging-declared source roots (``shipped_artifact_roots`` -- the denominator
@@ -30,59 +27,46 @@ cron loads (``python.yaml``, the shipped community overlays beneath it, the
 claims file's overlays on top) and asks the cron's own decision function. There
 is no AST walk of its own and no second spelling of "module slot": the symbol
 ids are the analyzer's, relativised by the pipeline's own ``_relativize_ir_paths``,
-and the adjudication is ``verify_claims``'. A hand-rolled walk would have been
-the seventh home for module extraction WI-ribuz warns about, and it would have
-had to re-derive receiver typing to catch the ``threading.Event`` shape at all.
+and the adjudication is ``verify_claims``'. A hand-rolled walk would be one more
+home for module extraction (WI-ribuz), and it would have to re-derive receiver
+typing to catch a call through a typed receiver (the ``threading.Event`` shape)
+at all.
 
-CALIBRATED THE DAY IT WAS WRITTEN. On ``dev`` at 416315836b the analyzer-only
-edge set (67,220 edges) and the full map reach the same verdict --
-``complete=False, qualifying_only=True`` with the same three launch sites,
-``subprocess.Popen``, ``subprocess.Popen.communicate``, ``subprocess.run`` --
-and removing either the ``threading.Event`` or the ``datetime.date`` grant from
-the loaded catalogue flips it to ``qualifying_only=False`` naming that module,
-which is exactly the regression this exists to catch.
-
-RECALIBRATED 2026-11-04, AND THE CALIBRATION ABOVE WAS INCOMPLETE (INV-hotib /
-WI-jizam). On ``dev`` at acf67df4cb the cron withheld all eighteen verdicts on
-three slots -- ``hypergumbo_core.scip._generated.scip_pb2``,
-``textual.widgets.Select``, ``datetime.timezone`` -- and this guard returned 0
-on the same tree. "The analyzer produces that edge set by itself" was true and
-not enough: the adjudicator reads the edges AFTER three pipeline stages that
-change the population, and the raw analyzer edges skipped all three.
-``analyzer_edges`` now runs them, through the pipeline's own functions:
+THREE PIPELINE STAGES ARE PART OF THE QUESTION. The adjudicator reads the edges
+AFTER three pipeline stages that change the population, so the raw analyzer
+edges are not enough: over them this guard passes trees the cron withholds
+(INV-hotib / WI-jizam). ``analyzer_edges`` runs the stages through the
+pipeline's own functions:
 
 * the orchestrator's file-symbol synthesis (``all_analyzers``: WI-ramuv,
   WI-dagif), so a dropped file's import edge has a node to be dropped with;
-* ``_classify_symbols`` and the tier filter, lifted out of ``run_survey`` into
-  ``tier_filter.apply_tier_filter`` so there is ONE copy: a DERIVED file
-  (``_pb2.py``) leaves with every edge touching it, and the cross-package call
-  into it stays as the unresolved module slot the cron names. Over the raw
-  edges the file counted as analysed and ``_is_analyzed_module`` suppressed
-  that call as first-party;
+* ``_classify_symbols`` and the tier filter, ``tier_filter.apply_tier_filter``
+  (one copy, shared with ``run_survey``): a DERIVED file (``_pb2.py``) leaves
+  with every edge touching it, and the cross-package call into it stays as the
+  unresolved module slot the cron names. Over the raw edges the file would
+  count as analysed and ``_is_analyzed_module`` would suppress that call as
+  first-party;
 * boundary synthesis's id remap (``ir.create_boundary_nodes`` +
   ``apply_external_id_remap``), which normalises a dangling id's kind slot to
   ``external_symbol`` (ADR-0036 ruling 2). ``_external_call_sites`` admits only
-  ``external_symbol`` / ``unresolved``, so an attribute read -- the analyzer's
-  ``python:datetime.timezone:0-0:datetime.timezone.utc:attribute`` -- was
+  ``external_symbol`` / ``unresolved``, so without the remap an attribute read
+  -- the analyzer's
+  ``python:datetime.timezone:0-0:datetime.timezone.utc:attribute`` -- would be
   invisible here and counted in the cron.
 
-Measured on the acf67df4cb worktree with the current catalogue: 46,029 edges
-after the three stages (71,539 raw), ``qualifying_only=False`` naming
-``hypergumbo_core.scip._generated.scip_pb2`` and ``textual.widgets.Select``
-(``datetime.timezone`` is granted since #2042), 31 s. On dev after #2042: 0.
 Edge counts here and in the cron still differ -- linkers, taint and the
 non-Python analyzers are not run -- but the population the coverage gate
-reads is now built by the same stages.
+reads is built by the same stages.
 
-WHAT IT DOES NOT CATCH, said plainly. The drift gate compares eighteen
-verdicts, their caveat kinds and their credited-flow buckets; this compares one
+WHAT IT DOES NOT CATCH, said plainly. The drift gate compares every self-claim's
+verdict, its caveat kinds and its credited-flow buckets; this compares one
 bit of coverage. A taint-flow regression, a sanitizer that stops crediting, a
 verdict moving to ``violated`` -- all still wait for the cron. The guard asks
 only: can the shipped tree's boundary verdicts still be QUALIFIED?
 
-THE FILE LIST IS NOT TEST-FILTERED, and the first draft was. ``is_test_file``
-calls ``spec_validator.py`` a test (the ``*spec*`` rule), so that module vanished
-from the analysed set and its own callers reported
+THE FILE LIST IS NOT TEST-FILTERED. ``is_test_file`` calls ``spec_validator.py``
+a test (the ``spec_*`` rule), so test-filtering would drop that module from the
+analysed set and its own callers would report
 ``hypergumbo_core.spec_validator`` as an untraced third-party module. The cron's
 denominator is "edges whose src is under a shipped root" (``edge_in_artifact``)
 and nothing else; this uses exactly that, through ``find_files`` so discovery's
@@ -127,7 +111,7 @@ class GuardReport:
     def qualifiable(self) -> bool:
         """The cron would reach a verdict: coverage complete, or qualified by
         opaque launch sites alone (ADR-0016 section 4). ``False`` is the state
-        that withholds all eighteen self-claims at once."""
+        that withholds every self-claim verdict at once."""
         return self.coverage.complete or self.coverage.qualifying_only
 
 
@@ -160,10 +144,10 @@ def analyzer_edges(repo_root: Path, files: list[Path]) -> list[dict[str, Any]]:
     whatever happens. ``KeyError`` from the registry means the analyzer package
     is not installed -- an infrastructure condition the caller reports as such.
 
-    THREE PIPELINE STAGES RUN HERE BECAUSE THE ADJUDICATOR READS THEIR OUTPUT,
-    and skipping them is how this guard passed dev acf67df4cb while the cron
-    withheld every self-claim on three slots (INV-hotib / WI-jizam). All three
-    are the pipeline's own functions, not a restatement:
+    THREE PIPELINE STAGES RUN HERE BECAUSE THE ADJUDICATOR READS THEIR OUTPUT;
+    skipping them lets this guard pass a tree on which the cron withholds every
+    self-claim (INV-hotib / WI-jizam). All three are the pipeline's own
+    functions, not a restatement:
 
     * the orchestrator's file-symbol synthesis
       (``synthesize_file_symbols_for_dangling_edges`` and
@@ -174,16 +158,17 @@ def analyzer_edges(repo_root: Path, files: list[Path]) -> list[dict[str, Any]]:
       file (``scip/_generated/scip_pb2.py``, tier 4 by the ``_pb2.py`` rule)
       leaves with every edge touching it, so a cross-package call into it
       stays as the unresolved ``hypergumbo_core.scip._generated.scip_pb2``
-      slot the cron names. Over the raw analyzer edges the file counted as
-      analysed and ``_is_analyzed_module`` suppressed that call as first-party.
+      slot the cron names. Over the raw analyzer edges the file would count as
+      analysed and ``_is_analyzed_module`` would suppress that call as
+      first-party.
     * :func:`ir.create_boundary_nodes` + :func:`ir.apply_external_id_remap`:
       boundary synthesis normalises a dangling id's kind slot to
       ``external_symbol`` (ADR-0036 ruling 2). ``_external_call_sites`` admits
-      only ``external_symbol`` / ``unresolved`` terminals, so an attribute read
-      -- ``python:datetime.timezone:0-0:datetime.timezone.utc:attribute``
-      straight from the analyzer -- was invisible to the coverage gate here and
-      counted in the cron. The synthesised nodes themselves are discarded; only
-      the remap is wanted.
+      only ``external_symbol`` / ``unresolved`` terminals, so without the remap
+      an attribute read -- ``python:datetime.timezone:0-0:datetime.timezone.utc:attribute``
+      straight from the analyzer -- would be invisible to the coverage gate here
+      while counted in the cron. The synthesised nodes themselves are discarded;
+      only the remap is wanted.
 
     Order follows ``run_survey`` except for relativisation: ``run_survey``
     relativises right after ``run_all_analyzers``, before classifying; this

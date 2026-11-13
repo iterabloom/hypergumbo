@@ -1,20 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Every taint label the self-catalogue declares has a zone-barrier transform.
 
-WHY THIS GATE EXISTS (WI-pakag, 2026-11-04). The barrier sanitizer
+WHY THIS GATE EXISTS (WI-pakag). The barrier sanitizer
 ``safety_zones._safety_zone_barrier`` is declared in
 ``docs/hypergumbo-self-catalog/zone_barrier_sanitizers.yaml`` once PER TAINT
 LABEL (``input_taint``), and the sanitizer schema has no wildcard. So a label a
-new ``*_sources.yaml`` introduces walks straight through every ``safety_zones``
-wrapper into its stdlib call, and the self-audit reports ``cache_write``'s
-``Path.write_text`` as a host_fs violation and ``repo_inspect_git``'s
-``subprocess.run`` as a subprocess violation. Measured when the
-``analysed_repo_content`` label was first added without its transform: 5
-host_fs flows and 100 subprocess flows, every one a wrapper internal the
-entry-label claims sanitize (lab ``pakag_11042026/v1_prohibited.json``). A
+new ``*_sources.yaml`` introduces without its transform walks straight through
+every ``safety_zones`` wrapper into its stdlib call, and the self-audit reports
+``cache_write``'s ``Path.write_text`` as a host_fs violation and
+``repo_inspect_git``'s ``subprocess.run`` as a subprocess violation — a
+flood of flows, every one a wrapper internal the entry-label claims sanitize. A
 violated-for-the-wrong-reason verdict is the mirror of INV-hotib's
-withheld-for-the-wrong-reason one, and nothing paired the two files before
-this test.
+withheld-for-the-wrong-reason one, and this test is what pairs the two files.
 """
 from __future__ import annotations
 

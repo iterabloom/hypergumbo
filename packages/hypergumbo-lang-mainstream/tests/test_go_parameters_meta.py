@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-jonin: the Go analyzer writes ``meta["parameters"]``, the declared home.
+"""The Go analyzer writes ``meta["parameters"]``, the declared home (WI-jonin).
 
 ADR-0058 makes ``Symbol.signature`` display-only: a fact inside it is read from
 where it is declared, and a parameter's is ``meta["parameters"]`` in the
-``overload_arity.parameter_entry`` shape. Go wrote none, so the first version
-of the ``ServeHTTP`` handler rule re-parsed the signature (PR #2014, reverted).
-These tests pin the producer for functions, methods and interface method
+``overload_arity.parameter_entry`` shape. Without it, a consumer such as the
+``ServeHTTP`` handler rule would have to re-parse the signature, which
+ADR-0058 forbids. These tests pin the producer for functions, methods and interface method
 specs, and that a spec, which has no body, carries ``abstract`` (the marking
 cpp and kotlin give an abstract member) so the rule tells an interface's own
 ``ServeHTTP`` from an implementation without reading anything absent.

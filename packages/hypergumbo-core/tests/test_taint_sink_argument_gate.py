@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A sink call that passes only literals cannot carry taint (INV-fubag).
 
-MEASURED, NOT SUPPOSED. ``docs/measurements/0003`` adjudicated every flow that
-the construction-edge widening added across six repositories: 35 added, 1 true
-positive, 34 false. **24 of the 34 land on ten call sites that are all
-constructors taking no arguments at all**, a keyword literal, a generated temp
-path, or the temp-file object::
+THE SHAPE. Construction edges make constructors sinks, and most of the false
+flows that adds land on constructors called with no arguments at all, a keyword
+literal, a generated temp path, or the temp-file object (measurement:
+``docs/measurements/0003-instantiates-taint-delta.md``)::
 
     tempfile.TemporaryDirectory()                 no arguments
     tempfile.TemporaryFile()                      no arguments
@@ -23,10 +22,9 @@ WHY THE CONSTRUCTOR IS THE WRONG ANCHOR, which is the finding underneath.
 ``ZipFile(path,'w')`` *opens*; ``zipp.writestr(name, data)`` *writes*. Anchored
 on the constructor, the sink only witnesses "an fs resource was created in this
 function", so any tainted value anywhere in the function yields a flow. The
-constructor IS a legitimate sink when its ARGUMENT is tainted — that is exactly
-0003's single true positive, mitmproxy's ``ZipFile(path, "w")`` where ``path``
-came from ``os.path.expanduser``. The defect is flagging it when the argument
-is not.
+constructor IS a legitimate sink when its ARGUMENT is tainted — e.g.
+mitmproxy's ``ZipFile(path, "w")`` where ``path`` comes from
+``os.path.expanduser``. The defect is flagging it when the argument is not.
 
 ABSENCE OF THE MARKER IS THE CONSERVATIVE READING, deliberately. Producers stamp
 ``meta['call_arg_shape'] = 'literal_only'`` only when they can PROVE every
@@ -63,8 +61,7 @@ class TestLiteralOnlySinkCallIsNotAFlow:
     """The 0003 shape: a tainted value in scope, a sink that cannot receive it.
 
     Mirrors pretix's ``Renderer.render_background``, which reads ORM data and
-    calls ``tempfile.TemporaryDirectory()`` — eight of the measured false
-    positives land on that one site.
+    calls ``tempfile.TemporaryDirectory()``.
     """
 
     _SOURCES: ClassVar[list[TaintSource]] = [TaintSource(
@@ -94,8 +91,8 @@ class TestLiteralOnlySinkCallIsNotAFlow:
 
     def test_positive_control_same_graph_without_the_marker_flows(self) -> None:
         """THE CONTROL. Without it, a gate that matched nothing and a gate that
-        works are indistinguishable — and 0003's own lesson is that a control
-        whose output equals the subject did not take."""
+        works are indistinguishable — a control whose output equals the
+        subject's did not take."""
         findings = propagate_taint_structural(
             self._graph(None), self._SOURCES, self._SINKS, [],
         )
@@ -201,18 +198,17 @@ class TestTheDdgArmAppliesTheIdenticalGate:
     The structural and DDG passes each build their own ``sink_callers`` map
     from near-identical blocks. Gating only one would leave the other reporting
     exactly the flows this key exists to remove — and a rule implemented twice
-    is the shape that let the call-family set drift across three consumers
-    (taint, verify-claims, dead-code reachability) until INV-lalad found it.
+    drifts between its copies (history: INV-lalad).
 
     The fixture is a real DDG flow, not a structural bridge::
 
         1  data = read()
         3  TemporaryDirectory(data)
 
-    with a data dependence carrying ``data`` from line 1 to line 3. The first
-    attempt at this class used a bridge fixture that produced no finding in
-    either arm, so the gate assertion passed while exercising nothing — the
-    non-vacuity control below is what caught it.
+    with a data dependence carrying ``data`` from line 1 to line 3. A bridge
+    fixture produces no finding in either arm, so the gate assertion would
+    pass while exercising nothing — the non-vacuity control below guards
+    against that.
     """
 
     _SOURCES: ClassVar[list[TaintSource]] = [TaintSource(

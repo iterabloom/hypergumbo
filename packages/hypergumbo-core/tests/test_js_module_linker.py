@@ -4,11 +4,12 @@
 The JS module linker resolves unresolved import edges created by the JS/TS
 analyzer. Import edges have dst format like 'javascript:./utils:0-0:module:module'
 (raw import path embedded in synthetic ID). The linker resolves relative paths
-to actual files, creates module_file symbols, and creates module_exports edges
-from module_file to the functions/methods/classes defined in the target file.
+to actual files, creates a file symbol for each import target, and creates
+module_exports edges from that file symbol to the symbols the target file
+exports.
 
 This enables cross-file graph traversal through imports:
-  file_A --module_imports--> module_file_B --module_exports--> functionInB
+  file_A --imports--> file_B --module_exports--> functionInB
 
 Path alias resolution (tsconfig.json paths, Vite resolve.alias) expands
 non-relative imports like '@/utils' or 'dashboard/Header' to actual file paths
@@ -189,9 +190,10 @@ class TestProbeFile:
 
 
 class TestProbeAppendsTheExtension:
-    """WI-dunab: Node APPENDS an extension; ``Path.with_suffix`` replaced the
-    last dotted segment, so ``./X.test-wrapper`` resolved to ``X.tsx`` (30
-    nuclear test imports bound to the component instead of its wrapper)."""
+    """Node APPENDS an extension. Replacing the last dotted segment instead
+    (as ``Path.with_suffix`` does) resolves ``./X.test-wrapper`` to ``X.tsx``,
+    binding test imports to the component instead of its wrapper.
+    (history: WI-dunab)"""
 
     def test_a_dotted_basename_is_not_its_same_stem_sibling(self, tmp_path: Path) -> None:
         (tmp_path / "X.tsx").write_text("")
@@ -290,7 +292,7 @@ class TestLinkJsModules:
         )
 
     def test_cjs_import_marks_module_system_commonjs(self, repo_root: Path) -> None:
-        """Wave 6 PR 3 fold: .cjs extension resolves module_system='commonjs'."""
+        """A .cjs extension resolves module_system='commonjs'."""
         # Add a .cjs file alongside the standard fixture's utils.js
         (repo_root / "src" / "legacy.cjs").write_text("module.exports = {}")
         app_path = str(repo_root / "src" / "app.js")
@@ -327,14 +329,14 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        # Should create: module_file symbol + module_imports edge + module_exports edge
+        # Should create: target file symbol + imports edge + module_exports edge
         assert len(result.symbols) >= 1
         module_file = result.symbols[0]
         assert module_file.kind == "file"
         assert module_file.meta.get("module_system") in ("esm", "commonjs")
         assert "utils.js" in module_file.path
 
-        # Should have module_imports edge (file -> module_file)
+        # Should have an imports edge (file -> target file symbol)
         module_imports_edges = [
             e for e in result.edges if e.edge_type == "imports"
         ]
@@ -515,7 +517,7 @@ class TestLinkJsModules:
         module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
 
-        # Two module_imports edges (one from each importing file)
+        # Two imports edges (one from each importing file)
         module_imports = [e for e in result.edges if e.edge_type == "imports"]
         assert len(module_imports) == 2
 
@@ -1791,14 +1793,11 @@ class TestInvMovorCanonicalFileIdReuse:
     file-symbol synthesizer (``analyze/base.py::synthesize_file_symbols_for_dangling_edges``)
     and this linker resolve the same path.
 
-    The legacy ``:module_file:1:{stem}`` id shape was a transitional
-    artifact (audit-findings 0005) that diverged from the canonical
-    shape introduced by INV-vaguj's orchestrator file synthesis. Two
-    producers emitting kind="file" Symbols at the same path with
-    different ids violates INV-dajaf (Identity META) — id equality is
+    Two producers emitting kind="file" Symbols at the same path with
+    different ids violate INV-dajaf (Identity META) — id equality is
     the dedup key, so distinct id shapes cause silent duplication. The
-    websocket linker's WI-hifol fix (PR #3819) is the parallel
-    precedent on the same identity axis.
+    old ``:module_file:1:{stem}`` shape is the one these tests reject.
+    The websocket linker follows the same rule (WI-hifol).
     """
 
     def test_canonical_file_id_shape(self, repo_root: Path) -> None:
@@ -1940,9 +1939,9 @@ class TestModuleExportsNeedAnExport:
     """WI-sinol: ``module_exports`` reaches only what the module exports.
 
     The edge type means "module exposes a symbol as part of its public
-    surface". The linker used to emit it to every symbol of an exportable KIND
-    in the target file: class members (methods, getters) and private helpers
-    too. It now requires the analyzer's POSITIVE export verdict
+    surface", so an exportable KIND is not enough: class members (methods,
+    getters) and private helpers in the target file must not get it. The
+    linker requires the analyzer's POSITIVE export verdict
     (``is_exported is True``); ``False`` (measured private) and ``None`` (no
     verdict) both withhold the edge.
     """
@@ -1995,11 +1994,11 @@ class TestImportTargetCarriesItsOwnLanguage:
     """WI-babuk: the import TARGET's file node takes the target's own language
     (``taxonomy.get_language``), never the importer's.
 
-    Minting it with the importer's language put a phantom
+    Minting it with the importer's language puts a phantom
     ``typescript:src/util.js`` beside the real javascript node, a phantom
-    ``typescript:style.css`` beside the css analyzer's node, and labelled
+    ``typescript:style.css`` beside the css analyzer's node, and labels
     imported images/fonts ``javascript``, which crypto-flow-linker then
-    parsed as JavaScript (WI-kakov: nextjs never finished). A target with no
+    parses as JavaScript (history: WI-kakov). A target with no
     source language (``.png``) is a real file (``kind="file"`` is ADR-0031's
     Class A exception): ``language=None``, no ``protocol_origin``, and
     ``discovery_language`` = the importer's language, which the id's language

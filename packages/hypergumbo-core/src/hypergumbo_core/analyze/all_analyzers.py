@@ -2,7 +2,7 @@
 """Analyzer orchestration + the stable analyzer-dispatch import points.
 
 Analyzer *discovery* delegates to the canonical decorator-based registry in
-analyze/registry.py (ADR-0012 Step 1) — ``get_analyzers`` /
+analyze/registry.py (ADR-0012) — ``get_analyzers`` /
 ``clear_analyzer_cache`` are thin pass-throughs. But this module also houses
 the *orchestrator*: ``run_all_analyzers`` runs the registered analyzers via a
 parallel ``ThreadPoolExecutor`` dispatch, stamps the config fingerprint,
@@ -89,22 +89,23 @@ def stamp_analyzer_config_fingerprint(result: Any, analyzer: Any) -> None:
     config_fingerprint onto the run of any analyzer that bypasses
     ``TreeSitterAnalyzer._analyze_body``.
 
-    The ~30 inherited-``analyze()`` tree-sitter analyzers self-stamp via
+    Tree-sitter analyzers that run the inherited ``analyze()`` self-stamp via
     ``_stamp_config_fingerprint`` (hashing the richer class+grammar+globs
-    dict). The remaining cohort — override-``analyze()`` subclasses (go, java,
-    js_ts, json, csharp, toml, xml, make, yaml_ansible, manifest_targets,
+    dict). The rest — override-``analyze()`` subclasses (go, java, js_ts,
+    json, csharp, toml, xml, make, yaml_ansible, manifest_targets,
     play-routes) and bare ``@register_analyzer`` functions (python, html, the
     rust-analyzer SCIP path) — build their ``AnalysisRun`` by hand and never
-    call it, so each falls through to the constant ``_default_config_fingerprint``
-    sentinel (INV-lidul: 56/86 self-analysis runs collapsed onto one cache key).
+    call it, so without this stamp each would keep the constant
+    ``_default_config_fingerprint`` sentinel and share one cache key with
+    every other such pass (INV-lidul).
 
     This is the analyzer analogue of the linker registry's
     ``_stamp_config_fingerprint``: the ``RegisteredAnalyzer`` (in scope at the
     orchestrator loop, unlike inside ``collect_analyzer_result``) is the only
     producer handle available — ``AnalysisResult`` carries no analyzer
     instance, so the digest keys on the registration identity. Guarded on the
-    default sentinel so the self-stamped cohort is never overwritten, and so
-    new override analyzers are covered automatically (WI-mipul future-proofing).
+    default sentinel so the self-stamped analyzers are never overwritten, and
+    a new override analyzer is covered without registering anywhere (WI-mipul).
     """
     run = getattr(result, "run", None)
     if run is None or run.config_fingerprint != _default_config_fingerprint():
@@ -130,11 +131,11 @@ def collect_analyzer_result(
 ) -> None:
     """Collect results from an analyzer into the aggregated lists.
 
-    This replaces 50+ repetitive code blocks in run_behavior_map().
-    Each block had the same pattern; this function captures that pattern once.
+    The one per-pass chokepoint every analyzer result passes through.
 
     Args:
-        result: The analyzer result (any XxxAnalysisResult type)
+        result: The analyzer result (an ``AnalysisResult``, or a duck-typed
+            equivalent)
         analysis_runs: List to append run metadata to
         all_symbols: List to append symbols to
         all_edges: List to append edges to
@@ -142,43 +143,39 @@ def collect_analyzer_result(
         limits: Limits object to track skipped passes
         analyzer_name: The dispatching analyzer's registration name, used to
             record a ``skipped_passes`` entry when the result carries no run
-            (WI-didil). Optional for backward compatibility; when empty, a
-            ``run=None`` result is drained but not recorded as a skip.
+            (WI-didil). Optional; when empty, a ``run=None`` result is
+            drained but not recorded as a skip.
         cost: The pass's wall + own-thread CPU time, measured ON THE WORKER
             that ran it (``_run_costed``) and stamped here, at the chokepoint,
             before ``to_dict()`` snapshots the run (WI-nuvam). ``None`` leaves
             ``cpu_ms`` unmeasured (serialized ``null``), which is what a direct
             caller that did not time the pass gets.
     """
-    # A result with no run is an analyzer that produced nothing (WI-didil).
-    # It reaches here — rather than being short-circuited by the file-presence
-    # pre-filter (_filter_by_file_presence) — when its declared language is
-    # absent from the taxonomy (matlab/meson/puppet/racket/robot/scheme/scss)
-    # or it is an opt-in backend that stayed off (rust_analyzer). Formerly this
-    # branch silently returned, recording NEITHER an AnalysisRun NOR a skip, so
-    # those passes violated the "every catalog pass → AR or skip" invariant.
-    # Now it records a skip so coverage of the catalog stays complete. The
-    # reason honours a self-declared ``skip_reason`` (e.g. rust_analyzer's
-    # "backend not enabled") and otherwise falls back to "no files matched" —
-    # the same wording the pre-filter uses (a bare ``run=None`` result is a
-    # no-input analyzer). Symbols/edges are still drained fail-open.
+    # A result with no run, unless it carries output (below), is an analyzer
+    # that produced nothing (WI-didil). It reaches here — rather than being
+    # short-circuited by the file-presence pre-filter
+    # (_filter_by_file_presence) — when its declared language is absent from
+    # the taxonomy or it is an opt-in backend that stayed off (rust_analyzer).
+    # Every catalog pass must end up as an AnalysisRun or a skip, so this
+    # branch records a skip rather than returning silently. The reason
+    # honours a self-declared ``skip_reason`` (e.g. rust_analyzer's "backend
+    # not enabled") and otherwise falls back to "no files matched" — the same
+    # wording the pre-filter uses (a bare ``run=None`` result is a no-input
+    # analyzer). Symbols/edges are still drained fail-open.
     if result.run is None:
-        # WI-didag: FIRST, the productive case. A producer that emitted output
-        # without a run used to fall off the accounting entirely — drained
-        # below and recorded in neither analysis_runs nor skipped_passes,
-        # breaking the WI-didil completeness contract precisely when the pass
-        # SUCCEEDED. Measured with the rust-analyzer backend enabled on
-        # aardvark-dns: 669 nodes and 637 edges from a pass visible nowhere in
-        # the catalog, the only one of 118 analyzers for which that was true.
+        # FIRST, the productive case: a producer that emitted output without
+        # a run. Draining it below would record it in neither analysis_runs
+        # nor skipped_passes, so a pass that SUCCEEDED would be visible
+        # nowhere in the catalog (WI-didag).
         #
         # Recording it as a SKIP would be a lie — it plainly ran. So synthesize
         # the AnalysisRun the producer should have supplied and re-enter
         # through the normal path, which drains the output, stamps the
         # counters and the silence reason, and backfills origin_run_id. This
-        # is NOT the fabrication WI-didag was filed about: THAT one minted an
-        # id for a run nobody serializes, while this run IS serialized, so the
-        # FK resolves. Output proves the pass ran, and an AnalysisRun is the
-        # honest record of a pass that ran.
+        # run IS serialized, so the origin_run_id FK resolves; minting an id
+        # for a run nobody serializes would be a fabrication. Output proves
+        # the pass ran, and an AnalysisRun is the honest record of a pass that
+        # ran.
         #
         # The warning names it a producer defect rather than absorbing it, so
         # the real fix — attach the run at the source — stays visible.
@@ -263,7 +260,7 @@ def collect_analyzer_result(
         # WI-nuvam: the pass's own cost, measured on its worker thread.
         if cost is not None:
             cost.stamp(result.run)
-        # INV-bikaj (arc T6): stamp WHY this pass emitted nothing, at the same
+        # INV-bikaj: stamp WHY this pass emitted nothing, at the same
         # chokepoint as the counters it is derived from. Only what is certain
         # from the counters — an analyzer that read files and produced nothing
         # is `unreported`, never `no_candidate_files`, because it plainly had
@@ -273,15 +270,14 @@ def collect_analyzer_result(
             nodes_emitted=result.run.nodes_emitted,
             edges_emitted=result.run.edges_emitted,
         )
-        # WI-finij question A: only a pass BODY can know it looked for its
-        # construct and found none, which is why derive_silence_reason refuses
-        # to infer NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's
-        # behalf is a fabricated disclosure. But this stamp ASSIGNED
-        # UNCONDITIONALLY, so it overwrote the only producer able to say it, and
-        # the declared value had no reachable producer anywhere in the tree.
-        # Guarded now: a body that spoke keeps its word. The one exception is
-        # "" -- a pass that EMITTED has no silence to explain, and NOT
-        # APPLICABLE is not the body's to override.
+        # Only a pass BODY can know it looked for its construct and found
+        # none, which is why derive_silence_reason refuses to infer
+        # NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's behalf
+        # is a fabricated disclosure. So a body that set a reason keeps it;
+        # assigning unconditionally here would overwrite the only producer
+        # able to say it. The one exception is "" -- a pass that EMITTED has
+        # no silence to explain, and NOT APPLICABLE is not the body's to
+        # override (WI-finij).
         if _derived == "" or not result.run.silence_reason:
             result.run.silence_reason = _derived
         analysis_runs.append(result.run.to_dict())
@@ -338,8 +334,8 @@ def _filter_by_file_presence(
     language (``manifest_targets``, ``languages == []``) are dispatched
     unconditionally — the profile has no opinion about them, so the safe
     default is to let the analyzer self-determine via its own file walk.
-    WI-juzig: the empty list is retained on purpose, not re-inflated into
-    ``{name}`` (a phantom the profile never counted, retained by accident).
+    An empty ``languages`` stays empty: inflating it into ``{name}`` would
+    check the profile for a language it never counted (WI-juzig).
 
     When ``profile`` is ``None`` the filter is a no-op (callers outside the
     full ``run_behavior_map`` pipeline don't have a profile to consult).
@@ -481,7 +477,7 @@ def run_all_analyzers(
                 # NOT fail-open: a catalogue file that does not parse -- a
                 # user's library_signatures.d or dataflow_patterns.d file --
                 # would fail the same way for every run, and recording it as
-                # one crashed pass emitted a map with the whole language
+                # one crashed pass would emit a map with the whole language
                 # missing and exit 0. Re-raised so the CLI reports the file
                 # with exit 2, like a broken file read outside the pool.
                 raise
@@ -527,11 +523,11 @@ def run_all_analyzers(
     # external boundaries even though the file is first-party. Doing it
     # here at the orchestrator chokepoint covers every analyzer in one
     # place and obviates per-analyzer fixes.
-    # synthetic:F1 (WI-dizir/WI-mosil): emit a real AnalysisRun for this
-    # synthesis pass and stamp its execution_id into the synthesized file
-    # Symbols' origin_run_id, so the node->AnalysisRun JOIN resolves (the
-    # nodes previously carried origin_run_id=''). The run is recorded even
-    # when synthesis produces no Symbols (WI-tivif, below).
+    # Emit a real AnalysisRun for this synthesis pass and stamp its
+    # execution_id into the synthesized file Symbols' origin_run_id, so the
+    # node->AnalysisRun JOIN resolves rather than meeting an empty
+    # origin_run_id (synthetic:F1, WI-dizir/WI-mosil). The run is recorded
+    # even when synthesis produces no Symbols (WI-tivif, below).
     _file_synth_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
         pass_id="orchestrator_file_symbol_synthesis", version=PASS_VERSION,
         config_fingerprint=compute_config_fingerprint(
@@ -545,28 +541,28 @@ def run_all_analyzers(
     )
     if _synth_file_symbols:
         all_symbols.extend(_synth_file_symbols)
-    # WI-dagif (file-anchor:F1, node-bearing slice): after the dangling-edge
-    # pass, mint a file anchor for every path that has content nodes but still
-    # no file anchor, so the contains tree has a reachable file root (the
-    # containment linker's span-based pass then roots top-level members at it).
-    # Runs after the dangling pass so its anchors count as already-present, and
-    # shares the one synthesis AnalysisRun. Safe without file-anchor:F4 — these
-    # paths already carry content nodes, so they are already in source_paths and
-    # cannot empty the Additional-Files surface.
+    # WI-dagif (file-anchor:F1): after the dangling-edge pass, mint a file
+    # anchor for every path that has content nodes but still no file anchor,
+    # so the contains tree has a reachable file root (the containment
+    # linker's span-based pass then roots top-level members at it). Runs
+    # after the dangling pass so its anchors count as already-present, and
+    # shares the one synthesis AnalysisRun. These paths already carry content
+    # nodes, so they are already in cli.py's content_source_paths and their
+    # anchors cannot empty the Additional-Files surface.
     _synth_node_anchors = synthesize_file_anchors_for_node_bearing_paths(
         all_symbols, repo_root=repo_root,
         origin_run_id=_file_synth_run.execution_id,
     )
     if _synth_node_anchors:
         all_symbols.extend(_synth_node_anchors)
-    # file-anchor:F1 (additional-file-candidate cohort) + F4 co-release: anchor
-    # every Additional-Files candidate (config/doc file) that still lacks a node
-    # so the `additional_file_centrality_scores` keys are real node paths (the
-    # WI-rajod subset invariant). Co-released with F4 — cli.py computes
-    # source_paths as CONTENT-only, so these bare leaf anchors are NOT
-    # re-subtracted from the Additional-Files surface. Selection (candidate
-    # filter + language) lives here because base.py cannot import taxonomy/
-    # discovery/sketch without a cycle; minting stays in base.
+    # Anchor every Additional-Files candidate (config/doc file) that still
+    # lacks a node so the `additional_file_centrality_scores` keys are real
+    # node paths (the WI-rajod subset invariant; file-anchor:F1). This
+    # depends on cli.py computing content_source_paths from CONTENT nodes
+    # only (file-anchor:F4): counting file anchors there would re-subtract
+    # these bare leaf anchors from the Additional-Files surface. Selection
+    # (candidate filter + language) lives here because base.py cannot import
+    # taxonomy/discovery/sketch without a cycle; minting stays in base.
     _synth_candidate_anchors: list[Symbol] = []
     _af_file_index = get_file_index()
     if _af_file_index is not None:
@@ -621,11 +617,12 @@ def run_all_analyzers(
         if normed.startswith(root_prefix):
             ff.path = normed[len(root_prefix):]
 
-    # INV-sotiv: fill missing Symbol.stable_id for the kinds whose producers
-    # don't compute one (variable / module / dependency / export / project /
-    # interface / type, plus orchestrator-synthesized files). Runs after path
-    # normalisation so the file-path identity component is repo-relative.
-    # Producers that already computed a stable_id keep priority.
+    # INV-sotiv: fill missing Symbol.stable_id — a table kind (file, module,
+    # variable, class, ...) by its per-kind formula, every other kind with a
+    # language by the backstop floor key (see populate_kind_stable_ids). Runs
+    # after path normalisation so the file-path identity component is
+    # repo-relative. Producers that already computed a stable_id keep
+    # priority.
     populate_kind_stable_ids(all_symbols)
 
     # Clear global callback to avoid leaking state

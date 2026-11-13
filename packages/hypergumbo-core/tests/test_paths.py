@@ -295,8 +295,8 @@ class TestIsTestFile:
         """Directories starting with 'test-' are test directories.
 
         Covers: test-artifacts/, test-fixtures/, test-data/, test-utils/, etc.
-        Real-world example: sp1 has crates/test-artifacts/programs/ with 80+ test
-        program main() functions that should be excluded from production analysis.
+        E.g. crates/test-artifacts/programs/ holds test-program main() functions
+        that should be excluded from production analysis.
         """
         assert is_test_file("crates/test-artifacts/programs/main.rs") is True
         assert is_test_file("test-fixtures/data/input.json") is True
@@ -330,22 +330,21 @@ class TestTestFileReason:
     a non-production entrypoint) but it makes any disclosure keyed on it
     unreadable: a taint verdict saying "3 flows excluded as test_sourced" when
     the real reason is a benchmark directory tells the reader something false.
-    The owner ruling was to KEEP the breadth and DISCLOSE which rule fired.
+    So the breadth stays, and the reason DISCLOSES which rule fired.
 
     The reason function is the implementation and ``is_test_file`` delegates to
     it, so there is exactly one classifier. A second predicate that re-derived
-    the categories would drift from the boolean on the first edit — and
-    "when a production classification exists for the thing you are counting,
-    counting it yourself IS the bug" (L53) is a lesson this codebase has
-    already paid for five times.
+    the categories would drift from the boolean on the first edit: "when a
+    production classification exists for the thing you are counting, counting
+    it yourself IS the bug" (L53).
     """
 
     def test_is_test_file_is_exactly_reason_is_not_none(self) -> None:
         """The boolean and the reason cannot disagree, by construction.
 
         Property over a corpus spanning every branch of the classifier plus
-        non-matching controls. This is the test that makes the refactor safe:
-        if any path's boolean changed, this fails.
+        non-matching controls: if any path's boolean ever diverges from its
+        reason, this fails.
         """
         corpus = [
             "test_main.py", "src/test_utils.py", "main_test.py",
@@ -379,7 +378,7 @@ class TestTestFileReason:
         assert is_test_file("main.py") is False
 
     def test_benchmark_is_not_reported_as_a_test(self) -> None:
-        """The case the owner named: a bench dir must not read as `test`."""
+        """A bench dir must not read as `test`."""
         for path in ("bench/a.rs", "benches/a.rs",
                      "benchmark/a.go", "benchmarks/a.go"):
             assert classify_test_file(path) == "benchmark", path
@@ -480,22 +479,19 @@ class TestIsUtilityFile:
         assert is_utility_file("src/main.rs") is False
 
     def test_ambiguous_dirs_under_named_package_root_not_utility(self) -> None:
-        """WI-gigib: ambiguous directory names nested under a package-name
+        """Ambiguous directory names nested under a package-name
         top-level directory must NOT be flagged as utility. Django's
         ``django/utils/html.py`` is core HTML rendering, not tooling;
         ``django/contrib/admin/options.py`` is the bundled admin app,
         not community contributions; ``requests/utils.py`` is the
         canonical HTTP utility module; ``urllib3/contrib/socks.py``
-        is the SOCKS proxy backend. Pre-fix all of these were flagged
-        as utility because their top-level directory wasn't in
-        {src, lib, app, crates, packages} (the hardcoded
-        ``_SOURCE_ROOTS`` set), so the "ambiguous AND haven't seen a
-        source root yet" rule fired at every depth. The reproduction
-        was django's rslice.1.prod.json: 141 edges in non-prod rslice
-        collapsed to 0 edges in prod rslice because the seed
-        ``format_html`` at ``django/utils/html.py`` was misclassified
-        as utility and the BFS could not extend past similarly
-        flagged nodes.
+        is the SOCKS proxy backend. A rule that treats an ambiguous
+        name as utility at any depth until a known source root
+        ({src, lib, app, crates, packages}) has been seen flags all of
+        these, and a production reverse slice seeded at ``format_html``
+        in ``django/utils/html.py`` then comes back empty, because the
+        seed and its neighbours are all excluded as utility.
+        (history: WI-gigib)
         """
         # Django
         assert is_utility_file("django/utils/html.py") is False
@@ -692,7 +688,7 @@ class TestIsInfrastructurePath:
 
 
 class TestIsMigrationFile:
-    """WI-bifob: migrations are production code that is not about the running app.
+    """Migrations are production code that is not about the running app (WI-bifob).
 
     Deliberately NOT folded into is_test_file — a migration is not test
     scaffolding, it ships and runs. The two are separate predicates that a
@@ -735,9 +731,9 @@ class TestIsMigrationFile:
     def test_is_disjoint_from_is_test_file_on_these_paths(self) -> None:
         """The two predicates answer different questions.
 
-        Measured on the cohort: production is_test_file caught 84 of the 98
-        non-production rows and missed exactly the 14 Django migrations, which
-        is why this predicate had to exist rather than widening that one.
+        is_test_file does not match migrations, and widening it to do so
+        would label shipped production code as test scaffolding; that is why
+        migrations get their own predicate.
         """
         migration = "src/pretix/base/migrations/0097_auto.py"
         assert is_migration_file(migration)

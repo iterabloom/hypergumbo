@@ -1,37 +1,28 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A C stdio read's boundary is a property of its STREAM argument.
 
-WI-lipis's third deliverable, for C. ``c.yaml`` files ``fgets`` / ``fscanf`` /
-``fread`` / ``getc`` / ``fgetc`` as ``fs_read`` and says so deliberately: their
-boundary "is a property of the argument (INV-bagok / INV-zumin class (b)), and
-moving them would assert an IPC crossing for every read over a file". That is
-the right DEFAULT and the wrong ANSWER whenever the stream is ``stdin``.
+``c.yaml`` files ``fgets`` / ``fscanf`` / ``fread`` / ``getc`` / ``fgetc`` as
+``fs_read`` and says so deliberately: their boundary "is a property of the
+argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC
+crossing for every read over a file". That is the right DEFAULT and the wrong
+ANSWER whenever the stream is ``stdin``, so the analyzer stamps the stream's
+origin on the call (history: WI-lipis).
 
 WHY THIS DIRECTION IS THE OPPOSITE OF GO'S, which matters for how it is judged.
-Go's ``bufio.NewScanner`` was filed ``ipc_recv``, which MINTS ``untrusted_input``
-via ``AUTO_SOURCE_LABEL_MAP``, so a wrong argument INVENTED a taint source and
-the fix removed false positives. ``fs_read`` is absent from that map by design,
-so a wrong argument here MISSES a source instead. Measured on a three-function
-repro through the production CLI, with the control in the same run::
-
-    control_scanf   scanf(...)             ipc_recv   -> violated, 1 row
-    from_stdin      fgets(buf, n, stdin)   fs_read    -> NO ROW
-    from_pipe       fgets over popen()     fs_read    -> NO ROW
-
-Identical flow shape, identical sink (``fputs`` into an ``fopen``ed file); the
-only difference is whether the catalogue could see the stream. So this is a
-FALSE NEGATIVE, and a false negative is the expensive direction for a security
-tool.
-
-CORPUS POPULATION: 2114 stream-taking read sites across 67 repositories.
+In Go a wrong ``ipc_recv`` filing (``bufio.NewScanner``) MINTS
+``untrusted_input`` via ``AUTO_SOURCE_LABEL_MAP``, so a wrong argument INVENTS a
+taint source. ``fs_read`` is absent from that map by design, so a wrong argument
+here MISSES a source instead: with the same flow shape and the same sink
+(``fputs`` into an ``fopen``ed file), ``scanf(...)`` (``ipc_recv``) reports a
+violation while an unstamped ``fgets(buf, n, stdin)`` or ``fgets`` over
+``popen()`` (``fs_read``) reports nothing. That is a FALSE NEGATIVE, and a false
+negative is the expensive direction for a security tool.
 
 ``popen`` IS A ``pipe`` (WI-kanor). Its ``FILE*`` is a pipe from a child
-process, which is neither ``host_path`` nor ``std_stream``, and when this file
-was written naming it needed a new ``io_target_kind``. WI-suhug then added
-``pipe`` for go's ``cmd.StdoutPipe()`` (read -> ``ipc_recv``), so the C pipe
-needs only the producer: a handle-returning launch whose crossing was
-unrepresented now has it at the read that transfers the child's bytes. 64 of
-the 2114 sites (3.0%) when this file was measured.
+process, which is neither ``host_path`` nor ``std_stream``. The ``pipe``
+``io_target_kind`` (shared with go's ``cmd.StdoutPipe()``) reads as
+``ipc_recv``, so the C analyzer needs only to stamp it: the handle-returning
+launch's crossing is represented at the read that transfers the child's bytes.
 """
 from __future__ import annotations
 
@@ -181,9 +172,8 @@ class TestOriginLookupEdgesThatReturnNothing:
         so there is no body for the origin lookup to search. The lookup runs per
         CALL and must survive that rather than raise, and it stamps nothing.
 
-        Since INV-bamij the call itself IS emitted, anchored on the file (it
-        used to be dropped, and this test asserted the empty edge set); what is
-        pinned now is that the edge carries no origin stamp.
+        The call itself IS emitted, anchored on the file (INV-bamij); what is
+        pinned is that the edge carries no origin stamp.
         """
         (tmp_path / "main.c").write_text(
             "#include <stdio.h>\n"

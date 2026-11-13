@@ -2,19 +2,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Census of PRODUCTION ``_ddg_taint_reaches`` calls, by arm, gate and verdict.
 
-WHAT THIS EXISTS TO PREVENT. A claim of the form "that arm never runs" was
-load-bearing on THREE open tracker items (INV-lupav, INV-busis, INV-sadah) and
-was false. It had been measured once, on one repo, and inherited thereafter.
-This instrument is the re-measurement, kept in-repo so the next such claim costs
-one command instead of one session.
+WHAT THIS EXISTS TO PREVENT. A claim of the form "that arm never runs",
+measured once on one repo and inherited thereafter, can end up load-bearing on
+open tracker items while being false (history: INV-lupav, INV-busis,
+INV-sadah). This instrument is the re-measurement, kept in-repo so checking
+such a claim costs one command instead of one session.
 
 THE ARMS, and why they are not interchangeable::
 
     barrier_lines=None   section-3a CONFIRM-ONLY arm. The call site tests
                          `is True`, so False and None collapse — a False here
                          is inert TODAY.
-    barrier_lines set    WI-fasub same-function sanitizer arm. Since PR #214 a
-                         False EARNS `sanitized` and DELETES a finding from the
+    barrier_lines set    WI-fasub same-function sanitizer arm. A False EARNS
+                         `sanitized` and DELETES a finding from the
                          violation set. This is the arm where an unearned False
                          is a live falsehood in a security tool.
 
@@ -23,14 +23,15 @@ risk profiles.
 
 WHY A ZERO HERE IS SUSPECT (LIVE.md rule 12: check the control, not the
 subject). The barrier arm is reachable only for a flow whose LABEL some
-sanitizer claims. The built-in catalogue expresses two transforms, so on a repo
-that declares no sanitizers of its own the arm is unreachable **by
-construction** — the zero is measuring the catalogue, not the code. The first
-probe run against this hypothesis had no sanitizer for the flow's label, so
-`barrier_sites` was empty and the arm could not fire; adding a `sanitizers.yaml`
-produced 21 barrier walks on the same repo, same binary. **If this reports zero
-barrier walks, check whether the target repo declares a sanitizer for the label
-in question before reporting the zero as a property of the code.**
+sanitizer claims. The built-in catalogue expresses two transforms
+(``plaintext`` and ``key_material``), so on a repo that declares no sanitizers
+of its own the arm is unreachable for any other label **by construction** —
+the zero is measuring the catalogue, not the code: with no sanitizer for the
+flow's label, `barrier_sites` is empty and the arm cannot fire, while adding a
+`sanitizers.yaml` for it makes the same repo and binary produce barrier walks.
+**If this reports zero barrier walks, check whether the target repo declares a
+sanitizer for the label in question before reporting the zero as a property of
+the code.**
 
 THE FORFEIT COUNTERFACTUAL. On the barrier arm with ``forfeit_refutation`` set,
 the walk is run a second time with the gate OFF. A pair of

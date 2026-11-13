@@ -2,16 +2,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Surface red cron steps at session start (WI-lapof).
 
-WHY THIS EXISTS. Detection of a cron regression is bounded at ~12h by design:
-the per-PR self-claims arm was removed by owner decision on 2026-08-30, and that
-decision is not reopened here. Reading is not bounded at all. The cron full-suite
-self-claims gate went red at ea22d7023c on 2026-09-19 and stayed red for four
-days of sessions that merged past it, until someone noticed it by chance
-(INV-fugus). It was the third time that symptom occurred. On 2026-09-23 it
-happened again: full-suite went red at d31439e6, and it was found only because a
-premise check happened to run ``ci-debug cron-status``. LIVE.md's "run
-cron-status at session start" was a memory aid, not a mechanism. This is the
-mechanism.
+WHY THIS EXISTS. Detection of a cron regression is bounded at ~12h by design
+(there is deliberately no per-PR self-claims arm, an owner decision this module
+does not reopen). Reading the verdict is not bounded at all: a red cron step can
+stay red across days of sessions that merge past it, found only when someone
+happens to run ``ci-debug cron-status`` (history: INV-fugus). A "run
+cron-status at session start" note is a memory aid, not a mechanism. This is
+the mechanism.
 
 WHAT IT SAYS. One line, only when something is red AND no open tracker row
 already names it:
@@ -35,14 +32,15 @@ WHEN IT IS SILENT, and every case is deliberate:
 Any exception is swallowed and prints nothing. Same contract as
 ``autopr_convergence_nudge.py``: this can never block a session from starting.
 
-COST, measured on 2026-09-24 against the live CI: 17.4 s cold with one red
-workflow. That is one ``cron-status`` call, about 3 s, plus the first-red walk,
-whose ``cron-status <sha>^`` walks commits until it finds each cron context,
-plus ~1 s for the tracker list. It is 1.2 s from the cache. Both calls go
-through approved scripts (AGENTS.md allowed use-case 2). The
-NETWORK half is cached in ``.git/cron-status-nudge.json`` for an hour. The
-tracker half, suppression, is recomputed on every call, so a row filed in the
-meantime silences the nudge at once.
+COST. A cold call with a red workflow takes well over ten seconds: one
+``cron-status`` call, then the first-red walk, whose ``cron-status <sha>^``
+walks commits until it finds each cron context (capped by ``MAX_LOOKBACK``
+steps and ``BUDGET_SECONDS``, each call by ``CALL_TIMEOUT``), plus the tracker
+list. A cached call costs about the tracker list alone. Both calls go through
+approved scripts (AGENTS.md allowed use-case 2). The NETWORK half is cached in
+``.git/cron-status-nudge.json`` for ``TTL_SECONDS`` (an hour). The tracker
+half, suppression, is recomputed on every call, so a row filed in the meantime
+silences the nudge at once.
 """
 from __future__ import annotations
 

@@ -2,8 +2,7 @@
 """Python def/use extractor for intraprocedural dataflow analysis (ADR-0017 §1c).
 
 Extracts variable definitions (assignments) and uses (reads) from Python
-tree-sitter AST nodes. It was the first def/use extractor, validating
-the shared CFG infrastructure against hypergumbo's own Python codebase.
+tree-sitter AST nodes.
 
 How It Works
 ------------
@@ -33,9 +32,11 @@ The extractor handles Python-specific patterns:
 
 Scope Tracking
 --------------
-This extractor operates at the statement level within a single function.
-It does NOT track nested scopes (closures, nested functions) — those are
-separate functions with their own CFGs. Variable names are simple strings;
+This extractor operates at the statement level and does NOT track nested
+scopes (closures, nested functions); scope is the CFG's job. A nested
+function's body is a may-run region of the enclosing CFG (``nested_function``
+in ``cfg_nodes/python.yaml``), and the DDG also walks each nested ``def`` as
+a function of its own. Variable names are simple strings;
 the reaching-def solver handles aliasing through gen/kill sets.
 """
 from __future__ import annotations
@@ -90,23 +91,18 @@ class _Collector:
 
     THE JAVA/C RULE (WI-tozar): a binding nested inside an expression -- a
     walrus in a condition, on a right-hand side or in a call's arguments, the
-    inner target of ``x = y = e`` -- DEFINES its target. Before this the walk
-    below read a walrus target as a use, so ``if (t := src()): sink(t)`` had
-    no definition of ``t`` and the walk fell back to ``ddg_mixed`` /
+    inner target of ``x = y = e`` -- DEFINES its target. Read as a use, a
+    walrus target would leave ``if (t := src()): sink(t)`` with no definition
+    of ``t``, and the walk would fall back to ``ddg_mixed`` /
     ``not_attempted``.
 
-    WHERE THE VALUE ALSO GOES DOES NOT MATTER, and that is a ruling the walk
-    earned. ``h(w := src())`` both binds ``w`` and hands the value to ``h``;
-    it shipped as a USE (CONTAINED ONLY) because the §3a walk followed an heir
-    on such a line without asking where the call took the value, so the
-    definition gave it a seed it could exhaust: ``acc.push(k = t);
-    console.log(k.length); fetch(url + acc[0])`` read
-    ``confirmed_with_caveats`` (measured 2026-10-20). WI-jusoj asks that
-    question on the source's line and WI-tinav on every use line, so the
-    binding is now what it is at run time, a definition. Measured 2026-10-21
-    with the restriction removed: that shape and its Python twin stay
-    ``violated``, and five Python/JS repos moved no verdict, evidence tuple
-    or walk result.
+    WHERE THE VALUE ALSO GOES DOES NOT MATTER. ``h(w := src())`` both binds
+    ``w`` and hands the value to ``h``, and it is a definition, as it is at
+    run time. That is sound only because the §3a walk asks where a call takes
+    the value, on the source's line (WI-jusoj) and on every use line
+    (WI-tinav). A walk that followed an heir on such a line without asking
+    would be handed a seed it could exhaust while the value escaped through
+    the call.
 
     Two refinements Java's walker does not make:
 
@@ -117,8 +113,8 @@ class _Collector:
       follows when the binding is skipped. A plain define would KILL that
       value on every path, and the walk could then refute a flow that runs
       whenever the branch is not taken.
-    - A binding inside a closure stays a USE, as the whole subtree was before:
-      it is the closure's local, not this statement's.
+    - A binding inside a closure is a USE: it is the closure's local, not
+      this statement's.
     """
 
     def __init__(self, source: bytes) -> None:
@@ -184,9 +180,9 @@ class _Collector:
             if scope is not None and left.type in ("attribute", "subscript"):
                 # A nested ``x = self.a = v`` / ``y = d[k] = v`` link mutates
                 # the object rather than replacing it, so it reads the object
-                # (and index), as Java models every field write and as this
-                # subtree read before it was a binding. (A statement-level
-                # ``self.a = v`` keeps its older, strong reading.)
+                # (and index), as Java models every field write. (A
+                # statement-level ``self.a = v`` is a strong update: it
+                # defines ``self`` outright.)
                 self.walk(left, here)
                 if here.binds:
                     self.defines.extend(names)
@@ -408,11 +404,12 @@ def _handle_with_clause(node: Any, source: bytes) -> DefUseResult:
     """Handle a with header: ``with open(p) as f, lock:`` (WI-simiv).
 
     Each ``as`` target is DEFINED by the clause and each value expression is
-    USED. Before this handler the clause fell to the default rule, which reads
-    every identifier as a use, so ``f`` was never defined; and the CFG
-    statement for the clause matched no AST node at all, so the clause was
-    uncovered code that forfeited its function's refutation. Both are needed
-    before a ``with``-written sink can be adjudicated.
+    USED. The default rule reads every identifier as a use, so without this
+    handler ``f`` would never be defined. The CFG records the clause as
+    ``context_manager_enter`` at its ``with_clause`` node
+    (``CfgStatement.ast_node_type``), which is how the def/use pass reaches
+    this handler; a statement that matched no AST node would leave the clause
+    uncovered and forfeit its function's refutation.
     """
     collector = _Collector(source)
     for item in node.children:

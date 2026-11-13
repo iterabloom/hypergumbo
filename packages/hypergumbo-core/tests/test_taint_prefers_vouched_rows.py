@@ -3,18 +3,18 @@
 
 The row choice is shared (``io_boundary.gate_named_entry``), and it prefers a
 vouched row by the hit's ``unvouched`` bit. io-boundaries' ``IoPrimitive``
-carries that bit; the taint rows auto-derived from the same primitives did
-not -- ``TaintSource`` had neither ``unvouched`` nor ``community``, and a
-``TaintSink`` derived from a community overlay was stamped ``community=False``.
-So every taint hit sorted as vouched and the overlay row, merged in FRONT of
-the base, won by order: ``readProcess`` after ``import System.Process
-(readProcess)`` was the untrusted_input source ``System.Process.Text.readProcess``
-(process-extras, a package the program never imported) in ``verify-claims``
-while ``io-boundaries`` named ``System.Process.readProcess``.
+carries that bit, so the taint rows auto-derived from the same primitives must
+carry it too: a derived row carries its primitive's provenance as
+``community``, a community taint-file source is stamped like its sinks, and
+both ``TaintSource`` and ``TaintSink`` read that as ``unvouched`` -- the one
+attribute the gate sorts on.
 
-A derived row now carries its primitive's provenance as ``community``, a
-community taint-file source is stamped like its sinks already were, and both
-row types read that as ``unvouched`` -- the one attribute the gate sorts on.
+Without it every taint hit sorts as vouched and an overlay row, merged in
+FRONT of the base, wins by order: ``readProcess`` after ``import System.Process
+(readProcess)`` becomes the untrusted_input source
+``System.Process.Text.readProcess`` (process-extras, a package the program never
+imported) in ``verify-claims`` while ``io-boundaries`` names
+``System.Process.readProcess``.
 """
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ class TestTheRowsCarryTheirProvenance:
 
     def test_a_community_taint_file_source_is_unvouched(self) -> None:
         """crypto_community.yaml declares ``provenance: community``; its sources
-        are stamped as its sinks and sanitizers already were."""
+        are stamped as its sinks and sanitizers are."""
         cat = load_builtin_taint_catalog()
         rows = [
             s for s in cat._sources.get("python", [])

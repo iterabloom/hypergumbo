@@ -2,18 +2,19 @@
 """INV-gujus: no runtime subcommand downloads an embedding model.
 
 ``runtime-cli-no-network`` says embeddings downloads happen only through the
-install path, never from analysis. It was false: ``install-embeddings`` (and
-``add-extras``, and ``pip install 'hypergumbo[embeddings]'``) installed only the
-library, and ``_load_st_model_offline_first`` fell back to a network-allowed
-``SentenceTransformer(name)`` when the model was not cached, so the first
-``sketch`` fetched ``microsoft/unixcoder-base`` and
-``nomic-ai/modernbert-embed-base`` from huggingface.co. Measured in the
-2026-10-25 premise check with a stub ``sentence_transformers``: every load was a
-``local_files_only=True`` attempt FOLLOWED BY a download-allowed retry.
+install path, never from analysis. Two things keep it true:
 
-The claim is kept, not restated: the runtime loader is cache-only and degrades
-with the remedy named, and the install path fetches the weights. A pip extra
-cannot fetch weights, so for that path the degradation warning is the remedy.
+* the runtime loader, ``_load_st_model_offline_first``, is cache-only: a
+  ``local_files_only=True`` attempt and NO download-allowed retry. A fallback
+  to a network-allowed ``SentenceTransformer(name)`` on a cache miss would make
+  the first ``sketch`` fetch ``microsoft/unixcoder-base`` and
+  ``nomic-ai/modernbert-embed-base`` from huggingface.co. On a miss it degrades
+  with the remedy named.
+* the install path (``install-embeddings``, ``add-extras``) fetches the
+  weights, not only the library.
+
+A pip extra (``pip install 'hypergumbo[embeddings]'``) cannot fetch weights, so
+for that path the degradation warning is the remedy.
 """
 from __future__ import annotations
 
@@ -164,7 +165,7 @@ def test_add_extras_fails_when_the_weights_cannot_be_fetched() -> None:
 def test_check_fails_when_the_library_is_there_but_the_weights_are_not(
         capsys: pytest.CaptureFixture[str]) -> None:
     """``--check`` reports a working install, and without the weights analysis
-    now degrades, so the library alone is not one."""
+    degrades, so the library alone is not one."""
     with patch.object(cli, "_is_embeddings_available", return_value=True), \
             patch.object(cli, "_get_embeddings_version", return_value="5.7.0"), \
             patch.object(cli, "_embedding_models_cached", return_value=False):
@@ -178,8 +179,8 @@ def test_the_child_imports_the_fetcher_by_its_own_name(
     """The ``-c`` program is built from the function object, so it names the
     function that exists rather than a string that can drift from it; and
     the reference is what lets the test-only-reachability gate see that the
-    install path reaches ``fetch_embedding_models`` (it went red on the
-    string-only spelling). Run the generated program against a recorder."""
+    install path reaches ``fetch_embedding_models`` (a string-only spelling
+    leaves the gate red). Run the generated program against a recorder."""
     ok = MagicMock(returncode=0)
     with patch.object(cli, "_embedding_models_cached", return_value=False), \
             patch.object(subprocess, "run", return_value=ok) as run:

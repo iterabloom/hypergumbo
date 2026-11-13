@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Regression test: ``scripts/prepare-release`` must not pass multi-line values
-to ``git push -o ...``.
+"""``scripts/prepare-release`` must not pass multi-line values to
+``git push -o ...``.
 
 Background
 ----------
-On 2026-05-03 during the v4.0.0 release prep, Step 7 ("Create PR to main")
-silently failed: the script emits ``-o description="..."`` whose quoted value
-spanned multiple lines (a markdown checklist), and git rejects any push option
+On the Codeberg/Forgejo backend, Step 7 ("Create PR to main") opens the
+dev->main release PR with an AGit ``refs/for/main`` push carrying
+``-o title=...`` and ``-o description=...``. Git rejects any push option
 containing a newline (``fatal: push options must not have new line
-characters``). The push exited 128, but the script's ``2>&1) || true`` swallowed
-the failure and the URL-extraction regex returned empty, so Step 7 reported
-``PR branch pushed (check Codeberg for PR)`` and exited 0 even though no PR was
-created. The dev->main release PR had to be opened by hand.
+characters``), exiting 128 with no PR created. If that failure is swallowed
+(e.g. ``2>&1) || true``), the URL extraction returns empty and Step 7 reports
+``(check Codeberg for PR)`` and exits 0 even though no PR exists
+(history: WI-vurus).
 
 This test asserts the structural invariant by AST-light parsing of the script
 source: every ``-o (title|description)=`` push option must be bound to a
@@ -58,10 +58,9 @@ def test_step7_push_does_not_swallow_errors() -> None:
     """The Step 7 ``git push`` to ``refs/for/main`` must not be suffixed with
     ``|| true`` (or any other unconditional error swallower).
 
-    The original WI-vurus failure mode was a multi-line description, but the
-    reason the failure was *invisible* — and shipped to v4.0.0 release prep —
-    was the ``2>&1) || true`` mask on the push command. With ``set -euo
-    pipefail`` active, any future push-time regression should propagate as a
+    A multi-line description is one way the push can fail; an error swallower
+    on the push command is what makes ANY such failure *invisible*. With
+    ``set -euo pipefail`` active, a push-time failure must propagate as a
     non-zero exit so the script aborts loudly instead of falling through to
     the "(check Codeberg for PR)" message.
     """
@@ -98,9 +97,9 @@ def test_github_backend_creates_pr_via_forge_lib() -> None:
     approved forge library (``create_pr``), NOT the Codeberg-only ``refs/for/``
     push refspec (which GitHub rejects).
 
-    The Codeberg->GitHub migration made ``prepare-release`` dual-mode: the
-    Codeberg/Forgejo branch keeps the AGit ``refs/for/main`` push (guarded by
-    the tests above), while the GitHub branch sources the migrated forge lib,
+    ``prepare-release`` is dual-mode: the Codeberg/Forgejo branch uses the
+    AGit ``refs/for/main`` push (guarded by the tests above), while the GitHub
+    branch sources the forge lib,
     initializes it (``load_env`` for the token, ``detect_api_base`` for the
     backend/base/slug), and calls ``create_pr dev main`` — the same code path
     ``auto-pr`` uses, never a raw API call.

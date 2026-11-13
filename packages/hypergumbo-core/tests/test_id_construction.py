@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The static half of ADR-0034's id-construction discipline (WI-vodin).
 
-WHAT THESE TESTS PIN, and why the population is narrow. The filed shape was
-``Symbol(id=f"...")`` and the tree contains exactly ONE of those. 231 of the
-470 ``id=`` arguments are a bare local, and 20 of the f-strings hide behind
-one, so a check that stops at the constructor sees ``id=sym_id`` and learns
-nothing. These tests pin the three-hop resolution that makes the rule reach the
-population it is about, and the grammar it applies once it gets there.
+WHAT THESE TESTS PIN. ``Symbol(id=f"...")`` written at the constructor is
+the rarest spelling of a hand-built id: an ``id=`` argument is far more often
+a bare local or a helper call with the f-string behind it, so a check that
+stops at the constructor sees ``id=sym_id`` and learns nothing. These tests
+pin the three-hop resolution that makes the rule reach the ids it is about,
+and the grammar it applies once it gets there.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class TestTheGrammarOnATemplate:
         assert id_template_problem(template) is None
 
     def test_a_single_line_in_the_span_slot_is_not_a_span(self) -> None:
-        # The commonest live defect: `line: int` interpolated where the
+        # The typical defect: `line: int` interpolated where the
         # grammar wants `start-end`.
         problem = id_template_problem("handlebars:{}:{}:{}:{}")
         assert problem is not None
@@ -136,8 +136,8 @@ class TestTheThreeHops:
     ) -> None:
         """An imported helper has no body in this module to walk, so the third
         hop has nothing to follow and the call itself is all that is reached.
-        Covered only incidentally by the live tree before, which a linker
-        rewrite can remove without anyone noticing."""
+        Pinned here because the live tree covers it only incidentally, and a
+        linker rewrite could remove that without anyone noticing."""
         root = _write(tmp_path, '''
             from elsewhere import build_id
 
@@ -176,9 +176,9 @@ class TestTheThreeHops:
         assert "concatenated_id" in drift[0]
 
     def test_an_unrelated_f_string_is_not_in_the_population(self, tmp_path: Path) -> None:
-        # 244 id-shaped f-strings exist in the tree and only 40 reach a
-        # constructor. Pricing the rule on the wrong unit is what makes a
-        # linter unusable.
+        # Most id-shaped f-strings in the tree never reach a constructor.
+        # Pricing the rule on the wrong unit is what makes a linter
+        # unusable.
         root = _write(tmp_path, '''
             def f(a, b):
                 return f"site:{a}:{b}:note"
@@ -188,10 +188,8 @@ class TestTheThreeHops:
     def test_an_edge_id_answers_to_its_own_grammar_not_the_node_one(
         self, tmp_path: Path,
     ) -> None:
-        # WI-vodin asked for Edge.id to be checked against "the same canonical
-        # shape it enforces on Symbol.id". Measured on a live survey, every one
-        # of apollo-server's 18,283 edge ids is `edge:sha256:<16hex>`, so that
-        # rule would have flagged all of them. Counterparts in ROLE, not SHAPE.
+        # An edge id is `edge:sha256:<16hex>`, a content digest, so the node
+        # grammar would flag every edge. Counterparts in ROLE, not SHAPE.
         root = _write(tmp_path, '''
             def f(digest):
                 return Edge(id=f"edge:sha256:{digest}")
@@ -211,10 +209,12 @@ class TestTheThreeHops:
 
 
 class TestOneClassifier:
-    """WI-mifup: the lint judged ids through private skeleton classifiers, so
-    ``id_template_problem`` / ``edge_template_problem`` -- the ones every test
-    above exercises -- were not what ``scripts/check-id-construction`` ran.
-    The lint now asks the public classifiers, with the id as a ``{}`` template."""
+    """The lint asks the public classifiers, with the id as a ``{}`` template.
+
+    ``id_template_problem`` / ``edge_template_problem`` are what every test
+    above exercises; a private twin in the lint would let what
+    ``scripts/check-id-construction`` runs drift from what the tests pin
+    (WI-mifup)."""
 
     def test_the_lint_asks_the_public_classifiers(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

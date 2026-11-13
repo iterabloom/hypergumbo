@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Opt-in gate for the SCIP-backed Rust analyzer (WI-duzul Slice C gate).
+"""Opt-in gate for the SCIP-backed Rust analyzer.
 
-The rust-analyzer backend is opt-in because SCIP indexing is ~10x slower
-than tree-sitter at every realistic size (WI-zakub §4). Activating it
-requires an opt-in and an available binary.
+The rust-analyzer backend is opt-in because SCIP indexing is far slower
+than tree-sitter (WI-zakub §4) and executes the analysed crate's
+``build.rs`` and proc macros. Activating it requires an opt-in and an
+available binary.
 
 1. The user explicitly asked for it. The three opt-in sources are ranked
    TIERS, not interchangeable alternatives (ADR-0045 ruling 4): the
@@ -28,8 +29,8 @@ the trust tier reads a record from disk.
 The split between this module and :mod:`graceful_degrade` is
 intentional: graceful-degrade answers "the user asked; did it work?"
 (handling runtime failures), while this gate answers "did the user
-actually ask?" (handling opt-in). Slice C's analyzer-registry wrapper
-chains them in that order.
+actually ask?" (handling opt-in). The analyzer-registry wrapper
+(:mod:`.analyzer`) chains them in that order.
 """
 
 from __future__ import annotations
@@ -57,22 +58,22 @@ ENV_VAR_NAME = RUST_ANALYZER_ENV_VAR
 # empty string means "use the default (tree-sitter rust.py)".
 _RUST_ANALYZER_FLAG_VALUES = RUST_ANALYZER_ON_FLAGS
 
-# Backend-selector strings that explicitly DESELECT the SCIP backend. These
-# are load-bearing rather than cosmetic: before ADR-0045 ruling 4 there was no
-# such set, so ``--backend tree-sitter`` was a silent no-op and could not turn
-# off a backend that ``HYPERGUMBO_RUST_ANALYZER=1`` had turned on — which for
-# this backend means the analysed repository's ``build.rs`` ran anyway, after
-# the tool had told the user how to prevent exactly that.
+# Backend-selector strings that explicitly DESELECT the SCIP backend
+# (ADR-0045 ruling 4). These are load-bearing rather than cosmetic: without
+# them ``--backend tree-sitter`` would be a silent no-op that could not turn
+# off a backend ``HYPERGUMBO_RUST_ANALYZER=1`` had turned on — which for this
+# backend means the analysed repository's ``build.rs`` runs anyway, after the
+# tool has told the user how to prevent exactly that.
 _TREE_SITTER_FLAG_VALUES = RUST_ANALYZER_OFF_FLAGS
 
 
 def _is_env_enabled(environ: Mapping[str, str]) -> bool:
     """Return True when the opt-in env var resolves to a truthy value.
 
-    Delegates rather than re-deciding. Truthiness had two homes for exactly
-    as long as this function parsed the variable itself and
-    :mod:`hypergumbo_core.backend_selection` also did — the classic shape
-    where the second home wins silently once the two drift.
+    Delegates rather than re-deciding. Parsing the variable here as well as
+    in :mod:`hypergumbo_core.backend_selection` would give truthiness two
+    homes — the classic shape where the second home wins silently once the
+    two drift.
     """
     return resolve_optin(
         flag_choice=None,

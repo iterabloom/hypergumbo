@@ -200,12 +200,11 @@ _CHARS_PER_TOKEN = 4.4
 # SimHash fingerprint bit width
 _SIMHASH_BITS = 64
 
-# SimHash distance threshold for similarity warning.
-# Tightened from 13 bits (20% of bit width) to 8 bits after observing that
-# 13 fired 5+ false-positive warnings on unrelated items that share common
-# tracker vocabulary (statuses, verbs, shared-domain nouns). 8 matches the
-# stricter validation-pass threshold — validation.py imports this constant
-# so the two code paths stay in sync.
+# SimHash distance threshold for similarity warning. A looser threshold
+# (e.g. 13 bits, 20% of the width) warns on unrelated items that merely share
+# tracker vocabulary (statuses, verbs, shared-domain nouns). validation.py
+# imports this constant, so add()'s warning and the validation pass use the
+# same threshold.
 _SIMHASH_THRESHOLD = 8
 
 # Discussion soft cap (entry count)
@@ -355,14 +354,13 @@ def _serialize_op(op_dict: dict[str, Any]) -> str:
 
     ry = YAML()
     ry.default_flow_style = False
-    # WI-pusif-bukor: ruamel.yaml folds long double-quoted scalars at the
-    # width boundary, inserting a newline + indent that the per-line nonce
-    # post-processor below would then corrupt by injecting `# <nonce>` into
-    # the middle of the scalar value (CSafeLoader treats `#` as literal
-    # inside double-quoted strings on read-back). Setting width to sys.maxsize
-    # disables folding for any realistic scalar — each scalar occupies one
-    # physical line, the nonce-on-every-line invariant remains intact, and
-    # the corruption class is structurally eliminated.
+    # ruamel.yaml folds long double-quoted scalars at the width boundary,
+    # inserting a newline + indent; the per-line nonce post-processor below
+    # would then inject `# <nonce>` into the middle of the scalar value
+    # (CSafeLoader treats `#` as literal inside double-quoted strings on
+    # read-back). Setting width to sys.maxsize disables folding for any
+    # realistic scalar, so each scalar occupies one physical line and the
+    # nonce-on-every-line invariant holds. (history: WI-pusif-bukor)
     ry.width = sys.maxsize
 
     stream = StringIO()
@@ -407,12 +405,12 @@ def _parse_ops_file(filepath: Path) -> list[dict[str, Any]]:
     by ``_OPS_READ_BACKOFF_CAP_S``). These occur when a concurrent
     writer atomically replaces the file (``mkstemp + fchmod + rename``)
     and the reader lands in the brief window between the old inode
-    vanishing and the new inode being visible — observed 2026-04-22
-    on a long-running ``htrac tui`` session, and again 2026-04-26
-    when the original 3-attempt linear-backoff budget (~0.06 s total)
-    proved too short to absorb a ``git checkout`` during auto-sync;
-    the budget now sums to ~0.55 s before re-raise. Every retry (and
-    the final re-raise) is recorded in the race log; see ``race_log.py``.
+    vanishing and the new inode being visible, which a long-running
+    ``htrac tui`` session or a ``git checkout`` during auto-sync can both
+    hit. The total budget is ~0.55 s before re-raise; a budget much
+    shorter than that (e.g. ~0.06 s) is too short to absorb a checkout.
+    Every retry (and the final re-raise) is recorded in the race log;
+    see ``race_log.py``.
     """
     from . import race_log
 
@@ -741,9 +739,9 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
 
         # promote, demote, stealth, unstealth, reconcile: audit-only, no state change
         # edit-mode-on / edit-mode-off / delete-msg / undelete-msg / edit-msg-text:
-        # handled in the dedicated WI-zonur pass below (intentionally skipped here).
+        # handled by _apply_edit_mode_message_ops below (intentionally skipped here).
 
-    # WI-zonur: edit-mode window tracking + message-op application.
+    # Edit-mode window tracking + message-op application (history: WI-zonur).
     _apply_edit_mode_message_ops(item, sorted_ops)
 
     # Clamp updated_at: wall-clock timestamps may not correlate with
@@ -1139,10 +1137,11 @@ class Store:
         return self._ops_dir.parent / ".edit-mode" / "edit-mode.ops"
 
     def _ensure_edit_mode_dir(self) -> None:
-        """Create `.edit-mode/` subdir with mode 0755 if absent (WI-zonur ph2).
+        """Create `.edit-mode/` subdir with mode 0755 if absent (WI-zonur).
 
-        The subdirectory inherits the writing process's uid via `mkdir`, which
-        is what the phase-2 OS-perm gate checks at read time. Idempotent — no
+        The directory must exist before the log file can be created in it;
+        the log file's owner uid (not the directory's) is what the OS-perm
+        gate (`_path_is_agent_owned`) checks at read time. Idempotent — no
         chmod is applied when the directory already exists, so a separate
         `chmod` performed at setup time stays put.
         """
@@ -1167,7 +1166,7 @@ class Store:
     def _path_is_agent_owned(self, path: Path) -> bool:
         """True when `path`'s OS owner uid maps to an agent username.
 
-        Phase-2 defense-in-depth: even if an agent forges the `by:human`
+        Defense in depth: even if an agent forges the `by:human`
         field by writing the YAML directly, the file's OS owner is the
         agent's uid. Mapping the uid to a username and pattern-matching
         against `agent_usernames` catches the forge.
@@ -1187,7 +1186,7 @@ class Store:
     def _read_edit_mode_ops(self) -> list[dict[str, Any]]:
         """Return all edit-mode-on/off ops from the global log; [] if absent.
 
-        Phase-2 OS-perm gate: if the log file is owned by an agent (its uid
+        OS-perm gate: if the log file is owned by an agent (its uid
         maps to an agent_usernames pattern), all ops are filtered. The file
         is NOT removed — silent filtering preserves the forensic trail and
         avoids destructive recovery if a misconfiguration is in play.
@@ -1398,7 +1397,7 @@ class Store:
             self._ops_dir.mkdir(parents=True, exist_ok=True, mode=0o2775)
         finally:
             os.umask(old_umask_dir)
-        # Also repair existing dirs that predate this fix
+        # Also repair an existing dir that lacks group-write + setgid
         self._ensure_dir_group_writable(self._ops_dir)
         wr_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
         wr_mode = (
@@ -1498,14 +1497,14 @@ class Store:
                             f"Valid fields: {', '.join(sorted(_UPDATABLE_FIELDS))}"
                         )
 
-        # INV-linan layer 1: the loop above validates the TOP-LEVEL keys and
-        # never looks inside ``set_fields["fields"]`` -- which is exactly where
-        # a custom key goes. That is how ``fields.status`` reached eleven items
-        # under a top-level ``status`` that disagreed with it.
+        # The loop above validates the TOP-LEVEL keys and never looks inside
+        # ``set_fields["fields"]`` -- which is exactly where a custom key goes,
+        # so without this check a ``fields.status`` can be written that
+        # disagrees with the top-level ``status`` (history: INV-linan).
         # A REMOVAL (``--remove-field status`` -> value None) must never be
         # refused: deleting an offending key is the remedy, and a gate that
-        # blocked it would freeze the eleven corpus items in their broken state
-        # permanently. Only keys being WRITTEN are checked.
+        # blocked it would leave already-broken items stuck in their broken
+        # state. Only keys being WRITTEN are checked.
         # The nested dict is bound to a local before it is iterated: mypy
         # cannot narrow `field_dict["fields"]` from an `isinstance` test on
         # `field_dict.get("fields")`, because those are two expressions.
@@ -1958,8 +1957,9 @@ class Store:
         check, no item-level locks. The log is single-writer-friendly enough
         that we rely on flock for atomicity.
 
-        Phase 2: ensures `.edit-mode/` subdir exists before writing so the
-        OS-perm gate at read time has something to stat.
+        Ensures the `.edit-mode/` subdir exists so the log file can be
+        created; that file's owner uid is what the OS-perm gate checks at
+        read time.
         """
         self._ensure_dir_group_writable(self._ops_dir)
         self._ensure_edit_mode_dir()
@@ -2213,19 +2213,16 @@ class Store:
         current user with the requested mode.
 
         Same-directory temp + atomic rename is load-bearing, not
-        incidental. An earlier implementation used ``tempfile.mkstemp()``
-        (default dir=/tmp) followed by ``shutil.move`` + ``unlink``;
-        because ``/tmp`` is typically a separate tmpfs, ``shutil.move``
-        degraded to cross-filesystem copy+delete with a visible window
-        where the target dentry was absent or held umask-respecting
-        perms. Live-update readers (notably the TUI's inotify watcher)
-        raced that window and crashed with EACCES (observed 2026-04-19
-        on ``.INV-rikis-…ops`` during the agent-supervisor trial; ops
-        write from uid=1002 jgstern_agent raced against uid=1001
-        jgstern's TUI open). Keeping the temp in the target's own
-        directory forces ``os.rename`` to the single-syscall atomic
-        replace path — readers see either the old inode or the new
-        inode, never an intermediate state.
+        incidental. A temp file in ``/tmp`` (``mkstemp()``'s default),
+        moved with ``shutil.move``, degrades to a cross-filesystem
+        copy+delete when ``/tmp`` is a separate tmpfs; that leaves a
+        window where the target dentry is absent or carries
+        umask-respecting perms, and live-update readers (notably the TUI's
+        inotify watcher, running as the other user) crash on it with
+        EACCES. Keeping the temp in the target's own directory forces
+        ``os.rename`` to the single-syscall atomic replace path — readers
+        see either the old inode or the new inode, never an intermediate
+        state.
         """
         import tempfile
 
@@ -2323,7 +2320,7 @@ class Store:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 # For existing files opened by the owner, ensure g+w is
-                # set even if the file predates this fix.  Non-owners
+                # set even if the file was created without it.  Non-owners
                 # cannot fchmod, so tolerate OSError silently.
                 st_mode = os.fstat(f.fileno()).st_mode
                 if not (st_mode & stat.S_IWGRP):
@@ -2572,8 +2569,8 @@ class Store:
     ) -> list[CompiledItem]:
         """List all items, optionally filtered and sorted.
 
-        Sorted by (priority, topological before order, created_at).
-        Updates the positional alias stash.
+        Sorted by (priority, created_at); isbefore links do not affect the
+        order. Updates the positional alias stash.
 
         Args:
             status: Single status string or list of statuses to filter by.
@@ -2594,8 +2591,7 @@ class Store:
         if tag is not None:
             items = [i for i in items if tag in i.tags]
 
-        # Sort by (priority, created_at) — topological sort of before is complex,
-        # using priority + created_at for now
+        # Sort by (priority, created_at); no topological ordering by isbefore.
         items.sort(key=lambda i: (i.priority, i.created_at))
 
         # Update positional alias stash
@@ -2766,8 +2762,7 @@ class Store:
         """
         # When the global edit-mode log exists at all, bypass the per-item
         # cache: cached items can't reflect tombstone/edit state derived from
-        # a file whose mtime isn't part of the cache key. This is the simple,
-        # correct invariant for phase 1 (WI-zonur); future PR can fine-grain.
+        # a file whose mtime isn't part of the cache key. (history: WI-zonur)
         if self.edit_mode_log_path().exists():
             return self._compile_all()
 

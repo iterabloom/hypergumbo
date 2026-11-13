@@ -341,17 +341,18 @@ def caller():
         # Find the resolved edge from caller to internal_helper
         resolved_call = next((e for e in call_edges if "internal_helper" in e.dst and "external" not in e.dst), None)
         assert resolved_call is not None
-        # Resolved calls have confidence 0.85 * lookup confidence
+        # A resolved call's confidence is the ast_call pathway graded by the
+        # lookup's resolution score (Edge.create's resolution_score)
         assert resolved_call.confidence > 0.70
 
 
 class TestDependencyLabelsResolve:
-    """WI-pusan (INV-kurup). A deps label was written into the dst raw
-    (``starlark:<BUILD path>:<label>``), which is no id. Nothing resolved it,
-    and boundary synthesis gave grpc 479 depends_on edges to one nameless
-    ``starlark:<unknown>:0-0::external_symbol``. A label now resolves to the
-    target it names, or to a canonical external ref when no target here
-    declares it."""
+    """A deps label resolves to the target it names, or to a canonical
+    external ref when no target here declares it. Written into the dst raw
+    (``starlark:<BUILD path>:<label>``) it is no id: nothing resolves it, and
+    boundary synthesis collapses every such dependency onto one nameless
+    ``starlark:<unknown>:0-0::external_symbol`` (history: WI-pusan,
+    INV-kurup)."""
 
     def _edges(self, temp_repo: Path) -> dict[str, tuple[str, bool]]:
         (temp_repo / "lib").mkdir()

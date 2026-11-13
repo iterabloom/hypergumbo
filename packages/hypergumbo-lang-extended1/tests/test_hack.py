@@ -246,7 +246,7 @@ function main(): void {
         assert edge.confidence == 0.6
         # WI-bagon: dst must be a well-formed 5-part id with
         # language='hack' in the language slot, not a 2-part
-        # 'unresolved:{name}' (which produced language='unresolved'
+        # 'unresolved:{name}' (which produces language='unresolved'
         # boundary nodes via ir._parse_dangling_id fallthrough).
         parts = edge.dst.split(":")
         assert len(parts) == 5, (
@@ -386,7 +386,7 @@ class Test {
 
 
 class TestHackCyclomaticComplexity:
-    """INV-loguk slice C: callable Hack symbols (function + method) carry
+    """INV-loguk: callable Hack symbols (function + method) carry
     non-null CC + LOC. Real-grammar verification (if/for/foreach/while/do/
     switch_case/switch_default/catch/ternary + &&/||/??). An if/else-if/else
     chain is one flat if_statement in this grammar, so it counts once."""
@@ -471,10 +471,10 @@ class TestHackCallerByPosition:
     declaration contains it, found by POSITION (``enclosing_declared_symbol``),
     and a callee binds THIS file's definition before the run-wide registry.
 
-    The caller used to be ``symbol_registry.get("ns\\Class::method")`` over
-    the run-wide table (one symbol per name, last wins), so two copies of one
-    class (a vendored or versioned tree) had one copy's calls come out of the
-    other's method.
+    Looking the caller up as ``symbol_registry.get("ns\\Class::method")`` in
+    the run-wide table (one symbol per name, last wins) would make two copies
+    of one class (a vendored or versioned tree) send one copy's calls out of
+    the other's method.
     """
 
     def test_duplicate_class_in_two_files_keeps_its_calls(self, tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Lifecycle tests for the per-session transcript-sync watcher (ADR-0018
-amendment / Option 2).
+"""Lifecycle tests for the per-session transcript-sync watcher (ADR-0018,
+per-session amendment).
 
 Covers:
 
@@ -1462,7 +1462,7 @@ class TestLauncherNamesTheOwner:
 class TestKillScriptReapsChildren:
     def test_kill_script_takes_the_child_watch_down_too(self, tmp_path: Path) -> None:
         """Killing a watcher that does not reap its own children (the fake
-        here, or one predating the reaping trap) leaves its foreground
+        here, or any watcher without the reaping trap) leaves its foreground
         ``inotifywait`` alive with PPID 1. The kill script must signal the
         watcher's children BEFORE the watcher, while they are still its
         children."""

@@ -2,27 +2,25 @@
 """A receiverless callee must not be catalogued as a method (INV-nular).
 
 INV-nular's invariant is that a primitive's KIND must be checked against
-semantics rather than asserted by name. rust.yaml asserted it wrongly for every
-constructor-shaped stdlib entry, and the cost was not a missed finding — it was
-a WITHHELD VERDICT on every repo that opens a file.
+semantics rather than asserted by name. A constructor-shaped stdlib entry
+keyed as a method costs more than a missed finding: it WITHHOLDS THE VERDICT
+on every repo that calls it (for ``File::open``, every repo that opens a
+file).
 
-THE MECHANISM, measured on encrypted-dns-server. ``File::open(path)`` takes no
-receiver, so its call site can only ever produce a function-construct edge. The
-analyzer resolves it perfectly — ``rust:std::fs::File:0-0:open:external_symbol``
-— but with ``methods: [open]`` in the catalogue:
+THE MECHANISM. ``File::open(path)`` takes no receiver, so its call site can
+only ever produce a function-construct edge. The analyzer resolves it
+perfectly — ``rust:std::fs::File:0-0:open:external_symbol`` — but with
+``methods: [open]`` in the catalogue:
 
   1. ``io_boundary``'s method-kind gate can never match it, so the whole
-     ``std::fs::File`` half of the fs catalogue was unreachable BY
+     ``std::fs::File`` half of the fs catalogue is unreachable BY
      CONSTRUCTION, not by any analyzer gap; and
-  2. ``verify_claims.method_starved_modules`` saw a resolved call into a
-     method-keyed module with no method-construct edge and concluded the
-     analysis "did not look", withholding all 7 generic claims.
+  2. ``verify_claims.method_starved_modules`` sees a resolved call into a
+     method-keyed module with no method-construct edge and concludes the
+     analysis "did not look", withholding the generic claims.
 
-Re-kinding ``std::fs::File`` alone dropped the starved list from two modules to
-one, live on that repo.
-
-WHY THE CONTROLS MATTER AS MUCH AS THE SUBJECTS. The fix is a kind SPLIT, not a
-blanket move: ``TcpStream::connect`` is an associated function while
+WHY THE CONTROLS MATTER AS MUCH AS THE SUBJECTS. The kinds are SPLIT per
+entry, not moved per module: ``TcpStream::connect`` is an associated function while
 ``TcpStream::write_all`` is a method, and both live under the same module. A
 regression that moved the whole module either way would be invisible without
 asserting both halves.
@@ -51,14 +49,13 @@ def _kinds(module: str, language: str = "rust") -> dict[str, str]:
         ("std::fs::File", "create"),
         ("std::fs::File", "create_new"),
         ("std::net::TcpStream", "connect"),
-        # ``TcpListener::bind`` / ``UdpSocket::bind`` were here. INV-nular
-        # removed those ROWS entirely — net_recv is an auto-derived taint
-        # source and binding a socket receives nothing — so there is no longer
-        # a kind for them to declare. The property below is about how a
-        # PRESENT row is keyed; the absence of a row is a different question,
-        # governed by test_blind_language_method_starvation.py, which now pins
-        # that a bind-only repo is correctly told the module's receive surface
-        # was not examined.
+        # No ``TcpListener::bind`` / ``UdpSocket::bind``: the catalogue has
+        # no row for them at all — net_recv is an auto-derived taint source
+        # and binding a socket receives nothing (INV-nular) — so there is no
+        # kind to declare. This property is about how a PRESENT row is
+        # keyed; a missing row is test_blind_language_method_starvation.py's
+        # question, which pins that a bind-only repo is told the module's
+        # receive surface was not examined.
         ("std::process::Command", "new"),
     ],
 )
@@ -102,16 +99,16 @@ def test_real_methods_stay_method_kind(module: str, name: str) -> None:
 
 
 class TestPythonClassmethodsAreFunctionKind:
-    """python.yaml asserted the same error, found by the same sweep.
+    """The same rule in the python catalogue: a classmethod is a function.
 
     ``Path.cwd()`` and ``Path.home()`` are CLASSMETHODS — called on the class,
-    no instance. Verified with ``inspect.getattr_static``, which is the probe
-    the python stdlib audit already established as the bar for this language
-    (unaided reading scored 16% wrong there, every error a false all-clear).
+    no instance. ``inspect.getattr_static`` is the bar for deciding this in
+    python; reading the source unaided misjudges it, and every such error is
+    a false all-clear.
 
     Milder than rust's: ``pathlib.Path`` also carries genuine instance methods,
     so a repo calling any of them marks the module satisfied and no verdict is
-    withheld. The entries were still unmatchable.
+    withheld. A method-kind entry for a classmethod is still unmatchable.
     """
 
     @pytest.mark.parametrize(
@@ -119,11 +116,10 @@ class TestPythonClassmethodsAreFunctionKind:
         [
             ("pathlib.Path", "cwd"),
             ("pathlib.Path", "home"),
-            # INV-fugus. Keyed ``methods`` by WI-tubij, whose own note called
-            # them classmethods. ``_dt.date.today()`` reaches the catalogue on
-            # an edge with no ``call_construct``, so the methods-only
-            # ``datetime.date`` row starved the module and withheld every
-            # verdict of hypergumbo's own self-proof.
+            # INV-fugus: classmethods too. ``_dt.date.today()`` reaches the
+            # catalogue on an edge with no ``call_construct``, so a
+            # methods-only ``datetime.date`` row starves the module and
+            # withholds every verdict (hypergumbo's own self-proof included).
             ("datetime.date", "today"),
             ("datetime.datetime", "now"),
             ("datetime.datetime", "utcnow"),
@@ -140,10 +136,10 @@ class TestPythonClassmethodsAreFunctionKind:
     def test_no_method_row_on_an_importable_class_is_receiverless(self) -> None:
         """THE FAMILY, not the instances: sweep every method-kind row.
 
-        The two instances above were found one at a time, a month apart, by
-        their symptoms. This asks the bar the stdlib audit set --
-        ``inspect.getattr_static`` -- of every method-kind row whose module
-        resolves to a class in this interpreter. A row on a module that does
+        The parametrized cases above pin known instances; this applies
+        ``inspect.getattr_static`` to every method-kind row whose module
+        resolves to a class in this interpreter, so a new instance fails here
+        before it shows up as a symptom. A row on a module that does
         not import here (a third-party package) is NOT checked, and is not
         claimed to be.
         """
@@ -172,14 +168,14 @@ class TestPythonClassmethodsAreFunctionKind:
         """INV-dihun / INV-zikab: the sweep above only sees CLASS owners.
 
         A row's kind says how the primitive is reached from the row's own
-        ``module`` (INV-zikab, owner-ratified 2026-09-23): ``methods:`` iff it is
-        called on an INSTANCE of ``module``. When ``module`` is itself an
-        object -- ``ctypes.cdll`` is a module-level ``LibraryLoader`` instance
-        -- then ``module.name(...)`` is a valid call as written, so the row is a
-        function. Keyed ``methods:``, ``ctypes.cdll.LoadLibrary(p)`` classified
-        fs_read while ``method_starved_modules`` reported ``ctypes.cdll``
-        starved in the same run: INV-fugus's contradiction, missed by the
-        class-only sweep by construction.
+        ``module`` (INV-zikab): ``methods:`` iff it is called on an INSTANCE
+        of ``module``. When ``module`` is itself an object -- ``ctypes.cdll``
+        is a module-level ``LibraryLoader`` instance -- then
+        ``module.name(...)`` is a valid call as written, so the row is a
+        function. Keyed ``methods:``, ``ctypes.cdll.LoadLibrary(p)`` would
+        classify fs_read while ``method_starved_modules`` reports
+        ``ctypes.cdll`` starved in the same run (INV-fugus's contradiction),
+        and the class-only sweep cannot see it.
         """
         from hypergumbo_core.io_boundary import load_catalog
 

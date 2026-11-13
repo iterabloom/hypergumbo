@@ -11,14 +11,17 @@ WHY
     effort -- a low yield then becomes a self-fulfilling artifact. This tool
     strips the cadence WITHOUT touching issue content.
 
-THE SAFETY INVARIANT (why this is not the LLM de-leak that failed)
-    The transform is DELETE-ONLY. It removes matched cadence substrings,
-    cadence-only lines, and cadence section headers, then collapses blank runs.
-    It NEVER paraphrases, summarizes, re-orders rows, or re-pairs a tracker ID
-    with different text. So an ID can never decouple from its own description
-    (exactly the failure mode of an LLM summary, which crossed wires between
-    neighbouring rows). Every surviving issue row == its original text minus
-    cadence tokens.
+THE SAFETY INVARIANT (why this is not an LLM rewrite)
+    The transform is DELETE-ONLY. It keeps the ID-first issue rows with their
+    cadence tokens deleted, drops every other line (headers, trend blocks,
+    narrative, campaign-record rows), then collapses blank runs. It NEVER
+    paraphrases, summarizes, re-orders rows, or re-pairs a tracker ID with
+    different text. So an ID can never decouple from its own description --
+    the failure mode of an LLM summary, which crosses wires between
+    neighbouring rows. Every surviving issue row == its original text minus
+    cadence tokens. The one addition: an ID that appeared only in dropped
+    lines is re-added as a row whose text is the TRACKER's title for it
+    (see backfill()).
 
 THE MAP (so nothing is lost)
     The provenance the human needs to plot summed-severity-over-time -- which
@@ -28,8 +31,7 @@ THE MAP (so nothing is lost)
     association into a separate pass->row map. The cadence relocates from the
     leaky place (ledger) to the safe place (map) instead of being deleted
     outright. The map is best-effort: only rows whose F-number/pass provenance
-    is actually present in the ledger appear in it (older rows predate the
-    scheme).
+    is actually present in the ledger appear in it.
 
 VERIFICATION (asserted every run; this is the trust mechanism)
     * tracker-ID set is preserved EXACTLY (no row dropped or invented);
@@ -56,11 +58,10 @@ USAGE
 
 LINT GUARD
     --check is the guard for content that lands in a worker-loaded ledger. The
-    issue ledger workers --show must always pass --check (rc=0). If a handoff /
-    session-notes role is ever reintroduced (a thing this ledger used to double
-    as), keep it in a SEPARATE file that workers never load, OR run --check on it
-    before merging anything into agent_notes — so handoff prose can never sneak
-    campaign cadence back into the worker-facing ledger.
+    issue ledger workers --show must always pass --check (rc=0). Keep handoff /
+    session-notes prose in a SEPARATE file that workers never load, or run
+    --check on it before merging any of it into agent_notes, so it cannot
+    sneak campaign cadence back into the worker-facing ledger.
 """
 
 from __future__ import annotations
@@ -86,8 +87,7 @@ F_NUMBER = re.compile(r"\bF(\d+)\.([A-Za-z0-9]+)\b")
 CADENCE_TOKENS: list[tuple[str, re.Pattern]] = [
     ("enrich_bracket", re.compile(r"\[\+[^\]]*\]")),  # [+ pass-04 card 030 ...]
     ("f_number", F_NUMBER),
-    # Discovery-handle cadence (added per a Phase-7 inspect-loop miss): the
-    # per-pass workers integrate findings under short LOCAL handles that encode
+    # Discovery-handle cadence: the per-pass workers integrate findings under short LOCAL handles that encode
     # campaign position — ``p<pass>-A<k>`` and the chunk-qualified
     # ``d<chunk>p<pass>-A<k>`` (one combined pattern), the bare chunk marker
     # ``(d<chunk>)``, and the ``discovery_<chunk>`` staging label. The leading
@@ -114,8 +114,8 @@ CADENCE_TOKENS: list[tuple[str, re.Pattern]] = [
     ("sig_severe", re.compile(r"\bSig\+Severe\b", re.I)),
     ("mean_sev", re.compile(r"\bmean\s+\d[\d.]*", re.I)),
     ("trend_word", re.compile(r"\b(?:convergence|carbon-dat\w*)\b", re.I)),
-    # In THIS ledger every use of these is campaign-sense (confirmed by
-    # inspection); they are in CADENCE_VOCAB so stripping won't trip over-strip.
+    # In this ledger every use of these words is campaign-sense; they are
+    # also in CADENCE_VOCAB so stripping them doesn't trip the over-strip check.
     ("cohort_word", re.compile(r"\bcohorts?\b", re.I)),
     ("materializ_word", re.compile(r"\bmaterializ\w*\b", re.I)),
     ("campaign_word", re.compile(r"\bcampaign\b", re.I)),
@@ -211,8 +211,10 @@ def is_issue_row(line: str) -> bool:
     ``| INV-xxxx | ...`` -- from narrative/framing that merely MENTIONS an ID
     mid-sentence (``... trend cohort ... INV-rukor flipped ...``). Only ID-first
     rows are kept; everything else (headers, trend blocks, session/methodology
-    prose) is dropped wholesale. Any ID that lived ONLY in dropped narrative is
-    caught by the ID-set check in verify() (rc=2), never silently lost.
+    prose) is dropped wholesale. An ID that lived ONLY in dropped narrative is
+    re-added from its tracker title by backfill(); one the tracker does not
+    know is listed in verify()'s report as narrative-only (informational,
+    not rc=2).
     """
     core = re.sub(r"^[\s\-*|>]+", "", line)
     core = re.sub(r"^\*\*", "", core)
@@ -501,12 +503,12 @@ def main() -> int:
     deleaked, n_back = backfill(notes, deleaked, rows)
 
     out.write_text(json.dumps({"notes": deleaked}, indent=2, ensure_ascii=False))
-    # Never clobber a populated --map with an empty reconstruction. A modern
+    # Never clobber a populated --map with an empty reconstruction. A
     # campaign-position-free ledger has no embedded F-numbers, so extract_map()
     # returns {}; writing that would destroy the orchestrator-maintained
     # pass_row_map.json (the human's sole severity-over-time source). Only write
     # when we actually reconstructed rows, or when the target does not yet exist
-    # (default-path init / migration aid for an old cadence-bearing ledger).
+    # (default-path init, or a first run over a cadence-bearing ledger).
     if pass_map or not mapp.exists():
         mapp.write_text(json.dumps(pass_map, indent=2, ensure_ascii=False))
         map_action = "wrote"

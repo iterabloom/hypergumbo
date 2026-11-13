@@ -14,32 +14,26 @@ other than Python).
 
 ## Current coverage
 
-- **Python** — 8 distinct import-times-call styles, including the two WI-zigah
-  fix cases (multi-segment attribute chain and dotted-submodule bare
-  name) plus aliased / deep-nested / multi-name-import variants.
-- **JS/TS, Go, Rust, Java, C++, Ruby, Elixir** — WI-mafik audit fixtures
-  covering the canonical import-times-call constructs per language.
-  All seven were initially loaded with ``xfail_reason`` capturing the
-  per-language gap discovered at audit time. WI-tihup / WI-mafik PR2
-  closed all seven gaps; the ``xfail_reason`` fields have been stripped
-  and the test now demands all 8 fixtures pass. Re-introducing an
-  ``xfail_reason`` later is a regression signal.
-- **Kotlin, Scala, PHP, Swift, C#** — WI-zisov Phase 2 audit extension
-  (2026-05-31). Swift passes cleanly. PHP partially works
-  (bare-named-import constructs resolve, qualified-call constructs do
-  not). C# is a deeper gap — the analyzer emits no unresolved external
-  call edges at all. The two gaps carry strict ``xfail_reason`` markers
-  pointing at the WI-nigah Tier 2 backlog; closing those analyzer
-  gaps flips XPASSED, which fails the test, forcing the fix-side PR to
-  strip the marker. Kotlin's and Scala's qualified-call gap closed with
-  WI-kilap (2026-09-23): a call on an imported type carries the import
-  path in the module slot.
+- **Python** — 8 distinct import-times-call styles: multi-segment attribute
+  chain, dotted-submodule bare name, and aliased / deep-nested /
+  multi-name-import variants.
+- **JS/TS, Go, Rust, Java, C++, Ruby, Elixir, Kotlin, Scala, Swift** — the
+  canonical import-times-call constructs per language, all required to
+  pass (no ``xfail_reason``). Adding an ``xfail_reason`` to one of these is
+  a regression signal.
+- **PHP** — partial: bare-named-import and aliased-terminal constructs
+  resolve; a static-method call through a ``use``-imported class does not.
+- **C#** — the analyzer emits no unresolved external call edges at all.
+
+The PHP and C# gaps carry strict ``xfail_reason`` markers; closing an
+analyzer gap flips its cell to XPASS, which fails the test until the marker
+is stripped.
 
 ## Adding a new language
 
 1. Build a language fixture that exercises the top import-times-call styles
-   for that language (start with the constructs that WI-zigah covered
-   in Python — bare name from qualified-module import, multi-segment
+   for that language (start with the constructs the Python fixture
+   covers — bare name from qualified-module import, multi-segment
    attribute chain, aliased root, aliased terminal name).
 2. Append a ``PolyglotFixture`` entry to ``POLYGLOT_FIXTURES`` below.
 3. Each expected ``(module_substring, callable_substring)`` target must
@@ -146,7 +140,7 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             # Analyzer drops the ``node:`` scheme prefix when emitting dsts
             # (cf. ``typescript:fs/promises:0-0:readFile:unresolved``). The
             # module-spec normalization is a separate concern from the
-            # call-site coverage axis WI-mafik is auditing.
+            # call-site coverage this fixture measures.
             ("fs/promises", "readFile"),
             ("fs", "readFileSync"),
             ("fs/promises", "writeFile"),
@@ -313,14 +307,11 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("Enum", "count"),
         ),
     ),
-    # WI-mafik audit extension (2026-05-21): the per-language idioms in
-    # the WI-mafik description that were NOT exercised by the original
-    # 8-fixture set. Two cases: Java wildcard import + bare type use, and
-    # Elixir ``import X, except: [...]`` + bare call. Both styles are
-    # canonical and routinely appear in real-world projects; if the
-    # analyzer misses them, file a per-language analyzer-fix WI item
-    # (sibling shape: WI-hudud / WI-rakul / WI-vovum / WI-kujom — all
-    # already closed by WI-mafik PR2 for the original 7 fixtures).
+    # Per-language idioms beyond the base fixtures above. Two cases: Java
+    # wildcard import + bare type use, and Elixir ``import X, except: [...]``
+    # + bare call. Both styles are canonical and routinely appear in
+    # real-world projects; if the analyzer misses them, file a per-language
+    # analyzer-fix WI item. (history: WI-mafik)
     PolyglotFixture(
         language="java_wildcard",
         filename="WildcardFixture.java",
@@ -364,11 +355,10 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("Enum", "map"),
         ),
     ),
-    # WI-zisov Phase 2 audit extension (2026-05-31): 5 additional languages
-    # beyond WI-mafik's Level 1b audit set (java/go/elixir/js_ts/cpp/rust/ruby).
-    # Each fixture exercises the canonical import-times-call constructs for
-    # the language. ``xfail_reason`` captures gaps discovered at audit time;
-    # future analyzer fixes flip XPASSED, surfacing the regression signal.
+    # Kotlin, Scala, PHP, Swift, C#. Each fixture exercises the canonical
+    # import-times-call constructs for the language. ``xfail_reason`` records
+    # a known analyzer gap; an analyzer fix flips it to XPASS, which fails the
+    # test until the marker is removed. (history: WI-zisov)
     PolyglotFixture(
         language="kotlin",
         filename="PolyglotKotlinFixture.kt",

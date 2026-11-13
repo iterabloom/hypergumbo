@@ -3,11 +3,11 @@
 
 WHAT IS BEING STORED, AND WHY IT IS NOT CONFIGURATION. Enabling the SCIP Rust
 backend makes indexing execute the analysed crate's ``build.rs`` and proc
-macros as the invoking user. Before this module the only durable way to say
-"yes" was ``export HYPERGUMBO_RUST_ANALYZER=1`` from a shell profile — which is
-GLOBAL, so it opted in every Rust repository the user would ever analyse,
-including ones cloned specifically to audit or triage (WI-sobig). The decision
-is per-repository; the only persistence available had the wrong scope for it.
+macros as the invoking user. That decision is per-repository.
+``export HYPERGUMBO_RUST_ANALYZER=1`` from a shell profile persists it, but
+GLOBALLY: it opts in every Rust repository the user will ever analyse,
+including ones cloned specifically to audit or triage (WI-sobig), so it has
+the wrong scope for a durable answer.
 
 Configuration was not the answer either, and that is ADR-0045's central
 ruling: ``$XDG_CONFIG_HOME`` is a directory people deliberately sync between
@@ -32,8 +32,8 @@ asking someone who has already answered, and this project has already written
 down (``TestRustAnalyzerDisclosureRespectsTheGate``) that a prompt firing when
 it is moot trains people to skim the one that matters.
 
-A CHANGED ``build.rs`` REVOKES; A CHANGED ``Cargo.toml`` DOES NOT. Owner
-ruling 2026-08-23, resolving ADR-0045 OQ1. The split is the substance:
+A CHANGED ``build.rs`` REVOKES; A CHANGED ``Cargo.toml`` DOES NOT (ADR-0045
+OQ1). The split is the substance:
 ``build.rs`` is the file that actually EXECUTES during indexing and it changes
 rarely, so a prompt about it carries information, while ``Cargo.toml`` churns
 with routine dependency bumps and re-prompting on that is how a person learns
@@ -41,8 +41,8 @@ to click through the prompt that matters. Revocation is applied inside
 :func:`read_decision` rather than at each call site, because a consumer that
 had to remember the check would eventually forget, and forgetting fails OPEN.
 
-HONEST LIMIT, on the table when the ruling was made: only TOP-LEVEL manifests
-are hashed, so no form of this protects against a *dependency's* build script.
+HONEST LIMIT: only TOP-LEVEL manifests are hashed, so no form of this
+protects against a *dependency's* build script.
 It catches tampering with this project's own build script, and nothing else.
 """
 
@@ -58,16 +58,16 @@ from typing import Any, Dict, Mapping, Optional
 from .safety_zones import user_state_write
 from .user_config import backends_executing_analysed_code
 
-#: Files whose change REVOKES a grant. Owner ruling 2026-08-23 resolving
-#: ADR-0045 OQ1: ``build.rs`` is the file that actually EXECUTES during
+#: Files whose change REVOKES a grant (ADR-0045 OQ1). ``build.rs`` is the
+#: file that actually EXECUTES during
 #: indexing and it changes rarely, so a prompt about it carries information.
 #: ``Cargo.toml`` is deliberately NOT here — it churns with routine dependency
 #: bumps, and re-prompting on that is how a person learns to click through the
 #: prompt that matters (the reasoning this project already wrote down in
 #: ``TestRustAnalyzerDisclosureRespectsTheGate``).
 #:
-#: HONEST LIMIT, decided with this on the table: only TOP-LEVEL manifests are
-#: hashed, so no form of this protects against a *dependency's* build script.
+#: HONEST LIMIT: only TOP-LEVEL manifests are hashed, so no form of this
+#: protects against a *dependency's* build script.
 #: It catches tampering with this project's own build script, and nothing else.
 _REVOKING_MANIFESTS = ("build.rs",)
 
@@ -84,8 +84,8 @@ class TrustDecision:
 
     backend: str
     #: The EFFECTIVE answer: a grant whose ``build.rs`` has changed reports
-    #: ``False`` here, because the owner's 2026-08-23 ruling makes that change
-    #: revoking. ``recorded_grant`` keeps what was actually written down, so a
+    #: ``False`` here, because that change is revoking (ADR-0045 OQ1).
+    #: ``recorded_grant`` keeps what was actually written down, so a
     #: caller can tell "you said no" from "you said yes and the build script
     #: then changed" — two very different things to show a person.
     granted: bool
@@ -162,8 +162,8 @@ def record_decision(
     """Record a grant or a decline for ``backend`` on ``repo_root``.
 
     Refuses any backend that does not DECLARE ``executes_analysed_code`` on
-    its registration (ruling 5; ADR-0057 §10 moved the bit from a hardcoded
-    set onto the declaration): such a backend's opt-in is an ordinary
+    its registration (ruling 5; ADR-0057 §10 puts the bit on the
+    declaration): such a backend's opt-in is an ordinary
     preference and belongs in the config file. Accepting it here would give
     one setting two homes. An unregistered name is refused the same way —
     the message names the backends the store does accept, so a typo is

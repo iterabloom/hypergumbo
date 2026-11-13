@@ -1,22 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A DNS lookup is ``net_recv`` in every language that has one (WI-dozul).
 
-THE RULING AND WHY IT WENT THIS WAY. ADR-0049 asks one question of a network
-call: does it return -- or write into a caller-visible location -- a value
-whose content the FAR SIDE chose? A resolver's answer is chosen by the
-resolver, so a lookup is a receive and mints ``untrusted_input``. The owner
-ruled that on 2026-09-06, and the argument that decided it was not the ADR in
-the abstract: **erlang had already rowed** ``inet:getaddr`` / ``getaddrs`` /
-``gethostbyname`` / ``gethostbyaddr`` under ``net_recv`` since 2026-05-24
-(WI-tukif), with the note "DNS resolution and service-name lookups (queries
-name servers)". So the real choice was parity-with-erlang versus retag-erlang,
-and WI-pavob rules that a vocabulary meaning different things per language is
-exactly the failure the axis discipline exists to prevent.
+THE RULING. ADR-0049 asks one question of a network call: does it return --
+or write into a caller-visible location -- a value whose content the FAR SIDE
+chose? A resolver's answer is chosen by the resolver, so a lookup is a receive
+and mints ``untrusted_input`` (owner ruling). Erlang's ``inet:getaddr`` /
+``getaddrs`` / ``gethostbyname`` / ``gethostbyaddr`` rows carry the same
+verdict (WI-tukif), and every other language must agree with them: a
+vocabulary meaning different things per language is exactly the failure the
+axis discipline exists to prevent (WI-pavob).
 
-THE ITEM'S OWN PREMISE WAS WRONG, AND THAT IS THE LESSON WORTH KEEPING. It
-said "no catalogue rows any of them today (grep: zero rows across
-go/rust/c/python)" -- true of the four catalogues it grepped, and the answer
-was sitting in a fifth. A one-of-N instrument hides N-1.
+WHEN CHECKING HOW LOOKUPS ARE ROWED, SEARCH EVERY CATALOGUE. Grepping a subset
+of catalogues can report "no rows anywhere" while the precedent sits in one not
+searched. A one-of-N instrument hides N-1.
 
 WHY A PARITY TEST RATHER THAN PER-LANGUAGE ASSERTIONS. The defect this file
 guards is not "python is missing a row"; it is the two catalogues disagreeing
@@ -24,10 +20,10 @@ about what a lookup IS. A per-language test passes while the disagreement
 grows. This one fails the moment a language rows a lookup somewhere else.
 
 WHAT IS DELIBERATELY NOT HERE. ``gethostname`` is the LOCAL hostname -- it
-queries no name server -- and belongs under ``host_info_read``, where c has
-filed it all along. ``getservbyname`` / ``getservbyport`` read the local
-services table. Erlang had all three under ``net_recv``, and moving them is a
-REMOVAL, which under ADR-0049 ruling 3 is proved rather than reasoned; see
+queries no name server -- and belongs under ``host_info_read``, where c files
+it. ``getservbyname`` / ``getservbyport`` read the local services table.
+Taking a row out of ``net_recv`` is a REMOVAL, which under ADR-0049 ruling 3
+is proved rather than reasoned; see
 :class:`TestTheLocalLookupsAreNotNetworkReceives`.
 """
 
@@ -64,14 +60,14 @@ DNS_LOOKUPS: tuple[tuple[str, str, str], ...] = (
     ("c", "netdb", "getnameinfo"),
     ("c", "netdb", "gethostbyname"),
     ("c", "netdb", "gethostbyaddr"),
-    # javascript -- the dns module, which WI-nolut left unaudited.
+    # javascript -- the dns module.
     ("javascript", "dns", "lookup"),
     ("javascript", "dns", "resolve"),
     ("javascript", "dns", "resolve4"),
     ("javascript", "dns", "reverse"),
-    # erlang -- rowed since 2026-05-24, and the reason the others look like
-    # this. Asserted here so the parity claim is not "the four new languages
-    # agree with each other".
+    # erlang -- the precedent the others follow (WI-tukif). Asserted here so
+    # the parity claim is not "the other four languages agree with each
+    # other".
     ("erlang", "inet", "getaddr"),
     ("erlang", "inet", "gethostbyname"),
     ("erlang", "inet", "gethostbyaddr"),
@@ -102,8 +98,7 @@ def test_a_name_server_query_is_a_network_receive(
 def test_every_parity_language_is_actually_represented() -> None:
     """A parity table that lost a language would still pass every row above.
 
-    Five languages, because WI-nolut left javascript's ``dns`` unaudited and
-    this is where that gap closes.
+    Five languages: python, go, c, javascript and erlang.
     """
     languages = {lang for lang, _, _ in DNS_LOOKUPS}
     assert languages == {"python", "go", "c", "javascript", "erlang"}
@@ -112,20 +107,20 @@ def test_every_parity_language_is_actually_represented() -> None:
 def test_the_lookups_mint_untrusted_input() -> None:
     """WHY THE BOUNDARY CHOICE HAS A CONSEQUENCE, asserted rather than
     assumed: ``net_recv`` is in ``AUTO_SOURCE_LABEL_MAP``, so every row above
-    creates a taint source. If it were not, this whole change would be
-    bookkeeping and the 0003 delta would be structurally zero."""
+    creates a taint source. If it were not, the boundary choice would be
+    bookkeeping with no effect on any verdict."""
     from hypergumbo_core.taint import AUTO_SOURCE_LABEL_MAP
 
     assert AUTO_SOURCE_LABEL_MAP.get("net_recv") == "untrusted_input"
 
 
 class TestReachWasMeasuredNotAssumed:
-    """PRESENCE IS NOT REACHABILITY, and the javascript half of this change is
-    where that bit.
+    """PRESENCE IS NOT REACHABILITY, and javascript's ``dns`` rows show it.
 
     Three claims here, each MEASURED end to end on a fixture rather than read
     off the row, because a row that classifies nothing looks identical to one
-    that classifies everything until you run it.
+    that classifies everything until you run it. The module slot the analyzer
+    emits for each source spelling:
 
     ==================================== ==========================
     source spelling                      emitted module slot
@@ -137,16 +132,14 @@ class TestReachWasMeasuredNotAssumed:
     ``new Resolver(); r.resolve4(h)``    ``external`` (sentinel)
     ==================================== ==========================
 
-    A DETOUR WORTH RECORDING, because it is this project's own rule 5 landing
-    on me. The member-access fixture produced no chain, I concluded the rows
-    were mis-keyed, and re-keyed them to the slash spelling. That was wrong:
-    ``normalize_module_separators`` folds ``/`` into ``.`` before matching, so the dotted
-    key already caught both subpath spellings, and the fixture had failed for a
-    DIFFERENT reason -- the sentinel. A fixture that fails for reason B while
-    you are testing hypothesis A will happily confirm A. The revert is in the
-    history; the lesson is that the second fixture (``require('dns/promises')``)
-    is what distinguishes the two causes, and it is the one that should have
-    been run first.
+    DIAGNOSING A MISSING CHAIN. A member-access fixture
+    (``require('dns').promises``) produces no chain, which looks like mis-keyed
+    rows but is the ``external`` sentinel: ``normalize_module_separators`` folds
+    ``/`` into ``.`` before matching, so the dotted key catches both subpath
+    spellings, and re-keying to the slash spelling fixes nothing. Run the
+    ``require('dns/promises')`` fixture first -- it is the one that
+    distinguishes the two causes. A fixture that fails for reason B while you
+    are testing hypothesis A will happily confirm A.
     """
 
     def test_the_promise_rows_use_the_same_spelling_as_their_fs_sibling(
@@ -166,10 +159,9 @@ class TestReachWasMeasuredNotAssumed:
                 if p.module.startswith("fs.prom")} == {"fs.promises"}
 
     def test_the_callback_surface_is_the_reachable_one(self) -> None:
-        """The plain ``dns`` rows classify -- verified on a fixture where
-        ``dns.resolve4(h, cb)`` produced a ``net_recv`` chain carrying
-        ``primitive: dns.resolve4``. These are the javascript rows this change
-        counts as coverage."""
+        """The plain ``dns`` rows classify -- on a fixture, ``dns.resolve4(h, cb)``
+        produces a ``net_recv`` chain carrying ``primitive: dns.resolve4``.
+        These are the javascript rows that count as coverage."""
         catalog = load_catalog("javascript", include_defaults=False)
         plain = {p.name for p in catalog.primitives if p.module == "dns"}
         assert {"lookup", "resolve", "resolve4", "reverse"} <= plain
@@ -188,15 +180,14 @@ class TestReachWasMeasuredNotAssumed:
 
 
 class TestTheLocalLookupsAreNotNetworkReceives:
-    """The other half of the sort: three erlang rows that never queried a name
-    server, moved out of ``net_recv`` in the same pass.
+    """The other half of the sort: three erlang rows that query no name
+    server, and so are not ``net_recv``.
 
     ``inet:gethostname`` returns the LOCAL host's name from the kernel -- c
-    files ``unistd.gethostname`` under ``host_info_read`` and always has.
+    files ``unistd.gethostname`` under ``host_info_read``.
     ``getservbyname`` / ``getservbyport`` read ``/etc/services``, a local
-    table. All three sat under ``net_recv`` carrying a note about querying
-    name servers, which is true of the four rows beside them and false of
-    these.
+    table. "Queries name servers" is true of the four resolver rows beside
+    them and false of these.
     """
 
     @pytest.mark.parametrize("language", ["erlang", "elixir"])

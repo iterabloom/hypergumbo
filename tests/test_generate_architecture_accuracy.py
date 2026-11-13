@@ -1,22 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The numbers and lists in ``docs/ARCHITECTURE.md`` measure what they say.
 
-A review of the generated doc found counts that were each computed from
-something other than what their label names:
+Each count must be computed from the thing its label names, which is easy to
+get subtly wrong:
 
-- "151 analyzers" counted every module in the language packages plus
-  core's ``analyze/`` infrastructure; 119 modules register an analyzer.
-- "8 convention patterns (always loaded)" counted YAML files carrying
-  ``language: multi``; the always-loaded set is
-  ``framework_patterns._CONVENTION_PATTERN_IDS`` (11 files).
-- Key Abstractions split wrapped docstring lines on ``word:`` and
-  published the fragments as fields.
-- Most-Connected Symbols ranked builtins (``len``, ``str``) and counted
-  test call sites.
-- The linker how-to was copied from a docstring whose example could not
-  run, with its indentation stripped.
-- ``--check`` measured only commit distance, so a count could be wrong
-  for 30 commits and still pass.
+- the analyzer count is modules that register an analyzer, not every module
+  in the language packages plus core's ``analyze/`` infrastructure;
+- the always-loaded pattern count is
+  ``framework_patterns._CONVENTION_PATTERN_IDS``, not the YAML files carrying
+  ``language: multi``;
+- Key Abstractions lists declared dataclass fields, not wrapped docstring
+  lines split on ``word:``;
+- Most-Connected Symbols ranks the project's own non-test symbols, not
+  builtins (``len``, ``str``), and does not count test call sites;
+- the linker how-to's example is runnable Python with its indentation kept;
+- ``--check`` recomputes the source-tree counts, so a wrong count cannot pass
+  on commit distance alone.
 
 Each test pins the measured property, not a snapshot of today's number.
 """

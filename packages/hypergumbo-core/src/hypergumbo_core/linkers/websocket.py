@@ -5,9 +5,8 @@ This linker detects WebSocket patterns in JavaScript/TypeScript and Python code.
 It emits three canonical edge types: ``event_publishes`` (emitter → listener),
 ``references`` (declaring file → the endpoint symbol it declares, for client
 and server endpoints alike) and ``calls`` (the cross-language
-client → server bridge). The bespoke ``message_send`` / ``message_receive``
-types this module once emitted were folded away by ADR-0023 §6; the arrows
-below name the ROLE a matched site plays, not an edge type.
+client → server bridge) (ADR-0023 §6). The arrows below name the ROLE a
+matched site plays (send-site, receive-site, endpoint), not an edge type.
 
 Detected Patterns
 -----------------
@@ -57,7 +56,7 @@ NOT detected, despite having a compiled pattern or an obvious spelling:
 Event Detection Strategy
 ------------------------
 An event name is written either as a string or as an identifier, and is
-classified by the shared ``_name_args`` helpers (WI-luhod, after WI-misod):
+classified by the shared ``_name_args`` helpers (history: WI-luhod, WI-misod):
 - Literal: socket.emit('user-login', data) -> event 'user-login'
 - Constant: socket.emit(EVENT, data) with ``const EVENT = 'user-login'`` at
   module scope in the same file -> event 'user-login' (identifier kept)
@@ -69,9 +68,9 @@ classified by the shared ``_name_args`` helpers (WI-luhod, after WI-misod):
 Senders join receivers on the event VALUE when both are known (0.85), and on
 the IDENTIFIER only when at least one side is unresolved (0.65,
 ``variable_match``), so an identifier's text is never matched against another
-site's string. Before WI-luhod the raw identifier was the grouping key:
-``on(EVENT)`` never reached ``emit('user-login')``, and ``emit(chat)`` with
-``chat`` a parameter reached ``on('chat')``.
+site's string. Grouping on the raw identifier instead would miss
+``on(EVENT)`` → ``emit('user-login')`` and falsely join ``emit(chat)`` (``chat``
+a parameter) to ``on('chat')``.
 
 How It Works
 ------------
@@ -191,13 +190,13 @@ def _named_site(
 
 # Regex patterns for WebSocket detection
 
-# Socket.io emit patterns (message_send) - matches both literals and variables
+# Socket.io emit patterns (send-site) - matches both literals and variables
 SOCKETIO_EMIT_PATTERN = re.compile(
     rf"(?:socket|io)\s*\.\s*emit\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
-# Socket.io on patterns (message_receive) - matches both literals and variables
+# Socket.io on patterns (receive-site) - matches both literals and variables
 SOCKETIO_ON_PATTERN = re.compile(
     rf"(?:socket|io)\s*\.\s*on\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
@@ -339,14 +338,12 @@ def _make_symbol_id(
 ) -> str:
     """Generate ID for a WebSocket-related symbol.
 
-    Phase 6 PR1 (INV-dulah): migrates from the ad-hoc
-    ``websocket:{path}:{line}:{event}:{kind}`` shape to canonical
-    ``make_symbol_id`` output. Previously this emitted a non-canonical ID
-    that the ADR-0034 ``id_format`` validator flagged as
-    ``malformed_span_segment`` (single line ``818`` instead of span
-    ``818-818``) plus a ``non_canonical_language_prefix`` (the literal
-    ``websocket`` is a protocol_origin, not a value in
-    ``catalog.all_known_languages``).
+    Emits canonical ``make_symbol_id`` output. An ad-hoc
+    ``websocket:{path}:{line}:{event}:{kind}`` shape fails the ADR-0034
+    ``id_format`` validator twice: ``malformed_span_segment`` (a single line
+    ``818`` instead of the span ``818-818``) and
+    ``non_canonical_language_prefix`` (``websocket`` is a protocol_origin, not
+    a value in ``catalog.all_known_languages``). (history: INV-dulah)
 
     The route path (``event``) lives in the **name** segment of the
     canonical ID; we route it through ``_sanitize_event_for_id_segment``
@@ -359,9 +356,8 @@ def _make_symbol_id(
 
     The ``language`` argument lets the caller pass the host file's
     language (resolved via ``_language_for_file``) so the ID's language
-    slot matches the actual source. Defaults to ``"python"`` for the
-    legacy call sites in this module that previously used the protocol
-    name as the slot value.
+    slot matches the actual source. Every call site in this module passes
+    it; the ``"python"`` default applies only to a caller that omits it.
     """
     safe_name = _sanitize_event_for_id_segment(event)
     return make_symbol_id(
@@ -382,12 +378,12 @@ def _sanitize_event_for_id_segment(event: str) -> str:
 def _make_file_id(language: str, path: str) -> str:
     """Generate ID for a file node using the canonical ``make_file_id`` shape.
 
-    INV-ronuf: historically this returned ``websocket:{path}:1-1:file:file``,
-    which never collided with the orchestrator's canonical
-    ``{language}:{path}:1-1:file:file`` shape — every WS-emitted file Symbol
-    became a phantom shadow of the analyzer/orchestrator-emitted one.
-    Using the canonical shape lets ``ctx.symbols``-based dedup (and the
-    orchestrator's dangling-edge synthesizer) collapse them naturally.
+    The canonical ``{language}:{path}:1-1:file:file`` shape lets
+    ``ctx.symbols``-based dedup (and the orchestrator's dangling-edge
+    synthesizer) collapse a WS-emitted file Symbol with the
+    analyzer/orchestrator-emitted one. A linker-specific shape such as
+    ``websocket:{path}:1-1:file:file`` never collides, so every WS file
+    Symbol would become a phantom shadow node. (history: INV-ronuf)
     """
     return make_file_id(language, path)
 
@@ -741,17 +737,15 @@ def link_websocket(
     receives = [p for p in all_patterns if p.type == "receive"]
     endpoints = [p for p in all_patterns if p.type == "endpoint"]
 
-    # ADR-0027 Phase 3 / audit-findings 0013: Symbol.kind="websocket_endpoint"
-    # is a framework-role leak (Test 4: mechanism vs. category). Fold to the
-    # canonical Cluster A construct kind="function" + meta["framework_role"]
-    # so the kind axis stays language-construct-only.
-    #
-    # ADR-0028 Phase 3 / audit-findings 0014: the dynamic f-string emits
-    # f"{pattern_type}_emit" and f"{pattern_type}_endpoint" leak framework
-    # identity into evidence_type. Fold to canonical inference label
-    # ast_call_direct + meta["framework_dispatch"]=<framework_name>. The
-    # pattern_type->framework map now lives at module level
-    # (_PATTERN_TYPE_TO_FRAMEWORK) with the dependency-gated _resolve_ws_framework.
+    # Endpoints are kind="function" + meta["framework_role"]: a
+    # "websocket_endpoint" kind would leak a framework role into the kind
+    # axis, which stays language-construct-only (ADR-0027; audit-findings
+    # 0013). Likewise the evidence type is the canonical ast_call_direct with
+    # the framework in meta["framework_dispatch"], never a per-pattern label
+    # like f"{pattern_type}_emit" that would leak framework identity into
+    # evidence_type (ADR-0028; audit-findings 0014). The pattern_type ->
+    # framework map is _PATTERN_TYPE_TO_FRAMEWORK, applied through the
+    # dependency-gated _resolve_ws_framework.
     #
     # WI-fizir: collect the repo's declared Python dependencies once so framework
     # attribution can be gated on them (the fastapi-vs-starlette disambiguation).
@@ -849,21 +843,16 @@ def link_websocket(
         # (exact event) or identifiers (heuristic).
         is_variable_match = not join.on_value
         confidence = 0.65 if is_variable_match else 0.85
-        # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_emit"
-        # leaked framework identity into evidence_type. Fold to canonical
-        # ast_call_direct + meta["framework_dispatch"]=<framework_name>.
-        # The variable_match branch keeps its Cluster A canonical.
+        # Canonical evidence types only, with the framework carried in
+        # meta["framework_dispatch"] (ADR-0028; audit-findings 0014):
+        # ast_call_direct for a value join, variable_match for an
+        # identifier join.
         evidence_type = "variable_match" if is_variable_match else "ast_call_direct"
-        # Pass linker-specific meta via Edge.create's meta= kwarg
-        # so Edge.create merges it with the dataflow fields —
-        # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-        # WebSocket sender→receiver via channel is publish-
-        # family shape; "websocket" is the channel kind.
-        # Canonical 'event_publishes' +
-        # meta['channel_kind']='websocket'. Pass meta via
-        # Edge.create's meta= kwarg so it merges with
-        # dataflow fields (assigning edge.meta afterward
-        # would wipe the dataflow meta fields — INV-forim).
+        # A sender→receiver link over a channel is publish-family:
+        # canonical 'event_publishes' with meta['channel_kind']='websocket'
+        # (ADR-0023 §6; audit-findings 0002). Pass meta through
+        # Edge.create's meta= kwarg so it merges with the dataflow fields;
+        # assigning edge.meta afterward would wipe them (INV-forim).
         edge = Edge.create(
             src=_make_file_id(
                 _language_for_file(send_pat.file_path, send_pat.pattern_type),
@@ -896,14 +885,11 @@ def link_websocket(
         )
         edges.append(edge)
 
-    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid): WebSocket
-    # endpoint connections declare connectivity (file → endpoint
-    # symbol), they don't carry messages. Canonical 'references' +
-    # meta['ref_construct']='websocket_endpoint'.
-    #
-    # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_endpoint" leaked
-    # framework identity into evidence_type. Fold to canonical ast_call_direct
-    # + meta["framework_dispatch"]=<framework_name>.
+    # An endpoint declaration states connectivity (file → endpoint symbol)
+    # and carries no messages: canonical 'references' +
+    # meta['ref_construct']='websocket_endpoint' (ADR-0023 §6; audit-findings
+    # 0002). Evidence is the canonical ast_call_direct, with the framework in
+    # meta["framework_dispatch"] (ADR-0028; audit-findings 0014).
     for ep in endpoints:
         ep_language = _language_for_file(ep.file_path, ep.pattern_type)
         ep_id = _make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint", ep_language)
@@ -913,11 +899,10 @@ def link_websocket(
             edge_type="references",
             line=ep.line,
             evidence_type="ast_call_direct",
-            # INV-zatug: the declaration above is deliberate (the ADR-0028
-            # Phase-3 fold), so the value follows the pathway rather than the
-            # reverse — 0.90 over-claimed against its 0.85 ceiling. Dropping
-            # the literal lets the ir.py chokepoint derive it and stamps
-            # confidence_source=evidence_derived.
+            # No confidence literal: the ir.py chokepoint derives it from the
+            # evidence type above (ceiling 0.85) and stamps
+            # confidence_source=evidence_derived. A hand-set value such as
+            # 0.90 would over-claim against that ceiling. (history: INV-zatug)
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             data_direction="src_to_dst",
@@ -1018,6 +1003,7 @@ def link_websocket(
     # CNF: WebSocket patterns appear in any language with a WS library —
     # Socket.io (JS/TS), Django Channels (python), Phoenix (elixir),
     # Spring WebFlux (java), Action Cable (ruby), Gorilla (go), SignalR (csharp).
+    # The scan itself reads only JS/TS and Python files.
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir"]],
     activation=always_on_unreviewed(),
 )

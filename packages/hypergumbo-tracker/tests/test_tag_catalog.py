@@ -825,19 +825,19 @@ class TestTagsRename:
     ) -> None:
         """Renaming FROM a legacy-format (hyphenated) tag must complete cleanly.
 
-        Regression test for WI-hohov: the catalog-save step previously
-        rejected the old endpoint because its name violated
-        ``_TAG_NAME_RE``, so the rename verb could not migrate the very
-        tags it was meant to migrate. The fix treats legacy-format old
-        endpoints as a forward migration — no audit-trail entry under
-        the regex-violating name (the catalog can't legally hold one),
-        and the per-item ops still land.
+        The catalog-save step rejects any entry whose name violates
+        ``_TAG_NAME_RE``, so recording an audit-trail entry for the old
+        endpoint would make the rename verb unable to migrate the very tags
+        it exists to migrate. Legacy-format old endpoints are treated as a
+        forward migration instead — no audit-trail entry under the
+        regex-violating name (the catalog can't legally hold one), and the
+        per-item ops still land. (history: WI-hohov)
         """
         from hypergumbo_tracker import tag_catalog
 
         tracker_root = _setup_tracker(tmp_path)
         ops = tracker_root / "tracker" / ".ops"
-        # Use the actual hyphenated tag shape the 21-item migration hit.
+        # A hyphenated tag of the shape legacy items carry.
         _write_item_with_tags(ops, "WI-aa", ["for-deep-bakeoff"])
         with pytest.raises(SystemExit) as exc:
             main([
@@ -872,8 +872,7 @@ class TestTagsRename:
         ops = tracker_root / "tracker" / ".ops"
         _write_item_with_tags(ops, "WI-aa", ["for-deep-bakeoff"])
         # Inject a pre-existing legacy entry directly via YAML — bypassing
-        # save_catalog's validator (which the rename fix itself must now
-        # tolerate from a different angle).
+        # save_catalog's validator, which would refuse to write it.
         catalog_file = tag_catalog.catalog_path(tracker_root)
         catalog_file.parent.mkdir(parents=True, exist_ok=True)
         catalog_file.write_text(

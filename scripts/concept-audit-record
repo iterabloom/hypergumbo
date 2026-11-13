@@ -18,23 +18,25 @@ by hand to record the outcome; this script's job is purely the
 machine-readable bookkeeping that powers cadence detection.
 
 REFUSES TO RECORD WHEN THE AUDIT LEFT NO FINDINGS DOCUMENT, because
-bookkeeping that can advance without a trail does exactly that. The
-2026-08-20 record named suspect domain "call_construct" and left no
-write-up and no Examples entry; the 2026-08-27 re-run of the same
-domain had to re-derive the inventory from scratch, and found five
-off-axis values the earlier pass had folded past. The playbook already
-says a silent audit is no audit — this makes the recorder agree.
+bookkeeping that can advance without a trail does exactly that. A
+recorded audit with no write-up resets the cadence while leaving the
+next audit of that domain to re-derive the inventory from scratch, and
+whatever the unwritten pass concluded is lost. The playbook says a
+silent audit is no audit; this makes the recorder agree.
 
-A findings document is any Markdown file under ``docs/audits/`` or the
-lab notebook that satisfies BOTH halves: its name contains the suspect
-domain with separators and case stripped (so ``identity vocabulary``
-matches ``concept-audit-identity-vocabulary_07152026.md``), AND its
-mtime postdates the previous recorded audit. The second half is not
-decoration — a name-only check would have passed 2026-08-20, because
-the April-era ``docs/audits/0012-evidence-type-cluster-d-call-construct.md``
-already named that domain. Pass ``--force`` when the write-up genuinely
-lives somewhere this script cannot see; it records and says on stderr
-that it did.
+A findings document is any Markdown file under ``docs/audits/``,
+``docs/surveys/`` or the lab notebook that satisfies BOTH halves: its
+name contains the suspect domain with separators and case stripped (so
+``identity vocabulary`` matches
+``concept-audit-identity-vocabulary_07152026.md``), AND its mtime
+postdates the previous recorded audit. The second half is not
+decoration: a name-only check is satisfied by any older document that
+happens to name the domain
+(``docs/audits/0012-evidence-type-cluster-d-call-construct.md`` names
+``call_construct``, for one), so it would not show that THIS audit was
+written up. Pass ``--force`` when the write-up genuinely lives
+somewhere this script cannot see; it records and says on stderr that
+it did.
 """
 
 from __future__ import annotations
@@ -105,22 +107,20 @@ def findings_documents(
     check -- ``docs/surveys/README.md`` calls itself the acknowledged
     sibling of ``docs/audits`` for exactly that case, and
     ``audit_findings.validate_against_registry`` rejects any audit whose
-    axis has no value registry. Omitting it made the cadence gate refuse
-    a real, written-up audit and steered the author toward ``--force``,
-    which is the one outcome this gate exists to prevent: a recorded
-    audit with no discoverable write-up. Found while recording the
-    2026-09-10 ``call_construct`` audit, whose write-up lives at
-    ``docs/surveys/call-construct-value-family-audit.md`` precisely
-    because that field has no value registry to validate against.
+    axis has no value registry (``call_construct`` is one: its write-up is
+    ``docs/surveys/call-construct-value-family-audit.md``). Omitting the
+    directory would make the gate refuse a real, written-up audit and
+    steer the author toward ``--force``, which is the one outcome this
+    gate exists to prevent: a recorded audit with no discoverable
+    write-up.
 
     ``newer_than`` is what makes this a witness rather than a formality.
     Without it the gate is satisfied by ANY historical document naming
-    the domain, and would have passed the 2026-08-20 record: the
-    April-era ``docs/audits/0012-evidence-type-cluster-d-call-construct.md``
-    already existed. A write-up only evidences THIS audit if it postdates
-    the previous one. mtime is the signal, which is imperfect on a fresh
-    clone — but a fresh clone's files read as RECENT, so the failure
-    direction is permissive, never a false refusal.
+    the domain (``docs/audits/0012-evidence-type-cluster-d-call-construct.md``
+    names ``call_construct``, for one). A write-up only evidences THIS
+    audit if it postdates the previous one. mtime is the signal, which is
+    imperfect on a fresh clone — but a fresh clone's files read as RECENT,
+    so the failure direction is permissive, never a false refusal.
     """
     if repo_root is None:
         repo_root = REPO_ROOT

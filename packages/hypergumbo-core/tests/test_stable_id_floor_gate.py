@@ -1782,10 +1782,10 @@ def runs(tmp_path_factory, build_once) -> dict:
     """Both variants of every fixture through the full pipeline, nodes by file
     (and the with-sibling variant once more, checked out elsewhere).
 
-    Built ONCE PER SESSION, not once per xdist worker: three pipeline runs
-    cost about 150 s, and under xdist's default distribution this module's
-    tests would land on several workers, each building its own copy
-    (WI-nupit)."""
+    Built ONCE PER SESSION, not once per xdist worker: three full pipeline
+    runs over the corpus are expensive, and under xdist's default
+    distribution this module's tests would land on several workers, each
+    building its own copy (WI-nupit)."""
     return build_once("stable-id-floor-runs", lambda: _build_runs(tmp_path_factory))
 
 

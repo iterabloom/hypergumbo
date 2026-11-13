@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the hypergumbo verify-claims CLI command (ADR-0016 Phase 3)."""
+"""Tests for the hypergumbo verify-claims CLI command (ADR-0016)."""
 import json
 from pathlib import Path
 
@@ -1152,7 +1152,7 @@ def test_verify_claims_wrongshape_taint_yaml_clean_error(
 
 
 # ============================================================================
-# Phase 3: per-entry-point DDG path + per-language propagation
+# Per-entry-point DDG path + per-language propagation
 # ============================================================================
 
 
@@ -1779,9 +1779,9 @@ def test_language_with_a_token_call_edge_still_falsely_confirms(
 ) -> None:
     """A catalogued-but-blind language must not yield ``confirmed``.
 
-    Kotlin's catalogue is method-shaped (30 method-keyed modules against 1
-    function-keyed), and Kotlin emits no call edge for an external
-    instance-method call — ~95% of its catalogued sinks (WI-nasuf). So "did this
+    Kotlin's catalogue is almost entirely method-keyed, and Kotlin emits no
+    call edge for an external instance-method call, so most of its catalogued
+    sinks are never reached by an edge (WI-nasuf). So "did this
     language produce ANY call edge" is not evidence its I/O was seen;
     :func:`verify_claims.method_starved_modules` instead asks whether any
     method-construct call edge landed in a method-keyed module the repo actually
@@ -2120,9 +2120,9 @@ def test_the_key_is_present_and_negative_on_a_shipped_catalogue_run(
 def test_the_text_reader_is_told_too(tmp_path: Path, capsys) -> None:
     """A disclosure that exists only under --json is half shipped.
 
-    The same rule put WI-bifob's exclusion bucket on the text renderer
-    (INV-karud a3). A stderr line is worse than json-only: it is discarded by
-    any redirect, and it is not attached to the verdict.
+    The text renderer carries it too, as it carries the non-production
+    exclusion bucket (INV-karud a3). A stderr line is worse than json-only: it
+    is discarded by any redirect, and it is not attached to the verdict.
     """
     cmd_verify_claims(
         _provenance_args(tmp_path, cli_overlay=True, json_output=False),
@@ -2266,9 +2266,9 @@ def test_verify_claims_exit_1_without_the_sanitizer(
 def test_caveated_verdict_is_visible_on_the_text_surface(
     tmp_path: Path, capsys,
 ) -> None:
-    """A disclosure that exists only under ``--json`` is half shipped — the
-    same argument that put WI-bifob's exclusion bucket and INV-zosun's
-    provenance block on the text renderer.
+    """A disclosure that exists only under ``--json`` is half shipped, so the
+    text renderer carries the caveat too, as it carries the non-production
+    exclusion bucket and the catalogue-provenance block.
     """
     cmd_verify_claims(_caveat_args(
         tmp_path, with_sanitizer=True, as_json=False,

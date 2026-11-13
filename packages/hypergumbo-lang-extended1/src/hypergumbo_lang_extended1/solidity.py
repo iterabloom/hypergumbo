@@ -103,9 +103,9 @@ _CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
 # ``using X for Y`` library-call resolver, and both halves of the
 # ``overrides`` walker all test against this set rather than a
 # ``kind == "function"`` literal each, so they cannot fall out of step with
-# the emitted kinds. A reader left on the old kind would silently drop edges
-# (``overrides`` edges are numerous on inheritance-heavy code such as
-# openzeppelin-contracts).
+# the emitted kinds. A reader that tests only ``"function"`` misses every
+# method and silently drops edges (``overrides`` edges are numerous on
+# inheritance-heavy code).
 _FUNCTION_DECLARATION_KINDS: frozenset[str] = (
     SOLIDITY_CALLABLE_DECLARATION_KINDS - frozenset({"constructor"})
 )
@@ -219,11 +219,7 @@ def _extract_solidity_signature(
     Returns signature like "(address to, uint256 amount) returns (bool)".
 
     Always returns a string: the parameter list degrades to ``"()"`` when the
-    node carries no ``parameter`` children, so there is no failure path. The
-    return type was ``Optional[str]`` until WI-basat, which was over-broad —
-    the single ``return sig`` is unconditional — and that annotation was what
-    made the WI-vibad ``make_typed_stable_id`` call read as a ``str | None``
-    argument.
+    node carries no ``parameter`` children, so there is no failure path.
     """
     params: list[str] = []
     return_type: Optional[str] = None
@@ -330,8 +326,8 @@ def _extract_symbols_from_tree(
         end_line = node.end_point[0] + 1
         full_name = f"{prefix}.{name}" if prefix else name
 
-        # WI-vibad: callable-kind declarations (function / constructor / modifier
-        # / event) are deliberately excluded from the WI-rihob name-scoped
+        # WI-vibad: callable-kind declarations (function / method / constructor
+        # / modifier / event) are deliberately excluded from the WI-rihob name-scoped
         # backstop (``_KIND_STABLE_ID_FACTORIES``) because a name-only key
         # collides on overloads (two ``Token.mint(...)`` bind to one id). They
         # must carry the typed producer stable_id — the signature keeps overloads
@@ -714,7 +710,7 @@ def _extract_edges_from_tree(
                         # This correctly resolves x.add(y) -> SafeMath.add
                         # when 'using SafeMath for uint256' is declared.
                         #
-                        # WI-jovur: a Solidity ``using L for T;`` at file
+                        # A Solidity ``using L for T;`` at file
                         # level binds to the source unit, so the key
                         # ``""`` (no enclosing contract) collects the
                         # libraries applicable to every call site in the
@@ -724,7 +720,7 @@ def _extract_edges_from_tree(
                         # directives still dispatch calls that occur
                         # inside contracts — e.g. ``Memory.load``
                         # invoked via ``s.load(0)`` under a file-level
-                        # ``using Memory for Slice;`` (UAT BUG-13).
+                        # ``using Memory for Slice;`` (history: WI-jovur).
                         enclosing_contract = _get_enclosing_contract(
                             node, source,
                         ) or ""
@@ -785,10 +781,10 @@ def _extract_edges_from_tree(
                 event_name = node_text(event_name_node, source)
                 event_sym = local_symbols.get(event_name) or global_symbols.get(event_name)
                 if event_sym and event_sym.kind == "event":
-                    # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # Solidity `emit Event(...)` is a function→event-symbol
-                    # reference, not pub-sub-shaped. Canonical
-                    # 'references' + meta['construct']='event_emit'.
+                    # reference, not pub-sub-shaped: a canonical
+                    # 'references' edge + meta['ref_construct']='event_emit'
+                    # (ADR-0023 §6, audit-findings 0001; WI-vasik-jofiv).
                     edge = Edge.create(
                         src=current_function.id,
                         dst=event_sym.id,

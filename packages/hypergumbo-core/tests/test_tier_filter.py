@@ -2,13 +2,12 @@
 """The tier filter is ONE function, shared by ``run_survey`` and the per-PR
 claims-coverage guard (WI-jizam).
 
-It used to be an inline block of ``run_survey``. The guard, which exists to
-give the cron's coverage answer per PR, could not run it, so a generated
-``_pb2.py`` the pipeline drops as DERIVED stayed "analysed" for the guard and
-the cross-package call into it -- the cron's ``hypergumbo_core.scip._generated.scip_pb2``
-on dev acf67df4cb -- was suppressed as first-party instead of named
-(INV-hotib). These pin the block's three behaviours at the function, so the
-two callers cannot drift: a DERIVED file leaves with every edge touching it,
+The guard exists to give the cron's coverage answer per PR, so it must drop
+what the pipeline drops. A guard that cannot run the filter keeps a generated
+``_pb2.py`` the pipeline drops as DERIVED "analysed", and a cross-package call
+into it (e.g. into ``hypergumbo_core.scip._generated.scip_pb2``) is suppressed
+as first-party instead of named (history: INV-hotib). These pin the filter's
+three behaviours at the function, so the two callers cannot drift: a DERIVED file leaves with every edge touching it,
 ``--max-tier 4`` keeps everything, and a route-bearing DERIVED symbol is
 promoted rather than dropped.
 """

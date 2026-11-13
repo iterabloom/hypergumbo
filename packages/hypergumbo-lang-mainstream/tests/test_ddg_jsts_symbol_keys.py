@@ -3,23 +3,20 @@
 walk asks for (WI-sakir, WI-jopuf).
 
 ``_ddg_taint_reaches`` gates on ``source_fn in ddg_symbols``, where
-``source_fn`` is the ANALYZER's symbol id. Both ``ts_def_use`` registrations
-walked only ``function_declaration`` and supplied neither ``name_for`` nor
-``kind_for``. WI-sakir was filed on the WI-ripas shape (a method stored under
-an unreachable key); probing the analyzer showed the defect is one step
-earlier: a class method is ``method_definition`` and was NEVER WALKED at all.
-Measured on dash.js before the fix: 0 of 766 methods, 0 of 54 getters.
+``source_fn`` is the ANALYZER's symbol id. A class method is a
+``method_definition`` node, so a spec that walks only ``function_declaration``
+never walks a method at all, and one that walks it without the analyzer's
+naming stores it under an unreachable key (the WI-ripas shape).
 
-``js_ts.py`` decides a method's name and kind slot inline -- ``Class.method``
-from the nearest enclosing ``class_declaration``, and ``method`` / ``getter``
-/ ``setter`` from a ``get``/``set`` child. WI-jopuf's objection to widening
-the node types was exactly that re-deriving that decision in the spec would
-be a second copy of a production judgement; the fix extracts it into
-``jsts_method_name`` / ``jsts_method_kind`` and both the analyzer and the
-spec call them.
+``js_ts.py`` decides a method's name and kind slot -- ``Class.method`` from the
+nearest enclosing ``class_declaration``, and ``method`` / ``getter`` /
+``setter`` from a ``get``/``set`` child -- in ``jsts_method_name`` /
+``jsts_method_kind``, and both the analyzer and the spec call them.
+Re-deriving that decision in the spec would be a second copy of a production
+judgement, free to drift.
 
-Plain ``function_declaration`` keys already matched (a nested function is
-named bare by BOTH producers) and are pinned here so they stay that way.
+Plain ``function_declaration`` keys match too (a nested function is named bare
+by BOTH producers) and are pinned here so they stay that way.
 
 THE PATH SLOT IS NORMALISED, DELIBERATELY AND VISIBLY, as in the python
 sibling: the two producers can be handed different root semantics.
@@ -100,8 +97,8 @@ def _both_arms(tmp_path: Path, ext: str, language: str) -> tuple[set[str], set[s
     )
 
 
-# Every extension the analyzer reads (WI-fovus): the DDG specs used to walk
-# ``*.js`` / ``*.ts`` only, so the other six arms stored nothing at all.
+# Every extension the analyzer reads (WI-fovus): a spec that walked only
+# ``*.js`` / ``*.ts`` would store nothing for the other six arms.
 _ARMS = pytest.mark.parametrize(
     ("ext", "language"), [
         ("js", "javascript"), ("mjs", "javascript"), ("cjs", "javascript"),

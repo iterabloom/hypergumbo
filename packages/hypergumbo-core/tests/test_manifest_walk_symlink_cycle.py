@@ -1,15 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The manifest walks terminate on a directory symlink cycle (INV-pivir).
 
-arti carries ``maint/rust-maint-common/maint -> .`` and ``.../common -> .``:
-two links back to their own parent at every level. The two stack walks in
-``supply_chain`` pushed every ``entry.is_dir()`` -- which follows links -- with
-no visited set, so the walk was exponential and ``verify-claims`` sat at 100%
-CPU for 30+ minutes before any analysis ran (faulthandler: pathlib.is_file <-
-collect_first_party_package_names <- cmd_verify_claims).
+A repository can carry links back to their own parent at every level (arti:
+``maint/rust-maint-common/maint -> .`` and ``.../common -> .``). A stack walk
+that pushes every ``entry.is_dir()`` -- which follows links -- with no visited
+set is exponential on such a tree: ``verify-claims`` would spin at 100% CPU in
+``collect_first_party_package_names`` before any analysis ran.
 
-The walk now does what ``Path.rglob`` and discovery do: it does not descend
-into a directory symlink. A symlinked manifest FILE is still read.
+So the walk does what ``Path.rglob`` and discovery do: it does not descend into
+a directory symlink. A symlinked manifest FILE is still read.
 """
 
 from __future__ import annotations
@@ -88,9 +87,9 @@ def test_a_symlinked_directory_is_not_entered_but_a_linked_file_is_read(
 
 class TestTheSharedRule:
     """``walks_into`` is the one rule every hand-written repository walk asks
-    (supply_chain here, py.py's source roots and py_deps' pyproject walk in the
-    mainstream package), so a cycle cannot be fixed in one and missed in
-    the next -- which is how INV-pivir reopened."""
+    (supply_chain here; py.py's source roots, py_deps and npm_deps in the
+    mainstream package; mix_deps in the common package), so a cycle cannot be
+    fixed in one walk and missed in another. (history: INV-pivir)"""
 
     def test_a_real_directory_is_walked(self, tmp_path: Path) -> None:
         (tmp_path / "pkg").mkdir()

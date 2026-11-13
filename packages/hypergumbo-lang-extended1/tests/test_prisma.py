@@ -303,9 +303,10 @@ def test_same_model_in_two_schemas_keeps_its_relations(tmp_path: Path) -> None:
     block contains the field, found by POSITION (``symbol_declared_by``), and
     its target binds THIS schema's model before the run-wide registry.
 
-    Both were ``global_symbols.get(<name>)`` (one symbol per name, last wins),
-    so two apps' schemas each declaring ``model User`` had one app's
-    relations come out of, or point into, the other app's model.
+    Resolving either end by ``global_symbols.get(<name>)`` (one symbol per
+    name, last wins) would, when two apps' schemas each declare ``model
+    User``, make one app's relations come out of, or point into, the other
+    app's model.
     """
     for app, target in (("app1", "Alpha"), ("app2", "Beta")):
         d = tmp_path / app

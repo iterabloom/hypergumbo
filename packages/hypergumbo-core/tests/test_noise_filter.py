@@ -30,7 +30,7 @@ def test_noise_kinds_are_filtered():
 def test_a_section_is_noise_only_for_its_documentation_producers():
     """INV-siza: ``section`` is a homonym. A markdown heading or an INI header
     is document structure; a COBOL section is a callable that PERFORM targets.
-    Filtering by kind alone dropped every COBOL section with its call edges."""
+    Filtering by kind alone would drop every COBOL section with its call edges."""
     for language in ("markdown", "rst", "latex", "ini", "kdl", "blade"):
         assert is_noise_symbol(_sym("section", language=language)) is True, language
     assert is_noise_symbol(_sym("section", language="cobol")) is False
@@ -83,9 +83,9 @@ def test_paragraph_has_one_producer_and_it_is_a_callable():
 def test_a_property_is_noise_only_for_its_declaration_only_producers():
     """WI-tisom: ``property`` is a homonym. A swift computed property and a C#
     property are callables with bodies; a ``.properties`` key, a QML property
-    and an objective-c ``@property`` are declarations with no body. Measured on
-    the corpus, the first two carried 12,916 edges on five swift repos (all
-    dropped with their src), the last three 0 edges."""
+    and an objective-c ``@property`` are declarations with no body. The first
+    two carry call edges, which are dropped with their src if the symbol is
+    filtered as noise; the last three carry none."""
     for language in ("properties", "qml", "objc"):
         assert is_noise_symbol(_sym("property", language=language)) is True, language
     for language in ("swift", "csharp", "kotlin", "typescript"):
@@ -94,9 +94,9 @@ def test_a_property_is_noise_only_for_its_declaration_only_producers():
 
 def test_every_property_producer_is_classified():
     """A module that emits ``kind="property"`` must say whether its property is
-    noise, so a new producer cannot inherit the drop silently. That is how swift
-    and C# came to lose theirs: the entry was written for a CSS kind that no CSS
-    analyzer ever emitted."""
+    noise, so a new producer cannot inherit the drop silently: a noise entry
+    written with one language's ``property`` in mind otherwise applies to every
+    language that emits the kind."""
     import re
     from pathlib import Path
 

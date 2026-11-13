@@ -11,17 +11,17 @@ searches for cheap test subsets that still reach a coverage target.
 
 THE COST MODEL IS THE WHOLE BALL GAME, so it is stated here rather than buried.
 Per-test durations are NOT independent, and taking them at face value produces
-a trajectory that optimises a cost function which does not exist. Measured on
-this repo: ``test_route_detected[annotation]`` is recorded at 286s and its
-fifteen sibling cases at 0.0s — because a ``scope="module"`` fixture runs the
-full pipeline over seventeen fixture directories and pytest bills the whole
-setup to whichever test happened to trigger it. Across runs the same test
-records ``[0.0, 0.0, 129.0, 358.0]``; a test that takes 0.0s on one run and
-358s on the next is not a slow test.
+a trajectory that optimises a cost function which does not exist. When a
+``scope="module"`` fixture does expensive work (say, running the full pipeline
+over a set of fixture directories), pytest bills the whole setup to whichever
+test happened to trigger it: one parametrised case records minutes and its
+siblings 0.0s, and across runs the same test can swing between 0.0s and
+minutes. A test that takes 0.0s on one run and minutes on the next is not a
+slow test.
 
-A naive model reads that as fifteen infinitely-efficient tests and one terrible
-one, drops the expensive one, keeps the cheap ones — and then pays the 286s
-anyway, because the fixture is exactly what the cheap ones depend on.
+A naive model reads that as many infinitely-efficient tests and one terrible
+one, drops the expensive one, keeps the cheap ones — and then pays the fixture
+cost anyway, because the fixture is exactly what the cheap ones depend on.
 
 So cost is split in two, using pytest's own ``--durations`` phase breakdown:
 
@@ -35,8 +35,8 @@ A trajectory's cost is then::
     sum(marginal(t) for t in chosen) + sum(fixed(g) for g in groups_touched)
 
 GROUPING IS BY MODULE, WHICH IS AN APPROXIMATION AND HAS A NAMED FAILURE MODE.
-Module-scoped fixtures are the measured problem here and module grouping
-captures them exactly. A SESSION-scoped fixture shared across modules is
+Module-scoped fixtures are the expensive shape in this suite and module
+grouping captures them exactly. A SESSION-scoped fixture shared across modules is
 attributed to whichever module paid it first, so its cost is
 under-counted for the second module onward. Function-scoped setup is recurring
 and lands in the median, which is correct. Recorded rather than silently
@@ -53,8 +53,8 @@ best available. The group FIXED cost above is not a fixed per-test cost -- a
 test's price drops once its group is charged -- so with non-zero group fixed
 costs neither guarantee is established for this cost model (INV-jupaf).
 
-Submodularity also makes it TRACTABLE. Recomputing all ~22,700 marginal gains
-at each of ~22,700 steps is ~500M set operations. The lazy-greedy (CELF)
+Submodularity also makes it TRACTABLE. Recomputing every marginal gain at
+every step is quadratic in the number of tests. The lazy-greedy (CELF)
 variant holds a priority queue of stale gain-per-second RATIOS, pops the top,
 recomputes only that one, and accepts it when it still beats the next stale
 entry. In practice this is near-linear. That early accept is exact only while
@@ -205,8 +205,9 @@ class CoverageIndex:
 
     Lines are interned to consecutive integers so a test's coverage is one
     Python ``int`` used as a bitset: union is ``|``, size is ``bit_count()``,
-    both implemented in C over machine words. At ~63K lines that is ~8 KB per
-    test, which keeps a full 22K-test index in a few hundred MB.
+    both implemented in C over machine words. A bitset costs one bit per
+    interned line per test, so an index of tens of thousands of tests over tens of
+    thousands of lines fits in a few hundred MB.
     """
 
     line_ids: dict[tuple[str, int], int] = field(default_factory=dict)
@@ -323,8 +324,8 @@ def canonical_lines(db_path: Path) -> dict[str, dict[int, int]]:
 
     The map is materialised per file over the whole line range rather than
     calling ``first_line`` in the hot loop: it is ``lru_cache``'d at maxsize=1000
-    upstream and py.py alone traces 3,166 distinct lines, so the cache would
-    thrash on every file.
+    upstream and a single large analyzer module traces thousands of distinct
+    lines, so the cache would thrash on every file.
 
     THE DB IS A SNAPSHOT AND THIS READS TODAY'S SOURCE. Line numbers in
     ``line_bits`` were recorded against the tree as it was when the census ran;

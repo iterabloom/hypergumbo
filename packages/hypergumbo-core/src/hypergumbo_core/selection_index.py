@@ -25,15 +25,16 @@ THE THREE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
 
 2. **Import-time blocks belong to every test that touches the file.** Module
    bodies, class attributes and decorators execute once at import, under the
-   EMPTY context, so no test owns them. Measured on this repo's census that is
-   14.5% of all statements. Left unattached, editing a module-level constant
-   selects zero tests. The rule that fixes it is an implication rather than a
+   EMPTY context, so no test owns them, and they are a substantial share of
+   all statements. Left unattached, editing a module-level constant selects
+   zero tests. The rule that fixes it is an implication rather than a
    guess: if a test executes any line in file F then F was imported, so F's
    import-time blocks run whenever that test runs.
 
-3. **A test that ran and produced no rows is UNMEASURED, not unneeded.** 15.9%
-   of this suite is in that state — the tracker package is outside COV_PATHS,
-   and subprocess/`scripts/` tests leave no in-process trace. Coverage can never
+3. **A test that ran and produced no rows is UNMEASURED, not unneeded.** A
+   sizeable part of this suite is in that state — the tracker package is
+   outside smart-test's COV_PATHS, and subprocess/`scripts/` tests leave no
+   in-process trace. Coverage can never
    select them, so they are recorded explicitly (on full runs only: a targeted
    run's ``--cov`` scope makes silence meaningless) and reported by
    :class:`Selection`, which is what stops ``--narrow`` (below) from silently
@@ -46,7 +47,7 @@ the last FULL run and under-selects for newly added code between full runs. The
 ``last_full_run_sha`` marker is written so a caller can report that age rather
 than pretend it does not exist, but nothing reads it yet. It is why this is a
 UNION member by default and never the merge gate; the opt-in, local-only
-``--narrow`` mode (Phase 3, WI-bolot) may drop only ``speakable_test_files``
+``--narrow`` mode (history: WI-bolot) may drop only ``speakable_test_files``
 outside the keep set (``touching_test_files`` plus the selected tests' files),
 and refuses outright on any ``narrowing_blockers`` reason.
 
@@ -146,8 +147,9 @@ def normalize_test_id(node_id: str, repo_root: Optional[Path]) -> str:
     confined to one package makes that package the rootdir (several of ours
     carry ``[tool.pytest.ini_options]``), while a run spanning packages uses the
     repo. The same test therefore has two spellings, and storing both fragments
-    the index into rows that never join — the same failure class as the
-    ``|setup`` suffix that once matched 0 of 20,437 contexts.
+    the index into rows that never join — the same failure class as a
+    ``|setup`` phase suffix left on a context (see ``_strip_phase``), which
+    makes no context join at all.
 
     Resolution is by EXISTENCE, not by string surgery: a candidate is accepted
     only if the file is actually there. If more than one package could claim it
@@ -262,10 +264,10 @@ def update_from_run(
     # test ran and produced NOTHING, which is only meaningful when coverage was
     # watching everything. smart-test's targeted path scopes --cov to the
     # CHANGED SOURCE FILES ONLY, so on an ordinary run most tests legitimately
-    # touch nothing in scope. Trusting that would have marked 1,507 of 1,662
-    # tests unmeasured on a single run -- and select_tests EXCLUDES unmeasured
-    # tests, so most of the suite would have become permanently unselectable
-    # while every unit test stayed green.
+    # touch nothing in scope. Trusting that would mark most of the suite
+    # unmeasured after a single targeted run -- and select_tests EXCLUDES
+    # unmeasured tests, so most of the suite would become permanently
+    # unselectable while every unit test stayed green.
     if ran_tests is not None and full_run:
         cur.executemany(
             "INSERT OR IGNORE INTO unmeasured_test (test_id) VALUES (?)",
@@ -286,13 +288,12 @@ def changed_blocks(
     """``(changed, new)`` block keys, diffing each path against a SUPPLIED base.
 
     THE BASE COMES FROM THE CALLER, NOT FROM THE INDEX, and that distinction is
-    the whole correctness of this function. The first version compared current
-    source against the digests stored in the index — but the index is rewritten
-    after every run, so the baseline moved every time: run 1 stored the working
-    tree, run 2 compared the working tree against itself, found nothing, and
-    selected zero tests while smart-test selected 87. It was answering "what
-    changed since I last looked" when the question is "what changed in this
-    commit".
+    the whole correctness of this function. The digests stored in the index are
+    rewritten after every run, so diffing against them moves the baseline every
+    time: once a run has stored the working tree, the next comparison is the
+    working tree against itself, which finds nothing and selects zero tests.
+    That answers "what changed since I last looked" when the question is "what
+    changed in this commit".
 
     So change detection is git's job (``git show <base>:<path>``) and this
     function only diffs. ``None`` means the path did not exist at the base, i.e.
@@ -378,10 +379,10 @@ def select_tests(
 # ── Node ids to run-set files ───────────────────────────────────────────────
 #
 # These live HERE rather than in selection_shadow because they convert the
-# INDEX's output into the run set's vocabulary, and there are now three
-# consumers: the shadow comparison, the Phase 2 union, and Phase 3 narrowing.
-# A narrowing module importing them from `selection_shadow` would have read as
-# narrowing depending on the shadow, which it does not.
+# INDEX's output into the run set's vocabulary, and they have three
+# consumers: the shadow comparison, the union, and narrowing. Importing them
+# from `selection_shadow` would make narrowing appear to depend on the shadow,
+# which it does not.
 
 
 def files_of(node_ids: Iterable[str]) -> frozenset[str]:
@@ -410,7 +411,7 @@ def selectable_test_files(
 ) -> frozenset[str]:
     """Repo-relative test FILES a run may safely be widened with.
 
-    Two narrowings, both load-bearing for Phase 2:
+    Two narrowings, both required for widening a run safely:
 
     * node ids reduce to files, because the run set is a list of files;
     * files that do not exist are DROPPED. The index is persistent and
@@ -432,8 +433,8 @@ def touching_test_files(
 
     NAMED THIS WAY DELIBERATELY. The obvious name, ``tests_touching``, starts
     with ``test`` and so is COLLECTED AS A TEST by pytest in any test module that
-    imports it — which produced ``fixture 'conn' not found`` at collection time,
-    an error that names nothing about its real cause.
+    imports it, failing collection with ``fixture 'conn' not found``, an error
+    that names nothing about its real cause.
 
     THE KEEP SET FOR NARROWING, and deliberately wider than the changed-block
     selection. The local coverage gate is whole-file
@@ -469,9 +470,10 @@ def speakable_test_files(
     index's silence mean "this test is irrelevant".
 
     The unmeasured check is at FILE granularity because the run set is, which
-    is conservative in a way worth naming: 133 of the 190 files with unmeasured
-    tests are only PARTLY unmeasured — ``test_profile.py`` is held by 1 test of
-    283 — so this rule keeps considerably more than node-granularity would.
+    is conservative in a way worth naming: most files with unmeasured tests
+    are only PARTLY unmeasured — a single unmeasured test holds back a file of
+    hundreds — so this rule keeps considerably more than node-granularity
+    would.
     """
     measured = files_of(rebase_to_repo(
         {r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block")},
@@ -482,9 +484,9 @@ def speakable_test_files(
     return measured - unmeasured
 
 
-# ── Narrowing (Phase 3 / WI-bolot) ──────────────────────────────────────────
+# ── Narrowing (history: WI-bolot) ───────────────────────────────────────────
 #
-# Everything above only ever ADDS tests, so being wrong cost time. Narrowing can
+# Everything above only ever ADDS tests, so being wrong costs time. Narrowing can
 # REMOVE one, so the rules are stated as data rather than left implicit in a
 # shell pipeline. See tests/test_selection_narrow.py for the three rules and why
 # each has its own failure mode.
@@ -543,15 +545,15 @@ def narrowing_blockers(
             out.append(f"unknown coverable source: {r}")
     for p in sorted(selection.missing_paths):
         out.append(f"missing changed file: {rel(p)}")
-    # AN IMPORT IS NOT A COVERAGE ROW (WI-zunug). A module or class body runs
-    # when the file is imported, under no test's context, so a test that only
-    # imports the file has no row for it, and narrowing read that absence as
+    # AN IMPORT IS NOT A COVERAGE ROW. A module or class body runs when the
+    # file is imported, under no test's context, so a test that only imports
+    # the file has no row for it, and narrowing would read that absence as
     # proof of irrelevance. Every importer runs the changed code; the index
     # does not hold import edges, so the only safe keep set is the run set.
-    # Measured over 400 commits: 93 of the 113 that modify package source
-    # change such a block, so this refuses on most real changes. That is the
-    # cost of soundness here, not an accident. A test file is exempt: its
-    # importers are not tests, and it enters the run set as a changed test.
+    # Most commits that modify package source change such a block, so this
+    # refuses on most real changes. That is the cost of soundness here, not an
+    # accident. A test file is exempt: its importers are not tests, and it
+    # enters the run set as a changed test. (history: WI-zunug)
     for p, name in sorted(selection.import_time_changed):
         r = rel(p)
         if not _is_test_path(r) and _is_coverable(r):

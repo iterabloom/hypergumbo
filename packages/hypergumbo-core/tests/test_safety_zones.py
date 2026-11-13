@@ -134,9 +134,9 @@ def test_install_artifact_copy(tmp_path: Path, monkeypatch) -> None:
 def test_cache_rmtree(tmp_path: Path, monkeypatch) -> None:
     """``cache_rmtree`` recursively deletes a directory tree INSIDE its zone.
 
-    The zone is now established explicitly. This test previously passed a
-    path with no relationship to the cache directory at all, which is what
-    let the wrapper ship with a documented zone it did not enforce.
+    The zone is established explicitly (``XDG_CACHE_HOME``), so the path is
+    genuinely inside it: a test path with no relationship to the cache
+    directory would only pass against a wrapper that does not enforce its zone.
     """
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     d = tmp_path / "hypergumbo" / "cache_dir"
@@ -154,7 +154,7 @@ def test_cache_rmtree_missing_ok_finishes_a_tree_another_process_is_removing(
     """INV-durin: two evicting runs can remove the same scratch tree at once.
     ``missing_ok`` makes a path that vanished mid-walk mean "someone else
     removed that part", and it still removes what is left; without it the
-    error propagates as before."""
+    error propagates."""
     import shutil
 
     import hypergumbo_core.safety_zones as sz
@@ -188,12 +188,11 @@ def test_cache_rmtree_refuses_a_path_outside_its_zone(
 ) -> None:
     """A wrapper whose docstring declares a SAFETY ZONE must enforce it.
 
-    VERIFIED DEFECT, not a hypothetical: ``hypergumbo cache-clear --repo
-    <absolute path>`` recursively deleted a directory outside the cache and
-    reported it as a normal cache eviction, because ``cache_dir / repo``
-    discards the left operand when ``repo`` is absolute and nothing
-    downstream re-checked containment. A relative ``../..`` traverses out the
-    same way.
+    A real escape, not a hypothetical: ``cache_dir / repo`` discards the left
+    operand when ``repo`` is absolute, so without a containment check
+    ``hypergumbo cache-clear --repo <absolute path>`` recursively deletes a
+    directory outside the cache and reports it as a normal cache eviction. A
+    relative ``../..`` traverses out the same way.
 
     The zone is the guarantee. A wrapper that documents ``user_cache`` and
     deletes ``$HOME`` on request is a comment, not a boundary.
@@ -223,9 +222,9 @@ def test_tmp_artifact_rmtree_refuses_a_path_outside_tmp(
 ) -> None:
     """Same guarantee for the ``tmp_artifact`` zone.
 
-    Included because the fix must be the zone mechanism, not a patch to the
-    one wrapper whose escape was demonstrated — otherwise the next wrapper
-    ships the same hole.
+    Containment is a property of the zone mechanism, not of one wrapper, so
+    each zone-enforced wrapper is tested — otherwise the next wrapper ships
+    the same hole.
     """
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path / "fake_tmp"))
     (tmp_path / "fake_tmp").mkdir()
@@ -242,9 +241,8 @@ def test_every_destructive_wrapper_enforces_a_zone() -> None:
     """PARITY: enumerate the destructive wrappers and assert each refuses an
     out-of-zone path, so a newly added one cannot ship unenforced.
 
-    This is the check that would have caught the original defect. The zone
-    discipline was documented per-wrapper in prose, and prose does not fail
-    a build.
+    Zone discipline documented per-wrapper in prose does not fail a build;
+    this check does.
     """
     import inspect
 
@@ -252,12 +250,11 @@ def test_every_destructive_wrapper_enforces_a_zone() -> None:
 
     destructive = {
         name for name in dir(sz)
-        # WI-jabus added "_extract": an archive NAMES ITS OWN DESTINATIONS,
-        # so an extraction wrapper is destructive in the sense this test
-        # means -- it writes paths the caller never passed. Added here, not
-        # just to the one wrapper, for the reason this test's own docstring
-        # gives: the fix must be the zone mechanism, or the next wrapper
-        # ships the same hole.
+        # "_extract" is included: an archive NAMES ITS OWN DESTINATIONS, so
+        # an extraction wrapper is destructive in the sense this test means
+        # -- it writes paths the caller never passed. It belongs in this
+        # naming rule, not just in the one wrapper's tests, so the next
+        # extraction wrapper is held to the zone mechanism too.
         if name.endswith(("_rmtree", "_unlink", "_rename", "_extract"))
         and callable(getattr(sz, name))
     }
@@ -360,7 +357,7 @@ def test_cache_unlink(tmp_path: Path, monkeypatch) -> None:
     The soft-delete folders hold one zip per evicted entry, so bounding them
     means unlinking files rather than trees — ``cache_rmtree``'s shape does
     not fit, and a bare ``Path.unlink`` in runtime-path code would be an
-    unwrapped fs delete of exactly the kind the host_fs claim drove to zero.
+    unwrapped fs delete of exactly the kind ``runtime-cli-no-host-fs`` reports.
     """
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     d = tmp_path / "hypergumbo" / "soft-deleted-surveys"
@@ -497,14 +494,11 @@ def test_cache_rename_honours_an_explicit_zone_root(tmp_path: Path) -> None:
 
 
 def test_cli_has_no_bare_rename_calls() -> None:
-    """Positive control for the defect CLASS, not just the two call sites.
+    """Positive control for the defect CLASS, not just ``_archive_entry``'s renames.
 
-    ``safety_zones`` shipped wrappers for write / write_bytes / rmtree /
-    write_zip / unlink / mkdir / copy / chmod and no rename wrapper at all,
-    so ``_archive_entry``'s two renames were bare because there was nothing
-    to call. When ``pathlib.Path``'s surface was rowed, ``rename`` became a
-    catalogued ``host_fs`` sink and ``runtime-cli-no-host-fs`` flipped
-    ``confirmed_with_caveats`` -> ``violated`` on exactly those two flows.
+    ``rename`` is a catalogued ``host_fs`` sink, so a bare ``.rename()`` in
+    ``cli.py`` violates ``runtime-cli-no-host-fs``; cache-internal renames go
+    through ``safety_zones.cache_rename``.
 
     NOT A DUPLICATE of ``test_runtime_fs_write_wrapper_discipline.py``, which
     walks the same ASTs over the same modules — do not delete this as
@@ -515,9 +509,9 @@ def test_cli_has_no_bare_rename_calls() -> None:
     guard calls itself "a syntactic backstop for the unambiguous majority"
     and delegates the rest to "the boundary analysis, which has receiver
     evidence". The boundary analysis is the ``self-claims-gate`` CI step,
-    which is path-triggered on the claim surface and had not run for 63
-    commits when this defect landed. Both layers were open at once. This
-    test closes the ``rename`` name specifically, by name, unconditionally.
+    which is path-triggered on the claim surface, so a ``cli.py`` change can
+    land without it running. This test closes the ``rename`` name
+    specifically, by name, unconditionally.
 
     Parsed as an AST rather than grepped: a regex over source also matches
     its own docstrings, and this very docstring names ``.rename`` repeatedly.
@@ -544,14 +538,12 @@ def test_tmp_artifact_dir_inv_lalad() -> None:
     """INV-lalad: ``tmp_artifact_dir`` routes ephemeral SCRATCH DIRECTORY
     creation through the tmp_artifact wrapper.
 
-    INV-zudak added ``tmp_artifact_write`` / ``_mkdir`` / ``_rmtree`` so that
-    "every fs-write primitive" routed through a wrapper — but it enumerated
-    write_text / mkdir / unlink / chmod / copy2 / rmtree / replace, and
-    ``tempfile.TemporaryDirectory`` is none of those. It is CONSTRUCTOR-shaped,
-    and the taint walk could not traverse construction edges at all, so the two
-    unwrapped call sites (gitleaks.py, graceful_degrade.py) never surfaced as
-    raw ``host_fs`` flows and INV-zudak's drain looked complete. Closing the
-    taint blind spot made them visible; this wrapper is the fix.
+    Every fs-write primitive must route through a wrapper, and
+    ``tempfile.TemporaryDirectory`` creates a directory without being one of
+    the enumerated primitives (write_text / mkdir / unlink / chmod / copy2 /
+    rmtree / replace): it is CONSTRUCTOR-shaped, visible to the taint walk
+    only through construction edges. An unwrapped one surfaces as a raw
+    ``host_fs`` flow. (history: INV-zudak)
     """
     from hypergumbo_core.safety_zones import tmp_artifact_dir
 
@@ -578,13 +570,11 @@ class TestTmpArtifactExtract:
     """WI-jabus: an archive NAMES ITS OWN DESTINATIONS.
 
     ``install-gitleaks-no-host-fs`` asserts that install-gitleaks writes only
-    through wrappers. Extraction did not, and the suppression that stood in
-    its place justified the hazard by PROVENANCE ("from trusted GitHub
-    release") rather than by the wrapper discipline the claim names. The
-    precedent is 9046ff4255, where a claim flipped to ``violated`` for want of
-    a rename wrapper and was answered by adding the wrapper, not by rewording
-    the claim -- and the owner ruling recorded in this module's header is that
-    rewording "is the one that launders".
+    through wrappers, so extraction goes through one too. A lint suppression
+    justified by PROVENANCE ("from trusted GitHub release") is not the wrapper
+    discipline the claim names. A claim violated for want of a wrapper is
+    answered by adding the wrapper (as ``cache_rename`` was), not by rewording
+    the claim, which would weaken it with nothing enforcing the carve-out.
 
     THE TAR BRANCH IS THE DANGEROUS ONE AND THE ONE ALMOST EVERY USER TAKES
     (``.zip`` is selected only on Windows): CPython's
@@ -636,8 +626,8 @@ class TestTmpArtifactExtract:
 
     def test_an_absolute_tar_member_is_refused(self, tmp_path: Path) -> None:
         """``pathlib`` discards the left operand when the right is absolute --
-        the same shape that deleted a thesis directory through the cache
-        wrapper (see ``_require_within_zone``)."""
+        the same shape that lets ``cache_dir / repo`` escape the cache (see
+        ``_require_within_zone``)."""
         archive = self._tar(
             tmp_path / "abs.tar.gz", [("/etc/hypergumbo-owned", b"pwned")],
         )
@@ -710,7 +700,7 @@ def test_user_out_json_dump_never_leaves_a_truncated_file(
     truncated one is served as a cache hit and every read command on that repo
     state fails "not valid JSON" until the user re-surveys. ``json.dump``
     writes keys in sorted order, so ``"z"`` is reached after ``"a"`` is already
-    on disk: the old in-place write had truncated the file by then.
+    on disk: an in-place write would have truncated the file by then.
     """
     from hypergumbo_core.safety_zones import user_out_open_json_dump_gzip
 
@@ -760,7 +750,7 @@ def test_install_artifact_copy_never_leaves_a_partial_binary(
     """A copy that dies part-way leaves the installed binary whole.
 
     A partial ``~/.local/bin/gitleaks`` is preferred over a good gitleaks on
-    PATH, cannot run, and so turned every later secret scan off.
+    PATH, cannot run, and so turns every later secret scan off.
     """
     import shutil
 
@@ -791,8 +781,8 @@ def test_install_artifact_write_refuses_a_symlink_out_of_the_zone(
 ) -> None:
     """``~/.local/bin/gitleaks -> ~/go/bin/gitleaks`` is someone else's binary.
 
-    Following the link overwrote (or re-moded) a file outside the install
-    zone, which ``install_artifact_unlink`` already refused to touch.
+    Following the link would overwrite (or re-mode) a file outside the
+    install zone -- the file ``install_artifact_unlink`` refuses to touch.
     """
     bindir = _install_home(tmp_path, monkeypatch)
     outside = tmp_path / "go" / "bin" / "gitleaks"

@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A C dispatch table is a symbol its edges can start from (WI-dirij).
 
-c.py drew every ``dispatches_to`` edge from a ``kind=variable`` id for the
+c.py draws every ``dispatches_to`` edge from a ``kind=variable`` id for the
 table -- ``static int tbl[] = { f }`` or ``static struct ops o = { .f = f }``
--- and the ``dispatch_table`` reference to it, but emitted no such symbol, so
-the src named no node (crun 94, redis 505, tmate 129 edges) and
-``create_boundary_nodes`` turned the first-party table into an
-``external_symbol``. The table is now emitted, by the same id, once it holds a
-function. The array of function POINTERS (``static int (*cmds[])(int) =
-{ f }``), the idiomatic spelling, was not detected at all: the detector wanted
-the ``array_declarator`` directly under the ``init_declarator``.
+-- and the ``dispatch_table`` reference to it, so the table must be emitted as
+a symbol by the same id once it holds a function. Without it the src names no
+node and ``create_boundary_nodes`` turns the first-party table into an
+``external_symbol``. The array of function POINTERS (``static int (*cmds[])(int)
+= { f }``), the idiomatic spelling, is detected too: its ``array_declarator``
+sits under ``function_declarator`` > ``parenthesized_declarator`` >
+``pointer_declarator``, not directly under the ``init_declarator``.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/c.py
 from __future__ import annotations

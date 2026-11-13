@@ -1,26 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-bufud / INV-hovoj: an own field's type answers for ``self.<field>`` only.
+"""An own field's type answers for ``self.<field>`` only.
 
-A method's typed own fields were merged into its call-resolution type map under
-their BARE names (``param_types["conn"] = Conn``), so a field and a local of the
-same name were one key. Measured before the fix on dev 02507e31eb:
+A field and a local of the same name are different variables. Merging a
+method's typed own fields into its call-resolution type map under their BARE
+names (``param_types["conn"] = Conn``) would make them one key::
 
     self.conn = Conn()        # __init__
     conn = Other()            # a local in a method
-    self.conn.ping()          # -> Other.ping @0.85  (WRONG: the field is a Conn)
+    self.conn.ping()          # bare key -> Other.ping  (WRONG: the field is a Conn)
 
-    [self.conn.ping() for conn in items]   # -> python:external @0.4  (LOST)
-    lambda conn: self.conn.ping()          # -> python:external @0.4  (LOST)
+    [self.conn.ping() for conn in items]   # bare key -> python:external  (LOST)
+    lambda conn: self.conn.ping()          # bare key -> python:external  (LOST)
 
 The first is a local's assignment overwriting the field's key; the other two are
-the comprehension/lambda shadow pruning (``_prune_shadowed``) deleting it. A field
-and a local of the same name are different variables. The external-type map
-already keys fields as ``self.<field>`` for exactly this reason (INV-fibis); the
-in-repo map now does too, so the collision cannot be expressed.
+the comprehension/lambda shadow pruning (``_prune_shadowed``) deleting it. Both
+the external-type map and the in-repo map key fields as ``self.<field>``, so the
+collision cannot be expressed. (history: WI-bufud, INV-hovoj, INV-fibis)
 
-The bare key also typed a BARE name the method never bound: ``conn.ping()`` with
-no local ``conn`` resolved to the field's class, which is not what Python does
-(that name is a global or a NameError). Pinned below as well.
+A bare key would also type a BARE name the method never bound: ``conn.ping()``
+with no local ``conn`` would resolve to the field's class, which is not what
+Python does (that name is a global or a NameError). Pinned below as well.
 """
 from __future__ import annotations
 

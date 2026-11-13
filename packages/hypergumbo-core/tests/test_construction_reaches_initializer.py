@@ -2,26 +2,20 @@
 """Construction reaches the initializer, whatever dst the analyzer chose
 (INV-rolok).
 
-THE GAP. INV-kahig made ``instantiates`` confer reachability in the dead-code
-BFS. That was necessary and not sufficient, because it settled which EDGE
-TYPES are traversable and left open WHICH NODE the edge lands on. ruby resolves
-``Klass.new`` to ``Klass#initialize``; csharp (WI-fagit, PR #689) and java land
-on a ``constructor`` symbol. py/js_ts/dart land on the **class**, and the only
-edges leaving a class node are ``contains`` / ``extends`` / ``decorated_by`` --
-none of which confer reachability, correctly, because containing is not
-calling. So on those languages the BFS arrives at the class and stops, and the
-initializer plus everything downstream of it reads as dead.
+THE GAP. ``instantiates`` confers reachability in the dead-code BFS
+(INV-kahig), but that settles only which EDGE TYPES are traversable, not WHICH
+NODE the edge lands on. ruby resolves ``Klass.new`` to ``Klass#initialize``;
+csharp and java land on a ``constructor`` symbol. py/js_ts/dart land on the
+**class**, and the only edges leaving a class node are ``contains`` /
+``extends`` / ``decorated_by`` -- none of which confer reachability, correctly,
+because containing is not calling. So on those languages the BFS arrives at
+the class and stops, and the initializer plus everything downstream of it
+reads as dead.
 
-Measured at tip (self-analysis, 46,203 nodes / 183,507 edges): of 11,428
-``instantiates`` edges, 9,217 land on a ``class`` and 2,211 on an
-``external_symbol`` -- and **zero** on a function or method. All 69 python
-``__init__`` methods have exactly one incoming edge type, ``contains``.
-
-WHY THE INV-kahig ARM DID NOT CATCH IT. Its fixture is
-``main -[instantiates]-> init -[calls]-> polish``: the construction edge is
-handed straight to the initializer, which is a shape py/js_ts/dart never emit.
-The arm proves the edge TYPE is traversable and is silent on the dst, so it
-passed throughout.
+WHY AN EDGE-TYPE TEST CANNOT CATCH IT. A fixture shaped
+``main -[instantiates]-> init -[calls]-> polish`` hands the construction edge
+straight to the initializer, a shape py/js_ts/dart never emit. It proves the
+edge TYPE is traversable and is silent on the dst.
 
 THE LICENCE IS THE CONJUNCTION, NEVER ``contains`` ALONE. Making ``contains``
 traversable would make every method of every instantiated class
@@ -30,17 +24,15 @@ licenses the hop here is (the class was CONSTRUCTED) **and** (this member is
 the code that runs on construction). Either half alone licenses nothing, and
 ``TestContainmentStillConfersNothing`` pins that.
 
-WHY NOT RE-POINT THE dst (the item's option A). WI-fagit is the precedent and
-it moved csharp onto the constructor -- but ``method_call_recovery`` keys its
-class hint on ``e.dst in class_ids``, so re-pointing python's dst would
-silently remove python from the linker that produced 89 edges on this repo, a
-regression in the opposite direction, for a measured gain of 3 rows. Re-pointing
-also perturbs entrypoint detection: minting the edges as a linker cost 5 route
-seeds on pretix (seed_count 1174 -> 1173), because ``detect_entrypoints`` reads
-the edge set. Augmenting the BFS's OWN graph, after entrypoint detection has
-run, changes no emitted edge and no other consumer -- the precedent being
-``is_grpc_rpc_implementation``: the edges are correct as they stand, only this
-walk's reading of them changes.
+WHY NOT RE-POINT THE dst onto the initializer (as csharp's analyzer does,
+WI-fagit). ``method_call_recovery`` keys its class hint on
+``e.dst in class_ids``, so re-pointing python's dst would silently remove
+python from that linker, a regression in the opposite direction. Re-pointing,
+or minting the hop as linker edges, also perturbs entrypoint detection,
+because ``detect_entrypoints`` reads the edge set. Augmenting the BFS's OWN
+graph, after entrypoint detection has run, changes no emitted edge and no
+other consumer -- the precedent being ``is_grpc_rpc_implementation``: the
+edges are correct as they stand, only this walk's reading of them changes.
 """
 from __future__ import annotations
 
@@ -68,7 +60,7 @@ class TestTheInitializerPredicate:
         assert is_initializer("method", "Widget.__init__", "python")
 
     def test_javascript_constructor_method_is_an_initializer(self) -> None:
-        # 625 of these in the pretix survey, all kind="method".
+        # js/ts analyzers emit these as kind="method"; the NAME is the signal.
         assert is_initializer("method", "Widget.constructor", "javascript")
         assert is_initializer("method", "Widget.constructor", "typescript")
 
@@ -112,7 +104,7 @@ def _e(src: str, dst: str, etype: str) -> dict[str, Any]:
 
 
 class TestTheWalkEntersTheInitializer:
-    """The defect, at the layer that consumes it."""
+    """The gap, at the layer that consumes it: the reachability walk."""
 
     _NODES: ClassVar[list[dict[str, Any]]] = [
         _n("main", "function", "main"),
@@ -139,8 +131,9 @@ class TestTheWalkEntersTheInitializer:
         return set(_bfs_reachable({"main"}, graph))
 
     def test_without_the_hop_the_walk_stops_at_the_class(self) -> None:
-        """POSITIVE CONTROL — pins the defect, so the arm below is shown to
-        depend on the fix rather than passing for an unrelated reason."""
+        """POSITIVE CONTROL — pins the gap without the augmentation, so the arm
+        below is shown to depend on it rather than passing for an unrelated
+        reason."""
         assert self._reachable(augmented=False) == {"main", "Widget"}
 
     def test_with_the_hop_the_initializer_and_its_callee_are_reached(
@@ -152,8 +145,8 @@ class TestTheWalkEntersTheInitializer:
 
 
 class TestContainmentStillConfersNothing:
-    """The precision guarantee. If this class of test fails, the fix has
-    become "make ``contains`` traversable", which the item rules out."""
+    """The precision guarantee. If this class of test fails, the augmentation
+    has become "make ``contains`` traversable", which this design rules out."""
 
     def test_an_ordinary_method_of_a_constructed_class_stays_unreached(
         self,
@@ -199,8 +192,8 @@ class TestContainmentStillConfersNothing:
 
 
 class TestItWorksForEveryDstShapeAnalyZersEmit:
-    """A fix justified by python and shipped as a general rule has to be
-    correct generally."""
+    """A rule motivated by python and applied to every language has to be
+    correct for every dst shape."""
 
     def test_a_javascript_class_reaches_its_constructor_method(self) -> None:
         nodes = [
@@ -241,8 +234,8 @@ class TestItWorksForEveryDstShapeAnalyZersEmit:
         assert list(_construction_initializer_edges(nodes, edges)) == []
 
     def test_an_unresolved_external_class_dst_is_skipped(self) -> None:
-        """2,211 of this repo's 11,428 construction edges land on an
-        ``external_symbol`` with no node behind it. Skipped, not crashed."""
+        """Many construction edges land on an ``external_symbol`` with no
+        node behind it. Skipped, not crashed."""
         nodes = [_n("main", "function", "main")]
         edges = [_e("main", "python:ext:0-0:Widget:external_symbol",
                     "instantiates")]
@@ -367,8 +360,8 @@ class TestEndToEndThroughTheCommand:
             sys.stdout, sys.stderr = old
         assert rc == 0
         dead = {d["name"] for d in _json.loads(out.getvalue())["dead_candidates"]}
-        # `orphan` is the CONTROL: nothing constructs or calls it, so the fix
-        # must leave it flagged. If it disappeared, the walk had become
+        # `orphan` is the CONTROL: nothing constructs or calls it, so the
+        # augmentation must leave it flagged. If it disappeared, the walk had become
         # indiscriminate rather than targeted.
         assert "orphan" in dead
         assert "Widget.__init__" not in dead

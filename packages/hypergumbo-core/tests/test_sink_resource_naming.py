@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The SELECTS role on a sink argument (WI-bulag / arc T9).
 
-Owner ruled option (i): a declarative per-row property on the sink catalogue,
+A declarative per-row property on the sink catalogue (owner ruling),
 restricted to the observed-reached head, carrying TWO bits — which positions
 merely NAME the resource, and whether naming it IS the finding.
 
-A second ruling added the SOUNDNESS GUARD. The walk carries no argument
+THE SOUNDNESS GUARD (also an owner ruling). The walk carries no argument
 identity, so for a MIXED sink (names a resource AND takes content) a finding
 cannot be attributed to an argument, and suppressing it would kill true
-findings. Measured over the top-20 reached head, mixed sinks are 58.0% of
-mentions and the soundly-suppressible class is 7.1%.
+findings. Over the reached head, mixed sinks are the majority of mentions and
+the soundly-suppressible class is a small minority.
 """
 import pytest
 
@@ -31,7 +31,7 @@ class TestFieldDefaults:
         assert p.resource_is_danger is False
 
     def test_an_unannotated_row_never_suppresses(self):
-        """A row nobody classified must behave exactly as it did before."""
+        """A row nobody classified must behave exactly as an unannotated row."""
         assert suppresses_resource_naming_finding(_prim()) is False
 
 
@@ -85,8 +85,8 @@ class TestLoadValidation:
         assert self._load(None) == {}
 
     def test_keys_the_annotation_to_the_right_primitive_in_a_shared_row(self):
-        """THE REASON THIS IS PER-FUNCTION. One stdio row holds fourteen names
-        spanning four classes; fflush and fclose must not get each other's."""
+        """THE REASON THIS IS PER-FUNCTION. One stdio row holds many names
+        spanning several classes; fflush and fclose must not get each other's."""
         got = self._load({
             "fflush": {"names": [0], "content": [], "danger": False},
             "fclose": {"names": [0], "content": [], "danger": True},

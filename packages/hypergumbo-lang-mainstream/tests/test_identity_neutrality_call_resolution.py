@@ -1,38 +1,36 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Decision-#7 identity-neutrality gate for the py.py call-ownership fix (WI-jafat).
+"""Decision-#7 identity-neutrality gate for py.py call ownership.
 
-The reader-side fix that re-attributes a ``calls`` edge's ``src`` to the correct
-enclosing same-base-name method (CHANGE A: register methods in the node-id-keyed
-``func_symbol_by_node_id``; CHANGE B: keep methods out of the enclosing-function
-``inner_scope``) is a **T0** change: it must change which already-minted ``node.id``
-an edge endpoint points to, while changing **no symbol-identity field**
-(``Symbol.id`` / ``Symbol.stable_id`` / ``Symbol.shape_id``). The producer-half hash
-change (WI-gitun, ``stable_id`` carrying the enclosing function) is **T1**, deferred to
-the v6 bump and explicitly NOT done here.
+py.py attributes a ``calls`` edge's ``src`` to the correct enclosing
+same-base-name method by registering methods in the node-id-keyed
+``func_symbol_by_node_id`` and keeping methods out of the enclosing-function
+``inner_scope``. That attribution is a **T0** (reader-side) concern: it decides
+which already-minted ``node.id`` an edge endpoint points to, and must change
+**no symbol-identity field** (``Symbol.id`` / ``Symbol.stable_id`` /
+``Symbol.shape_id``). Producer-side identity changes (hash-algorithm bumps)
+are **T1** and are not what this gate guards. (history: WI-jafat, WI-gitun)
 
-This gate proves the T0/T1 cut holds on the canonical WI-jafat collision substrate
-(two classes sharing a ``to_dict`` method, each calling a distinct same-file helper):
+This gate pins the T0/T1 cut on a collision substrate (two classes sharing a
+``to_dict`` method, each calling a distinct same-file helper):
 
-* **A1 (identity-NEUTRAL — the spine):** the full node ``{stable_id}``, ``{id}`` and
-  ``{shape_id}`` sets are byte-for-byte unchanged from the pre-fix tree, pinned as
-  committed golden frozensets. Full-set equality is sound here because a reader-only
-  fix moves no span, so every symbol's identity is genuinely invariant — any drift must
-  fail loudly. (The ``campaign-r0-baseline`` tag is local-only / CI-invisible, so a
-  checkout-and-diff "before" is infeasible; the committed golden is the CI-safe vehicle.
-  Regenerate with ``python /tmp/gen_golden.py`` if the fixture or the Python id formula
-  changes.)
-* **A2 (edge-set CHANGE — required):** the asymmetric half. Edges legitimately change;
-  asserting their invariance would be wrong. Instead we assert the fix *worked*: zero
-  ``calls`` edges land outside their ``src`` span, and the previously-overwritten sibling
-  (``Alpha.to_dict``) regains its outgoing call. This guards against a vacuous no-op
-  passing A1 trivially.
+* **A1 (identity-NEUTRAL — the spine):** the full node ``{stable_id}``, ``{id}``
+  and ``{shape_id}`` sets equal committed golden frozensets. Full-set equality
+  is sound here because call attribution moves no span, so every symbol's
+  identity is genuinely invariant — any drift must fail loudly. A committed
+  golden (rather than a checkout-and-diff "before") is what CI can see.
+  Re-baseline only when the fixture or a producer-side id formula changes.
+* **A2 (edge-set CORRECTNESS — required):** the asymmetric half. Asserting edge
+  invariance would be wrong; instead assert attribution *works*: zero ``calls``
+  edges land outside their ``src`` span, and ``Alpha.to_dict`` keeps its own
+  outgoing call rather than losing it to its same-name sibling. This guards
+  against a vacuous no-op passing A1 trivially.
 * **Strawman (the gate has teeth):** a deliberately identity-mutating monkeypatch of
   ``_make_symbol_id`` (the production ``id`` minter) makes the A1 ``{id}`` set diverge
   from golden — proving a *real* T0/T1 violation in the production path would be caught,
-  so a green A1 on the real fix is meaningful rather than vacuous.
+  so a green A1 is meaningful rather than vacuous.
 
-No ADR-0035 amendment is needed: §5 is a producer-side per-file uniqueness gate; this is
-a purely additive reader-side neutrality assertion.
+No ADR-0035 amendment is involved: §5 is a producer-side per-file uniqueness
+gate; this is a reader-side neutrality assertion.
 """
 from __future__ import annotations
 
@@ -43,10 +41,11 @@ import pytest
 
 from hypergumbo_core.cli import run_behavior_map
 
-# The canonical WI-jafat collision substrate: two classes sharing a method
-# short-name, each method calling a distinct same-file helper. Pre-fix, both
-# ``calls`` edges resolve their src to the bare-name survivor (Beta.to_dict) and
-# Alpha.to_dict's call lands out-of-span; post-fix each method owns its own call.
+# The collision substrate: two classes sharing a method short-name, each method
+# calling a distinct same-file helper. Keyed by bare name, Beta.to_dict would
+# overwrite Alpha.to_dict, so both ``calls`` edges would resolve their src to
+# Beta.to_dict and Alpha.to_dict's call would land out-of-span; each method
+# must own its own call.
 WIJAFAT_FIXTURE = (
     "class Alpha:\n"
     "    def to_dict(self):\n"
@@ -64,13 +63,11 @@ WIJAFAT_FIXTURE = (
 )
 
 # Golden identity sets for the fixture above, via run_behavior_map (repo-relative,
-# deterministic, tmp_path-independent). GOLDEN_IDS (node ids) are UNCHANGED since dev
-# 7f8e72a22e. GOLDEN_STABLE_IDS was regenerated for the stable_id v6 bump (ADR-0035 full
-# scope-chain hash); GOLDEN_SHAPE_IDS was regenerated for the shape_id v3 bump (WI-linon —
-# the Python shape hash now folds the symbol kind + AST node type into its inputs). Both
-# re-baselines are producer-side *algorithm* bumps, orthogonal to the WI-jafat reader fix
-# this gate guards: under a reader-only fix, stable_id and node.id stay byte-for-byte
-# invariant (recapture with scratchpad/gen_golden_shape.py, which asserts that invariance).
+# deterministic, tmp_path-independent). They reflect the current producer-side
+# algorithms: stable_id v6 (ADR-0035 full scope-chain hash) and shape_id v3 (the
+# Python shape hash folds the symbol kind + AST node type into its inputs; WI-linon).
+# A producer-side algorithm bump legitimately changes them and needs a re-baseline;
+# call attribution, which this gate guards, must leave them byte-for-byte invariant.
 GOLDEN_STABLE_IDS = frozenset({
     "sha256:0fcbb9c686c93dae",  # helper_a
     "sha256:6d07134c1021d31f",  # Alpha
@@ -78,10 +75,9 @@ GOLDEN_STABLE_IDS = frozenset({
     "sha256:c6933702c1cec3b9",  # Alpha.to_dict
     "sha256:fb9b04fa5f748655",  # Beta
     "sha256:fc784ee2fa5561fb",  # Beta.to_dict
-    # WI-dagif (file-anchor:F1, node-bearing slice): models.py has content nodes
-    # but no imports/calls, so it now gets a synthesized kind="file" anchor. The
-    # six symbol identities above are UNCHANGED (proven purely additive) — this
-    # is the only new node, so the neutrality invariant still holds.
+    # models.py has content nodes but no imports/calls, so it gets a synthesized
+    # kind="file" anchor (file-anchor:F1, WI-dagif) — the only node beyond the
+    # six symbols above.
     "sha256:dc483d5fde1117c1",  # models.py file anchor
 })
 GOLDEN_IDS = frozenset({
@@ -123,7 +119,7 @@ def _identity_sets(data: dict) -> tuple[frozenset, frozenset, frozenset]:
 
 
 class TestIdentityNeutral:
-    """A1 — the reader fix changes no symbol-identity field."""
+    """A1 — call attribution changes no symbol-identity field."""
 
     def test_node_identity_sets_unchanged(self, tmp_path: Path) -> None:
         data = _run(tmp_path, WIJAFAT_FIXTURE)
@@ -137,7 +133,7 @@ class TestIdentityNeutral:
 
 
 class TestEdgeSetCorrected:
-    """A2 — the fix actually re-attributes the edges (guards a vacuous no-op)."""
+    """A2 — each method owns its own call edges (guards a vacuous no-op)."""
 
     def test_no_calls_edge_out_of_span(self, tmp_path: Path) -> None:
         data = _run(tmp_path, WIJAFAT_FIXTURE)

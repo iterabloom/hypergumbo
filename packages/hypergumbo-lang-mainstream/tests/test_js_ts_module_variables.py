@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-jusus (emission-parity F5, slice 2): JS/TS module-level variable symbols.
+"""JS/TS module-level variable symbols (WI-jusus, emission-parity F5).
 
-Before this slice the JS/TS analyzer emitted no ``variable`` symbols, so
-module constants and module state (``const MAX = ...``, ``let ws``) had no
-node in the symbol graph — invisible to search, centrality, and
-io-boundaries. This slice emits ``kind="variable"`` symbols for top-level
-(module-scope) ``const``/``let``/``var`` declarations, mirroring the Python
-analyzer's module-level-only contract. Class fields (slice 1) and
-function-valued declarations (the existing arrow/function path) are handled
+Top-level (module-scope) ``const``/``let``/``var`` declarations emit
+``kind="variable"`` symbols, mirroring the Python analyzer's module-level-only
+contract. Without them module constants and module state (``const MAX = ...``,
+``let ws``) have no node in the symbol graph — invisible to search,
+centrality, and io-boundaries. Class fields (``test_js_ts_field_symbols.py``)
+and function-valued declarations (the arrow/function path) are handled
 elsewhere; destructuring patterns and function-body locals are out of scope.
 """
 

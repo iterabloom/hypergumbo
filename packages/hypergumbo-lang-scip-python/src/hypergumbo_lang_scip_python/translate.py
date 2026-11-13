@@ -2,21 +2,20 @@
 """SCIP → hypergumbo IR for scip-python output (WI-nanom).
 
 Three passes of the shared importer, plus two things scip-python's output
-needs that rust-analyzer's did not — measured on hypergumbo-core's own tree
-before this module was written (lab notebook 2026-09-19 12:15):
+needs that rust-analyzer's does not:
 
 1. **Drop what the syntax arm never models.** scip-python emits a global
-   symbol for every PARAMETER (``f().(x)`` — 4,634 on 179 files) and one
-   META ``__init__:`` declaration per module. The ``python`` analyzer emits
-   neither, so they could pair with nothing and would sit in the artifact
-   as thousands of one-sided records. The module is already the file node.
+   symbol for every PARAMETER (``f().(x)``) and one META ``__init__:``
+   declaration per module. The ``python`` analyzer emits neither, so they
+   could pair with nothing and would sit in the artifact as one-sided
+   records, one per parameter. The module is already the file node.
 
 2. **Keep the receiver's module on external callees.** The shared edge
    builders drop a reference whose target is not an in-repo Symbol. That is
-   right for rust-analyzer, which resolved nothing outside the crate; it
-   throws away exactly what pyright is for. Of the syntax arm's 4,133
-   method-call stubs whose receiver module it could not determine,
-   scip-python resolved 3,973 (96.1%) — 3,840 of them to the stdlib. Those
+   right for rust-analyzer, which resolves nothing outside the crate; it
+   throws away exactly what pyright is for: scip-python names the receiver
+   module (stdlib ones included) for method calls whose module the syntax
+   arm cannot determine. Those
    become external ``calls`` edges here, on the id shape the syntax arm
    mints when IT knows the module (``python:pathlib.Path:0-0:glob:unresolved``,
    ``ExternalRef(module_path="pathlib.Path", name="glob")``, via

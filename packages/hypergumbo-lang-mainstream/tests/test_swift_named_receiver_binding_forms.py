@@ -1,41 +1,39 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A NAMED Swift receiver is typed by every binding form the binding pass can read (WI-mofil).
 
-``x.m()`` where ``x`` is a lowercase name and ``_type_of`` returns None was sized
-by cause on five repositories (vapor, hummingbird, Kingfisher, Alamofire,
-swift-argument-parser). Four of the causes are binding forms the pass already had
-the information for and misread or skipped; each test class below is one of them.
+``x.m()`` where ``x`` is a lowercase name is typed through ``_type_of``; each
+test class below pins one binding form that must feed it.
 
-* **Optional-binding conditions with more than one clause.** The arm took the
-  condition's FIRST ``simple_identifier`` as the bound name and its FIRST ``=`` as
-  the RHS. ``if flag, let s = store.session()`` therefore typed ``flag`` -- a Bool
-  -- as ``URLSession``, a confidently wrong stamp (the emit site acts on it), and
-  left ``s`` untyped; ``if let s = a(), let m = b()`` never bound ``m``; a ``case``
-  pattern's enum-case name (``.some``) was bound as a variable. ``while let`` had
-  no arm at all.
+* **Optional-binding conditions with more than one clause.** Every ``let`` /
+  ``var`` clause binds its own name to its own RHS. Taking the condition's FIRST
+  ``simple_identifier`` as the bound name and its FIRST ``=`` as the RHS would
+  type ``flag`` in ``if flag, let s = store.session()`` -- a Bool -- as
+  ``URLSession``, a confidently wrong stamp (the emit site acts on it), and leave
+  ``s`` untyped; it would never bind ``m`` in ``if let s = a(), let m = b()``,
+  and would bind a ``case`` pattern's enum-case name (``.some``) as a variable.
+  ``while let`` binds the same way.
 * **A generic constructor** ``ManagedAtomic<Bool>(false)`` parses as
-  ``constructor_expression``, not ``call_expression``, so neither the declaration
-  reader nor the receiver-expression walker typed it -- while ``Store()`` was
-  typed. The walker now names it the same way: ``_swift_bare_type`` of its
-  ``user_type``, so a collection constructor stays a refusal.
+  ``constructor_expression``, not ``call_expression``; the walker names it as it
+  names ``Store()``: ``_swift_bare_type`` of its ``user_type``, so a collection
+  constructor stays a refusal.
 * **An identifier initialiser** (``let t = s``, ``guard let t = s``) carries the
-  type of the name it copies; the walker had no arm for a bare name.
+  type of the name it copies.
 * **An annotated closure parameter** ``{ (fm: FileManager) in fm.x() }`` is
-  bound like a function parameter. A closure is now a SCOPE of its own, the way a
+  bound like a function parameter. A closure is a SCOPE of its own, the way a
   function is: its parameters and locals never type a same-named receiver outside
-  it, which also stops a closure-local ``let`` leaking into the enclosing function
-  (it did before this change).
+  it, and a closure-local ``let`` does not leak into the enclosing function.
 
-The A/B on five repositories then exposed three defects of the scope map
-itself, fixed here because the arms above made them bite: a binding was found by
-NAME alone, so a declaration retyped uses ABOVE it; only ``func`` bodies were
-scopes, so ``init`` / subscript / accessor parameters and locals typed their
-names file-wide; and the in-repo bind looked a generic receiver type up by its
-full spelling (``Result<Success, Failure>.tryMap``).
+The scope map itself must also hold three properties, pinned by the last three
+classes: a binding is visible only from the end of its declaration (found by
+NAME alone, a declaration would retype uses ABOVE it); every callable body is a
+scope, not only ``func`` (or ``init`` / subscript / accessor parameters and
+locals would type their names file-wide); and the in-repo bind looks a generic
+receiver type up by its bare name, not its full spelling
+(``Result<Success, Failure>.tryMap``).
 
-Out of scope, sized and filed: an UNANNOTATED closure parameter (its type is the
-callee's closure signature), tuple destructuring, ``case let`` payloads, and
-collection iteration (WI-bodav).
+Not typed here: an UNANNOTATED closure parameter (its type is the callee's
+closure signature), tuple destructuring, ``case let`` payloads, and collection
+iteration (WI-bodav).
 """
 from __future__ import annotations
 
@@ -74,10 +72,10 @@ def _hint(edge: Edge) -> object:
 
 class TestEveryClauseOfAnOptionalBindingCondition:
     def test_a_leading_boolean_clause_is_not_bound(self, tmp_path: Path) -> None:
-        """``flag`` is a Bool. Binding it to the ``let`` clause's RHS stamped
+        """``flag`` is a Bool. Binding it to the ``let`` clause's RHS would stamp
         ``URLSession`` on ``flag.fileExists`` -- a wrong type, not a missing one
-        (observed on dev 8cfcab7b07: ``swift:URLSession:0-0:fileExists``). The
-        parameter's own declared type is what must stand."""
+        (``swift:URLSession:0-0:fileExists``). The parameter's own declared type
+        is what must stand."""
         edges = _edges(tmp_path / "f", STORE + (
             "func go(store: Store, flag: Bool) {\n"
             "    if flag, let s = store.session() {\n"
@@ -141,8 +139,8 @@ class TestEveryClauseOfAnOptionalBindingCondition:
     def test_a_case_pattern_binds_nothing_and_its_case_name_is_not_a_variable(
         self, tmp_path: Path,
     ) -> None:
-        """``if case let .some(x) = y``: ``x`` is an enum PAYLOAD (filed, not
-        built) and ``some`` is a case name. The first-identifier rule bound
+        """``if case let .some(x) = y``: ``x`` is an enum PAYLOAD (not typed)
+        and ``some`` is a case name. A first-identifier rule would bind
         ``some`` to ``y``'s type."""
         edges = _edges(tmp_path / "c", STORE + (
             "func go(y: URLSession?) {\n"
@@ -271,8 +269,8 @@ class TestAnAnnotatedClosureParameter:
     def test_a_closure_local_does_not_leak_into_the_enclosing_function(
         self, tmp_path: Path,
     ) -> None:
-        """Before closures were scopes, a ``let`` inside a trailing closure was
-        bound in the FUNCTION's map and typed an unrelated ``s`` after it."""
+        """A ``let`` inside a trailing closure is bound in the CLOSURE's scope;
+        in the function's map it would type an unrelated ``s`` after it."""
         edges = _edges(tmp_path / "k", STORE + (
             "func go(store: Store, u: URL) {\n"
             "    store.each {\n"
@@ -297,7 +295,7 @@ class TestAnAnnotatedClosureParameter:
         assert _one(edges, "dataTask").dst == "swift:URLSession:0-0:dataTask:unresolved"
 
     def test_an_unannotated_closure_parameter_stays_untyped(self, tmp_path: Path) -> None:
-        """Its type is the CALLEE's closure signature: filed, not inferred here."""
+        """Its type is the CALLEE's closure signature, which is not inferred here."""
         edges = _edges(tmp_path / "n", STORE + (
             "func go(store: Store) {\n"
             "    store.each { fm in fm.createFile(atPath: \"x\", contents: nil) }\n"
@@ -307,13 +305,12 @@ class TestAnAnnotatedClosureParameter:
 
 
 class TestABindingIsVisibleOnlyAfterItIsDeclared:
-    """A scope map keyed by NAME alone let a later declaration retype an earlier use.
+    """A scope map keyed by NAME alone would let a later declaration retype an earlier use.
 
-    Measured: once the generic-constructor arm typed hummingbird's
-    ``let container = KDC<NestedKey>(...)``, the ``container.values[...]`` two
-    lines ABOVE it -- the struct's FIELD -- was stamped ``KDC``. Swift accepts that
-    code; the earlier use names the field. A binding is visible from the end of
-    its declaration (a parameter's, a clause's RHS), so the declaration's own
+    In ``container.values[...]`` followed by ``let container = KDC<NestedKey>(...)``,
+    the earlier use names the struct's FIELD, which Swift accepts; keyed by name
+    it would be stamped ``KDC``. A binding is visible from the end of its
+    declaration (a parameter's, a clause's RHS), so the declaration's own
     initialiser still sees the outer name.
     """
 
@@ -336,7 +333,7 @@ class TestABindingIsVisibleOnlyAfterItIsDeclared:
 
     def test_an_initialiser_sees_the_name_it_shadows(self, tmp_path: Path) -> None:
         """``let s = s.session()``: the RHS ``s`` is the ``Store`` parameter. Read
-        by name alone it was the local's own type, ``URLSession.session``."""
+        by name alone it would be the local's own type, ``URLSession.session``."""
         edges = _edges(tmp_path / "i", STORE + (
             "func go(s: Store, u: URL) {\n"
             "    let s = s.session()\n"
@@ -366,10 +363,10 @@ class TestABindingIsVisibleOnlyAfterItIsDeclared:
 class TestEveryCallableBodyIsAScope:
     """An ``init`` / ``deinit`` / ``subscript`` / accessor body is a scope too.
 
-    Only ``function_declaration`` was one, so the parameters and locals of every
-    other callable body landed in the FILE-level map and typed same-named
-    receivers in every method of the file. Measured on Kingfisher's
-    AnimatedImageView.swift: ``init(image: UIImage?, ...)`` typed ``image`` file-wide.
+    If only ``function_declaration`` were one, the parameters and locals of every
+    other callable body would land in the FILE-level map and type same-named
+    receivers in every method of the file: ``init(image: UIImage?, ...)`` would
+    type ``image`` file-wide.
     """
 
     def test_an_init_local_and_parameter_stay_in_the_init(self, tmp_path: Path) -> None:
@@ -419,10 +416,10 @@ class TestEveryCallableBodyIsAScope:
 
 class TestAGenericReceiverTypeResolvesByItsBareName:
     """``let result: Box<Int>`` names the type ``Box``: the in-repo bind looks up
-    ``Box.open``, not ``Box<Int>.open``. Measured on Alamofire once its ``init``
-    parameters stopped leaking file-wide: ``result.tryMap`` against the field
-    ``let result: Result<Success, Failure>`` lost its resolution to the in-repo
-    ``Result.tryMap`` extension, because the field registry keeps the spelling."""
+    ``Box.open``, not ``Box<Int>.open``. The field registry keeps the spelling,
+    so without stripping it ``result.tryMap`` against the field
+    ``let result: Result<Success, Failure>`` would miss the in-repo
+    ``Result.tryMap`` extension."""
 
     def test_a_generic_field_type_resolves_in_repo(self, tmp_path: Path) -> None:
         edges = _edges(tmp_path / "g", (

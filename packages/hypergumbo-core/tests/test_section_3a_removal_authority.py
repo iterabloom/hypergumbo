@@ -1,21 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""ADR-0017 §3a stops collapsing ``False`` into ``None`` (WI-kabif + WI-joluk).
+"""ADR-0017 §3a removes a flow on a ``False`` walk verdict, never on ``None`` (WI-kabif + WI-joluk).
 
-WHAT CHANGES. The §3a arm used to read ``adjudicated = walk_result is True``,
-so "the walk exhausted every route and found no dependence" (``False``) and
-"the walk lost the value" (``None``) were the same event and neither removed
-anything. ``False`` now REMOVES the flow. That is the one verdict class
+THE RULE. "The walk exhausted every route and found no dependence" (``False``)
+and "the walk lost the value" (``None``) are different events. ``False``
+REMOVES the flow; ``None`` removes nothing. ``False`` is the one verdict class
 removal may act on, and the distinction is the whole reason
 ``walk_verdict_for`` has three names for two negatives.
 
-WHY THE TWO ITEMS SHIP TOGETHER. Since PR #214 an unearned ``False`` is a live
+WHY THE FORFEIT GATE IS TESTED WITH IT. An unearned ``False`` is a live
 falsehood in a security tool: on the barrier arm it earns ``sanitized`` and
 drops a flow. WI-joluk's forfeit gate — downgrade ``False`` to ``None`` for any
 function whose CFG statement extents miss a call node in its body — is what
-keeps a ``False`` earned. It was wired to this arm on 2026-08-26; the pairing is
-asserted here rather than assumed, because the gate protecting an arm that did
-not consume ``False`` was previously a no-op and could have been removed by
-anyone tidying up without a test failing.
+keeps a ``False`` earned. The pairing is asserted here rather than assumed:
+without a test, the gate could be removed by anyone tidying up and nothing
+would fail.
 
 THE FIXTURE NEEDS A TERMINATING SUMMARY, WHICH IS NOT AN ACCIDENT. A walk can
 only reach ``False`` if every route it followed ended in something accounted
@@ -25,12 +23,11 @@ for. Every chain ends at a variable with no further uses, and that is an ESCAPE
 returns ``None`` and asserts nothing. That is also why WI-vosug is a real
 prerequisite rather than a courtesy.
 
-MEASURED SCOPE, RECORDED SO NOBODY READS THESE TESTS AS A PAYOFF. On
-hypergumbo-core at dev 54edacb18c the §3a census is 15 confirmed / 12 escaped /
-**0 refuted** across 27 walks, and the 11-repo cohort reports the same zero
-(153 ``ddg_mixed`` rows: 0 refuted / 14 escaped / 139 not_attempted). So
-this removes nothing on today's corpus. It becomes live exactly as escape sites
-close, and the remaining ones have named owners (INV-mumov, INV-linub).
+SCOPE — DO NOT READ THESE TESTS AS A PAYOFF. Removal fires only where a walk
+reaches ``False``, which needs every route to end somewhere accounted for; any
+escape site on the route yields ``None`` instead. How much this removes on a
+real repository therefore grows only as escape sites close, and the remaining
+ones have named owners (INV-mumov, INV-linub).
 """
 from __future__ import annotations
 
@@ -162,7 +159,7 @@ class TestOnlyRefutationRemoves:
 
 
 class TestTheForfeitGateStillProtects:
-    """WI-joluk. The reason these two items are one PR."""
+    """WI-joluk: the forfeit gate that keeps a ``False`` earned (see the module docstring)."""
 
     def test_a_forfeited_function_keeps_its_flow(self) -> None:
         """The same refuted fixture, with the function's coverage forfeited.

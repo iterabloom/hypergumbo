@@ -22,9 +22,9 @@ File discovery (``find_ansible_files``) is evidence-gated (WI-jifog).
 such as ``tasks/`` or ``vars/`` are common outside Ansible, so the path
 only nominates a candidate; the claim needs Ansible evidence: the file is
 itself a playbook, or its tree is rooted by an ``ansible.cfg``, a playbook
-or a role entry point. Before this, any root-level YAML (a
-``.yamllint.yaml``) and any YAML under an Ansible-named directory was
-tagged ``language="ansible"``. Unclaimed YAML falls to the generic
+or a role entry point. Path alone would tag any root-level YAML (a
+``.yamllint.yaml``) and any YAML under an Ansible-named directory
+``language="ansible"``. Unclaimed YAML falls to the generic
 ``yaml`` file-anchor analyzer, which subtracts this set.
 
 Each discovered Ansible file also gets a ``kind="file"`` symbol, which
@@ -46,8 +46,8 @@ raw string and drops to confidence 0.50.
 Identity (ADR-0035, WI-tusad): playbooks, tasks and handlers mint
 ``overload_arity.scoped_stable_id`` over their ``name``, a task or handler
 scoped by the play it sits in. Two plays that each run a task named
-``Install`` hold two symbols, which the floor key ``(kind, path, name)``
-nulled. Two same-named tasks in one play remain a same-scope tie. Variables
+``Install`` hold two symbols; the floor key ``(kind, path, name)`` alone
+would make them collide. Two same-named tasks in one play remain a same-scope tie. Variables
 keep the backstop's ``variable`` table formula.
 """
 
@@ -149,8 +149,8 @@ def find_ansible_files(root: Path) -> list[Path]:
     """Find Ansible YAML files in a directory tree.
 
     Two path arms NOMINATE a ``.yml``/``.yaml`` file as a candidate. Path
-    alone is never enough (WI-jifog: ``.yamllint.yaml`` and a plain
-    ``web/vars/app.yaml`` were both tagged ``language=ansible``):
+    alone is never enough: ``.yamllint.yaml`` and a plain
+    ``web/vars/app.yaml`` are not Ansible (history: WI-jifog):
 
     - playbook arm: the file is at the repository root, or directly in a
       directory that has an Ansible-named subdirectory (``contrib/ansible/
@@ -388,10 +388,10 @@ def _extract_symbols_from_file(
     ) -> None:
         """One list item's keys. ``section`` is the item's kind (task / handler),
         or None when it is neither. It is read off the item's own position
-        (:func:`_section_of`): a per-file flag set while a play's keys were read
-        was already ``handlers`` by the time that play's tasks were visited, so
-        every task of a play with a ``handlers:`` key came out a handler
-        (WI-nobaj)."""
+        (:func:`_section_of`), not from a per-file flag: a flag set while a
+        play's keys are read can already be ``handlers`` when that play's tasks
+        are visited, turning every task of a play with a ``handlers:`` key into
+        a handler (history: WI-nobaj)."""
         nonlocal current_play_name
 
         for pair in pairs:

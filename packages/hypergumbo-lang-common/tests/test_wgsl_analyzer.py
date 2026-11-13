@@ -381,8 +381,8 @@ fn vs_main(in: VertexInput) -> @builtin(position) vec4<f32> {
         )
 
 
-# --- INV-loguk slice B: cyclomatic_complexity + line_span -----------------
-# Real-grammar verification of the wgsl BRANCH_NODE_TYPES entry relocated to
+# --- INV-loguk: cyclomatic_complexity + line_span -------------------------
+# Real-grammar verification of the wgsl BRANCH_NODE_TYPES entry in
 # hypergumbo_core.analyze.cyclomatic.
 
 def test_branchy_function_has_cc_and_loc(tmp_path):
@@ -455,8 +455,7 @@ def test_functions_carry_shape_id(tmp_path):
     shape_id — populated via ``node_for_symbol`` + the base-class auto-stamp
     loop (base.py) — so WGSL functions are visible to the ``repeat-finder``
     structural-clone detector, which groups by ``(language, shape_id)`` and
-    drops any ``shape_id`` of None. Before this, WGSL hard-set shape_id=None on
-    every symbol (100% of body-bearing symbols invisible to clone detection)."""
+    drops any ``shape_id`` of None."""
     (tmp_path / "shader.wgsl").write_text("""
 @vertex
 fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }

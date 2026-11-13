@@ -1,59 +1,50 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-mital: a linker's synthetic manifest->entrypoint edge must not withhold.
 
-THE DEFECT. Two safety gates ask "which languages made calls, and do we have a
+THE HAZARD. Two safety gates ask "which languages made calls, and do we have a
 catalogue for them": ``verify_claims._call_production_coverage`` (I/O) and
 ``cli``'s taint-language census. Both derive the language from a call edge's
-SOURCE ID, deliberately — the I/O gate's comment says why it is not keyed on
-languages merely PRESENT:
+SOURCE ID, deliberately: keyed on languages merely PRESENT, they would name
+markdown, gitignore, yaml and toml and downgrade every verdict for a
+.gitignore.
 
-    "Keyed on languages PRESENT this would name up to 16 apiece — markdown,
-     gitignore, yaml, toml — and downgrade every verdict for a .gitignore.
-     Keyed on languages that emitted CALL EDGES it names one to three real ones"
-
-That proxy has since been broken from the other end. ``linkers/build_target.py``
-resolves each manifest ``defines_target`` edge to the ``main()`` it names and
-emits a **``calls``** edge, so a forward slice can traverse from a Cargo
-``[[bin]]`` into application code. Its source is the build-target symbol, whose
-language slot is the manifest's. So ``toml`` emits call edges after all, lands in
-``languages_with_calls - set(catalogs)``, and EVERY boundary and taint claim over
-a Rust binary crate is withheld on a file that performs no I/O.
-
-Reproduced on mini-redis: 516 call edges, exactly 2 sourced at ``toml``, both
-from ``build-target-linker``:
+``linkers/build_target.py`` breaks that proxy from the other end. It resolves
+each manifest ``defines_target`` edge to the ``main()`` it names and emits a
+**``calls``** edge, so a forward slice can traverse from a Cargo ``[[bin]]``
+into application code. Its source is the build-target symbol, whose language
+slot is the manifest's. Counted like any other call, ``toml`` then emits call
+edges, lands in ``languages_with_calls - set(catalogs)``, and EVERY boundary
+and taint claim over a Rust binary crate is withheld on a file that performs no
+I/O. The edge shape:
 
     toml:Cargo.toml:15-19:mini-redis-cli:binary  -> rust:src/bin/cli.rs:...:main
-    toml:Cargo.toml:19-23:mini-redis-server:...  -> rust:src/bin/server.rs:...:main
 
-WHY NOT THE ITEM'S OPTION (a). WI-mital proposes retyping the edge to
-``defines_target``, flagging the risk that "the call graph may deliberately
-traverse" it. It does: the ``defines_target`` edge points at a bare path string
-the slicer cannot follow, which is the entire reason ``build_target.py`` exists.
-Retyping would reopen the gap the linker was written to close.
+WHY NOT RETYPE THE EDGE to ``defines_target``. The call graph does traverse
+it: the ``defines_target`` edge points at a bare path string the slicer cannot
+follow, which is the entire reason ``build_target.py`` exists. Retyping would
+reopen the gap the linker closes.
 
-WHY NOT THE OBVIOUS RULE EITHER — and this is the part worth reading. The first
-cut keyed on ``taxonomy``'s ``FileRole.ANALYZABLE``: "a config format cannot
-call." That is WRONG. ``FileRole`` describes a file's ROLE, not whether an
-analyzer exists, and **17** of the languages it marks non-analyzable have
+WHY NOT KEY ON THE LANGUAGE. "A config format cannot call" (``taxonomy``'s
+``FileRole.ANALYZABLE``) is WRONG. ``FileRole`` describes a file's ROLE, not
+whether an analyzer exists, and several languages it marks non-analyzable have
 registered analyzers — ``dockerfile``, ``cmake``, ``hcl``, ``starlark``,
 ``just``, ``jsonnet`` among them. A Dockerfile ``RUN curl ...`` is real I/O, so
-exempting the LANGUAGE would have been a false all-clear, which is the direction
-these gates exist to prevent. ``TestARealAnalyzersCallIsNeverExempt`` is that
-refutation kept as a test.
+exempting the LANGUAGE would be a false all-clear, which is the direction these
+gates exist to prevent. ``TestARealAnalyzersCallIsNeverExempt`` keeps that
+refutation as a test.
 
-THE RULE THAT SHIPPED keys on WHAT MINTED THE EDGE. No real analyzer's output
-carries the build-target linker's pass id, so a synthetic traversal aid is
-exempt and a Dockerfile's genuine call is not. It also covers the ``manifest``
-pseudo-language for free — the linker walks every ``defines_target`` edge,
-whatever extractor produced it — which WI-mital flagged as "very likely the SAME
-CLASS under a different name".
+THE RULE keys on WHAT MINTED THE EDGE. No real analyzer's output carries the
+build-target linker's pass id, so a synthetic traversal aid is exempt and a
+Dockerfile's genuine call is not. It also covers the ``manifest``
+pseudo-language — the linker walks every ``defines_target`` edge, whatever
+extractor produced it.
 
 DIRECTION, STATED BECAUSE IT IS THE DANGEROUS ONE. This makes the gates withhold
-LESS. It is safe only because the withholding was FALSE, and
+LESS. It is safe only because the exempted withholding is FALSE, and
 ``TestRealLanguagesStillWithhold`` plus ``TestARealAnalyzersCallIsNeverExempt``
 are what keep it that way: fish, nix, ruby, powershell, perl and the
-unregistered ``tcl`` must all keep withholding, exactly as WI-mital requires
-("fish is not the same defect and must not be folded in").
+unregistered ``tcl`` must all keep withholding (a fish script genuinely performs
+I/O; it is not this defect).
 """
 
 from __future__ import annotations
@@ -105,7 +96,7 @@ _REAL_RUST_CALL = _edge("rust:src/main.rs:10-10:run:function")
 
 
 class TestConfigLanguagesDoNotWithhold:
-    """The Cargo ``[[bin]]`` shape, reproduced from mini-redis."""
+    """The Cargo ``[[bin]]`` shape."""
 
     def test_a_toml_build_target_call_does_not_withhold(self) -> None:
         coverage = _coverage(
@@ -121,8 +112,8 @@ class TestConfigLanguagesDoNotWithhold:
         """General over manifest formats -- and ``manifest`` comes free.
 
         The linker walks EVERY ``defines_target`` edge, whatever extractor
-        produced it, so the pseudo-language WI-mital flagged as "very likely
-        the SAME CLASS under a different name" is covered by the same rule.
+        produced it, so the ``manifest`` pseudo-language is covered by the
+        same rule.
         """
         coverage = _coverage(
             [_REAL_RUST_CALL, _build_target_edge(f"{lang}:conf.{lang}:1-1:target:binary")],
@@ -134,8 +125,8 @@ class TestConfigLanguagesDoNotWithhold:
 class TestBothOriginSpellings:
     """``Edge.origin`` is ``str | List[str]``; only ``__post_init__`` normalises.
 
-    A well-formed edge always serialises as a list — 895 of 895 on a real
-    mini-redis map — but the field type permits the scalar, and this gate reads
+    A well-formed edge always serialises as a list, but the field type
+    permits the scalar, and this gate reads
     raw dicts out of an artifact that may have been hand-edited. Covering the
     scalar with a test rather than a ``pragma: no cover`` keeps the tolerance
     honest: a pragma would assert the branch is unreachable, and it is not.
@@ -180,13 +171,12 @@ class TestBothOriginSpellings:
 
 
 class TestRealLanguagesStillWithhold:
-    """THE CONTROL, and the reason this change is safe in the loosening direction.
+    """THE CONTROL, and the reason the exemption is safe in the loosening direction.
 
-    WI-mital is explicit that ``fish`` "is not the same defect and must not be
-    folded in" — a fish script genuinely calls ``printf`` and genuinely can
-    perform I/O, so withholding is INV-javam working as designed. Same for the
-    rest of that list. If any of these stops withholding, the fix has become a
-    false-all-clear generator.
+    A fish script genuinely calls ``printf`` and genuinely can perform I/O, so
+    withholding is INV-javam working as designed; the same holds for the rest
+    of that list. If any of these stops withholding, the exemption has become
+    a false-all-clear generator.
     """
 
     @pytest.mark.parametrize(
@@ -206,7 +196,7 @@ class TestRealLanguagesStillWithhold:
         assert lang in coverage.reason
 
     def test_a_language_absent_from_the_registry_fails_CLOSED(self) -> None:
-        """``tcl`` is one of WI-mital's own correct cases and is NOT in LANGUAGES.
+        """``tcl`` must withhold, and it is NOT in LANGUAGES.
 
         This is the test that forbids the cheap rule ("not in the registry →
         exclude"). Unknown must keep withholding.
@@ -223,10 +213,10 @@ class TestRealLanguagesStillWithhold:
     def test_the_manifest_pseudo_language_also_fails_closed(self) -> None:
         """Documented, not desired: ``manifest`` is absent from the registry too.
 
-        WI-mital expects this class to be covered eventually. It is NOT covered
-        here, and this test says so out loud rather than leaving a silent gap —
-        edit it when the pseudo-language gets a home that is not the file-type
-        registry.
+        A ``manifest`` call edge that the build-target linker did NOT mint is
+        not exempt, and this test says so out loud rather than leaving a
+        silent gap — edit it when the pseudo-language gets a home that is not
+        the file-type registry.
         """
         coverage = _coverage(
             [_REAL_RUST_CALL, _edge("manifest:pom.xml:1-1:app:binary")], {"rust"},
@@ -240,13 +230,10 @@ class TestBothGatesUseTheSharedPredicate:
 
     Two independent checks ask "which languages made calls": the I/O gate in
     ``verify_claims._call_production_coverage`` and the taint-language census in
-    ``cli``. The census's own comment records the failure mode of fixing one and
-    not the other: "Narrowing only the first check is how this function would
-    come to give two different answers about the same fixture."
-
-    Measured live while making this change: patching only ``verify_claims`` left
-    mini-redis still reporting ``toml`` — through the census, not the I/O gate.
-    A unit test of one consumer proves nothing about the other.
+    ``cli``. Fixing one and not the other makes the two give different
+    answers: with only ``verify_claims`` patched, a Cargo binary crate still
+    reports ``toml`` — through the census, not the I/O gate. A unit test of
+    one consumer proves nothing about the other.
     """
 
     def test_the_census_consults_the_shared_predicate(self) -> None:
@@ -286,15 +273,15 @@ class TestBothGatesUseTheSharedPredicate:
 
 
 class TestARealAnalyzersCallIsNeverExempt:
-    """THE CONTROL THAT KILLED THE OBVIOUS RULE.
+    """THE CONTROL AGAINST THE OBVIOUS RULE.
 
-    The first cut keyed on ``taxonomy``'s ``FileRole.ANALYZABLE`` — "a config
-    format cannot call". That is wrong, and measurably: ``FileRole`` describes a
-    file's ROLE, not whether an analyzer exists, and **17** of the languages it
-    marks non-analyzable have registered analyzers — ``dockerfile``, ``cmake``,
-    ``hcl``, ``starlark``, ``just``, ``jsonnet`` among them. A Dockerfile
-    ``RUN curl ...`` is real I/O, so exempting the language would have been a
-    false all-clear. Keying on the MINTING PASS cannot make that mistake.
+    Keying on ``taxonomy``'s ``FileRole.ANALYZABLE`` — "a config format cannot
+    call" — is wrong: ``FileRole`` describes a file's ROLE, not whether an
+    analyzer exists, and several of the languages it marks non-analyzable have
+    registered analyzers — ``dockerfile``, ``cmake``, ``hcl``, ``starlark``,
+    ``just``, ``jsonnet`` among them. A Dockerfile ``RUN curl ...`` is real
+    I/O, so exempting the language would be a false all-clear. Keying on the
+    MINTING PASS cannot make that mistake.
     """
 
     @pytest.mark.parametrize("lang", ["dockerfile", "cmake", "hcl", "just", "toml"])

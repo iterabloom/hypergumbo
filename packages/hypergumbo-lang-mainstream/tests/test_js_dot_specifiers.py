@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """``require('.')`` and ``require('..')`` are relative imports (WI-pulid).
 
-``_is_relative_import`` accepted ``./`` and ``../`` prefixes only, so the bare
-``.`` and ``..`` fell to the npm route and became a third-party PACKAGE named
-``.`` / ``..`` (``javascript:npm:0-0:..:package``): 35 of 7,290 resolutions on
-nuclear, pm2 and apollo-server. Node resolves both as the directory: its
-``package.json`` entry when it has one, else its ``index``.
+``_is_relative_import`` accepts the bare ``.`` and ``..`` as well as the
+``./`` and ``../`` prefixes. Otherwise they fall to the npm route and become a
+third-party PACKAGE named ``.`` / ``..`` (``javascript:npm:0-0:..:package``).
+Node resolves both as the directory: its ``package.json`` entry when it has
+one, else its ``index``.
 """
 # covers: packages/hypergumbo-core/src/hypergumbo_core/linkers/js_module.py
 from __future__ import annotations

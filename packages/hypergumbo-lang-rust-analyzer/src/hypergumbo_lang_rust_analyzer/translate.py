@@ -27,21 +27,21 @@ shim cannot do on its own:
    modules, constants — rust.py has no signature-level parity for these),
    and Symbols whose source cannot be read pass through unchanged.
 
-   **What this achieves in production today: nothing, for any multi-line
-   function (INV-dolud, 2026-09-18).** The span handed to the helper is the
-   SCIP Definition-occurrence range, and rust-analyzer's is the identifier
+   **What this achieves in production: nothing, for any multi-line
+   function (INV-dolud).** The span handed to the helper is the SCIP
+   Definition-occurrence range, and rust-analyzer's is the identifier
    token; the helper requires the item range, so it abstains and the
-   path-and-moniker id (``scip_stable_id``) stays. Measured on aardvark-dns: 0 of 52 functions
-   emitted by both Rust arms share a ``stable_id``, so the double-counting
-   the paragraph above describes is the shipped state, not the averted one.
-   The pass is kept as readiness for WI-gojum (parked), which owns whether
-   the arms should share an identity; see ``rust_scip.py``'s docstring for
-   why it is not simply "fixed" here.
+   path-and-moniker id (``scip_stable_id``) stays. The two Rust arms
+   therefore do not share a ``stable_id`` for such functions, so the
+   double-counting the paragraph above describes is the shipped state, not
+   the averted one. The pass is kept as readiness for WI-gojum, which owns
+   whether the arms should share an identity; see ``rust_scip.py``'s
+   docstring for why it is not simply "fixed" here.
 
 2. **One-shot translate.** :func:`translate_scip_to_hg` bundles the
    three core shim calls (``scip_index_to_symbols``,
    ``scip_index_to_edges``, ``scip_index_to_call_edges``) with the
-   parity reassignment so Slice-B's analyzer wrapper can consume a
+   parity reassignment so the backend's analyzer wrapper can consume a
    single entry point. It also stamps ``run_id`` onto what it emits,
    falling back to a locally-constructed ``AnalysisRun`` when the caller
    supplies none (WI-higap).
@@ -57,19 +57,17 @@ shim cannot do on its own:
    one line to ``log``. It returns ``None`` for a symbol outside the indexed
    workspace, and the shims skip the edge rather than emitting it.
 
-   This is load-bearing, not an oversight. Before commit ``9266762d4b``
-   the edge builders used raw SCIP descriptor strings as endpoints, so
-   every scip edge dangled and ``finalize`` silently discarded the entire
-   scip call graph — 0 edges on zoxide, against 739 once resolution
-   landed. The residual consequence is that a Rust call into a dependency
-   or the stdlib yields no edge under this backend, where the tree-sitter
-   analyzer would emit an ``:unresolved`` one. That gap is tracked as
-   WI-gojum sub-component 1 and was parked by its owner on 2026-07-19.
+   This is load-bearing, not an oversight: with raw SCIP descriptor
+   strings as endpoints every scip edge dangles, and ``finalize`` silently
+   discards the entire scip call graph. The residual consequence is that a
+   Rust call into a dependency or the stdlib yields no edge under this
+   backend, where the tree-sitter analyzer would emit an ``:unresolved``
+   one (WI-gojum).
 
 Why This Design
 ---------------
-WI-zakub (2026-04-17 mini trial) established that rust-analyzer leaves
-``SymbolInformation.relationships`` empty; the primary edge source is
+rust-analyzer leaves ``SymbolInformation.relationships`` empty
+(WI-zakub); the primary edge source is
 therefore non-Definition ``Occurrence``s routed through
 ``scip_index_to_call_edges``. Both ``scip_index_to_edges`` and
 ``scip_index_to_call_edges`` are still called here — the former is
@@ -189,7 +187,7 @@ def translate_scip_to_hg(
     ``log`` receives one line when edge endpoints were refused as ambiguous
     (INV-sipod; :class:`~hypergumbo_core.scip.resolve.MonikerResolver`).
 
-    The three core SCIP shim passes are invoked in order:
+    The three core SCIP shim passes and the parity pass run in order:
 
     1. :func:`scip_index_to_symbols` to build the Symbol list.
     2. :func:`reassign_rust_stable_ids` to overwrite Rust function
@@ -210,20 +208,16 @@ def translate_scip_to_hg(
     symbols = reassign_rust_stable_ids(
         scip_index_to_symbols(index), source_reader,
     )
-    # WI-higap: if no run_id is supplied (legacy callers), create a local
-    # run so Edge.__post_init__ enforcement passes. Callers that want
-    # provenance to flow into a parent run can pass run_id explicitly.
-    #
-    # WI-didag: that escape hatch was UNREACHABLE from production until the
-    # analyzer threaded a run through ``try_analyze_with_rust_analyzer``, so
-    # every real survey took this branch and every scip edge named a run that
-    # was constructed here, harvested for its id, and discarded. Worse, the
-    # asymmetry ran the wrong way: ``Edge.__post_init__`` hard-raises on an
-    # empty value and ``Symbol`` has no such guard, so the GUARDED half got a
-    # well-formed UUID resolving to nothing while the unguarded half stayed
-    # honestly empty. Measured on aardvark-dns: 637 edges with a fabricated id
-    # beside 669 symbols with ``''``, and 1308 validation violations. The guard
-    # turned an abstention into a confident wrong answer.
+    # If no run_id is supplied (a library caller), create a local run so
+    # Edge.__post_init__ enforcement passes. Its id is a well-formed UUID that
+    # resolves to nothing: the local run is constructed, harvested for its id
+    # and discarded. Production passes a real run (the analyzer threads one
+    # through ``try_analyze_with_rust_analyzer``), and any caller that wants
+    # provenance to flow into a parent run must do the same. Note the
+    # asymmetry: ``Edge.__post_init__`` hard-raises on an empty value and
+    # ``Symbol`` has no such guard, so without the stamping below the guarded
+    # half would carry a confident wrong id while the unguarded half stayed
+    # empty. (history: WI-higap, WI-didag)
     if not run_id:
         from hypergumbo_core.ir import AnalysisRun, PASS_VERSION, make_pass_id
         _scip_run = AnalysisRun.create(
@@ -235,11 +229,11 @@ def translate_scip_to_hg(
     # fabricated id resolvable — nothing serializes the local run either way —
     # but it makes the two halves agree, so a dangling artifact is ONE fact a
     # reader can chase rather than two unrelated-looking ones. When the caller
-    # supplied a real run (the production path since WI-didag) it is the whole
-    # fix for the symbol side, and it closes WI-zabus at the source instead of
-    # relying on the orchestrator's WI-mosil empty-only backstop, which a
-    # library caller bypassing the orchestrator never gets. Pure fill: a
-    # producer that already stamped keeps its value.
+    # supplied a real run (the production path) this stamps the symbols at the
+    # source instead of relying on the orchestrator's empty-only backstop,
+    # which a library caller bypassing the orchestrator never gets. Pure fill:
+    # a producer that already stamped keeps its value. (history: WI-zabus,
+    # WI-mosil)
     for _sym in symbols:
         if not _sym.origin_run_id:
             _sym.origin_run_id = run_id
@@ -250,12 +244,12 @@ def translate_scip_to_hg(
     # the raw string endpoint (``occ.symbol``), so every scip edge is dangling
     # (its src/dst match no ``Symbol.id``) — and the survey's endpoint-integrity
     # finalize drops the ENTIRE scip call graph while the scip Symbols survive,
-    # a silent half-merge that made the rust-analyzer backend emit zero edges via
-    # ``hypergumbo survey``.
+    # a silent half-merge that leaves the rust-analyzer backend emitting zero
+    # edges via ``hypergumbo survey``.
     #
     # INV-sipod: the map is per Document, not per moniker. rust-analyzer gives a
     # package's lib, bin and build-script roots one ``crate/`` moniker, and a
-    # flat dict kept the last record, so main.rs code was credited to lib.rs.
+    # flat dict would keep the last record, crediting main.rs code to lib.rs.
     # ``None`` still tells the shim to skip the edge: a symbol no record
     # carries is external (a dependency / stdlib symbol, absent from the Symbol
     # set), and an ambiguous one is refused and counted.

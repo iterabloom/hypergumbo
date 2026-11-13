@@ -149,11 +149,11 @@ class TestCSharpSymbolExtraction:
         assert "IShape" in interface_names
 
     def test_body_bearing_symbols_get_shape_id(self, csharp_repo: Path) -> None:
-        """WI-lutob: C#'s ``analyze()`` override bypasses the base-class
-        shape_id auto-stamp loop, so body-bearing symbols (method / class /
-        …) shipped ``shape_id=None`` — the structural-clone key (ADR-0014 §1)
-        the spec marks done for C# silently did not exist. They must now carry
-        a well-formed shape_id computed from the tracked CST node."""
+        """C#'s ``analyze()`` override bypasses the base-class shape_id
+        auto-stamp loop, so it must stamp shape_ids itself: body-bearing
+        symbols (method / class / …) carry a well-formed shape_id — the
+        structural-clone key (ADR-0014 §1) — computed from the tracked CST
+        node, never ``None`` (history: WI-lutob)."""
         result = analyze_csharp(csharp_repo)
         body_bearing = [
             s for s in result.symbols if s.kind in ("method", "class")
@@ -382,10 +382,9 @@ public class User : IEntity {
         assert implements_edges[0].dst == entity.id
 
     def test_external_base_class_emits_unresolved_extends(self, tmp_path: Path) -> None:
-        """WI-jubag Approach C: an external C# base class (``Controller``, not in
-        the analyzed codebase) now emits an unresolved-external ``extends`` edge
-        from the core inheritance-linker chokepoint instead of dropping — C# is
-        one of the OO languages the chokepoint generalization sweeps in."""
+        """An external C# base class (``Controller``, not in the analyzed
+        codebase) gets an unresolved-external ``extends`` edge from the core
+        inheritance linker rather than no edge (history: WI-jubag)."""
         from hypergumbo_lang_mainstream.csharp import analyze_csharp
         from hypergumbo_core.linkers.inheritance import link_inheritance
         from hypergumbo_core.linkers.registry import LinkerContext
@@ -408,7 +407,7 @@ public class UserController : Controller {
         assert controller.meta is not None
         assert controller.meta.get("base_classes") == ["Controller"]
 
-        # Controller is external -> an unresolved-external extends edge (was: dropped).
+        # Controller is external -> an unresolved-external extends edge.
         extends_edges = [e for e in linker_result.edges if e.edge_type in ("extends", "implements")]
         assert len(extends_edges) == 1
         e = extends_edges[0]
@@ -813,9 +812,9 @@ public class Child : Base {
         result = analyze_csharp(tmp_path)
         go = next((s for s in result.symbols if s.name == "Child.Go"), None)
         assert go is not None
-        # Child has no fields → not in registry → chain fails at line 936.
-        # But _x is in var_types from field_declaration in same file →
-        # old path still resolves via var_types.
+        # Child has no fields → not in registry → chain resolution fails.
+        # But _x is in var_types from the field_declaration in the same
+        # file, so the var_types path can still resolve it.
 
     def test_chain_field_not_in_type(self, tmp_path: Path) -> None:
         """_resolve_member_chain returns None when field is not in type's fields."""
@@ -1040,12 +1039,12 @@ class TestCSharpReturnTypeExtraction:
         assert _extract_csharp_return_type_name("() List<string>") is None
 
     def test_async_task_unwraps(self) -> None:
-        """WI-jujup Tier 2: ``Task<T>`` unwraps to ``T``.
+        """``Task<T>`` unwraps to ``T`` (history: WI-jujup).
 
         C# async methods return ``Task<T>``/``ValueTask<T>``; the call
         site's ``await`` operator dereferences to the inner ``T``. Without
-        unwrapping, the var_types entry was the bare ``Task`` which never
-        appears in ``class_symbols`` and so dropped the chain.
+        unwrapping, the var_types entry would be the bare ``Task``, which
+        never appears in ``class_symbols``, so the chain would drop.
         """
         from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
 
@@ -1191,13 +1190,13 @@ class TestCSharpSpecialCases:
         """A property whose declared type is a user-defined type must emit a
         symbol named after the property MEMBER, not after its type.
 
-        Regression: ``extract_name_from_declaration`` grabbed the first
-        ``identifier`` child, but in a C# ``property_declaration`` a user-typed
-        return type (``WaveInfo``, ``FeatureConfig``) is itself an ``identifier``
-        that PRECEDES the property-name identifier. So ``public WaveInfo Info``
-        was misnamed ``C.WaveInfo``, and two same-typed properties collapsed to
-        one entry in ``symbol_by_name``. Predefined/array/generic types are not
-        ``identifier`` nodes, so they were unaffected — masking the bug.
+        In a C# ``property_declaration`` a user-typed property type
+        (``WaveInfo``, ``FeatureConfig``) is itself an ``identifier`` that
+        PRECEDES the property-name identifier, so taking the first
+        ``identifier`` child names ``public WaveInfo Info`` ``C.WaveInfo`` and
+        collapses two same-typed properties to one entry in
+        ``symbol_by_name``. Predefined/array/generic types are not
+        ``identifier`` nodes, so only a user-typed property exposes this.
         """
         (tmp_path / "Config.cs").write_text(
             """namespace N
@@ -1372,9 +1371,8 @@ public class Factory
         ``instantiates`` edge on X's CONSTRUCTOR node, not the class node.
 
         The class node conflates 'referenced as a type' with 'instantiated'; a
-        reverse-slice seeded on the constructor ('who constructs this?') found 0
-        callers because cross-file instantiations resolved to the class via
-        ``resolver.lookup`` (csharp.py) rather than the ctor.
+        cross-file instantiation that lands on the class leaves a reverse-slice
+        seeded on the constructor ('who constructs this?') with no callers.
         """
         (tmp_path / "WaveReader.cs").write_text(
             """namespace N
@@ -1412,8 +1410,7 @@ public class Factory
         self, tmp_path: Path
     ) -> None:
         """Same-file ``new X(...)`` also lands on the constructor when X has an
-        explicit ctor (previously relied on symbol_by_name shadowing; now
-        resolved explicitly via the ``X.X`` key)."""
+        explicit ctor, resolved explicitly via the ``X.X`` key."""
         (tmp_path / "S.cs").write_text(
             """namespace N
 {
@@ -2344,13 +2341,13 @@ class TestCSharpMethodGroupReferences:
         ]
         assert len(ref_edges) == 1
         assert ref_edges[0].evidence_type == "ast_call"
-        # WI-diruk: a method GROUP is a reference to a method, not an
-        # invocation, so the construct label belongs on ``ref_construct``
-        # (the reference-family key, which lists ``references`` among its
-        # edge types) and NOT on ``call_construct`` (scoped to the call
-        # family by WI-toruz). Both halves are asserted, per the INV-vakaf
-        # precedent: new key present AND old key absent, so a partial
-        # migration that writes both cannot pass.
+        # A method GROUP is a reference to a method, not an invocation, so
+        # the construct label belongs on ``ref_construct`` (the
+        # reference-family key, which lists ``references`` among its edge
+        # types) and NOT on ``call_construct`` (scoped to the call family).
+        # Both halves are asserted -- ``ref_construct`` present AND
+        # ``call_construct`` absent -- so an emitter that writes both cannot
+        # pass (history: WI-diruk, WI-toruz).
         assert ref_edges[0].meta.get("ref_construct") == "method_group"
         assert "call_construct" not in (ref_edges[0].meta or {})
 
@@ -2374,13 +2371,13 @@ class TestCSharpMethodGroupReferences:
         ]
         assert len(ref_edges) == 1
         assert ref_edges[0].evidence_type == "ast_call"
-        # WI-diruk: a method GROUP is a reference to a method, not an
-        # invocation, so the construct label belongs on ``ref_construct``
-        # (the reference-family key, which lists ``references`` among its
-        # edge types) and NOT on ``call_construct`` (scoped to the call
-        # family by WI-toruz). Both halves are asserted, per the INV-vakaf
-        # precedent: new key present AND old key absent, so a partial
-        # migration that writes both cannot pass.
+        # A method GROUP is a reference to a method, not an invocation, so
+        # the construct label belongs on ``ref_construct`` (the
+        # reference-family key, which lists ``references`` among its edge
+        # types) and NOT on ``call_construct`` (scoped to the call family).
+        # Both halves are asserted -- ``ref_construct`` present AND
+        # ``call_construct`` absent -- so an emitter that writes both cannot
+        # pass (history: WI-diruk, WI-toruz).
         assert ref_edges[0].meta.get("ref_construct") == "method_group"
         assert "call_construct" not in (ref_edges[0].meta or {})
 
@@ -2497,7 +2494,7 @@ class TestCsharpIsExported:
 
 
 class TestCSharpDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on C# callable symbols."""
+    """Symbol.docstring on C# callable symbols (history: INV-jahiv)."""
 
     def test_method_with_xml_doc(self, tmp_path: Path) -> None:
         """Method symbols populate docstring from preceding /// XML doc."""
@@ -2535,7 +2532,7 @@ class TestCSharpDocstring:
 
 
 class TestCSharpQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on C# symbols."""
+    """Symbol.qualified_name on C# symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
         """Methods inside a namespace carry Namespace.Class.Method with '.' separator."""
@@ -2580,7 +2577,7 @@ class TestCSharpQualifiedName:
 
 
 class TestCSharpCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity populated on C# callables."""
+    """cyclomatic_complexity populated on C# callables."""
 
     def test_method_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.csharp import analyze_csharp
@@ -2647,7 +2644,7 @@ class TestCSharpBareMethodMagnetGate:
     class's same-named method via a weak short-name suffix match.
 
     The fallback simple-name resolver path (``resolver.lookup(callee_name)``)
-    is the magnet: dozens of bare call sites collapse onto one arbitrary
+    is the magnet: many bare call sites can collapse onto one arbitrary
     ``Owner.method`` def. The gate defers such a cross-class suffix match to
     the inherited_calls Site-1 walker by emitting an unresolved edge that
     carries ``meta.enclosing_class`` — while still binding implicit-``this``
@@ -2852,12 +2849,12 @@ class TestCSharpInterfaceInheritance:
 
 
 class TestCSharpRecords:
-    """WI-zukat: a record is a type, and its members are its own.
+    """A record is a type, and its members are its own (history: WI-zukat).
 
     ``record_declaration`` (``record``, ``record class``, ``record struct``)
-    had no symbol branch, and the enclosing-type walk skipped it, so a record's
-    methods were emitted bare (``M``) and a bare call inside one bound to
-    whichever other class had a same-named method.
+    gets a symbol and is an enclosing type, so a record's methods are
+    qualified by it (``R.M``, not a bare ``M``) and a bare call inside one does
+    not bind to whichever other class has a same-named method.
     """
 
     def _analyze(self, tmp_path: Path, code: str):
@@ -2934,8 +2931,8 @@ class TestCSharpRecords:
 class TestCSharpUsingScopeHints:
     """The base hints ``_csharp_using_scope`` feeds the inheritance linker, from
     the C# package's own tests: CI measures a changed file with the selected
-    tests only, and the cross-package test that covered these lines
-    (``test_import_bound_external_bases``) is not selected for a csharp.py
+    tests only, and the other test module that exercises these lines
+    (``test_import_bound_external_bases.py``) is not selected for a csharp.py
     change."""
 
     def test_namespaces_aliases_and_using_static(self, tmp_path: Path) -> None:

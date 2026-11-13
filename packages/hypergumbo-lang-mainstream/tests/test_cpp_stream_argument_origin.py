@@ -1,49 +1,42 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-bapuk: ``std::getline``'s boundary is its STREAM ARGUMENT's, and the row was absent.
+"""``std::getline``'s boundary is its STREAM ARGUMENT's (history: WI-bapuk).
 
-THE GAP. ``cpp.yaml`` had no row for ``std::getline`` and ``c.yaml`` none for POSIX
+THE ROWS. ``cpp.yaml`` rows ``std::getline`` and ``c.yaml`` rows POSIX
 ``getline``, so the idiomatic C++ standard-input read
 
     std::string s;
     std::getline(std::cin, s);
 
-produced NO source at all. ``std::cin`` is rowed (an ``ipc_recv`` attribute) and
-fires where it is literally written, but the call that TRANSFERS the bytes was
-invisible; measured on the four-function fixture below before the change, the
-whole file yielded ``ipc_recv: 2`` -- the two textual ``std::cin`` references --
-and nothing for any of the four ``getline`` calls, including the two whose stream
+is a source. ``std::cin`` is rowed too (an ``ipc_recv`` attribute) and fires
+where it is literally written, but without a ``getline`` row the call that
+TRANSFERS the bytes would be invisible -- including a ``getline`` whose stream
 is a file or a parameter.
 
 WHY A FIXED ROW WOULD BE WRONG. The stream is an ARGUMENT (INV-bagok / INV-zumin
 class (b)), the ``fgets`` shape: ``getline(in, s)`` over an ``ifstream`` and
 ``getline(std::cin, s)`` are one row and two different crossings.
 
-THE REACHABILITY FINDING THAT SHAPED THE FIX, taken before any row was written
-(LIVE rule 9, and the item asked for exactly this check). cpp's module slot for
-an unresolved call is the COMMA-JOINED LIST OF EVERY ``#include`` IN THE FILE --
-``std::getline(std::cin, s)`` arrives as module ``iostream,fstream,string`` --
-while the ATTRIBUTE path emits ``std`` for ``std::cin``. So the namespace the
-call names was discarded and a ``std.getline`` row could never have matched.
-Measured over the corpus, no single header dominates either: of 78 C++ files
-containing a ``getline`` call, ``string`` appears in 51.3%, ``sstream`` 48.7%,
-``fstream`` 47.4%, ``iostream`` 38.5%, and 14.1% include none of them -- so
-rowing under any one header would have reached at most half the population.
+REACHABILITY. cpp's module slot for an unresolved call is the COMMA-JOINED LIST
+OF EVERY ``#include`` IN THE FILE -- ``std::getline(std::cin, s)`` arrives as
+module ``iostream,fstream,string`` -- while the ATTRIBUTE path emits ``std`` for
+``std::cin``. With only the include list, a ``std.getline`` row could never
+match. Nor can a row keyed under one header stand in: a file calling
+``getline`` may include any of ``<string>``, ``<sstream>``, ``<fstream>``,
+``<iostream>`` or none of them, so such a row misses every file without that
+header.
 
-THE FIX IS TO STOP DISCARDING THE NAMESPACE. ``std`` joins the module
-disjunction rather than replacing it, and that is deliberate: the include list
-is how ``std::printf`` in a file including ``<stdio.h>`` reaches c.yaml's
-inherited ``stdio.printf`` row, and REPLACING the slot would have deleted that
-classification. Classification asks whether ANY disjunct names a primitive, so
-adding one can only add matches.
+SO THE NAMESPACE IS KEPT. ``std`` joins the module disjunction rather than
+replacing it, and that is deliberate: the include list is how ``std::printf`` in
+a file including ``<stdio.h>`` reaches c.yaml's inherited ``stdio.printf`` row,
+and REPLACING the slot would delete that classification. Classification asks
+whether ANY disjunct names a primitive, so adding one can only add matches.
 
-WHAT THAT COSTS ELSEWHERE, disclosed rather than discovered later:
-``_adjudicate_external_modules`` reads the same disjunction with the OPPOSITE
-quantifier (ALL must be enumerated, since one unenumerated home leaves the call
-genuinely unexamined), so a new disjunct can only make a call HARDER to call an
-examined negative. That is inert today because cpp.yaml declares no
-``module_completeness`` at all -- python is the only catalogue that declares any
--- so every C++ external call is already unexamined; WI-hasul owns that for c and
-is cited, not folded.
+WHAT THAT COSTS ELSEWHERE: ``_adjudicate_external_modules`` reads the same
+disjunction with the OPPOSITE quantifier (ALL must be enumerated, since one
+unenumerated home leaves the call genuinely unexamined), so a new disjunct can
+only make a call HARDER to call an examined negative. cpp.yaml declares no
+``module_completeness`` of its own; it inherits c.yaml's through
+``_CATALOG_PARENTS`` (related: WI-hasul).
 
 THE STAMP USES THE DECLARED TYPE, not a value origin, because C++ hands it over:
 ``std::ifstream in(p);`` is the most-vexing-parse shape, a ``declaration`` whose
@@ -287,7 +280,7 @@ void fromStream(std::istream& is) {
 
 
 class TestTheIncludeSlotSurvives:
-    """REPLACING the module slot would have deleted a classification."""
+    """REPLACING the module slot with ``std`` would delete a classification."""
 
     def test_std_printf_still_reaches_the_inherited_stdio_row(
         self, tmp_path, cpp_available,
@@ -312,22 +305,20 @@ class TestTheIncludeSlotSurvives:
 
 
 class TestTheExternalSentinelSurvives:
-    """The REMOVAL this change caused once, and must never cause again.
+    """With no includes, the slot stays the `external` sentinel.
 
     A file with NO system includes leaves the module slot at the `external`
     SENTINEL, and that sentinel is load-bearing: it is what enables
-    `lookup_with_module`'s SHORT-NAME fallback. An earlier draft of WI-bapuk
-    named `std` there whenever the callee was `std::`-qualified -- accurate,
-    and useless, because cpp.yaml keys chrono under
-    `std::chrono::system_clock`, not under `std`. Naming a module the
-    catalogue has nothing under switched the fallback off and DELETED the
-    classification.
+    `lookup_with_module`'s SHORT-NAME fallback. Naming `std` there whenever the
+    callee is `std::`-qualified would be accurate and harmful, because cpp.yaml
+    keys chrono under `std::chrono::system_clock`, not under `std`: naming a
+    module the catalogue has nothing under switches the fallback off and
+    DELETES the classification (`std::chrono::system_clock::now()` would lose
+    its host_info_read).
 
-    Measured on modsecurity: two `std::chrono::system_clock::now()` chains in
-    `src/collection/backend/collection_data.cc` went host_info_read -> nothing.
-    The naive A/B diff HID it, reporting 112 added / 102 removed for apt,
-    because changing the module slot changes every dst string and so the diff
-    key itself moved; it only surfaced on a module-stable key.
+    Comparing runs by dst string will not show such a loss: changing the module
+    slot changes every dst string, so the diff key itself moves. Compare on a
+    module-stable key.
     """
 
     def test_a_std_call_with_no_includes_keeps_the_short_name_fallback(

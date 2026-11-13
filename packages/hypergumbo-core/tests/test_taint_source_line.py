@@ -1,19 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The §3a walk examines the source's own line (WI-jusoj).
 
-The walk treated the source's line as a starting point and never as a use
-site, so whatever else the line did with the value was invisible:
+The source's line is a use site as well as the walk's starting point; a walk
+that only starts there cannot see whatever else the line does with the value:
 
 (a) A sink ON the source's line -- ``resp = requests.post(url,
-    headers={"A": os.environ["K"]})`` -- was classified ``sink_before_source``
-    (``sink_after_source`` was ``any(sink > source)``), and INV-muhij's rule
-    then kept the row from carrying a verdict. It is now
-    ``sink_on_source_line``: the walk still cannot adjudicate it, but the row
-    carries the verdict.
+    headers={"A": os.environ["K"]})`` -- is classified
+    ``sink_on_source_line``, not ``sink_before_source`` (a row INV-muhij's
+    rule keeps from carrying a verdict). The walk still cannot adjudicate it,
+    but the row carries the verdict.
 (b) A non-sink consumer on the source's line -- ``n = acc.push(process.env.K)``
-    -- was not an escape: the walk followed ``n``, exhausted, and REMOVED the
-    flow while the secret went into ``acc``. Every other call on a source line
-    is now asked the use-line question; one no summary says terminates is an
+    -- can take the value: following ``n`` alone exhausts and would REMOVE the
+    flow while the secret went into ``acc``. So every other call on a source
+    line is asked the use-line question; one no summary says terminates is an
     escape. This can only turn ``False`` into ``None``.
 """
 from __future__ import annotations
@@ -74,8 +73,8 @@ def test_a_sink_strictly_before_the_source_keeps_its_old_blocker() -> None:
 
 def test_another_call_on_the_source_line_keeps_the_flow() -> None:
     """``n = push(getenv("K"))`` at 2; ``n`` dies at 3; ``send(acc)`` at 4. The
-    walk exhausts on ``n`` -- which REMOVED the flow -- but ``push`` may have
-    taken the value, so the walk is now unknowing and the flow stays."""
+    walk would exhaust on ``n`` and remove the flow, but ``push`` may have
+    taken the value, so the walk answers unknown and the flow stays."""
     findings = _findings(
         _ddg(("n", 2, 3), ("acc", 1, 4)),
         [_call(_GETENV, 2), _call("python:external:0-0:push:unresolved", 2), _call(_SEND, 4)],

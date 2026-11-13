@@ -3,30 +3,28 @@
 
 ``io_primitives/c.yaml`` declares ``stdio.fopen`` under BOTH ``fs_read`` and
 ``fs_write`` — the dual classification ``io_mode`` exists to settle, exactly as
-python declares ``builtins.open``. The catalogue side was already correct:
-handed ``io_mode="w"`` it returns ``fs_write``. Nothing ever handed it one.
-``meta["io_mode"]`` was stamped at exactly ONE site in the whole tree
-(``py.py``), so ``select_by_mode`` fell through to ``candidates[0]`` and
-**every** ``fopen(path, "w")`` in a C or C++ program tagged ``fs_read``.
+python declares ``builtins.open``. Handed ``io_mode="w"`` the catalogue returns
+``fs_write``; with no ``meta["io_mode"]`` stamp from the analyzer,
+``select_by_mode`` falls through to ``candidates[0]`` and every
+``fopen(path, "w")`` in a C or C++ program tags ``fs_read``.
 
-WHY THAT IS A FALSE CONFIRM AND NOT A RECALL MISS. The call IS classified — as
-``fs_read`` — and since INV-buzab a classified call is what ``examined`` means.
-So a ``{boundary: fs_write, must_not_exist: true}`` claim over a C program that
-writes files with ``fopen`` gets an EXAMINED NEGATIVE for the boundary that is
-actually true, rather than the ``inconclusive`` an unanalysable language earns.
+WHY A MISSING STAMP IS A FALSE CONFIRM AND NOT A RECALL MISS. The call IS
+classified — as ``fs_read`` — and a classified call is what ``examined`` means
+(INV-buzab). So a ``{boundary: fs_write, must_not_exist: true}`` claim over a C
+program that writes files with ``fopen`` would get an EXAMINED NEGATIVE for the
+boundary that is actually true, rather than the ``inconclusive`` an
+unanalysable language earns.
 
 THE SECOND CONSUMER FAILS THE OTHER WAY. ``requires_mode_boundary`` gates the derived
 ``host_fs`` sink on the same evidence, and ``resolve_mode_boundary(None)`` is
-``fs_read`` — so with no producer the C write sink matched nothing at all,
-in every repo, unconditionally. One absent stamp, both directions.
+``fs_read`` — so with no stamp the C write sink matches nothing at all.
+One absent stamp, both directions.
 
-C++ INHERITS THE C CATALOGUE (``_CATALOG_PARENTS['cpp'] = 'c'``) and therefore
-inherits the defect, which is why both analyzers are pinned here. Reasoning by
-analogy across the two is not permitted in this repo, so each is measured — and
-measuring rather than assuming is what found that the two do NOT behave alike
-downstream. C's mode now decides its boundary; cpp's stamp lands on the edge and
-reaches no catalogue at all, for an unrelated reason filed as INV-funuf. The
-last test in this file is the executable disclosure of that gap.
+C++ INHERITS THE C CATALOGUE (``_CATALOG_PARENTS['cpp'] = 'c'``), which is why
+both analyzers are pinned here. Each is tested rather than assumed by analogy,
+because the two do NOT behave alike downstream: C reaches the catalogue with no
+module slot, cpp through its ``#include`` module slot
+(``TestCppReachesTheCatalogueToo``).
 """
 from __future__ import annotations
 
@@ -88,11 +86,11 @@ def _tagged_edges(tmp_path: Path, language: str, source: str) -> list:
 def _fopen_edge(tmp_path: Path, language: str, source: str):
     """The single ``fopen`` call edge, found by CALLEE rather than by tag.
 
-    Deliberately not keyed on ``io_primitive``. cpp reaches the catalogue as of
-    INV-funuf, but keying the helper on the tag would make it find edges only
-    when tagging already works — so a future tagging regression would surface
-    here as "no fopen call was emitted", blaming the analyzer for a consumer
-    fault. Finding the edge by CALLEE keeps the two failures distinguishable.
+    Deliberately not keyed on ``io_primitive``: keying the helper on the tag
+    would make it find edges only when tagging already works — so a tagging
+    regression would surface here as "no fopen call was emitted", blaming the
+    analyzer for a consumer fault. Finding the edge by CALLEE keeps the two
+    failures distinguishable.
     """
     edges = [e for e in _tagged_edges(tmp_path, language, source)
              if e.edge_type == "calls" and ":fopen:" in e.dst]
@@ -169,19 +167,17 @@ class TestTheAnalyzerStampsTheMode:
 
 
 class TestTheBoundaryFollowsTheMode:
-    """The CONSUMER half, C only — and why cpp is absent from this class.
+    """The CONSUMER half, C only — cpp takes a different arm and has its own class.
 
-    C reaches the catalogue through the no-module-context arm (its dst carries
-    no module slot), which is exactly the arm that used to skip the mode: both
-    other arms in ``lookup_with_module`` called ``select_by_mode`` and this one
-    handed the gate its candidates untouched. So the analyzer stamp alone moved
-    NOTHING until the arm was narrowed — a predicate is inert until every call
-    site passes it, and this pair of assertions is what proves the whole chain
-    runs rather than just the producer.
+    C reaches the catalogue through the no-module-context arm of
+    ``lookup_with_module`` (its dst carries no module slot). That arm must call
+    ``select_by_mode`` as the other arms do, or the analyzer stamp moves
+    nothing — a predicate is inert until every call site passes it — so these
+    assertions prove the whole chain runs rather than just the producer.
     """
 
     def test_write_mode_tags_fs_write(self, tmp_path: Path) -> None:
-        """The filed defect. This tagged ``fs_read`` before the fix."""
+        """A write-mode ``fopen`` tags ``fs_write``, not the ``fs_read`` default."""
         edge = _fopen_edge(tmp_path, "c", WRITER)
         assert (edge.meta or {}).get("io_boundary") == "fs_write"
 
@@ -197,20 +193,12 @@ class TestTheBoundaryFollowsTheMode:
 
 
 class TestCppReachesTheCatalogueToo:
-    """INV-funuf LANDED, and this class is what the tripwire asked for.
+    """cpp's mode reaches the catalogue too (history: INV-funuf).
 
-    What stood here was a DISCLOSURE test asserting cpp reached no catalogue at
-    all — ``io_boundary is None`` — written to go RED the moment the gap closed
-    so the fix could not leave a stale "cpp is blind" claim behind. It went red
-    on exactly the change it was waiting for, and is replaced by the assertions
-    it named.
-
-    cpp still spells the module slot as the comma-joined ``#include`` list with
-    the header FILENAME kept (``stdio.h``), which is why this is a genuinely
+    cpp spells the module slot as the comma-joined ``#include`` list with the
+    header FILENAME kept (``stdio.h``), which is why this is a genuinely
     different arm from C's: C reaches the catalogue with NO module slot, cpp
-    reaches it through a slot that must be split and stemmed. Measured on
-    whisper.cpp: 6 -> 65 call edges matched, with net_send / net_recv /
-    subprocess going from zero to visible.
+    reaches it through a slot the consumer must split and stem.
     """
 
     def test_write_mode_tags_fs_write(self, tmp_path: Path) -> None:
@@ -228,12 +216,11 @@ class TestCppReachesTheCatalogueToo:
     def test_the_slot_still_carries_the_header_filename(
         self, tmp_path: Path,
     ) -> None:
-        """The PRODUCER is unchanged — this fix is entirely consumer-side.
+        """The PRODUCER keeps the filename; the stemming is consumer-side.
 
-        Worth pinning: if a later change "fixes" cpp.py to emit the stem
-        instead, the consumer expansion becomes dead code with no test
-        objecting, and the next analyzer to join a slot would find the
-        mechanism gone.
+        Worth pinning: if cpp.py emitted the stem instead, the consumer
+        expansion would become dead code with no test objecting, and the
+        next analyzer to join a slot would find the mechanism gone.
         """
         edge = _fopen_edge(tmp_path, "cpp", WRITER)
         assert "stdio.h" in edge.dst

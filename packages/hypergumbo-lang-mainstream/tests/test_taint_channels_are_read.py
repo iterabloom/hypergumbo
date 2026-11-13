@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A file in your taint channels changes the verdict, and the verdict names it (WI-mimap).
 
-Before: ``$XDG_CONFIG_HOME/hypergumbo/taint_sources.d/`` and
-``taint_sanitizers.d/`` were created by ``init-catalogs`` and read by nothing,
-and ``taint_sinks.d/`` did not exist -- a file dropped in any of them had no
-effect and raised no error. ADR-0061 ruling 7 makes them the operator's one
-persistent home for a taint model; ruling 5 lists them under ``yours``.
+``$XDG_CONFIG_HOME/hypergumbo/taint_sources.d/``, ``taint_sinks.d/`` and
+``taint_sanitizers.d/`` are the operator's one persistent home for a taint
+model (ADR-0061 ruling 7; ruling 5 lists them under ``yours``). A channel that
+is created but read by nothing is the hazard: a file dropped in it has no
+effect and raises no error.
 """
 
 from __future__ import annotations
@@ -100,8 +100,8 @@ def test_a_sanitizer_in_your_channel_clears_it_and_says_whose_word_it_was(
 
 
 def test_a_sink_in_your_channel_is_read(home: Path, tmp_path: Path) -> None:
-    """taint_sinks.d exists now: a project sink zone declared there is
-    matched like a --taint-sinks one."""
+    """A project sink zone declared in taint_sinks.d is matched like a
+    --taint-sinks one."""
     _channel(home, "taint_sources", "crm.yaml", _SOURCE)
     _channel(home, "taint_sinks", "audit.yaml",
              "zone: audit_log\ntrust_level: untrusted\nsinks:\n  python:\n"

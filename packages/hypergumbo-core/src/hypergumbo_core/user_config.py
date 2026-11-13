@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps; ADR-0061 ruling 4).
 
-WHAT THIS IS FOR, AND WHAT IT DELIBERATELY REFUSES TO HOLD. hypergumbo had no
-user configuration of any kind before this module: every preference was
-expressed per-invocation or through the environment, so a project with
-authored I/O overlays retyped ``--io-primitives`` on every run. This adds two
-tiers of TOML file for preferences like that. The project tier's
+WHAT THIS IS FOR, AND WHAT IT DELIBERATELY REFUSES TO HOLD. Two tiers of
+TOML file hold preferences that would otherwise be repeated on every
+invocation or exported through the environment — ``--io-primitives`` for a
+project with authored I/O overlays, for example. The project tier's
 ``io_primitives`` are catalogue data supplied by the analysed repository, so
 they are kept apart (``LayeredConfig.in_repo_io_primitives``) and load only
 when the operator opts in with ``--in-repo-catalogues`` or a recorded
@@ -66,11 +65,10 @@ from .discovery import TraceDeps
 # ``tomllib`` is stdlib from Python 3.11. Every package here declares
 # ``requires-python = ">=3.10"``, so a BARE top-level import breaks the declared
 # minimum -- and this module is imported broadly enough that the failure is not
-# graceful: the 2026-08-29 nightly py3.10 leg recorded
-# ``ModuleNotFoundError: No module named 'tomllib'`` against **2905 failed**
-# tests. The three other ``tomllib`` sites in this tree
-# (``profile.py``, ``linkers/subprocess_cli.py``, ``py_deps.py``) already carry
-# this fallback and comment it as the py3.10 path; this one was the outlier.
+# graceful: on py3.10 the ``ModuleNotFoundError`` fails most of the test suite,
+# not one feature. The other ``tomllib`` sites (``profile.py``,
+# ``linkers/subprocess_cli.py``, the mainstream package's ``py_deps.py``) carry
+# the same fallback.
 try:  # pragma: no cover - the branch taken depends on the interpreter
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - py3.10 fallback
@@ -90,15 +88,15 @@ def backends_executing_analysed_code() -> FrozenSet[str]:
     (``executes_analysed_code=True``; ADR-0057 §10 / WI-hohuh) and this
     function derives the set from the registry, so a backend added later
     lands in the right store by describing itself instead of by someone
-    remembering to update a list. Until WI-hohuh this was a hardcoded
-    ``frozenset({"rust_analyzer"})`` — exactly the list ruling 5 forbids.
-    ``pyright`` performs pure static inference and executes nothing, so when
-    it arrives (WI-nanom) it declares ``False`` and is an ordinary preference.
+    remembering to update a list; a hardcoded list here is exactly what
+    ruling 5 forbids. ``scip-python`` performs pure static inference and
+    executes nothing, so it declares ``False`` and is an ordinary preference
+    (WI-nanom).
 
     Consequence worth knowing: with the SCIP package not installed there is
     no ``rust_analyzer`` registration, so ``backends.rust_analyzer`` in a
     config file is refused as an UNKNOWN setting rather than as a trust key.
-    Still refused — fail closed — but the message no longer claims a trust
+    Still refused — fail closed — but the message does not claim a trust
     store for a backend that is not there.
     """
     # Local import: the registry imports ``ir``; keep this module importable

@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-sosov: a request handler's request PARAMETER is a taint source.
+"""A request handler's request PARAMETER is a taint source (WI-sosov).
 
 Express hands a route handler its request as ``req``; Go's ``http.Handler``
 gets ``r *http.Request``. Neither arrives through a call a catalogue row could
-match, so no source was ever minted for it and WI-fuzik's disclosure was the
-only thing between a clean ``untrusted_input`` verdict and
-``fs.writeFileSync(req.query.p, ...)``. With the parameters now reaching
-definitions in the DDG (commit 1), a seed can be minted WITHOUT a call edge:
-``(handler, parameter)`` for every ``request_ingress`` entry whose framework
-contract names the request parameter, only when the handler has a DDG and the
-parameter has a use -- a handler that never touches ``req`` stays clean AND
-listed. The seed enters the DDG arm's own walk (same-function, variable-level)
-and the structural arm takes none: a symbol-level seed at a handler would
-taint everything it reaches. A seeded handler is a REPRESENTED arrival
-(ADR-0049 ruling 3), so the disclosure no longer names it; the shipped
-contract table is builtin, the standing of a builtin row.
+match, so without a parameter seed no source is minted for it and only
+WI-fuzik's disclosure stands between a clean ``untrusted_input`` verdict and
+``fs.writeFileSync(req.query.p, ...)``. Parameters reach definitions in the
+DDG, so a seed can be minted WITHOUT a call edge: ``(handler, parameter)`` for
+every ``request_ingress`` entry whose framework contract names the request
+parameter, only when the handler has a DDG and the parameter has a use -- a
+handler that never touches ``req`` stays clean AND listed. The seed enters the
+DDG arm's own walk (same-function, variable-level) and the structural arm takes
+none: a symbol-level seed at a handler would taint everything it reaches. A
+seeded handler is a REPRESENTED arrival (ADR-0049 ruling 3), so the disclosure
+does not name it; the shipped contract table is builtin, with the standing of a
+builtin row.
 """
 
 from __future__ import annotations
@@ -299,12 +299,12 @@ def test_a_route_marker_entry_seeds_the_function_it_dispatches_to_and_represents
 
 
 def test_a_marker_follows_a_dispatch_only_into_its_own_file() -> None:
-    """Measured on the curriculum express repo: ``GET /users`` in
-    route-separation/index.js dispatches_to ``examples/online/index.js list(ids)``,
-    a same-named function of another example the route linker picked by bare
-    name; positional 0 would have seeded ``ids`` as the request and represented
-    a handler whose real flows were never followed. A cross-file target is no
-    handler of this marker's."""
+    """The route linker can pick a same-named function in another file by
+    bare name: in an express repo, ``GET /users`` in route-separation/index.js
+    dispatches_to ``examples/online/index.js list(ids)``. Seeding positional 0
+    there would treat ``ids`` as the request and represent a handler whose
+    real flows were never followed. A cross-file target is no handler of this
+    marker's."""
     marker = "javascript:examples/route-separation/index.js:40-40:GET /users:function"
     wrong = "javascript:examples/online/index.js:40-44:list:function"
     right = "javascript:examples/route-separation/index.js:60-64:list:function"

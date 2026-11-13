@@ -93,10 +93,9 @@ def _run_gate(
     ``_BaselineSwap`` block the gate reads (and ``--update-baseline``
     writes) that block's private file through ``--baseline``; the
     committed ``.ci/schema-coverage-baseline.json`` is never touched.
-    Swapping the committed file in place, as these tests once did, raced
-    under xdist: parallel tests unlinked and restored one shared path, so
-    a test read another's baseline and a run could leave the committed
-    file deleted.
+    Swapping the committed file in place would race under xdist: parallel
+    tests would unlink and restore one shared path, so a test could read
+    another's baseline and a run could leave the committed file deleted.
     """
     env = dict(os.environ)
     baseline = baseline_file or _ACTIVE_BASELINE
@@ -337,9 +336,8 @@ def _make_schema_invalid_output() -> dict:
     """Build a corpus output JSON that violates ``docs/schema.json``.
 
     Concrete violation: ``Edge.line`` has ``minimum=1`` in the schema, so
-    an edge with ``line=0`` produces a ``minimum`` validator error. This
-    is the same shape of violation INV-piroh originally caught
-    (`linkers/js_module.py:811`'s hardcoded ``line=0``).
+    an edge with ``line=0`` produces a ``minimum`` validator error, the
+    shape a producer's hardcoded ``line=0`` creates (history: INV-piroh).
     """
     return {
         "nodes": [{"id": "x:0", "kind": "function"}],
@@ -358,14 +356,12 @@ def _make_schema_invalid_output() -> dict:
 class TestSchemaConformanceFold:
     """Schema-conformance validation folded into the corpus gate.
 
-    Per the INV-piroh → WI-luzuh consolidation (2026-05-18):
     ``check-schema-coverage`` runs ``jsonschema.Draft202012Validator
     .iter_errors`` against the corpus output and tracks violation
-    fingerprints alongside the coverage baseline. The corpus's tiny size
-    (10 fixture files) means the conformance check costs microseconds on
-    top of the ~5s corpus run — versus the 3.5min self-analysis cost the
-    INV-piroh gate paid for the same validation. Mode semantics match
-    the existing coverage gate: ``warning`` fails on positive violation
+    fingerprints alongside the coverage baseline. On the small fixture
+    corpus the check is nearly free, where validating a self-analysis
+    output would take minutes (history: INV-piroh, WI-luzuh). Mode
+    semantics match the coverage gate: ``warning`` fails on positive violation
     delta vs the baseline; ``fail`` fails on any violation regardless of
     baseline; ``--update-baseline`` rewrites the baseline's conformance
     section.
@@ -469,9 +465,10 @@ class TestSchemaConformanceFold:
 
 
 class TestTheCommittedBaselineIsNeverRewrittenByATest:
-    """The swap-in-place helper raced under xdist: parallel tests unlinked and
-    restored the one committed file, so a test read another test's baseline,
-    3 to 7 of 12 failed per run, and a run could leave the file deleted."""
+    """Tests write only a private baseline file. Swapping the committed file
+    in place races under xdist: parallel tests unlink and restore the one
+    committed file, so a test reads another test's baseline and a run can
+    leave the file deleted."""
 
     def test_update_baseline_writes_only_the_private_file(self, tmp_path: Path) -> None:
         committed = REPO_ROOT_REAL / ".ci" / "schema-coverage-baseline.json"

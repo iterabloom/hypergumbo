@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A java record is a type with members, like the class it abbreviates.
 
-WI-pidos. ``record_declaration`` (Java 16) was not an enclosing type to
-``_get_class_ancestors`` and had no symbol arm, so a file holding only a record
-emitted NOTHING: not the record, not its methods or constructors, and so none of
-the calls inside them. A record nested in a class was worse than absent: its
-methods were named on the OUTER class (``Launcher.call`` for
-``Launcher.RemoteLaunchCallable.call``), which gave them the outer class's
-callers and overrides (measured on jenkins: 10 wrong call/dispatch edges).
+``record_declaration`` (Java 16) is an enclosing type to
+``_get_class_ancestors`` and has its own symbol arm (WI-pidos). Without them a
+file holding only a record emits NOTHING: not the record, not its methods or
+constructors, and so none of the calls inside them. A record nested in a class
+is worse than absent: its methods are named on the OUTER class
+(``Launcher.call`` for ``Launcher.RemoteLaunchCallable.call``), which gives
+them the outer class's callers and overrides.
 
 The tests compare a record with the class a developer would otherwise write, so
 "like a class" is asserted rather than assumed.
@@ -101,7 +101,7 @@ def test_calls_inside_a_record_are_anchored_on_its_members(tmp_path: Path) -> No
 
 
 def test_a_nested_records_methods_are_not_the_outer_classs(tmp_path: Path) -> None:
-    """The jenkins shape: before, ``Outer.kill`` named BOTH methods."""
+    """A nested record's method is ``Outer.Job.kill``, not a second ``Outer.kill``."""
     analysis = _analyze(tmp_path, (
         "class Outer {\n"
         "  void kill() {}\n"
@@ -115,8 +115,8 @@ def test_a_nested_records_methods_are_not_the_outer_classs(tmp_path: Path) -> No
 def test_the_ddg_covers_a_compact_constructor(tmp_path: Path) -> None:
     from hypergumbo_core.ddg_build import build_repo_ddg
     # Importing the extractor registers the java DDG spec, as verify-claims'
-    # force-import does; without it this test passed only when another test in
-    # the same worker had imported the module first.
+    # force-import does; without it this test passes only when another test in
+    # the same worker has imported the module first.
     import hypergumbo_lang_mainstream.java_def_use
 
     (tmp_path / "R.java").write_text(

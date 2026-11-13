@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The CfgBuilder's statement model: headers, initializers, nested functions.
 
-Two defects of one model (WI-losod, WI-faful), fixed once in the shared builder
-rather than per language:
+Two rules of one model, implemented once in the shared builder rather than
+per language (history: WI-losod, WI-faful):
 
 - A loop header or an ``if``/``switch`` initializer is a statement that DEFINES
-  its bindings before the body reads them. The conditional and loop hooks used
-  to record only the condition, so ``for v in os.environ:``, Go's ``for _, e :=
-  range os.Environ()`` and ``if err := cmd.Run(); err != nil`` defined nothing.
+  its bindings before the body reads them. Recording only the condition would
+  leave ``for v in os.environ:``, Go's ``for _, e := range os.Environ()`` and
+  ``if err := cmd.Run(); err != nil`` defining nothing.
 - An atomic statement holding a nested function or a control-flow expression
-  stays ONE statement that defines its target. It used to be decomposed into
-  leaves, so ``int r = switch (x) {...};`` read ``r`` as a use, never a
-  definition, and a lambda's body was inlined as though it ran in sequence.
+  stays ONE statement that defines its target. Decomposed into leaves,
+  ``int r = switch (x) {...};`` would read ``r`` as a use, never a
+  definition, and a lambda's body would be inlined as though it ran in
+  sequence.
 
 These tests check the CFG's SHAPE against real tree-sitter ASTs. No def/use
 extractor is involved (they live in another package); where a test needs
@@ -315,9 +316,9 @@ class TestHeaderRecordedAtTheLoopNode:
     def test_the_cut_keeps_unrecorded_code_after_the_header_uncovered(self) -> None:
         """The header's extent ends at the body, so code after the header that
         no statement records stays uncovered and the gate that forfeits
-        refutation is not silenced. Python's ``for ... else:`` WAS that code
-        until INV-rotol recorded the clause; it now covers itself, and
-        un-recording it exposes line 5 again rather than the header."""
+        refutation is not silenced. Python's ``for ... else:`` clause is
+        recorded and covers itself; un-recording it must expose line 5
+        rather than let the header claim it (INV-rotol)."""
         cfg, body, src = _build("python", (
             "def f(xs, t):\n"
             "    for v in xs:\n"
@@ -462,9 +463,9 @@ class TestNestedFunctions:
         assert len(region_exit) == 1 and inner.id in _succ(cfg, region_exit[0].id)
 
     def test_a_closure_binding_can_no_longer_kill_the_outer_one(self) -> None:
-        """The defect the inlined body caused: ``t := "constant"`` inside the
-        literal KILLED the outer ``t``, so the tainted value never reached the
-        later use. Now both definitions reach it."""
+        """Inlining the body would let ``t := "constant"`` inside the literal
+        KILL the outer ``t``, so the tainted value would never reach the later
+        use. Both definitions must reach it."""
         cfg, _, _ = _build("go", (
             "package main\n"
             "func f() {\n"
@@ -565,8 +566,8 @@ class TestNestedFunctions:
         assert _succ(cfg, decl.id) == {_block_of(cfg, "after()").id}
 
     def test_a_branch_inside_a_lambda_does_not_decompose_the_statement(self) -> None:
-        """Before WI-faful, ``xs.forEach(x -> { if (x) ... })`` became leaves:
-        ``xs``, ``forEach``, ``x`` -- the call itself was never a statement."""
+        """``xs.forEach(x -> { if (x) ... })`` stays one statement rather than
+        decomposing into the leaves ``xs``, ``forEach``, ``x`` (WI-faful)."""
         cfg, _, _ = _build("java", (
             "class A {\n"
             "  void f(java.util.List<String> xs) {\n"

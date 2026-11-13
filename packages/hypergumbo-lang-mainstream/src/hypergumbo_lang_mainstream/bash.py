@@ -470,7 +470,7 @@ def _literal_tail(arg: str) -> Optional[str]:
     """The trailing path component of *arg*, when it is fully literal.
 
     ``source $TOOL_LIB_PATH/gitlib.sh`` is dynamic in the PREFIX and literal in
-    the TAIL, and that is the shape 62 of the cohort's 80 dynamic targets take.
+    the TAIL, which is the commonest shape a dynamic target takes.
     A bare ``$ENV_FILE`` has no literal tail and must decline.
     """
     a = _strip_quotes(arg)
@@ -488,8 +488,8 @@ def _source_command_arg(
     Deliberately WIDER than the ``sources`` edge emitter in
     ``BashAnalyzer.extract_edges_from_file``, which takes
     only children of type ``word``: a quoted or substituted target is a
-    ``string`` / ``command_substitution`` node, and those are 82.5% of the
-    cohort's population.
+    ``string`` / ``command_substitution`` node, and most dynamic targets
+    take that form.
     """
     name_node = find_child_by_type(node, "command_name")
     if name_node is None:  # pragma: no cover - a command always has a name
@@ -659,8 +659,8 @@ class _RepoBashIndex:
     ) -> set[str]:
         """Files named by a glob, matched on its DIRECTORY's last component.
 
-        guacamole's glob is ``/opt/guacamole/build.d/*.sh`` -- a CONTAINER path
-        with no counterpart in the tree; the repo's own ``build.d`` is joined
+        A glob such as ``/opt/guacamole/build.d/*.sh`` can be a CONTAINER path
+        with no counterpart in the tree, the repo's own ``build.d`` joined
         to it only by a Dockerfile ``COPY``. Matching the trailing directory
         component recovers it without teaching bash about Dockerfiles.
         """
@@ -685,9 +685,9 @@ class _RepoBashIndex:
         """Names assigned in any file joined to *rel* by ``source``.
 
         BOTH DIRECTIONS, because bash is dynamically scoped: a sourced script
-        sees the sourcer's assignments (guacamole's ``DESTINATION``) and the
-        sourcer sees the sourced script's (cilium's ``GHCURL``). Transitive,
-        and cycle-safe -- ``contrib/backporting`` sources in a cycle.
+        sees the sourcer's assignments and the sourcer sees the sourced
+        script's. Transitive, and cycle-safe -- scripts can source each other
+        in a cycle.
         """
         return self._reach.get(rel, set())
 
@@ -777,8 +777,8 @@ def _redirect_origin_names(
     map a taint finding in a shell script is call-graph reachability alone:
     "this file reads the environment somewhere AND reaches a function that
     writes somewhere". Most environment names a file reads cannot reach what
-    the shell writes (28 of 186 across the files measured), so a redirect
-    sink is narrowed to the names that can (WI-zovuz).
+    the shell writes, so a redirect sink is narrowed to the names that can
+    (WI-zovuz).
 
     WHAT THE SHELL CONTRIBUTES, and it is exactly three things:
 
@@ -804,14 +804,14 @@ def _redirect_origin_names(
     """
     # A PARSE FAILURE IS NOT A PROOF OF EMPTINESS, and the damage is not
     # local. tree-sitter recovers from a shape it cannot model with an ERROR
-    # node, and an unparsed heredoc body is then attached NOWHERE — cilium's
+    # node, and an unparsed heredoc body is then attached NOWHERE —
     # `<<EOF cat >/etc/dnsmasq.conf` lands the ERROR on a SIBLING statement
     # while the redirect itself parses cleanly, so a parent-scoped check reads
     # it as "no name reaches" over a body that writes a value read from the
     # environment. Answering for the whole file only when the whole file
-    # parsed is the only scope that holds. Measured: 11 of the 212 cohort bash
-    # files carrying a redirect contain an ERROR or MISSING node (5.2%), so
-    # the conservative scope costs almost nothing.
+    # parsed is the only scope that holds. Few bash files carrying a redirect
+    # contain an ERROR or MISSING node, so the conservative scope costs
+    # little.
     if any(n.type == "ERROR" or n.is_missing
            for n in iter_tree(tree.root_node)):
         return {}
@@ -960,8 +960,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
     Overrides ``_find_source_files`` because bash scripts can lack file extensions
     and require shebang-line detection (#!/bin/bash).
 
-    Overrides ``register_symbol`` to only register function symbols for cross-file
-    call resolution (exports and aliases are file-local).
+    Overrides ``register_symbol`` to register only function symbols and the
+    file pseudo-node for cross-file call resolution (exports and aliases are
+    file-local).
     """
 
     lang = "bash"
@@ -1164,7 +1165,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register only function symbols for cross-file call resolution.
+        """Register function symbols (and the file pseudo-node) for resolution.
 
         Exports and aliases are file-local; only functions can be called
         from other files via 'source' + function-name invocation.
@@ -1244,8 +1245,8 @@ class BashAnalyzer(TreeSitterAnalyzer):
             return None  # pragma: no cover - defensive
 
         # WI-javoh: dedup external-command launches per (caller, command_name).
-        # A script that calls ``git`` 171 times from one function is ONE launch
-        # relationship, not 171 — hygiene that keeps the disclosed
+        # A script that calls ``git`` N times from one function is ONE launch
+        # relationship, not N — hygiene that keeps the disclosed
         # ``command_launch`` cohort honest (an invocation-count multiplicity,
         # not a distinct boundary each time).
         seen_launches: set[tuple[str, str]] = set()
@@ -1263,11 +1264,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
         # Plus names assigned in any file joined to this one by `source`
         # (INV-pujob). bash is dynamically scoped in BOTH directions -- the
-        # sourced script sees the sourcer's assignments (guacamole's
-        # DESTINATION, assigned in build-guacamole.sh and read by every
-        # build.d script it sources) and the sourcer sees the sourced script's
-        # (cilium's GHCURL, assigned in gitlib.sh). The file alone would call
-        # DESTINATION an environment read and a host_secret source.
+        # sourced script sees the sourcer's assignments (a DESTINATION
+        # assigned in a build script and read by every script it sources) and
+        # the sourcer sees the sourced script's (a GHCURL assigned in a sourced
+        # library). The file alone would call DESTINATION an environment read
+        # and a host_secret source.
         #
         # FAILS CLOSED BY CONSTRUCTION: the index contributes names only for
         # `source` targets it RESOLVED, and every ambiguous or unrecognised

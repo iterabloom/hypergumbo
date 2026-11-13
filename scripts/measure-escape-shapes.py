@@ -2,42 +2,42 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Where does the ADR-0017 §3a walk lose a tainted value, and to what?
 
-WHAT THIS DECIDES. INV-busis is held open by the claim that §3a "cannot refute
-because 40% of escape sites are not calls (field/container/closure), which §7b
+WHAT THIS DECIDES. INV-busis turns on the claim that §3a "cannot refute
+because many escape sites are not calls (field/container/closure), which §7b
 excludes". Pricing that claim needs the escape population split two ways at
 once, because two different questions are being asked of it:
 
-  * BY REASON — which of the walk's four ``escaped = True`` branches fired.
-    Two of them (``source_undefined``, ``definition_unrecorded``) mean the DDG
-    never held the fact, which is an EXTRACTION gap and nothing to do with
-    §7b's scope. Two (``call_beside_heir``, ``no_heir``) mean the walk saw the
-    use and could not account for it. Only the latter pair is INV-busis's
-    population at all, and only ``no_heir`` is the one §7b's alias exclusion
-    is invoked for.
+  * BY REASON — which of the walk's ``escaped = True`` branches fired
+    (``ESCAPE_REASONS``). ``source_undefined``, ``definition_unrecorded``,
+    ``unrecorded_heir`` and ``unaccounted_mention`` mean the DDG never held
+    the fact, which is an EXTRACTION gap and nothing to do with §7b's scope.
+    ``call_beside_heir``, ``call_beside_source`` and ``no_heir`` mean the walk
+    saw the use and could not account for it. Only the latter group is
+    INV-busis's population at all, and only ``no_heir`` is the one §7b's
+    alias exclusion is invoked for.
   * BY NODE TYPE — within a reason, what the construct actually is. This is
     what tells an ``assert x == y`` (read, compared, stored nowhere) from a
     ``return x`` (moves the value to the caller) from a bare ``call`` — which
     is not an escape category at all but some upstream failure, and node type
     alone cannot say WHICH. ``scripts/measure-call-escape-cause.py`` exists
-    for that: measured, a call-node escape is a missing EDGE (INV-mumov) on
-    one repo and a missing RECEIVER TYPE (INV-linub) on another, and reading
-    the bucket as either one alone gets the remedy wrong.
+    for that: a call-node escape can be a missing EDGE (INV-mumov) on one
+    repo and a missing RECEIVER TYPE (INV-linub) on another, and reading the
+    bucket as either one alone gets the remedy wrong.
 
-Folding those two axes is not a presentational choice, it is the specific
-error that priced the "expression read" family at 78.6% of blockers: a
-histogram over ``(symbol_id, line)`` alone cannot see that a chunk of its
-``call`` bucket is an unseeded SOURCE line rather than a followed-and-lost
-use. Hence the cross-tab, and hence :class:`~hypergumbo_core.taint.EscapeSite`
-carrying the reason out of the walk itself.
+Folding those two axes is not a presentational choice: a histogram over
+``(symbol_id, line)`` alone cannot see that a chunk of its ``call`` bucket is
+an unseeded SOURCE line rather than a followed-and-lost use, and so overprices
+the "expression read" family. Hence the cross-tab, and hence
+:class:`~hypergumbo_core.taint.EscapeSite` carrying the reason out of the walk
+itself.
 
-DISCIPLINE ENCODED HERE, each because it was violated once and the wrong
-number survived to a write-up:
+DISCIPLINE ENCODED HERE, each rule closing a way for a wrong number to reach a
+write-up:
 
   1. **The walk reports its own sites.** This wraps ``_ddg_taint_reaches`` and
      passes the ``escape_sites`` out-param; it never re-derives the escape
-     logic. The instrument that produced the filed 78.6% did re-derive it,
-     lived in a session scratchpad, and drifted out of sync with the
-     function's signature.
+     logic. A re-derived copy drifts out of sync with the function's
+     signature.
   2. **Node types are production's CFG parse**, read verbatim off
      ``CfgStatement.node_type``, and the quoted text is production's own
      ``code_snippet`` — never a re-read of the source line.
@@ -49,18 +49,16 @@ number survived to a write-up:
      ``(function, line, reason)`` SITES over all walks, and SITES over
      BLOCKED walks. Only the last is the blocker population: a walk that
      returned ``True`` still reports the escapes it passed on the way to the
-     sink, and those held nothing open. On pretix that is 126 / 111 / 72, and
-     restricting to blocked walks moves the largest production family from
-     calls to field writes. The first version of this instrument did not
-     restrict, which is the same mistake INV-busis's earlier run had already
-     documented and fixed.
+     sink, and those held nothing open. Restricting to blocked walks can
+     change which production family is largest (e.g. from calls to field
+     writes).
   5. **The arm is reported.** A reclassification can only reach a FINDING
      through the barrier arm; the §3a arm tests ``is True`` and collapses
      ``False``/``None``. A run with zero barrier walks bounds every proposal
      built on this histogram at zero, no matter how the shapes split.
   6. **The reason vocabulary is asserted closed** against ``ESCAPE_REASONS``,
-     so a fifth branch added later surfaces as a failure instead of silently
-     landing in whichever bucket happens to catch it.
+     so a reason added to the walk later surfaces as a failure instead of
+     silently landing in whichever bucket happens to catch it.
 
 Usage:
     scripts/measure-escape-shapes.py REPO CLAIMS_YAML [--json OUT.json]
@@ -111,11 +109,8 @@ def _capturing(*args, **kwargs):  # type: ignore[no-untyped-def]
     #   is used at a sink line — but escapes recorded BEFORE that point stay
     #   in the out-param. A walk that CONFIRMED a flow therefore still
     #   reports escape sites, and those sites blocked nothing. Counting them
-    #   inflates the blocker population (measured: pretix 52 production
-    #   sites over all walks against 15 over blocked walks) and inverts
-    #   which family is largest. INV-busis's own earlier run says so
-    #   outright — "sums over UNKNOWN non-barrier walks only" — and this
-    #   instrument's first version did not, which is how it happened again.
+    #   inflates the blocker population and can invert which family is
+    #   largest; sum over UNKNOWN (``None``) walks only (history: INV-busis).
     #
     #   WHICH ARM. The §3a arm tests ``_ddg_taint_reaches(...) is True``, so
     #   ``False`` and ``None`` collapse there and no change to the escape
@@ -139,24 +134,23 @@ def _statements_for(
     """``line -> (node_type, code_snippet)`` from a rebuilt function CFG.
 
     Rebuilding is the only way to get ``node_type``: ``RepoDdg`` does not carry
-    it. Two traps are closed here explicitly because each produced a clean,
-    entirely fabricated result once:
+    it. Two traps are closed here explicitly because each yields a clean,
+    entirely fabricated result:
 
       * Symbol-id paths are REPO-RELATIVE. Resolving them against the process
-        CWD silently matched nothing and reported every site as unresolved —
-        a "0 shapes" that looked like a finding.
+        CWD silently matches nothing and reports every site as unresolved —
+        a "0 shapes" that looks like a finding.
       * The function is matched by its RECORDED SPAN, not by "any node with a
         body". Without the span test a neighbouring function's statement at
         the same line supplies the node type.
 
-    KNOWN LIMITATION, stated rather than left to be rediscovered: the index is
-    LINE-keyed and first-writer-wins, so a line hosting several CFG statements
-    reports whichever came first in block-iteration order. Observed on pretix
-    ``views.py:479`` — the source reads ``elif sale['status'] == 'REFUNDED':``
-    but the recorded type is ``identifier``. It does not change any family
-    boundary here (both an identifier and a comparison at a condition
-    adjudicate the same way), but a split that turned on that distinction
-    would need a (line, col) key.
+    KNOWN LIMITATION: the index is LINE-keyed and first-writer-wins, so a line
+    hosting several CFG statements reports whichever came first in
+    block-iteration order — e.g. ``elif sale['status'] == 'REFUNDED':`` can be
+    recorded as ``identifier``. That does not change any family boundary here
+    (both an identifier and a comparison at a condition adjudicate the same
+    way), but a split that turned on that distinction would need a (line, col)
+    key.
     """
     from tree_sitter_language_pack import get_parser
 
@@ -287,7 +281,7 @@ def main(argv: list[str]) -> int:
     # returned None was actually held open; a walk that returned True reports
     # the escapes it passed on the way to the sink, and those blocked nothing.
     # Both are printed so the gap is visible rather than a choice made
-    # silently — on pretix it is 111 sites against 72.
+    # silently.
     blocked = sorted({
         (s[0], s[1], s[2])
         for w in WALKS if w["verdict"] == "None" for s in w["sites"]
@@ -311,8 +305,8 @@ def main(argv: list[str]) -> int:
         lines_by_fn[sym].add(line)
 
     # Resolve ONCE PER FUNCTION. Rebuilding a file's parse tree per SITE is
-    # quadratic in a function with several escapes, and it dominated wall
-    # clock badly enough to look like a hang on a self-analysis run.
+    # quadratic in a function with several escapes, and on a large repo
+    # dominates wall clock badly enough to look like a hang.
     stmt_cache: dict[str, dict[int, tuple[str, str]]] = {}
     resolved: list[dict[str, object]] = []
     unresolved = 0
