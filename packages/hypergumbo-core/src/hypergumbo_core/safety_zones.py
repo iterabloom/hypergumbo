@@ -11,8 +11,8 @@ each safety zone a distinct sink callee, which the project-local catalog
 at ``docs/hypergumbo-self-catalog/`` declares in its corresponding zone.
 
 Most wrappers are otherwise transparent — they delegate to
-``Path.write_text`` / ``Path.write_bytes`` / ``shutil.copy2`` /
-``np.save`` etc. with no behavior change relative to a direct call.
+``Path.write_text`` / ``Path.write_bytes`` / ``shutil.copy2`` etc. with no
+behavior change relative to a direct call.
 The ZONE-ENFORCED ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
 :func:`cache_write_zip`, :func:`cache_rename` (both endpoints),
 :func:`tmp_artifact_write_bytes`, :func:`tmp_artifact_rmtree`,
@@ -35,8 +35,7 @@ one under the trusted name.
 How to use — the full wrapper inventory, by zone:
 
 - **user_cache** (``~/.cache/hypergumbo/<fingerprint>/...``):
-  :func:`cache_write`, :func:`cache_write_bytes`, :func:`cache_save_npy`,
-  :func:`cache_mkdir`; and the zone-enforced :func:`cache_write_zip`
+  :func:`cache_write`, :func:`cache_write_bytes`, :func:`cache_mkdir`; and the zone-enforced :func:`cache_write_zip`
   (soft-delete archives), :func:`cache_rename`, :func:`cache_unlink`,
   :func:`cache_rmtree`.
 - **user_out** (a user-supplied ``--out`` path): :func:`user_out_write`,
@@ -109,10 +108,7 @@ import subprocess  # nosec B404
 from contextlib import contextmanager
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:  # pragma: no cover - typing-only import
-    import numpy as np
+from typing import Any
 
 
 class SafetyZoneViolation(RuntimeError):
@@ -279,7 +275,7 @@ def cache_write_zip(
 
     SAFETY ZONE: ``user_cache``. Soft-deleted cache entries are archived rather
     than destroyed, and building that archive is a cache WRITE like any other —
-    it belongs behind a wrapper for the same reason ``cache_save_npy`` does.
+    it belongs behind a wrapper for the same reason ``cache_write`` does.
     Constructing a ``ZipFile`` inside runtime-path code would be an unwrapped
     fs-write primitive: the zone-barrier sanitizer would not apply, the write
     would land as an unsanitized ``host_fs`` flow, and the discipline gate
@@ -353,19 +349,6 @@ def cache_rename(src: Path, dst: Path, zone_root: Path | None = None) -> None:
     _require_within_zone(src, root, "user_cache")
     _require_within_zone(dst, root, "user_cache")
     src.rename(dst)
-
-
-def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no cover - exercised by test_cache_save_npy with importorskip
-    """Save a numpy array to a cache path via ``np.save``.
-
-    SAFETY ZONE: ``user_cache``. Embeddings cache is the primary
-    consumer; ``np.save`` is the canonical write for ``.npy`` files.
-    """
-    _safety_zone_barrier()
-    # Local import keeps numpy soft-required; sketch_embeddings already
-    # imports numpy at call time, so this stays cost-free in practice.
-    import numpy as np
-    np.save(path, embedding)
 
 
 def user_out_write(path: Path, content: str) -> None:

@@ -117,9 +117,8 @@ def isolate_hypergumbo_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 
     ``HF_HOME`` is pinned to the user's real cache so HuggingFace Hub
     doesn't see the per-test ``XDG_CACHE_HOME`` as an empty cache and
-    re-download ~1.5GB of model weights (``microsoft/unixcoder-base`` +
-    ``nomic-ai/modernbert-embed-base``) into each pytest-xdist worker's
-    tmpdir. Without this pin, /tmp tmpfs fills within a single suite run.
+    re-download the model weights (``microsoft/unixcoder-base``) into each
+    pytest-xdist worker's tmpdir. Without this pin, /tmp tmpfs fills within a single suite run.
 
     ``HF_HUB_OFFLINE=1`` forces HF Hub to skip every network call —
     including the xet daemon's cache-freshness ping that ignores

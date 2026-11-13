@@ -197,8 +197,8 @@ all optional extras at once (grammars, gitleaks, embeddings, rust-analyzer).
 🟩 **`hypergumbo build-grammars [--check]`** — build the from-source tree-sitter
 grammars (Lean, Wolfram, Circom) from the C sources vendored as `hypergumbo-core` package data (`hypergumbo_core/vendor/`, so a PyPI install has them; INV-bazoz) — offline except for the build tools `pip` may fetch; needs a C/C++ compiler; see [§4](#4-supported-stacks).
 🟩 **`hypergumbo install-embeddings [--check]`** / **`hypergumbo uninstall-embeddings [--all]`** — the
-`sentence-transformers` stack used by embedding-based config extraction, and the two models it loads (analysis
-never downloads them).
+`sentence-transformers` stack used by embedding-based config extraction and README description extraction, and the
+model it loads (analysis never downloads it).
 🟩 **`hypergumbo install-gitleaks [--check]`** / **`hypergumbo uninstall-gitleaks`** — the secret scanner.
 🟩 **`hypergumbo install-rust-analyzer [--check]`** / **`hypergumbo uninstall-rust-analyzer`** — installs
 rust-analyzer via rustup for the SCIP backend. **That backend executes `build.rs`**

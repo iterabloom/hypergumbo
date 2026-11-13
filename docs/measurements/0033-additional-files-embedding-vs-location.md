@@ -119,7 +119,7 @@ Embedding 66,000 candidates was not attempted. Per-repository means:
 | Ranker | DEV R@4 | DEV R@10 | DEV R@31 | DEV MRR | TEST R@4 | TEST R@10 | TEST R@31 | TEST MRR |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | shuffled | 0.15 | 0.33 | 0.52 | 0.12 | 0.09 | 0.24 | 0.35 | 0.08 |
-| BM25, three probe paragraphs | 0.39 | 0.57 | 0.78 | 0.30 | 0.33 | 0.53 | 0.69 | 0.23 |
+| BM25, six probe paragraphs | 0.39 | 0.57 | 0.78 | 0.30 | 0.33 | 0.53 | 0.69 | 0.23 |
 | BM25, 630 seed passages from train | 0.44 | 0.59 | 0.79 | 0.34 | 0.41 | 0.55 | 0.73 | 0.26 |
 | log-odds of head terms, learned on train | 0.41 | 0.61 | 0.79 | 0.32 | 0.37 | 0.54 | 0.68 | 0.25 |
 | role, then depth | 0.52 | 0.79 | 0.95 | 0.35 | 0.43 | 0.70 | 0.80 | 0.26 |
@@ -152,7 +152,7 @@ authors point to than content similarity does.
   order measured here fills a different list. Nothing here measures whether a
   reader of the sketch understood the project better.
 - **Nothing here shows embeddings cannot rank documentation.** The shipped
-  design sampled random windows and compared against three generic paragraphs.
+  design sampled random windows and compared against six generic paragraphs.
   A different embedding design was not tried.
 - **The learned path-term table was not adopted**, and that is a judgement,
   not a measurement: it scored 0.06 higher on DEV R@4 and 0.01 higher on TEST.

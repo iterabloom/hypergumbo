@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Citations
 
-Hypergumbo uses several pretrained models for semantic analysis. If you use hypergumbo in academic work, please consider citing the underlying model papers.
+Hypergumbo uses a pretrained model for semantic analysis. If you use hypergumbo in academic work, please consider citing the underlying model paper.
 
 ## Embedding Models
 
@@ -20,46 +20,11 @@ Used for config file semantic ranking and code understanding.
 
 **Links:** [arXiv](https://arxiv.org/abs/2203.03850) | [Hugging Face](https://huggingface.co/microsoft/unixcoder-base)
 
-### ModernBERT (Additional Files Ranking)
-
-No command loads this model since the Additional Files ranking stopped using embeddings ([measurement 0033](measurements/0033-additional-files-embedding-vs-location.md)). `hypergumbo install-embeddings` still fetches it until the unused code is removed.
-
-```bibtex
-@misc{modernbert,
-  title={Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference},
-  author={Benjamin Warner and Antoine Chaffin and Benjamin Clavié and Orion Weller and Oskar Hallström and Said Taghadouini and Alexis Gallagher and Raja Biswas and Faisal Ladhak and Tom Aarsen and Nathan Cooper and Griffin Adams and Jeremy Howard and Iacopo Poli},
-  year={2024},
-  eprint={2412.13663},
-  archivePrefix={arXiv},
-  primaryClass={cs.CL},
-  url={https://arxiv.org/abs/2412.13663}
-}
-```
-
-**Links:** [arXiv](https://arxiv.org/abs/2412.13663) | [Hugging Face](https://huggingface.co/nomic-ai/modernbert-embed-base)
-
-### Nomic Embed
-
-The ModernBERT model we use is based on the Nomic Embed training methodology.
-
-```bibtex
-@misc{nussbaum2024nomic,
-  title={Nomic Embed: Training a Reproducible Long Context Text Embedder},
-  author={Zach Nussbaum and John X. Morris and Brandon Duderstadt and Andriy Mulyar},
-  year={2024},
-  eprint={2402.01613},
-  archivePrefix={arXiv},
-  primaryClass={cs.CL}
-}
-```
-
-**Links:** [arXiv](https://arxiv.org/abs/2402.01613) | [Nomic AI](https://www.nomic.ai/)
-
-## How These Models Are Used
+## How The Model Is Used
 
 1. **Config extraction** (`--config`): UniXcoder embeddings identify configuration-relevant files by comparing them against semantic probes like "what is the project structure" and "how to build the project".
 
-2. **Additional files ranking** uses no model. It did until measurement 0033: ModernBERT embeddings ranked non-source files by 5W1H (Who, What, Where, When, Why, How) similarity.
+2. **Additional files ranking** uses no model: documentation before configuration, shallower paths first, wording as the tie-break. It used a second embedding model, ModernBERT, until [measurement 0033](measurements/0033-additional-files-embedding-vs-location.md) found that ranking slow, unrepeatable and no better than file role and depth.
 
 3. **All embedding computation is local** — no data is sent to external services.
 
