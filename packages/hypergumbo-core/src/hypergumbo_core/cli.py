@@ -354,6 +354,7 @@ from .supply_chain import (
     vendored_analysed_summary,
 )
 from .ranking import (
+    STATIC_TEST_REACH_BLIND_SPOT,
     rank_symbols, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
 )
@@ -8452,10 +8453,9 @@ _TEST_COVERAGE_RECALL_DISCLAIMER = (
     "Empirical false-negative rate ~20% across measured languages "
     "(UAT 2026-04-13, 4 languages, n=hundreds): the tool has high "
     "precision (when it says a function is tested, it is) but limited "
-    "recall (some genuinely-tested functions appear in 'Cold Spots' "
-    "because the tests reach them via dispatch the static call graph "
-    "cannot see). Treat 'untested' as 'unreached by static call graph', "
-    "not 'definitely untested'."
+    "recall (some genuinely-tested functions appear in 'Cold Spots': "
+    f"{STATIC_TEST_REACH_BLIND_SPOT}). Treat 'untested' as 'unreached by "
+    "static call graph', not 'definitely untested'."
 )
 
 

@@ -198,7 +198,7 @@ Counts and LOC cover only files with at least one detected symbol; files with no
 
 1435 test files · cargo test, pytest, unittest
 
-*~63% estimated coverage (4700/7446 functions called by tests)*
+*4700 of 7446 functions (63%) are reached from tests in the static call graph; tests that reach code through dynamic dispatch, reflection, a macro or another process are not seen, so more may be tested than counted. `hypergumbo test-coverage` lists the functions not reached.*
 
 ## Configuration
 

@@ -43,6 +43,7 @@ from hypergumbo_core.sketch import (
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
 from hypergumbo_core.profile import detect_profile
+from hypergumbo_core.ranking import STATIC_TEST_REACH_BLIND_SPOT
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import Entrypoint, EntrypointKind
 from hypergumbo_core.datamodels import DataModel
@@ -6901,14 +6902,21 @@ class TestFormatTestSummary:
         assert "pytest" not in result
 
     def test_coverage_stats_replaces_hint(self, tmp_path: Path) -> None:
-        """When coverage_stats provided, shows estimated coverage instead of hint."""
+        """When coverage_stats is provided, the count of functions reached
+        from tests replaces the hint, worded as what it is (WI-tigos)."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         # Provide coverage stats: 5 out of 10 functions tested (50%)
         coverage_stats = (5, 10, 50.0)
         result = _format_test_summary(tmp_path, coverage_stats)
         assert result.startswith("## Tests\n")
-        assert "~50% estimated coverage" in result
-        assert "5/10 functions called by tests" in result
+        assert ("*5 of 10 functions (50%) are reached from tests in the static "
+                "call graph;") in result
+        # It is not called coverage, and it says which way it errs.
+        assert "estimated coverage" not in result
+        assert STATIC_TEST_REACH_BLIND_SPOT in result
+        assert "so more may be tested than counted" in result
+        assert result.rstrip().endswith(
+            "`hypergumbo test-coverage` lists the functions not reached.*")
         # Should NOT show the "Coverage requires execution" hint
         assert "Coverage requires execution" not in result
 
@@ -6917,25 +6925,45 @@ class TestFormatTestSummary:
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         coverage_stats = (0, 10, 0.0)
         result = _format_test_summary(tmp_path, coverage_stats)
-        assert "~0% estimated coverage" in result
-        assert "0/10 functions called by tests" in result
+        assert "*0 of 10 functions (0%) are reached from tests" in result
 
     def test_shell_integration_count_with_coverage(self, tmp_path: Path) -> None:
         """Shell integration count appended to coverage line."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         coverage_stats = (3, 10, 30.0)
         result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=5)
-        assert "~30% estimated coverage" in result
-        assert "3/10 functions called by tests" in result
-        assert "+ 5 shell integration scripts" in result
+        assert "*3 of 10 functions (30%) are reached from tests" in result
+        assert "counted (+ 5 shell integration scripts). `hypergumbo" in result
 
     def test_shell_integration_count_singular(self, tmp_path: Path) -> None:
         """Uses singular 'script' for count of 1."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         coverage_stats = (3, 10, 30.0)
         result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=1)
-        assert "+ 1 shell integration script" in result
+        assert "counted (+ 1 shell integration script). `hypergumbo" in result
         assert "scripts" not in result
+
+    def test_the_sketch_and_test_coverage_share_one_wording(self) -> None:
+        """The clause naming what static analysis cannot see is one constant,
+        used by the sketch's line and by ``test-coverage``'s disclaimer."""
+        from hypergumbo_core import cli
+        from hypergumbo_core.ranking import static_test_reach_line
+
+        assert STATIC_TEST_REACH_BLIND_SPOT in static_test_reach_line(1, 2)
+        assert STATIC_TEST_REACH_BLIND_SPOT in cli._TEST_COVERAGE_RECALL_DISCLAIMER
+
+    def test_the_line_carries_no_rate_and_survives_an_empty_total(self) -> None:
+        """How much is missed differs by language and test style, so the
+        sentence states a direction and no number of its own."""
+        import re
+
+        from hypergumbo_core.ranking import static_test_reach_line
+
+        assert static_test_reach_line(0, 0).startswith("0 of 0 functions (0%)")
+        assert static_test_reach_line(2, 3).startswith("2 of 3 functions (67%)")  # rounded
+        line = static_test_reach_line(4764, 7542)
+        assert line.startswith("4764 of 7542 functions (63%) are reached from tests")
+        assert re.findall(r"\d+", line) == ["4764", "7542", "63"]
 
     def test_shell_integration_only_no_coverage(self, tmp_path: Path) -> None:
         """Shell integration tests shown when no call graph coverage available."""

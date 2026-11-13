@@ -1420,6 +1420,35 @@ def get_importance_threshold(
     return scores[index]
 
 
+#: What a static call graph cannot see between a test and the code it
+#: exercises. ONE wording for every surface that prints a test-reach figure
+#: (the sketch's Tests line and ``test-coverage``'s disclaimer, WI-tigos):
+#: before, the sketch printed the figure as "estimated coverage" with no
+#: direction of error, and a repository held to 100% line coverage read 63%.
+STATIC_TEST_REACH_BLIND_SPOT = (
+    "tests that reach code through dynamic dispatch, reflection, a macro or "
+    "another process are not seen"
+)
+
+
+def static_test_reach_line(tested: int, total: int) -> str:
+    """One sentence for a figure from :func:`compute_transitive_test_coverage`.
+
+    It says what was counted (functions reached from tests in the static
+    call graph), never "coverage", and which way the count errs. The wording
+    is true of every language and test style, so it carries no rate: how
+    much is missed differs with how tests reach code, and
+    ``hypergumbo test-coverage`` prints the measured figure and the
+    per-language blind spots.
+    """
+    percent = round(100 * tested / total) if total else 0
+    return (
+        f"{tested} of {total} functions ({percent}%) are reached from tests in "
+        f"the static call graph; {STATIC_TEST_REACH_BLIND_SPOT}, so more may "
+        "be tested than counted"
+    )
+
+
 def compute_transitive_test_coverage(
     test_ids: set[str],
     target_ids: set[str],

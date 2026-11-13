@@ -35,7 +35,7 @@ Sections in emission order:
     detected symbol are left out of the counts and LOC
 4.  Frameworks — the profile's detected frameworks plus its dev/test-only
     frameworks (annotated ``(dev)``), in one alphabetical list
-5.  Tests — test framework + estimated coverage breakdown
+5.  Tests — test frameworks + how many functions tests reach statically
 6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``),
     extracted per ``config_extraction_mode``: heuristic (known-field
     patterns), embedding (semantic line selection, plus embedding
@@ -154,6 +154,7 @@ from .ranking import (
     compute_file_scores,
     _is_test_path,
     compute_transitive_test_coverage,
+    static_test_reach_line,
     compute_raw_in_degree,
     compute_symbol_mention_centrality_batch,
     compute_harmonic_shares,
@@ -5479,15 +5480,20 @@ def _format_test_summary(
     # Build coverage line with optional shell integration test info
     coverage_line = ""
     if coverage_stats is not None:
-        tested, total, pct = coverage_stats
+        tested, total, _pct = coverage_stats
 
         # Format the shell integration test suffix
         shell_suffix = ""
         if shell_integration_count > 0:
             script_word = "script" if shell_integration_count == 1 else "scripts"
-            shell_suffix = f" + {shell_integration_count} shell integration {script_word}"
+            shell_suffix = f" (+ {shell_integration_count} shell integration {script_word})"
 
-        coverage_line = f"\n\n*~{pct:.0f}% estimated coverage ({tested}/{total} functions called by tests){shell_suffix}*"
+        # WI-tigos: the figure is a count of what the static call graph
+        # reaches, worded once for the sketch and ``test-coverage``.
+        coverage_line = (
+            f"\n\n*{static_test_reach_line(tested, total)}{shell_suffix}. "
+            "`hypergumbo test-coverage` lists the functions not reached.*"
+        )
     elif shell_integration_count > 0:
         # No call graph coverage but we have shell integration tests
         script_word = "script" if shell_integration_count == 1 else "scripts"
