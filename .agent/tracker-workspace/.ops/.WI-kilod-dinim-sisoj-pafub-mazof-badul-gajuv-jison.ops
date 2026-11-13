@@ -1,0 +1,37 @@
+- op: create  # 5ca8
+  at: '2026-11-13T11:15:31Z'  # 5ca8
+  by: agent  # 5ca8
+  actor: jgstern_agent  # 5ca8
+  clock: 1  # 5ca8
+  nonce: 5ca8  # 5ca8
+  data:  # 5ca8
+    kind: work_item  # 5ca8
+    title: "The ModernBERT embedding path has no caller since Additional Files stopped using it: delete batch_embed_files and its helpers, and stop install-embeddings fetching a model nothing loads"  # 5ca8
+    status: todo_hard  # 5ca8
+    priority: 3  # 5ca8
+    parent:  # 5ca8
+    tags:  # 5ca8
+    - sketch  # 5ca8
+    - performance  # 5ca8
+    - for_deletion  # 5ca8
+    isbefore: []  # 5ca8
+    duplicate_of: []  # 5ca8
+    not_duplicate_of: []  # 5ca8
+    pr_ref:  # 5ca8
+    description: "Residual of WI-patof-kujil-jikit-fobar-bokiz-mipar-mafan-mozub (2026-11-13). The sketch's Additional Files section took one of its three lists from an embedding ranking; measurement 0033 found it cost a quarter of a second per candidate, did not reproduce itself and found fewer README-linked files than role and depth do, and the list is now overview_rank.rank_overview_files (no model).\n\nWHAT IS LEFT WITH NO PRODUCTION CALLER, all in hypergumbo_core/sketch_embeddings.py unless noted:\n- embed_file_for_semantic_ranking, batch_embed_files, compute_5w1h_similarity\n- _extract_file_samples, _load_modernbert_model, _get_additional_files_probe_embeddings\n- _MODERNBERT_MODEL_NAME, _MODERNBERT_TRUNCATE_DIM, and the per-file embedding cache helpers (_compute_file_hash, _load_cached_embedding, _save_cached_embedding) if nothing else reads them: check each caller before deleting\n- the additional-files probe embeddings in _embedding_data.py and their generator in scripts/compute_probe_embeddings.py\n- EMBEDDING_MODELS still lists the ModernBERT model, so hypergumbo install-embeddings downloads it and no command loads it\n\nADDITIONAL_FILES_PROBES (the three paragraphs) STAYS: overview_rank reads it as its BM25 query. Move it to overview_rank when the embedding code goes.\n\nALSO: tests of the deleted functions (test_sketch.py batch_embed_files block, test_embedding_file_samples_determinism.py, the ModernBERT halves of test_embeddings_offline_degradation.py and test_embeddings_never_fetched_at_runtime.py), docs/CITATIONS.md's ModernBERT entry, docs/hypergumbo.io-allowlist.yaml entries for the deleted sites, the user-cache embeddings directory that existing installs hold (say what happens to it), and docs/example-output.md, whose recorded run shows the removed \"Embedding additional files\" phase.\n\nNOT IN SCOPE: the other embedding model (_EMBEDDING_MODEL, unixcoder) and its users: README description extraction and embedding-based config discovery and extraction. Whether those earn their cost is a separate question; measurement 0033 says nothing about them.\n\nGENERALITY (owner, 2026-11-13): nothing here is specific to a repository or a language; the acceptance is that install-embeddings fetches only models some command loads, checked by a test over EMBEDDING_MODELS and the loaders."  # 5ca8
+    fields: {}  # 5ca8
+- op: update  # 4bcc
+  at: '2026-11-13T13:47:23Z'  # 4bcc
+  by: agent  # 4bcc
+  actor: jgstern_agent  # 4bcc
+  clock: 2  # 4bcc
+  nonce: 4bcc  # 4bcc
+  set:  # 4bcc
+    status: done  # 4bcc
+- op: discuss  # 2dda
+  at: '2026-11-13T13:47:23Z'  # 2dda
+  by: agent  # 2dda
+  actor: jgstern_agent  # 2dda
+  clock: 3  # 2dda
+  nonce: 2dda  # 2dda
+  message: "Done in the same PR as its parent, #2170 (dev ad78277020), because check-allowlist-commands refused the first commit: the I/O allowlist listed the ModernBERT loader and safety_zones.cache_save_npy as reached by `sketch`, and they no longer were. Removed: embed_file_for_semantic_ranking, batch_embed_files, compute_5w1h_similarity, _extract_file_samples, _load_modernbert_model, the probe-embedding loader, _compute_file_hash / _load_cached_embedding / _save_cached_embedding / _get_cache_dir, safety_zones.cache_save_npy, the precomputed 5W1H vectors and their half of scripts/compute_probe_embeddings.py, their tests, the two allowlist entries, the self-catalogue row and the test-only-reachability baseline entry. EMBEDDING_MODELS is ('microsoft/unixcoder-base',). ACCEPTANCE as filed: packages/hypergumbo-core/tests/test_embeddings_never_fetched_at_runtime.py::test_install_fetches_only_models_a_loader_loads checks that every model in EMBEDDING_MODELS is one a loader passes to the cache-only constructor; check-io-allowlist and check-allowlist-commands pass (308 sites, 255 entries). The probe paragraphs moved to overview_rank.OVERVIEW_PROBES. NOT DONE, and small: cache-status still reports an embeddings/ directory when an older version left one (nothing writes there now; cache-clear removes it with the rest), and docs/example-output.md is a recorded run from 11-09 that still shows the removed phase."  # 2dda

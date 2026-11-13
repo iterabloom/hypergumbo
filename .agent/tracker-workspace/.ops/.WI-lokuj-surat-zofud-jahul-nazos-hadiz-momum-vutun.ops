@@ -1,0 +1,23 @@
+- op: create  # 9b0b
+  at: '2026-11-13T13:48:01Z'  # 9b0b
+  by: agent  # 9b0b
+  actor: jgstern_agent  # 9b0b
+  clock: 1  # 9b0b
+  nonce: 9b0b  # 9b0b
+  data:  # 9b0b
+    kind: work_item  # 9b0b
+    title: "Tiered and compact views compute metrics from the slimmed node records, so every node is in supply-chain tier \"unknown\", every language has files 0, and projection counts sit unlabelled beside whole-repo counts"  # 9b0b
+    status: todo_hard  # 9b0b
+    priority: 3  # 9b0b
+    parent:  # 9b0b
+    tags:  # 9b0b
+    - outside_reader_review_20261113  # 9b0b
+    - dogfood  # 9b0b
+    - compact  # 9b0b
+    - metrics  # 9b0b
+    isbefore: []  # 9b0b
+    duplicate_of: []  # 9b0b
+    not_duplicate_of: []  # 9b0b
+    pr_ref:  # 9b0b
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev 847ce5888e.\n\nOBSERVED in survey.4k.json, survey.16k.json and survey.64k.json:\n1. metrics.by_supply_chain_tier has one bucket, \"unknown\", holding every node (1, 19 and 143). The same files' nodes_summary.omitted.tiers reports real tiers (1: 10,511; 3: 149).\n2. metrics.languages.<lang>.files is 0 for every language, beside nodes counts of 14 to 113.\n3. metrics.total_nodes / total_edges / total_files describe the projection (1 node at 4k) while metrics.framework_patterns (test-frameworks: 7835, library-exports: 111) and metrics.debug.profile_files_sum (2460) describe the whole repository. Nothing in the block says which is which.\n\nMECHANISM. compact._recompute_view_metrics calls metrics.compute_metrics(view_map[\"nodes\"], view_map[\"edges\"], ...) after the nodes have been replaced by compact_node() records. compact_node keeps nine fields and drops the supply_chain block, so compute_metrics reads node.get(\"supply_chain\", {}).get(\"tier_name\", \"unknown\") and gets the default for every node. files counts kind == \"file\" nodes, and the tiered and compact selections exclude that kind, so it is 0 by construction. framework_patterns is passed through from the source map on purpose (the code comment: a fact about the enrichment run, not about the projected arrays); the block does not say so.\n\nTwo of these are the ABSENT-is-not-EMPTY shape: a value the projection cannot know is printed as a measured \"unknown\" and a measured 0.\n\nASK\n- Compute the projection's metrics from records that still carry what the metrics read (the selected Symbols or their full node dicts), or leave out of a projection's metrics every figure the projection cannot support. A key the view cannot fill must be absent, never a default.\n- Separate, by structure or by name, the figures that describe the projection from the figures that describe the repository.\n- One test that reads each metrics figure of a projected view and checks it against the view's own arrays or against the source map, whichever the figure claims to describe.\n\nNOT A DEFECT (checked). The same review listed analysis_incomplete: false beside limits.partial_results_reason as a contradiction. The spec rules it is not one (the partial_results_reason paragraph, \"This is NOT tied to analysis_incomplete (WI-zafid)\", and section 17): a soft file-drop sets the reason and leaves the flag unset. No change is asked for; it is recorded here so it is not filed again.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe mechanism is independent of repository and language: any view built with compact_node has it, the compact view included (same helper). Acceptance: the test above on a multi-language fixture with nodes in at least two supply-chain tiers, and the figures read from tier files of at least two repositories that are not hypergumbo."  # 9b0b
+    fields: {}  # 9b0b

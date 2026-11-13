@@ -1,0 +1,23 @@
+- op: create  # 0e78
+  at: '2026-11-13T13:53:34Z'  # 0e78
+  by: agent  # 0e78
+  actor: jgstern_agent  # 0e78
+  clock: 1  # 0e78
+  nonce: '0e78'  # 0e78
+  data:  # 0e78
+    kind: work_item  # 0e78
+    title: "Sketch quotes files that git ignores and does not track (a stray local output file appears in the Configuration section): discovery has no rule for ignored-and-untracked files"  # 0e78
+    status: needs_human_review  # 0e78
+    priority: 3  # 0e78
+    parent:  # 0e78
+    tags:  # 0e78
+    - outside_reader_review_20261113  # 0e78
+    - dogfood  # 0e78
+    - sketch  # 0e78
+    - discovery  # 0e78
+    isbefore: []  # 0e78
+    duplicate_of: []  # 0e78
+    not_duplicate_of: []  # 0e78
+    pr_ref:  # 0e78
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev 847ce5888e.\n\nOBSERVED. Every sketch of this repository carries, under Configuration, \"[packages/hypergumbo-core/slice.json]\" with an entry node \"python:src/main.py:1-2:my_func:function\". That file is a leftover local output from July: git check-ignore reports it ignored by .gitignore line 22 (slice.json), and git ls-files does not list it. A reader takes it for part of the project.\n\nMECHANISM. sketch._discover_config_files_embedding (and the other sketch file walks) take their files from discovery's FileIndex or from rglob. Discovery consults git in two places only, both for DIRECTORIES (ADR-0004 point 7: dist/build/out beside a package.json when positively untracked; a self-ignoring .gitignore when the directory is not committed). Nothing asks whether a single FILE is ignored and untracked. ADR-0004 point 3 rules the converse case (a tracked file is real even where the name looks derived); the record is silent on this one.\n\nWHAT NEEDS DECIDING (the record is silent, so this is a ruling for the owner before code)\n- Is a file that the repository's VCS ignores AND does not track part of what hypergumbo describes? Arguments for \"no\": it is by the project's own declaration not project content (local outputs, editor state, secrets files, caches), and quoting it in a sketch misleads; the analysis of a clean checkout and of a working tree would then agree. Arguments for \"yes\" or \"not everywhere\": a non-git directory has no such signal, so behaviour would differ by VCS; some teams ignore generated-but-meaningful files; excluding by ignore rules from ANALYSIS is a larger change than excluding from what the sketch QUOTES.\n- If \"no\": at which layer. Options: (a) discovery, for every consumer (analysis, sketch, verify-claims); (b) the sketch's quoting sections only (Configuration, Additional Files, Source Files Content); (c) disclosure only: keep the file and mark it \"untracked, ignored\".\n- How the answer is obtained cheaply and correctly: one git call per run listing ignored-untracked paths (git ls-files --others --ignored --exclude-standard), cached with the file index; nothing when the directory is not a git work tree.\n\nMEASURE BEFORE CHOOSING. On this checkout and on at least three other working trees, how many discovered files are ignored-and-untracked, of what kinds, and how many of them reach a node, a Configuration quote or an Additional Files entry today.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe rule must be stated in terms of the VCS's own answer, never a list of names such as slice.json; it must say what happens with no VCS, and with a VCS other than git if one is detected. Secrets files (.env) are the case to get right: they are commonly ignored, and a sketch that quotes one is worse than a sketch that quotes a stale output."  # 0e78
+    fields: {}  # 0e78

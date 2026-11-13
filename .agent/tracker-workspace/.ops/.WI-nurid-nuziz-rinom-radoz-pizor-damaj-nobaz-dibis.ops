@@ -1,0 +1,22 @@
+- op: create  # 55e5
+  at: '2026-11-13T13:53:22Z'  # 55e5
+  by: agent  # 55e5
+  actor: jgstern_agent  # 55e5
+  clock: 1  # 55e5
+  nonce: '55e5'  # 55e5
+  data:  # 55e5
+    kind: work_item  # 55e5
+    title: "Sketch Data Models cuts the list by global rank and then groups by file, so a file heading shows part of its models with nothing saying the rest were left out"  # 55e5
+    status: todo_hard  # 55e5
+    priority: 3  # 55e5
+    parent:  # 55e5
+    tags:  # 55e5
+    - outside_reader_review_20261113  # 55e5
+    - dogfood  # 55e5
+    - sketch  # 55e5
+    isbefore: []  # 55e5
+    duplicate_of: []  # 55e5
+    not_duplicate_of: []  # 55e5
+    pr_ref:  # 55e5
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev 847ce5888e.\n\nOBSERVED. In the 8k sketch the heading for cfg.py lists 5 data models; the 32k sketch lists 8 under the same heading (the file has 21 @dataclass classes by grep; how many the detector found in all was not read). The only truncation notice is the section's last line, \"... and 291 more data models\", which does not say that any listed file is incomplete.\n\nMECHANISM. sketch._format_datamodels sorts all models by rank_score, takes sorted_models[:max_entries], and only then groups the survivors by file path. A file whose models straddle the cut is printed with the ones above it. The reader sees a per-file list and reads it as that file's models.\n\nASK. A per-file list is complete or says how many of that file's models are not shown (for example a \"+3 more in this file\" bullet), and the section total counts what is left after those. Decide whether a file's group is better kept whole when most of it made the cut; state the rule. The same check applies to every sketch section that truncates globally and then groups (Entry Points groups and Key Symbols already carry per-group \"... and N more\" lines; confirm each one counts within its group).\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe mechanism is a property of rank-then-group and holds for any language's data models (dataclasses, structs, ORM models, protobuf messages, records). Acceptance: a fixture where one file's models straddle the cut, in two languages, plus the rendered section from one repository that is not hypergumbo."  # 55e5
+    fields: {}  # 55e5

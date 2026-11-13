@@ -1,0 +1,23 @@
+- op: create  # 458d
+  at: '2026-11-13T13:53:28Z'  # 458d
+  by: agent  # 458d
+  actor: jgstern_agent  # 458d
+  clock: 1  # 458d
+  nonce: 458d  # 458d
+  data:  # 458d
+    kind: work_item  # 458d
+    title: "Sketch file listings are sized at 12 tokens per entry but an entry with its docstring costs about 32, so Source Files takes about 2.6 times its share and at large budgets runs deep into low-ranked files (553 test files at 128k)"  # 458d
+    status: todo_hard  # 458d
+    priority: 3  # 458d
+    parent:  # 458d
+    tags:  # 458d
+    - outside_reader_review_20261113  # 458d
+    - dogfood  # 458d
+    - sketch  # 458d
+    - token_budget  # 458d
+    isbefore: []  # 458d
+    duplicate_of: []  # 458d
+    not_duplicate_of: []  # 458d
+    pr_ref:  # 458d
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev 847ce5888e.\n\nOBSERVED. The 128k sketch's Source Files list has 1,031 entries and is 26.0% of the sketch. 553 of the entries are test files (13.8% of the sketch); the first appears at position 443, after which 553 of the remaining 588 entries are tests. The 8k and 32k lists (34 and 231 entries) contain no test file.\n\nTHE REVIEW'S READING WAS WRONG IN ONE RESPECT. It called the test files \"listed alphabetically and cut off at test_t\". They are in rank order (ranking.rank_files gives them density scores; they sort below the non-test files), and the last one beginning with test_t is a coincidence. What is true is the share.\n\nMECHANISM. generate_sketch sizes both listings with tokens_per_file = 12 (sketch.py; about 48 characters): max_source_files = budget_for_files // 12, where budget_for_files is 10% of the remaining tokens with --with-source and 25% without. Since Source Files entries carry the module docstring (WI-kipod), an entry averages about 127-130 characters, 32 tokens. The section therefore takes about 2.6 times the share ADR-0005 gives it, and the entry count is 2.6 times what the share would buy. At a large budget that count exceeds the number of files the ranking can tell apart, and the list runs on through the tail. Additional Files uses the same constant for bare paths, where it is closer to right.\n\nASK\n- Size a listing by what its entries cost: measure the rendered entries (or estimate per entry from path and docstring length) instead of a constant set before docstrings were added. Then the section holds its ADR-0005 share at every budget.\n- Decide what the list does past the files worth naming one by one: stop and summarise the remainder by directory with counts, or keep listing. State the rule in ADR-0005.\n- The line that ends the list should say what was left out (how many files, of what kind) rather than only \"... and N more files\".\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe mis-sizing is arithmetic and holds for every repository whose files carry module docstrings or header comments, in any language. Acceptance: Source Files' share of the sketch at 8k, 32k and 128k, with and without --with-source, on this repo and on at least two repositories that are not hypergumbo, before and after, against the ADR-0005 share."  # 458d
+    fields: {}  # 458d
