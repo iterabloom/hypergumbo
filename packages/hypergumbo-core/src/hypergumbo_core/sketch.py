@@ -130,6 +130,7 @@ context space effectively while remaining coherent.
 from __future__ import annotations
 
 import os
+from collections import Counter
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
@@ -5766,6 +5767,23 @@ def _route_handler_hint(sym: Symbol) -> str:
                or meta.get("handler_name") or "")
 
 
+def _entry_label(label: str, name: str, path: str) -> str:
+    """An entry point's label without what its line already says.
+
+    A detector writes a label to be read on its own, so it ends with the
+    entry's name or path: ``Shell script (scripts/build.sh)``,
+    ``Library export: New``. On an Entry Points line the name comes before
+    the label and the path may come after it, and the label would say one of
+    them a second time. ``path`` is empty when the line does not show it; the
+    label then keeps the only copy.
+    """
+    for said in (name, path):
+        for tail in (f" ({said})", f": {said}"):
+            if said and label.endswith(tail) and len(label) > len(tail):
+                return label[: -len(tail)]
+    return label
+
+
 def _format_entrypoints(
     entrypoints: list[Entrypoint],
     symbols: list[Symbol],
@@ -5789,6 +5807,21 @@ def _format_entrypoints(
     A route marker (``meta.framework_role == "route"``) is named after its
     route, so its label would only repeat the name; its line names the
     handler instead (:func:`_route_handler_hint`).
+
+    A line must identify its entry (WI-johuv). After the dash it shows the
+    docstring when there is one, since what an entry does is said nowhere
+    else (WI-kipod), and the path otherwise. That leaves an entry with a
+    docstring unlocated, which is harmless while its name is unique and not
+    when it is not: every Go command has a ``main``, every Go package a
+    ``New``, every serverless function a ``handler``. So an entry whose
+    displayed name is shared by another entry SHOWN in this section carries
+    its path as well as its docstring, and two such entries in one file
+    carry their line too. The rule reads the names shown, never a particular
+    name.
+
+    A line says a thing once: an entry whose name is its own path (a script)
+    does not repeat it, and a label drops the name or path it ends with
+    (:func:`_entry_label`). Those repeats cost more than the added paths.
     """
     if not entrypoints:
         return ""
@@ -5829,6 +5862,24 @@ def _format_entrypoints(
     quotas = _share_entry_budget([len(eps) for _n, eps in present], max_entries)
 
     repo_root_str = str(repo_root)
+
+    def rel(sym: Symbol) -> str:
+        if sym.path.startswith(repo_root_str):
+            return sym.path[len(repo_root_str) + 1:]
+        return sym.path
+
+    # How many SHOWN entries carry each displayed name, and each name in each
+    # file: a name shown twice identifies neither entry, and a path does not
+    # separate two entries of one file.
+    shown_names: Counter[str] = Counter()
+    shown_places: Counter[tuple[str, str]] = Counter()
+    for (_group_name, eps), quota in zip(present, quotas, strict=True):
+        for ep in eps[:quota]:
+            shown = symbol_by_id.get(ep.symbol_id)
+            if shown:
+                shown_names[shown.name] += 1
+                shown_places[(shown.name, rel(shown))] += 1
+
     for (group_name, eps), quota in zip(present, quotas, strict=True):
         lines.append(f"### {group_name}")
         lines.append("")
@@ -5836,22 +5887,29 @@ def _format_entrypoints(
         for ep in eps[:quota]:
             sym = symbol_by_id.get(ep.symbol_id)
             if sym:
+                rel_path = rel(sym)
+                # WI-kipod: prefer the captured docstring (what the entry
+                # point does) over the path (where it lives); the
+                # human-written intent is not shown anywhere else. WI-johuv:
+                # the path too when the name alone does not say which entry
+                # this is.
+                show_path = rel_path != sym.name and (
+                    not sym.docstring or shown_names[sym.name] > 1)
                 if (sym.meta or {}).get("framework_role") == "route":
                     handler = _route_handler_hint(sym)
                     head = f"- `{sym.name}`" + (f" → `{handler}`" if handler else "")
                 else:
-                    head = f"- `{sym.name}` ({ep.label})"
-                # WI-kipod: prefer the captured docstring (what the entry
-                # point does) over the path (where it lives). The path is
-                # recoverable via `explain` / the Source Files section; the
-                # human-written intent is not shown anywhere else.
+                    label = _entry_label(
+                        ep.label, sym.name, rel_path if show_path else "")
+                    head = f"- `{sym.name}` ({label})"
+                parts = [head]
+                if show_path and sym.span and shown_places[(sym.name, rel_path)] > 1:
+                    parts.append(f"`{rel_path}:{sym.span.start_line}`")
+                elif show_path:
+                    parts.append(f"`{rel_path}`")
                 if sym.docstring:
-                    lines.append(f"{head} — {sym.docstring}")
-                else:
-                    rel_path = sym.path
-                    if rel_path.startswith(repo_root_str):
-                        rel_path = rel_path[len(repo_root_str) + 1:]
-                    lines.append(f"{head} — `{rel_path}`")
+                    parts.append(sym.docstring)
+                lines.append(" — ".join(parts))
             else:
                 lines.append(f"- `{ep.symbol_id}` ({ep.label})")
 

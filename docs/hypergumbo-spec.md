@@ -1479,6 +1479,8 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 
 **Entry Points budget:** the section gets a third of the remaining budget (ADR-0005), turned into one entry count shared by all its groups (CLI & Scripts, HTTP Routes, Library API, …): groups that fit their fair share are shown whole, and the rest is split evenly among the larger groups, each keeping at least one entry. A group that overflows ends with `... and N more`; for HTTP Routes that line points at `hypergumbo routes`, which lists every route. A route marker's line names its handler (`GET /feed` → `FeedController.index`) rather than repeating the route as its label (INV-liraj).
 
+**An Entry Points line identifies its entry.** After the name and label a line shows the entry's docstring when it has one and its path otherwise. An entry whose name another entry shown in the section also carries (`main` in every Go command, `New` in every Go package, `handler` in every serverless function) shows its path as well as its docstring, and two such entries in one file show `path:line`. A line says a thing once: an entry named by its own path does not repeat it, and a label drops the name or path it ends with (`Shell script (scripts/build.sh)` is printed as `Shell script`).
+
 ### Additional Files selection
 
 The Additional Files section uses a README-first hybrid ranking algorithm:
