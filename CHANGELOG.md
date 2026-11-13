@@ -117,6 +117,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch Data Models and Key Symbols count each shown file's hidden entries under that file**, not as "other files".
 - **Sketch Source Files holds its budget share**: sized by entry cost; the closing line says what was left out.
 - **Sketch Additional Files ranks process files and symbol-name data files lower**, and gives the README a real content share.
+- **Sketch Key Symbols and Additional Files listings hold their budget shares**; small-budget `--with-source` sketches print source again.
 - **A budget-tier survey file fits its budget as written**, records the size it reached in `tier_tokens_used`, and no longer leaves budget unused while dropping nodes.
 
 #### Run reporting and graph integrity

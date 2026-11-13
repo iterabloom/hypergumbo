@@ -4991,6 +4991,7 @@ def _format_additional_files(
     section_title: str = "Additional Files",
     preselected_files: list[Path] | None = None,
     copies: dict[Path, list[Path]] | None = None,
+    max_list_tokens: int | None = None,
 ) -> tuple[str, list[Path], int]:
     """Format additional files (non-source) as a Markdown section.
 
@@ -5026,10 +5027,14 @@ def _format_additional_files(
             copies (:func:`_group_identical_files`). Selection fills it;
             a call with ``preselected_files`` reads it. Each such file is
             listed, and printed, once, with its copies named beside it.
+        max_list_tokens: Budget of the listing (list mode). Entries are
+            added in selection order until the next would pass it; the
+            first is always listed. ``max_files`` still bounds how many
+            files are selected.
 
     Returns:
-        Tuple of (Markdown section, selected file paths, de-duplicated
-        in-degree sum).
+        Tuple of (Markdown section, the file paths listed or printed,
+        de-duplicated in-degree sum).
     """
     if copies is None:
         copies = {}
@@ -5081,16 +5086,37 @@ def _format_additional_files(
     if not include_content or token_budget is None:
         # Simple list format
         lines = [_section_header(section_title, exclude_tests), ""]
+        # The listing is cut by what its entries cost (WI-borap): entries
+        # are added in selection order until the next would pass
+        # ``max_list_tokens``, and the first is always listed. A path is
+        # anything from a few characters to over a hundred, so a count of
+        # entries does not bound the section.
+        room = None if max_list_tokens is None else (
+            max_list_tokens * CHARS_PER_TOKEN - sum(len(line) + 1 for line in lines))
+        listed: list[Path] = []
         for f in selected_files:
             rel_path = f.relative_to(repo_root)
             same = also_at(f)
-            lines.append(f"- `{rel_path}`" + (f" (same content: {same})" if same else ""))
+            entry = f"- `{rel_path}`" + (f" (same content: {same})" if same else "")
+            if room is not None:
+                room -= len(entry) + 1
+                if room < 0 and listed:
+                    break
+            lines.append(entry)
+            listed.append(f)
 
-        remaining = len(candidate_files) - len(selected_files)
+        remaining = len(candidate_files) - len(listed)
         if remaining > 0:
             lines.append(f"- ... and {remaining} more files")
 
-        return "\n".join(lines), selected_files, selected_in_degree
+        if len(listed) < len(selected_files):
+            # The statistic covers the files listed, as it did when the
+            # selection and the listing were the same files.
+            selected_in_degree = sum(
+                name_to_in_degree.get(sym, 0)
+                for sym in set().union(*(symbols_per_file.get(f, set()) for f in listed))
+            )
+        return "\n".join(lines), listed, selected_in_degree
 
     # ========== Content Mode with Dynamic Truncation ==========
 
@@ -6369,6 +6395,7 @@ def _format_symbols(
     language_proportional: bool = True,
     exclude_tests: bool = False,
     selected_symbols_out: list[Symbol] | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Format key symbols (functions, classes) as a Markdown section.
 
@@ -6396,8 +6423,12 @@ def _format_symbols(
         docstrings: Optional dict mapping symbol IDs to docstring summaries.
         signatures: Optional dict mapping symbol IDs to function signatures.
         language_proportional: If True, use language-stratified selection.
-        selected_symbols_out: If provided, populated with the selected Symbol objects
-            for stats tracking. The list is cleared and filled with symbols.
+        selected_symbols_out: If provided, cleared and filled with the
+            symbols shown as bullets, for stats tracking.
+        max_tokens: The section's budget. File blocks are added in rank
+            order until the next would pass it; the first is always shown.
+            The closing lines (the count of symbols in files not shown, the
+            note on repeated names) come on top, at most eight short lines.
     """
     if docstrings is None:
         docstrings = {}
@@ -6466,11 +6497,6 @@ def _format_symbols(
     if not selected:  # pragma: no cover
         return ""
 
-    # Populate selected_symbols_out for stats tracking if provided
-    if selected_symbols_out is not None:
-        selected_symbols_out.clear()
-        selected_symbols_out.extend(sym for _, sym in selected)
-
     # Group selected symbols by file for rendering
     selected_by_file: dict[str, list[Symbol]] = {}
     for file_path, sym in selected:
@@ -6499,10 +6525,20 @@ def _format_symbols(
     function_occurrence_count: dict[str, int] = {}
 
     shown_files: set[str] = set()
+    shown_symbols: list[Symbol] = []
+    # The section is cut by what it costs (WI-borap, WI-nurid): file blocks
+    # are added in rank order until the next would pass ``max_tokens``, and
+    # the first is always shown. The number of symbols alone does not bound
+    # the section: a symbol with a signature and a docstring costs several
+    # times one without, and each file adds a heading and a count line.
+    room = None if max_tokens is None else (
+        max_tokens * CHARS_PER_TOKEN - sum(len(line) + 1 for line in lines))
     for file_path in sorted_files:
         file_symbols = selected_by_file[file_path]
+        names_before = set(rendered_function_names)
+        counts_before = dict(function_occurrence_count)
 
-        lines.append(f"### `{file_path}`")
+        block = [f"### `{file_path}`"]
 
         # Render up to max_symbols_per_file (compression)
         rendered_count = 0
@@ -6527,9 +6563,9 @@ def _format_symbols(
             else:
                 display_name = sym.name
             if docstring:
-                lines.append(f"- `{display_name}` ({kind_label}){star} — {docstring}")
+                block.append(f"- `{display_name}` ({kind_label}){star} — {docstring}")
             else:
-                lines.append(f"- `{display_name}` ({kind_label}){star}")
+                block.append(f"- `{display_name}` ({kind_label}){star}")
 
             # Track rendered function names for deduplication
             if sym.kind in ("function", "method"):
@@ -6538,13 +6574,9 @@ def _format_symbols(
             rendered_count += 1
             rendered_ids.add(sym.id)
 
-        # If all symbols in this file were deduplicated, remove the empty header
+        # If all symbols in this file were deduplicated, the file has no block
         if rendered_count == 0:  # pragma: no cover
-            # Remove the "### `file_path`" line we added
-            lines.pop()
             continue
-
-        shown_files.add(file_path)
 
         # Every key symbol of THIS file that is not a bullet under it
         # (WI-nurid): the ones selected but past the per-file cap, the
@@ -6556,9 +6588,29 @@ def _format_symbols(
         remaining_syms = [s for s in by_file[file_path] if s.id not in rendered_ids]
         if remaining_syms:
             top_score = max(centrality.get(s.id, 0) for s in remaining_syms)
-            lines.append(f"  (... +{len(remaining_syms)} more, top score: {top_score:.2f})")
+            block.append(f"  (... +{len(remaining_syms)} more, top score: {top_score:.2f})")
 
-        lines.append("")  # Blank line between files
+        block.append("")  # Blank line between files
+
+        if room is not None:
+            room -= sum(len(line) + 1 for line in block)
+            if room < 0 and shown_files:
+                # This file and the ones after it are not shown: its symbols
+                # are among the "other files", and what its block recorded
+                # about repeated names is undone.
+                rendered_function_names.clear()
+                rendered_function_names.update(names_before)
+                function_occurrence_count.clear()
+                function_occurrence_count.update(counts_before)
+                break
+        lines.extend(block)
+        shown_files.add(file_path)
+        shown_symbols.extend(s for s in file_symbols if s.id in rendered_ids)
+
+    # For stats tracking: the symbols that are bullets in the section.
+    if selected_symbols_out is not None:
+        selected_symbols_out.clear()
+        selected_symbols_out.extend(shown_symbols)
 
     # What the section's last line counts: the symbols of files that are not
     # shown at all. A shown file's hidden symbols are on its own line above.
@@ -7042,10 +7094,6 @@ def _generate_sketch_impl(
 
     # source_files already collected early (at start of function) for accurate LOC counts
 
-    # Estimate tokens per file item
-    # Typical line: "- `path/to/long/filename.py`" is ~50 chars = ~12 tokens
-    tokens_per_file = 12
-
     # Estimate tokens per entry point or symbol item with docstring/signature
     # Typical line: "- `func(x: int, y: List[str]) -> Dict[str, Any]` (method) — Does X."
     # is ~100-150 chars = ~25-38 tokens. Use realistic estimate based on qwix data.
@@ -7324,15 +7372,16 @@ def _generate_sketch_impl(
         # ADR-0005: --with-source mode reduces Key Symbols budget to prioritize code
         if with_source and remaining_tokens > 200:
             # With source: shrink to 20% to leave room for actual code
-            budget_for_symbols = (remaining_tokens * 20) // 100  # 20% of remaining
-            max_symbols = max(MIN_KEY_SYMBOLS, budget_for_symbols // tokens_per_symbol)
+            budget_for_symbols: int | None = (remaining_tokens * 20) // 100  # 20% of remaining
+            max_symbols = max(MIN_KEY_SYMBOLS, (remaining_tokens * 20) // 100 // tokens_per_symbol)
         elif remaining_tokens > 200:
             # Default mode: use most of remaining budget for symbols
             budget_for_symbols = (remaining_tokens * 4) // 5  # 80% of remaining
-            max_symbols = max(10, budget_for_symbols // tokens_per_symbol)
+            max_symbols = max(10, (remaining_tokens * 4) // 5 // tokens_per_symbol)
         else:
             # Budget-constrained case: guarantee minimum symbols anyway
             # This ensures Key Symbols section appears for every analyzable project
+            budget_for_symbols = None
             max_symbols = MIN_KEY_SYMBOLS
 
         # Get docstrings and signatures from Symbol fields (all languages)
@@ -7354,6 +7403,9 @@ def _generate_sketch_impl(
             language_proportional=language_proportional,
             exclude_tests=exclude_tests,
             selected_symbols_out=selected_key_symbols,
+            # The count above is an estimate; the section is cut by what it
+            # costs, so it cannot pass its share and push later sections out.
+            max_tokens=budget_for_symbols,
         )
         if symbols_section:
             sections.append(symbols_section)
@@ -7386,7 +7438,11 @@ def _generate_sketch_impl(
         else:
             # Default mode: use most of remaining budget minus small reserve
             budget_for_files = remaining_tokens - 10
-        max_additional_files = max(1, budget_for_files // tokens_per_file)
+        # No entry costs less than a token, so the budget in tokens bounds
+        # the number of files selected; the listing is then cut by what its
+        # entries cost. (The count used to be the budget over 12 tokens an
+        # entry, which a long path exceeds twice over.)
+        max_additional_files = max(1, budget_for_files)
 
         # Create progress callback for centrality computation
         def centrality_progress(current: int, total: int) -> None:  # pragma: no cover
@@ -7415,6 +7471,7 @@ def _generate_sketch_impl(
             cached_centrality_scores=cached_centrality,
             exclude_tests=exclude_tests,
             copies=additional_copies,
+            max_list_tokens=budget_for_files,
         )
         if additional_files_section:
             sections.append(additional_files_section)
@@ -7471,12 +7528,21 @@ def _generate_sketch_impl(
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
                     continue
 
-            # Compute harmonic shares for all eligible files.
-            # Shares determine truncation depth: higher-ranked files get
-            # more space.  Files that fit entirely within remaining budget
-            # are included regardless of their share (the floor only gates
-            # truncation, not inclusion of small files).
-            shares = compute_harmonic_shares(len(eligible), source_budget)
+            # Harmonic shares for the first N eligible files, N the largest
+            # for which every share clears the floor (ADR-0005's "effective
+            # N"; :func:`_content_shares`). Shares determine truncation
+            # depth: higher-ranked files get more space. Files that fit
+            # entirely within remaining budget are included regardless of
+            # their share (the floor only gates truncation, not inclusion
+            # of small files).
+            #
+            # The shares used to be computed over EVERY eligible file. With
+            # hundreds of files the first share is the budget over six or
+            # seven, so at a small budget it fell under the floor and the
+            # section was empty: alertmanager at 8k printed 415 tokens of
+            # source, and none once the listings above it were sized right.
+            shares = _content_shares(
+                source_budget, len(eligible), MIN_SOURCE_TRUNCATION_TOKENS)
 
             for rank_idx, (src_file, content) in enumerate(eligible):
                 rel_path = src_file.relative_to(repo_root)

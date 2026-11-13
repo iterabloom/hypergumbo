@@ -1485,6 +1485,8 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 
 **The Source Files listing is sized by its entries.** Entries (a path and the file's module docstring when it has one) are taken in rank order until the next would pass the section's share of the budget (ADR-0005), and never fewer than five; the count is not derived from a per-entry constant, so the section holds its share whether or not files carry docstrings. A cut listing ends with what it left out: the number of files, how many of them are tests, and the top-level directories that hold them.
 
+**Key Symbols and the Additional Files listing hold their shares the same way.** Key Symbols adds file blocks in rank order until the next would pass its share (the first is always shown; the files cut are counted in its last line), and the Additional Files listing adds entries in selection order until the next would pass its share. No section is sized by a count of entries alone, because a section that passes its share pushes the sketch over budget and the final step then drops whole sections from the end. **Source Files Content** cuts a file that does not fit to its harmonic share over the first N files, N the largest for which every share is at least 500 tokens (ADR-0005), so at a small budget the top-ranked files are printed in part instead of the section being empty.
+
 ### Additional Files selection
 
 The Additional Files section is filled README first, then from three lists taken in turn:
