@@ -3361,6 +3361,221 @@ class TestRouteMarkerEntryLine:
         assert "- `GET /feed` — `lib/app_web/router.ex`" in out
 
 
+class TestARouteIsListedOnce:
+    """One line per route: the route, what serves it, where that is (WI-tukag).
+
+    A framework's route can leave two entry points, the route marker and the
+    function that serves it, and the section listed both: one route, two
+    lines, the second with a raw symbol id where the handler's name belongs.
+    The rule is about the two records of one route in any framework; the
+    cases below are Starlette (the handler is a symbol id on the marker), Go
+    (the linker's dispatch edge) and Express (a handler name).
+    """
+
+    @staticmethod
+    def _route(tmp_path: Path, sid: str, name: str, rel: str, *, rank: float = 0.9,
+               **meta: object) -> tuple[Symbol, Entrypoint]:
+        sym = Symbol(id=sid, name=name, kind="function", language="python",
+                     path=str(tmp_path / rel), span=Span(40, 40, 1, 9),
+                     meta={"framework_role": "route", **meta})
+        return sym, Entrypoint(symbol_id=sid, kind=EntrypointKind.HTTP_ROUTE,
+                               confidence=0.9, label=f"HTTP {name}", rank_score=rank)
+
+    @staticmethod
+    def _handler(tmp_path: Path, sid: str, name: str, rel: str, *, rank: float = 0.95,
+                 docstring: str | None = None,
+                 kind: EntrypointKind = EntrypointKind.HTTP_ROUTE,
+                 label: str = "HTTP route /api/items") -> tuple[Symbol, Entrypoint]:
+        sym = Symbol(id=sid, name=name, kind="function", language="python",
+                     path=str(tmp_path / rel), span=Span(10, 20, 1, 2), docstring=docstring)
+        return sym, Entrypoint(symbol_id=sid, kind=kind, confidence=0.95,
+                               label=label, rank_score=rank)
+
+    @staticmethod
+    def _dispatch(src: str, dst: str) -> Edge:
+        return Edge(id=f"e:{src}->{dst}", src=src, dst=dst, edge_type="dispatches_to",
+                    line=1, origin="test", origin_run_id="test")
+
+    @staticmethod
+    def _render(tmp_path: Path, entries: list[tuple[Symbol, Entrypoint]],
+                edges: list[Edge] | None = None, extra: list[Symbol] | None = None,
+                max_entries: int = 20) -> list[str]:
+        out = _format_entrypoints([e for _s, e in entries],
+                                  [s for s, _e in entries] + (extra or []),
+                                  tmp_path, max_entries=max_entries, edges=edges)
+        return [line for line in out.split("\n") if line.startswith("- ")]
+
+    HANDLER_ID = "python:pkg/serve.py:10-20:_api_add_item:function"
+
+    def test_the_filed_case(self, tmp_path: Path) -> None:
+        """The marker holds the handler's symbol id; both were entry points."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "_api_add_item", "pkg/serve.py",
+                          docstring="Create a new item."),
+            self._route(tmp_path, "m", "POST /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID),
+        ])
+        assert lines == [
+            "- `POST /api/items` → `_api_add_item` — `pkg/serve.py` — Create a new item."]
+
+    def test_a_handler_that_is_no_entry_point_is_still_named(self, tmp_path: Path) -> None:
+        """The id is the map's business; the line shows the name it stands for."""
+        handler, _ep = self._handler(tmp_path, self.HANDLER_ID, "_api_add_item",
+                                     "pkg/handlers.py")
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "m", "POST /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID)], extra=[handler])
+        assert lines == ["- `POST /api/items` → `_api_add_item` — `pkg/handlers.py`"]
+
+    def test_an_id_the_map_does_not_hold_shows_its_name(self, tmp_path: Path) -> None:
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "m", "POST /api/items", "pkg/serve.py",
+                        handler_ref="python:pkg/gone.py:1-2:removed_view:function")])
+        assert lines == ["- `POST /api/items` → `removed_view` — `pkg/serve.py`"]
+
+    def test_a_name_with_colons_in_it_is_not_taken_for_an_id(self, tmp_path: Path) -> None:
+        """Rust and C++ handlers are written ``api::users::list``."""
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "m", "GET /users", "src/routes.rs",
+                        handler_ref="api::users::list")])
+        assert lines == ["- `GET /users` → `api::users::list` — `src/routes.rs`"]
+
+    def test_a_route_paired_by_the_linkers_dispatch_edge(self, tmp_path: Path) -> None:
+        """Go: the marker names ``h.ServeHTTP``; the edge says which symbol."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "readHandler.ServeHTTP", "web/read.go",
+                          label="HTTP route /metrics", docstring="Serve the metrics."),
+            self._route(tmp_path, "m", "GET /metrics", "web/api.go",
+                        handler_name="h.ServeHTTP"),
+        ], edges=[self._dispatch("m", "h")])
+        assert lines == [
+            "- `GET /metrics` → `readHandler.ServeHTTP` — `web/read.go` — Serve the metrics."]
+
+    def test_a_handler_name_alone_pairs_nothing(self, tmp_path: Path) -> None:
+        """Express without a linker edge. A name is not an identity: two
+        functions may share it, so both entries keep their lines."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "listUsers", "handlers/users.js",
+                          label="HTTP route /users"),
+            self._route(tmp_path, "m", "GET /users", "routes.js", handler_ref="listUsers"),
+        ])
+        assert lines == ["- `listUsers` (HTTP route /users) — `handlers/users.js`",
+                         "- `GET /users` → `listUsers` — `routes.js`"]
+
+    def test_several_dispatch_targets_pair_nothing(self, tmp_path: Path) -> None:
+        """A middleware chain: the marker does not say which one serves it."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "serve", "web/h.go", label="HTTP route /x"),
+            self._handler(tmp_path, "g", "auth", "web/g.go", label="HTTP route /x"),
+            self._route(tmp_path, "m", "GET /x", "web/api.go"),
+        ], edges=[self._dispatch("m", "h"), self._dispatch("m", "g")])
+        assert len(lines) == 3
+        assert "- `GET /x` — `web/api.go`" in lines
+
+    def test_one_handler_serving_two_routes_is_named_on_both(self, tmp_path: Path) -> None:
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "items", "pkg/serve.py",
+                          docstring="List or create."),
+            self._route(tmp_path, "m1", "GET /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID),
+            self._route(tmp_path, "m2", "POST /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID),
+        ])
+        assert lines == [
+            "- `GET /api/items` → `items` — `pkg/serve.py` — List or create.",
+            "- `POST /api/items` → `items` — `pkg/serve.py` — List or create."]
+
+    def test_the_same_function_in_another_group_keeps_its_line(self, tmp_path: Path) -> None:
+        """Listed as a CLI command it says something the route line does not."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "serve", "pkg/serve.py",
+                          kind=EntrypointKind.CLI_COMMAND, label="Click command"),
+            self._route(tmp_path, "m", "GET /", "pkg/serve.py", handler_ref=self.HANDLER_ID),
+        ])
+        assert lines == ["- `serve` (Click command) — `pkg/serve.py`",
+                         "- `GET /` → `serve` — `pkg/serve.py`"]
+
+    def test_the_route_takes_the_better_of_the_two_ranks(self, tmp_path: Path) -> None:
+        """The handler ranked first and its line is the one dropped: the
+        route must not fall below the cut for it."""
+        entries = [
+            self._handler(tmp_path, self.HANDLER_ID, "top", "a.py", rank=0.99),
+            self._route(tmp_path, "m", "GET /top", "a.py", rank=0.10,
+                        handler_ref=self.HANDLER_ID),
+        ] + [self._route(tmp_path, f"r{i}", f"GET /r{i}", "b.py", rank=0.5) for i in range(6)]
+        lines = self._render(tmp_path, entries, max_entries=5)
+        assert lines[0] == "- `GET /top` → `top` — `a.py`"
+
+    def test_a_route_counts_once_toward_the_cut_and_the_rest(self, tmp_path: Path) -> None:
+        entries: list[tuple[Symbol, Entrypoint]] = []
+        for i in range(8):
+            hid = f"python:pkg/v.py:{i}-{i}:view{i}:function"
+            entries.append(self._handler(tmp_path, hid, f"view{i}", "pkg/v.py"))
+            entries.append(self._route(tmp_path, f"m{i}", f"GET /r{i}", "pkg/urls.py",
+                                       handler_ref=hid))
+        lines = self._render(tmp_path, entries, max_entries=5)
+        assert len(lines) == 6
+        assert all(" → `view" in line for line in lines[:5])
+        assert lines[5] == "- ... and 3 more (`hypergumbo routes` lists all)"
+
+    def test_only_a_dispatch_edge_says_what_serves_a_route(self, tmp_path: Path) -> None:
+        """A marker may call or reference other entries; that is not serving."""
+        edge = self._dispatch("m", "h")
+        edge.edge_type = "references"
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "helper", "web/h.go", label="HTTP route /x"),
+            self._route(tmp_path, "m", "GET /x", "web/api.go"),
+        ], edges=[edge])
+        assert lines == ["- `helper` (HTTP route /x) — `web/h.go`", "- `GET /x` — `web/api.go`"]
+
+    def test_the_markers_own_id_outranks_an_edge(self, tmp_path: Path) -> None:
+        """The producer resolved the handler while it parsed; the linker's
+        edge to something else does not replace that."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "view", "pkg/v.py"),
+            self._handler(tmp_path, "w", "wrapper", "pkg/w.py"),
+            self._route(tmp_path, "m", "GET /x", "pkg/urls.py", handler_ref=self.HANDLER_ID),
+        ], edges=[self._dispatch("m", "w")])
+        assert sorted(lines) == ["- `GET /x` → `view` — `pkg/v.py`",
+                                 "- `wrapper` (HTTP route /api/items) — `pkg/w.py`"]
+
+    def test_a_sketch_pairs_by_the_edges_of_its_map(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """End to end on Go's net/http, where only the linker's edge says
+        which function serves ``/metrics``: the docstring on the route's line
+        is the handler's, found through that edge."""
+        import json
+
+        from hypergumbo_core.cli import main
+
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        repo = tmp_path / "app"
+        repo.mkdir()
+        (repo / "go.mod").write_text("module example.com/app\n\ngo 1.21\n")
+        (repo / "main.go").write_text(
+            "package main\n\nimport \"net/http\"\n\n"
+            "// serveMetrics writes the metrics page.\n"
+            "func serveMetrics(w http.ResponseWriter, r *http.Request) {\n"
+            "\tw.Write([]byte(\"ok\"))\n}\n\n"
+            "func main() {\n\tmux := http.NewServeMux()\n"
+            "\tmux.HandleFunc(\"/metrics\", serveMetrics)\n"
+            "\thttp.ListenAndServe(\":8080\", mux)\n}\n")
+        out = tmp_path / "out.json"
+        assert main(["survey", str(repo), "--out", str(out), "--no-handler-slices"]) == 0
+        sketch = generate_sketch(repo, max_tokens=4000,
+                                 cached_results=json.loads(out.read_text()))
+        routes = [line for line in sketch.split("\n") if "/metrics` →" in line]
+        assert routes == ["- `ANY /metrics` → `serveMetrics` — `main.go` — "
+                          "serveMetrics writes the metrics page."]
+
+    def test_a_marker_that_names_itself_pairs_nothing(self, tmp_path: Path) -> None:
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "python:a.py:1-1:GET /x:function", "GET /x", "a.py",
+                        handler_ref="python:a.py:1-1:GET /x:function")])
+        assert lines == ["- `GET /x` → `GET /x` — `a.py`"]
+
+
 class TestEntryPointLinesIdentifyTheirEntry:
     """An Entry Points line says which entry it is, in any language.
 

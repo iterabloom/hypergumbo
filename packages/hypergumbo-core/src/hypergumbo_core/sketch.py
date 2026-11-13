@@ -5931,14 +5931,57 @@ def _route_handler_hint(sym: Symbol) -> str:
     Controller-style routers (Phoenix, Rails) record ``controller`` and
     ``action``; other producers record the handler as ``handler_ref`` (or
     Go's ``handler_name``). Empty when the marker names no handler.
+
+    ``handler_ref`` holds what its producer had: a NAME (Express, Go, the
+    framework patterns) or a SYMBOL ID (Starlette and Flask-RESTful, which
+    resolve the handler while they parse). An id is five ``:``-separated
+    segments with the name fourth (ADR-0034), and a reader wants the name:
+    :func:`_route_handlers` finds the symbol when the map holds it, and this
+    prints the id's name segment when it does not.
     """
     meta = sym.meta or {}
     controller = meta.get("controller")
     action = meta.get("action")
     if controller and action:
         return f"{controller}.{action}"
-    return str(controller or meta.get("handler_ref")
-               or meta.get("handler_name") or "")
+    ref = str(controller or meta.get("handler_ref")
+              or meta.get("handler_name") or "")
+    segments = ref.split(":")
+    if len(segments) >= 5 and segments[-2]:
+        return segments[-2]
+    return ref
+
+
+def _route_handlers(
+    symbol_by_id: dict[str, Symbol], edges: "list[Edge] | None",
+) -> dict[str, Symbol]:
+    """Route marker id -> the symbol that serves it, where the map says so.
+
+    Two records say it, and both are identities, never names: the marker's
+    ``handler_ref`` when it is the id of a symbol in the map, and otherwise
+    the route-handler linker's ``dispatches_to`` edge out of the marker,
+    when there is exactly one. A marker with several dispatch targets (a
+    middleware chain) or with only a handler NAME is paired with nothing:
+    two functions may share a name, and a wrong pairing would hide an entry.
+    """
+    markers = {
+        sid: sym for sid, sym in symbol_by_id.items()
+        if (sym.meta or {}).get("framework_role") == "route"
+    }
+    handlers: dict[str, Symbol] = {}
+    for sid, sym in markers.items():
+        target = symbol_by_id.get(str((sym.meta or {}).get("handler_ref") or ""))
+        if target is not None and target.id != sid:
+            handlers[sid] = target
+    dispatched: dict[str, set[str]] = {}
+    for edge in edges or ():
+        if (edge.edge_type == "dispatches_to" and edge.src in markers
+                and edge.src not in handlers and edge.dst in symbol_by_id):
+            dispatched.setdefault(edge.src, set()).add(edge.dst)
+    for sid, targets in dispatched.items():
+        if len(targets) == 1:
+            handlers[sid] = symbol_by_id[next(iter(targets))]
+    return handlers
 
 
 def _entry_label(label: str, name: str, path: str) -> str:
@@ -5964,6 +6007,7 @@ def _format_entrypoints(
     repo_root: Path,
     max_entries: int = 20,
     exclude_tests: bool = False,
+    edges: "list[Edge] | None" = None,
 ) -> str:
     """Format detected entry points as a Markdown section grouped by kind.
 
@@ -5981,6 +6025,18 @@ def _format_entrypoints(
     A route marker (``meta.framework_role == "route"``) is named after its
     route, so its label would only repeat the name; its line names the
     handler instead (:func:`_route_handler_hint`).
+
+    A route is listed once (WI-tukag). A framework's route can leave two
+    entry points: the marker (``POST /api/items``) and the function that
+    serves it, detected on its own as a route handler. Where the map says
+    which symbol serves a marker (:func:`_route_handlers`) and that symbol
+    is an entry of the same group, the marker's line stands for both: it
+    names the route, the handler and the handler's file, carries the
+    handler's docstring, and takes the better of the two ranks. The
+    handler's own line is dropped, and the group's count and its "and N
+    more" count the route once. A handler that serves two routes is named
+    on both lines. An entry in another group keeps its line: the same
+    function listed as a CLI command says something a route line does not.
 
     A line must identify its entry (WI-johuv). After the dash it shows the
     docstring when there is one, since what an entry does is said nowhere
@@ -6012,10 +6068,29 @@ def _format_entrypoints(
     if not non_test_eps:
         return ""
 
+    def group_of(ep: Entrypoint) -> str:
+        return next((name for name, kinds in _ENTRYPOINT_GROUPS
+                     if ep.kind.value in kinds), "Other")
+
+    # One line per route: a marker stands for the handler it names when both
+    # are entries of one group, at the better of their ranks.
+    handler_of = _route_handlers(symbol_by_id, edges)
+    entry_by_symbol = {ep.symbol_id: ep for ep in non_test_eps}
+    rank = {ep.symbol_id: ep.rank_score or 0.0 for ep in non_test_eps}
+    absorbed: set[str] = set()
+    for ep in non_test_eps:
+        serving = handler_of.get(ep.symbol_id)
+        served = entry_by_symbol.get(serving.id) if serving else None
+        if served is not None and group_of(served) == group_of(ep):
+            absorbed.add(served.symbol_id)
+            rank[ep.symbol_id] = max(rank[ep.symbol_id], served.rank_score or 0.0)
+
     # Bucket entrypoints by group
     grouped: dict[str, list[Entrypoint]] = {}
     ungrouped: list[Entrypoint] = []
-    for ep in sorted(non_test_eps, key=lambda e: -(e.rank_score or 0.0)):
+    for ep in sorted(non_test_eps, key=lambda e: -rank[e.symbol_id]):
+        if ep.symbol_id in absorbed:
+            continue
         placed = False
         for group_name, kinds in _ENTRYPOINT_GROUPS:
             if ep.kind.value in kinds:
@@ -6069,9 +6144,16 @@ def _format_entrypoints(
                 # this is.
                 show_path = rel_path != sym.name and (
                     not sym.docstring or shown_names[sym.name] > 1)
+                docstring = sym.docstring
+                where = rel_path
                 if (sym.meta or {}).get("framework_role") == "route":
-                    handler = _route_handler_hint(sym)
+                    served_by = handler_of.get(sym.id)
+                    handler = served_by.name if served_by else _route_handler_hint(sym)
                     head = f"- `{sym.name}`" + (f" → `{handler}`" if handler else "")
+                    if served_by is not None:
+                        # The handler's file: with its name, that locates it.
+                        where = rel(served_by)
+                        docstring = docstring or served_by.docstring
                 else:
                     label = _entry_label(
                         ep.label, sym.name, rel_path if show_path else "")
@@ -6080,9 +6162,9 @@ def _format_entrypoints(
                 if show_path and sym.span and shown_places[(sym.name, rel_path)] > 1:
                     parts.append(f"`{rel_path}:{sym.span.start_line}`")
                 elif show_path:
-                    parts.append(f"`{rel_path}`")
-                if sym.docstring:
-                    parts.append(sym.docstring)
+                    parts.append(f"`{where}`")
+                if docstring:
+                    parts.append(docstring)
                 lines.append(" — ".join(parts))
             else:
                 lines.append(f"- `{ep.symbol_id}` ({ep.label})")
@@ -7252,7 +7334,7 @@ def _generate_sketch_impl(
 
             ep_section = _format_entrypoints(
                 entrypoints, symbols, repo_root, max_entries=max_eps,
-                exclude_tests=exclude_tests
+                exclude_tests=exclude_tests, edges=edges,
             )
             if ep_section:
                 sections.append(ep_section)
