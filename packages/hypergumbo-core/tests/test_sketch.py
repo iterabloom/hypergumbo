@@ -1480,6 +1480,185 @@ class TestCollectSourceFiles:
         assert "test_core.py" not in names
 
 
+class TestSectionsHoldTheirBudgets:
+    """Key Symbols and the Additional Files listing are cut by what they
+    cost (WI-borap, WI-nurid).
+
+    Both were sized by a count: the budget divided by a constant number of
+    tokens per entry. A symbol with a signature and a docstring, or a long
+    path, costs several times the constant, so the section passed its
+    budget. The sketch's last step then drops whole sections from the end
+    until the text fits, and the section that passed its budget went with
+    them: killbill at 32k without source lost Key Symbols and Additional
+    Files entirely.
+    """
+
+    DOC = "Does one thing, and this sentence says at some length what that thing is."
+
+    def _symbols(self, files: int, per_file: int) -> tuple[list[Symbol], dict, dict]:
+        symbols = [
+            Symbol(id=f"f{f}:{i}", name=f"file{f}_function_{i}", kind="function",
+                   language="python", path=f"/fake/repo/pkg/module_{f:02d}.py",
+                   span=Span(i + 1, i + 2, 1, 2))
+            for f in range(files) for i in range(per_file)]
+        docstrings = {s.id: self.DOC for s in symbols}
+        signatures = {s.id: "(first: str, second: int = 0) -> dict[str, int]" for s in symbols}
+        return symbols, docstrings, signatures
+
+    def _key_symbols(self, max_tokens: int | None, out: list[Symbol] | None = None) -> str:
+        symbols, docstrings, signatures = self._symbols(files=12, per_file=4)
+        return _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=36,
+                               docstrings=docstrings, signatures=signatures,
+                               selected_symbols_out=out, max_tokens=max_tokens)
+
+    @staticmethod
+    def _blocks(section: str) -> str:
+        """The section up to its closing lines."""
+        return section.split("\n(... and ")[0]
+
+    def test_key_symbols_stops_at_its_budget(self) -> None:
+        unbounded = self._key_symbols(None)
+        bounded = self._key_symbols(600)
+        # Reach: the same symbols cost far more than the budget.
+        assert len(self._blocks(unbounded)) > 2 * 600 * 4
+        assert len(self._blocks(bounded)) <= 600 * 4
+        # ... and the budget is used, not merely respected.
+        assert len(self._blocks(bounded)) > 600 * 4 * 0.7
+
+    def test_files_cut_for_the_budget_are_counted_as_other_files(self) -> None:
+        section = self._key_symbols(600)
+        shown, more, other = TestACutListSaysWhoseEntriesItLeftOut._accounting(section)
+        assert 1 <= len(shown) < 12
+        assert all(shown[f] + more[f] == 4 for f in shown)
+        assert other == (4 * (12 - len(shown)), 12 - len(shown))
+
+    def test_the_first_file_is_shown_whatever_the_budget(self) -> None:
+        section = self._key_symbols(1)
+        shown, _more, other = TestACutListSaysWhoseEntriesItLeftOut._accounting(section)
+        assert len(shown) == 1 and other == (44, 11)
+
+    def test_the_statistic_holds_the_symbols_shown(self) -> None:
+        picked: list[Symbol] = []
+        section = self._key_symbols(600, picked)
+        shown, _more, _other = TestACutListSaysWhoseEntriesItLeftOut._accounting(section)
+        assert len(picked) == sum(shown.values())
+        assert all(f"`{s.name}(" in section for s in picked)
+
+    def test_a_block_cut_for_the_budget_leaves_no_trace(self) -> None:
+        """Two files define ``helper``. The second file's block would say
+        the name was shown once already; the block is cut, so nothing may
+        say that a second appearance was left out."""
+        doc = self.DOC * 3
+        symbols = [
+            Symbol(id=f"{file}:{name}", name=name, kind="function", language="python",
+                   path=f"/fake/repo/{file}", span=Span(line, line + 1, 1, 2))
+            for file, names in (("a.py", ["helper", "alpha"]), ("b.py", ["helper", "beta"]))
+            for line, name in enumerate(names, 1)]
+        docstrings = {s.id: doc for s in symbols}
+        whole = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=4,
+                                docstrings=docstrings)
+        cut = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=4,
+                              docstrings=docstrings, max_tokens=140)
+        assert "would have appeared multiple times" in whole  # reach
+        assert "### `b.py`" not in cut
+        assert "would have appeared multiple times" not in cut
+        assert "(... and 2 more symbols across 1 other file)" in cut
+
+    def _listing(self, tmp_path: Path, max_list_tokens: int | None) -> tuple[str, list[Path]]:
+        deep = "services/billing/src/main/resources/configuration/environments"
+        for i in range(30):
+            path = tmp_path / deep / f"settings-for-environment-{i:02d}.yaml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"environment: {i}\n")
+        section, listed, _degree = _format_additional_files(
+            tmp_path, [], [], {}, max_files=30, rank_overviews=False,
+            max_list_tokens=max_list_tokens)
+        return section, listed
+
+    def test_the_additional_files_listing_stops_at_its_budget(self, tmp_path: Path) -> None:
+        """Thirty paths of about 27 tokens each: 12 tokens an entry, the old
+        estimate, undercounts them by more than half."""
+        whole, all_listed = self._listing(tmp_path, None)
+        section, listed = self._listing(tmp_path, 200)
+        assert len(all_listed) == 30 and len(whole) > 2 * 200 * 4  # reach
+        entries = [ln for ln in section.splitlines() if ln.startswith("- `")]
+        assert len(entries) == len(listed) < 30
+        assert sum(len(ln) + 1 for ln in entries) <= 200 * 4
+        assert section.splitlines()[-1] == f"- ... and {30 - len(listed)} more files"
+
+    def test_the_listing_statistic_covers_the_files_listed(self, tmp_path: Path) -> None:
+        """Two documents, each mentioning one called function. With room
+        for one entry the statistic counts that document's function only."""
+        symbols = [
+            Symbol(id=f"s:{name}", name=name, kind="function", language="python",
+                   path=str(tmp_path / "src" / "app.py"), span=Span(line, line + 1, 1, 2))
+            for line, name in enumerate(("parse_configuration", "run_the_server"), 1)]
+        in_degree = {"s:parse_configuration": 5, "s:run_the_server": 7}
+        (tmp_path / "a_first.md").write_text("Explains `parse_configuration` at length.\n")
+        (tmp_path / "b_second.md").write_text("Explains `run_the_server` at length.\n")
+
+        def degree(max_list_tokens: int | None) -> tuple[int, int]:
+            _section, listed, total = _format_additional_files(
+                tmp_path, [], symbols, in_degree, max_files=10, rank_overviews=False,
+                max_list_tokens=max_list_tokens)
+            return len(listed), total
+
+        assert degree(None) == (2, 12)
+        listed, total = degree(1)
+        assert listed == 1 and total in (5, 7)
+
+    def test_the_first_additional_file_is_listed_whatever_the_budget(
+            self, tmp_path: Path) -> None:
+        section, listed = self._listing(tmp_path, 1)
+        assert len(listed) == 1
+        assert section.splitlines()[-1] == "- ... and 29 more files"
+
+    def test_source_content_is_printed_when_no_file_fits_whole(self, tmp_path: Path) -> None:
+        """Forty source files of about 3,000 tokens and a budget of 3,000.
+        No file fits whole, so the top-ranked ones are cut to their shares.
+        The shares used to be spread over all forty files, the first fell
+        under the 500-token floor, the section was empty, and the sketch was
+        809 tokens of its 3,000."""
+        for f in range(40):
+            body = "".join(
+                f"def module{f}_step_{i}(value: int) -> int:\n"
+                f"    # step {i} of module {f}: a line of commentary to give the file some size\n"
+                f"    return value + {i}\n\n\n" for i in range(90))
+            (tmp_path / f"module_{f:02d}.py").write_text(f'"""Module {f}."""\n\n\n{body}')
+        sketch = generate_sketch(tmp_path, max_tokens=3000, with_source=True)
+        assert "## Source Files Content" in sketch
+        content = sketch.split("## Source Files Content", 1)[1].split("\n## ", 1)[0]
+        assert content.count("START of module_") >= 1
+        assert "[...truncated...]" in content
+        assert len(content) // 4 >= 1000
+        assert len(sketch) // 4 <= 3000
+
+    def test_a_sketch_keeps_every_section_when_entries_are_costly(self, tmp_path: Path) -> None:
+        """End to end, without source content: functions with signatures
+        and docstrings, and deep configuration paths. Key Symbols gets most
+        of what is left of the budget; sized by a count it passed the
+        budget, and the last step dropped it and Additional Files."""
+        doc = "Does one thing, and this sentence says at some length what that thing is."
+        for f in range(25):
+            body = "".join(
+                f"def module{f}_function_{i}(first: str, second: int = 0) -> dict[str, int]:\n"
+                f'    """{doc}"""\n    return {{first: second}}\n\n\n'
+                for i in range(6))
+            (tmp_path / f"module_{f:02d}.py").write_text(f'"""Module {f}."""\n\n\n{body}')
+        deep = tmp_path / "deploy" / "environments" / "configuration" / "per-region-settings"
+        deep.mkdir(parents=True)
+        for i in range(40):
+            (deep / f"settings-for-region-{i:02d}.yaml").write_text(f"region: {i}\n")
+        (tmp_path / "README.md").write_text("# Demo\n\nA demo project.\n")
+
+        budget = 4000
+        sketch = generate_sketch(tmp_path, max_tokens=budget)
+        assert "## Key Symbols" in sketch
+        assert "## Additional Files" in sketch
+        assert "settings-for-region-" in sketch.split("## Additional Files")[1]
+        assert len(sketch) // 4 <= budget
+
+
 class TestSourceFilesListingIsSizedByItsEntries:
     """The Source Files listing holds the share it is given (WI-borap).
 

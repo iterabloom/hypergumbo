@@ -120,8 +120,8 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 | Entry Points | ~25 | 5 | 20 | Shows CLI commands + HTTP routes |
 | Data Models | ~15 | 3 | 30 | ORM models, entities, grouped by file |
 | Source Files | measured | 5 | — | Path and module docstring; entries are taken until the share is used (below) |
-| Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
-| Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
+| Key Symbols | measured | 5 | 100 | Max 5 per file to ensure breadth; file blocks are added until the share is used |
+| Additional Files | measured | 1 | — | Paths only; entries are added until the share is used; shrinks with --with-source |
 | Source Content | varies | 1 | — | Harmonic truncation (depth-over-breadth) |
 | Additional File Content | varies | 1 | — | Harmonic truncation by position, 500-token floor |
 
@@ -133,7 +133,7 @@ The Source Files listing is cut by what its entries cost. Entries are taken in r
 
 **Past the files worth naming one by one, the listing stops at its share and summarises.** There is no second cut-off by score: the share is what bounds the list, and a score threshold would need a value nobody has measured. The line that ends a cut listing says what was left out: how many files, how many of them are tests, and which top-level directories hold them (the three largest, then a count for the rest), as in `- ... and 588 more files (553 of them tests): `packages/` 540, `scripts/` 40, 8 elsewhere`.
 
-Additional Files still sizes its listing at 12 tokens an entry; its entries are bare paths, for which the figure is close.
+**Key Symbols and the Additional Files listing are cut the same way.** Key Symbols adds file blocks (heading, bullets, the file's count line) in rank order until the next would pass the section's share, and always shows the first; the files cut are counted in the section's last line. The Additional Files listing adds entries in selection order until the next would pass its share, and always lists the first. Both used to be a count, the share divided by a constant (35 tokens a symbol, 12 a path). A section that passes its share pushes the sketch over its budget, and the last step of generation then drops whole sections from the end until the text fits: on one measured repository at 32k without source content, Key Symbols and Additional Files were both dropped. The count is still computed (it bounds how many symbols and files are selected); it no longer bounds the section.
 
 ### Structure: Tree Built from Important Files
 
