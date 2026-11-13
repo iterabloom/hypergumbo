@@ -46,7 +46,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
 - **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.
-- **Comments and docstrings in 168 files describe current code, not history.**
 
 ### Removed
 
@@ -106,7 +105,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name: ripgrep test coverage rises 9.3% → 36.2%.
 - **Code called only from module level or a class body is live.**
 - **A dependency naming an in-tree package gets its tier** (ADR-0041 §1): on nest, 172 of 1,379 move from tier 3 to 1.
-- **A filtered file's edges leave with it.**
+- **A file the tier filter removes takes its edges with it**, instead of leaving them on a shared pathless placeholder.
 - **Sketch names a data model's framework once.**
 
 #### Run reporting and graph integrity
@@ -141,55 +140,39 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The per-PR catalogue check reads the twice-daily run's graph.**
 - **The I/O allowlist matches traced runs of every subcommand**, and gates keep it so; it also sees descriptor writes, signals and environment writes.
 - **Every third-party library the shipped code imports is classified.**
-- **Core comments that contradicted the code now describe it.**
-- **History in 76 files' comments and docstrings becomes present-tense rules.**
 
 ### Development tools and CI
 
-- **`scripts/score-readability`**: per-function reader-load scores for Python files, flagging values over threshold.
-- **`scripts/show-site`**: shows a reviewer the code around one I/O allowlist site, with its callers.
-- **`scripts/archaeology_heuristic.py`**: scores how likely a comment is history, not rule.
-- **`archaeology_heuristic.py --kind`** also scores docstrings, separately or with comments.
-- **Archaeology corpus: 240 blind-labelled docstrings of 100+ words replace 60.**
-- **Archaeology heuristic: narrower provenance, numbers and rule-voice families; weights refitted.**
-- **Two measurement scripts restore the production globals they rebind in-process.**
-- **`bakeoff-broad cohort --dry-run` lists the cohort instead of crashing.**
-- **Prose-only check: a moved pragma is code; a quoted one is prose.**
-- **Python I/O catalogue rows `tokenize` and stdlib `-m` entry points.**
-- **Three output strings no longer carry stale history or a dead path.**
-- **Adjudication-packet comments state current rules and cite the real test path.**
-- **History distilled from comments and docstrings in 320 more files.**
-- **Three tests now reach the cases they name: file order, depth cap, tier drop.**
-- **Coverage narrowing is on by default and narrows the CI manifest; `--no-narrow` disables.**
-- **Coverage narrowing never drops a test file the change edits.**
-- **Archaeology corpus adds 480 random blind-labelled blocks; weights refit to all comments.**
-- **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
-- **smart-test: a comment-or-docstring-only change runs only tests that read the file.**
-- **The prose-only rule keeps fewer tests: exact directive comments, linecache reads, loaded-file checks.**
-- **Comment-or-docstring changes pick tests from recorded evidence, in CI too, skipping the slice.**
-- **A failed or killed test run keeps the read evidence it had gathered.**
-- **ADR-0010 and ADR-0011 state the prose-only exception to manifest and coverage.**
-- **`scripts/repin-line-citations` moves drifted `line=` citations back onto their anchors; `prose-only-files --code` lists code changes.**
-- **A sketch test no longer leaks its redirected temp directory into later tests.**
-- **`scripts/smart-test-bed`**: scores smart-test's test selection on a small repo.
-- **`smart-test --full` on an unchanged tree now updates the selection index.**
-- **The pre-commit hook says when a check could not run, rather than calling the doc stale.**
-- **Signature-axis line citations are checked, and two stale ones fixed.**
-- **smart-test's citation gate sees split paths and extensionless scripts.**
-- **`smart-test --narrow` refuses to narrow when import-time code changed.**
-- **Tests can build an expensive input once per session, shared across parallel workers.**
-- **A failing test run stops 15 seconds after its first failure, locally and in per-PR CI.**
-- **smart-test runs the likeliest failures first.**
-- **The CI pytest step sets its plugin path as a plain value.**
-- **smart-test gives each parallel test worker one OpenMP thread: full suite 46 to 35 minutes.**
-- **Tests with an expensive shared setup run on one worker.**
+#### Test selection and speed (`smart-test`)
+
+- **A change to comments or docstrings only runs the tests recorded reading that file**, locally and in CI, instead of everything that imports it. While more than a tenth of test files have no record it falls back to the import graph; a moved pragma counts as code (ADR-0010, ADR-0011).
+- **Coverage narrowing is on by default and narrows the CI test list**; `--no-narrow` turns it off, and the twice-daily full suite is never narrowed. It refuses when import-time code changed and never drops a test file the change edits.
+- **A failing run stops 15 seconds after its first failure**, locally and in per-PR CI, and the likeliest failures run first. A failed or killed run keeps the evidence it gathered on which tests read which files.
+- **One OpenMP thread per parallel worker**: a measured full-suite run fell from 46 to 35 minutes. Tests with an expensive shared setup build it once per session or run on one worker.
+- **`scripts/smart-test-bed`** scores test selection on a small repository; `smart-test --full` on an unchanged tree updates the selection index.
+
+#### Test fixes
+
+- **Three tests now reach the cases they name**: file order, the depth cap and the tier drop.
 - **Hypothesis property tests no longer fail on a slow, loaded machine.**
-- **New CI checks**: declared axioms against real output, io-boundaries and taint classifying each call alike, a test run where every test skipped fails.
+- **A sketch test no longer leaks its redirected temp directory**, and two measurement scripts restore the globals they rebind.
+
+#### CI gates
+
+- **New checks**: declared axioms against real output; io-boundaries and taint classifying each call alike; a run where every test skipped fails; `depends_on` must name earlier passes; fixtures may not commit lockfiles or `==` pins.
+- **Line citations**: `scripts/repin-line-citations` moves drifted `line=` citations back onto their anchors; signature-axis citations are checked; the citation gate sees split paths and extensionless scripts.
 - **Fixes for the twice-daily run's failing steps**: the test-only reachability and self-tree id checks; the I/O allowlist trace, which now checks `install-rust-analyzer` and `add-extras`; the readability tests, which run where hypergumbo is installed.
-- **`depends_on` must name earlier passes.**
-- **`generate-architecture --check` recomputes source-tree counts.**
-- **Fixtures may not commit lockfiles or `==` pins.**
+- **The pre-commit hook says when a check could not run**, rather than calling the doc stale; `generate-architecture --check` recomputes source-tree counts; CI sets its pytest plugin path as a plain value.
+- **The Python I/O catalogue classifies `tokenize`** and the `-m` entry points of stdlib modules.
 - **The mypy strict surface shrinks 492 → 477.**
+
+#### Scripts
+
+- **`scripts/archaeology_heuristic.py`** scores how likely a comment or docstring narrates history rather than stating a rule. `--kind` picks comments, docstrings or both; `--min-words` (default 10) skips short blocks; weights are fitted to blind-labelled samples.
+- **`scripts/score-readability`** scores each Python function for how much a reader must hold in mind, flagging those over threshold.
+- **`scripts/show-site`** shows a reviewer the code around one I/O allowlist site, with its callers.
+- **`prose-only-files --code`** lists the files whose change is more than comments.
+- **`bakeoff-broad cohort --dry-run` lists the cohort** instead of crashing.
 
 ### Documentation
 
@@ -200,6 +183,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Audits**: [reader census](docs/audits/0023-reader-census.md), supersession precision ([0024](docs/audits/0024-build-target-supersession-precision.md), [0025](docs/audits/0025-js-module-supersession-precision.md)), [consumer agreement](docs/audits/0026-consumer-agreement.md).
 - **Measurements**: [self-claims on scip-python](docs/measurements/0031-self-claims-scip-python-receiver-denominator.md), [the analysed repository as a taint source](docs/measurements/0032-analysed-repository-as-taint-source.md).
 - **Module docstrings**: 83 corrected, 34 extended.
+- **Comments and docstrings in 506 files state the current code's rules instead of narrating its history**; core comments that contradicted the code are corrected, and three output strings drop stale history.
 - **The spec documents 63 `symbol_meta` keys.**
 - **The pip and python that scip-python launches itself are documented.**
 
