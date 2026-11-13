@@ -16,6 +16,7 @@ import pytest
 from hypergumbo_core import overview_rank, sketch_embeddings
 from hypergumbo_core.overview_rank import (
     HEAD_CHARS,
+    is_process_file,
     overview_wording_scores,
     rank_overview_files,
 )
@@ -53,6 +54,49 @@ def test_a_shallower_file_comes_before_a_deeper_one(tmp_path: Path) -> None:
     deep = _write(tmp_path, "a/overview.md", OVERVIEW)
     shallow = _write(tmp_path, "zzz.md", DATA)
     assert _order(tmp_path, deep, shallow) == ["zzz.md", "a/overview.md"]
+
+
+def test_a_process_file_comes_after_every_other_document(tmp_path: Path) -> None:
+    """Process-last outranks depth and wording: the contributing guide is at
+    the root and is written like an overview, the design note is two
+    directories down and is not, and the design note still comes first."""
+    design = _write(tmp_path, "docs/internals/design.md", DATA)
+    contributing = _write(tmp_path, "CONTRIBUTING.md", OVERVIEW)
+    licence = _write(tmp_path, "LICENSE-APACHE", OVERVIEW)
+    assert _order(tmp_path, contributing, licence, design)[0] == "docs/internals/design.md"
+
+
+def test_role_still_outranks_the_process_rule(tmp_path: Path) -> None:
+    """A process document is still documentation: it comes before a
+    configuration file."""
+    conduct = _write(tmp_path, "docs/CODE_OF_CONDUCT.md", DATA)
+    config = _write(tmp_path, "settings.yaml", OVERVIEW)
+    assert _order(tmp_path, config, conduct) == ["docs/CODE_OF_CONDUCT.md", "settings.yaml"]
+
+
+@pytest.mark.parametrize("name", [
+    "CONTRIBUTING.md", "contributing.rst", "CODE_OF_CONDUCT.md", "code-of-conduct.txt",
+    "SECURITY.md", "SUPPORT.md", "GOVERNANCE.md", "MAINTAINERS", "AUTHORS", "SPONSORS.md",
+    "LICENSE", "LICENCE.txt", "LICENSE-MIT", "COPYING.LESSER", "NOTICE", "PATENTS",
+    "CHANGELOG.md", "CHANGELOG-1.2.md", "CHANGES.rst", "HISTORY.md", "NEWS",
+    "RELEASE_NOTES.md", "docs/release-notes.adoc",
+])
+def test_names_of_process_files(name: str) -> None:
+    assert is_process_file(Path(name))
+
+
+@pytest.mark.parametrize("name", [
+    "README.md", "ARCHITECTURE.md", "docs/design.md", "docs/security-model.md",
+    "docs/supported-platforms.md", "docs/license-server-protocol.md",
+    "RELEASING.md", "UPGRADING.md", "docs/changes-to-the-parser.md", "authors.py",
+    "docs/contributing-a-backend.md", ".history", "security.yaml", "FUNDING.yml",
+    "LICENSE-server-notes.md",
+])
+def test_a_name_that_only_contains_the_word_is_not_a_process_file(name: str) -> None:
+    """The rule reads the whole name, of a document. ``docs/security-model.md``
+    explains a design; ``authors.py`` is code and ``security.yaml``
+    configuration."""
+    assert not is_process_file(Path(name))
 
 
 def test_at_one_depth_overview_wording_decides(tmp_path: Path) -> None:
