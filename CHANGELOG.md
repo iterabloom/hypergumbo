@@ -45,6 +45,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Sketch no longer downloads embedding models**: run `hypergumbo install-embeddings` first.
 - **Files git ignores and does not track are not analysed**; the output names them.
+- **Sketch Entry Points lists each route once**, naming its handler, never a symbol id.
 - **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
