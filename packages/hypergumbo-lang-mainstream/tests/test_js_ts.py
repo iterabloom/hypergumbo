@@ -4479,64 +4479,73 @@ function run() {
     def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
         """When same class name exists in multiple modules, namespace import disambiguates.
 
-        ``global_classes`` is last-one-wins, so whenever z_late/service.js
-        (WRONG) is enumerated after a_early/service.js (CORRECT) it overwrites
-        the correct class, and only the namespace import's path_hint leads
-        back to a_early.
-
-        Discovery order is filesystem-dependent, not alphabetical (WI-sipoj),
-        and this fixture is built in one creation order only, so it exercises
-        the overwrite only where z_late is enumerated last. The
-        same-name-function test above builds both orders.
+        ``global_classes`` is last-one-wins, and file discovery follows
+        directory order, which is not alphabetical (WI-sipoj). So the fixture
+        has two consumers, each instantiating ``Client`` through a namespace
+        import of a DIFFERENT directory: whichever ``Client`` the table keeps,
+        one consumer reaches it only if the namespace import's path_hint
+        decides, on every filesystem and in every enumeration order.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
-        # Two modules with the same class name in different directories;
-        # whichever is enumerated last owns the name in global_classes.
-        correct_dir = tmp_path / "a_early"
-        correct_dir.mkdir()
-        (correct_dir / "service.js").write_text("""
-class Client {
-    connect() { return 'CORRECT'; }
-}
-""")
-
-        wrong_dir = tmp_path / "z_late"
-        wrong_dir.mkdir()
-        (wrong_dir / "service.js").write_text("""
-class Client {
-    connect() { return 'WRONG'; }
-}
-""")
-
-        # Import only a_early/service and instantiate via namespace
-        main_file = tmp_path / "main.js"
-        main_file.write_text("""
-import * as correct from './a_early/service';
-
-function run() {
-    const client = new correct.Client();
-    return client;
-}
-""")
+        for name in ("dir_a", "dir_b"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "service.js").write_text(
+                f"class Client {{\n    connect() {{ return '{name}'; }}\n}}\n"
+            )
+        for name in ("dir_a", "dir_b"):
+            (tmp_path / f"use_{name}.js").write_text(
+                f"import * as svc from './{name}/service';\n"
+                "\n"
+                f"function run_{name}() {{\n"
+                "    return new svc.Client();\n"
+                "}\n"
+            )
 
         result = analyze_javascript(tmp_path)
 
-        # Find instantiates edges from run
-        inst_edges = [e for e in result.edges if e.edge_type == "instantiates" and "run" in e.src]
+        for name in ("dir_a", "dir_b"):
+            dsts = [e.dst for e in result.edges
+                    if e.edge_type == "instantiates" and f"run_{name}" in e.src
+                    and "Client" in e.dst]
+            assert dsts, f"Expected an instantiates edge from run_{name} to Client"
+            assert all(name in d for d in dsts), (
+                f"run_{name} imports ./{name}/service but instantiates {dsts}. "
+                "Namespace import path_hint should disambiguate when the same "
+                "class exists in multiple modules."
+            )
 
-        # Should resolve to a_early/service.Client, NOT z_late/service.Client
-        run_client_edge = next(
-            (e for e in inst_edges if "Client" in e.dst),
-            None
-        )
-        assert run_client_edge is not None, "Expected instantiates edge from run to Client"
+    @pytest.mark.parametrize("binding, new_expr", [
+        ("import {{ Client }} from './{d}/service';", "new Client()"),
+        ("import {{ Client as C }} from './{d}/service';", "new C()"),
+        ("const {{ Client }} = require('./{d}/service');", "new Client()"),
+        ("const svc = require('./{d}/service');", "new svc.Client()"),
+    ])
+    def test_imported_class_instantiation_follows_the_import(
+        self, tmp_path: Path, binding: str, new_expr: str,
+    ) -> None:
+        """``new`` of a class imported from a relative path reaches that
+        file's class, for a named import (aliased or not), a destructured
+        require and a require'd module object. Two consumers import from
+        different directories, so whichever same-named class the name-keyed
+        table keeps, one of them fails unless the import decides."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
-        # The edge should point to a_early (correct), not z_late (wrong)
-        assert "a_early" in run_client_edge.dst, (
-            f"Expected instantiation to resolve to a_early/service.Client, but got {run_client_edge.dst}. "
-            "Namespace import path_hint should disambiguate when same class exists in multiple modules."
-        )
+        for d in ("dir_a", "dir_b"):
+            (tmp_path / d).mkdir()
+            (tmp_path / d / "service.js").write_text(
+                "class Client { }\nmodule.exports = { Client };\n"
+            )
+            (tmp_path / f"use_{d}.js").write_text(
+                binding.format(d=d) + f"\nfunction run_{d}() {{ return {new_expr}; }}\n"
+            )
+
+        result = analyze_javascript(tmp_path)
+
+        for d in ("dir_a", "dir_b"):
+            dsts = [e.dst for e in result.edges
+                    if e.edge_type == "instantiates" and f"run_{d}" in e.src]
+            assert dsts and all(f"/{d}/" in x for x in dsts), (d, dsts)
 
 
 class TestJsTsReturnTypeExtraction:
