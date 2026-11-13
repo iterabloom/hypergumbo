@@ -2029,17 +2029,17 @@ class TestFormatAdditionalFiles:
     def test_the_overview_order_fills_every_other_slot(self, tmp_path: Path) -> None:
         """With no README the README-link list is empty, so the first pick
         is the overview order's: a root-level document, ahead of the deep
-        configuration file the centrality list would have picked."""
+        document the centrality list would have picked."""
         from hypergumbo_core.sketch import _select_additional_files
 
         for name in ("a", "b", "c", "d"):
-            deep = tmp_path / "conf" / "deep" / f"{name}.yaml"
+            deep = tmp_path / "conf" / "deep" / f"{name}.md"
             deep.parent.mkdir(parents=True, exist_ok=True)
             deep.write_text(f"{name}: value\n")  # distinct: identical files fold
         guide = tmp_path / "zz-guide.md"
         guide.write_text("How this project works, and who it is for.")
 
-        central = {"conf/deep/c.yaml": 1.0}
+        central = {"conf/deep/c.md": 1.0}
         with_order, candidates, _, _ = _select_additional_files(
             tmp_path, [], [], {}, max_files=1, cached_centrality_scores=central)
         without, _, _, _ = _select_additional_files(
@@ -2048,7 +2048,7 @@ class TestFormatAdditionalFiles:
 
         assert guide in candidates and len(candidates) == 5  # reach
         assert with_order == [guide]
-        assert without == [tmp_path / "conf" / "deep" / "c.yaml"]
+        assert without == [tmp_path / "conf" / "deep" / "c.md"]
 
     def test_selection_needs_no_embedding_model(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

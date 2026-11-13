@@ -11,14 +11,18 @@ How it works
 
 1. **Role.** Documentation files before configuration files
    (``taxonomy.get_role``).
-2. **Depth.** Fewer directories between the file and the repository root
+2. **Process files last.** Within a role, a file about the project's
+   process (how to contribute, the code of conduct, the security policy, the
+   licence, the change log; ``is_process_file``) comes after every file
+   that is not.
+3. **Depth.** Fewer directories between the file and the repository root
    first.
-3. **Overview wording.** Within one role and depth, the BM25 score of the
+4. **Overview wording.** Within one role and depth, the BM25 score of the
    file's first ``HEAD_CHARS`` characters (markup tags removed) against
    ``OVERVIEW_PROBES``: six paragraphs of generic "who is this for / what
    does it do / when, where, why, how" prose. Document frequencies are counted
    over the files being ranked.
-4. **Path**, so the order is total and the same on every run.
+5. **Path**, so the order is total and the same on every run.
 
 Why this design
 ---------------
@@ -51,6 +55,39 @@ of file-name weights learned from the same links (``roadmap``,
 split and the same on the held-out one, and was not adopted: it rewards the
 names READMEs link to, which is not the same as the files that explain the
 code.
+
+Why process files go last (WI-papup)
+------------------------------------
+Role and depth alone put the repository root's community files first:
+``CONTRIBUTING``, ``SECURITY`` and ``CODE_OF_CONDUCT`` sit at depth 0, and a
+design document sits in ``docs/``. Measured on the same 444 repositories,
+with the file NAME as the outside label (no order here reads names):
+
+- On average 1.3 of this order's first three files were process files.
+- The best-ranked document named like an architecture or design overview
+  was in the order's top three in 32 of the 160 repositories that have one
+  (51 with the rule), and at rank 13 at the median (10.5 with it).
+
+The test this module was chosen by (the files a README links to) rewards
+exactly that: a fifth of README links point at process files. Those files do
+not need this list. A README-linked file has its own turn in the selection,
+so putting process files last here loses none of them from the section, and
+the places it frees go to other documentation.
+
+Measured for the rule as shipped, on the section's first eight files (the
+README, then README links and this order in turn): process files fall from
+1.7 to 0.7 a repository, README-linked files stay at 1.6, and the file after
+the README is a process file in 98 repositories where it was in 172. It is
+a small change in what explains the code: a document named like an
+architecture overview is among the eight in 73 of 160 repositories where it
+was in 66, and in 15 of 30 either way on the 89 held-out repositories.
+Scripts and results:
+``~/hypergumbo_lab_notebook/papup_additional_files_ranking_11132026``.
+
+The rule reads the file's name, whole: the conventional names forges and
+packaging tools give these files, in any language's repository. A name that
+merely contains one of the words (``docs/security-model.md``) is not a
+process file.
 
 No model is loaded and nothing is cached: the whole order is a few
 milliseconds of reading file heads. The embedding code, its per-file cache
@@ -239,6 +276,40 @@ _QUERY: Counter[str] = Counter(
 )
 
 
+#: Whole file names (extension and a trailing version dropped, case ignored)
+#: of files about a project's process rather than its code: the community
+#: health files forges recognise, licence texts, and change logs.
+_PROCESS_NAME = re.compile(
+    r"""^(?:
+        contributing | contributors | code[-_ ]?of[-_ ]?conduct | security
+      | support | governance | maintainers | authors | funding | sponsors
+      | backers | adopters | credits | thanks | acknowledge?ments
+      | licen[sc]e(?:[-_][a-z0-9.+]+)? | copying(?:[-_][a-z0-9.+]+)?
+      | notice | patents
+      | change[-_ ]?log(?:[-_][a-z0-9.+]+)? | changes | history | news
+      | release[-_ ]?notes | releases
+    )$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_process_file(path: Path) -> bool:
+    """Whether ``path`` is named as a file about the project's process.
+
+    ``CONTRIBUTING.md``, ``CODE_OF_CONDUCT.rst``, ``SECURITY.md``,
+    ``LICENSE``, ``LICENSE-APACHE``, ``CHANGELOG.md``, ``NEWS`` are. A name
+    that only contains one of the words is not
+    (``docs/license-server-protocol.md``), and neither is a file of another
+    role under one of the names: ``security.yaml`` is configuration and
+    ``authors.py`` is code.
+    """
+    if get_role(path) not in (FileRole.DOCUMENTATION, None):
+        return False
+    # The name up to its first dot: ``COPYING.LESSER`` is ``COPYING``, and a
+    # dotfile has no name to match.
+    return bool(_PROCESS_NAME.match(path.name.split(".", 1)[0]))
+
+
 def _head_words(path: Path) -> Counter[str]:
     """The words in the first ``HEAD_CHARS`` characters of ``path``.
 
@@ -299,10 +370,11 @@ def rank_overview_files(files: Sequence[Path], repo_root: Path) -> list[Path]:
             relative = path
         keyed.append((
             get_role(path) != FileRole.DOCUMENTATION,
+            is_process_file(path),
             len(relative.parts) - 1,
             -score,
             relative.as_posix(),
             path,
         ))
-    keyed.sort(key=lambda item: item[:4])
-    return [item[4] for item in keyed]
+    keyed.sort(key=lambda item: item[:5])
+    return [item[5] for item in keyed]

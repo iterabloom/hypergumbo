@@ -1487,27 +1487,29 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 
 ### Additional Files selection
 
-The Additional Files section uses a README-first hybrid ranking algorithm:
+The Additional Files section is filled README first, then from three lists taken in turn:
 
-1. **README always first:** The project's README is placed first. If it exceeds the token budget, it's truncated and no other files are included.
+1. **README always first.** The project's README is the first file listed and the first printed.
 
-2. **Round-robin selection:** Remaining files are selected by cycling through three sources:
-   - README-linked files (internal links extracted from the README)
-   - Similarity-ranked files (semantic similarity to project description)
-   - Centrality-ranked files (symbol mention frequency)
+2. **Three lists in turn**, each giving its next file not yet picked:
+   - **README-linked files**, in the order the README links to them (internal links extracted from the README). Measured on 444 repositories, ordering them by the overview order instead leaves the first eight files the same set in 392, so the author's order is kept.
+   - **The overview order** (`overview_rank`): documentation before configuration; within a role, files about the project's process (contributing guide, code of conduct, security policy, licence, change log, by their conventional whole names) after every other file; then shallower first, with overview wording as the tie-break. No model is involved. A process file the README links to is still picked, from the first list.
+   - **Documents that mention a central symbol**, most mentions per byte first. Only documentation-role files with at least one mention are in this list; a data or configuration file that holds symbol names is not.
+
+   Files with the same bytes are one candidate (the shallowest path is listed, its copies named beside it).
 
 3. **Multi-format link extraction:** Supports Markdown (inline + reference-style), Org-mode, RST, and AsciiDoc link syntaxes. Resolves relative paths, absolute paths, and forge URLs (GitHub/GitLab/Codeberg).
 
-4. **Dynamic truncation:** When budget is limited, files are truncated based on median token count of already-selected files, with a 500-token floor.
+4. **Content.** Files are printed in the order selected. A file that fits in what is left of the content budget is printed whole. One that does not is cut to its harmonic share of the budget by position (the README, first, gets the largest; ADR-0005), or to a 500-token floor past the last position that has a share, and printing stops when less than the floor is left. A cut is made at a `## ` section boundary, or a paragraph break when the text has none; a line inside a fenced code block is neither.
 
-**Example round-robin order:**
+**Example order:**
 ```
 1. README.md (always first)
-2. CONTRIBUTING.md (linked from README)
-3. docs/overview.md (similarity-ranked)
-4. config.yaml (centrality-ranked)
-5. INSTALL.md (linked from README)
-6. docs/api.md (similarity-ranked)
+2. docs/install.md (linked from README)
+3. docs/overview.md (overview order)
+4. docs/internals.md (mentions central symbols)
+5. CONTRIBUTING.md (linked from README)
+6. docs/api.md (overview order)
 ...
 ```
 

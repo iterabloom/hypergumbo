@@ -112,6 +112,42 @@ def estimate_written_json_tokens(data: object) -> int:
     return len(written_json_text(data)) // CHARS_PER_TOKEN
 
 
+_FENCE = re.compile(r"^ {0,3}(```|~~~)", re.MULTILINE)
+
+
+def _fenced_spans(text: str) -> list[tuple[int, int]]:
+    """Character ranges of the fenced code blocks in ``text``.
+
+    A fence opens on a line starting with three backticks or tildes and
+    closes on the next line starting with the same marker; one left open
+    runs to the end of the text.
+    """
+    spans: list[tuple[int, int]] = []
+    opened: int | None = None
+    marker = ""
+    for match in _FENCE.finditer(text):
+        if opened is None:
+            opened, marker = match.start(), match.group(1)
+        elif match.group(1) == marker:
+            spans.append((opened, match.end()))
+            opened = None
+    if opened is not None:
+        spans.append((opened, len(text)))
+    return spans
+
+
+def _truncate_at_paragraph(text: str, max_chars: int, fences: list[tuple[int, int]]) -> str:
+    """``text`` up to the last blank line that fits and is not inside a
+    fenced code block; a hard cut when there is none."""
+    cut = -1
+    at = text.find("\n\n")
+    while at != -1 and at + 2 <= max_chars:
+        if not any(start < at < end for start, end in fences):
+            cut = at
+        at = text.find("\n\n", at + 2)
+    return text[:cut] if cut > 0 else text[:max_chars]
+
+
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
     """Truncate text to approximately fit within token budget.
 
@@ -121,6 +157,11 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
 
     When no markdown sections are found, falls back to paragraph splitting.
     As a last resort, performs hard truncation.
+
+    A line inside a fenced code block is neither a section header nor a
+    paragraph break (WI-papup). A README that shows example output holds
+    ``## `` lines that are text of the example; taking them for headers cut
+    the README in the middle of its own example and left the fence open.
 
     Args:
         text: The text to truncate.
@@ -134,28 +175,18 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
 
     # Target character count
     max_chars = max_tokens * CHARS_PER_TOKEN
+    fences = _fenced_spans(text)
 
-    # Find all section starts (lines beginning with ## )
+    # Find all section starts (lines beginning with ## ) outside code fences
     section_pattern = re.compile(r"^(## .+)$", re.MULTILINE)
-    section_starts = [(m.start(), m.group(1)) for m in section_pattern.finditer(text)]
+    section_starts = [
+        (m.start(), m.group(1)) for m in section_pattern.finditer(text)
+        if not any(start < m.start() < end for start, end in fences)
+    ]
 
     if not section_starts:
         # No markdown sections, fall back to paragraph splitting
-        paragraphs = text.split("\n\n")
-        result_parts = []
-        current_length = 0
-
-        for para in paragraphs:
-            para_with_sep = para + "\n\n"
-            if current_length + len(para_with_sep) <= max_chars:
-                result_parts.append(para)
-                current_length += len(para_with_sep)
-            else:
-                break
-
-        if result_parts:
-            return "\n\n".join(result_parts)
-        return text[:max_chars]
+        return _truncate_at_paragraph(text, max_chars, fences)
 
     # Extract sections (each section is header + content until next header)
     sections = []
@@ -166,8 +197,12 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
             end = len(text)
         sections.append(text[start:end].rstrip())
 
-    # Include any content before the first section (like the title)
+    # Include any content before the first section (like the title). A
+    # preamble longer than the budget is cut like a text with no sections;
+    # it used to be returned whole, over the budget.
     prefix = text[: section_starts[0][0]].rstrip() if section_starts[0][0] > 0 else ""
+    if len(prefix) > max_chars:
+        return _truncate_at_paragraph(prefix, max_chars, fences)
 
     # Build result keeping whole sections
     result_parts = [prefix] if prefix else []

@@ -95,7 +95,7 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Data Models | Centrality (most-referenced models first) |
 | Source Files | Symbol importance density = Σ(in-degrees) / LOC |
 | Key Symbols | Two-phase: coverage-first, then centrality × tier weight |
-| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) the overview order: documentation before configuration, shallower first, overview wording as the tie-break ([measurement 0033](../measurements/0033-additional-files-embedding-vs-location.md)), (c) symbol-mention centrality. Files with the same bytes are one candidate: the shallowest path is listed and printed, and its copies are named beside it (the first three, then a count) |
+| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) the overview order: documentation before configuration, process files (contributing guide, code of conduct, security policy, licence, change log) last within a role, shallower first, overview wording as the tie-break ([measurement 0033](../measurements/0033-additional-files-embedding-vs-location.md)), (c) documents that mention a central symbol, by mentions per byte (documentation-role files with at least one mention only). Files with the same bytes are one candidate: the shallowest path is listed and printed, and its copies are named beside it (the first three, then a count) |
 | Source Content | Same as Source Files (top density first) |
 | Additional File Content | Same as Additional Files (top of README-first hybrid round-robin first) |
 
@@ -123,9 +123,9 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 | Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
 | Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
 | Source Content | varies | 1 | — | Harmonic truncation (depth-over-breadth) |
-| Additional File Content | varies | 1 | — | Dynamic truncation with median floor |
+| Additional File Content | varies | 1 | — | Harmonic truncation by position, 500-token floor |
 
-The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source Files Content uses harmonic truncation (top-ranked files get proportionally more space); Additional Files Content uses median-based truncation.
+The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source Files Content and Additional Files Content both use harmonic truncation (earlier files get proportionally more space).
 
 ### Source Files: Sized by Its Entries
 
@@ -190,8 +190,10 @@ Both Source Files Content (Section 9) and Additional Files Content (Section 10) 
 - **Surplus handling**: When a file uses fewer tokens than its harmonic share, the surplus remains available for later files (they can exceed their pure harmonic share).
 - Files that fit entirely within their share are included in full. Oversized files are truncated to their share.
 
-**Truncation floor for Additional Files Content:**
-- Uses `max(median(token_counts), 500)` throughout.
+**Truncation for Additional Files Content (harmonic, by position):**
+- A file that fits in what is left is printed whole. One that does not is cut to its share: the file at position *i* gets `budget * (1/i) / H_N`, where N is the largest number of files for which the smallest share is still at least 500 tokens. A file past position N is cut to the 500-token floor, and printing stops when less than the floor is left.
+- The README is first, so it gets the largest share. The rule used to be `max(median(sizes printed so far), 500)`; the first file has no median, so a README longer than the budget was cut to 500 tokens (to 262 on one measured repository, at the nearest section boundary) while the next file was printed whole.
+- A cut is made at a `## ` section boundary, or at a paragraph break when the text has none. A line inside a fenced code block is neither: a README that shows example output holds `## ` lines that are text of the example.
 
 **Why harmonic truncation for source files:** The previous elbow+median approach spread content evenly across files. Harmonic weighting gives proportionally more depth to higher-ranked (more architecturally important) files, matching developer intuition: you want the most detail on the most important code.
 

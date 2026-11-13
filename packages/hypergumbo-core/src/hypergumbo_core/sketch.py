@@ -61,8 +61,9 @@ Sections in emission order:
     ``--with-source`` shrinks its budget to 5% rather than gating it.
     ``_select_additional_files`` chooses files README first, then
     round-robin over README-linked files, the ``overview_rank`` order
-    (documentation before configuration, shallower first, overview wording
-    as the tie-break; no model) and symbol-mention-centrality rank;
+    (documentation before configuration, process files last, shallower
+    first, overview wording as the tie-break; no model) and the documents
+    that mention a central symbol, by symbol-mention centrality;
     already-chosen files skip ranking
     (``_select_additional_files_preselected``)
 12. Source Files Content — full source for the top-ranked files
@@ -174,7 +175,7 @@ from .selection.token_budget import (
     estimate_tokens,
     truncate_to_tokens,
 )
-from .taxonomy import SOURCE_EXTENSIONS, is_additional_file_candidate
+from .taxonomy import FileRole, SOURCE_EXTENSIONS, get_role, is_additional_file_candidate
 from .yaml_catalogs import CatalogueError
 from dataclasses import dataclass
 
@@ -4732,10 +4733,21 @@ def _select_additional_files(
     the copies each returned candidate stands for.
 
     Discovers candidate files (non-source, non-excluded), then selects via
-    round-robin from three lists: the files the README links to, the
-    ``overview_rank`` order (documentation before configuration, shallower
-    first; ``rank_overviews=False`` leaves this list empty) and the
-    symbol-mention-centrality rank.
+    round-robin from three lists: the files the README links to, in the
+    README's order; the ``overview_rank`` order (documentation before
+    configuration, process files last, shallower first;
+    ``rank_overviews=False`` leaves this list empty); and the documents
+    that mention a central symbol, by symbol-mention centrality. Candidates
+    none of the lists holds follow in discovery order, which happens only
+    without the overview order.
+
+    README links keep the README's order (WI-papup). Measured on 444
+    repositories, ordering them by the overview order instead leaves the
+    first eight files the same set in 392, and puts a document named like
+    an architecture overview among them in 75 of 160 repositories against
+    73: not a difference to override the author's order for. (It does
+    change which linked file comes second: a process file in 76
+    repositories against 98.)
 
     Returns:
         (selected_files, candidate_files, symbols_per_file, name_to_in_degree)
@@ -4855,8 +4867,19 @@ def _select_additional_files(
     else:
         centrality_scores = centrality_result.normalized_scores
 
+    # The third list: DOCUMENTS that mention a central symbol, most first
+    # (WI-papup). It used to be every candidate sorted by the score, which is
+    # mentions per byte: a small data or configuration file that happens to
+    # hold a few symbol names (a tsconfig, a stylesheet, a catalogue of
+    # function names) outscored prose that discusses the code, and took
+    # every third place in the section. Measured on four repositories, 9, 1,
+    # 13 and 9 of the list's first 15 files were not documentation. A file
+    # that mentions no central symbol has no place in this list at all; it
+    # used to follow the others in discovery order.
     centrality_ranked = sorted(
-        candidate_files,
+        (f for f in candidate_files
+         if centrality_scores.get(f, 0.0) > 0
+         and get_role(f) == FileRole.DOCUMENTATION),
         key=lambda f: centrality_scores.get(f, 0.0),
         reverse=True,
     )
@@ -4923,7 +4946,34 @@ def _select_additional_files(
             else:
                 sources_exhausted[2] = True
 
+    # The overview order holds every candidate, so the lists above leave
+    # nothing out. Without it (``rank_overviews=False``) the rest follow in
+    # discovery order, as they did when the centrality list held every file.
+    for f in candidate_files:
+        if len(selected_files) >= max_files:
+            break
+        if f not in selected_set:
+            selected_files.append(f)
+            selected_set.add(f)
+
     return selected_files, candidate_files, symbols_per_file, name_to_in_degree
+
+
+def _content_shares(budget: int, count: int, floor: int) -> list[int]:
+    """Harmonic shares of ``budget`` for the first N of ``count`` files.
+
+    The file at position *i* (1-indexed) gets ``budget * (1/i) / H_N``
+    (:func:`compute_harmonic_shares`). N is the largest number of files for
+    which the smallest share is still at least ``floor``, and at least one:
+    spreading the budget over every file would leave each a share too small
+    to be worth printing. A file past N has no share.
+    """
+    if count <= 0:
+        return []
+    n = 1
+    while n < count and compute_harmonic_shares(n + 1, budget)[-1] >= floor:
+        n += 1
+    return compute_harmonic_shares(n, budget)
 
 
 def _format_additional_files(
@@ -4981,8 +5031,6 @@ def _format_additional_files(
         Tuple of (Markdown section, selected file paths, de-duplicated
         in-degree sum).
     """
-    from statistics import median
-
     if copies is None:
         copies = {}
 
@@ -5048,14 +5096,21 @@ def _format_additional_files(
 
     lines = [_section_header(section_title, exclude_tests), ""]
     included_files: list[Path] = []
-    token_counts: list[int] = []
     tokens_used = estimate_tokens("\n".join(lines))
     remaining_budget = token_budget - tokens_used
 
     # Minimum tokens for truncation floor
     MIN_TRUNCATION_TOKENS = 500
+    # What a file that does not fit is cut to: its harmonic share of the
+    # content budget by position, the rule Source Files Content uses
+    # (ADR-0005). The cut used to be the median size of the files already
+    # printed, with this floor, and the first file has no median: a README
+    # longer than the budget was cut to 500 tokens and the next, smaller
+    # file printed whole (WI-papup). The README is the one file known to be
+    # the project's own overview.
+    shares = _content_shares(remaining_budget, len(selected_files), MIN_TRUNCATION_TOKENS)
 
-    for file_path in selected_files:
+    for position, file_path in enumerate(selected_files):
         if remaining_budget <= 50:  # pragma: no cover - budget exhausted
             break
 
@@ -5076,19 +5131,15 @@ def _format_additional_files(
                 lines.extend(copies_line)
                 lines.extend(_format_file_content_block(str(rel_path), content))
                 included_files.append(file_path)
-                token_counts.append(file_tokens)
                 tokens_used += file_tokens
                 remaining_budget -= file_tokens
             else:
-                # File needs truncation
-                # Calculate median of already-selected files (or use floor)
-                if token_counts:
-                    median_tokens = max(int(median(token_counts)), MIN_TRUNCATION_TOKENS)
-                else:
-                    median_tokens = MIN_TRUNCATION_TOKENS
+                # File needs truncation: to its share, or to the floor for
+                # a file past the last position that has a share.
+                share = shares[position] if position < len(shares) else MIN_TRUNCATION_TOKENS
 
                 # Determine truncation target
-                truncation_target = min(median_tokens, remaining_budget - 50)
+                truncation_target = min(share, remaining_budget - 50)
 
                 if truncation_target < MIN_TRUNCATION_TOKENS:
                     # Not enough budget for meaningful truncation, we're done
@@ -5109,7 +5160,6 @@ def _format_additional_files(
                         _format_file_content_block(str(rel_path), truncated_content)
                     )
                     included_files.append(file_path)
-                    token_counts.append(truncated_tokens)
                     tokens_used += truncated_tokens
                     remaining_budget -= truncated_tokens
                 else:
