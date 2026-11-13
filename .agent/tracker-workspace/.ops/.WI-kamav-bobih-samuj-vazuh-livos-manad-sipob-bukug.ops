@@ -18,3 +18,18 @@
     pr_ref:  # 1b27
     description: "hypergumbo_core.prose_only._machine_comments matches directives (# pragma, # covers:, # noqa ...) by regex over raw lines and compares them as a sorted list. Two consequences, measured 2026-11-12 with classify():\n(1) unsafe: moving a real `# pragma: no cover` from one line to another classifies as `comments` (prose-only), so CI exempts the file from the changed-file coverage gate while coverage exclusion moved; the twice-daily full suite catches it only after merge.\n(2) safe but costly: a directive quoted inside a docstring counts, and the match runs to end of line, so rewording prose after a quoted `# pragma` in a docstring classifies as `code` (cost: a history line in a Scala test had to stay; slower import-graph selection).\nFix: take directives from real COMMENT tokens (tokenize) and key each to the code on its line."  # 1b27
     fields: {}  # 1b27
+- op: update  # e76f
+  at: '2026-11-12T20:45:37Z'  # e76f
+  by: agent  # e76f
+  actor: jgstern_agent  # e76f
+  clock: 2  # e76f
+  nonce: e76f  # e76f
+  set:  # e76f
+    status: done  # e76f
+- op: discuss  # 09a3
+  at: '2026-11-12T20:45:37Z'  # 09a3
+  by: agent  # 09a3
+  actor: jgstern_agent  # 09a3
+  clock: 3  # 09a3
+  nonce: 09a3  # 09a3
+  message: "Fixed in PR #2154 (merged). classify() takes directives from COMMENT tokens keyed to scope + the code on their line; the stored per-test-file digest keeps its formula so read records stay valid. Behavioral evidence: classify() on a pragma moved to another line now returns code (was comments); rewording a docstring line quoting a pragma returns docstrings (was code); test_prose_only.py pins both plus a scope-distinct identical line, a standalone directive and a header above a module docstring. Old/new agree on all 752 changed .py pairs in the last 400 commits. Same PR: tokenize rowed and granted (the new import tripped check-claims-coverage), and the probe over all 139 granted python modules rowed 10 unrowed I/O functions (ast/uuid/gzip/tarfile/zipfile/cProfile main, ctypes.util.test, doctest.debug_script, tarfile.is_tarfile, zipfile.is_zipfile)."  # 09a3

@@ -1,0 +1,21 @@
+- op: create  # 10ee
+  at: '2026-11-13T03:52:55Z'  # 10ee
+  by: agent  # 10ee
+  actor: jgstern_agent  # 10ee
+  clock: 1  # 10ee
+  nonce: 10ee  # 10ee
+  data:  # 10ee
+    kind: work_item  # 10ee
+    title: "Coverage narrowing is opt-out and narrows the merge-CI manifest"  # 10ee
+    status: todo_hard  # 10ee
+    priority: 2  # 10ee
+    parent:  # 10ee
+    tags:  # 10ee
+    - smart_test  # 10ee
+    - ci  # 10ee
+    isbefore: []  # 10ee
+    duplicate_of: []  # 10ee
+    not_duplicate_of: []  # 10ee
+    pr_ref:  # 10ee
+    description: "Owner ruling 2026-11-12 (reverses the 11-11 opt-in ruling): coverage-directed narrowing is OPT-OUT.\n\n- smart-test narrows by default (coverage-select narrow); --no-narrow turns it off for a run.\n- Narrowing moves ABOVE the manifest seam, so the committed .ci/affected-tests.txt (what merge CI runs) is narrowed by default, and the manifest header says how many tests narrowing removed.\n- The Woodpecker full-suite cron is never narrowed (full-suite.yml does not read the manifest).\n\nAcceptance: a change whose narrow drops tests produces a manifest without them and a header line saying so; --no-narrow restores the unnarrowed manifest; tests pinning the old split (test_smart_test_manifest_split.py and kin) state the new contract.\nHazards to handle: a stale index can drop a test covering part of a changed file (the local scoped-coverage gate runs the same set first); CI checks coverage per package with only that package's manifest tests."  # 10ee
+    fields: {}  # 10ee

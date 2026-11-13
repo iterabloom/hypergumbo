@@ -1,0 +1,34 @@
+- op: create  # 3c9f
+  at: '2026-11-12T19:22:45Z'  # 3c9f
+  by: agent  # 3c9f
+  actor: jgstern_agent  # 3c9f
+  clock: 1  # 3c9f
+  nonce: 3c9f  # 3c9f
+  data:  # 3c9f
+    kind: work_item  # 3c9f
+    title: "Async/suspend changes a symbol's stable_id in every language"  # 3c9f
+    status: todo_hard  # 3c9f
+    priority: 2  # 3c9f
+    parent:  # 3c9f
+    tags: []  # 3c9f
+    isbefore: []  # 3c9f
+    duplicate_of: []  # 3c9f
+    not_duplicate_of: []  # 3c9f
+    pr_ref:  # 3c9f
+    description: "Making a function async changes its stable_id in TypeScript and Dart (async is in the declared return type, which the typed tier hashes) but not in Python (typed or untyped), Rust, Kotlin (suspend) or JavaScript, measured 2026-11-12 by surveying the same file in sync and async form. Owner ruling 2026-11-12: switching a function to async CHANGES its identity, by one shared mechanism (an async/suspend marker in the shared stable_id formula, reported by each producer), recorded in ADR-0035 section 1's structural inputs; an input change to the hash bumps stableid v13 -> v14. A function returning Promise without the async keyword keeps the unmarked id. test_stable_id_class_collisions.py::test_async_and_sync_function_with_same_signature_distinct currently passes under the fault it is named for (both assertions hold with AsyncFunctionDef routed to the class branch) and is to assert the ids differ."  # 3c9f
+    fields: {}  # 3c9f
+- op: update  # 1e41
+  at: '2026-11-12T22:55:48Z'  # 1e41
+  by: agent  # 1e41
+  actor: jgstern_agent  # 1e41
+  clock: 2  # 1e41
+  nonce: '1e41'  # 1e41
+  set:  # 1e41
+    status: done  # 1e41
+- op: discuss  # ffd9
+  at: '2026-11-12T22:55:48Z'  # ffd9
+  by: agent  # ffd9
+  actor: jgstern_agent  # ffd9
+  clock: 3  # ffd9
+  nonce: ffd9  # ffd9
+  message: "Done in PR #2155 (merged). assemble_stable_id / make_typed_stable_id take is_async and append ':async' to the hash input; analyze.base.declares_async reads async / async* / suspend from a declaration's own tokens and modifier wrappers; compute_stable_id passes it automatically and each typed-tier function site passes it (JS/TS, Rust, C#, Kotlin, Swift, Dart from the body; Python from AsyncFunctionDef). stable_id_scheme v13 -> v14 with the spec's per-transition record and ADR-0035 section 1. Behavioral evidence: same-path sync/async pairs in Python (typed, untyped, method), JS (function, method, arrow), TS, Rust (fn, method), C#, Kotlin, Swift, Dart (function, async*, method) and Hack had EQUAL ids before (measured) and differ after; each sync id is pinned to its v13 value and is unchanged. 26,653 affected tests green, changed sources at 100% coverage."  # ffd9

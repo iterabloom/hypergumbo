@@ -18,3 +18,18 @@
     pr_ref:  # 5799
     description: "`bakeoff-broad cohort --dry-run` raises AttributeError: line ~715 prints r.file_count and r.complexity_score, which bakeoff-broad's RepoInfo (name, path, size_bytes, size_mb, languages) does not have; the line matches bakeoff-deep, whose RepoInfo does. Repro 2026-11-12: init a throwaway session (--pool with one repo), then `cohort --dry-run --repos <repo>` -> AttributeError: 'RepoInfo' object has no attribute 'file_count'. Both auto-select and --repos paths reach the print; `loop --dry-run` does not. No test covers cohort --dry-run."  # 5799
     fields: {}  # 5799
+- op: update  # 672d
+  at: '2026-11-12T19:28:19Z'  # 672d
+  by: agent  # 672d
+  actor: jgstern_agent  # 672d
+  clock: 2  # 672d
+  nonce: 672d  # 672d
+  set:  # 672d
+    status: done  # 672d
+- op: discuss  # 8074
+  at: '2026-11-12T19:28:19Z'  # 8074
+  by: agent  # 8074
+  actor: jgstern_agent  # 8074
+  clock: 3  # 8074
+  nonce: '8074'  # 8074
+  message: "Fixed in PR #2153 (merged). The dry-run listing now prints name, size and languages, the fields bakeoff-broad's RepoInfo has. Behavioral evidence: tests/test_bakeoff_broad_cohort_dry_run.py runs cohort --dry-run --repos on a one-repo session in-process; it raised AttributeError at the listing before the fix and passes after (lists the repo, cohort number unchanged). No other RepoInfo read in the script names a missing field."  # 8074
