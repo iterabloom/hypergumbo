@@ -15,14 +15,14 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **372** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 117 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **58711** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13165, of which 7537 are functions, methods or classes
-- **235933** edges, test code included, by type:
-  - calls: 133337
-  - contains: 54681
-  - imports: 20189
-  - instantiates: 12973
-  - references: 10691
+- **373** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 118 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **58749** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13174, of which 7541 are functions, methods or classes
+- **236077** edges, test code included, by type:
+  - calls: 133417
+  - contains: 54721
+  - imports: 20205
+  - instantiates: 12971
+  - references: 10701
   - module_attr_ref: 2248
   - other: 1814
 
@@ -720,6 +720,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 - **`hypergumbo_core.test_only_reachability`**: Find production functions whose only callers live in test modules.
 - **`hypergumbo_core.tier_filter`**: The supply-chain tier filter: ONE function for ``run_survey`` and t...
+- **`hypergumbo_core.tier_projection`**: What a budget tier carries of each part of a survey (WI-lavum).
 - **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ...
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
@@ -998,8 +999,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 927384fca8bb
-  commit_count: 9137
+  commit: ad7827702011
+  commit_count: 9138
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
