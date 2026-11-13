@@ -110,7 +110,7 @@ def test_a_code_edit_beside_a_comment_edit_keeps_its_whole_selection(scores: dic
 
 @needs_watching
 def test_the_later_stages_keep_what_the_rule_selected(scores: dict) -> None:
-    """The coverage union and the opt-in narrowing judge tests against the
+    """The coverage union and the narrowing judge tests against the
     files whose code changed; the prose-only files are not among those."""
     for edit in ("comment-only", "comment-with-code"):
         for stage in ("union", "narrow"):
@@ -166,7 +166,7 @@ def test_a_failed_helper_leaves_the_selection_to_the_import_graph() -> None:
     assert 'if [[ -s "$_prose_dir/files" ]] && [[ -e "$_prose_dir/tests" ]]; then' in text
 
 
-def test_opt_in_narrowing_cannot_remove_what_the_rule_selected() -> None:
+def test_narrowing_cannot_remove_what_the_rule_selected() -> None:
     assert '"$NARROWED" "$PROSE_TESTS" | sed' in _text()
 
 

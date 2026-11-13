@@ -274,6 +274,7 @@ def cmd_narrow(args: argparse.Namespace) -> int:
         | selectable_test_files(selection.tests, root),
         droppable=speakable_test_files(conn, root),
         forbidden=narrowing_blockers(selection, root),
+        changed=changed,
     )
     conn.close()
 

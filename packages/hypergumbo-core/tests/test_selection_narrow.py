@@ -36,8 +36,8 @@ things that LOOK like the same problem are not:
   refusing on them would refuse on nearly every commit. The reason new blocks
   look dangerous is that coverage cannot know which test covers new code — but
   the test that covers a developer's new code is a CHANGED TEST FILE, and
-  changed test files enter the run set through a different selector that
-  narrowing never touches.
+  narrowing never drops a changed file that is in the run set
+  (``narrow_run_set``'s ``changed``).
 * **unknown test files** are not a refusal: a new test file is unknown to the
   index by definition, and it is its own cover.
 * **unknown files outside the coverage scope** (``scripts/``, docs, config) are
@@ -128,6 +128,24 @@ class TestNarrowRunSet:
         assert got.refusal == "unknown coverable source: a/src/x.py"
         assert got.kept == frozenset(_RUN)
         assert got.dropped == frozenset()
+
+    def test_a_changed_test_file_is_never_dropped(self) -> None:
+        """A test file the change edits runs, whatever the index says.
+
+        Its own lines are not in the coverage scope, so no row ties it to the
+        change, and if it does not execute the changed SOURCE it would look
+        irrelevant. It is the developer's newest evidence; dropping it would
+        merge a PR whose edited tests never ran.
+        """
+        got = narrow_run_set(
+            _RUN,
+            keep={_RUN[0]},
+            droppable=set(_RUN),
+            forbidden=(),
+            changed={_RUN[2], "packages/hypergumbo-core/src/hypergumbo_core/x.py"},
+        )
+        assert got.kept == frozenset({_RUN[0], _RUN[2]})
+        assert got.dropped == frozenset({_RUN[1]})
 
     def test_keep_entries_outside_the_run_set_do_not_join_it(self) -> None:
         """Narrowing may only SHRINK. Adding tests is the union's job."""

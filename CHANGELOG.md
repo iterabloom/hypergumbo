@@ -160,6 +160,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Adjudication-packet comments state current rules and cite the real test path.**
 - **History distilled from comments and docstrings in 320 more files.**
 - **Three tests now reach the cases they name: file order, depth cap, tier drop.**
+- **Coverage narrowing is on by default and narrows the CI manifest; `--no-narrow` disables.**
+- **Coverage narrowing never drops a test file the change edits.**
 - **Archaeology corpus adds 480 random blind-labelled blocks; weights refit to all comments.**
 - **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
 - **smart-test: a comment-or-docstring-only change runs only tests that read the file.**

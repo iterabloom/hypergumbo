@@ -13,7 +13,7 @@ THREE LAYERS, because each can be wrong while the others look right:
 * THE WIRING, end to end. The harness runs the REAL smart-test in target mode
   on three edits, each chosen because one stage of the selection is the only
   thing that can produce its result: the coverage union is the only way to
-  select the string-dispatch test, ``--narrow`` the only way to drop the
+  select the string-dispatch test, narrowing (on by default) the only way to drop the
   import-only one, and both need the index the clean-tree ``--full`` run folds
   (the path that used to fold nothing). The harness exits 2 when no index was
   built.
@@ -263,7 +263,7 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     body = scores["body-edit-c"]
     assert {f"{core}test_chain_a.py", f"{core}test_chain_c.py",
             f"{app}test_cli.py"} <= set(body["must"])
-    # --narrow drops the file that imports the chain but never runs chain_c.
+    # Narrowing drops the file that imports the chain but never runs chain_c.
     assert f"{app}test_cli_usage.py" in body["selected"]["union"]
     assert f"{app}test_cli_usage.py" not in body["selected"]["narrow"]
 
@@ -275,7 +275,7 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
 
     # WI-zunug: a rename changes chain_a's import line, which is import-time
     # code. test_cli_usage only IMPORTS chain_a, so no coverage row ties it to
-    # the change, and --narrow dropped it. Changed import-time code now
+    # the change, and narrowing dropped it. Changed import-time code now
     # refuses narrowing.
     rename = scores["rename"]
     assert f"{app}test_cli_usage.py" in rename["must"]

@@ -567,13 +567,17 @@ def narrow_run_set(
     keep: Iterable[str],
     droppable: Iterable[str],
     forbidden: Iterable[str],
+    changed: Iterable[str] = (),
 ) -> Narrowing:
     """Shrink ``run_set`` to ``keep`` plus everything not safely droppable.
 
     ``keep`` is the FILE-TOUCH set — every test observed executing any block of
     a changed file, not merely the changed blocks — because the local coverage
     gate is whole-file. ``droppable`` is the set the index can speak about.
-    Anything in ``run_set`` and outside ``droppable`` survives regardless.
+    Anything in ``run_set`` and outside ``droppable`` survives regardless, and
+    so does every ``changed`` path in it: a test file the change edits is not in
+    the coverage scope, so no row ties it to the change, yet it is the change's
+    own evidence and must run.
     """
     original = frozenset(run_set)
     reasons = tuple(forbidden)
@@ -581,7 +585,7 @@ def narrow_run_set(
         return Narrowing(kept=original, dropped=frozenset(),
                          refusal="; ".join(reasons))
 
-    keep_set, drop_ok = frozenset(keep), frozenset(droppable)
+    keep_set, drop_ok = frozenset(keep) | frozenset(changed), frozenset(droppable)
     kept = frozenset(f for f in original if f in keep_set or f not in drop_ok)
     if not kept:
         # pytest exits 5 — GREEN — when it collects nothing, so a narrowing to

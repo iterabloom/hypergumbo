@@ -7,26 +7,20 @@ writes is what the MERGE-GATING CI runs. So any change to the variable that
 feeds the manifest is a change to what gates merges, whether or not it was meant
 to be.
 
-THE HAZARD. Coverage-directed selection is local-only: CI never invokes
-scripts/smart-test, but it does consume the manifest smart-test writes. If the
-manifest body and the pytest invocation read ONE variable, Phase 2 (WI-kuliv,
-which UNIONS coverage-selected tests into the run set) would silently widen
-what CI runs, and Phase 3 (WI-bolot, which NARROWS it) would silently narrow
-the merge gate to whatever the selector believes. Neither would fail a test.
-
-THE RULE THIS PINS. The manifest (``MANIFEST_TESTS``) publishes the static
-import-graph slice plus its declarative augmentations; the local run set
-(``AFFECTED_TESTS``) may be widened or narrowed afterwards, for this machine
-only. Per-PR CI already runs much faster than the local suite on the same
-selection, so narrowing CI is the smaller saving and not worth coupling the
-merge gate to a heuristic selector. ``_audit_union`` below pins that Phase 2
-lands on the local side.
+THE RULE THIS PINS. Every step above the seam (``MANIFEST_TESTS`` captured from
+``AFFECTED_TESTS``) reaches merge CI; every step below it changes this machine's
+run only. By owner decision the two coverage-directed steps sit on opposite
+sides: Phase 3 NARROWING sits above it (owner ruling 2026-11-12, WI-zirus), so
+merge CI runs the narrowed set and the manifest header says how many tests it
+removed; the Phase 2 UNION sits below it (owner, 2026-08-16), so it widens only
+the local run. The full-suite cron never reads the manifest, so it is never
+narrowed. ``_audit_union`` and ``_audit_narrow`` pin each side.
 
 WHY THE GUARD CARRIES POSITIVE CONTROLS. A lint over a shell script that matches
-nothing passes just as green as one that matches everything. Both audits are
+nothing passes just as green as one that matches everything. The audits are
 therefore run over synthetic scripts that DO violate the rule — including the
 exact shape a well-meaning "simplify these two variables back into one" edit
-would produce, and the exact shape of a Phase 2 union placed one block too early.
+would produce, and each coverage step placed on the wrong side of the seam.
 """
 from __future__ import annotations
 
@@ -258,3 +252,65 @@ ADDS=$("$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" select \\
 {_RUN}=$(printf '%s\\n%s\\n' "${_RUN}" "$ADDS" | sort -u)
 '''
     assert _audit_union(src) == []
+
+
+# ── Phase 3: coverage narrowing must land ABOVE the seam ─────────────────────
+#
+# The mirror image of the union rule. Narrowing below the seam would shrink
+# only the local run while merge CI kept running every selected test, which is
+# the arrangement the 2026-11-12 ruling reversed.
+
+_NARROW_CALL = re.compile(r"coverage-select\"?\s*\\?\s*\n?[^\n]*\bnarrow\b")
+
+
+def _audit_narrow(text: str) -> list[str]:
+    """Report a coverage narrowing that would not reach the manifest."""
+    calls = [m.start() for m in _NARROW_CALL.finditer(text)]
+    if len(calls) != 1:
+        return [f"expected exactly one `coverage-select … narrow` invocation, "
+                f"found {len(calls)}"]
+    capture = text.find(f'{_MAN}="${_RUN}"')
+    if capture == -1:
+        return ["the seam capture is missing entirely"]
+    if calls[0] > capture:
+        return ["the narrowing runs AFTER the manifest set is snapshotted, so "
+                "merge CI runs the unnarrowed set. It must run above the seam."]
+    return []
+
+
+def test_live_script_narrows_above_the_seam() -> None:
+    assert _audit_narrow(_SMART_TEST.read_text(encoding="utf-8")) == []
+
+
+def test_narrow_guard_fires_when_placed_below_the_seam() -> None:
+    """POSITIVE CONTROL: the pre-2026-11-12 placement."""
+    src = f'''
+{_MAN}="${_RUN}"
+NARROWED=$("$TOOLS_ROOT/scripts/coverage-select" \\
+    --repo-root "$REPO_ROOT" narrow --run-set "$f")
+{_RUN}="$NARROWED"
+'''
+    found = _audit_narrow(src)
+    assert len(found) == 1 and "AFTER the manifest" in found[0]
+
+
+def test_narrow_guard_accepts_the_correct_shape() -> None:
+    """NEGATIVE CONTROL: above the seam reports nothing."""
+    src = f'''
+NARROWED=$("$TOOLS_ROOT/scripts/coverage-select" \\
+    --repo-root "$REPO_ROOT" narrow --run-set "$f")
+{_RUN}="$NARROWED"
+{_MAN}="${_RUN}"
+'''
+    assert _audit_narrow(src) == []
+
+
+def test_the_full_suite_cron_never_reads_the_manifest() -> None:
+    """The cron is the un-narrowed backstop: it must run the whole suite, not
+    the committed (narrowed) manifest. The per-PR workflow is the positive
+    control: it does read it."""
+    woodpecker = _SMART_TEST.parents[1] / ".woodpecker"
+    assert "affected-tests.txt" not in (woodpecker / "full-suite.yml").read_text(
+        encoding="utf-8")
+    assert "affected-tests.txt" in (woodpecker / "woodpecker.yml").read_text(
+        encoding="utf-8")

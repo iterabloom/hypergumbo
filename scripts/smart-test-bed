@@ -20,14 +20,16 @@ base, then:
      (out of the bed, so it is never a change). Fresh on purpose: an index
      with history no scenario controls is the noise this exists to remove.
   2. The edit is applied to the working tree and ``smart-test --manifest
-     --narrow`` computes one selection. ``SMART_TEST_SELECTION_OUT`` hands back
-     its stages: the MANIFEST (what CI runs: the import-graph slice plus its
+     --no-narrow`` computes the unnarrowed selection. ``SMART_TEST_SELECTION_OUT``
+     hands back its stages: the MANIFEST (the import-graph slice plus its
      declarative unions for the files whose code changed, and the tests the
      prose-only rule lists from recorded evidence for the files that changed
-     in comments or docstrings only), the UNION (plus coverage's picks,
-     WI-kuliv), and the NARROWED local run set (WI-bolot). Each later stage
-     starts from the one before it. STATIC is a second ``--manifest`` run with
-     ``--no-prose-rule``: the import-graph selection for every changed file,
+     in comments or docstrings only) and the UNION (plus coverage's picks,
+     WI-kuliv). A second ``smart-test --manifest`` with narrowing on (the
+     default, WI-zirus) gives the NARROWED local run set (WI-bolot); its
+     manifest, which is what CI runs, is that run set without the union's
+     additions. STATIC is a third ``--manifest`` run, with
+     ``--no-prose-rule --no-narrow``: the import-graph selection for every changed file,
      which is what the manifest was before the rule and the yardstick for what
      the rule leaves out. A run that exits early (a full-suite fallback,
      nothing to run) writes no stages, and every selector is then read from
@@ -286,21 +288,32 @@ def score_edit(edit: dict, readers: dict[str, list[str]], work: Path) -> Score:
 
     touched = apply_edit(root, edit)
     stages = root / ".ci" / "selection"
-    static = run_smart_test(root, index, "--manifest", "--no-prose-rule")
+    static = run_smart_test(root, index, "--manifest", "--no-prose-rule", "--no-narrow")
     if static.returncode != 0:
-        raise BedError(f"{edit['name']}: smart-test --manifest --no-prose-rule "
+        raise BedError(f"{edit['name']}: smart-test --manifest --no-prose-rule --no-narrow "
                        f"failed:\n{static.stderr[-2000:]}")
     selected = {"static": read_manifest(root)[1]}
     shutil.rmtree(stages, ignore_errors=True)
-    sel = run_smart_test(root, index, "--manifest", "--narrow")
+    sel = run_smart_test(root, index, "--manifest", "--no-narrow")
     if sel.returncode != 0:
-        raise BedError(f"{edit['name']}: smart-test --manifest failed:\n{sel.stderr[-2000:]}")
+        raise BedError(f"{edit['name']}: smart-test --manifest --no-narrow "
+                       f"failed:\n{sel.stderr[-2000:]}")
     mode, manifest = read_manifest(root)
     for name, filename in STAGE_FILES.items():
+        if name == "narrow":
+            continue
         stage = stages / filename
         selected[name] = sorted(stage.read_text().split()) if stage.exists() else manifest
     order_file = stages / "run-order.txt"
     run_order = order_file.read_text().split() if order_file.exists() else []
+    shutil.rmtree(stages, ignore_errors=True)
+    narrowed = run_smart_test(root, index, "--manifest")
+    if narrowed.returncode != 0:
+        raise BedError(f"{edit['name']}: smart-test --manifest failed:\n"
+                       f"{narrowed.stderr[-2000:]}")
+    stage = stages / STAGE_FILES["narrow"]
+    selected["narrow"] = (sorted(stage.read_text().split()) if stage.exists()
+                          else read_manifest(root)[1])
 
     if edit.get("oracle", "mutate") == "mutate":
         mutate(root, touched)

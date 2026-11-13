@@ -230,7 +230,7 @@ def test_the_pre_union_set_exists_before_the_shadow_reads_it() -> None:
 
 def _run_narrow(tmp_path: Path, *, stub: str, affected: str,
                 select_narrow: str = "true", changed: str = "a.py",
-                prose: str = "") -> str:
+                prose: str = "", want_count: bool = False):
     scripts = tmp_path / "scripts"
     scripts.mkdir(parents=True, exist_ok=True)
     sel = scripts / "coverage-select"
@@ -241,14 +241,16 @@ def _run_narrow(tmp_path: Path, *, stub: str, affected: str,
         f'REPO_ROOT="{tmp_path}"',
         f'TOOLS_ROOT="{tmp_path}"',
         f'SELECT_NARROW="{select_narrow}"',
-        f'LOCAL_CHANGED_FILES="{changed}"',
+        f'CHANGED_FILES="{changed}"',
         # What the prose-only rule selected; narrowing must not remove it.
         f'PROSE_TESTS="{prose}"',
         'BASELINE="HEAD"',
         'VERBOSE=""',
         "log() { :; }",
         f"AFFECTED_TESTS='{affected}'",
+        "NARROWED_OUT_COUNT=0",
         _block("SELECT_NARROW"),
+        'echo "COUNT:$NARROWED_OUT_COUNT"',
         'echo "RESULT:"',
         'echo "$AFFECTED_TESTS"',
     ])
@@ -257,7 +259,10 @@ def _run_narrow(tmp_path: Path, *, stub: str, affected: str,
         capture_output=True, text=True, cwd=str(tmp_path),
     )
     assert done.returncode == 0, done.stderr
-    return done.stdout.split("RESULT:\n", 1)[1]
+    head, result = done.stdout.split("RESULT:\n", 1)
+    if want_count:
+        return int(head.rsplit("COUNT:", 1)[1].split()[0])
+    return result
 
 
 def test_narrowing_removes_what_the_helper_drops(tmp_path) -> None:
@@ -300,23 +305,50 @@ def test_a_helper_that_prints_nothing_leaves_the_run_set_standing(
     assert set(out.split()) == {"a/test_one.py", "b/test_two.py"}
 
 
-def test_narrowing_is_off_unless_asked_for(tmp_path) -> None:
+def test_the_manifest_header_learns_how_many_were_removed(tmp_path) -> None:
+    """The count the "# Narrowed:" header line reports is the run set's
+    shrinkage, and a test the prose-only rule restores is not counted."""
+    count = _run_narrow(
+        tmp_path,
+        stub='echo "a/test_one.py"',
+        affected="a/test_one.py\nb/test_two.py\nc/test_three.py",
+        prose="c/test_three.py",
+        want_count=True,
+    )
+    assert count == 1
+    refused = _run_narrow(
+        tmp_path, stub='exit 1', affected="a/test_one.py\nb/test_two.py",
+        want_count=True,
+    )
+    assert refused == 0
+
+
+def test_the_manifest_carries_the_narrowed_line() -> None:
+    text = _SMART_TEST.read_text(encoding="utf-8")
+    assert 'echo "# Narrowed: $NARROWED_OUT_COUNT test file(s) removed' in text
+
+
+def test_no_narrow_keeps_every_selected_test(tmp_path) -> None:
     out = _run_narrow(tmp_path, stub='echo "a/test_one.py"',
                       affected="a/test_one.py\nb/test_two.py",
                       select_narrow="false")
     assert set(out.split()) == {"a/test_one.py", "b/test_two.py"}
 
 
-def test_narrowing_defaults_off_and_ci_forces_it_off_after_the_parse() -> None:
-    """Order is load-bearing: ``--narrow`` is parsed AFTER the shadow guards.
+def test_narrowing_defaults_on_and_ci_forces_it_off_after_the_parse() -> None:
+    """Narrowing is ON unless ``--no-narrow`` (owner ruling 2026-11-12,
+    WI-zirus), and forced off under CI, which consumes the committed manifest
+    and has no index to narrow with.
 
-    A CI guard placed beside the shadow's would be overridden by the very flag
-    it exists to override, so it has to sit below the argument loop.
+    Order is load-bearing: ``--narrow`` is parsed AFTER the shadow guards, so a
+    CI guard placed beside the shadow's would be overridden by a flag; it has
+    to sit below the argument loop.
     """
     text = _SMART_TEST.read_text(encoding="utf-8")
-    assert re.search(r'^SELECT_NARROW=false$', text, re.MULTILINE), (
-        "narrowing must default OFF"
+    assert re.search(r'^SELECT_NARROW=true$', text, re.MULTILINE), (
+        "narrowing must default ON"
     )
+    assert re.search(r'--no-narrow\)\s*SELECT_NARROW=false', text)
     assert re.search(r'--narrow\)\s*SELECT_NARROW=true', text)
     parse_end = text.index("\n    esac\ndone\n")
     guard = re.search(r'if \[\[ -n "\$\{CI:-\}" \]\]; then\n'
