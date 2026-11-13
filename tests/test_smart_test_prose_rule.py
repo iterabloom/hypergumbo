@@ -66,7 +66,13 @@ needs_watching = pytest.mark.skipif(
 @pytest.mark.skipif(WATCHES, reason="the rule applies here; see the tests for that")
 @pytest.mark.parametrize("edit", ["comment-only", "docstring-only", "comment-with-code"])
 def test_without_runtime_observation_the_rule_gives_way(scores: dict, edit: str) -> None:
-    assert _stage(scores, edit, "manifest") == _stage(scores, edit, "static")
+    """Every changed file is then selected for as code: the import graph's
+    whole selection is in the manifest, and the only tests beyond it are the
+    ones the read-record union adds for a code change (WI-nifif), each a test
+    the oracle says must run."""
+    static, manifest = _stage(scores, edit, "static"), _stage(scores, edit, "manifest")
+    assert static <= manifest
+    assert manifest - static <= set(scores[edit]["must"])
 
 
 @needs_watching
