@@ -13487,6 +13487,19 @@ def run_survey(
                 tiered_map = format_tiered_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
+                if tiered_map["tier_tokens_used"] > target_tokens:
+                    # One node is left and the file is still over: what does
+                    # not depend on the node selection exceeds the budget by
+                    # itself. The file says so (``tier_tokens_used``); say it
+                    # here too, where the person who asked for the tier is.
+                    print(
+                        f"[warn] {budget_path.name} is "
+                        f"{tiered_map['tier_tokens_used']} tokens, over its "
+                        f"{target_tokens}-token budget with one node kept: "
+                        "the sections that do not depend on the node "
+                        "selection are larger than the budget",
+                        file=sys.stderr,
+                    )
                 # Gzip budget tiers when the main output is gzipped
                 # (WI-kojob). Keeps the on-disk layout consistent: all
                 # artifacts produced by one invocation share the same

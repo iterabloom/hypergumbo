@@ -43,11 +43,14 @@ Pre- and post-selection passes
   predicate, per ADR-0027 Phase 3 Wave 5).
 - Name-deduplication (``deduplicate_names``) exists only in
   ``select_by_tokens``, so no production path applies it.
-- Post-selection victim removal enforces a tier's final budget. Edgeless
-  symbols go first, then non-forced ones, then the lowest centrality, where
+- Post-selection victim removal enforces a tier's final budget, which is
+  the budget of the FILE as written (``token_budget.written_json_text``).
+  Nodes leave in an order that does not depend on the budget: edgeless
+  symbols first, then non-forced ones, then the lowest centrality, where
   centrality is computed without the selection-time dampeners
   (``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS``) so those signals do not propagate
-  into post-budget pruning.
+  into post-budget pruning. How many leave is found by bisection, each probe
+  measuring the real file, and the result is recorded as ``tier_tokens_used``.
 
 Compact entry point
 -------------------
@@ -89,8 +92,13 @@ The compact view and the tiered view share one projection:
   view) reports included/omitted counts for those arrays.
 - Summaries are re-derived from the emitted arrays rather than copied from the
   full map: ``_recompute_view_metrics`` recomputes ``metrics``, and the tiered
-  path calls ``recompute_view_summary`` to rebuild ``nodes_summary`` after its
-  shrink loop.
+  path calls ``recompute_view_summary`` to rebuild ``nodes_summary`` for the
+  selection it settles on.
+- The tiered view goes further (``tier_projection``): its edges, entrypoints
+  and features are slimmed like its nodes, ``limits`` records that differ in
+  one key are grouped, and every repository-sized list outside the node
+  selection is cut to a budget-dependent cap with ``<key>_total`` beside it.
+  The compact view keeps those parts whole.
 
 Residual summarization
 ----------------------
@@ -153,7 +161,12 @@ from .selection.token_budget import (
     estimate_json_tokens,
     estimate_written_json_tokens,
     parse_tier_spec,  # re-export for backwards compatibility
-    written_json_text,
+)
+from .tier_projection import (
+    compact_edge,
+    compact_entrypoint,
+    compact_feature,
+    project_fixed_sections,
 )
 
 # Re-exports for backwards compatibility (from selection.* modules)
@@ -1828,65 +1841,6 @@ def recompute_view_summary(
     view_map["nodes_summary"] = summary
 
 
-class _WrittenTierSize:
-    """The size of a tiered map AS WRITTEN, kept exact while records leave it.
-
-    A tier's budget describes the file on disk (INV-nukuk), which is written
-    indented (``token_budget.written_json_text``). Indented output comes from
-    the pure-Python encoder, so re-serializing the whole map after every
-    removal -- what the shrink loop did with the default dump -- costs a
-    second or more per step on a 64k tier. This keeps the same number by
-    arithmetic instead.
-
-    The map is the SHELL (every key but the three record arrays, measured
-    once with those arrays empty) plus the arrays. A record ``r`` inside a
-    top-level array sits two levels deep, so the writer emits it as
-    ``written_json_text(r)`` with four more spaces before every line; an
-    array of ``n >= 1`` records is ``[``, then per record a newline, four
-    spaces and the record, ``n - 1`` commas, and a closing newline, two
-    spaces and ``]``. Against the ``[]`` already counted in the shell that is
-    ``sum(record) + 6n + 2`` characters. ``test_tier_budget_written.py``
-    checks the arithmetic against the real writer on random records.
-    """
-
-    ARRAYS = ("nodes", "edges", "entrypoints")
-
-    def __init__(self, shell: dict[str, Any]) -> None:
-        empty: dict[str, Any] = {**shell, **{name: [] for name in self.ARRAYS}}
-        self._shell = len(written_json_text(empty))
-        self._records = dict.fromkeys(self.ARRAYS, 0)
-        self._chars = dict.fromkeys(self.ARRAYS, 0)
-        self._lengths: dict[int, int] = {}
-
-    def _length(self, record: dict[str, Any]) -> int:
-        # Keyed by identity: a record is added and removed as the same
-        # object, and an edge or entrypoint record need not carry an id.
-        length = self._lengths.get(id(record))
-        if length is None:
-            text = written_json_text(record)
-            length = self._lengths[id(record)] = len(text) + 4 * text.count("\n")
-        return length
-
-    def add(self, array: str, record: dict[str, Any]) -> None:
-        self._records[array] += 1
-        self._chars[array] += self._length(record)
-
-    def remove(self, array: str, record: dict[str, Any]) -> None:
-        self._records[array] -= 1
-        self._chars[array] -= self._length(record)
-
-    @property
-    def chars(self) -> int:
-        return self._shell + sum(
-            self._chars[name] + 6 * count + 2
-            for name, count in self._records.items() if count
-        )
-
-    @property
-    def tokens(self) -> int:
-        return self.chars // CHARS_PER_TOKEN
-
-
 def _stamp_tier_tokens_used(tiered_map: dict[str, Any]) -> int:
     """Record in the map the size it will be written at, and return it.
 
@@ -2023,6 +1977,9 @@ def format_tiered_behavior_map(
     }
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
+    # Every section the node selection does not own takes its tier form
+    # first (WI-lavum): they are measured as they will be written.
+    project_fixed_sections(tiered_map, target_tokens)
 
     included_symbols = list(conn_result.included.symbols)
     included_ids = {s.id for s in included_symbols}
@@ -2042,118 +1999,130 @@ def format_tiered_behavior_map(
         if ep.get("symbol_id") in included_ids
     ]
 
-    node_records = {s.id: compact_node(s) for s in included_symbols}
-    tiered_map["nodes"] = list(node_records.values())
-    tiered_map["edges"] = induced_edges
-    tiered_map["entrypoints"] = filtered_eps
-    # Re-project features onto the SELECTED set before the shrink loop so the
-    # running size reflects the small re-projected features, not the full
-    # ``features[]`` (often the single largest field; the shrink loop only
-    # removes nodes, so a large un-projected features field would keep the map
-    # over budget no matter how many nodes are trimmed; WI-pohuf). Refined to
-    # the final node set once the loop is done (``assemble`` below).
+    # Tier records (WI-lavum): every record is slimmed once, here. The
+    # selection is searched over the SOURCE dicts, because the search reads
+    # ``src`` / ``dst`` / ``symbol_id`` off them; what is measured and written
+    # is each one's tier form.
+    initial_symbols = included_symbols
+    initial_edges = induced_edges
+    initial_eps = filtered_eps
+    node_records = {s.id: compact_node(s) for s in initial_symbols}
+    edge_records = {id(e): compact_edge(e) for e in initial_edges}
+    entry_records = {id(ep): compact_entrypoint(ep) for ep in initial_eps}
     all_features = behavior_map.get("features", [])
-    tiered_map["features"] = _reproject_features(
-        all_features, included_ids, {e.get("id") for e in induced_edges}
-    )
-    # Pre-shrink summary: scratch for the running size only. The authoritative
-    # nodes_summary is re-derived from the FINAL arrays (INV-pazur).
-    tiered_map["nodes_summary"] = conn_result.to_dict()
-    tiered_map["tier_tokens_used"] = target_tokens  # scratch, as above
 
-    # --- Post-selection budget enforcement (INV-nukuk) ---
+    # --- Budget enforcement (INV-nukuk, WI-lavum) ---
     # The budget describes the FILE: the map as it is written to disk, every
-    # section included. If the assembled map does not fit, shrink it by
-    # removing the nodes that contribute least to the induced subgraph.
+    # section included. If the whole selection does not fit, nodes are left
+    # out, least valuable first, and the question is only HOW MANY.
     #
-    # Removal ordering considers LOCAL edge degree to preserve connectivity.
-    # Ordering by (force_include, global_centrality) alone would remove
-    # non-forced, low-centrality frontier nodes first even when they are the
-    # only ones providing edges, leaving disconnected force-included
-    # entrypoints and a tier with no edges.
-    size = _WrittenTierSize(tiered_map)
-    for record in tiered_map["nodes"]:
-        size.add("nodes", record)
-    for record in induced_edges:
-        size.add("edges", record)
-    for record in filtered_eps:
-        size.add("entrypoints", record)
-
+    # The order nodes leave in does not depend on the budget: each victim is
+    # the node contributing least to the subgraph that is left (see
+    # ``next_victim``). So the candidates are a fixed chain, the selection
+    # with its first k victims removed for k = 0..n-1, each smaller than the
+    # last, and the answer is the smallest k whose file fits: a bisection,
+    # with every probe measuring the real written size.
+    #
+    # It used to be a loop that removed one node at a time against a running
+    # size. That size held the features of the selection the loop STARTED
+    # with, and features can be most of a tier and shrink with every node
+    # removed, so the loop removed nodes the finished file had room for:
+    # killbill's 16k tier kept one node with 2.2k tokens unused.
+    victims: list[Symbol] = []
+    remaining = list(initial_symbols)
+    remaining_edges = list(initial_edges)
     victim_centrality: dict[str, float] = {}
 
-    def shrink_to(limit_tokens: int) -> None:
-        """Remove nodes until the running size is within ``limit_tokens`` or
-        one node is left."""
-        nonlocal included_symbols, induced_edges, filtered_eps
-        if size.tokens > limit_tokens and len(included_symbols) > 1 and not victim_centrality:
-            # Centrality for removal ordering. The shared helper applies
-            # rank_symbols' tuned compute_centrality params (WI-tahum) so
-            # victim selection reflects the same graph-structural dampening
-            # as the upstream connectivity selection. Only tier weighting is
-            # applied here: non-tier dampeners are excluded so selection-time
-            # signals don't propagate into post-budget pruning.
+    def next_victim() -> None:
+        """Append to ``victims`` the node that contributes least to what is
+        left, and take it out of what is left.
+
+        Removal ordering considers LOCAL edge degree to preserve
+        connectivity. Ordering by (force_include, global_centrality) alone
+        would remove non-forced, low-centrality frontier nodes first even
+        when they are the only ones providing edges, leaving disconnected
+        force-included entrypoints and a tier with no edges.
+        """
+        nonlocal remaining, remaining_edges
+        if not victim_centrality:
+            # The shared helper applies rank_symbols' tuned
+            # compute_centrality params (WI-tahum) so victim selection
+            # reflects the same graph-structural dampening as the upstream
+            # connectivity selection. Only tier weighting is applied here:
+            # non-tier dampeners are excluded so selection-time signals don't
+            # propagate into post-budget pruning.
             victim_centrality.update(compute_dampened_centrality(
                 symbols, edges,
                 exclude_dampeners=_VICTIM_REMOVAL_EXCLUDE_DAMPENERS,
             ))
-        while size.tokens > limit_tokens and len(included_symbols) > 1:
-            # Local edge degree from the CURRENT induced edges: it changes
-            # with every removal.
-            local_degree: dict[str, int] = {}
-            for e in induced_edges:
-                src, dst = e.get("src"), e.get("dst")
-                local_degree[src] = local_degree.get(src, 0) + 1
-                local_degree[dst] = local_degree.get(dst, 0) + 1
-
-            # Pick victim: prefer removing nodes that contribute least.
-            # Sort key (ascending = remove first):
-            #   1. has_edges: False < True → remove 0-edge singletons first
-            #   2. is_forced: False < True → remove non-forced first
-            #   3. centrality: low centrality removed first
-            victim = min(
-                included_symbols,
-                key=lambda s: (
-                    local_degree.get(s.id, 0) > 0,
-                    s.id in force_include_ids,
-                    victim_centrality.get(s.id, 0),
-                ),
-            )
-            included_ids.discard(victim.id)
-            included_symbols = [s for s in included_symbols if s.id != victim.id]
-            size.remove("nodes", node_records.pop(victim.id))
-
-            # The victim's edges and entrypoints leave with it. O(current
-            # edges) per step instead of O(all edges).
-            kept_edges = []
-            for e in induced_edges:
-                if e.get("src") == victim.id or e.get("dst") == victim.id:
-                    size.remove("edges", e)
-                else:
-                    kept_edges.append(e)
-            induced_edges = kept_edges
-            kept_eps = []
-            for ep in filtered_eps:
-                if ep.get("symbol_id") == victim.id:
-                    size.remove("entrypoints", ep)
-                else:
-                    kept_eps.append(ep)
-            filtered_eps = kept_eps
-
-    def assemble() -> int:
-        """Finish the map for the current selection and return the size it
-        will be written at."""
-        tiered_map["nodes"] = [node_records[s.id] for s in included_symbols]
-        tiered_map["edges"] = induced_edges
-        tiered_map["entrypoints"] = filtered_eps
-        # Re-project features onto the shrunk tier (INV-titid), mirroring the
-        # compact path. The full ``features[]`` is frequently the single
-        # largest field (a lone feature can reference thousands of nodes),
-        # enough to swamp even a 16k budget. Filtering each feature's
-        # node/edge pointers to the retained sets, and dropping features whose
-        # entry nodes were all pruned, keeps the tier within budget (WI-pohuf).
-        tiered_map["features"] = _reproject_features(
-            all_features, included_ids, {e.get("id") for e in induced_edges}
+        local_degree: dict[str, int] = {}
+        for e in remaining_edges:
+            src, dst = e.get("src"), e.get("dst")
+            local_degree[src] = local_degree.get(src, 0) + 1
+            local_degree[dst] = local_degree.get(dst, 0) + 1
+        # Sort key (ascending = remove first):
+        #   1. has_edges: False < True → remove 0-edge singletons first
+        #   2. is_forced: False < True → remove non-forced first
+        #   3. centrality: low centrality removed first
+        victim = min(
+            remaining,
+            key=lambda s: (
+                local_degree.get(s.id, 0) > 0,
+                s.id in force_include_ids,
+                victim_centrality.get(s.id, 0),
+            ),
         )
+        victims.append(victim)
+        remaining = [s for s in remaining if s.id != victim.id]
+        remaining_edges = [
+            e for e in remaining_edges
+            if e.get("src") != victim.id and e.get("dst") != victim.id
+        ]
+
+    def place(removed: int) -> None:
+        """Put into the map the selection with its first ``removed`` victims
+        left out: nodes, the edges and entrypoints among them, and the
+        features re-projected onto them (INV-titid). The full ``features[]``
+        is frequently the single largest field (a lone feature can reference
+        thousands of nodes); filtering each feature's pointers to the
+        retained sets, and dropping features whose entry nodes were all
+        pruned, is what lets a small tier hold more than one symbol
+        (WI-pohuf)."""
+        while len(victims) < removed:
+            next_victim()
+        gone = {victim.id for victim in victims[:removed]}
+        kept_edges = [
+            e for e in initial_edges
+            if e.get("src") not in gone and e.get("dst") not in gone
+        ]
+        tiered_map["nodes"] = [
+            node_records[s.id] for s in initial_symbols if s.id not in gone
+        ]
+        tiered_map["edges"] = [edge_records[id(e)] for e in kept_edges]
+        tiered_map["entrypoints"] = [
+            entry_records[id(ep)] for ep in initial_eps
+            if ep.get("symbol_id") not in gone
+        ]
+        tiered_map["features"] = [
+            compact_feature(feature)
+            for feature in _reproject_features(
+                all_features,
+                {s.id for s in initial_symbols if s.id not in gone},
+                {e.get("id") for e in kept_edges},
+            )
+        ]
+
+    def probe(removed: int) -> int:
+        """The written size of the map with ``removed`` victims left out.
+        The summary, metrics and size stamp are the ones last written; they
+        change by a few characters with the selection, which ``finish`` and
+        the loop below account for."""
+        place(removed)
+        return estimate_written_json_tokens(tiered_map)
+
+    def finish(removed: int) -> int:
+        """Write the whole map for this selection and return its size."""
+        place(removed)
         tiered_map["features_summary"] = _array_projection_summary(
             len(all_features), len(tiered_map["features"])
         )
@@ -2169,18 +2138,31 @@ def format_tiered_behavior_map(
         _recompute_view_metrics(tiered_map)
         return _stamp_tier_tokens_used(tiered_map)
 
-    limit = target_tokens
-    shrink_to(limit)
-    used = assemble()
-    while used > target_tokens and len(included_symbols) > 1:
-        # The running size holds the scratch summary, metrics and features of
-        # the pre-shrink selection; the finished map re-derives them, and they
-        # can come out larger. Lower the working limit by the overshoot (and
-        # by at least one node's worth, so every pass removes something) and
-        # finish again.
-        limit = min(limit - (used - target_tokens), size.tokens - 1)
-        shrink_to(limit)
-        used = assemble()
+    def smallest_fitting(above: int) -> int:
+        """The smallest number of victims greater than ``above`` whose probe
+        fits, given that ``above`` does not; the one-node floor if none."""
+        low, high = above, len(initial_symbols) - 1
+        while high - low > 1:
+            middle = (low + high) // 2
+            if probe(middle) <= target_tokens:
+                high = middle
+            else:
+                low = middle
+        return high
+
+    # Scratch for the probes, until the first ``finish`` replaces them.
+    tiered_map["nodes_summary"] = conn_result.to_dict()
+    tiered_map["tier_tokens_used"] = target_tokens
+
+    floor = len(initial_symbols) - 1
+    removed = 0
+    used = finish(0)
+    while used > target_tokens and removed < floor:
+        # Either the whole selection does not fit, or the sections ``finish``
+        # re-derived came out larger than the probes assumed. Search again
+        # from here, against what was just written.
+        removed = smallest_fitting(removed)
+        used = finish(removed)
     # A map still over budget here has one node left: the sections that do not
     # depend on the selection exceed the budget by themselves. It is written
     # as it is, and ``tier_tokens_used > tier_tokens`` says so.

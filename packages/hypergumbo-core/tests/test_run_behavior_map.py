@@ -462,6 +462,32 @@ def test_run_behavior_map_custom_budgets(tmp_path):
     assert data_2k["tier_tokens"] == 2000
 
 
+def test_a_tier_that_cannot_meet_its_budget_warns_and_the_others_do_not(tmp_path, capsys):
+    """WI-lavum. A budget smaller than the sections that do not depend on
+    the node selection cannot be met by leaving nodes out; the file records
+    it (``tier_tokens_used``) and the run says so on stderr. The default
+    tiers of a small repository fit, and are silent."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "src").mkdir(parents=True)
+    (repo_root / "src" / "app.py").write_text(
+        "def helper():\n    return 1\n\n\ndef main():\n    return helper()\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path,
+                     budgets="50,4k,16k", include_sketch_precomputed=False)
+    err = capsys.readouterr().err
+
+    tiny = json.loads((tmp_path / "out.50.json").read_text())
+    assert tiny["tier_tokens_used"] > tiny["tier_tokens"] == 50
+    assert len(tiny["nodes"]) == 1
+    assert f"[warn] out.50.json is {tiny['tier_tokens_used']} tokens, over its 50-token budget" in err
+    for spec in ("4k", "16k"):
+        tier = json.loads((tmp_path / f"out.{spec}.json").read_text())
+        assert tier["tier_tokens_used"] <= tier["tier_tokens"]
+        assert len(tier["nodes"]) == 2  # both functions: nothing had to be left out
+        assert f"out.{spec}.json" not in err
+
+
 def test_run_behavior_map_budgets_none(tmp_path):
     """budgets='none' disables budget file generation."""
     repo_root = tmp_path / "repo"

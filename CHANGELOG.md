@@ -31,6 +31,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Taint: a child process's exit status is no longer a source** (ADR-0049).
 - **`confidence_source` drops `composite`**, which nothing produced.
 - **A `calls` edge's `src` is the calling code unit** (ADR-0023); output is unchanged.
+- **Budget tiers (`survey.4k.json`, …) slim every section, not only nodes**: `limits` records are grouped by reason, long lists are cut with a `_total` beside them, and edges and entry points keep core fields.
 
 ### Added
 
@@ -108,7 +109,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A dependency naming an in-tree package gets its tier** (ADR-0041 §1): on nest, 172 of 1,379 move from tier 3 to 1.
 - **A file the tier filter removes takes its edges with it**, instead of leaving them on a shared pathless placeholder.
 - **Sketch names a data model's framework once.**
-- **A budget-tier survey file fits its budget as written**, and records the size it reached in `tier_tokens_used`.
+- **A budget-tier survey file fits its budget as written**, records the size it reached in `tier_tokens_used`, and no longer leaves budget unused while dropping nodes.
 
 #### Run reporting and graph integrity
 
