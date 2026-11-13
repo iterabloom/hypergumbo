@@ -1,0 +1,21 @@
+- op: create  # 466a
+  at: '2026-11-13T22:19:35Z'  # 466a
+  by: agent  # 466a
+  actor: jgstern_agent  # 466a
+  clock: 1  # 466a
+  nonce: 466a  # 466a
+  data:  # 466a
+    kind: work_item  # 466a
+    title: "Sketch Entry Points lists a route twice (handler function and route marker) and prints a raw symbol id as the marker's handler"  # 466a
+    status: todo_hard  # 466a
+    priority: 3  # 466a
+    parent:  # 466a
+    tags:  # 466a
+    - sketch  # 466a
+    - dogfood  # 466a
+    isbefore: []  # 466a
+    duplicate_of: []  # 466a
+    not_duplicate_of: []  # 466a
+    pr_ref:  # 466a
+    description: "Seen 2026-11-13 in this repository's sketch (8k), HTTP Routes group of Entry Points, while verifying WI-johuv. Not caused by that change (present before it).\n\nOBSERVED.\n  - `_api_add_item` (HTTP route /api/items) — POST /api/items — create a new item.\n  - `POST /api/items` → `python:packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py:170-197:_api_add_item:function` — `packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py`\n1. One route is listed twice: once as its handler function (entry point kind http_route on the function) and once as the route marker symbol.\n2. The route marker's line shows a raw symbol id where the handler's name belongs. sketch._route_handler_hint prints meta.handler_ref as it is; this producer stores a symbol id there, others a name (alertmanager shows `api.limitHandler`).\n\nASK. One line per route in the section: the route, the handler's name, the file. Decide which of the two entry points stands for the route, and resolve a handler_ref that is a symbol id to the symbol's name. Check every producer of handler_ref / handler_name for what it stores.\n\nGENERALITY. Any framework whose routes produce both a route marker and a handler entry point, in any language; the rule is about the two records of one route, not about this repository's tracker server."  # 466a
+    fields: {}  # 466a

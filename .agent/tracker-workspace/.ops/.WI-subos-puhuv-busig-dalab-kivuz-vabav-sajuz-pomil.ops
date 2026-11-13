@@ -1,0 +1,21 @@
+- op: create  # 2b45
+  at: '2026-11-13T22:19:23Z'  # 2b45
+  by: agent  # 2b45
+  actor: jgstern_agent  # 2b45
+  clock: 1  # 2b45
+  nonce: 2b45  # 2b45
+  data:  # 2b45
+    kind: work_item  # 2b45
+    title: "A sketch without source content leaves most of a large budget unused when its listings run out, and no test checks a section's size against its ADR-0005 share"  # 2b45
+    status: todo_hard  # 2b45
+    priority: 3  # 2b45
+    parent:  # 2b45
+    tags:  # 2b45
+    - sketch  # 2b45
+    - token_budget  # 2b45
+    isbefore: []  # 2b45
+    duplicate_of: []  # 2b45
+    not_duplicate_of: []  # 2b45
+    pr_ref:  # 2b45
+    description: "Found 2026-11-13 while rendering 30 sketches (alertmanager, kserve, killbill, prometheus, hypergumbo at 8k/32k/128k, with and without source) before and after PR #2176. Files: the job's tmp/base/before and tmp/base/after-final2 (not kept); the numbers below are from them.\n\nOBSERVED after PR #2176, sketch size as a share of its budget, --no-source: alertmanager 32k 56%, 128k 17%; prometheus 128k 51%; kserve 128k 67%; killbill 128k 85%; hypergumbo 128k 91%. With source every sketch is 97-100%. The same was true before the PR (alertmanager 128k 17%).\n\nMECHANISM. Without source content the sections after Source Files are Key Symbols (80% of what is left) and the Additional Files listing (the rest). Each stops when it runs out of entries or reaches its share; nothing gives the unused budget to another section. Source Files is held to 25% of what is left even when thousands of files are unlisted and the budget is not used.\n\nTWO SMALLER THINGS seen in the same renderings, same family (ADR-0005 shares vs what the code does):\n- Entry Points and Data Models are still sized by a count (share over a constant per entry). They cannot push the sketch over budget (later sections take what is left), so this is accuracy of the share, not a lost section.\n- At 8k three sketches have Source Files 12-34% of the remainder where the share is 10 or 25%. Unverified reading: the Structure tree is rewritten after remaining_tokens is computed, so the share is taken from a stale remainder.\n\nASK. Decide what a sketch does with budget no section claims (a surplus pass in ADR-0005 order, or say in the output that the budget was not needed), and audit each ADR-0005 share against the code with one test that reads every section's size against its share on a fixture.\n\nGENERALITY. Any repository whose listings run out before the budget does, in any language; the rule must be about shares and surplus, not about a repository."  # 2b45
+    fields: {}  # 2b45
