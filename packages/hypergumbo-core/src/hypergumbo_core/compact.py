@@ -148,7 +148,7 @@ from .selection.filters import (
     production_edges,
 )
 from .paths import is_test_node as _is_test_node
-from .metrics import compute_metrics
+from .metrics import view_metrics
 from .selection.language_proportional import (
     allocate_language_budget,
     find_underrepresented_language_seeds,
@@ -269,27 +269,36 @@ def compact_node(symbol: Symbol) -> dict[str, Any]:
     return {k: full[k] for k in _COMPACT_NODE_FIELDS if full.get(k) is not None}
 
 
-def _recompute_view_metrics(view_map: dict[str, Any]) -> None:
-    """Recompute a projected view's ``metrics`` block from its OWN nodes/edges.
+def _recompute_view_metrics(
+    view_map: dict[str, Any],
+    selected: list[Symbol],
+    source_map: dict[str, Any],
+) -> None:
+    """Recompute a projected view's ``metrics`` block from its OWN selection.
 
     A budget-limited projection (compact/tiered) shallow-copies the source map,
     so without this it would echo the FULL-repo ``metrics`` (total_nodes,
     total_edges, total_files, by_supply_chain_tier) that ``compute_metrics``
     produced BEFORE projection — a view that lies about itself (WI-pizat).
-    Recompute in place so the counts describe the projected arrays. Only fires
-    when the source carried a ``metrics`` block (the projection mirrors the
-    source's structure — it does not invent one). Deliberately does NOT touch
-    ``analysis_incomplete``: per spec §726 that flag is analyzer-scope (set only
-    on early termination / errors / resource limits), not a view-truncation
-    signal.
+    Recompute in place so the counts describe the projected arrays.
+
+    ``selected`` is the Symbols behind ``view_map["nodes"]``. The block is
+    computed from their full records, never from the slim ones the view
+    writes: a slim node has no ``supply_chain`` block, and a count read off
+    it puts every node in tier ``unknown`` (WI-lokuj;
+    :func:`hypergumbo_core.metrics.view_metrics`).
+
+    Only fires when the source carried a ``metrics`` block (the projection
+    mirrors the source's structure — it does not invent one), and reads that
+    block rather than the view's, so the tiered search may call it for every
+    candidate selection. Deliberately does NOT touch ``analysis_incomplete``:
+    per spec §726 that flag is analyzer-scope (set only on early termination /
+    errors / resource limits), not a view-truncation signal.
     """
-    if "metrics" in view_map:
-        view_map["metrics"] = compute_metrics(
-            view_map["nodes"], view_map["edges"],
-            profile=view_map.get("profile"),
-            # A fact about the enrichment run, not about the projected
-            # arrays, so the source's counts carry over unchanged.
-            framework_patterns=view_map["metrics"].get("framework_patterns"),
+    if "metrics" in source_map:
+        view_map["metrics"] = view_metrics(
+            [symbol.to_dict() for symbol in selected],
+            view_map["edges"], source_map["metrics"],
         )
 
 
@@ -1471,7 +1480,8 @@ def format_compact_behavior_map(
             if k not in _COMPACT_STRIP_KEYS
         }
         compact_map["view"] = "compact"
-        compact_map["nodes"] = [compact_node(s) for s in conn_result.included.symbols]
+        selected = conn_result.included.symbols
+        compact_map["nodes"] = [compact_node(s) for s in selected]
         _annotate_node_centrality(compact_map["nodes"], conn_result.centrality)
         compact_map["nodes_summary"] = conn_result.to_dict()
 
@@ -1508,7 +1518,8 @@ def format_compact_behavior_map(
             if k not in _COMPACT_STRIP_KEYS
         }
         compact_map["view"] = "compact"
-        compact_map["nodes"] = [compact_node(s) for s in result.included.symbols]
+        selected = result.included.symbols
+        compact_map["nodes"] = [compact_node(s) for s in selected]
         _annotate_node_centrality(compact_map["nodes"], result.centrality)
         compact_map["nodes_summary"] = result.to_dict()
 
@@ -1548,7 +1559,7 @@ def format_compact_behavior_map(
             len(all_features), len(compact_map["features"])
         )
 
-    _recompute_view_metrics(compact_map)
+    _recompute_view_metrics(compact_map, selected, behavior_map)
     return compact_map
 
 
@@ -2079,9 +2090,10 @@ def format_tiered_behavior_map(
             if e.get("src") != victim.id and e.get("dst") != victim.id
         ]
 
-    def place(removed: int) -> None:
+    def place(removed: int) -> list[Symbol]:
         """Put into the map the selection with its first ``removed`` victims
-        left out: nodes, the edges and entrypoints among them, and the
+        left out, and return the Symbols kept: nodes, the edges and
+        entrypoints among them, and the
         features re-projected onto them (INV-titid). The full ``features[]``
         is frequently the single largest field (a lone feature can reference
         thousands of nodes); filtering each feature's pointers to the
@@ -2091,13 +2103,12 @@ def format_tiered_behavior_map(
         while len(victims) < removed:
             next_victim()
         gone = {victim.id for victim in victims[:removed]}
+        kept = [s for s in initial_symbols if s.id not in gone]
         kept_edges = [
             e for e in initial_edges
             if e.get("src") not in gone and e.get("dst") not in gone
         ]
-        tiered_map["nodes"] = [
-            node_records[s.id] for s in initial_symbols if s.id not in gone
-        ]
+        tiered_map["nodes"] = [node_records[s.id] for s in kept]
         tiered_map["edges"] = [edge_records[id(e)] for e in kept_edges]
         tiered_map["entrypoints"] = [
             entry_records[id(ep)] for ep in initial_eps
@@ -2107,10 +2118,11 @@ def format_tiered_behavior_map(
             compact_feature(feature)
             for feature in _reproject_features(
                 all_features,
-                {s.id for s in initial_symbols if s.id not in gone},
+                {s.id for s in kept},
                 {e.get("id") for e in kept_edges},
             )
         ]
+        return kept
 
     def probe(removed: int) -> int:
         """The written size of the map with ``removed`` victims left out.
@@ -2122,7 +2134,7 @@ def format_tiered_behavior_map(
 
     def finish(removed: int) -> int:
         """Write the whole map for this selection and return its size."""
-        place(removed)
+        kept = place(removed)
         tiered_map["features_summary"] = _array_projection_summary(
             len(all_features), len(tiered_map["features"])
         )
@@ -2135,7 +2147,7 @@ def format_tiered_behavior_map(
         recompute_view_summary(
             tiered_map, eligible_symbols, selection_centrality, emit_edge_count=True
         )
-        _recompute_view_metrics(tiered_map)
+        _recompute_view_metrics(tiered_map, kept, behavior_map)
         return _stamp_tier_tokens_used(tiered_map)
 
     def smallest_fitting(above: int) -> int:
