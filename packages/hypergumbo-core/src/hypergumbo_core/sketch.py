@@ -5953,6 +5953,17 @@ def _format_datamodels(
 
     Returns:
         Markdown formatted section for data models.
+
+    The list is cut by rank and THEN grouped by file, so a file's models can
+    straddle the cut. A file heading followed by five bullets reads as "this
+    file's data models"; when three more were cut it must say so (WI-nurid).
+    Each file shown therefore ends with "... and N more in this file" when N
+    of its models are below the cut, and the section's last line counts only
+    the models in files that are not shown at all.
+
+    A file's group is not kept whole when most of it made the cut: rank
+    decides what is shown, and the file's line reports the rest. Keeping
+    groups whole would let one file with many models take the section.
     """
     if not datamodels:
         return ""
@@ -5970,32 +5981,63 @@ def _format_datamodels(
     grouped: dict[str, list[str]] = {}
     fallback_lines: list[str] = []
 
-    for model in shown:
+    def path_of(model: "DataModel") -> str | None:
         sym = symbol_by_id.get(model.symbol_id)
-        if sym:
-            rel_path = sym.path
-            if rel_path.startswith(str(repo_root)):
-                rel_path = rel_path[len(str(repo_root)) + 1:]
+        if sym is None:
+            return None
+        rel_path = sym.path
+        if rel_path.startswith(str(repo_root)):
+            rel_path = rel_path[len(str(repo_root)) + 1:]
+        return rel_path
+
+    for model in shown:
+        rel_path = path_of(model)
+        if rel_path is not None:
             grouped.setdefault(rel_path, []).append(
-                f"  - `{sym.name}` ({_datamodel_description(model)})"
+                f"  - `{symbol_by_id[model.symbol_id].name}` ({_datamodel_description(model)})"
             )
         else:
             fallback_lines.append(
                 f"  - `{model.symbol_id}` ({_datamodel_description(model)})"
             )
 
+    # Models below the cut, by file: those in a file that is shown are that
+    # file's to report; the rest are the section's.
+    cut_per_file: Counter[str] = Counter()
+    cut_elsewhere = 0
+    other_files: set[str] = set()
+    unlocated = False
+    for model in sorted_models[max_entries:]:
+        rel_path = path_of(model)
+        if rel_path is not None and rel_path in grouped:
+            cut_per_file[rel_path] += 1
+            continue
+        cut_elsewhere += 1
+        if rel_path is None:
+            unlocated = True
+        else:
+            other_files.add(rel_path)
+
     lines = [_section_header("Data Models", exclude_tests), ""]
 
     for path, bullets in grouped.items():
         lines.append(f"`{path}`:")
         lines.extend(bullets)
+        if cut_per_file[path]:
+            lines.append(f"  - ... and {cut_per_file[path]} more in this file")
 
     if fallback_lines:
         lines.append("Unknown:")
         lines.extend(fallback_lines)
 
-    if len(datamodels) > max_entries:
-        lines.append(f"- ... and {len(datamodels) - max_entries} more data models")
+    if cut_elsewhere:
+        # A model with no symbol has no path: the count of files is then
+        # not known, and is not stated.
+        where = ""
+        if not unlocated:
+            plural = "s" if len(other_files) != 1 else ""
+            where = f" in {len(other_files)} other file{plural}"
+        lines.append(f"- ... and {cut_elsewhere} more data models{where}")
 
     return "\n".join(lines)
 
@@ -6333,7 +6375,7 @@ def _format_symbols(
     # Maps function name -> number of times it appeared across files
     function_occurrence_count: dict[str, int] = {}
 
-    total_rendered = 0
+    shown_files: set[str] = set()
     for file_path in sorted_files:
         file_symbols = selected_by_file[file_path]
 
@@ -6341,13 +6383,12 @@ def _format_symbols(
 
         # Render up to max_symbols_per_file (compression)
         rendered_count = 0
-        deduped_count = 0  # Track skipped duplicates
+        rendered_ids: set[str] = set()
         for sym in file_symbols[:max_symbols_per_file]:
             # Deduplicate: skip functions with same name already shown in other files
             # This reduces noise from utility functions like _node_text() that appear
             # in many analyzer files with identical implementations
             if sym.kind in ("function", "method") and sym.name in rendered_function_names:
-                deduped_count += 1
                 # Track occurrence for summary
                 function_occurrence_count[sym.name] = function_occurrence_count.get(sym.name, 1) + 1
                 continue
@@ -6372,7 +6413,7 @@ def _format_symbols(
                 rendered_function_names.add(sym.name)
 
             rendered_count += 1
-            total_rendered += 1
+            rendered_ids.add(sym.id)
 
         # If all symbols in this file were deduplicated, remove the empty header
         if rendered_count == 0:  # pragma: no cover
@@ -6380,28 +6421,29 @@ def _format_symbols(
             lines.pop()
             continue
 
-        # Summary line for remaining symbols in this file
-        # Don't count deduped symbols as "remaining" - they're intentionally hidden
-        remaining_in_file = len(file_symbols) - rendered_count - deduped_count
-        if remaining_in_file > 0:
-            # Show stats for compressed symbols (excluding deduped ones)
-            remaining_syms = [
-                s for s in file_symbols[max_symbols_per_file:]
-                if not (s.kind in ("function", "method") and s.name in rendered_function_names)
-            ]
-            remaining_scores = [centrality.get(s.id, 0) for s in remaining_syms]
-            if remaining_scores:
-                top_score = max(remaining_scores)
-                lines.append(f"  (... +{remaining_in_file} more, top score: {top_score:.2f})")
+        shown_files.add(file_path)
+
+        # Every key symbol of THIS file that is not a bullet under it
+        # (WI-nurid): the ones selected but past the per-file cap, the
+        # same-name functions shown once under another file, and the ones
+        # the selection left out. The last group used to be folded into the
+        # section's last line as symbols "across N other files", which they
+        # are not: a heading with three bullets read as the file's whole
+        # list. So bullets plus this count is the file's key symbols.
+        remaining_syms = [s for s in by_file[file_path] if s.id not in rendered_ids]
+        if remaining_syms:
+            top_score = max(centrality.get(s.id, 0) for s in remaining_syms)
+            lines.append(f"  (... +{len(remaining_syms)} more, top score: {top_score:.2f})")
 
         lines.append("")  # Blank line between files
 
-    # Global summary of unselected symbols
-    total_selected = len(selected)
-    total_candidates = len(key_symbols)
-    unselected = total_candidates - total_selected
-    if unselected > 0:
-        lines.append(f"(... and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files)")
+    # What the section's last line counts: the symbols of files that are not
+    # shown at all. A shown file's hidden symbols are on its own line above.
+    other_files = [f for f in by_file if f not in shown_files]
+    if other_files:
+        hidden = sum(len(by_file[f]) for f in other_files)
+        plural = "s" if len(other_files) != 1 else ""
+        lines.append(f"(... and {hidden} more symbols across {len(other_files)} other file{plural})")
 
     # Summary of deduplicated utility functions (show top duplicates)
     if function_occurrence_count:

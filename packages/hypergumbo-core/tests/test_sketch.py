@@ -3208,6 +3208,165 @@ class TestEntryPointLinesIdentifyTheirEntry:
             "React app bootstrap")
 
 
+class TestACutListSaysWhoseEntriesItLeftOut:
+    """A list cut by rank and then grouped by file says, under each file,
+    how many of that file's entries are not shown (WI-nurid).
+
+    A file heading followed by bullets reads as "this file's data models".
+    When the cut by rank fell inside the file, the heading showed part of
+    them and only the section's last line said anything was left out,
+    without saying where. The rule is about rank-then-group and holds for
+    any language's models and for Key Symbols alike.
+    """
+
+    @staticmethod
+    def _models(tmp_path: Path, language: str, spec: list[tuple[str, str, float]],
+                ) -> tuple[list[DataModel], list[Symbol]]:
+        """``spec`` rows are (file, name, rank)."""
+        symbols = [Symbol(id=f"{language}:{name}", name=name, kind="class",
+                          language=language, path=str(tmp_path / file),
+                          span=Span(1, 9, 1, 2))
+                   for file, name, _rank in spec]
+        models = [DataModel(symbol_id=f"{language}:{name}", confidence=0.9,
+                            label="struct", rank_score=rank)
+                  for _file, name, rank in spec]
+        return models, symbols
+
+    def test_a_python_file_whose_models_straddle_the_cut(self, tmp_path: Path) -> None:
+        models, symbols = self._models(tmp_path, "python", [
+            ("cfg.py", "A", 10), ("cfg.py", "B", 9), ("cfg.py", "C", 8),
+            ("cfg.py", "D", 7), ("cfg.py", "E", 6),
+            ("other.py", "F", 5), ("other.py", "G", 4)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=3)
+        assert out.splitlines()[2:] == [
+            "`cfg.py`:",
+            "  - `A` (struct)", "  - `B` (struct)", "  - `C` (struct)",
+            "  - ... and 2 more in this file",
+            "- ... and 2 more data models in 1 other file",
+        ]
+
+    def test_two_go_files_interleaved_by_rank(self, tmp_path: Path) -> None:
+        """Every model left out belongs to a file that is shown: each file
+        reports its own, and the section has nothing more to add."""
+        models, symbols = self._models(tmp_path, "go", [
+            ("types.go", "Alert", 10), ("config.go", "Config", 9),
+            ("types.go", "Silence", 8), ("config.go", "Route", 7),
+            ("types.go", "Matcher", 6)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=3)
+        assert out.splitlines()[2:] == [
+            "`types.go`:",
+            "  - `Alert` (struct)", "  - `Silence` (struct)",
+            "  - ... and 1 more in this file",
+            "`config.go`:",
+            "  - `Config` (struct)",
+            "  - ... and 1 more in this file",
+        ]
+
+    def test_models_left_out_of_files_not_shown_are_the_sections(self, tmp_path: Path) -> None:
+        models, symbols = self._models(tmp_path, "rust", [
+            ("a.rs", "A", 10), ("b.rs", "B", 9),
+            ("c.rs", "C", 8), ("c.rs", "D", 7), ("d.rs", "E", 6)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=2)
+        assert "more in this file" not in out
+        assert out.splitlines()[-1] == "- ... and 3 more data models in 2 other files"
+
+    def test_a_list_that_is_not_cut_says_nothing(self, tmp_path: Path) -> None:
+        """Control: the lines appear only when something was left out."""
+        models, symbols = self._models(tmp_path, "python", [
+            ("cfg.py", "A", 10), ("cfg.py", "B", 9), ("other.py", "C", 8)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=3)
+        assert out.count("  - `") == 3
+        assert "more" not in out
+
+    def test_a_model_with_no_symbol_is_counted_without_a_file(self, tmp_path: Path) -> None:
+        """It has no path, so the section does not claim to know its file."""
+        models, symbols = self._models(tmp_path, "python", [
+            ("cfg.py", "A", 10), ("other.py", "B", 5)])
+        models.append(DataModel(symbol_id="gone:X", confidence=0.9,
+                                label="struct", rank_score=1))
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=1)
+        assert out.splitlines()[-1] == "- ... and 2 more data models"
+
+    @staticmethod
+    def _functions(spec: dict[str, int]) -> list[Symbol]:
+        return [Symbol(id=f"{file}:{i}", name=f"{file.split('.')[0]}_fn{i}",
+                       kind="function", language="python",
+                       path=f"/fake/repo/{file}", span=Span(i + 1, i + 2, 1, 2))
+                for file, count in spec.items() for i in range(count)]
+
+    @staticmethod
+    def _accounting(out: str) -> tuple[dict[str, int], dict[str, int], tuple[int, int]]:
+        """Per file heading: bullets shown and the "+N more" under it; and
+        the section's last line as (symbols, other files)."""
+        import re
+
+        shown: dict[str, int] = {}
+        more: dict[str, int] = {}
+        other = (0, 0)
+        current = ""
+        for line in out.splitlines():
+            if line.startswith("### `"):
+                current = line[5:-1]
+                shown[current], more[current] = 0, 0
+            elif line.startswith("- `") and current:
+                shown[current] += 1
+            elif line.startswith("  (... +"):
+                more[current] = int(line.split("+")[1].split(" ")[0])
+            elif line.startswith("(... and "):
+                found = re.fullmatch(
+                    r"\(\.\.\. and (\d+) more symbols across (\d+) other files?\)", line)
+                assert found, line
+                other = (int(found[1]), int(found[2]))
+        return shown, more, other
+
+    def test_key_symbols_of_a_shown_file_are_counted_under_it(self) -> None:
+        """Files of different sizes. Whatever the selection shows, each file
+        shown accounts for every one of its own symbols, and the last line
+        for the symbols of the files not shown and no others. The section
+        used to end "... and N more symbols across 0 other files" with all
+        N in files shown above."""
+        sizes = {"a.py": 12, "b.py": 9, "c.py": 7, "d.py": 4}
+        symbols = self._functions(sizes)
+        out = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=9)
+        shown, more, other = self._accounting(out)
+        # Reach: more than one file is shown, and at least one hides symbols.
+        assert len(shown) >= 2 and any(more.values())
+        for file in shown:
+            assert shown[file] + more[file] == sizes[file], file
+        hidden_files = [f for f in sizes if f not in shown]
+        assert other == (sum(sizes[f] for f in hidden_files), len(hidden_files))
+        assert sum(shown.values()) + sum(more.values()) + other[0] == sum(sizes.values())
+
+    def test_a_function_shown_once_elsewhere_is_still_counted_in_its_file(self) -> None:
+        """A function whose name was already shown under another file is not
+        repeated, and is one of its own file's symbols not shown."""
+        symbols = [
+            Symbol(id=f"{file}:{name}", name=name, kind="function", language="python",
+                   path=f"/fake/repo/{file}", span=Span(line, line + 1, 1, 2))
+            for file, names in (("a.py", ["node_text", "parse"]),
+                                ("b.py", ["node_text", "emit"]))
+            for line, name in enumerate(names, 1)]
+        out = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=4)
+        body = out.split("The following symbols")[0]
+        shown, more, other = self._accounting(body)
+        assert body.count("- `node_text` (function)") == 1
+        assert shown == {"a.py": 2, "b.py": 1} and more == {"a.py": 0, "b.py": 1}
+        assert other == (0, 0)
+
+    def test_key_symbols_of_files_not_shown_are_the_sections(self) -> None:
+        """Three files, room for symbols of one: the other two files'
+        symbols, and only those, are "in other files"."""
+        symbols = self._functions({"a.py": 4, "b.py": 3, "c.py": 2})
+        edges = [Edge(id=f"e{i}", src="b.py:0", dst="a.py:0", edge_type="calls",
+                      line=1, confidence=0.9, origin="t", origin_run_id="t")
+                 for i in range(3)]
+        out = _format_symbols(symbols, edges, Path("/fake/repo"), max_symbols=1)
+        headings = [ln for ln in out.splitlines() if ln.startswith("### ")]
+        assert headings == ["### `a.py`"]
+        assert "  (... +3 more, top score:" in out
+        assert "(... and 5 more symbols across 2 other files)" in out
+
+
 class TestFormatDatamodels:
     """Tests for data model formatting."""
 
@@ -3241,7 +3400,10 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, symbols, tmp_path, max_entries=3)
 
-        assert "... and 7 more data models" in result
+        assert result.count("  - `Model") == 3
+        # All ten are in the one file shown: the seven are that file's.
+        assert "  - ... and 7 more in this file" in result
+        assert "more data models" not in result
 
     def test_empty_datamodels_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty data models."""
@@ -3395,8 +3557,10 @@ class TestFormatSymbols:
 
         result = _format_symbols(symbols, [], repo_root, max_symbols=5)
 
-        # New format: "(... and X more symbols across Y other files)"
-        assert "... and 15 more symbols" in result
+        # All twenty are in the one file shown, so the fifteen are that
+        # file's and none is "in another file" (WI-nurid).
+        assert "(... +15 more, top score:" in result
+        assert "other file" not in result
 
     def test_max_symbols_breaks_across_files(self) -> None:
         """Max symbols limit causes balanced selection across files."""
@@ -3420,8 +3584,12 @@ class TestFormatSymbols:
         # coverage phase picks 5 (one per file), then fills remaining 10
         result = _format_symbols(symbols, [], repo_root, max_symbols=15)
 
-        # Should show remaining count with new format
-        assert "... and 35 more symbols" in result
+        # Each file shown accounts for all ten of its symbols, and the last
+        # line for the files not shown (WI-nurid): 50 in all, none twice.
+        shown, more, other = TestACutListSaysWhoseEntriesItLeftOut._accounting(result)
+        assert len(shown) >= 2
+        assert all(shown[f] + more[f] == 10 for f in shown)
+        assert other == (10 * (5 - len(shown)), 5 - len(shown))
         # Should show symbols from multiple files (coverage-first policy)
         assert "file_0.py" in result
         assert "file_1.py" in result

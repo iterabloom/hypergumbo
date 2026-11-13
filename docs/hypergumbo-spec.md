@@ -1481,6 +1481,8 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 
 **An Entry Points line identifies its entry.** After the name and label a line shows the entry's docstring when it has one and its path otherwise. An entry whose name another entry shown in the section also carries (`main` in every Go command, `New` in every Go package, `handler` in every serverless function) shows its path as well as its docstring, and two such entries in one file show `path:line`. A line says a thing once: an entry named by its own path does not repeat it, and a label drops the name or path it ends with (`Shell script (scripts/build.sh)` is printed as `Shell script`).
 
+**A list cut by rank and grouped by file says whose entries it left out.** Data Models and Key Symbols rank their entries across the repository, cut, and then group what is left by file, so a file heading can show part of that file's entries. Under each file shown, a line counts the file's entries that are not shown (`... and N more in this file`; `(... +N more, top score: X)` in Key Symbols), and the section's last line counts only the entries of files that are not shown at all, with the number of those files. Bullets plus the file's line are the file's entries. A file's group is not kept whole when most of it made the cut: rank decides what is shown.
+
 ### Additional Files selection
 
 The Additional Files section uses a README-first hybrid ranking algorithm:
