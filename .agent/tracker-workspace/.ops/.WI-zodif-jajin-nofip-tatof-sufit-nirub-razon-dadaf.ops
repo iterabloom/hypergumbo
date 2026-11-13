@@ -1,0 +1,22 @@
+- op: create  # cc5b
+  at: '2026-11-13T09:22:50Z'  # cc5b
+  by: agent  # cc5b
+  actor: jgstern_agent  # cc5b
+  clock: 1  # cc5b
+  nonce: cc5b  # cc5b
+  data:  # cc5b
+    kind: work_item  # cc5b
+    title: "docs/INTEL_MAC.md pins hypergumbo==2.0.2 (current 9.2.0) and is the second Additional File in every sketch: no check ties version pins in docs to the release"  # cc5b
+    status: todo_hard  # cc5b
+    priority: 4  # cc5b
+    parent:  # cc5b
+    tags:  # cc5b
+    - outside_reader_review_20261113  # cc5b
+    - dogfood  # cc5b
+    - docs  # cc5b
+    isbefore: []  # cc5b
+    duplicate_of: []  # cc5b
+    not_duplicate_of: []  # cc5b
+    pr_ref:  # cc5b
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nOBSERVED. docs/INTEL_MAC.md builds a Docker image from \"pip wheel hypergumbo==2.0.2\" (lines 22, 27, 34, 46) and its example uses \"hypergumbo run --out results.json\" (line 111; run is still accepted as an alias of survey). Last content change 2026-03-12. The packages are at 9.2.0. Because the sketch ranks it second among Additional Files, the 8k sketch prints it in full: 13% of that sketch is a shim pinned seven major versions back, while the README is cut at 1.9 KB.\n\nASK\n1. Bring the document up to date, or mark it as applying to a named version range, or remove it if the Intel Mac path is no longer supported. Which of the three is the owner's decision.\n2. Add the check that keeps it true: at release preparation, find version pins of this project's own packages in tracked docs and report any that name a version other than the one being released, with an explicit way to mark a pin as intentional.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nFor the check that means: it is driven by the package names read from the project's manifests and runs over all tracked documentation, never a rule about this one file. The ranking question (why a platform note outranks the spec and the architecture document among Additional Files) is a separate matter and is not asked here."  # cc5b
+    fields: {}  # cc5b
