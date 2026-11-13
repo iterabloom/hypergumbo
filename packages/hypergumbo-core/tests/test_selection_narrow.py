@@ -62,6 +62,7 @@ from hypergumbo_core.selection_index import (
     narrowing_blockers,
     open_index,
     speakable_test_files,
+    store_edges,
     touching_test_files,
 )
 
@@ -250,8 +251,10 @@ class TestNarrowingBlockers:
 def _index(tmp_path: Path, *, blocks=(), unmeasured=()):
     """A real index with the given ``(test_id, path, name)`` rows."""
     conn = open_index(tmp_path / "index.sqlite")
-    conn.executemany("INSERT INTO test_block (test_id, path, name) VALUES (?,?,?)",
-                     blocks)
+    edges: dict[str, list[tuple[str, str]]] = {}
+    for test_id, path, name in blocks:
+        edges.setdefault(test_id, []).append((path, name))
+    store_edges(conn, edges)
     conn.executemany("INSERT INTO unmeasured_test (test_id) VALUES (?)",
                      [(t,) for t in unmeasured])
     conn.commit()

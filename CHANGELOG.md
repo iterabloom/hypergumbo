@@ -149,6 +149,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Coverage narrowing is on by default and narrows the CI test list**; `--no-narrow` turns it off, and the twice-daily full suite is never narrowed. It refuses when import-time code changed and never drops a test file the change edits.
 - **A failing run stops 15 seconds after its first failure**, locally and in per-PR CI, and the likeliest failures run first. A failed or killed run keeps the evidence it gathered on which tests read which files.
 - **One OpenMP thread per parallel worker**: a measured full-suite run fell from 46 to 35 minutes. Tests with an expensive shared setup build it once per session or run on one worker.
+- **The test-selection index is 18× smaller** (3.8 GB → 210 MB on this repository): each test, file and block name is stored once. An old index converts itself on first use and is kept beside the new one as `.format-1`.
 - **`scripts/smart-test-bed`** scores test selection on a small repository; `smart-test --full` on an unchanged tree updates the selection index.
 
 #### Test fixes

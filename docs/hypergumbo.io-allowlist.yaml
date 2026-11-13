@@ -681,6 +681,33 @@ modules:
     purpose: coverage-directed test-selection index (sqlite) for this repository's own test
       runs; dev tooling shipped inside hypergumbo-core, imported by no hypergumbo subcommand
     sites:
+    - function: _write_format_2
+      primitive: sqlite3.connect
+      family: fs_write
+      count: 1
+      purpose: create the format-2 work file <index>.converting beside the index and fill it
+        from the format-1 file, which is attached and only read
+    - function: convert_format_1
+      primitive: '*.hardlink_to'
+      family: fs_write
+      count: 1
+      purpose: keep the format-1 file as <index>.format-1 (or .format-1.N) before the swap
+    - function: convert_format_1
+      primitive: '*.open[w]'
+      family: fs_write
+      count: 1
+      purpose: the conversion lock file <index>.lock (flock), so two openers convert once
+    - function: convert_format_1
+      primitive: '*.unlink'
+      family: fs_write
+      count: 3
+      purpose: remove a killed conversion's work file and journal before starting, the work
+        file after a failure, and the lock file once the index is format 2
+    - function: convert_format_1
+      primitive: sqlite3.connect
+      family: fs_write
+      count: 1
+      purpose: read the index's format again under the lock (PRAGMA only)
     - function: open_index
       primitive: '*.mkdir'
       family: fs_write
@@ -688,7 +715,7 @@ modules:
     - function: open_index
       primitive: sqlite3.connect
       family: fs_write
-      count: 1
+      count: 2
   hypergumbo_core.selection_log:
     zone: dev_zone
     commands:
