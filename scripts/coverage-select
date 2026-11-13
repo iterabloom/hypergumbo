@@ -21,6 +21,7 @@ catches broadly and exits 0 — see `main`.
     narrow  print a run set with provably-irrelevant test files REMOVED
     prose-select  write the changed files that differ only in comments or
                   docstrings, and the tests recorded evidence says they need
+    readers  print the test files recorded reading a changed file as data
     report  print the accrued shadow evidence and its verdict
 """
 from __future__ import annotations
@@ -37,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "packages" / "hypergumbo-core" / "src"))
 
 from hypergumbo_core.prose_only import (
-    fold_run, global_refusal, select_for_prose,
+    fold_run, global_refusal, select_for_prose, tests_reading,
 )
 from hypergumbo_core.selection_index import (
     Narrowing, narrow_run_set, narrowing_blockers, open_index,
@@ -353,6 +354,33 @@ def cmd_prose_select(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_readers(args: argparse.Namespace) -> int:
+    """Print the test FILES recorded reading a changed file as data, one per
+    line (``prose_only.tests_reading``).
+
+    For a CODE change. A test that checks source files by reading them from
+    disk imports none of them, so the import-graph slice does not select it;
+    smart-test unions this answer into the manifest. Files that no longer
+    exist are left out: the record is persistent and pytest treats a missing
+    path as a collection error. An empty answer prints nothing.
+    """
+    root = Path(args.repo_root).resolve()
+    changed = [c for c in _lines(args.changed_files) if c.endswith(".py")]
+    if not changed:
+        return 0
+    conn = open_index(Path(args.index))
+    found = tests_reading(conn, changed)
+    conn.close()
+    files = sorted(f for f in found if (root / f).is_file())
+    for f in files:
+        print(f)
+    if args.verbose:
+        for f in files:
+            print(f"[coverage-select] readers: {f} reads {found[f]}",
+                  file=sys.stderr)
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     """Print the accrued evidence and the phase's verdict."""
     ev = evaluate(load_observations(Path(args.log)))
@@ -415,6 +443,10 @@ def main(argv: list[str] | None = None) -> int:
     ps.add_argument("--files-out", required=True)
     ps.add_argument("--tests-out", required=True)
     ps.set_defaults(func=cmd_prose_select)
+
+    rd = sub.add_parser("readers")
+    rd.add_argument("--changed-files", default=None)
+    rd.set_defaults(func=cmd_readers)
 
     rp = sub.add_parser("report")
     rp.set_defaults(func=cmd_report)

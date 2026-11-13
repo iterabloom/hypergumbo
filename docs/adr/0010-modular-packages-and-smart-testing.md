@@ -283,7 +283,7 @@ fast-ci:
 
 CI does not run `scripts/smart-test`; it runs the committed `.ci/affected-tests.txt`. So whatever `smart-test` writes there is the merge gate's selection, and two selections are kept apart in `scripts/smart-test` (pinned by `packages/hypergumbo-core/tests/test_smart_test_manifest_split.py`):
 
-- **The manifest** carries the static import-graph slice of the changed files plus its declarative augmentations (conftest owners, coverage-only dependencies, and the like), narrowed by coverage (below).
+- **The manifest** carries the static import-graph slice of the changed files plus its declarative augmentations (conftest owners, coverage-only dependencies, and the like), narrowed by coverage and then widened by the read record (both below).
 - **The local run** may differ for this machine only: coverage-directed selection adds tests to it. The addition never reaches the manifest.
 
 **Coverage narrowing reaches the manifest, and is on by default.** `coverage-select narrow` removes a selected test file only when the local coverage index can speak about it (it has rows and no unmeasured test) and it was never observed executing any block of a changed file. It never removes a changed file in the run set, nor a test the prose-only rule selected, and it refuses outright, keeping the whole selection, when the change touches import-time code (a module or class body), adds or deletes a file, or names a coverable source file the index has never seen.
@@ -292,6 +292,13 @@ CI does not run `scripts/smart-test`; it runs the committed `.ci/affected-tests.
 - `--no-narrow` turns it off for one run. It is off when `CI` is set: CI has no index and only consumes the manifest.
 - The Woodpecker full-suite cron never reads the manifest, so it is never narrowed and stays the backstop for a test the index wrongly judged irrelevant.
 - Expect it to act on a minority of changes: on 200 recent commits changing package source, about four in five change import-time code and are refused.
+
+**The read record adds the tests that read a changed file from disk.** A test that checks source files by opening them (a gate that walks every analyzer, a test that greps a module) imports none of them, so the import graph does not select it when one of those files changes, and it has no coverage row on the file either. The read record kept for the prose-only rule (below) says which tests read which files; for every changed `.py` file whose code changed, `coverage-select readers` names the test files recorded reading it (`hypergumbo_core.prose_only.tests_reading`) and `smart-test` adds them.
+
+- It runs above the manifest snapshot and after narrowing, so merge CI runs the additions and narrowing cannot remove them; the header line `# Read-record tests: N added` appears whenever it added anything.
+- It only adds, so it uses the record as it stands: a stale record costs one unneeded test, a missing one leaves the selection as it was.
+- Not covered: a read made by a process the test starts, which the recorder cannot see.
+- `--no-read-union` turns it off for one run. It is off when `CI` is set.
 
 **One exception: prose-only files.** A changed `.py` file is prose-only when its AST with docstrings removed, and its machine-read comments (`# pragma:`, `# covers:`, `# type:`, `# noqa` ...), equal the base's (`hypergumbo_core.prose_only.classify`). Such a file never enters the import-graph slice. Its tests come from recorded evidence instead (`select_for_prose`: the tests recorded reading the file, reading a changed docstring or its line numbers, or starting a process the recorder cannot see, plus any test file with no usable record), and those tests are what the manifest carries for it.
 

@@ -281,5 +281,16 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     assert f"{app}test_cli_usage.py" in rename["must"]
     assert f"{app}test_cli_usage.py" in rename["selected"]["narrow"]
 
+    # WI-nifif: test_tree_gate reads every source file from disk and imports
+    # none, so the import graph (STATIC) cannot select it for a code change.
+    # The read record does, in the manifest that CI runs, and narrowing does
+    # not take it back out.
+    gate = "tests/test_tree_gate.py"
+    for edit in ("body-edit-c", "rename", "runtime-dispatch"):
+        assert gate in scores[edit]["must"], edit
+        assert gate not in scores[edit]["selected"]["static"], edit
+        assert gate in scores[edit]["selected"]["manifest"], edit
+        assert gate in scores[edit]["selected"]["narrow"], edit
+
     # A text edit is scored by what breaks on the edited tree itself.
     assert f"{core}test_kinds_markers.py" in scores["comment-marker"]["must"]

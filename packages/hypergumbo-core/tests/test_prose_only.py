@@ -597,3 +597,44 @@ def test_with_too_little_on_record_the_rule_gives_way(tmp_path: Path) -> None:
     beyond = po.select_for_prose(conn, root, change, [*recorded, TEST_A, TEST_B, ""])
     assert (beyond.files, beyond.tests) == ({}, {})
     assert "2 of 11 test files have no usable record" in beyond.rejected[SRC]
+
+
+# ── The same record, for a CODE change ──────────────────────────────────────
+
+
+def test_tests_reading_names_the_test_files_recorded_reading_a_path(
+    tmp_path: Path,
+) -> None:
+    """A test that reads a source file as data imports nothing from it, so the
+    import graph cannot select it for a change to that file. The record can."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A, TEST_B)
+    _fold(conn, root, tmp_path, {
+        f"{TEST_A}::test_one": _bucket(reads=[SRC]),
+        f"{TEST_A}::test_two": _bucket(),
+        f"{TEST_B}::test_one": _bucket(reads=["pkg/other.py"]),
+    })
+    assert po.tests_reading(conn, [SRC]) == {TEST_A: SRC}
+    assert po.tests_reading(conn, ["pkg/other.py", SRC]) == {
+        TEST_A: SRC, TEST_B: "pkg/other.py"}
+
+
+def test_tests_reading_a_path_nothing_reads_is_empty(tmp_path: Path) -> None:
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket(reads=[SRC])})
+    assert po.tests_reading(conn, ["pkg/unread.py"]) == {}
+    assert po.tests_reading(conn, []) == {}
+
+
+def test_tests_reading_counts_reads_only(tmp_path: Path) -> None:
+    """A docstring or line number seen at runtime means the file's code was
+    loaded in the test's process: that is the import graph's and coverage's
+    ground. Only a read of the file as data is invisible to both."""
+    conn, root = _index(tmp_path), _repo(tmp_path, TEST_A)
+    _fold(conn, root, tmp_path, {f"{TEST_A}::test_one": _bucket(
+        docs=[f"{SRC}::f"], lines=[SRC])})
+    assert po.tests_reading(conn, [SRC]) == {}
+
+
+def test_tests_reading_on_an_index_with_no_record_is_empty(tmp_path: Path) -> None:
+    assert po.tests_reading(_index(tmp_path), [SRC]) == {}
+

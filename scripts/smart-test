@@ -39,6 +39,7 @@
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --no-narrow  # Keep the tests coverage narrowing would drop
+#   ./scripts/smart-test --no-read-union  # Leave out tests added for reading a changed file by path
 #   ./scripts/smart-test --background # Kick off full suite in background
 #
 # TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
@@ -188,6 +189,15 @@ SELECT_NARROW=true
 # thousand test files, locally or in CI). Opt out per run with --no-prose-rule.
 SELECT_PROSE=true
 
+# THE READ-RECORD UNION (WI-nifif): a test that checks source files by reading
+# them from disk imports none of them, so the import-graph slice does not
+# select it when one of those files changes. The read record the prose-only
+# rule keeps already says which tests read which files; a code change adds the
+# test files recorded reading a changed file. It only adds, and it is part of
+# the MANIFEST selection, because the failure it exists for is a PR whose own
+# CI was green. Opt out per run with --no-read-union.
+SELECT_READERS=true
+
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
 #
 #   1. CI IS THE GATE. This selector is an accelerator whose whole safety story
@@ -232,6 +242,7 @@ for arg in "$@"; do
         --narrow) SELECT_NARROW=true ;;
         --no-narrow) SELECT_NARROW=false ;;
         --no-prose-rule) SELECT_PROSE=false ;;
+        --no-read-union) SELECT_READERS=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -259,6 +270,8 @@ if [[ -n "${CI:-}" ]]; then
     # The prose-only rule's evidence is recorded on a developer's machine;
     # there is none here, and CI consumes the manifest rather than selecting.
     SELECT_PROSE=false
+    # The read-record union reads the same evidence.
+    SELECT_READERS=false
 fi
 
 # --fail-grace (WI-fipuf): a TARGETED run stops this many seconds after its
@@ -2032,6 +2045,43 @@ if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     fi
 fi
 
+# ── THE READ-RECORD UNION (WI-nifif) ─────────────────────────────────────────
+# ABOVE THE SEAM: what it adds is in the manifest, so merge CI runs it. The
+# case it exists for is a PR that changed one analyzer, passed its own CI, and
+# broke on dev a gate that reads every analyzer from disk: a local-only step
+# would have left that PR's CI exactly as green.
+#
+# AFTER NARROWING: narrowing drops a test the index has coverage rows for and
+# none on the changed file, which describes a test that READS the file and
+# never runs it. Adding the readers afterwards is what keeps them.
+#
+# ADDITIVE, AND NEVER ABLE TO FAIL THE RUN. The helper exits 0 whatever
+# happens and prints only files that exist; an empty answer adds nothing.
+# $CHANGED_FILES no longer holds the prose-only files, whose readers the
+# prose-only rule has already listed.
+READ_UNION_COUNT=0
+if [[ "$SELECT_READERS" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _rd_changed=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_rd_changed" || true
+    READ_TESTS=$("$TOOLS_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" readers \
+        --changed-files "$_rd_changed" 2>/dev/null || echo "")
+    rm -f "$_rd_changed"
+    if [[ -n "$READ_TESTS" ]]; then
+        # Only what the selection did not already hold: the count is this
+        # step's own contribution, not its overlap with the import graph.
+        READ_NEW=$(comm -13 \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
+            <(echo "$READ_TESTS" | sed '/^$/d' | sort -u))
+        if [[ -n "$READ_NEW" ]]; then
+            READ_UNION_COUNT=$(echo "$READ_NEW" | grep -c . || true)
+            echo "Read-record union added $READ_UNION_COUNT test file(s) recorded reading a changed file by path (--no-read-union leaves them out)"
+            log "Read-record union adding: $(echo "$READ_NEW" | tr '\n' ' ')"
+            AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$READ_NEW" | sed '/^$/d' | sort -u)
+        fi
+    fi
+fi
+
 MANIFEST_TESTS="$AFFECTED_TESTS"
 MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 # INV-tazur: CI runs this list verbatim, so a dead path here reddens (or, in a
@@ -2159,6 +2209,9 @@ mkdir -p "$MANIFEST_DIR"
     fi
     if [[ "$NARROWED_OUT_COUNT" -gt 0 ]]; then
         echo "# Narrowed: $NARROWED_OUT_COUNT test file(s) removed by coverage narrowing (smart-test --no-narrow keeps them)"
+    fi
+    if [[ "$READ_UNION_COUNT" -gt 0 ]]; then
+        echo "# Read-record tests: $READ_UNION_COUNT added (recorded reading a changed file by path; the import graph does not reach them)"
     fi
     echo "#"
     echo "# === CHANGED_SOURCE_FILES ==="
