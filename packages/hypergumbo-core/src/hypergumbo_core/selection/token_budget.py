@@ -16,6 +16,15 @@ exceeding budgets). estimate_json_tokens serializes with json.dumps
 (default separators, no indentation) and uses floor division on the
 character count.
 
+Two JSON forms, two estimators. A survey artifact is WRITTEN with
+``indent=2, sort_keys=True`` (``safety_zones.user_out_open_json_dump``), a
+form about a quarter larger than the default dump. A budget that describes
+a file is checked with ``estimate_written_json_tokens``, which sizes
+``written_json_text``: the text the writer produces. ``estimate_json_tokens``
+is for sizing a record relative to other records, where the form cancels
+out. Checking a file's budget with it let a tier pass the check and exceed
+its budget on disk (INV-nukuk).
+
 The truncation logic for Markdown is section-aware: it attempts to cut
 at ## header boundaries to keep headers with their content, avoiding
 orphaned headers.
@@ -81,6 +90,26 @@ def estimate_json_tokens(data: dict) -> int:
     """
     json_str = json.dumps(data)
     return len(json_str) // CHARS_PER_TOKEN
+
+
+def written_json_text(data: object) -> str:
+    """The text a survey artifact is written as.
+
+    ``safety_zones.user_out_open_json_dump`` (and its gzip sibling) write
+    with exactly these arguments; ``test_tier_budget_written.py`` writes a
+    file through the real writer and compares, so the two cannot drift
+    apart unnoticed.
+    """
+    return json.dumps(data, indent=2, sort_keys=True)
+
+
+def estimate_written_json_tokens(data: object) -> int:
+    """Estimate the tokens of ``data`` as a file on disk (floor division).
+
+    ``ensure_ascii`` is the default in both this and the writer, so the
+    character count is the byte count.
+    """
+    return len(written_json_text(data)) // CHARS_PER_TOKEN
 
 
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
