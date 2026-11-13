@@ -20,7 +20,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 ### Documentation
 
 - The web server's docstrings describe its deny-by-default auth gate and say the login modules are not wired in.
-- Sync, TUI and setup-test docstrings state current rules; two false claims and the check numbers are corrected.
+- Comments and docstrings in the CLI, store, sync, journal, setup and TUI modules and their tests state current rules instead of history; two false claims and the check numbers are corrected.
 
 ## [0.11.0] - 2026-10-20
 
