@@ -197,6 +197,10 @@ The Key Symbols section has special handling: **always include at least 5 symbol
 
 ### Key Symbols: Two-Phase Selection
 
+Which files the two phases may draw from:
+- The top N files by score (the sum of a file's three most central symbols), where N grows with the symbol budget: 20, or one file for every three symbols of budget when that is more.
+- A file that holds an entry point and did not make the top N may still be admitted, best score first, up to one such file for every four ranked ones. An entry file's symbols are called by nothing, so score alone would not show the program's own `main`; a repository can also hold hundreds of entry points, and they must not outnumber the files chosen on merit.
+
 Phase 1 (Coverage-First):
 - Take top N files by symbol importance density
 - Select the single best symbol from each file
