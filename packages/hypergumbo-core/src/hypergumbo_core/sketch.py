@@ -4563,6 +4563,54 @@ def _file_docstrings(symbols: list[Symbol], repo_root: Path) -> dict[str, str]:
 
 
 
+def _group_identical_files(
+    files: list[Path], repo_root: Path
+) -> tuple[list[Path], dict[Path, list[Path]]]:
+    """Fold files with the same bytes into one (WI-lofas).
+
+    Returns the files to rank and, for each of them that stands for copies,
+    the copies. A monorepo's per-package README copied from the root, a
+    licence or a config repeated in every example directory: listing and
+    printing each copy spends the budget on bytes the reader already has
+    (two copies of one README were 17% of a 32k sketch). The copy that
+    stays is the shallowest path, then the first by name, so the root file
+    stands for its copies; the others are named beside it, never dropped
+    silently.
+
+    WHERE THE RULE STOPS. Same bytes, nothing else: a file that differs by a
+    header line or trailing whitespace is a different file. Empty files are
+    not grouped (there is no content to repeat), and a file that cannot be
+    read stands alone.
+    """
+    import hashlib
+
+    def placement(path: Path) -> tuple[int, str]:
+        relative = path.relative_to(repo_root)
+        return len(relative.parts), relative.as_posix()
+
+    by_digest: dict[str, list[Path]] = {}
+    alone: set[Path] = set()
+    for path in files:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            alone.add(path)
+            continue
+        if not data:
+            alone.add(path)
+            continue
+        by_digest.setdefault(hashlib.sha256(data).hexdigest(), []).append(path)
+
+    copies: dict[Path, list[Path]] = {}
+    dropped: set[Path] = set()
+    for group in by_digest.values():
+        if len(group) > 1:
+            kept, *others = sorted(group, key=placement)
+            copies[kept] = others
+            dropped.update(others)
+    return [path for path in files if path not in dropped], copies
+
+
 def _select_additional_files_preselected(
     preselected_files: list[Path],
     symbols: list[Symbol],
@@ -4600,8 +4648,13 @@ def _select_additional_files(
     rank_overviews: bool = True,
     centrality_progress_callback: Callable[..., Any] | None = None,
     cached_centrality_scores: dict[str, float] | None = None,
+    copies_out: dict[Path, list[Path]] | None = None,
 ) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
     """Select additional files using README-first hybrid ordering.
+
+    Files with the same bytes are folded into one candidate first
+    (:func:`_group_identical_files`); ``copies_out``, when given, receives
+    the copies each returned candidate stands for.
 
     Discovers candidate files (non-source, non-excluded), then selects via
     round-robin from three lists: the files the README links to, the
@@ -4677,6 +4730,11 @@ def _select_additional_files(
     if not candidate_files:
         return [], [], {}, {}  # pragma: no cover - defensive
 
+    candidate_files, copies = _group_identical_files(candidate_files, repo_root)
+    if copies_out is not None:
+        copies_out.update(copies)
+    stands_for = {copy: kept for kept, others in copies.items() for copy in others}
+
     # ========== README-First Hybrid Ordering ==========
 
     # Find README
@@ -4686,8 +4744,11 @@ def _select_additional_files(
     if readme_path is not None:
         # Extract internal links from README
         all_readme_links = _extract_readme_internal_links(readme_path, repo_root)
-        # Filter to only additional file candidates
-        readme_links = [f for f in all_readme_links if _is_additional_candidate(f)]
+        # Filter to only additional file candidates; a link to a folded copy
+        # is a link to the file that stands for it
+        readme_links = [
+            stands_for.get(f, f) for f in all_readme_links if _is_additional_candidate(f)
+        ]
 
     # The files most likely to explain the project. No model: this list was
     # an embedding ranking until WI-patof measured that it cost a quarter of
@@ -4804,6 +4865,7 @@ def _format_additional_files(
     include_content: bool = False,
     section_title: str = "Additional Files",
     preselected_files: list[Path] | None = None,
+    copies: dict[Path, list[Path]] | None = None,
 ) -> tuple[str, list[Path], int]:
     """Format additional files (non-source) as a Markdown section.
 
@@ -4832,15 +4894,35 @@ def _format_additional_files(
             include_content=True.
         include_content: If True, include file contents with dynamic truncation.
         section_title: Header text for the section.
-        preselected_files: Pre-selected file list — skips all discovery,
-            embedding, and ranking. Use when a prior call already determined
-            the file order.
+        preselected_files: Pre-selected file list — skips all discovery
+            and ranking. Use when a prior call already determined the file
+            order.
+        copies: For each file that stands for byte-identical copies, the
+            copies (:func:`_group_identical_files`). Selection fills it;
+            a call with ``preselected_files`` reads it. Each such file is
+            listed, and printed, once, with its copies named beside it.
 
     Returns:
         Tuple of (Markdown section, selected file paths, de-duplicated
         in-degree sum).
     """
     from statistics import median
+
+    if copies is None:
+        copies = {}
+
+    def also_at(path: Path) -> str:
+        """`` `a`, `b` `` for the copies ``path`` stands for, or nothing.
+
+        The first three are named and the rest counted: one corpus
+        repository holds 106 copies of one config file, and a line naming
+        105 paths would cost more than the copies it replaced.
+        """
+        others = copies.get(path, [])
+        named = ", ".join(f"`{copy.relative_to(repo_root)}`" for copy in others[:3])
+        if len(others) > 3:
+            named += f" and {len(others) - 3} more"
+        return named
 
     if preselected_files is not None:
         selected_files, candidate_files, symbols_per_file, name_to_in_degree = (
@@ -4856,6 +4938,7 @@ def _format_additional_files(
                 rank_overviews=rank_overviews,
                 centrality_progress_callback=centrality_progress_callback,
                 cached_centrality_scores=cached_centrality_scores,
+                copies_out=copies,
             )
         )
 
@@ -4877,7 +4960,8 @@ def _format_additional_files(
         lines = [_section_header(section_title, exclude_tests), ""]
         for f in selected_files:
             rel_path = f.relative_to(repo_root)
-            lines.append(f"- `{rel_path}`")
+            same = also_at(f)
+            lines.append(f"- `{rel_path}`" + (f" (same content: {same})" if same else ""))
 
         remaining = len(candidate_files) - len(selected_files)
         if remaining > 0:
@@ -4906,11 +4990,15 @@ def _format_additional_files(
                 continue
 
             rel_path = file_path.relative_to(repo_root)
-            file_tokens = _estimate_file_block_tokens(str(rel_path), content)
+            same = also_at(file_path)
+            copies_line = [f"*The same content is at {same}.*", ""] if same else []
+            copies_tokens = estimate_tokens("\n".join(copies_line)) if same else 0
+            file_tokens = _estimate_file_block_tokens(str(rel_path), content) + copies_tokens
 
             # Check if file fits in remaining budget
             if file_tokens <= remaining_budget:
                 # File fits completely
+                lines.extend(copies_line)
                 lines.extend(_format_file_content_block(str(rel_path), content))
                 included_files.append(file_path)
                 token_counts.append(file_tokens)
@@ -4938,9 +5026,10 @@ def _format_additional_files(
 
                 truncated_tokens = _estimate_file_block_tokens(
                     str(rel_path), truncated_content
-                )
+                ) + copies_tokens
 
                 if truncated_tokens <= remaining_budget:
+                    lines.extend(copies_line)
                     lines.extend(
                         _format_file_content_block(str(rel_path), truncated_content)
                     )
@@ -7061,6 +7150,7 @@ def _generate_sketch_impl(
     # overview order and centrality
     prog.start_phase("additional")
     additional_files_selected: list[Path] = []  # Track for Additional Files Content section
+    additional_copies: dict[Path, list[Path]] = {}  # byte-identical copies of the selected files
     if _section_ok("Additional Files", remaining_tokens):
         # ADR-0005: --with-source mode reduces Additional Files budget
         if with_source:
@@ -7097,6 +7187,7 @@ def _generate_sketch_impl(
             centrality_progress_callback=centrality_progress,
             cached_centrality_scores=cached_centrality,
             exclude_tests=exclude_tests,
+            copies=additional_copies,
         )
         if additional_files_section:
             sections.append(additional_files_section)
@@ -7251,6 +7342,7 @@ def _generate_sketch_impl(
                     include_content=True,
                     section_title="Additional Files Content",
                     preselected_files=additional_files_selected,
+                    copies=additional_copies,
                 )
             )
 
