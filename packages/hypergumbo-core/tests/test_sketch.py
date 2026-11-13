@@ -1918,7 +1918,7 @@ class TestFormatAdditionalFiles:
         for name in ("a", "b", "c", "d"):
             deep = tmp_path / "conf" / "deep" / f"{name}.yaml"
             deep.parent.mkdir(parents=True, exist_ok=True)
-            deep.write_text("key: value\n")
+            deep.write_text(f"{name}: value\n")  # distinct: identical files fold
         guide = tmp_path / "zz-guide.md"
         guide.write_text("How this project works, and who it is for.")
 
@@ -9597,3 +9597,133 @@ class TestKeySymbolFileEligibility:
                 max_symbols=400, entrypoint_files=set(), max_files=20,
                 language_proportional=False)}
             assert gated == {f"src/m{i:03d}.py" for i in range(20)}
+
+
+class TestIdenticalAdditionalFiles:
+    """Files with the same bytes are listed and printed once (WI-lofas)."""
+
+    @staticmethod
+    def _repo(tmp_path: Path) -> Path:
+        (tmp_path / "packages" / "app").mkdir(parents=True)
+        (tmp_path / "packages" / "lib").mkdir(parents=True)
+        (tmp_path / "docs").mkdir()
+        readme = "# Project\n\nWhat it does and how it works.\n" * 4
+        (tmp_path / "README.md").write_text(readme)
+        (tmp_path / "packages" / "app" / "README.md").write_text(readme)
+        (tmp_path / "packages" / "lib" / "OVERVIEW.md").write_text(readme)
+        (tmp_path / "docs" / "guide.md").write_text("# Guide\n\nA different file.\n")
+        (tmp_path / "docs" / "guide-copy.md").write_text("# Guide\n\nA different file.\n\n")
+        return tmp_path
+
+    def test_copies_fold_into_the_shallowest_path(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _group_identical_files
+
+        root = self._repo(tmp_path)
+        files = sorted(p for p in root.rglob("*.md"))
+        kept, copies = _group_identical_files(files, root)
+        assert copies == {root / "README.md": [
+            root / "packages" / "app" / "README.md", root / "packages" / "lib" / "OVERVIEW.md"]}
+        assert set(kept) == set(files) - set(copies[root / "README.md"])
+        assert [p for p in files if p in kept] == kept  # order preserved
+
+    def test_a_trailing_newline_makes_a_different_file(self, tmp_path: Path) -> None:
+        """Same bytes, nothing else: where the rule stops."""
+        from hypergumbo_core.sketch import _group_identical_files
+
+        root = self._repo(tmp_path)
+        pair = [root / "docs" / "guide.md", root / "docs" / "guide-copy.md"]
+        assert _group_identical_files(pair, root) == (pair, {})
+
+    def test_empty_and_unreadable_files_stand_alone(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _group_identical_files
+
+        (tmp_path / "a.md").write_text("")
+        (tmp_path / "b.md").write_text("")
+        gone = tmp_path / "missing.md"
+        files = [tmp_path / "a.md", tmp_path / "b.md", gone]
+        assert _group_identical_files(files, tmp_path) == (files, {})
+
+    def test_at_one_depth_the_first_name_is_kept(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _group_identical_files
+
+        (tmp_path / "b.md").write_text("same")
+        (tmp_path / "a.md").write_text("same")
+        kept, copies = _group_identical_files([tmp_path / "b.md", tmp_path / "a.md"], tmp_path)
+        assert kept == [tmp_path / "a.md"]
+        assert copies == {tmp_path / "a.md": [tmp_path / "b.md"]}
+
+    def test_the_listing_names_a_copy_beside_the_file_that_stands_for_it(
+        self, tmp_path: Path
+    ) -> None:
+        root = self._repo(tmp_path)
+        listing, selected, _ = _format_additional_files(
+            root, source_files=[], symbols=[], in_degree={})
+        assert ("- `README.md` (same content: `packages/app/README.md`, "
+                "`packages/lib/OVERVIEW.md`)") in listing
+        # Each copy is named once, beside its file, and is no entry of its own.
+        assert listing.count("packages/app/README.md") == 1
+        assert root / "packages" / "app" / "README.md" not in selected
+        assert "- `docs/guide.md`\n" in listing + "\n"
+        assert "- `docs/guide-copy.md`" in listing
+
+    def test_many_copies_are_counted_after_the_first_three(self, tmp_path: Path) -> None:
+        for i in range(6):
+            directory = tmp_path / f"example{i}"
+            directory.mkdir()
+            (directory / "config.yaml").write_text("shared: true\n")
+        (tmp_path / "config.yaml").write_text("shared: true\n")
+        listing, _selected, _ = _format_additional_files(
+            tmp_path, source_files=[], symbols=[], in_degree={})
+        assert ("- `config.yaml` (same content: `example0/config.yaml`, "
+                "`example1/config.yaml`, `example2/config.yaml` and 3 more)") in listing
+        assert "example3" not in listing
+
+    def test_the_content_is_printed_once_and_says_where_else_it_is(self, tmp_path: Path) -> None:
+        root = self._repo(tmp_path)
+        copies: dict[Path, list[Path]] = {}
+        _listing, selected, _ = _format_additional_files(
+            root, source_files=[], symbols=[], in_degree={}, copies=copies)
+        content, printed, _ = _format_additional_files(
+            root, source_files=[], symbols=[], in_degree={}, token_budget=5000,
+            include_content=True, section_title="Additional Files Content",
+            preselected_files=selected, copies=copies)
+        assert content.count("START of README.md") == 1
+        assert "START of packages/app/README.md" not in content
+        assert ("*The same content is at `packages/app/README.md`, "
+                "`packages/lib/OVERVIEW.md`.*") in content
+        assert content.index("The same content is at") < content.index("START of README.md")
+        assert root / "README.md" in printed
+
+    def test_a_truncated_file_still_says_where_else_it_is(self, tmp_path: Path) -> None:
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "small.md").write_text("# Small\n\nA short file printed whole.\n")
+        big = "# Big\n\n" + "A long line of documentation text. " * 400
+        (tmp_path / "zz-big.md").write_text(big)
+        (tmp_path / "pkg" / "zz-big.md").write_text(big)
+        copies: dict[Path, list[Path]] = {}
+        _listing, selected, _ = _format_additional_files(
+            tmp_path, source_files=[], symbols=[], in_degree={}, copies=copies)
+        content, _printed, _ = _format_additional_files(
+            tmp_path, source_files=[], symbols=[], in_degree={}, token_budget=1200,
+            include_content=True, preselected_files=selected, copies=copies)
+        assert "[...truncated...]" in content  # reach: the truncating branch
+        assert "*The same content is at `pkg/zz-big.md`.*" in content
+
+    def test_a_readme_link_to_a_copy_counts_for_the_file_that_stands_for_it(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_core.sketch import _select_additional_files
+
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "sub").mkdir()
+        (tmp_path / "README.md").write_text("# P\n\nSee [the guide](docs/sub/guide.md).\n")
+        (tmp_path / "docs" / "guide.md").write_text("# Guide\n\nText.\n")
+        (tmp_path / "docs" / "sub" / "guide.md").write_text("# Guide\n\nText.\n")
+        for name in ("a", "b", "c"):
+            (tmp_path / f"{name}.yaml").write_text(f"{name}: 1\n")
+        copies: dict[Path, list[Path]] = {}
+        selected, candidates, _, _ = _select_additional_files(
+            tmp_path, [], [], {}, max_files=2, rank_overviews=False, copies_out=copies)
+        assert selected == [tmp_path / "README.md", tmp_path / "docs" / "guide.md"]
+        assert tmp_path / "docs" / "sub" / "guide.md" not in candidates
+        assert copies == {tmp_path / "docs" / "guide.md": [tmp_path / "docs" / "sub" / "guide.md"]}

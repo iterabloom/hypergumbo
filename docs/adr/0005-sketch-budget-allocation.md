@@ -95,7 +95,7 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Data Models | Centrality (most-referenced models first) |
 | Source Files | Symbol importance density = Σ(in-degrees) / LOC |
 | Key Symbols | Two-phase: coverage-first, then centrality × tier weight |
-| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) the overview order: documentation before configuration, shallower first, overview wording as the tie-break ([measurement 0033](../measurements/0033-additional-files-embedding-vs-location.md)), (c) symbol-mention centrality |
+| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) the overview order: documentation before configuration, shallower first, overview wording as the tie-break ([measurement 0033](../measurements/0033-additional-files-embedding-vs-location.md)), (c) symbol-mention centrality. Files with the same bytes are one candidate: the shallowest path is listed and printed, and its copies are named beside it (the first three, then a count) |
 | Source Content | Same as Source Files (top density first) |
 | Additional File Content | Same as Additional Files (top of README-first hybrid round-robin first) |
 
