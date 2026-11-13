@@ -802,10 +802,18 @@ class TestTopLevelBlockTyping:
             [{"src": "n1", "dst": "n2", "confidence": 0.9}],
             profile={"languages": {"python": {"files": 1}}},
         )
-        assert set(metrics) == set(metrics_props)
+        # ``repository`` is a view's key (WI-lokuj): the full map has none.
+        assert set(metrics) == set(metrics_props) - {"repository"}
         # debug sub-block keys declared too
         debug_props = metrics_props["debug"]["properties"]
         assert set(metrics["debug"]) <= set(debug_props)
+        # A view's block is declared key for key as well.
+        from hypergumbo_core.metrics import view_metrics
+        view = view_metrics([], [], metrics)
+        assert set(view) <= set(metrics_props)
+        assert "repository" in view
+        assert set(view["repository"]) == set(
+            metrics_props["repository"]["properties"])
 
     def test_feature_def_matches_slice_result(self):
         """features[] items reference a Feature $def whose property set

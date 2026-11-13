@@ -113,6 +113,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch lists and prints byte-identical Additional Files once**, naming the copies beside the one shown.
 - **Sketch's Tests line says what it counts**: functions reached from tests in the static call graph, and that more may be tested.
 - **Sketch Entry Points lines locate entries that share a name**, and no longer repeat the name or path.
+- **Tiered and compact views compute `metrics` from their own selection**: real supply-chain tiers, repository figures under `metrics.repository`.
 - **A budget-tier survey file fits its budget as written**, records the size it reached in `tier_tokens_used`, and no longer leaves budget unused while dropping nodes.
 
 #### Run reporting and graph integrity

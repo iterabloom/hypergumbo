@@ -35,6 +35,27 @@ published separately. Both summaries are over EDGES only: nodes carry no
 median is ``None`` and the histogram empty -- no measurement, said
 positively -- while ``avg_confidence`` keeps its legacy ``0.0``
 placeholder, which the empty histogram lets a reader recognise.
+
+A projected view has its own block (``view_metrics``, WI-lokuj). A compact
+or tiered view holds a selection of the map's nodes in a slimmed form, and
+its ``metrics`` used to be ``compute_metrics`` over those slim records. The
+slim form has no ``supply_chain`` block, so every node fell into tier
+``unknown``; the selections hold no ``kind == "file"`` node, so every
+language read ``files: 0``; and the whole repository's framework-pattern
+counts sat unlabelled beside counts of a one-node selection. Two of those
+print a value the view cannot know as a measured one. So a view's block is
+computed from the selected nodes' FULL records, leaves out every figure a
+selection cannot support, and keeps the figures about the repository under
+one key that says so:
+
+- ``total_nodes``, ``total_edges``, ``total_files``, ``avg_confidence``,
+  ``edge_confidence``, ``languages.<lang>.{nodes, edges}`` and
+  ``by_supply_chain_tier`` describe the view's own arrays;
+- ``repository.framework_patterns`` is the source map's, unchanged;
+- ``languages.<lang>.files`` and ``debug`` are absent: the first counts file
+  nodes, which a selection does not hold, and ``debug`` restates
+  ``total_files``, that same count and a sum over ``profile``, which the
+  view carries itself.
 """
 from __future__ import annotations
 
@@ -230,3 +251,36 @@ def compute_metrics(
         "framework_patterns": dict(sorted((framework_patterns or {}).items())),
         "debug": debug,
     }
+
+
+def view_metrics(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    source_metrics: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Metrics of a projected view (compact or tiered); see the module docstring.
+
+    Args:
+        nodes: The selected nodes' FULL dicts (``Symbol.to_dict()``), not the
+            slim records the view writes: the per-tier breakdown reads
+            ``supply_chain``, which the slim form drops.
+        edges: The view's edges, full or slim (``src``, ``dst`` and
+            ``confidence`` are read).
+        source_metrics: The ``metrics`` block of the map the view was
+            projected from. Its ``framework_patterns`` is carried under
+            ``repository``; a source without the key gives a view without
+            ``repository``, since an absent count is not a count of nothing.
+
+    The function reads the source block and never the view's own, so
+    computing a view's metrics twice gives the same block.
+    """
+    metrics = compute_metrics(nodes, edges)
+    del metrics["debug"]
+    del metrics["framework_patterns"]
+    for counts in metrics["languages"].values():
+        del counts["files"]
+    if "framework_patterns" in source_metrics:
+        metrics["repository"] = {
+            "framework_patterns": source_metrics["framework_patterns"],
+        }
+    return metrics

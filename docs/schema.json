@@ -195,7 +195,7 @@
         },
         "languages": {
           "type": "object",
-          "description": "Per-language node/edge/file counts",
+          "description": "Per-language node/edge/file counts. A compact or tiered view has nodes and edges only: files counts file nodes, which a selection does not hold",
           "additionalProperties": {
             "type": "object"
           }
@@ -207,9 +207,24 @@
             "type": "object"
           }
         },
+        "repository": {
+          "type": "object",
+          "description": "In a compact or tiered view only: figures about the whole repository, copied from the full map. Every other key of a view's metrics describes the view's own nodes and edges",
+          "properties": {
+            "framework_patterns": {
+              "type": "object",
+              "description": "The full map's metrics.framework_patterns",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "debug": {
           "type": "object",
-          "description": "Introspection counters (not a stable API)",
+          "description": "Introspection counters (not a stable API). Full map only",
           "properties": {
             "unique_paths_in_analysis": {
               "type": "integer"
