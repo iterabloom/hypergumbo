@@ -19,3 +19,25 @@
     pr_ref:  # 10ee
     description: "Owner ruling 2026-11-12 (reverses the 11-11 opt-in ruling): coverage-directed narrowing is OPT-OUT.\n\n- smart-test narrows by default (coverage-select narrow); --no-narrow turns it off for a run.\n- Narrowing moves ABOVE the manifest seam, so the committed .ci/affected-tests.txt (what merge CI runs) is narrowed by default, and the manifest header says how many tests narrowing removed.\n- The Woodpecker full-suite cron is never narrowed (full-suite.yml does not read the manifest).\n\nAcceptance: a change whose narrow drops tests produces a manifest without them and a header line saying so; --no-narrow restores the unnarrowed manifest; tests pinning the old split (test_smart_test_manifest_split.py and kin) state the new contract.\nHazards to handle: a stale index can drop a test covering part of a changed file (the local scoped-coverage gate runs the same set first); CI checks coverage per package with only that package's manifest tests."  # 10ee
     fields: {}  # 10ee
+- op: discuss  # 1de6
+  at: '2026-11-13T04:03:42Z'  # 1de6
+  by: agent  # 1de6
+  actor: jgstern_agent  # 1de6
+  clock: 2  # 1de6
+  nonce: 1de6  # 1de6
+  message: "Pre-build measurement (2026-11-12): applying coverage-select narrow's own refusal rules (selection_index.narrowing_blockers) to the last 200 origin/dev commits that change packages/*/src/*.py, with comment/docstring-only files excluded as smart-test excludes them: 163 (81.5%) would REFUSE because an import-time block (module or class body) changed, 5 (2.5%) add or delete a file (also refuse), 32 (16.0%) are narrowable. Ignoring docstring-only differences in import-time blocks moves only 10 commits: 76.5% refuse, 21.0% narrowable. A refusal leaves the run set unchanged, so default-on narrowing would act on about 1 source-changing commit in 6, and even then only on the ~55% of wall-clock the index can speak about (measure-narrowing-headroom). Script: job tmp refusal_rate2.py. Reported to the owner before building."  # 1de6
+- op: update  # 6ec9
+  at: '2026-11-13T04:36:33Z'  # 6ec9
+  by: agent  # 6ec9
+  actor: jgstern_agent  # 6ec9
+  clock: 3  # 6ec9
+  nonce: 6ec9  # 6ec9
+  set:  # 6ec9
+    status: done  # 6ec9
+- op: discuss  # 8fae
+  at: '2026-11-13T04:36:33Z'  # 8fae
+  by: agent  # 8fae
+  actor: jgstern_agent  # 8fae
+  clock: 4  # 8fae
+  nonce: 8fae  # 8fae
+  message: "Merged in PR #2161. smart-test narrows by default (--no-narrow opts out) and the narrowing block runs above the manifest snapshot, so merge CI runs the narrowed set; the header says '# Narrowed: N'. Behavioural evidence: this PR's own manifest was the first narrowed one ('# Narrowed: 2 test file(s) removed', 216 files), and the local run printed 'Coverage narrowing removed 2 test file(s)'. full-suite.yml never reads the manifest (pinned by test_the_full_suite_cron_never_reads_the_manifest). Also fixed: narrow no longer drops a changed test file (probe: changed test_selection_narrow.py was dropped before, kept after; test_a_changed_test_file_is_never_dropped)."  # 8fae
