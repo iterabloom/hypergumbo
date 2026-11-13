@@ -775,33 +775,25 @@ def cmd_score(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------
-# packet — the adjudication packet, and the four defects 0006 filed against it
+# packet — the adjudication packet
 #
-# Measurement 0006 §F names ~12 reports against "the measurement's own packet
-# builder, NOT hypergumbo", and ends "Fix before reuse." That builder was a
-# session artifact and was never committed, so its defects could only be
-# re-encountered. This is it, in-repo, with each defect closed and pinned by
-# ``tests/test_adjudication_packet.py``:
+# It lists, for each flow, the source and sink sites an adjudicator should
+# read. An empty listing is read as "the sink is absent", so the search must
+# not miss a site that is there. Pinned by
+# ``packages/hypergumbo-core/tests/test_adjudication_packet.py``:
 #
-#   1. substring matching (`inFORMATion` matched `format`; `-> ` inside a
-#      quoted pattern matched the bash redirect `>`)
-#   2. matching inside comments and string literals
-#   3. missing literal call sites — only the situation's HEADLINE sink name was
-#      searched, though a collapsed situation stands for several primitives
-#   4. searching only the SOURCE symbol's span, which makes the sink listing
-#      structurally empty for every multi-hop situation
+#   - a name matches a whole identifier, never a substring;
+#   - string literals and line comments are blanked before matching;
+#   - every primitive a collapsed situation stands for is searched, not just
+#     the headline sink name;
+#   - every first-party symbol on the path is searched, not just the source's
+#     span, so a sink called two hops away is found;
+#   - a site is listed once, under the innermost path symbol containing it
+#     (``innermost_span``);
+#   - bash names come from bash.py's own sets (``_bash_parameter_sets``).
 #
-# Measurement 0012's refuters found two more, closed the same way (WI-binod):
-# a whole-file pseudo-symbol listed every site of the path's functions a
-# second time (``innermost_span``), and ``$BASH_SOURCE`` was listed as an
-# environment read because the builder kept its own list of bash-assigned
-# names instead of reading bash.py's (``_bash_parameter_sets``). Block
-# comments are still matched, deliberately -- see ``_COMMENT_OPENERS``.
-#
-# Defect 4 is the load-bearing one: ArkLib#3's path is main (201-255) then
-# generate_dot_graph (110-137), `open` is called in the second, and the packet
-# printed "(none found in span)". That is manufactured evidence of absence, and
-# an adjudicator has no way to tell it from the real thing.
+# Block comments are still matched, deliberately -- see ``_COMMENT_OPENERS``.
+# Origin: measurements 0006 §F and 0012.
 # --------------------------------------------------------------------------
 
 #: Line-comment openers by language. Block comments are deliberately NOT
@@ -977,12 +969,9 @@ def innermost_span(
 def _bash_parameter_sets() -> "tuple[frozenset[str], frozenset[str]]":
     """bash.py's own classification of the names BASH assigns.
 
-    ONE HOME FOR THE FACT (WI-binod). This builder used to keep a second list
-    -- positionals and specials only -- and so kept listing ``$BASH_SOURCE``
-    as an environment read after hypergumbo itself stopped emitting one
-    (INV-nular). The instrument then asserted something the tool under
-    measurement no longer does. Reading the analyzer's sets means a name added
-    there reaches the packet with no second edit.
+    Reads bash.py's sets instead of keeping a copy, so the packet lists a name
+    as an environment read exactly when hypergumbo would emit one, and a name
+    added in bash.py reaches the packet with no second edit (WI-binod).
 
     Returns ``(shell_state, host_description)``: names bash maintains as its
     own bookkeeping (never a source), and names it sets from syscalls, which
