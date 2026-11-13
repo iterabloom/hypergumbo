@@ -75,7 +75,6 @@
   "packages/hypergumbo-core/src/hypergumbo_core/signature_axis.py::home_for_fact",
   "packages/hypergumbo-core/src/hypergumbo_core/signature_axis.py::is_axiom_conformant",
   "packages/hypergumbo-core/src/hypergumbo_core/signature_axis.py::notions_on_axis",
-  "packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py::embed_file_for_semantic_ranking",
   "packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py::find_partial_abstract_family_literals",
   "packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py::symbol_kinds_on_axis",
   "packages/hypergumbo-core/src/hypergumbo_core/symbol_resolution.py::clear_registry_index_cache",

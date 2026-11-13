@@ -166,45 +166,6 @@ def test_readme_extraction_debug_shape_is_preserved(tmp_path, monkeypatch):
     assert result.description is None
 
 
-def test_embed_file_for_semantic_ranking_returns_none(tmp_path, monkeypatch):
-    monkeypatch.setattr(se, "_load_modernbert_model", _raise_unavailable)
-    f = tmp_path / "a.py"
-    f.write_text("def f():\n    return 1\n")
-    assert se.embed_file_for_semantic_ranking(f) is None
-
-
-def test_batch_embed_files_returns_none_per_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(se, "_load_modernbert_model", _raise_unavailable)
-    paths = []
-    for i in range(3):
-        f = tmp_path / f"m{i}.py"
-        f.write_text(f"def f{i}():\n    return {i}\n")
-        paths.append(f)
-    result = se.batch_embed_files(paths)
-    assert set(result) == set(paths)
-    assert all(v is None for v in result.values())
-
-
-def test_additional_files_probes_fall_back_to_zeros(monkeypatch):
-    """The runtime-compute branch is reached only when the pre-computed
-    constant is absent, so the test has to remove it — patching the model
-    alone would never enter the branch under test.
-    """
-    np = pytest.importorskip("numpy")
-
-    from hypergumbo_core import _embedding_data
-
-    monkeypatch.setattr(se, "_load_modernbert_model", _raise_unavailable)
-    monkeypatch.setattr(se, "_ADDITIONAL_FILES_PROBE_EMBEDDINGS", None)
-    monkeypatch.delattr(_embedding_data, "ADDITIONAL_FILES_PROBES_B64")
-    arr = se._get_additional_files_probe_embeddings()
-    assert arr.shape == (
-        len(se.ADDITIONAL_FILES_PROBES),
-        se._MODERNBERT_TRUNCATE_DIM,
-    )
-    assert not np.any(arr)
-
-
 # Near-miss config names: close enough to a known name to clear the 0.15 n-gram
 # pre-filter, but not already known — which is what it takes to reach the model
 # load at all. A plain "weird.conf" fixture returns set() from an EARLIER exit
@@ -272,7 +233,6 @@ def test_sketch_still_renders_when_weights_are_unavailable(tmp_path, monkeypatch
     so this is the shape a real ``hypergumbo .`` takes.
     """
     monkeypatch.setattr(se, "_load_embedding_model", _raise_unavailable)
-    monkeypatch.setattr(se, "_load_modernbert_model", _raise_unavailable)
 
     (tmp_path / "pyproject.toml").write_text(
         "[project]\nname = 'tiny'\nversion = '0.1.0'\n"
@@ -314,7 +274,6 @@ def test_control_the_sketch_degradation_path_is_actually_reached(
         raise EmbeddingsUnavailable("weights unavailable")
 
     monkeypatch.setattr(se, "_load_embedding_model", _counting_raise)
-    monkeypatch.setattr(se, "_load_modernbert_model", _counting_raise)
 
     (tmp_path / "pyproject.toml").write_text(
         "[project]\nname = 'tiny'\nversion = '0.1.0'\n"

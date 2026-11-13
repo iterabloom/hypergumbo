@@ -123,6 +123,11 @@ def test_words_are_letters_in_any_script(tmp_path: Path) -> None:
     assert set(overview_rank._head_words(notes)) == {"проект", "max", "retries", "設計文書"}
 
 
+def test_the_probes_cover_the_six_questions() -> None:
+    assert len(overview_rank.OVERVIEW_PROBES) == 6
+    assert all(len(probe) > 400 for probe in overview_rank.OVERVIEW_PROBES)
+
+
 def test_a_word_every_candidate_uses_decides_less_than_a_rare_one() -> None:
     """Document frequency is counted over the files being ranked."""
     common = Counter({"project": 1})
@@ -164,8 +169,7 @@ def test_no_embedding_model_is_loaded(tmp_path: Path, monkeypatch: pytest.Monkey
     def refuse(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("an embedding model was requested")
 
-    monkeypatch.setattr(sketch_embeddings, "_load_modernbert_model", refuse)
     monkeypatch.setattr(sketch_embeddings, "_load_embedding_model", refuse)
-    monkeypatch.setattr(sketch_embeddings, "batch_embed_files", refuse)
+    monkeypatch.setattr(sketch_embeddings, "_load_st_model_offline_first", refuse)
     files = [_write(tmp_path, "README.md", OVERVIEW), _write(tmp_path, "docs/a.md", DATA)]
     assert rank_overview_files(files, tmp_path) == files

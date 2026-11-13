@@ -43,7 +43,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 
 - **Sketch no longer downloads embedding models**: run `hypergumbo install-embeddings` first.
-- **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run.
+- **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
 - **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.

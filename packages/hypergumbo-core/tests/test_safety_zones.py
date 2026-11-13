@@ -2,7 +2,7 @@
 """Tests for the safety_zones wrapper module.
 
 Each wrapper is a thin pass-through to the underlying stdlib write
-(``Path.write_text`` / ``json.dump`` / ``np.save`` / ``shutil.copy2``),
+(``Path.write_text`` / ``json.dump`` / ``shutil.copy2``),
 plus a single call to ``_safety_zone_barrier`` so the structural-taint
 pass treats the wrapper as a sanitizer node (per the project-local
 catalog at ``docs/hypergumbo-self-catalog/zone_barrier_sanitizers.yaml``).
@@ -29,7 +29,6 @@ from hypergumbo_core.safety_zones import (
     cache_mkdir,
     cache_rename,
     cache_rmtree,
-    cache_save_npy,
     cache_write,
     cache_write_bytes,
     install_artifact_chmod,
@@ -60,18 +59,6 @@ def test_cache_write_bytes(tmp_path: Path) -> None:
     p = tmp_path / "cache.bin"
     cache_write_bytes(p, b"\x00\x01\x02")
     assert p.read_bytes() == b"\x00\x01\x02"
-
-
-def test_cache_save_npy(tmp_path: Path) -> None:
-    # numpy is only installed when the `embeddings` optional dep is
-    # selected; skip the test if not available rather than fail at
-    # collection.
-    np = pytest.importorskip("numpy")
-    p = tmp_path / "embed.npy"
-    arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-    cache_save_npy(p, arr)
-    loaded = np.load(p)
-    assert loaded.tolist() == arr.tolist()
 
 
 def test_user_out_write(tmp_path: Path) -> None:

@@ -1951,9 +1951,7 @@ class TestFormatAdditionalFiles:
         def refuse(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("an embedding model was requested")
 
-        for name in ("_load_modernbert_model", "_load_embedding_model",
-                     "batch_embed_files", "embed_file_for_semantic_ranking"):
-            monkeypatch.setattr(sketch_embeddings, name, refuse)
+        monkeypatch.setattr(sketch_embeddings, "_load_embedding_model", refuse)
         for available in (True, False):
             monkeypatch.setattr(
                 sketch_embeddings, "_has_sentence_transformers", lambda a=available: a)
@@ -8723,36 +8721,6 @@ class TestRepoFingerprint:
 
         assert cache_base == custom_cache / "hypergumbo"
 
-    def test_get_cache_dir_creates_directory(self, tmp_path: Path, monkeypatch) -> None:
-        """Cache directory is created under XDG cache location."""
-        from hypergumbo_core.sketch_embeddings import _get_cache_dir
-
-        # Use tmp_path as XDG_CACHE_HOME to avoid polluting real cache
-        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
-
-        cache_dir = _get_cache_dir(tmp_path / "my_repo")
-
-        # Cache dir should be created
-        assert cache_dir.exists()
-        assert cache_dir.is_dir()
-
-        # Should be under XDG cache location with embeddings subfolder
-        assert str(cache_dir).startswith(str(tmp_path / "xdg_cache" / "hypergumbo"))
-        assert cache_dir.name == "embeddings"
-
-    def test_get_cache_dir_stable_for_same_repo(self, tmp_path: Path, monkeypatch) -> None:
-        """Same repo always gets same cache directory."""
-        from hypergumbo_core.sketch_embeddings import _get_cache_dir
-
-        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
-        repo = tmp_path / "my_repo"
-        repo.mkdir()
-
-        cache_dir1 = _get_cache_dir(repo)
-        cache_dir2 = _get_cache_dir(repo)
-
-        assert cache_dir1 == cache_dir2
-
     def test_state_hash_changes_with_file_modifications(
         self, tmp_path: Path, monkeypatch
     ) -> None:
@@ -8875,212 +8843,6 @@ class TestRepoFingerprint:
         assert len(state) == 16 and int(state, 16) >= 0  # the bare state hash
         assert two_arm.parent.name == f"{state}-rust_analyzer"
         assert tree_sitter_only.name == two_arm.name  # analyzer identity is code identity, unchanged
-
-
-class TestBatchEmbedFiles:
-    """Tests for batch embedding of files."""
-
-    def test_returns_empty_dict_for_empty_input(self, tmp_path: Path) -> None:
-        """Empty file list returns empty dict."""
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        result = batch_embed_files([])
-        assert result == {}
-
-    def test_returns_none_when_no_sentence_transformers(self, tmp_path: Path) -> None:
-        """Returns None for all files when sentence-transformers unavailable."""
-        from unittest.mock import patch
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        (tmp_path / "file1.py").write_text("print('hello')")
-        (tmp_path / "file2.py").write_text("print('world')")
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=False,
-        ):
-            result = batch_embed_files([
-                tmp_path / "file1.py",
-                tmp_path / "file2.py",
-            ])
-
-        assert len(result) == 2
-        assert result[tmp_path / "file1.py"] is None
-        assert result[tmp_path / "file2.py"] is None
-
-    def test_uses_cache_when_available(self, tmp_path: Path) -> None:
-        """Uses cached embeddings when available."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create test file
-        test_file = tmp_path / "test.py"
-        test_file.write_text("print('hello')")
-
-        # Mock cache to return a cached embedding
-        fake_cached_embedding = MagicMock()
-        mock_model = MagicMock()
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_cached_embedding",
-            return_value=fake_cached_embedding,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            cache_dir = tmp_path / "cache"
-            cache_dir.mkdir()
-            result = batch_embed_files([test_file], cache_dir=cache_dir)
-
-        # Should get cached embedding
-        assert test_file in result
-        assert result[test_file] is fake_cached_embedding
-
-        # Model should not have been called (all files cached)
-        mock_model.encode.assert_not_called()
-
-    def test_batches_uncached_files(self, tmp_path: Path) -> None:
-        """Encodes uncached files in batches."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create test files
-        files = []
-        for i in range(5):
-            f = tmp_path / f"file{i}.py"
-            f.write_text(f"# File {i}\nprint({i})")
-            files.append(f)
-
-        # Mock model to return correct-sized fake embeddings per batch
-        mock_model = MagicMock()
-
-        def mock_encode(texts, **kwargs):
-            # Return list of MagicMocks matching batch size
-            return [MagicMock() for _ in texts]
-
-        mock_model.encode.side_effect = mock_encode
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            result = batch_embed_files(files, batch_size=3)
-
-        # All files should have embeddings
-        assert len(result) == 5
-        for f in files:
-            assert result[f] is not None
-
-        # Model should have been called twice (3 + 2 files in batches of 3)
-        assert mock_model.encode.call_count == 2
-
-    def test_handles_unreadable_files(self, tmp_path: Path) -> None:
-        """Returns None for files that can't be read."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create one good file and one that doesn't exist
-        good_file = tmp_path / "good.py"
-        good_file.write_text("print('hello')")
-        missing_file = tmp_path / "missing.py"
-
-        mock_model = MagicMock()
-        mock_model.encode.return_value = [MagicMock()]  # Single embedding for good file
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            result = batch_embed_files([good_file, missing_file])
-
-        # Good file should have embedding, missing file should be None
-        assert result[good_file] is not None
-        assert result[missing_file] is None
-
-    def test_calls_progress_callback(self, tmp_path: Path) -> None:
-        """Progress callback is called for each batch."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create test files
-        files = []
-        for i in range(5):
-            f = tmp_path / f"file{i}.py"
-            f.write_text(f"# File {i}\nprint({i})")
-            files.append(f)
-
-        mock_model = MagicMock()
-
-        def mock_encode(texts, **kwargs):
-            return [MagicMock() for _ in texts]
-
-        mock_model.encode.side_effect = mock_encode
-
-        progress_calls = []
-
-        def track_progress(done, total):
-            progress_calls.append((done, total))
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            batch_embed_files(files, batch_size=2, progress_callback=track_progress)
-
-        # Should have 3 progress calls (2+2+1 files in batches of 2)
-        assert len(progress_calls) == 3
-        assert progress_calls[0] == (2, 5)
-        assert progress_calls[1] == (4, 5)
-        assert progress_calls[2] == (5, 5)
-
-    def test_saves_embeddings_to_cache(self, tmp_path: Path) -> None:
-        """Computed embeddings are saved to cache."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir()
-
-        test_file = tmp_path / "test.py"
-        test_file.write_text("print('hello')")
-
-        mock_model = MagicMock()
-        fake_embedding = MagicMock()
-        mock_model.encode.return_value = [fake_embedding]
-
-        save_calls = []
-
-        def mock_save(cache_dir, file_hash, embedding):
-            save_calls.append((cache_dir, file_hash, embedding))
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._save_cached_embedding",
-            side_effect=mock_save,
-        ):
-            batch_embed_files([test_file], cache_dir=cache_dir)
-
-        # Verify _save_cached_embedding was called with the embedding
-        assert len(save_calls) == 1
-        assert save_calls[0][0] == cache_dir
-        assert save_calls[0][2] is fake_embedding
 
 
 class TestEmbeddingModelSingleton:
@@ -9320,12 +9082,11 @@ class TestHfOfflineBeforeImport:
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
             _EMBEDDING_MODEL,
-            _MODERNBERT_MODEL_NAME,
         )
 
         monkeypatch.setenv("HF_HOME", str(tmp_path))
         monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME])
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])
 
         assert _ensure_hf_offline_for_cached_models() is True
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
@@ -9435,10 +9196,9 @@ class TestHfOfflineBeforeImport:
         import sys
         from hypergumbo_core.sketch_embeddings import (
             _EMBEDDING_MODEL,
-            _MODERNBERT_MODEL_NAME,
         )
 
-        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME])
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])
         code = (
             "import os\n"
             "os.environ.pop('HF_HUB_OFFLINE', None)\n"

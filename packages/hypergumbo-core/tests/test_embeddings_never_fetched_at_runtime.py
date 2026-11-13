@@ -7,9 +7,8 @@ install path, never from analysis. Two things keep it true:
 * the runtime loader, ``_load_st_model_offline_first``, is cache-only: a
   ``local_files_only=True`` attempt and NO download-allowed retry. A fallback
   to a network-allowed ``SentenceTransformer(name)`` on a cache miss would make
-  the first ``sketch`` fetch ``microsoft/unixcoder-base`` and
-  ``nomic-ai/modernbert-embed-base`` from huggingface.co. On a miss it degrades
-  with the remedy named.
+  the first ``sketch`` fetch ``microsoft/unixcoder-base`` from huggingface.co.
+  On a miss it degrades with the remedy named.
 * the install path (``install-embeddings``, ``add-extras``) fetches the
   weights, not only the library.
 
@@ -68,7 +67,7 @@ def test_the_warning_names_a_remedy_that_fetches_the_weights() -> None:
     assert "downloads" in text and "never" in text
 
 
-def test_the_install_path_fetches_both_models(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_install_path_fetches_every_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     seen: list[tuple[str, dict, object]] = []
 
@@ -136,6 +135,22 @@ def test_add_extras_embeddings_also_fetches_the_weights() -> None:
             patch.object(subprocess, "run", return_value=ok) as run:
         assert cli._install_embeddings_impl(quiet=True) is True
     assert len(_fetch_calls(run)) == 1
+
+
+def test_install_fetches_only_models_a_loader_loads() -> None:
+    """A model in EMBEDDING_MODELS that no loader passes to the cache-only
+    constructor is a download nothing uses. The Additional Files ranking's
+    model was one from the day that ranking stopped using it (measurement
+    0033) until it was taken off this list."""
+    import inspect
+    import re
+
+    source = inspect.getsource(sketch_embeddings)
+    constants = set(re.findall(
+        r"_load_st_model_offline_first\(\s*\w+,\s*(_[A-Z_]+)", source))
+    assert constants, "no loader call found: the pattern no longer matches the code"
+    loaded = {getattr(sketch_embeddings, name) for name in constants}
+    assert set(EMBEDDING_MODELS) == loaded
 
 
 def test_a_fetch_that_cannot_start_is_a_failure(capsys: pytest.CaptureFixture[str]) -> None:

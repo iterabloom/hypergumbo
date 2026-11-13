@@ -6,11 +6,9 @@ for semantic operations in sketch generation. It's separated from
 sketch.py to allow coverage to be measured independently when the heavy
 dependencies (sentence-transformers, torch) aren't available.
 
-The main entry points are:
-- extract_readme_description_embedding(): Extract project description from README
-- embed_file_for_semantic_ranking(): Embed a single file for downstream ranking
-- batch_embed_files(): Batch embed files with caching
-- compute_5w1h_similarity(): Score a file against the 5W1H rubric
+The main entry point is ``extract_readme_description_embedding()``: extract
+the project description from the README. ``sketch.py``'s config discovery
+and extraction load the same model through ``_load_embedding_model``.
 
 The install path has its own entry point: ``fetch_embedding_models()``
 downloads every model in ``EMBEDDING_MODELS`` that is not yet cached,
@@ -18,18 +16,15 @@ lifting ``HF_HUB_OFFLINE`` while it runs. ``cli.py`` calls it, in a fresh
 interpreter, only for ``install-embeddings`` and ``add-extras``; it is the
 one place a model is fetched. Analysis loads from the cache only.
 
-Two models back these. ``microsoft/unixcoder-base`` (``_load_embedding_model``)
-serves README description extraction, and ``sketch.py``'s config discovery
-and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``
-from here directly. ``nomic-ai/modernbert-embed-base``
-(``_load_modernbert_model``) served the Additional Files semantic ranking
-(``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
-probe embeddings) and HAS NO PRODUCTION CALLER since that ranking became
-``overview_rank`` (measurement 0033); what remains of it here is tested dead
-code whose removal, with the model ``install-embeddings`` still fetches for
-it, is WI-kilod-dinim-sisoj-pafub-mazof-badul-gajuv-jison.
-``ADDITIONAL_FILES_PROBES`` is live: it is ``overview_rank``'s query. Before every sentence_transformers import (in
-``_has_sentence_transformers`` and in both loaders),
+One model backs these: ``microsoft/unixcoder-base``
+(``_load_embedding_model``) serves README description extraction, and
+``sketch.py``'s config discovery and extraction import
+``_load_embedding_model`` and ``NEGATIVE_PATTERNS`` from here directly.
+A second model, ModernBERT, ranked the sketch's Additional Files until
+measurement 0033 found the ranking slow, unrepeatable and no better than
+file role and depth; that code and its per-file embedding cache are gone,
+and the ranking is ``overview_rank``. Before every sentence_transformers
+import (in ``_has_sentence_transformers`` and in the loader),
 ``_ensure_hf_offline_for_cached_models`` sets ``HF_HUB_OFFLINE=1`` for the
 whole process unless the variable already holds a value huggingface_hub reads
 as offline; ``0`` or ``false`` is overridden. It does this whether or not the
@@ -37,9 +32,9 @@ models are cached, despite its name (INV-dasig, INV-gujus).
 
 The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
-``_get_xdg_cache_base``): the content-hash-keyed embedding cache
-(``_get_cache_dir``) and the analysis-results cache (``_get_results_cache_dir``),
-keyed by repo state hash, resolved opt-in backend set, trace_deps token,
+``_get_xdg_cache_base``): the analysis-results cache
+(``_get_results_cache_dir``), keyed by repo state hash, resolved opt-in
+backend set, trace_deps token,
 digests of the analysis-stage user catalogue channels and the config tiers,
 a digest of the run's ``--exclude`` patterns, and analyzer identity.
 ``cli.py`` and ``sketch.py`` import the results-cache helpers from here;
@@ -53,10 +48,7 @@ level, so ``hypergumbo .`` exits 1 without writing a sketch (INV-rupid):
 
 1. **The library is not importable.** ``_has_sentence_transformers()``
    answers this, and only this — it catches ``ImportError`` and nothing
-   else. The three embedding entry points check it first;
-   ``compute_5w1h_similarity`` needs only numpy and reaches the guard
-   only through ``_get_additional_files_probe_embeddings`` when the
-   precomputed probes are missing.
+   else. ``extract_readme_description_embedding`` checks it first.
 2. **The library imports but the model WEIGHTS are not on disk** (a
    machine that has never run ``hypergumbo install-embeddings``, or a
    cleared cache). Analysis never downloads them.
@@ -65,13 +57,10 @@ level, so ``hypergumbo .`` exits 1 without writing a sketch (INV-rupid):
    ``_load_st_model_offline_first`` converts that into
    :class:`EmbeddingsUnavailable`.
 
-Callers must handle BOTH. The three embedding entry points already do: each
+Callers must handle BOTH. ``extract_readme_description_embedding`` does: it
 catches :class:`EmbeddingsUnavailable` and degrades to the result its
-import-guard branch returns, except that ``batch_embed_files`` keeps the
-embeddings it already found in the cache and returns None only for the
-files it would have encoded (``compute_5w1h_similarity`` inherits this
-through its probe loader), and :func:`_warn_embeddings_unavailable`
-warns once per process rather than per file. Consumers outside this module
+import-guard branch returns, and :func:`_warn_embeddings_unavailable`
+warns once per process rather than per call. Consumers outside this module
 (see ``sketch.py``) degrade to their heuristic path.
 
 The probe is deliberately NOT strengthened to demand weights: a first
@@ -88,7 +77,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
 
 if TYPE_CHECKING:
     import numpy as np
@@ -104,7 +93,6 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
 from .safety_zones import (  # noqa: E402
     cache_mkdir,
-    cache_save_npy,
     repo_inspect_git,
 )
 
@@ -1224,165 +1212,8 @@ def extract_readme_description_embedding(
 
 
 # ==============================================================================
-# Additional Files Semantic Ranking (5W1H probes)
+# Per-repo cache layout (nothing to do with embeddings; see the module docstring)
 # ==============================================================================
-
-# 5W1H probes for semantic ranking of Additional Files
-# These help surface documentation and explanatory files at the top
-#
-# WARNING: Changes require regenerating embeddings! Run:
-#     python scripts/compute_probe_embeddings.py
-ADDITIONAL_FILES_PROBES = [
-    # Who this thing is for
-    (
-        "Who this thing is for This project is for people who want a clear, "
-        "dependable tool that does one job well, and stays out of the way while "
-        "you get on with your work. If you're the kind of person who reads a "
-        "README before installing anything, you'll feel at home here. If you're "
-        "the kind of person who doesn't, that's fine too: the defaults are "
-        "designed to be sensible, the setup aims to be painless, and the 'happy "
-        "path' should take you from zero to useful without a scavenger hunt "
-        "through configuration files. It's for builders: developers wiring this "
-        "into an app, scripting it into a workflow, or integrating it into CI. "
-        "It's for maintainers who care about predictable behavior, stable "
-        "interfaces, and changes that are explained rather than hand-waved. It's "
-        "for curious tinkerers who like to poke at source code, file issues, "
-        "propose improvements, or just understand how things work under the hood. "
-        "It's also for teams. If you need something that can be documented, "
-        "reviewed, tested, and shared without a private onboarding ritual, you're "
-        "in the right place. And if you're new to the ecosystem, don't worry: the "
-        "docs assume intelligence, not prior knowledge. You'll find examples, "
-        "explanations, and reference material aimed at helping you succeed whether "
-        "you're experimenting on a weekend or shipping on a deadline. If you want "
-        "a tool that respects your time, welcomes contributions, and tries hard to "
-        "be boring in production (in the best way), this thing is for you."
-    ),
-    # What this thing does
-    (
-        "This project exists to do one thing well: it does what it says it does - "
-        "and then gets out of your way. At its core, it's a small, focused tool "
-        "that takes an input (whatever 'input' means in your environment), applies "
-        "a clear set of rules, and produces an output you can rely on. You can "
-        "think of it as a dependable middle layer: it translates intent into "
-        "action, turns repetitive steps into a single command, and makes the "
-        "common case fast while keeping the uncommon case possible. The 'thing' "
-        "here is intentionally general because the shape of your problem might be "
-        "different from someone else's. Sometimes that means transforming data, "
-        "sometimes orchestrating a workflow, sometimes smoothing over rough edges "
-        "between systems that don't naturally fit together. In every case, the "
-        "goal is the same: reduce friction, increase consistency, and provide a "
-        "simple interface that feels obvious after you've used it once. It's "
-        "designed to be practical rather than precious. You should be able to drop "
-        "it into an existing setup, configure only what you need, and extend it "
-        "when your requirements grow. If you're skimming this documentation, the "
-        "takeaway is simple: this tool helps you get from 'I want this done' to "
-        "'it's done' with fewer moving parts, fewer surprises, and more control "
-        "over the details that matter to you."
-    ),
-    # When to use this
-    (
-        "Use this component when you want a small, dependable 'building block' "
-        "that does one job well and fits cleanly into a larger system. It's a "
-        "good choice in situations where you value clarity over cleverness: you "
-        "need behavior that's easy to understand, easy to test, and unlikely to "
-        "surprise future readers of your code. If you're looking for something "
-        "that can be adopted incrementally - dropped into an existing project "
-        "without forcing a redesign - this is an appropriate place to start. This "
-        "tool shines when the surrounding requirements are stable or at least "
-        "well-bounded. If you can describe the problem in a few sentences and "
-        "you'd prefer a straightforward configuration or API surface, you'll "
-        "likely find it productive. It's also well-suited for teams: conventions "
-        "are explicit, defaults are sensible, and common workflows are documented "
-        "so new contributors can get traction quickly. In other words, reach for "
-        "it when you want to move fast without creating long-term ambiguity. Avoid "
-        "using it when you need heavy customization, unusual edge-case behavior, "
-        "or an experimental approach that's still changing week to week. In those "
-        "cases, you may be better served by a lower-level primitive or a more "
-        "flexible framework. But for most day-to-day tasks - reliable integration, "
-        "repeatable outcomes, and maintainable code - this is a solid, practical "
-        "option."
-    ),
-    # Where this comes from
-    (
-        "Where this thing comes from Every project has an origin story, even if "
-        "it starts out as a single line on a sticky note or a half-remembered idea "
-        "from a late-night debugging session. This section is the place where we "
-        "trace the roots of 'this thing': not as a dramatic tale of destiny, but "
-        "as a practical account of why it exists, what problems it was meant to "
-        "address, and how its earliest assumptions shaped what you're holding "
-        "today. Sometimes a tool appears because a gap kept showing up in real "
-        "work - an awkward workflow, a recurring edge case, a missing layer of "
-        "glue between two systems that otherwise behave nicely. Sometimes it's "
-        "born from curiosity: a desire to see if an approach could be made "
-        "simpler, faster, more transparent, or just easier to reuse. And sometimes "
-        "the origin is less tidy: a pile of scripts that slowly grew legs, "
-        "accumulated tests, acquired a name, and eventually demanded to be treated "
-        "like a real project. In open source, provenance matters. Knowing where "
-        "something comes from helps you understand its defaults, its trade-offs, "
-        "and the kind of contributions that fit its trajectory. It can explain why "
-        "certain features are emphasized, why certain decisions are conservative "
-        "or bold, and why the project's language and structure look the way they "
-        "do. Think of this as the context layer: a map of the initial constraints, "
-        "the early use cases, and the motivations that continue to echo through "
-        "the codebase. If you're new here, this is your orientation. If you've "
-        "been around for a while, it's a reminder of the thread that ties today's "
-        "implementation to yesterday's need."
-    ),
-    # Why this was built
-    (
-        "Why this thing was built - because a gap showed up, and it kept showing "
-        "up. We had a workflow that looked fine on paper: a few scripts here, a "
-        "manual checklist there, a half-dozen conventions that lived in someone's "
-        "head. It worked until it didn't. Every new contributor had to rediscover "
-        "the same sharp edges. Every deployment carried a small, unnecessary "
-        "gamble. Every integration required a bespoke fix, and every 'temporary' "
-        "workaround became permanent infrastructure. The cost wasn't dramatic in "
-        "any single moment; it was the slow accumulation of friction: time lost to "
-        "repetition, confidence lost to ambiguity, and opportunities lost because "
-        "change felt risky. So this project exists to make the common path the "
-        "easy path. It aims to turn tribal knowledge into documented behavior, and "
-        "scattered one-off solutions into something coherent and reusable. It is "
-        "intentionally general: useful in small prototypes and large systems, in "
-        "local development and automated pipelines, in hobby projects and "
-        "production services. You should be able to pick it up with minimal "
-        "context, apply it to your own constraints, and extend it without "
-        "rewriting the world. In short, it was built to reduce surprise. To "
-        "replace 'hope it works' with 'we know why it works.' To offer a solid "
-        "default, a clear surface area, and an approach that scales with your "
-        "needs rather than fighting them."
-    ),
-    # How this works
-    (
-        "How this thing works is deliberately simple at the surface, and carefully "
-        "engineered underneath. You point it at some input, you tell it what you "
-        "want, and it produces an output you can inspect, reuse, or wire into "
-        "something larger. There are no secret handshakes: the core behavior is "
-        "exposed through a small set of commands and a predictable configuration "
-        "layer, so you can get started quickly and still have room to grow into "
-        "the deeper features. Conceptually, the system is a pipeline. Data enters "
-        "through an adapter that normalizes formats, validates assumptions, and "
-        "attaches a bit of metadata so later stages can make good decisions. From "
-        "there, a runtime coordinates the actual work: it resolves dependencies, "
-        "schedules tasks in the right order, and applies the selected options in a "
-        "consistent way. Each step emits clear signals - logs, exit codes, and "
-        "structured output - so you can debug problems without guessing. The "
-        "important part is that every piece is replaceable. If you don't like the "
-        "default parser, swap it. If you need different output, add a formatter. "
-        "If your environment is unusual, provide your own transport or storage "
-        "backend. Extensions follow the same rules as built-ins: small interfaces, "
-        "stable contracts, and failure modes that are explicit rather than "
-        "surprising. In short: it takes your intent, turns it into a plan, "
-        "executes that plan reliably, and leaves an audit trail you can trust."
-    ),
-]
-
-# ModernBERT model for Additional Files embedding
-_MODERNBERT_MODEL_NAME = "nomic-ai/modernbert-embed-base"
-_MODERNBERT_TRUNCATE_DIM = 256
-
-# Cache for 5W1H probe embeddings (ModernBERT)
-_ADDITIONAL_FILES_PROBE_EMBEDDINGS: "np.ndarray | None" = None
-
 
 def _find_git_executable() -> str:
     """Find the full path to git executable.
@@ -1505,30 +1336,6 @@ def _get_xdg_cache_base() -> Path:
     return base / "hypergumbo"
 
 
-def _get_cache_dir(repo_root: Path) -> Path:
-    """Get or create the embedding cache directory for a repository.
-
-    Cache structure:
-        ~/.cache/hypergumbo/<fingerprint>/embeddings/
-
-    Embeddings are shared across all repo states since they're keyed by
-    file content hash. Only the results are state-specific.
-
-    Args:
-        repo_root: Repository root path.
-
-    Returns:
-        Path to the embeddings cache directory.
-    """
-    fingerprint = _get_repo_fingerprint(repo_root)
-    cache_base = _get_xdg_cache_base()
-    cache_dir = cache_base / fingerprint / "embeddings"
-
-    # Create the full path including parent directories
-    cache_mkdir(cache_dir, parents=True, exist_ok=True)
-    return cache_dir
-
-
 def _get_results_cache_dir(
     repo_root: Path, *, extra_excludes: "Sequence[str] | None" = None,
 ) -> Path:
@@ -1624,389 +1431,8 @@ def _get_results_cache_dir(
     return cache_dir
 
 
-def _compute_file_hash(file_path: Path) -> str:
-    """Compute hash of file content for cache invalidation.
-
-    Args:
-        file_path: Path to the file.
-
-    Returns:
-        Short SHA256 hash of file content, or empty string on error.
-    """
-    import hashlib
-
-    try:
-        content = file_path.read_bytes()
-        return hashlib.sha256(content).hexdigest()[:16]
-    except OSError:
-        return ""
-
-
-def _load_cached_embedding(cache_dir: Path, file_hash: str) -> "np.ndarray | None":
-    """Load embedding from cache if it exists.
-
-    Args:
-        cache_dir: Path to cache directory.
-        file_hash: Content hash of the file.
-
-    Returns:
-        Cached embedding array, or None if not cached.
-    """
-    if not file_hash:
-        return None
-
-    cache_file = cache_dir / f"embed_{file_hash}.npy"
-    if cache_file.exists():
-        try:
-            import numpy as np
-            return np.load(cache_file)
-        except Exception:
-            return None
-    return None
-
-
-def _save_cached_embedding(
-    cache_dir: Path, file_hash: str, embedding: "np.ndarray"
-) -> None:
-    """Save embedding to cache.
-
-    Args:
-        cache_dir: Path to cache directory.
-        file_hash: Content hash of the file.
-        embedding: Embedding array to cache.
-    """
-    if not file_hash:
-        return
-
-    cache_file = cache_dir / f"embed_{file_hash}.npy"
-    try:
-        cache_save_npy(cache_file, embedding)
-    except Exception:
-        pass  # Silently fail if caching doesn't work
-
-
-def _extract_file_samples(
-    file_path: Path,
-    num_samples: int = 3,
-    sample_size: int = 400,
-) -> str:
-    """Extract random non-overlapping substrings from first third of file.
-
-    Used to create a representative sample of file content for embedding.
-    Strips HTML tags but keeps text content.
-
-    Args:
-        file_path: Path to the file.
-        num_samples: Number of samples to extract.
-        sample_size: Character count per sample.
-
-    Returns:
-        Ellipsis-concatenated string of samples, de-HTMLified.
-    """
-    import random
-    import re
-    import zlib
-
-    try:
-        content = file_path.read_text(encoding='utf-8', errors='replace')
-    except OSError:
-        return ""
-
-    if not content:
-        return ""
-
-    # Use first third of file (most likely to contain description/overview)
-    first_third_len = len(content) // 3
-    if first_third_len < 100:
-        first_third = content  # File is very small, use all of it
-    else:
-        first_third = content[:first_third_len]
-
-    # De-HTMLify: remove HTML tags but keep content
-    first_third = re.sub(r'<[^>]+>', ' ', first_third)
-    # Collapse whitespace
-    first_third = ' '.join(first_third.split())
-
-    total_needed = sample_size * num_samples
-    if len(first_third) <= total_needed:
-        return first_third
-
-    # Extract non-overlapping samples with deterministic seeding. The seed is
-    # a STABLE digest of the path: ``hash(str)`` is salted per process
-    # (PYTHONHASHSEED), so it would pick different windows — and so different
-    # embedding rankings — on every run (cf. WI-vosag).
-    seed = zlib.crc32(str(file_path).encode("utf-8"))
-    rng = random.Random(seed)  # noqa: S311 # nosec B311
-
-    samples: list[str] = []
-    available_start = 0
-
-    for _ in range(num_samples):
-        # Calculate max start position leaving room for remaining samples
-        remaining_samples = num_samples - len(samples) - 1
-        max_start = len(first_third) - sample_size - (sample_size * remaining_samples)
-
-        if available_start >= max_start:
-            break
-
-        start = rng.randint(available_start, max_start)
-        samples.append(first_third[start:start + sample_size])
-        available_start = start + sample_size
-
-    return " ... ".join(samples)
-
-
-def _load_modernbert_model():
-    """Load ModernBERT model with truncation dimension.
-
-    Returns:
-        SentenceTransformer model configured for 256-dim output.
-
-    Note:
-        Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
-        notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
-    """
-    # Force HF offline BEFORE importing sentence_transformers, which freezes
-    # huggingface_hub's offline constant (INV-dasig).
-    _ensure_hf_offline_for_cached_models()
-
-    # Suppress warnings BEFORE importing to catch all submodule loggers
-    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-    logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
-
-    from sentence_transformers import SentenceTransformer
-    import sys
-    import io
-
-    # Work around httpx bug with IPv6 CIDR in NO_PROXY
-    old_no_proxy = _sanitize_no_proxy_for_httpx()
-
-    # Capture any stdout during model loading (library prints to stdout)
-    old_stdout = sys.stdout
-    sys.stdout = io.StringIO()
-    try:
-        model = _load_st_model_offline_first(
-            SentenceTransformer,
-            _MODERNBERT_MODEL_NAME,
-            truncate_dim=_MODERNBERT_TRUNCATE_DIM,
-        )
-    finally:
-        sys.stdout = old_stdout
-        _restore_no_proxy(old_no_proxy)
-    return model
-
-
-def _get_additional_files_probe_embeddings() -> "np.ndarray":
-    """Get probe embeddings for 5W1H Additional Files ranking.
-
-    Uses pre-computed embeddings from _embedding_data.py if available,
-    otherwise computes them at runtime.
-
-    Returns:
-        Normalized probe embeddings array of shape (6, 256).
-    """
-    global _ADDITIONAL_FILES_PROBE_EMBEDDINGS
-
-    if _ADDITIONAL_FILES_PROBE_EMBEDDINGS is None:
-        try:
-            # Try to load pre-computed embeddings
-            from ._embedding_data import ADDITIONAL_FILES_PROBES_B64
-            import base64
-            import numpy as np
-
-            raw = base64.b64decode(ADDITIONAL_FILES_PROBES_B64)
-            arr = np.frombuffer(raw, dtype=np.float16).reshape(
-                len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM
-            )
-            _ADDITIONAL_FILES_PROBE_EMBEDDINGS = arr.astype(np.float32)
-        except (ImportError, AttributeError):
-            # Pre-computed embeddings not available, compute at runtime
-            if not _has_sentence_transformers():
-                import numpy as np
-                return np.zeros((len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM))
-
-            import numpy as np
-            try:
-                model = _load_modernbert_model()
-            except EmbeddingsUnavailable as exc:
-                # Same answer as the guard three lines above (INV-rupid).
-                _warn_embeddings_unavailable(exc)
-                return np.zeros(
-                    (len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM)
-                )
-            _ADDITIONAL_FILES_PROBE_EMBEDDINGS = model.encode(
-                ADDITIONAL_FILES_PROBES, convert_to_numpy=True
-            )
-
-    return _ADDITIONAL_FILES_PROBE_EMBEDDINGS
-
-
-def embed_file_for_semantic_ranking(
-    file_path: Path,
-    cache_dir: Path | None = None,
-) -> "np.ndarray | None":
-    """Embed a file using ModernBERT for semantic ranking.
-
-    Uses 3 random non-overlapping 400-char substrings from first third,
-    de-HTMLified and ellipsis-concatenated.
-
-    Args:
-        file_path: Path to the file.
-        cache_dir: Optional cache directory for embeddings.
-
-    Returns:
-        256-dimensional embedding vector, or None if unavailable.
-    """
-    if not _has_sentence_transformers():
-        return None
-
-    # Check cache first
-    file_hash = _compute_file_hash(file_path)
-    if cache_dir and file_hash:
-        cached = _load_cached_embedding(cache_dir, file_hash)
-        if cached is not None:
-            return cached
-
-    # Extract samples
-    sample_text = _extract_file_samples(file_path)
-    if not sample_text:
-        return None
-
-    # Load model and embed
-    try:
-        model = _load_modernbert_model()
-    except EmbeddingsUnavailable as exc:
-        _warn_embeddings_unavailable(exc)  # INV-rupid: as the guard returns.
-        return None
-    embedding = model.encode(sample_text, convert_to_numpy=True)
-
-    # Cache result
-    if cache_dir and file_hash:
-        _save_cached_embedding(cache_dir, file_hash, embedding)
-
-    return embedding
-
-
-def batch_embed_files(
-    file_paths: list[Path],
-    cache_dir: Path | None = None,
-    batch_size: int = 64,
-    progress_callback: Callable[..., Any] | None = None,
-) -> dict[Path, "np.ndarray | None"]:
-    """Batch embed multiple files efficiently.
-
-    This is ~5-10x faster than calling embed_file_for_semantic_ranking()
-    repeatedly because SentenceTransformers is optimized for batch encoding.
-
-    Args:
-        file_paths: List of file paths to embed.
-        cache_dir: Optional cache directory for embeddings.
-        batch_size: Number of files to encode per batch (default 64).
-        progress_callback: Optional callback(current, total) for progress.
-
-    Returns:
-        Dict mapping file paths to embeddings (or None for unreadable files).
-    """
-    if not _has_sentence_transformers():
-        return dict.fromkeys(file_paths, None)
-
-    results: dict[Path, "np.ndarray | None"] = {}
-    uncached: list[tuple[Path, str, str]] = []  # (path, hash, sample)
-
-    # Phase 1: Check cache, extract samples for uncached files
-    for f in file_paths:
-        file_hash = _compute_file_hash(f)
-
-        # Check cache first
-        if cache_dir and file_hash:
-            cached = _load_cached_embedding(cache_dir, file_hash)
-            if cached is not None:
-                results[f] = cached
-                continue
-
-        # Extract sample for uncached file
-        sample = _extract_file_samples(f)
-        if sample:
-            uncached.append((f, file_hash, sample))
-        else:
-            results[f] = None
-
-    # Phase 2: Batch encode uncached files
-    if uncached:
-        try:
-            model = _load_modernbert_model()
-        except EmbeddingsUnavailable as exc:
-            # Cached hits found in phase 1 are REAL and are kept — degrading
-            # must not discard work already done. Only the paths this phase
-            # would have encoded become None, which is what the guard at the
-            # top of the function returns for every path (INV-rupid).
-            _warn_embeddings_unavailable(exc)
-            for path, _hash, _sample in uncached:
-                results[path] = None
-            return results
-        total_uncached = len(uncached)
-
-        for i in range(0, total_uncached, batch_size):
-            batch = uncached[i:i + batch_size]
-            texts = [sample for _, _, sample in batch]
-
-            # Batch encode
-            embeddings = model.encode(texts, convert_to_numpy=True)
-
-            # Store results and cache
-            for (f, file_hash, _), emb in zip(batch, embeddings, strict=True):
-                results[f] = emb
-                if cache_dir and file_hash:
-                    _save_cached_embedding(cache_dir, file_hash, emb)
-
-            # Report progress
-            if progress_callback:
-                done = min(i + batch_size, total_uncached)
-                progress_callback(done, total_uncached)
-
-    return results
-
-
-def compute_5w1h_similarity(
-    file_embedding: "np.ndarray",
-    probe_embeddings: "np.ndarray | None" = None,
-) -> float:
-    """Compute aggregate cosine similarity to 5W1H probes.
-
-    Args:
-        file_embedding: 256-dim embedding of file content.
-        probe_embeddings: Pre-computed probe embeddings (optional).
-
-    Returns:
-        Aggregate similarity score (mean of cosine similarities).
-    """
-    import numpy as np
-
-    if probe_embeddings is None:
-        probe_embeddings = _get_additional_files_probe_embeddings()
-
-    if probe_embeddings is None or len(probe_embeddings) == 0:
-        return 0.0
-
-    # Normalize embeddings
-    file_norm = np.linalg.norm(file_embedding)
-    if file_norm < 1e-8:
-        return 0.0
-    file_normalized = file_embedding / file_norm
-
-    probe_norms = np.linalg.norm(probe_embeddings, axis=1, keepdims=True)
-    probe_norms = np.maximum(probe_norms, 1e-8)  # Avoid division by zero
-    probe_normalized = probe_embeddings / probe_norms
-
-    # Compute cosine similarities
-    similarities = np.dot(probe_normalized, file_normalized)
-
-    # Return mean similarity
-    return float(np.mean(similarities))
-
-
 #: Every model a runtime command loads, in the order install fetches them.
-EMBEDDING_MODELS: tuple[str, ...] = (_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME)
+EMBEDDING_MODELS: tuple[str, ...] = (_EMBEDDING_MODEL,)
 
 
 def fetch_embedding_models(st_cls: "Callable[..., object] | None" = None) -> None:

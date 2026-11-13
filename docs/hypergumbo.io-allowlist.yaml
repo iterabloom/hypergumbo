@@ -359,14 +359,6 @@ modules:
       - survey
       purpose: zone-enforced recursive delete inside the cache root (refuses paths outside
         it)
-    - function: cache_save_npy
-      primitive: numpy.save
-      family: fs_write
-      count: 1
-      zone: user_cache
-      commands:
-      - sketch
-      purpose: 'user_cache wrapper: persist an embedding vector (.npy)'
     - function: cache_unlink
       primitive: '*.unlink'
       family: fs_write
@@ -770,16 +762,6 @@ modules:
       purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
         loads from the local HF cache only (local_files_only=True, HF_HUB_OFFLINE=1) and degrades
         when the model is absent; it never downloads (INV-gujus)'
-    - function: _load_modernbert_model
-      primitive: sentence_transformers.SentenceTransformer
-      family: network
-      count: 1
-      zone: in_process
-      commands:
-      - sketch
-      purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
-        loads from the local HF cache only (local_files_only=True, HF_HUB_OFFLINE=1) and degrades
-        when the model is absent; it never downloads (INV-gujus)'
     - function: _load_st_model_offline_first
       primitive: os.environ.__setitem__
       family: env_write
@@ -865,7 +847,7 @@ modules:
       family: network
       count: 1
       zone: install
-      target: huggingface.co (microsoft/unixcoder-base, nomic-ai/modernbert-embed-base)
+      target: huggingface.co (microsoft/unixcoder-base)
       commands:
       - install-embeddings
       - add-extras
