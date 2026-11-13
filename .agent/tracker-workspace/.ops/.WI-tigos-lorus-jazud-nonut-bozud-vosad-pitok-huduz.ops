@@ -1,0 +1,23 @@
+- op: create  # 70cb
+  at: '2026-11-13T09:21:37Z'  # 70cb
+  by: agent  # 70cb
+  actor: jgstern_agent  # 70cb
+  clock: 1  # 70cb
+  nonce: 70cb  # 70cb
+  data:  # 70cb
+    kind: work_item  # 70cb
+    title: "Sketch Tests section prints the static call-graph estimate as \"estimated coverage\" with no statement that it is a lower bound: on a repository with enforced 100% line coverage it reads 63%"  # 70cb
+    status: todo_hard  # 70cb
+    priority: 3  # 70cb
+    parent:  # 70cb
+    tags:  # 70cb
+    - outside_reader_review_20261113  # 70cb
+    - dogfood  # 70cb
+    - sketch  # 70cb
+    - test_coverage  # 70cb
+    isbefore: []  # 70cb
+    duplicate_of: []  # 70cb
+    not_duplicate_of: []  # 70cb
+    pr_ref:  # 70cb
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nOBSERVED. The self-run sketch says, at every budget:\n  *~63% estimated coverage (4764/7542 functions called by tests)*\nThe eight packages are held to 100% line coverage by CI. The denominator also counts functions under scripts/, which that gate does not cover, so the true figure for the 7,542 is below 100% and is not measured here. The line gives a reader with no other context the conclusion that the repo is under-tested.\n\nWHAT THE NUMBER IS. sketch._estimate_test_coverage counts non-test functions and methods transitively reachable from test code over calls edges (plus anchor-execution edges). Every call edge the analysis misses (dynamic dispatch, reflection, a test that drives the code through a subprocess or a CLI, a fixture or parametrize indirection) lowers it. It cannot over-read by more than wrong edges allow, and it under-reads by the whole of the missing-edge rate. The test-coverage subcommand's help already states a false-negative rate of about 20%; the sketch line carries none of that. INV-gifoh-liru made the two commands agree on the number; it did not address how the number is presented.\n\nASK. State in the line what was measured and in which direction it errs, in words a reader with only the sketch can act on, and keep the sketch and test-coverage wording from one source. Decide whether the line is shown at all when the analysis has evidence its call graph from tests is thin (for example most test files driving a binary).\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe line is printed for every language with a test-framework pattern. The size of the under-read differs by language and test style (it is larger where tests reach code through a runner, a macro or a process boundary), so the wording has to be true for all of them and must not quote this repo's 63% or a Python-specific rate. Acceptance: the rendered line on at least three repositories in three languages, each with a coverage figure from the project's own coverage tool beside it."  # 70cb
+    fields: {}  # 70cb

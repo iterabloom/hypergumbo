@@ -1,0 +1,23 @@
+- op: create  # 1fce
+  at: '2026-11-13T09:21:43Z'  # 1fce
+  by: agent  # 1fce
+  actor: jgstern_agent  # 1fce
+  clock: 1  # 1fce
+  nonce: 1fce  # 1fce
+  data:  # 1fce
+    kind: work_item  # 1fce
+    title: "Sketch Entry Points shows an entry's docstring in place of its path, so entries that share a name (several main) cannot be told apart or located"  # 1fce
+    status: todo_hard  # 1fce
+    priority: 3  # 1fce
+    parent:  # 1fce
+    tags:  # 1fce
+    - outside_reader_review_20261113  # 1fce
+    - dogfood  # 1fce
+    - sketch  # 1fce
+    - ux  # 1fce
+    isbefore: []  # 1fce
+    duplicate_of: []  # 1fce
+    not_duplicate_of: []  # 1fce
+    pr_ref:  # 1fce
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nOBSERVED. In the self-run sketch, CLI & Scripts lists\n  - main (Python main()) — Primary CLI entry point.\n  - main (Python main()) — packages/hypergumbo-core/src/hypergumbo_core/cli.py\n  - main (Python main()) — CLI entry point. Returns exit code.\nThe first and third name no file. The 8k sketch shows seven entries named main; three of them have a docstring and so no path.\n\nPRIOR DECISION. sketch._format_entrypoints prints the docstring when there is one and the path only otherwise, under WI-kipod-lipus (done): \"prefer the captured docstring over the path. The path is recoverable via explain / the Source Files section\". That holds when the name identifies the entry. It does not when the displayed names collide: explain main is then ambiguous too, and Source Files lists files, not which one holds this main. This item does not reverse WI-kipod; it covers the case its reasoning leaves out.\n\nASK. An entry line must identify its entry. Options: show both location and docstring; or show the location whenever the displayed name is not unique among the entries shown; or qualify the name. Choose by what the line costs at the 8k budget, where Entry Points is already 22% of the sketch. The same section repeats a shell script's path three times on one line (name, label, path): that repetition can pay for the added locations.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nColliding entry names are the normal case in several ecosystems: main in every Go command package and every Rust binary, index or handler in serverless functions, a Python __main__ per package, run or cli in many scripts. The rule is about name collisions among displayed entries in any language, never about the string main. Acceptance: a Go or Rust repository with several binaries and a JS/TS repository with several handlers of one name, each entry locatable from the sketch alone."  # 1fce
+    fields: {}  # 1fce

@@ -1,0 +1,23 @@
+- op: create  # e896
+  at: '2026-11-13T09:21:55Z'  # e896
+  by: agent  # e896
+  actor: jgstern_agent  # e896
+  clock: 1  # e896
+  nonce: e896  # e896
+  data:  # e896
+    kind: work_item  # e896
+    title: "help --all prints an internal default as a section heading (DEFAULT) and an internal dest name as a metavar (--path _PATH_FLAG): nothing checks that help text shows only user-facing names"  # e896
+    status: todo_hard  # e896
+    priority: 4  # e896
+    parent:  # e896
+    tags:  # e896
+    - outside_reader_review_20261113  # e896
+    - dogfood  # e896
+    - cli  # e896
+    - ux  # e896
+    isbefore: []  # e896
+    duplicate_of: []  # e896
+    not_duplicate_of: []  # e896
+    pr_ref:  # e896
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.  Re-checked with \"hypergumbo --help --all\" on dev d6a8a140e7.\n\nOBSERVED\n1. A section titled DEFAULT holds trust-backend, trust-catalogues, backend-agreement, cache-status, cache-clear, init-catalogs and catalog-inventory. cli.py groups subcommands with getattr(subaction, \"group\", \"default\"); these seven declare no group, and the fallback string is printed as the heading.\n2. Twenty-four usage and option lines read \"--path _PATH_FLAG\". The option is declared with dest=\"_path_flag\" and no metavar, so argparse prints the dest upper-cased.\n\nASK. Fix both, and add the check that would have caught them: every registered subcommand belongs to a named help group, and no usage or option line in the rendered help shows a name that begins with an underscore or equals a fallback sentinel. The check runs over the parser as built, so a subcommand or option added later is covered without editing the check.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nHere that means the gate is over the whole parser (every subcommand, every option), never a list of the seven commands and one flag seen today."  # e896
+    fields: {}  # e896
