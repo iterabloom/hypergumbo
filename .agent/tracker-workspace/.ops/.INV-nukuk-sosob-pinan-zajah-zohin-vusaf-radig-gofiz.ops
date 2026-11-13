@@ -1,0 +1,25 @@
+- op: create  # a6e0
+  at: '2026-11-13T09:20:30Z'  # a6e0
+  by: agent  # a6e0
+  actor: jgstern_agent  # a6e0
+  clock: 1  # a6e0
+  nonce: a6e0  # a6e0
+  data:  # a6e0
+    kind: invariant  # a6e0
+    title: "A tiered survey file (survey.<N>k.json) is larger than its stated token budget: fixed sections are never budgeted, and the estimate sizes a different serialization than the one written"  # a6e0
+    status: violated  # a6e0
+    priority: 2  # a6e0
+    parent:  # a6e0
+    tags:  # a6e0
+    - outside_reader_review_20261113  # a6e0
+    - dogfood  # a6e0
+    - compact  # a6e0
+    - token_budget  # a6e0
+    isbefore: []  # a6e0
+    duplicate_of: []  # a6e0
+    not_duplicate_of: []  # a6e0
+    pr_ref:  # a6e0
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nMEASURED (bytes on disk / 4):\n- survey.4k.json: 26,793 B = 6.7k tokens (67% over). 1 node, 0 edges. The sections other than nodes and edges total about 26 KB against a 16 KB budget; limits alone is 10.3 KB.\n- survey.16k.json: 66,862 B = 16.7k tokens (4% over). 19 nodes, 10 edges.\n- survey.64k.json: 294,712 B = 73.7k tokens (15% over). 143 nodes, 153 edges.\nThe same three maps serialized with json.dumps defaults are 19,775 / 52,844 / 241,012 B, which is what the estimator sees; the on-disk sizes equal the indent=2 lengths exactly.\n\nCAUSE 1 (fixed sections). The shrink loop is \"while actual_tokens > target_tokens and len(included_symbols) > 1\": it can only drop nodes. When the fixed sections alone exceed the target it ends at one node and the file is written over budget with no disclosure. tier_tokens records the target, and no field records the size reached.\n\nCAUSE 2 (serialization). selection/token_budget.estimate_json_tokens does len(json.dumps(data)) // 4. cli writes the tier through user_out_open_json_dump (indent=2). The 16k and 64k tiers pass the estimate and exceed the budget on disk.\n\nWHAT A FIX HAS TO DO\n- Budget the whole file: either size the fixed sections first and give nodes what remains, or project the fixed sections for the tier (see the sibling work item on tier byte economy).\n- Estimate the form that is written, or write the form that is estimated.\n- When the budget cannot be met, record it in the file.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe fixed sections grow with the repository (limits.skipped_passes has one record per analyzer that found nothing; failed_files one per damaged file), so the overshoot is not a constant. Acceptance: on at least three repositories of different size and language mix, none of them hypergumbo, every tier file is at or under its budget on disk, or carries the disclosure."  # a6e0
+    fields:  # a6e0
+      statement: "A tiered survey file written for a budget of N tokens holds at most N tokens, measured on the bytes written to disk at CHARS_PER_TOKEN. When N cannot hold the fixed sections plus one node, the file says so in a field a reader can check; it does not silently exceed N."  # a6e0
+      root_cause: "Two independent causes in compact.format_tiered_behavior_map. (1) Every top-level section outside _TIERED_STRIP_KEYS is copied unchanged, and the shrink loop removes nodes only and stops at one node, so nothing bounds limits, profile, reproducibility_context or supply_chain_summary. (2) estimate_json_tokens sizes json.dumps(data) with default separators, while the tier file is written with indent=2."  # a6e0

@@ -1,0 +1,23 @@
+- op: create  # 852a
+  at: '2026-11-13T09:20:41Z'  # 852a
+  by: agent  # 852a
+  actor: jgstern_agent  # 852a
+  clock: 1  # 852a
+  nonce: 852a  # 852a
+  data:  # 852a
+    kind: work_item  # 852a
+    title: "Sketch Key Symbols: the set of files it may show is fixed at 20 by score plus every file holding an entry point, whatever the budget, so a larger budget fills with entry-point files and skips higher-ranked modules"  # 852a
+    status: todo_hard  # 852a
+    priority: 3  # 852a
+    parent:  # 852a
+    tags:  # 852a
+    - outside_reader_review_20261113  # 852a
+    - dogfood  # 852a
+    - sketch  # 852a
+    - ranking  # 852a
+    isbefore: []  # 852a
+    duplicate_of: []  # 852a
+    not_duplicate_of: []  # 852a
+    pr_ref:  # 852a
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nMECHANISM (read in the code, not confirmed by a run). sketch._select_symbols_two_phase has max_files=20 and builds\n  eligible_files = set(sorted_files[:max_files]) | entrypoint_files\n_format_symbols calls it without max_files, so 20 holds at every token budget. Symbols from any other file can never be chosen. The only way the eligible set grows is through entry-point files, and that part has no cap.\n\nOBSERVED on the self-run:\n- taint.py, java.py, go.py, verify_claims.py and tui.py are ranks 18-22 in the same sketch's Source Files list and are under no Key Symbols heading at 8k, 32k or 128k.\n- Key Symbols file headings: 12 at 8k, 47 at 32k, 103 at 128k. Under hypergumbo_core/: 11, 22, 24. Under scripts/: 1, 12, 51. In a recorded test-input crate: 0, 4, 6. Going from 32k to 128k added 56 files, 2 of them core.\n- Each script holds a main, so each is an entry-point file.\n\nSource Files is ordered by ranking.rank_files and Key Symbols by compute_file_scores (sum of top-3 symbol centrality); these are two different file orders in one document (see WI-zuroj-vufok-magoj-hinok-pigud-huhuk-piram-mosor), which is why a rank-18 file can be outside the 20.\n\nASK. Make file eligibility a function of the budget, and bound the entry-point contribution so that it competes on score instead of bypassing the cap. Decide whether Key Symbols and Source Files share one file order; if they stay separate, say so in the output.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nThe same shape appears in any repository with many small executables beside a core library: a scripts/ or tools/ or cmd/ or bin/ directory, a Go module with many package main, a JS monorepo with many bin entries. Acceptance: on at least two such repositories that are not hypergumbo, in two different languages, show Key Symbols file headings at three budgets and how many of the Source Files top 30 appear."  # 852a
+    fields: {}  # 852a
