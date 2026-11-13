@@ -1,0 +1,24 @@
+- op: create  # dc33
+  at: '2026-11-13T09:21:49Z'  # dc33
+  by: agent  # dc33
+  actor: jgstern_agent  # dc33
+  clock: 1  # dc33
+  nonce: dc33  # dc33
+  data:  # dc33
+    kind: work_item  # dc33
+    title: "A docstring taken from a comment block uses the block's first line as the summary even when that line is decoration or a shebang: sketch prints a row of dashes or \"!/bin/bash\" as what a function does"  # dc33
+    status: todo_hard  # dc33
+    priority: 4  # dc33
+    parent:  # dc33
+    tags:  # dc33
+    - outside_reader_review_20261113  # dc33
+    - dogfood  # dc33
+    - sketch  # dc33
+    - analyzer  # dc33
+    - cross_language_parity  # dc33
+    isbefore: []  # dc33
+    duplicate_of: []  # dc33
+    not_duplicate_of: []  # dc33
+    pr_ref:  # dc33
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nOBSERVED in the self-run sketch:\n- Key Symbols, 8k: json_field() (function) — ------------------------------------------------------------------\n- Key Symbols, 128k: repair_agent_perms() — !/bin/bash\nThe source of the first is a comment block that opens with a ruled line:\n  # ------------------------------------------------------------------\n  # json_field DOTPATH\n  #   Safe field extraction from JSON on stdin.\nThe 8k sketch has 16 Key Symbols slots; one went to this line.\n\nMECHANISM. analyze/base.populate_docstrings_from_tree attaches the comment preceding a declaration through extract_doc_comment, for every analyzer that does not set a docstring itself. Consumers that show one line take the first. A first line made only of rule characters, or the file's shebang reached because the function is the first declaration, carries no description. Whether the fault is fixed in extraction (drop decoration lines and never treat a shebang as documentation) or in the one-line summary (first line that has words) is the design question; fixing it in extraction serves every consumer of Symbol.docstring.\n\nASK. Define, in the shared helper, which comment lines are documentation: skip lines consisting only of repeated punctuation, skip a shebang and an encoding or licence-header line, and skip a line that only repeats the symbol's own name and arguments if a descriptive line follows. State the rule once and test it across comment syntaxes.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nBanner comments are a convention in shell, C, C++, SQL, Lua, Fortran, assembly, Makefiles and many others (# ----, // ====, /* **** */, -- ----, ;; ----); the rule must be written over comment content after the language's comment markers are stripped, and must run for every analyzer that goes through extract_doc_comment. A patch inside the bash analyzer does not close this item. Acceptance: fixtures in at least four comment syntaxes, and a count over a multi-language corpus of symbols whose one-line summary has no letters, before and after."  # dc33
+    fields: {}  # dc33
