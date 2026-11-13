@@ -1,0 +1,19 @@
+Original commit body from 7b12310f8fb9eb3f0cad7a735812b9bde8819229:
+
+Six items from the outside-reader review of `hypergumbo sketch` and the tier files, one commit each, and one commit that fixes a regression the before/after renderings caught.
+
+| commit | item | change |
+|---|---|---|
+| the Tests line says what it counts | WI-tigos | "N of M functions are reached from tests in the static call graph", and which way that errs |
+| an Entry Points line says which entry it is | WI-johuv | entries that share a name (`main`, `New`, `handler`) show their path as well as their docstring; a line no longer repeats its name or path |
+| a view's metrics are computed from its own selection | WI-lokuj | tiered and compact views: real supply-chain tiers and host languages instead of `unknown`; `files` and `debug` absent; repository figures under `metrics.repository` |
+| a list cut by rank and grouped by file says whose entries it left out | WI-nurid | Data Models and Key Symbols count a shown file's hidden entries under that file |
+| the Source Files listing is sized by what its entries cost | WI-borap | holds its ADR-0005 share; the closing line says what was left out |
+| Additional Files ranks process and name-list files lower... | WI-papup | process files last in the overview order; the centrality list holds documents; the README gets a harmonic share; truncation respects code fences |
+| Key Symbols, the Additional Files listing and source content hold their shares | WI-borap, WI-nurid | the same sizing rule for the other two listings; Source Files Content uses ADR-0005's effective-N shares |
+
+The last commit exists because the per-file count lines (WI-nurid) made Key Symbols pass its share on one repository at 32k without source, and the final truncation then dropped Key Symbols and Additional Files whole. Rendering 30 sketches before and after and comparing section lists found it. The same mechanism was already dropping sections on dev (three cases named in the commit).
+
+Each commit message carries its own measurements and mutation results. Not in this PR: WI-jolov (files git ignores and does not track) is a measurement and a ruling for the owner; the note is on the item.
+
+Tests: one full affected-test run on the combined branch; 63 mutations across the seven commits, each turning a test red.
