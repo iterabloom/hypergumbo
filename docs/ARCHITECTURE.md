@@ -15,15 +15,15 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **371** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 116 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **58689** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13157, of which 7533 are functions, methods or classes
-- **235859** edges, test code included, by type:
-  - calls: 133311
-  - contains: 54658
-  - imports: 20174
-  - instantiates: 12972
-  - references: 10676
-  - module_attr_ref: 2254
+- **372** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 117 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **58711** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13165, of which 7537 are functions, methods or classes
+- **235933** edges, test code included, by type:
+  - calls: 133337
+  - contains: 54681
+  - imports: 20189
+  - instantiates: 12973
+  - references: 10691
+  - module_attr_ref: 2248
   - other: 1814
 
 ## Package Architecture
@@ -671,6 +671,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.overload_arity`**: Choose among same-named callables by the call's argument count.
+- **`hypergumbo_core.overview_rank`**: Order non-source files by how likely they are to explain the project.
 - **`hypergumbo_core.owner_ancestry`**: A call on an in-repo type it does not define reaches the type's LIB...
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.pass_clock`**: Per-pass cost clock: a pass's wall time AND its own-thread CPU time.
@@ -997,8 +998,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 065482571d8e
-  commit_count: 9125
+  commit: 927384fca8bb
+  commit_count: 9137
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
