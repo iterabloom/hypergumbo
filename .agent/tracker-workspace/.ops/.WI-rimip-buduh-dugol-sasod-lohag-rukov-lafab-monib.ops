@@ -1,0 +1,21 @@
+- op: create  # ff5a
+  at: '2026-11-13T22:19:29Z'  # ff5a
+  by: agent  # ff5a
+  actor: jgstern_agent  # ff5a
+  clock: 1  # ff5a
+  nonce: ff5a  # ff5a
+  data:  # ff5a
+    kind: work_item  # ff5a
+    title: "Sketch Additional Files: the centrality list ranks by mentions per byte and no list reads what a document says about the code (an architecture-named document is outside the first eight in 87 of 160 repositories)"  # ff5a
+    status: todo_hard  # ff5a
+    priority: 3  # ff5a
+    parent:  # ff5a
+    tags:  # ff5a
+    - sketch  # ff5a
+    - ranking  # ff5a
+    isbefore: []  # ff5a
+    duplicate_of: []  # ff5a
+    not_duplicate_of: []  # ff5a
+    pr_ref:  # ff5a
+    description: "Left open by WI-papup (PR #2176), measured on the 444-repository corpus and on four analysed repositories; scripts and results in ~/hypergumbo_lab_notebook/papup_additional_files_ranking_11132026.\n\nOBSERVED.\n1. The centrality list (documents that mention a central symbol) is ordered by mentions per byte, so a short file with one mention outranks a long document that discusses many symbols. prometheus: storage/remote/azuread/README.md scores 25.6, the next 5.0; kserve: a sample's README first.\n2. No list reads what a document says about the code. A document named like an architecture or design overview is among the first eight Additional Files in 73 of the 160 corpus repositories that have one; the other 87 show eight other files first. The overview order ranks by role, process-or-not, depth and overview wording; the README-link list by the README's order.\n3. After PR #2176 a root-level file that is not a process file can enter the first eight for no other reason (this repository: ALLOWED_WEBSITES.md).\n4. A file with no \"## \" headings and few blank lines is cut at an early paragraph break, far under its share (alertmanager's openapi.yaml: 123 tokens of a 500-token share).\n\nASK. Measure before choosing, on repositories that are not hypergumbo: (a) mention mass or distinct symbols mentioned in place of mentions per byte; (b) a signal for \"explains the code\" that is not the file name: links between documents (a document many documents link to), or mentions of the repository's own source directories; score each against two outside labels (README links, architecture-named files) on the held-out split; (c) a cut rule for text with no headings and no blank lines (line boundary nearest the share).\n\nGENERALITY. Any repository and language; no rule keyed to a file name beyond the conventional process-file names already used."  # ff5a
+    fields: {}  # ff5a
