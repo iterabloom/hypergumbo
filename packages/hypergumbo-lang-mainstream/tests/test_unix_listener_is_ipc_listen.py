@@ -2,14 +2,14 @@
 """A Unix-domain socket server is ``ipc_listen``, not ``net_listen`` (WI-gaziv).
 
 ADR-0050 §1 names a row's primary boundary by the medium data crosses, and a
-Unix socket's medium is local IPC. With no IPC-side deferred-crossing value,
-Go's ``net.ListenUnix`` and Python's ``asyncio.start_unix_server`` were rowed
-``net_listen`` and read as network ingress; the owner chose a new value
-(2026-10-26). Through the production pipeline (``run_behavior_map`` then
+Unix socket's medium is local IPC. Rowed ``net_listen``, Go's
+``net.ListenUnix`` and Python's ``asyncio.start_unix_server`` would read as
+network ingress, so they get their own deferred-crossing value (owner ruling).
+Through the production pipeline (``run_behavior_map`` then
 ``io-boundaries --format json``): each Unix listener is counted in
 ``ipc_listen_edges``, and its TCP twin in the same file stays in
-``net_listen_edges`` -- the control that the move did not take the network
-listeners with it.
+``net_listen_edges`` -- the control that the Unix rows did not take the
+network listeners with them.
 """
 # covers: packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py
 from __future__ import annotations

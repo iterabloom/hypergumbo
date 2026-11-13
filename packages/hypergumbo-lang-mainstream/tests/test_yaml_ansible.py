@@ -69,7 +69,7 @@ class TestAnsibleContentDiscriminator:
         return {p.relative_to(root).as_posix() for p in find_ansible_files(root)}
 
     def test_root_yamllint_config_not_claimed(self, tmp_path: Path) -> None:
-        """The filed instance: a root-level yamllint config is not Ansible."""
+        """A root-level yamllint config is not Ansible."""
         (tmp_path / ".yamllint.yaml").write_text(
             "extends: default\nrules:\n  line-length:\n    max: 120\n"
         )
@@ -95,7 +95,7 @@ class TestAnsibleContentDiscriminator:
         assert self._rels(tmp_path) == {"site.yml", "imports.yml"}
 
     def test_plain_config_in_vars_dir_not_claimed(self, tmp_path: Path) -> None:
-        """The directory arm's measured misfire: web/vars/app.yaml."""
+        """An Ansible-named directory alone does not claim: web/vars/app.yaml."""
         (tmp_path / "web" / "vars").mkdir(parents=True)
         (tmp_path / "web" / "vars" / "app.yaml").write_text("port: 8080\nhost: x\n")
         (tmp_path / "src" / "tasks").mkdir(parents=True)
@@ -149,7 +149,7 @@ class TestAnsibleContentDiscriminator:
         assert self._rels(tmp_path) == {"playbooks/site.yml", "group_vars/web.yml"}
 
     def test_playbook_beside_ansible_dirs_marks_its_tree(self, tmp_path: Path) -> None:
-        """containerd's contrib/ansible layout: the play sits beside tasks/ and vars/.
+        """A contrib/ansible layout: the play sits beside tasks/ and vars/.
 
         The playbook is neither at the root nor under an Ansible-named
         directory; it is found because it sits directly in a directory with
@@ -209,7 +209,7 @@ class TestAnsibleContentDiscriminator:
     def test_behavior_map_has_no_ansible_language_for_yamllint_only_repo(
         self, tmp_path: Path
     ) -> None:
-        """Live repro of the filed defect through the production entry point."""
+        """Through the production entry point, a yamllint-only repo has no ansible."""
         import json
 
         from hypergumbo_core.cli import run_behavior_map
@@ -844,11 +844,11 @@ def test_root_list_with_a_non_mapping_item_is_not_a_playbook(tmp_path: Path) -> 
 class TestAnsibleTaskSections:
     """A task's kind comes from the section that holds it (WI-nobaj, WI-lubah).
 
-    The walk kept one "current section" flag per file, set while a play's keys
-    were read and before its nested items were visited, so every task of a
-    play with a ``handlers:`` key after ``tasks:`` was emitted as a handler. A
-    role's task or handler file is a bare list with no section key at all, and
-    yielded no task or handler symbols.
+    A single per-file "current section" flag, set while a play's keys are read
+    and before its nested items are visited, would emit every task of a play
+    with a ``handlers:`` key after ``tasks:`` as a handler. A role's task or
+    handler file is a bare list with no section key at all; its kind comes
+    from the file's tasks/ or handlers/ directory.
     """
 
     @staticmethod

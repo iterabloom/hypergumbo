@@ -3,16 +3,12 @@
 function or set aside for a stated reason (WI-pokuz).
 
 ``SYNTHETIC_FRAMEWORK_ROLES`` decides which linker nodes the enclosure pass
-connects to the real function they sit in, and it was a hand-written list that
-drifted from what the linkers write. Measured on dev before this change: the
-Electron and Phoenix IPC linkers write ``ipc_send`` / ``ipc_receive`` (the list
-said ``ipc_publisher`` / ``ipc_subscriber``), so session-desktop's 43 and
-livebook's 31 IPC nodes had no edge from any real symbol. The same held for
-every other call-site role the list missed (``message_sender`` /
-``message_handler``, ``crypto_*``, ``grpc_client``, ``graphql_client``, the two
-bridge callers), and for ``http_client``, which the list named but which is
-minted as ``kind="call_site"``, a kind the predicate never admitted. Six listed
-values had no producer at all.
+connects to the real function they sit in. A hand-written list drifts from what
+the linkers write, and every node of a role it misses gets no edge from any real
+symbol — e.g. IPC nodes written as ``ipc_send`` / ``ipc_receive`` under a list
+naming ``ipc_publisher`` / ``ipc_subscriber``. A node minted as
+``kind="call_site"`` must be admitted by its kind, or its role being listed does
+not help. A listed value no linker writes is dead weight that hides the drift.
 
 THE PARTITION IS READ FROM THE LINKER SOURCES, so a role a linker starts to
 write fails here until someone decides which side it is on.
@@ -88,7 +84,7 @@ def test_every_non_literal_write_is_resolved_by_a_known_table() -> None:
 def test_the_two_sets_partition_what_the_linkers_write() -> None:
     roles, _ = _written_roles()
     assert not SYNTHETIC_FRAMEWORK_ROLES & set(NOT_ENCLOSED_FRAMEWORK_ROLES)
-    # No value nobody writes (six of them did), and none left undecided.
+    # No value nobody writes, and none left undecided.
     assert SYNTHETIC_FRAMEWORK_ROLES | set(NOT_ENCLOSED_FRAMEWORK_ROLES) == roles
 
 

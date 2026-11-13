@@ -1,16 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-nopoh: a call at PACKAGE level is anchored on the package-level symbol.
 
-THE GAP. ``_get_enclosing_function`` walked up from a call looking for a
-``function_declaration`` or ``method_declaration`` and returned ``None`` at the
-file root, so every call under a package-level ``var`` -- a function literal
-bound to a variable, a struct-field literal such as cobra's ``Run: func(cmd
+THE HAZARD. A lookup that walks up from a call looking only for a
+``function_declaration`` or ``method_declaration`` returns ``None`` at the file
+root, so every call under a package-level ``var`` -- a function literal bound
+to a variable, a struct-field literal such as cobra's ``Run: func(cmd
 *cobra.Command, args []string) {...}``, or a plain initializer such as
-``var logger = log.New(os.Stderr, "", 0)`` -- emitted no ``calls`` edge at
-all. Measured on beads (a cobra CLI): 578 of 1,331 ``fmt.Fprintf`` sites
-(43.4%) were invisible to every catalogue row, 577 of them inside a
-package-level literal. INV-foluz found the same shape in Python at 50% of
-section-3a escapes; this is its Go twin.
+``var logger = log.New(os.Stderr, "", 0)`` -- would emit no ``calls`` edge at
+all. In a cobra CLI that hides much of the handler code (its ``fmt.Fprintf``
+sites, for one) from every catalogue row. This is the Go twin of the Python
+module-level shape (INV-foluz).
 
 THE RULE. Every call site the analyzer parses emits a ``calls`` edge anchored
 on SOME symbol. A call under a package-level ``var_spec`` anchors on that
@@ -136,10 +135,10 @@ class TestThePackageLevelLiteral:
 class TestTheGroupedVarBlock:
     """``var ( a = ...; b = ... )`` nests its specs under a ``var_spec_list``.
 
-    The symbol pass iterated ``var_declaration``'s direct children and so
-    never saw a grouped spec: no variable symbol, no interface assertion, and
-    every call under the block fell to the file anchor (cert-manager: 1,508
-    call sites in one run). Both spellings are one declaration.
+    A symbol pass that iterates only ``var_declaration``'s direct children
+    never sees a grouped spec: no variable symbol, no interface assertion, and
+    every call under the block falls to the file anchor. Both spellings are
+    one declaration.
     """
 
     def test_each_grouped_spec_is_a_variable_symbol_and_anchors_its_call(
@@ -190,13 +189,12 @@ class TestTheGroupedVarBlock:
 class TestTheResolverUnderTheNewSymbols:
     """Grouped-var symbols change what a bare name resolves to; keep it right.
 
-    alertmanager's test helpers re-export ``testutils`` through
-    ``var ( NewWebhook = testutils.NewWebhook )`` in TWO packages, and the
-    acceptance tests dot-import one of them. With the alias variables now
-    emitted, the bare ``NewWebhook()`` has three global candidates, the
-    resolver's ambiguity guard withholds, and 114 call sites fell from a
-    resolved function to an unresolved placeholder in the first arm B. The dot
-    import names the package; it is offered as the path hint.
+    When two packages re-export a helper through ``var ( NewWebhook =
+    testutils.NewWebhook )`` and a caller dot-imports one of them, the
+    emitted alias variables give the bare ``NewWebhook()`` three global
+    candidates, and the resolver's ambiguity guard would withhold, leaving
+    the call an unresolved placeholder. The dot import names the package; it
+    is offered as the path hint.
     """
 
     @staticmethod
@@ -299,7 +297,7 @@ class TestTheNamedFunctionIsUnchanged:
 
 
 class TestTheClassifierReachesThePackageLevelBody:
-    """WI-suhug's writer classification runs on the newly anchored sites."""
+    """WI-suhug's writer classification runs on package-level anchored sites."""
 
     def test_an_inline_std_stream_is_stamped_inside_a_package_literal(
         self, tmp_path: Path, go_available,

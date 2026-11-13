@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-lopus: a function declared in an ``extern`` block is a symbol.
 
-The Rust analyzer extracted no symbol for a ``function_signature_item`` inside
-a ``foreign_mod_item`` (it handled that node only when a trait owned it), so a
-call to a foreign declaration had nothing to resolve to. It stayed unresolved
-with the ``external`` module slot, and the catalogue then matched it by SHORT
-NAME: loro's wasm_bindgen ``Date.now()`` binding was reported as
-``std::time::Instant.now`` -- a Rust type the code never touches.
+A ``function_signature_item`` inside a ``foreign_mod_item`` is extracted as a
+symbol, not only when a trait owns the node. Without that, a call to a foreign
+declaration has nothing to resolve to: it stays unresolved with the
+``external`` module slot, and the catalogue then matches it by SHORT NAME -- a
+wasm_bindgen ``Date.now()`` binding reported as ``std::time::Instant.now``, a
+Rust type the code never touches.
 
 These tests pin the declaration (a symbol, with the foreign binding recorded),
-the resolution (the call binds to it), and the consequence the item is about
-(io-boundaries no longer names a Rust primitive for it), through the CLI.
+the resolution (the call binds to it), and the consequence (io-boundaries
+names no Rust primitive for it), through the CLI.
 """
 
 from __future__ import annotations
@@ -114,11 +114,11 @@ class TestForeignDeclarationIsASymbol:
         self, tmp_path: Path,
     ) -> None:
         """Rust 2024's ``unsafe extern "C" { pub safe fn ... }``. tree-sitter-rust
-        0.24.0 could not parse it (a top-level ``function_signature_item`` under
-        an ERROR, so nothing was emitted); 0.24.2, the floor since, parses it as a
-        ``foreign_mod_item`` -- only the ``safe`` qualifier is an ERROR leaf -- so
-        the function is a foreign symbol like any other (WI-kipun's gap closes
-        with the grammar)."""
+        0.24.2 (the dependency floor) parses it as a ``foreign_mod_item`` -- only
+        the ``safe`` qualifier is an ERROR leaf -- so the function is a foreign
+        symbol like any other. 0.24.0 does not (a top-level
+        ``function_signature_item`` under an ERROR, so nothing is emitted), so
+        lowering the floor would reopen this gap (history: WI-kipun)."""
         source = 'unsafe extern "C" { pub safe fn getpid() -> i32; }\n'
         result = analyze_rust(_repo(tmp_path, source))
         (sym,) = _by_name(result, "getpid")
@@ -155,9 +155,9 @@ class TestTheCallBindsToTheDeclaration:
     def test_a_declaration_after_a_same_named_module_function_still_binds(
         self, tmp_path: Path,
     ) -> None:
-        """The item's second manifestation: with ``mod helpers { pub fn now() }``
-        in the file, the call used to RESOLVE to ``helpers::now`` -- the only
-        same-named symbol, because the real callee had none."""
+        """With ``mod helpers { pub fn now() }`` in the file, the call must bind
+        to the foreign declaration, not ``helpers::now`` -- which would be the
+        only same-named symbol if the real callee had none."""
         source = _FFI + "mod helpers { pub fn now() -> u64 { 7 } }\nuse helpers::*;\n"
         result = analyze_rust(_repo(tmp_path, source))
         # By SPAN, not by name: two symbols are named ``now`` here, and a
@@ -187,9 +187,9 @@ class TestTheCallBindsToTheDeclaration:
 
 
 class TestOnlyABareCallReachesADeclaration:
-    """The A/B on loro found the symbol acting as a MAGNET: the one ``now`` in
-    the repository bound every ``Instant::now()`` / ``SystemTime::now()`` -- 44
-    real clock reads lost. A foreign declaration has no owner, so neither a
+    """A foreign declaration must not act as a MAGNET: if the one ``now`` in
+    the repository bound every ``Instant::now()`` / ``SystemTime::now()``, real
+    clock reads would be lost. A foreign declaration has no owner, so neither a
     ``Type::`` path nor a receiver reaches it; only its bare name, or the
     module path it is declared under, does."""
 
@@ -272,8 +272,9 @@ class TestAnExternalUseIsNotCapturedAcrossFiles:
 
 
 def test_the_scip_backend_recomputes_the_same_stable_id(tmp_path: Path) -> None:
-    """WI-zakub parity: ``rust_scip`` already recomputed a stable id for an
-    unowned ``function_signature_item``; the symbol now carries the same one."""
+    """Parity: ``rust_scip`` recomputes a stable id for an unowned
+    ``function_signature_item``, and the symbol carries the same one
+    (history: WI-zakub)."""
     from hypergumbo_lang_mainstream.rust_scip import (
         compute_rust_stable_id_from_source,
     )
@@ -291,8 +292,8 @@ def test_io_boundaries_names_no_rust_primitive_for_a_foreign_call(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The item's repro through ``io-boundaries`` itself: ``now`` and ``getpid``
-    are foreign declarations, so no Rust catalogue row names them."""
+    """Through ``io-boundaries`` itself: ``now`` and ``getpid`` are foreign
+    declarations, so no Rust catalogue row names them."""
     repo = _repo(tmp_path, _FFI)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     main(["io-boundaries", str(repo), "--format", "json"])

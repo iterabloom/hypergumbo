@@ -4,8 +4,7 @@
 Subprocess-shaped tests of ``hypergumbo verify-claims`` don't contribute
 to coverage (per AGENTS.md). These tests call
 ``_build_ddg_for_verify_claims`` and the ddg_build pipeline it adapts
-in-process to exercise the AST → CFG → def_use → DDG pipeline that was
-added in Phase 3.
+in-process to exercise the AST → CFG → def_use → DDG pipeline.
 """
 from __future__ import annotations
 
@@ -153,19 +152,16 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
     control: the set is populated, not everything. The analyzer's nodes are
     passed because a binding is walked only under the analyzer's own id.
 
-    Every shape this fixture used before was a Python construct the CFG did
-    not record, and each was closed by recording it: a ``with`` statement's
-    context-manager expression (WI-simiv), a ``for`` loop's iterable
-    (WI-losod) and a ``for`` loop's ``else:`` clause (INV-rotol). After the
-    last, no Python shape probed forfeits (sixteen, syntax errors included:
-    ``rotol_fix_11042026/forfeit_candidates*.txt`` in the lab notebook), so
-    the floor now stands on the rule.
+    Go, not Python, because no probed Python shape forfeits: the Python CFG
+    records the constructs that once did (a ``with`` statement's context-manager
+    expression, a ``for`` loop's iterable and its ``else:`` clause; WI-simiv,
+    WI-losod, INV-rotol), so a Python fixture would stand on a gap that is
+    closed. The floor stands on the Go rule instead.
 
-    An earlier draft of this test used a call inside an ``if`` test, reasoning
-    by analogy from Go's ``if err := do(); err != nil``. That fixture forfeits
-    NOTHING in Python — the ``if`` condition contains its calls, so they are
-    covered, and the analogy was wrong. Which is also why Python measured 12.8%
-    forfeiting against Go's 33.5%: the languages fail in different places.
+    Do not swap in a call inside an ``if`` test by analogy with Go's
+    ``if err := do(); err != nil``: in Python the ``if`` condition contains its
+    calls, so they are covered and nothing forfeits. The languages forfeit in
+    different places.
     """
     from hypergumbo_core.cli import _build_ddg_for_verify_claims
     from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
@@ -232,9 +228,9 @@ def test_unaccounted_names_reaches_the_walk_through_the_repo_ddg(
 
     The unit tests pin ``cfg.unaccounted_names`` and the walk's use of it
     separately, and an extractor can be entirely correct against hand-picked
-    nodes and contribute nothing — that is how Go's def/use extractor produced
-    zero DDG edges for months at 100% coverage, and how both the Rust and
-    TypeScript extractors sat unimported. This asserts the whole chain:
+    nodes and contribute nothing — an extractor can produce zero DDG edges, or
+    never be imported at all, while its unit tests hold 100% coverage. This
+    asserts the whole chain:
     ``build_repo_ddg`` → ``RepoDdg.unaccounted_names`` → the adapter's return
     tuple, over a real file parsed by the real extractor.
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for taint catalog loading and structural taint-flow propagation (ADR-0017 Phase 1).
+"""Tests for taint catalog loading and taint-flow propagation (ADR-0017).
 
 Covers:
 - YAML catalog loading for taint sources, sinks, and sanitizers
@@ -8,6 +8,10 @@ Covers:
 - Dominance-based sanitizer checking
 - Mixed taint label handling
 - Edge cases: empty catalogs, no paths, all paths sanitized
+- The DDG-backed §3a forward walk, its escape sites and function summaries
+- Field-sensitivity lite and cross-language propagation over linker edges
+- Auto-import from io_primitives and project-local catalog layering
+- Module/kind-aware source, sink and sanitizer gating; path determinism
 """
 from __future__ import annotations
 
@@ -1283,8 +1287,7 @@ class TestDdgTaintReaches:
         exhaustion is a confident negative built on no evidence at all.
 
         Any construct the CFG does not record arrives here as an empty index
-        lookup (Go's ``if err := do(); err != nil`` header initializers were
-        one such construct; WI-losod).
+        lookup (history: WI-losod).
 
         The bare repro is the whole point: with an EMPTY index — the DDG
         holding nothing whatsoever — the walk must not return the value that
@@ -1349,7 +1352,7 @@ class TestDdgTaintReaches:
         assert sites == [EscapeSite("f", 7, "source_undefined")]
 
     def test_escape_sites_records_a_followed_but_unaccounted_call(self) -> None:
-        """One statement can do two things (WI-votom hole 2).
+        """One statement can do two things (history: WI-votom).
 
         ``acc.append(x); y = x`` both hands ``x`` to a receiver the walk cannot
         follow AND derives a tracked ``y``. Following the heir accounts for the
@@ -1407,13 +1410,12 @@ class TestDdgTaintReaches:
         assert {s.reason for s in sites} <= ESCAPE_REASONS
 
     def test_escape_site_is_tuple_compatible(self) -> None:
-        """``EscapeSite`` stays a tuple so positional readers keep working.
+        """``EscapeSite`` is a tuple so positional readers work.
 
-        The reason is a third element appended to the ``(symbol_id, line)``
-        pair, not a replacement for it. Anything unpacking exactly two
-        elements breaks loudly on the widened tuple, which
-        is correct — but indexing and iteration must not change shape
-        beneath a reader that only wants the first two.
+        The reason is a third element after the ``(symbol_id, line)`` pair.
+        Anything unpacking exactly two elements breaks loudly, which is
+        correct — but indexing and iteration must give a reader that only
+        wants the first two the same values.
         """
         site = EscapeSite("f", 4, "no_heir")
         assert isinstance(site, tuple)
@@ -1430,7 +1432,8 @@ class TestDdgTaintReaches:
         flag and not by a broken fixture.
 
         ``forfeit_refutation`` says something the DDG cannot: that the CFG
-        recorded no statement covering some call node in this function's body,
+        recorded no statement covering some call node or semantic leaf in this
+        function's body,
         so the extractor demonstrably did not see part of it. Whatever the walk
         concluded, it concluded it from an incomplete picture, and ``False`` is
         the one verdict that may license removing a reported flow.
@@ -1699,7 +1702,7 @@ class TestSummariesCollapseEscapes:
 
 
 class TestFollowedHeirStillAsksTheEscapeQuestion:
-    """WI-votom hole 2: a tracked heir must not SUPPRESS a sibling escape.
+    """A tracked heir must not SUPPRESS a sibling escape (history: WI-votom).
 
     One statement can do two things at once. ``acc.append(x); y = x`` both
     hands ``x`` to a receiver the walk cannot follow AND derives a tracked
@@ -1798,8 +1801,8 @@ class TestUnrecordedHeirIsNotVouchedForByASibling:
 
     That is the ABSENT ≠ EMPTY defect one level below a partially-recorded
     DEFINITION (INV-lupav): here it is a partially-recorded SET OF HEIRS at a
-    single statement. The CALL-node coverage gate (WI-joluk) cannot see it,
-    because the statement has no call at all.
+    single statement. The coverage gate (WI-joluk) cannot see it at this
+    line: the statement is recorded, so nothing in it is uncovered.
 
     This keeps the multi-heir path consistent with the single-heir one. When
     the unrecorded heir is ALONE the walk escapes (``followed`` stays False,
@@ -2020,9 +2023,10 @@ class TestCatalogueKeyProvenanceGate:
 
     WHY THE GATE IS NOT IN ``_qualified_callee``. Gating key CONSTRUCTION would
     also break ``test_in_repo_callee_key_has_no_file_extension`` above, which
-    pins the INV-rozaj fix. The key shape is right; what is wrong is feeding a
-    first-party key to a SHIPPED catalogue. So the provenance decision gets its
-    own named home and the key builder is left alone.
+    pins the extension-free key shape (INV-rozaj). The key shape is right; what
+    is wrong is feeding a first-party key to a SHIPPED catalogue. So the
+    provenance decision gets its own named home and the key builder is left
+    alone.
 
     DIRECTION, which is the whole reason this is worth doing. A summary that
     says "terminates" lets the §3a walk CLOSE a branch, and a false close
@@ -2334,11 +2338,11 @@ class TestPropagateTaintDdg:
 
         The shape: ``for _, v := range os.Environ()`` followed by
         ``fmt.Println(v)`` on the next line — an unmistakable flow. When the
-        CFG mapping does not record the binding construct (Go's range clause
-        was one; WI-losod), ``v`` has no definition in the DDG at all, and a
-        walk that treats "found no uses" as "there are none" concludes the
+        CFG mapping does not record the binding construct (history:
+        WI-losod), ``v`` has no definition in the DDG at all, and a walk
+        that treats "found no uses" as "there are none" concludes the
         literal next line is unreachable. The guard covers every construct
-        still unrecorded.
+        the CFG does not record.
 
         Absence of evidence is not evidence of absence: a source whose value
         the DDG never tracked must leave the flow to structural reachability.
@@ -2488,7 +2492,7 @@ class TestPropagateTaintDdg:
         The walk is intraprocedural, so it has nothing to say about a sink in a
         different function. Treating "the DDG did not confirm it" as "it did
         not happen" would turn ADR-0017 §7b's declared limitation into false
-        negatives across the ~69% of real flows that cross a function boundary.
+        negatives on every real flow that crosses a function boundary.
         """
         ddg = [DdgEdge(
             variable="data", def_block="bb_0", def_line=1,
@@ -2824,14 +2828,14 @@ class TestCrossLanguageTaint:
         implementation folds to 'implements' + meta['protocol']='grpc' and
         is matched by the is_grpc_rpc_implementation predicate, so taint
         crosses it without wholesale-including every structural
-        'implements' edge. The set keeps only canonicals (Phase 4b /
-        WI-vomoj-suhaz, WI-vumum-juvil, audit-findings 0016)."""
+        'implements' edge. The set holds only canonical edge types
+        (history: WI-vomoj-suhaz, WI-vumum-juvil, audit-findings 0016)."""
         assert "calls" in TAINT_CALL_EDGE_TYPES
         assert "module_attr_ref" in TAINT_CALL_EDGE_TYPES
         # Folded (audit-findings 0016) — matched by predicate, not membership:
         assert "implements_rpc" not in TAINT_CALL_EDGE_TYPES
         assert "implements" not in TAINT_CALL_EDGE_TYPES
-        # Folded to 'calls' + meta (Phase 4b):
+        # Folded to 'calls' + meta:
         for removed in ("ffi_bridge", "wasm_bridge", "napi_bridge", "ipc_calls",
                         "native_bridge", "cgo_bridge", "bridge_invokes"):
             assert removed not in TAINT_CALL_EDGE_TYPES
@@ -2842,8 +2846,7 @@ class TestCrossLanguageTaint:
     def test_taint_propagates_through_folded_grpc_rpc_edge(self) -> None:
         """A folded gRPC RPC-implementation edge (implements + meta
         protocol=grpc, audit-findings 0016) is traceable for taint — a
-        tainted value crosses it to a sink, so gRPC taint propagation is
-        preserved (finding 3). Contrast: a plain structural 'implements'
+        tainted value crosses it to a sink. Contrast: a plain structural 'implements'
         edge (no protocol) is NOT traceable, proving the meta discriminator
         is load-bearing (not a wholesale 'implements' inclusion)."""
         sources = [TaintSource(
@@ -3266,7 +3269,7 @@ class TestAutoImportFromIoPrimitives:
         call via a module_attr_ref + calls edge chain should produce a
         TaintFlowFinding once auto-import populates both the source and sink.
 
-        This is the audit flow auto-import exists to catch (WI-lokuv):
+        This is the flow auto-import exists to catch (WI-lokuv):
         reading a host secret and writing it to the filesystem (where it
         persists into ``~/.cache/hypergumbo/``, gets rsynced, ends up in
         log files, etc). The env-read sources come from auto-import, so
@@ -4080,14 +4083,14 @@ class TestPropagationAmbiguousAndModule:
             edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
 
     def test_post_remap_external_symbol_sink_survives_scope_stack(self) -> None:
-        """identity:F1/F4a standing gate (WI-gulot/WI-noham): the
-        scope-stack rewrite adds resolved first-party
+        """identity:F1/F4a standing gate (WI-gulot/WI-noham): scope-stack
+        resolution adds resolved first-party
         ``calls`` edges (is_resolved=True, real in-repo dst) to the graph. Adding
         such an edge MUST NOT let the post-remap ambiguous external sink
         (``:external_symbol``, is_resolved=False) be mis-routed as resolved — the
         method-kind gate must still suppress the false host_fs flow, and the
-        first-party edge must yield no spurious flow of its own. If a future
-        follow-up mis-marks a still-external edge as resolved, this gate fails."""
+        first-party edge must yield no spurious flow of its own. A change that
+        mis-marks a still-external edge as resolved fails this gate."""
         edges = [
             _make_edge("py:a.py:1-5:source_func:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
@@ -4841,8 +4844,8 @@ class TestAnUnaccountedMentionIsNotAnAbsence:
 
     THE CLAUSE NO COVERAGE PREDICATE CAN REACH. Every other route to an
     unearned ``False`` leaves an UNCOVERED region, which the coverage gate
-    (WI-joluk, widened to semantic leaves by WI-mugop) detects and forfeits.
-    Here the
+    (uncovered call nodes and semantic leaves; history: WI-joluk, WI-mugop)
+    detects and forfeits. Here the
     statement IS recorded and the extractor then fills it with nothing: Go's
     grouped ``var ( msg = cwd )``, Python's ``c[key] = 1``. There is no
     uncovered extent to find at any predicate width, so the gate is silent and
@@ -4852,8 +4855,7 @@ class TestAnUnaccountedMentionIsNotAnAbsence:
     the function (part of its body was never visited); this is a property of a
     VALUE (this one was mentioned where nobody read it). Forfeiting the whole
     function would withhold ``False`` from every walk over it rather than from
-    the walks that actually carry the unaccounted value — measured at 12.6% of
-    alertmanager's functions against 4.8% of its tracked names.
+    the walks that actually carry the unaccounted value.
 
     LIVE REPRO, control first, both functions walkable and both reporting full
     coverage, one variable apart::

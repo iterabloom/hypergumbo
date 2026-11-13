@@ -1,14 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-javus: resolution_quality='type_inferred' must reflect an ACTUAL inference.
+"""resolution_quality='type_inferred' must reflect an ACTUAL inference.
 
-py.py's unresolved method-call fallback historically stamped
-``meta.resolution_quality='type_inferred'`` UNCONDITIONALLY — including on the
-give-up branch whose own comment reads "type cannot be inferred". On pretix that
-mislabeled ~62% of the ``type_inferred`` population (7920/12839): edges with no
-receiver hint and a bare ``python:external:`` placeholder dst, where the receiver
-type was NOT inferred at all. A consumer branching on the string reads the
-give-up case as a success — a data-honesty defect (the "no weasel words" rule
-applied to emitted metadata).
+py.py's unresolved method-call fallback includes a give-up branch, where the
+receiver type is NOT inferred: no receiver hint and a bare ``python:external:``
+placeholder dst. Stamping ``meta.resolution_quality='type_inferred'`` there would
+let a consumer branching on the string read the give-up case as a success — a
+data-honesty defect (the "no weasel words" rule applied to emitted metadata).
+(history: WI-javus)
 
 The field is a pathway-quality label (spec §903 / MetaKeySpec: e.g.
 ``recovery`` / ``ambiguous``), optional, and orthogonal to ``Edge.is_resolved``.
@@ -95,7 +93,7 @@ class TestResolutionQualityHonesty:
         assert meta.get("resolution_quality") == "type_inferred"
 
     def test_give_up_still_carries_call_construct(self, tmp_path: Path) -> None:
-        """Removing the false resolution_quality must not drop call_construct —
+        """Withholding resolution_quality must not drop call_construct —
         io-boundary / taint still need to see it is a method call."""
         (tmp_path / "app.py").write_text(
             "def handler(x):\n"

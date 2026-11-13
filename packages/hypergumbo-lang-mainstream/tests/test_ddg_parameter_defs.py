@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-sosov: a function's parameters are reaching definitions at its own line.
 
-``def save(req): p = req.get("p")`` had no DDG edge for ``req``: no def/use
-extractor defines a parameter, so the use at line 2 had no reaching
-definition and a value that ARRIVES as a parameter (Express ``req``, Go
-``*http.Request``) was invisible to the taint walk. Each language's DDG spec
-now names the parameters (``params_for``), ``_solve_one_function`` hands them
-to the solver as entry definitions at the function's line, and records them
-on ``RepoDdg.params`` in order for the taint stage.
+No def/use extractor defines a parameter, so without entry definitions
+``def save(req): p = req.get("p")`` has no DDG edge for ``req``: the use at
+line 2 has no reaching definition, and a value that ARRIVES as a parameter
+(Express ``req``, Go ``*http.Request``) is invisible to the taint walk. Each
+language's DDG spec names the parameters (``params_for``),
+``_solve_one_function`` hands them to the solver as entry definitions at the
+function's line, and records them on ``RepoDdg.params`` in order for the
+taint stage.
 
 Verdict-inert by construction: no CFG statement is added, so ``stmt_defuse``
-and ``unaccounted_names`` are what they were -- pinned below.
+and ``unaccounted_names`` are unaffected -- pinned below.
 """
 from __future__ import annotations
 

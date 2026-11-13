@@ -1,13 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-nular: writing to the bit bucket is not a filesystem write.
 
-MEASURED BEFORE THE FIX, shipped CLI, `{boundary: fs_write, must_not_exist:
-true}` against a script whose only redirect is `echo "$API_KEY" > /dev/null`::
-
-    $ hypergumbo verify-claims /tmp/nul2 --claims fswrite-claim.yaml
-      ✗ [no-host-fs-write] Verdict: violated
-        1 fs_write chain(s) found, but claim requires none.
-    rc 1
+THE HAZARD. Classified as ``fs_write``, the redirect in a script whose only
+redirect is `echo "$API_KEY" > /dev/null` makes a `{boundary: fs_write,
+must_not_exist: true}` claim read ``violated`` (rc 1, "1 fs_write chain(s)
+found, but claim requires none").
 
 Nothing is written to any filesystem. The kernel discards the bytes, and no
 observation anywhere in the system differs because the redirect ran — which is
@@ -16,8 +13,8 @@ finding can be true value-flow and worthless as a claim.
 
 WHY THE DISCRIMINATOR CANNOT LIVE IN THE CATALOGUE. The row is `redirect.>`,
 one primitive; whether it crosses a filesystem boundary depends on the TARGET
-at the call site, which no YAML row can see. That is the same shape `io_mode`
-already has — `open(p)` and `open(p, 'w')` are one row and two boundaries — so
+at the call site, which no YAML row can see. That is the same shape as
+`io_mode` — `open(p)` and `open(p, 'w')` are one row and two boundaries — so
 the discriminator is stamped by the analyzer and read by ``classify_call``,
 where BOTH the boundary tagger and the coverage gate inherit it.
 
@@ -28,7 +25,7 @@ or unknown write, it is a write with no observable effect. Contrast the
 unresolved case (`> "$OUT"`), which stays classified precisely because "wrote
 somewhere I cannot name" is a real write. And the refusal requires EVERY
 collapsed call site to discard (INV-vukiv's ``io_target_kind_values``): one
-real target among them and the edge is classified as before, because silencing
+real target among them and the edge is classified, because silencing
 a real write on the strength of a different call site is the false-negative
 trade this subsystem refuses.
 """
@@ -163,14 +160,14 @@ def test_an_edge_predating_the_key_is_classified_exactly_as_before():
 
 
 def test_a_discarding_call_is_still_EXAMINED_by_the_catalogue():
-    """The regression guard for the wrong first cut at this fix.
+    """The discard must not be decided where the coverage gate reads it.
 
-    Refusing the match in ``classify_call_in_catalog`` — where the coverage
-    gate also reads it — answered BOTH questions with "no", and the gate then
-    reported "calls into 1 module(s) that the I/O catalog could not classify
-    (redirect)". Measured on the shipped CLI, that turned the false ``violated``
-    (rc 1) into an ``inconclusive`` (rc 2): a wrong finding traded for a
-    withheld verdict, which is the INV-tabaf family, not a fix.
+    Refusing the match in ``classify_call_in_catalog`` — which the coverage
+    gate also reads — answers BOTH questions with "no", and the gate then
+    reports "calls into 1 module(s) that the I/O catalog could not classify
+    (redirect)". That turns the false ``violated`` (rc 1) into an
+    ``inconclusive`` (rc 2): a wrong finding traded for a withheld verdict,
+    which is the INV-tabaf family, not a fix.
 
     We know EXACTLY what ``> /dev/null`` is. That is why we can say it crosses
     nothing, and it is the opposite of "never examined".

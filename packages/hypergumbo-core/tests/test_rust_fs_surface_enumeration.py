@@ -1,42 +1,42 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The enumerated I/O surface of rust's filesystem modules (WI-bupor).
 
-WHAT THIS ITEM IS FOR, and why it is not a flag flip. ``module_completeness:
+WHY THE TOTAL SURFACE, and why it is not a flag flip. ``module_completeness:
 complete`` asserts that EVERY I/O primitive a module exposes is catalogued, so
 a module cannot carry it until its TOTAL surface has been enumerated — not the
-subset this repository happens to call. ``std::fs`` was already in the
-catalogue and therefore never appeared on any "unexamined module" list, while
-roughly half its I/O surface was absent: ``File`` carried three associated
-functions and NOT ONE of its eleven stable methods, and ``DirBuilder`` /
-``DirEntry`` were absent entirely. **Catalogue presence is not catalogue
-coverage, and only a total-surface audit can tell them apart.**
+subset this repository happens to call. A module that is in the catalogue at all
+never appears on an "unexamined module" list, however much of its surface is
+missing: ``std::fs::File``'s stable methods and the ``DirBuilder`` /
+``DirEntry`` types below are rows only a total-surface audit supplies.
+**Catalogue presence is not catalogue coverage, and only a total-surface audit
+can tell them apart.**
 
-WHY THIS COULD NOT SHIP BEFORE INV-soval. ``method_starved_modules`` was
-module-granular but tested a per-kind property, so adding a single correct
-``std::fs::File`` method row turned that module from function-only into mixed
-and made it unsatisfiable by the ``File::open`` call that is the only thing most
-repositories do with it. **The correct catalogue content regressed the verdict.**
+THESE ROWS DEPEND ON INV-soval. A starvation predicate that is module-granular
+but tests a per-kind property turns ``std::fs::File`` from function-only into
+mixed the moment a correct method row is added, and makes it unsatisfiable by
+the ``File::open`` call that is the only thing most repositories do with it:
+**correct catalogue content would regress the verdict.**
 :class:`TestAddingMethodsDidNotStarveTheModule` is the executable form of that
 dependency: it fails if INV-soval's fix is ever reverted underneath these rows.
 
-THE EVIDENCE BAR, inherited from the python stdlib audit and not negotiable:
+THE EVIDENCE BAR, shared with the python stdlib audit and not negotiable:
 total surface, EXACT matching (``std::fs`` does not vouch for ``std::fs::File``),
 and refuse-by-default, because the wrong answer is a false all-clear. Every row
-below was read out of the installed toolchain's ``library/std/src``, with
-stability and receiver shape checked per name rather than recalled — the python
-audit's unaided first draft got 5 of 32 verdicts wrong and every error was on
-the false-all-clear side.
+below is read out of the toolchain's ``library/std/src``, with stability and
+receiver shape checked per name rather than recalled — recalled verdicts err,
+and they err toward the false all-clear.
 
-TWO PROBE BUGS WERE FOUND WHILE PRODUCING THIS LIST, both of which returned a
+PROBE HAZARDS for anyone re-deriving this list from source; each returns a
 plausible wrong answer rather than an error:
 
-* an impl-tracking regex attributed sixteen module-level functions to
-  ``impl DirEntry``; re-derived using INDENTATION as the discriminator.
-* a signature regex required ``(`` immediately after the function name, so
-  every generic ``pub fn exists<P: AsRef<Path>>(..)`` was silently skipped —
-  which is why ``DirBuilder::create`` first appeared to be absent from the
-  toolchain. Widening it also corrected that entry's KIND: ``create`` takes
-  ``&self`` and is a METHOD, not the associated function it was filed as.
+* an impl-tracking regex attributes module-level functions to the preceding
+  ``impl`` block (e.g. ``impl DirEntry``); use INDENTATION as the
+  discriminator.
+* a signature regex that requires ``(`` immediately after the function name
+  silently skips every generic ``pub fn exists<P: AsRef<Path>>(..)``, which
+  makes ``DirBuilder::create`` look absent from the toolchain. Read its
+  signature: ``create`` takes ``&self`` and is a METHOD, not an associated
+  function.
 """
 from __future__ import annotations
 
@@ -56,16 +56,16 @@ def _rows(module: str) -> dict[str, tuple[str, str]]:
     }
 
 
-#: Every name is stable in the installed toolchain and its receiver shape was
+#: Every name is stable in the audited toolchain and its receiver shape is
 #: read from the signature, not recalled. ``function`` means no receiver exists
 #: at the call site, which is load-bearing: a receiverless callee catalogued as
 #: a method is unmatchable by construction (INV-nular).
 _AUDITED = [
-    # -- std::fs free functions: the three gaps in an otherwise complete set.
+    # -- std::fs free functions (the rest of the module's set is catalogued too).
     ("std::fs", "exists", "fs_read", "function"),
     ("std::fs", "read_link", "fs_read", "function"),
     ("std::fs", "set_permissions", "fs_write", "function"),
-    # -- std::fs::File: eleven stable METHODS, none of which were catalogued.
+    # -- std::fs::File: its eleven stable METHODS.
     ("std::fs::File", "metadata", "fs_read", "method"),
     ("std::fs::File", "set_len", "fs_write", "method"),
     ("std::fs::File", "set_permissions", "fs_write", "method"),
@@ -77,17 +77,17 @@ _AUDITED = [
     ("std::fs::File", "try_lock", "fs_write", "method"),
     ("std::fs::File", "try_lock_shared", "fs_write", "method"),
     ("std::fs::File", "unlock", "fs_write", "method"),
-    # -- Two types that were absent from the catalogue entirely.
+    # -- Two types with I/O-bearing methods of their own.
     ("std::fs::DirBuilder", "create", "fs_write", "method"),
     ("std::fs::DirEntry", "metadata", "fs_read", "method"),
     ("std::fs::DirEntry", "file_type", "fs_read", "method"),
-    # -- std::path::Path: two stable predicates missing beside eight present.
+    # -- std::path::Path: two stable predicates (others are catalogued beside them).
     ("std::path::Path", "try_exists", "fs_read", "method"),
     ("std::path::Path", "is_symlink", "fs_read", "method"),
-    # -- std::path itself had no rows at all. absolute() resolves a relative
-    # path against env::current_dir() and touches no file, so it carries
-    # current_dir's boundary, host_info_read since INV-zufiz (python's
-    # pathlib.Path.absolute is host_info_read too).
+    # -- std::path itself. absolute() resolves a relative path against
+    # env::current_dir() and touches no file, so it carries current_dir's
+    # boundary, host_info_read (INV-zufiz; python's pathlib.Path.absolute is
+    # host_info_read too).
     ("std::path", "absolute", "host_info_read", "function"),
 ]
 
@@ -151,12 +151,11 @@ class TestTheRefusalsStayRefused:
 
 
 class TestAddingMethodsDidNotStarveTheModule:
-    """THE REASON INV-soval HAD TO LAND FIRST, in executable form.
+    """These rows' dependency on INV-soval, in executable form.
 
-    Before that fix, ``std::fs::File`` was function-only and starved nothing.
-    These rows make it MIXED, and under the old predicate a mixed module could
-    not be satisfied by a function-construct call — so a repository that merely
-    opens a file would have had its verdict withheld by the act of cataloguing
+    The method rows make ``std::fs::File`` MIXED. Under a predicate that cannot
+    satisfy a mixed module with a function-construct call, a repository that
+    merely opens a file would have its verdict withheld by the act of cataloguing
     ``File``'s methods correctly. If INV-soval is reverted underneath this
     catalogue, this class fails rather than every Rust verdict going quietly
     inconclusive.
@@ -223,21 +222,21 @@ class TestAddingMethodsDidNotStarveTheModule:
         ) == []
 
 
-#: ``std::os::{unix,windows}::fs``, admitted by owner ruling 2026-08-27 ("in").
+#: ``std::os::{unix,windows}::fs`` are catalogued (owner ruling).
 #:
-#: The catalogue header had excluded ``std::os::*`` as "raw-fd extensions". That
-#: noun is correct for what it names — ``AsRawFd`` and friends hand over a
-#: descriptor number and reach no syscall — but these modules also carry plain
-#: filesystem mutation, and ``std::fs::soft_link`` (the cross-platform way to
-#: make a symlink) was already catalogued. So the tool flagged one way of
-#: creating a symlink and ignored the other, and a Linux program calling
-#: ``chroot`` or ``chown`` through this module read as doing nothing at all.
+#: "Raw-fd extensions" is the right noun for ``AsRawFd`` and friends, which
+#: hand over a descriptor number and reach no syscall, but it does not cover
+#: these modules: they also carry plain filesystem mutation. Excluding them
+#: while ``std::fs::soft_link`` (the cross-platform way to make a symlink) is
+#: catalogued would flag one way of creating a symlink and ignore the other,
+#: and a Linux program calling ``chroot`` or ``chown`` through this module
+#: would read as doing nothing at all.
 #:
 #: EVERY BOUNDARY BELOW IS FIXED BY CROSS-LANGUAGE PRECEDENT, NOT CHOSEN HERE.
-#: python.yaml already rules ``os.chroot``, ``os.chown`` / ``lchown`` /
+#: python.yaml rules ``os.chroot``, ``os.chown`` / ``lchown`` /
 #: ``fchown``, ``os.symlink`` / ``os.link`` and ``os.pwrite`` as ``fs_write``,
 #: and ``os.chdir`` as ``env_write``. A catalogue that disagrees with itself
-#: across languages is the defect INV-nular's sweep was built to find.
+#: across languages is a defect (INV-nular).
 _OS_AUDITED = [
     ("std::os::unix::fs::FileExt", "read_at", "fs_read", "method"),
     ("std::os::unix::fs::FileExt", "read_exact_at", "fs_read", "method"),
@@ -307,11 +306,11 @@ class TestThePlatformExtensionSurface:
         )
 
     def test_the_symlink_asymmetry_that_motivated_the_ruling_is_gone(self) -> None:
-        """Three ways to create a symlink; all three must now be visible.
+        """Three ways to create a symlink; all three must be visible.
 
-        `std::fs::soft_link` was catalogued while the platform spellings were
-        excluded, so a program creating a symlink was flagged or not depending
-        purely on which API it reached for.
+        Cataloguing ``std::fs::soft_link`` without the platform spellings would flag
+        a program creating a symlink or not depending purely on which API it
+        reached for.
         """
         assert "soft_link" in _rows("std::fs")
         assert "symlink" in _rows("std::os::unix::fs")

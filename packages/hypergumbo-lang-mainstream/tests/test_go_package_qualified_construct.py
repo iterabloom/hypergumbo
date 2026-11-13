@@ -1,20 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A package-qualified Go call is a FUNCTION call, not a method call.
 
-INV-tanom. ``go.py`` stamped ``call_construct="method"`` on every selector call,
-so ``http.Get(u)`` (a free function in package ``net/http``) and ``c.Get(u)``
-(a method on a ``*http.Client``) were byte-identical in (name, module slot,
-construct). ``base.py`` defines the value as "``method`` for a call on a
-receiver", and ADR-0059 files a call on the module itself as a function; a
-package qualifier is neither a receiver nor an instance.
+``http.Get(u)`` (a free function in package ``net/http``) and ``c.Get(u)`` (a
+method on a ``*http.Client``) share a name and module slot, so the construct is
+what tells them apart. ``base.py`` defines the value as "``method`` for a call
+on a receiver", and ADR-0059 files a call on the module itself as a function; a
+package qualifier is neither a receiver nor an instance (history: INV-tanom).
 
-It was declared a zero-cost blindness on 2026-09-09 because its only reader then
-was io-boundary's no-module gate, which a package-qualified call never reaches.
-WI-fuvaj is the cost that arrived later: 8.1.0's ``unknown_receiver_scope``
-caveat counts ``call_construct == "method"`` edges as its DENOMINATOR, so every
-``fmt.Println`` was counted as a method call site whose receiver could have been
-typed. On alertmanager the caveat printed 18.5% untyped where the share over
-real method sites is about 31%.
+It matters beyond io-boundary's no-module gate, which a package-qualified call
+never reaches: the ``unknown_receiver_scope`` caveat counts
+``call_construct == "method"`` edges as its DENOMINATOR, so stamping every
+selector call ``method`` would count each ``fmt.Println`` as a method call site
+whose receiver could have been typed, and understate the untyped share
+(history: WI-fuvaj).
 
 THE LINE IS DRAWN WHERE THE ANALYZER ALREADY DRAWS IT. The emitter decides a
 selector's operand is a package by finding it in the file's import aliases; a
@@ -98,8 +96,8 @@ def test_the_call_that_defines_the_shadowing_local_is_a_function(
 
 
 def test_the_module_slot_is_unchanged(tmp_path: Path) -> None:
-    """The fix changes the construct only; the slot the io-boundary gate reads
-    still names the package, so no catalogue match can move."""
+    """Only the construct differs; the slot the io-boundary gate reads still
+    names the package, so no catalogue match can move."""
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "go.mod").write_text("module example.com/t\n\ngo 1.21\n")
@@ -112,10 +110,10 @@ def test_the_module_slot_is_unchanged(tmp_path: Path) -> None:
 def test_the_unknown_receiver_denominator_counts_only_receiver_calls(
     tmp_path: Path,
 ) -> None:
-    """WI-fuvaj on the production path: the caveat's "N of M method call
-    site(s)" denominator, fed the real analyzer's edges. The file holds 4
-    package-qualified calls and 2 typed-receiver calls; before INV-tanom's fix
-    all 6 were counted."""
+    """On the production path: the caveat's "N of M method call site(s)"
+    denominator, fed the real analyzer's edges. The file holds 4
+    package-qualified calls and 2 typed-receiver calls; only the 2 count
+    (history: WI-fuvaj, INV-tanom)."""
     from hypergumbo_core.io_boundary import load_catalog
     from hypergumbo_core.verify_claims import unknown_receiver_scope
 

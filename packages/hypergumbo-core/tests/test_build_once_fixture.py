@@ -3,10 +3,10 @@
 
 pytest-xdist runs here in its default ``load`` mode, which hands tests out one
 at a time. A module-scoped fixture is therefore built again in EVERY worker
-that receives one of its tests. Measured on ``test_stable_id_floor_gate.py``:
-its ``runs`` fixture (three full pipeline runs, about 150 s) was built in four
-of six workers, 621 serial seconds for a file whose tests need it once
-(WI-nupit). ``build_once`` keeps the result in a file every worker of the
+that receives one of its tests: an expensive one, such as
+``test_stable_id_floor_gate.py``'s ``runs`` (three full pipeline runs), would
+be rebuilt in most workers although its tests need it once (WI-nupit).
+``build_once`` keeps the result in a file every worker of the
 session can read, behind a lock, so the first worker builds and the rest load.
 """
 from __future__ import annotations

@@ -172,12 +172,11 @@ def test_cmd_test_coverage_json_output(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     output = json.loads(out)
 
-    # WI-bobog: single-sourced from READ_VIEW_SCHEMA_VERSION, not the
-    # top-level bm SCHEMA_VERSION. The second assertion used to pin the
-    # literal "0.1.0", which made this a THIRD home for a deliberately
-    # single-sourced value and broke here the moment an unrelated view
-    # evolved. What it was actually guarding is that the read-view
-    # version is distinct from the behavior-map one, so it now says that.
+    # Single-sourced from READ_VIEW_SCHEMA_VERSION, not the top-level bm
+    # SCHEMA_VERSION. The second assertion checks that the read-view version
+    # is distinct from the behavior-map one rather than pinning a literal:
+    # a literal would be another home for a deliberately single-sourced
+    # value and would break whenever an unrelated view evolves (WI-bobog).
     assert output["schema_version"] == READ_VIEW_SCHEMA_VERSION
     assert READ_VIEW_SCHEMA_VERSION != SCHEMA_VERSION
     assert output["view"] == "test-coverage"
@@ -281,11 +280,9 @@ def test_cmd_test_coverage_recognises_concept_tagged_tests(
 
     Covers the Template-Haskell / QuickCheck case where ``prop_*``
     properties live in the same module as the production code they
-    test and get discovered at compile time via ``$forAllProperties``
-    (shellcheck: 2214 ``prop_*`` functions in ``src/`` reported 0%
-    coverage before WI-dulav). The framework-patterns layer already
-    tags those with ``concept: test_function`` via the Haskell
-    QuickCheck rule in ``frameworks/test-frameworks.yaml``; this test
+    test and get discovered at compile time via ``$forAllProperties``.
+    The framework-patterns layer tags those with ``concept: test_function``
+    via the Haskell QuickCheck rule in ``frameworks/test-frameworks.yaml``; this test
     asserts that ``cmd_test_coverage`` actually consumes that tag.
     """
     behavior_map = {
@@ -1257,11 +1254,12 @@ def test_test_coverage_json_includes_caveats_field(
 def test_cmd_test_coverage_section_header_does_not_suggest_redundant_tests(
     tmp_path: Path, capsys,
 ) -> None:
-    """WI-fugut: the 'Test-Dense' section's old framing
-    ('may indicate redundant tests') is wrong — a high inbound test-call
-    count means the function is heavily USED in test code, not that it
-    has redundant tests. Acting on the old hint would delete the wrong
-    code. Header is renamed and the redundant-tests suggestion is dropped.
+    """WI-fugut: the most-called-from-tests section must not suggest the
+    tests are redundant. A high inbound test-call count means the function
+    is heavily USED in test code, not that it has redundant tests, and
+    acting on a "may indicate redundant tests" hint would delete the wrong
+    code. So the section is headed "Most-Called from Tests" (not
+    "Test-Dense") and rows count test-call edges, not tests.
     """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -1314,18 +1312,18 @@ def test_cmd_test_coverage_section_header_does_not_suggest_redundant_tests(
     assert result == 0
     out, _ = capsys.readouterr()
 
-    # The old misleading framing is gone.
+    # No redundant-tests framing.
     assert "redundant tests" not in out, (
         "test-coverage must not suggest tests are redundant — WI-fugut"
     )
     assert "Test-Dense" not in out, (
         "stale 'Test-Dense' header should be replaced with a clearer label"
     )
-    # The new framing is present.
+    # The heavily-used-in-tests framing is present.
     assert "Most-Called from Tests" in out, (
         "expected the renamed section header"
     )
-    # The per-row metric is relabeled.
+    # The per-row metric counts test-call edges.
     assert "test-call edges" in out, (
         "metric label must say 'test-call edges', not 'tests'"
     )

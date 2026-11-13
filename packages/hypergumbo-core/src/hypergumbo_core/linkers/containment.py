@@ -201,8 +201,8 @@ def _find_parent(
 ) -> Symbol | None:
     """Find the best parent container for a given parent name.
 
-    When multiple containers share a name (e.g., Django's 238 Model classes),
-    uses a priority cascade:
+    When multiple containers share a name (e.g., a real ``Model`` class and
+    many same-named test stubs), uses a priority cascade:
       1. Same file (most specific). When more than one same-name container
          lives in the child's file, disambiguate by SPAN — the true parent is
          the one whose span encloses the child (tightest wins). If none
@@ -303,9 +303,9 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Build multimap of class/interface names to symbols.
-    # Multiple classes can share the same name (e.g., Django has 238 classes
-    # named "Model" — 1 real + 237 test stubs). When linking methods, we
-    # prefer the class in the same file as the method.
+    # Multiple classes can share the same name (e.g., one real "Model" class
+    # and many same-named test stubs). When linking methods, we prefer the
+    # class in the same file as the method.
     # Also index by qualified_name (ADR-0032) for proto service→rpc and
     # nested message containment, where name is unqualified but
     # qualified_name is fully qualified (e.g., name="HelloService",

@@ -1,28 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The two receiver-typing shapes left over after PR #246 / #247.
+"""Two receiver-typing shapes beyond an assigned name: inline expressions and AnnAssign roots.
 
-**Inline expression receivers.** PR #247 taught the analyzer that a derivation from a
-typed receiver keeps the type, but only entered from an *assignment* — the typed-emit
-path is gated on ``isinstance(func.value, ast.Name)``, so a receiver that is an
-expression rather than a bound name never reaches it. ``(d / "f.txt").write_text(x)``
-and ``with (d / "f").open("w")`` are thoroughly idiomatic Python and reported nothing.
-This is a gap introduced by #247's own scoping, not a pre-existing one.
+**Inline expression receivers.** A derivation from a typed receiver keeps the type, but
+the typed-emit path is gated on ``isinstance(func.value, ast.Name)``, so a receiver that
+is an expression rather than a bound name needs its own route.
+``(d / "f.txt").write_text(x)`` and ``with (d / "f").open("w")`` are thoroughly
+idiomatic Python and would otherwise report nothing.
 
-**AnnAssign roots.** ``d: Path = raw`` was excluded from #246 on a measurement showing
-zero payload. That measurement predates #247: an annotated *assignment* now seeds a
-whole derivation chain, so its payload is no longer zero and the exclusion had to be
-re-priced rather than re-asserted. This is the standing rule that a filing decays —
-applied to one of my own, four hours old.
+**AnnAssign roots.** ``d: Path = raw`` types ``d``. Because derivations propagate, an
+annotated *assignment* seeds a whole derivation chain, which is why it is typed rather
+than excluded.
 
 Still excluded, and each is a recorded decision rather than an oversight: return-
 annotated factories (``def mk() -> Path``) need external-type resolution of a
 function's return annotation, a separate mechanism from reading an annotation in
-place; ``.parent``/``.parents[n]`` are attribute reads, measured at 16 sites = 0.7% of
-chain-on-Name misses; loop targets, interprocedural propagation and ``self.attr``
-receivers are unbuilt.
+place; ``.parent``/``.parents[n]`` are attribute reads with a small population; loop
+targets are not typed. (A bare parameter typed from its call sites, and ``self.attr``
+receivers, are typed by separate mechanisms: see
+``test_py_interprocedural_receiver_typing.py`` and ``test_py_self_inherited_hint.py``.)
 
-Every negative from the earlier files still applies here and is re-asserted at the new
-entry points: the binding check, the exact-string type comparison, and the
+Every negative from the assigned-receiver tests applies here too and is re-asserted at
+these entry points: the binding check, the exact-string type comparison, and the
 allowlist. An expression receiver must not become a back door around any of them.
 """
 
@@ -102,8 +100,7 @@ class TestAnnotatedAssignmentRoot:
         assert _tagged(edges) >= 1
 
     def test_annassign_seeds_a_derivation_chain(self, tmp_path: Path) -> None:
-        """The reason the exclusion had to be re-priced: an AnnAssign root now
-        feeds #247's derivation propagation."""
+        """Why AnnAssign is typed: its root feeds derivation propagation."""
         edges = _edges(
             tmp_path / "annchain",
             _H + "def h(raw, x):\n"
@@ -115,7 +112,7 @@ class TestAnnotatedAssignmentRoot:
         assert _tagged(edges) >= 1
 
     def test_annassign_binding_check_still_applies(self, tmp_path: Path) -> None:
-        """The measured FP class: a same-named class from another library."""
+        """The known FP class: a same-named class from another library."""
         edges = _edges(
             tmp_path / "annbad",
             "from fastapi import Path\n\n"

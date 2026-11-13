@@ -212,12 +212,12 @@ def test_skipped_into_limits_sets_reason(tmp_path: Path) -> None:
 def test_truncated_files_also_set_the_reason(tmp_path: Path) -> None:
     """WI-zafid: the two equivalent soft file-drop channels must be symmetric.
 
-    A parse-error drop increments a run's ``files_skipped`` and set the reason; an
-    oversize drop lands only in ``limits.truncated_files`` — ``add_truncated_file``
-    never touches ``files_skipped`` — and set nothing. Same user-visible outcome
-    (a file silently absent from the map), one signalled and one silent. This pins
-    the previously-silent channel; ``test_skipped_into_limits_sets_reason`` above
-    still pins the other, so neither can regress into the old asymmetry.
+    A parse-error drop increments a run's ``files_skipped``; an oversize drop lands
+    only in ``limits.truncated_files`` — ``add_truncated_file`` never touches
+    ``files_skipped``. Both are the same user-visible outcome (a file absent from
+    the map), so both must set the reason. This pins the truncated channel;
+    ``test_skipped_into_limits_sets_reason`` above pins the other, so neither
+    channel can go silent.
     """
     limits = Limits()
     limits.add_truncated_file("big.py", 4_500_000, "exceeds --max-file-bytes")
@@ -229,9 +229,8 @@ def test_truncated_files_also_set_the_reason(tmp_path: Path) -> None:
 def test_no_drops_leaves_reason_empty(tmp_path: Path) -> None:
     """Non-vacuity control: the reason is not set unconditionally.
 
-    Without this, widening the trigger to cover the truncated channel could have
-    been implemented as "always set it", which would satisfy both channel tests
-    while making the signal meaningless.
+    Without this, "always set it" would satisfy both channel tests while making
+    the signal meaningless.
     """
     ctx = _ctx(tmp_path, analysis_runs=[_ar("a", files_skipped=0)])
     _finalize_skipped_into_limits(ctx)
@@ -252,8 +251,7 @@ def test_skipped_languages_populated_for_detected_unanalyzed_language(
 ) -> None:
     # go is DETECTED by the profile but no analyzer pass ran for it (e.g. its
     # grammar failed to load) -> it must surface in limits.skipped_languages;
-    # python is analyzed (a run exists) so it must not. Before WI-nihir the
-    # add_skipped_language setter had zero callers and this was always [].
+    # python is analyzed (a run exists) so it must not (WI-nihir).
     ctx = _ctx(
         tmp_path,
         behavior_map={
@@ -296,13 +294,13 @@ def test_skipped_languages_excludes_config_only_languages(tmp_path: Path) -> Non
 def test_skipped_languages_never_reports_a_language_whose_pass_ran_under_another_name(
     tmp_path: Path,
 ) -> None:
-    """INV-nidul, the aardvark shape: the profile detects ``makefile`` (the
-    taxonomy name), the pass that analysed it is registered as ``make``. Before
-    WI-juzig the registry's ``[name]`` default made the pass's language ``make``,
-    the two vocabularies never met, and the artifact said Makefile was detected
-    and NOT analysed while 41+ ``make`` nodes sat in the same file. The registry
-    now speaks the taxonomy's vocabulary (``make`` declares ``["makefile"]``),
-    so a completed run covers the detected language. Uses the REAL registry."""
+    """INV-nidul: the profile detects ``makefile`` (the taxonomy name), while the
+    pass that analyses it is registered as ``make``. The registry declares pass
+    languages in the taxonomy's vocabulary (``make`` declares ``["makefile"]``),
+    so a completed run covers the detected language. Were the pass's language
+    its own name, the two vocabularies would never meet and the artifact would
+    report Makefile as detected but NOT analysed despite its ``make`` nodes.
+    Uses the REAL registry. (history: WI-juzig)"""
     ctx = _ctx(
         tmp_path,
         behavior_map={
@@ -318,11 +316,10 @@ def test_skipped_languages_does_not_reinflate_a_no_language_pass_into_a_language
     tmp_path: Path,
 ) -> None:
     """A ``no_language`` pass (``manifest_targets``) has ``languages == []``.
-    The old ``set(a.languages) if a.languages else {a.name}`` fallback would
-    have turned that into the phantom language ``manifest_targets`` — harmless
-    here only by luck (nothing detects it). The fallback is gone: an empty
-    declaration contributes nothing, and a detected-but-uncovered language is
-    still reported."""
+    A ``set(a.languages) if a.languages else {a.name}`` fallback would turn
+    that into the phantom language ``manifest_targets``. There is no such
+    fallback: an empty declaration contributes nothing, and a
+    detected-but-uncovered language is still reported."""
     ctx = _ctx(
         tmp_path,
         behavior_map={"profile": {"languages": {"haskell": {"files": 2}}}},
@@ -363,7 +360,7 @@ def test_re_relativize_backstop_is_noop_on_empty(tmp_path: Path) -> None:
     _finalize_re_relativize(ctx)  # must not raise on empty lists
 
 
-# --- Sub-step 10: referential_integrity (validate_ir lift) ------------------------------
+# --- Sub-step 10: referential_integrity (validate_ir) -----------------------------------
 def test_referential_integrity_extends_violations(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path, analysis_runs=[_ar("a")])
     _finalize_referential_integrity(ctx)
@@ -424,9 +421,9 @@ _SUBSTEPS = [
 def test_substeps_list_matches_module_functions() -> None:
     """``_SUBSTEPS`` must enumerate exactly the ``_finalize_*`` functions DEFINED in the module.
 
-    Pins the *defined* set against the hand-maintained list: a re-introduced sub-step missing
-    from ``_SUBSTEPS`` (e.g. a resurrected declared-fields or confidence slot — both removed
-    because their work lands in the validator/producers, not finalize) or a stale ``_SUBSTEPS``
+    Pins the *defined* set against the hand-maintained list: a new sub-step missing from
+    ``_SUBSTEPS`` (e.g. a declared-fields or confidence slot, which finalize deliberately
+    lacks because that work lands in the validator/producers) or a stale ``_SUBSTEPS``
     entry with no definition fails here. The complementary ``test_finalize_calls_each_substep_once`` ties the
     ``finalize()`` *body* (the order contract) to ``_SUBSTEPS`` — together they keep all three
     hand-maintained lists (definitions, ``_SUBSTEPS``, call sites) in lockstep.
@@ -548,7 +545,7 @@ def test_edge_resolution_external_placeholder_sets_unresolved(tmp_path: Path) ->
 
 
 def test_edge_resolution_preserves_producer_dst_ref(tmp_path: Path) -> None:
-    """An external edge that already carries a dst_ref keeps it (the 987-import case)."""
+    """An external edge that already carries a dst_ref keeps it rather than re-deriving one."""
     node = _node("python:requests:0-0:get:external_symbol", "external_symbol", name="get")
     ref = ExternalRef(lang="python", module_path="requests", name="requests.get")
     edge = _redge("python:requests:0-0:get:external_symbol", is_resolved=True, dst_ref=ref)
@@ -568,8 +565,8 @@ def test_edge_resolution_dangling_dst_unidentified(tmp_path: Path) -> None:
 
 
 def test_edge_resolution_overrides_producer_advisory(tmp_path: Path) -> None:
-    """The 4,507-edge WI-kukuk contradiction: producer is_resolved=True on an external
-    placeholder is flipped to False. This is the structural close."""
+    """A producer's is_resolved=True on an external placeholder is flipped to False:
+    the verdict overrides the advisory producer value (WI-kukuk)."""
     node = _node("c:libfoo:0-0:foo:unresolved", "external_symbol", name="foo")
     edge = _redge("c:libfoo:0-0:foo:unresolved", is_resolved=True, dst_ref=None)
     ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
@@ -742,8 +739,8 @@ def test_finalize_compute_visibility_default_public(tmp_path: Path) -> None:
 
 
 def test_finalize_compute_visibility_folds_and_removes_legacy_meta(tmp_path: Path) -> None:
-    # Apex/Clojure wrote meta['visibility']; finalize folds it into the field
-    # and REMOVES the legacy key (INV-jusot retires it).
+    # Apex/Clojure write meta['visibility']; finalize folds it into the field
+    # and REMOVES the legacy key (INV-jusot).
     s = _sym("Foo", language="apex", meta={"visibility": "global", "other": 1})
     ctx = _ctx(tmp_path, symbols=[s])
     _finalize_compute_visibility(ctx)
@@ -761,7 +758,7 @@ def test_finalize_compute_visibility_handles_none_meta(tmp_path: Path) -> None:
     assert s.meta == {"visibility_signal": "default"}
 
 
-# --- Sub-step 7b: INV-jusot follow-up (is_exported reconcile + modifiers strip) ---------
+# --- Sub-step 7b: is_exported reconcile + modifiers strip (INV-jusot) -------------------
 def _sym_ex(name, *, language="python", modifiers=None, is_exported=False, meta=None) -> Symbol:
     return Symbol(
         id=f"{language}:m.py:1-1:{name}:function",
@@ -772,7 +769,7 @@ def _sym_ex(name, *, language="python", modifiers=None, is_exported=False, meta=
 
 
 def test_finalize_downgrades_is_exported_for_non_public(tmp_path: Path) -> None:
-    # The 5-symbol case: path heuristic marked a private _foo exported.
+    # A private _foo that the path heuristic marked exported.
     s = _sym_ex("_helper", is_exported=True)  # visibility -> private (name)
     _finalize_compute_visibility(_ctx(tmp_path, symbols=[s]))
     assert s.visibility == "private"

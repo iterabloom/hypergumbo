@@ -2,9 +2,9 @@
 """INV-fazim: derived confidence must follow finalize's resolution verdict, not the
 producer's advisory flag.
 
-WHAT WAS WRONG. Two features disagreed about who decides ``is_resolved``.
+THE CONFLICT. Two rules touch ``is_resolved``:
 
-* ADR-0039 / confidence:F1 derives ``Edge.confidence`` from
+* ADR-0039 (confidence:F1) derives ``Edge.confidence`` from
   ``(evidence_type, is_resolved)`` **at construction time**, inside ``Edge.create``
   (``ir.py``), and stamps ``confidence_source="evidence_derived"``.
 * ADR-0037 ruling 1 makes the producer's value **advisory** — ``Edge.create``
@@ -12,36 +12,28 @@ WHAT WAS WRONG. Two features disagreed about who decides ``is_resolved``.
   producer-time value … is ADVISORY; the finalize edge-resolution sub-step's
   verdict is what serializes."
 
-``_finalize_edge_resolution`` duly flips the flag to ``False`` for every edge whose
-dst turns out to be an ``external_symbol`` placeholder — and never re-derives the
-confidence that was computed from the now-superseded value. ``finalize.py``'s own
-header even records "``Edge.confidence`` untouched" as deliberate, a note that
-predates confidence being conditioned on ``is_resolved`` at all.
+``_finalize_edge_resolution`` flips the flag to ``False`` for every edge whose
+dst turns out to be an ``external_symbol`` placeholder. Unless it also re-derives
+the confidence computed from the superseded value, an unresolved call ships at
+the RESOLVED base: ``ast_call`` at **0.85** where the verdict says **0.40**,
+``ast_call_direct`` at 0.85 where it says 0.50. Any producer, in any language,
+that takes ``Edge.create``'s default and whose dst resolves external hits this,
+which is why the correction lives at the finalize chokepoint rather than at each
+producer's emit site.
 
-So an unresolved call ships at the RESOLVED base: ``ast_call`` at **0.85** where the
-verdict says **0.40**, ``ast_call_direct`` at 0.85 where it says 0.50.
-
-MEASURED on four repos, both languages, running production's own
-``create_boundary_nodes`` + ``_finalize_edge_resolution``: caddy 6,167,
-mitmproxy 8,880, poetry 4,074, alertmanager 3,922 — **23,043 edges**. It is not a
-Go producer bug: any producer that takes ``Edge.create``'s default and whose dst
-resolves external hits it, which is why the fix is at the finalize chokepoint
-rather than at ``go.py``'s emit site.
-
-WHY THE NULL LOOKED LIKE ZERO TWICE. A probe run *after* finalize finds no edge
-with ``is_resolved=True`` at an external dst — finalize defines that predicate
-away, so the measurement is tautological. A probe run *before* finalize finds none
-either, because the flag has not flipped yet. The defect is only visible by running
-the resolution sub-step and then comparing confidence against the verdict. Both
-tautologies were reached in this project before the real number was.
+WHY A PROBE CAN MISS IT. A probe run *after* finalize finds no edge with
+``is_resolved=True`` at an external dst — finalize defines that predicate away,
+so the measurement is tautological. A probe run *before* finalize finds none
+either, because the flag has not flipped yet. The mismatch is only visible by
+running the resolution sub-step and then comparing confidence against the
+verdict, which is what these tests do.
 
 DIRECTION: strictly downward, which is the deleting direction for anything banded
 on confidence. ``slice``'s ``min_confidence`` defaults to 0.0 (no effect unless a
 caller opts in), but ``receiver_blind_magnets`` bands at 0.80, so edges corrected
 to 0.40/0.50 leave its window. That is the intended reading — the detector looks
-for *high-confidence* edges that bound wrongly, and an edge the graph now says is
-unresolved is no longer high-confidence — but it is a real output change and is
-measured and published rather than assumed.
+for *high-confidence* edges that bound wrongly, and an edge the graph says is
+unresolved is not high-confidence — but it is a real output change.
 
 ONLY ``evidence_derived`` EDGES ARE TOUCHED. ADR-0039 is explicit that a producer
 passing an explicit confidence keeps it; re-deriving those would overwrite a
@@ -91,7 +83,7 @@ def _call_edge(dst: str, evidence_type: str = "ast_call") -> Edge:
 
 class TestDerivedConfidenceFollowsTheVerdict:
     def test_external_dst_is_rederived_downward(self, tmp_path: Path) -> None:
-        """The defect: created at the resolved base, flipped to unresolved, never re-derived."""
+        """Created at the resolved base, flipped to unresolved: confidence must be re-derived."""
         dst = "go:external:0-0:WriteFile:unresolved"
         edge = _call_edge(dst)
         assert edge.confidence == derive_confidence("ast_call", is_resolved=True), (
@@ -174,7 +166,7 @@ class TestBranchesThatMustNotFire:
     def test_unseeded_evidence_type_is_left_alone(self, tmp_path: Path) -> None:
         """``derive_confidence`` returns None for a pathway it has no seed for.
 
-        The historical 0.85 fallback is then the edge's real value and must not be
+        ``Edge.create``'s 0.85 fallback is then the edge's real value and must not be
         rewritten to something the table never claimed.
         """
         dst = "go:external:0-0:Thing:unresolved"
@@ -215,10 +207,11 @@ def _scored_edge(dst: str, score: float) -> Edge:
 
 
 class TestResolutionScoreSurvivesTheVerdict:
-    """WI-sakum. Re-deriving from ``(evidence_type, is_resolved)`` alone reset
-    every resolver-graded bind to its pathway's base at finalize, so ADR-0039
-    ruling 6's interpolation never reached a published edge (C ``fp = f1; if
-    (c) fp = f2; fp(1)``: created 0.575, published 0.85)."""
+    """Re-deriving from ``(evidence_type, is_resolved)`` alone would reset every
+    resolver-graded bind to its pathway's base at finalize, so ADR-0039 ruling
+    6's interpolation would never reach a published edge (e.g. C ``fp = f1; if
+    (c) fp = f2; fp(1)`` would be created graded and published at the base).
+    (WI-sakum)"""
 
     def test_a_scored_in_repo_bind_keeps_its_interpolated_confidence(
         self, tmp_path: Path,

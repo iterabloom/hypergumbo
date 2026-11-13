@@ -7,17 +7,16 @@ comment: *"the semantics is 'this call could be from any of the included
 headers'; downstream consumers may split the module_hint on commas if they need
 per-header resolution."*
 
-EXACTLY ONE OF THE TWO CONSUMERS HONOURED IT. ``io_boundary`` splits the slot to
-CLASSIFY (``_module_hint_candidates``). The coverage gate handed the whole
-joined string to ``module_io_is_enumerated``, where it is a synthetic
-pseudo-module that no ``module_completeness`` entry can ever match — so a C++
-call site with more than one system include was PERMANENTLY unexaminable rather
-than merely unexamined. A contract stated in a producer comment is not enforced
+BOTH CONSUMERS MUST HONOUR IT. ``io_boundary`` splits the slot to CLASSIFY
+(``_module_hint_candidates``). The coverage gate must split it too: handed the
+whole joined string, ``module_io_is_enumerated`` sees a synthetic pseudo-module
+that no ``module_completeness`` entry can ever match, so a C++ call site with
+more than one system include would be PERMANENTLY unexaminable rather than
+merely unexamined. A contract stated in a producer comment is not enforced
 (LIVE.md rule 7: one fact, two homes, and the second silently wins).
 
-MEASURED over the WI-lutuh sweep on unmodified upstream repos: 19,273 of 81,711
-C/C++ external dsts carry a comma — libzmq 21.7%, plasma-desktop 40.3%,
-shaka-packager 29.5% — while all three C repos sampled are at 0.0%.
+The shape is common in C++ code (a large share of C++ external dsts carry a
+comma) and absent from plain C.
 
 ALL, NOT ANY, and the two paths differ on purpose. Classification asks *does any
 spelling name a primitive*, and an ANY answer there is a positive claim. This
@@ -26,12 +25,11 @@ non-match is informative only if EVERY possible home was enumerated. ANY here
 would let one enumerated header vouch for a file that also includes twenty that
 are not — the fail-open direction this gate exists to refuse.
 
-WHAT THIS DOES NOT DO. No C or C++ module is enumerated today: both catalogues
-mention ``module_completeness`` only in a comment. So on the shipped catalogues
-this changes no verdict, and saying so matters — what it changes is that C++
-coverage stops being IMPOSSIBLE and becomes merely UNMET, which is the state
-WI-lutuh's enumeration campaign can act on. The overlay test below is what
-demonstrates the difference.
+WHAT THIS DOES NOT DO. The shipped cpp catalogue enumerates no module (it
+mentions ``module_completeness`` only in a comment), so on it this changes no
+verdict, and saying so matters — what it changes is that C++ coverage stops
+being IMPOSSIBLE and becomes merely UNMET, which enumeration work (WI-lutuh)
+can act on. The overlay test below is what demonstrates the difference.
 """
 
 from pathlib import Path
@@ -145,10 +143,10 @@ def overlay(tmp_path: Path) -> Path:
 
 
 def test_enumerating_every_include_finally_covers_the_call(overlay: Path):
-    """THE POINT OF THE FIX: coverage stops being impossible and becomes unmet.
+    """THE POINT OF THE EXPANSION: coverage stops being impossible and becomes unmet.
 
-    Before, no overlay could reach this call — the gate compared against the
-    joined string, which no entry can spell.
+    Compared against the joined string, which no entry can spell, no overlay
+    could reach this call.
     """
     catalog = load_overlay_catalog(overlay)
     assert _adjudicate_external_modules([_edge(_JOINED)], {"cpp": catalog}).unknown \
@@ -174,29 +172,22 @@ def test_one_unenumerated_include_still_withholds(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # THE THIRD CONSUMER, AND WHY IT IS A TRIPWIRE RATHER THAN A FIX
 #
-# This item's statement says the disjunction must be expanded on EVERY consumer
-# path, and the filed repro exercises two. Enumerating every caller of
-# ``module_io_is_enumerated`` turns up a THIRD — the ``external_potential``
-# suppression gate in ``_compute_external_potential`` (io_boundary.py), which
-# hands the RAW slot to the predicate with no expansion:
+# The disjunction must be expanded on EVERY consumer path. A third caller of
+# ``module_io_is_enumerated`` — the ``external_potential`` suppression gate in
+# ``_compute_external_potential`` (io_boundary.py) — hands the RAW slot to the
+# predicate with no expansion:
 #
-#     if module_hint and catalog.module_io_is_enumerated(module_hint):
+#     if catalog.module_io_is_enumerated(module_hint):
 #         continue
 #
-# THE FIRST READING WAS THAT THIS IS A LATENT BUG THAT ACTIVATES WHEN WI-lutuh
-# GIVES cpp ``module_completeness`` ENTRIES. THAT READING IS WRONG, and it is
-# recorded here because the correction is the useful part.
-#
-# A disjunctive slot exists ONLY on an UNRESOLVED edge. cpp.py builds it in the
+# It looks like a latent bug that would activate once cpp gains
+# ``module_completeness`` entries. It is not, because a disjunctive slot exists
+# ONLY on an UNRESOLVED edge. cpp.py builds it in the
 # ``else`` branch of the resolved/unresolved test and emits it through
 # ``make_unresolved_edge``; a resolved call carries its real module. And
 # ``_compute_external_potential`` drops unresolved edges at F3 Filter 1 (ADR-0028)
 # BEFORE reaching the enumeration gate. So the gate never sees a comma-joined
 # hint, and its non-expansion cannot be observed.
-#
-# Verified on a real run rather than by reading: a two-include C++ fixture
-# produces exactly two comma-joined dsts and BOTH are ``is_resolved: False``
-# (~/hypergumbo_lab_notebook/zimud_check_08262026/).
 #
 # So the correct artifact is a TRIPWIRE on the assumption that makes the gate
 # safe, not a fix to the gate. If a future change lets a RESOLVED edge carry a
@@ -211,7 +202,7 @@ def test_a_disjunctive_slot_only_ever_rides_an_unresolved_edge(tmp_path: Path):
     If this fails, ``_compute_external_potential``'s enumeration gate
     (io_boundary.py, ``module_io_is_enumerated(module_hint)``) becomes
     reachable with a comma-joined argument that can never match — and it
-    needs the same ALL-over-disjuncts expansion the coverage gate got.
+    needs the same ALL-over-disjuncts expansion the coverage gate has.
     """
     from hypergumbo_lang_mainstream.cpp import analyze_cpp
 

@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-rusil's per-label blindness is computed once per LABEL (WI-dojuh).
+"""Per-label scoped blindness is computed once per LABEL (WI-rusil, WI-dojuh).
 
 The scoped no-taint-catalogue loop in ``cmd_verify_claims`` skips a claim with
 no taint flow (a boundary claim) and a label already scoped by an earlier
-claim. No core test reached that skip, so ``cli.py`` was below 100% in
-core-package isolation from the day it landed (PR CI checks only a PR's
-changed files, in a combined run). Two claims on one label must get one
-answer, and a boundary claim beside them must not disturb it.
+claim. That skip needs a core-package test: coverage is enforced per package in
+isolation, while PR CI checks only a PR's changed files in a combined run, so
+an untested skip leaves ``cli.py`` below 100% without failing the PR. Two
+claims on one label must get one answer, and a boundary claim beside them must
+not disturb it.
 """
 
 from __future__ import annotations

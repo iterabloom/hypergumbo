@@ -1,22 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-lagod: a verdict must say AT WHAT ANALYSIS FIDELITY it was reached.
+"""A verdict must say AT WHAT ANALYSIS FIDELITY it was reached (WI-lagod).
 
-THE SECOND HALF OF THE OWNER'S BAR. The 2026-08-23 ruling rewrote INV-fibis /
-INV-nuhun to "a clean verdict must NAME WHAT IT COULD NOT EXAMINE, AND AT WHAT
-ANALYSIS FIDELITY". The first half shipped across three PRs. This is the
-second, and until it exists neither item can close.
+INV-fibis / INV-nuhun require that "a clean verdict must NAME WHAT IT COULD
+NOT EXAMINE, AND AT WHAT ANALYSIS FIDELITY". This file pins the fidelity half.
 
-WHAT WAS MISSING, read in code rather than assumed: ``Verdict`` carried eleven
-fields and none of them named the analyzer that produced the edges the verdict
-rests on, while ``BoundaryCoverage`` modelled blind spots that are every one a
-property of the EDGE SET. Measured consequence: two runs over one Rust crate
-differing ONLY in backend produced a BYTE-IDENTICAL verdict block, while arm B
-carried 10 ``origin=scip`` nodes and 6 scip edges and arm A carried zero.
+WHY THE VERDICT NEEDS IT. The blind spots ``BoundaryCoverage`` models are
+every one a property of the EDGE SET, and the edge set depends on which
+analyzer produced it. A verdict that does not name that analyzer reads
+BYTE-IDENTICAL for two runs over one Rust crate that differ only in backend,
+one carrying SCIP-origin edges and one carrying none.
 
-The raw material was always there and unread: ``Edge.origin`` is a list of pass
-IDs and ``Edge.__post_init__`` HARD-RAISES on an empty one, so every edge in
-the map can say which pass made it. ``verify_claims`` read ``src`` / ``dst`` /
-``type`` and never ``origin``.
+The raw material is on every edge: ``Edge.origin`` is a list of pass IDs and
+``Edge.__post_init__`` HARD-RAISES on an empty one, so every edge in the map
+can say which pass made it. ``verify_claims`` reads it.
 
 TWO DISTINCT FACTS, kept apart on purpose:
 
@@ -25,8 +21,8 @@ TWO DISTINCT FACTS, kept apart on purpose:
 * WHAT COULD HAVE RUN — a higher-fidelity backend that is INSTALLED on this
   machine and was not used. A statement about the machine, and the one that
   makes "rust-analyzer installed but not enabled" distinguishable from "no
-  such backend exists", which the ruling explicitly requires because a reader
-  would act differently on them.
+  such backend exists", which matters because a reader would act differently
+  on them.
 
 ``analysis_methods`` ALREADY EXISTS AND IS NOT THIS. It records how the taint
 walk REASONED (``ddg`` / ``ddg_mixed`` / ``structural``), not which analyzer
@@ -157,15 +153,15 @@ class TestWhatCouldHaveRun:
     def test_a_backend_that_ran_but_made_no_call_edges_raises_nothing(
         self,
     ) -> None:
-        """FOUND BY MEASURING, NOT BY REASONING, and it is why "did it run" is
-        answered from a different population than "what produced the calls".
+        """Why "did it run" is answered from a different population than
+        "what produced the calls".
 
-        With rust-analyzer ON, the SCIP pass emitted ``references`` and
+        With rust-analyzer ON, the SCIP pass can emit ``references`` and
         ``contains`` and no external ``calls``. Keyed on the CALL-edge fidelity
-        map, the caveat fired and told the reader to enable a backend that was
-        already on and had printed its own "backend ACTIVE" banner in the same
-        run. ``analysis_fidelity`` correctly still reports only the parser that
-        produced the call structure.
+        map, the caveat would tell the reader to enable a backend that is
+        already on and has printed its own "backend ACTIVE" banner in the same
+        run. ``analysis_fidelity`` still reports only the parser that produced
+        the call structure, which is correct.
         """
         edges = [
             _edge("rust", ["rust"]),
@@ -274,28 +270,16 @@ class TestTheCliDerivesAvailability:
 class TestTheEnvelope:
     def test_the_version_moved(self) -> None:
         """The envelope gains a per-verdict key, so the version moves — the
-        rule this module's own header states: the version moves when the
-        ENVELOPE moves.
+        rule ``verify_claims``'s header states beside
+        ``VERIFY_CLAIMS_SCHEMA_VERSION``: the version moves when the ENVELOPE
+        moves, including the carve-out for an added key that changes how an
+        EXISTING key must be read (e.g. flows that leave ``evidence_count``).
+        That header carries the per-version history.
 
-        **THIS TEST HAS FIRED, WHICH IS THE POINT OF IT.** It pinned ``2.2``
-        for WI-lagod's ``analysis_fidelity``. ADR-0052 added ``walk_verdicts``
-        inside ``dataflow_coverage`` and bumped to ``2.3`` on this same rule —
-        a key that makes an EXISTING key (``flows_removed_by_walk``) readable
-        changes how that key must be interpreted, which is the carve-out the
-        module header describes. Re-pointed, not relaxed: the assertion is
-        still an equality on one literal, so the next envelope change comes
-        back through here rather than sliding past a ``>=``.
-
-        **AND IT HAS FIRED AGAIN**, for WI-bulag / arc T9: the envelope gains
-        ``resource_naming_flows``, and the flows it counts LEAVE
-        ``evidence_count``. An added key alone would not need the bump; an
-        added key that changes what an existing one means is precisely the
-        carve-out. 2.3 -> 2.4, re-pointed rather than relaxed.
-
-        And for WI-lukoz: ``trusted_sink_flows``, whose flows leave
-        ``evidence_count`` the same way. 2.4 -> 2.5, re-pointed. 3.0 renames
-        the walk verdicts (WI-bujum), re-pointed. 3.1 adds
-        ``command_line_flows`` (WI-zidam), re-pointed.
+        This test is meant to fire on every envelope change. When it does,
+        re-point the literal rather than relaxing it: the assertion stays an
+        equality on one literal, so the next envelope change comes back
+        through here rather than sliding past a ``>=``.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
         assert VERIFY_CLAIMS_SCHEMA_VERSION == "3.1"

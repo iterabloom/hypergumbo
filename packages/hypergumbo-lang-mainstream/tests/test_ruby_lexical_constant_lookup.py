@@ -2,13 +2,12 @@
 """A constant is looked up through the call site's lexical nesting (WI-gomup).
 
 Ruby resolves ``Orchestrator`` inside ``module TestData`` by trying
-``Module.nesting`` first (``TestData::Orchestrator``), then the top level. The
-analyzer tried only the name as written, so a target declared compactly
-(``class TestData::Orchestrator``), which is registered under its full name,
-was never found and the in-repo call was reported external (chatwoot
-``lib/test_data.rb``). A class nested by blocks (``module Outer; class
-Helper``) already resolved, because it is also registered under its short
-name.
+``Module.nesting`` first (``TestData::Orchestrator``), then the top level. A
+target declared compactly (``class TestData::Orchestrator``) is registered
+under its full name only, so trying just the name as written never finds it
+and the in-repo call is reported external. A class nested by blocks
+(``module Outer; class Helper``) resolves either way, because it is also
+registered under its short name.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py
 from __future__ import annotations

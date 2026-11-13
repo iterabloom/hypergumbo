@@ -1,14 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Vapor grouped-builder route recovery (INV-povit).
 
-The original ``_extract_vapor_usage_contexts`` only matched a bare
-``app``/``routes``/``router`` receiver directly followed by an HTTP verb, so
-it silently dropped every route registered through Vapor's grouped-builder
-chain — ``routes.grouped("users").get(...)``, the closure form
-``routes.group("todos") { todos in todos.get(...) }``, and the
+Matching only a bare ``app``/``routes``/``router`` receiver directly
+followed by an HTTP verb would drop every route registered through Vapor's
+grouped-builder chain — ``routes.grouped("users").get(...)``, the closure
+form ``routes.group("todos") { todos in todos.get(...) }``, and the
 variable-bound form ``let g = routes.grouped("x"); g.get(...)`` — which is
-how real RouteCollection controllers register the bulk of their endpoints
-(VernissageServer: ~236 endpoints, previously EXPECTED_ROUTES_BUT_FOUND_0).
+how real RouteCollection controllers register the bulk of their endpoints.
 
 These tests exercise the structured, scope-tracking recovery through the
 BUNDLED tree-sitter-swift grammar (``analyze_swift``), plus the false-positive
@@ -103,7 +101,7 @@ func routes(_ app: Application) throws {
         assert ("DELETE", "/todos/:id") in found
 
     def test_closure_param_reuses_reserved_name(self, tmp_path: Path) -> None:
-        # B1: the closure param shadows the reserved receiver name `routes`;
+        # The closure param shadows the reserved receiver name `routes`;
         # bindings must win over _VAPOR_RECEIVERS so the /v1 prefix applies.
         _write(tmp_path, '''
 import Vapor
@@ -149,7 +147,7 @@ func boot(routes: RoutesBuilder) throws {
         assert ("GET", "/api/users") in _routes(analyze_swift(tmp_path))
 
     def test_reassignment_updates_prefix(self, tmp_path: Path) -> None:
-        # M2: `var admin` then `admin = admin.grouped("v2")` must update the prefix.
+        # `var admin` then `admin = admin.grouped("v2")` must update the prefix.
         _write(tmp_path, '''
 import Vapor
 
@@ -162,7 +160,7 @@ func boot(routes: RoutesBuilder) throws {
         assert ("POST", "/admin/v2") in _routes(analyze_swift(tmp_path))
 
     def test_reassignment_to_non_builder_invalidates(self, tmp_path: Path) -> None:
-        # M2 fail-safe: reassigning a builder var to a non-builder drops the
+        # Fail-safe: reassigning a builder var to a non-builder drops the
         # binding, so a later use emits nothing (never a stale/wrong path).
         _write(tmp_path, '''
 import Vapor
@@ -193,7 +191,7 @@ func routes(_ app: Application) throws {
         assert ("POST", "/v1/upload") in found
 
     def test_on_non_http_method_not_a_route(self, tmp_path: Path) -> None:
-        # B3: `.on(.stateChange)` is a generic event DSL, not an HTTP route.
+        # `.on(.stateChange)` is a generic event DSL, not an HTTP route.
         _write(tmp_path, '''
 import Vapor
 
@@ -206,7 +204,7 @@ func routes(_ app: Application) throws {
 
 class TestVaporTypedParamAndRoutesProperty:
     def test_typed_routesbuilder_param(self, tmp_path: Path) -> None:
-        # M4: a helper taking a differently-named RoutesBuilder param.
+        # A helper taking a differently-named RoutesBuilder param.
         _write(tmp_path, '''
 import Vapor
 
@@ -217,7 +215,7 @@ func setupUsers(_ builder: RoutesBuilder) {
         assert ("GET", "/users") in _routes(analyze_swift(tmp_path))
 
     def test_app_routes_property_passthrough(self, tmp_path: Path) -> None:
-        # M3: `app.routes` is the Application's RoutesBuilder.
+        # `app.routes` is the Application's RoutesBuilder.
         _write(tmp_path, '''
 import Vapor
 
@@ -230,7 +228,7 @@ func configure(_ app: Application) throws {
 
 class TestVaporFalsePositiveGuards:
     def test_import_gate_blocks_non_vapor_file(self, tmp_path: Path) -> None:
-        # B2: a file that does not import Vapor/Hummingbird yields no routes,
+        # A file that does not import Vapor/Hummingbird yields no routes,
         # even if it has route-shaped calls on a reserved-looking receiver.
         _write(tmp_path, '''
 import Foundation
@@ -282,7 +280,7 @@ func routes(_ app: Application) throws {
                    for c in ctxs)
 
     def test_leading_slash_normalized(self, tmp_path: Path) -> None:
-        # M6: a leading-slash literal must not double up.
+        # A leading-slash literal must not double up.
         _write(tmp_path, '''
 import Vapor
 
@@ -294,7 +292,7 @@ func routes(_ app: Application) throws {
 
 
 class TestVaporRoutesInBindings:
-    """Routes registered inside a binding RHS must not be dropped (regression)."""
+    """Routes registered inside a binding RHS must not be dropped."""
 
     def test_route_captured_in_let(self, tmp_path: Path) -> None:
         # The "capture the Route to configure it" idiom.

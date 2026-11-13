@@ -25,7 +25,7 @@ whole point. This repository's recurring defect is a zero that means "never
 modelled" being read as a zero that means "nothing wrong" (``defines=[]``
 meaning both "understood, nothing here" and "never modelled"). An audit that
 answered "clean" when the ledger is missing, empty or unparseable would
-manufacture exactly the reassurance that stopped anyone looking — so a ledger
+manufacture exactly the reassurance that stops anyone looking — so a ledger
 that cannot be *fully* read never yields an all-clear, and an unparseable row
 downgrades the verdict rather than quietly shrinking the denominator.
 

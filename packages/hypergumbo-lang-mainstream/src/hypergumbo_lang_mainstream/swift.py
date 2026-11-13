@@ -186,9 +186,9 @@ _TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "protocol_dec
 #: an initialiser / deinitialiser, a subscript, and each property accessor
 #: (``computed_property`` is the shorthand getter's body and holds ``get`` /
 #: ``set``; ``willSet`` / ``didSet`` are clauses of their own).
-#: WI-silos: a ``protocol_function_declaration`` too -- it has no body, but its
-#: parameters reached the FILE-level map without one and typed a same-named
-#: receiver in every function of the file.
+#: A ``protocol_function_declaration`` too: it has no body, but without a
+#: scope of its own its parameters would land in the FILE-level map and type a
+#: same-named receiver in every function of the file (WI-silos).
 _SWIFT_SCOPE_NODES: frozenset[str] = frozenset({
     "function_declaration", "lambda_literal", "init_declaration",
     "deinit_declaration", "subscript_declaration", "computed_property",
@@ -632,7 +632,7 @@ def _swift_type_parameter_names(
 def _swift_return_type_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """The bare declared return type of a ``function_declaration``, or ``None``.
 
-    WI-higob (INV-dihos phase 6). Mirrors :func:`_extract_swift_signature`'s
+    WI-higob. Mirrors :func:`_extract_swift_signature`'s
     walk -- the type node after the parameter list's closing paren -- but
     keeps only what :func:`_swift_bare_type` admits, so the registry never
     carries ``[String]`` or ``() -> Void`` as a receiver type.
@@ -953,9 +953,9 @@ def _swift_labels_admit_call(
     INV-fatap. Swift identifies a method by its labels, so ``removeItem(at:)`` and
     ``removeItem(atPath:)`` are different methods and a bare-name match is not
     evidence of the callee. The question is asked of every OVERLOAD, not of the one
-    that survived ``local_symbols[Type.method]``: keyed by bare name, a second
-    declaration overwrites the first, and refusing on the survivor alone would
-    withdraw several times more TRUE binds than false ones (on Alamofire).
+    that survived ``local_symbols[Type.method]``: keyed by ``Type.method``
+    without labels, a second declaration overwrites the first, and refusing on
+    the survivor alone would withdraw the true binds to every other overload.
 
     Refuses only on positive evidence -- a label the call supplies that no
     declaration has. Everything else is admitted deliberately, because the
@@ -1080,11 +1080,11 @@ def _extract_symbols_from_file(
 ) -> FileAnalysis:
     """Extract symbols from a single Swift file."""
     analysis = FileAnalysis()
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
-    # the repo-relative path (the extract override passes ``rel_path``). Folded into
+    # File-identity anchor for this file's symbols. ``file_path`` is the
+    # repo-relative path (the extract override passes ``rel_path``). Folded into
     # make_typed_stable_id's containing slot so same-name functions/methods in
     # different files hash distinctly. Uses make_file_stable_id("swift", ...) — the
-    # same value the file Symbol's own stable_id carries.
+    # same value the file Symbol's own stable_id carries (history: WI-bokab).
     file_stable_id = make_file_stable_id("swift", normalize_path(file_path))
 
     for node in iter_tree(tree.root_node):
@@ -1117,7 +1117,8 @@ def _extract_symbols_from_file(
                 # WI-higob: the return-type registry's producer side. Keyed the
                 # way java / kotlin / go key theirs (``<Owner>.<method>``, a
                 # free function by its bare name), first writer wins in the
-                # base aggregation, and WI-lalot's loader feeds the same dict.
+                # base aggregation, and the library-signature loader
+                # (``load_library_signatures``; WI-lalot) feeds the same dict.
                 _ret_type = _swift_return_type_name(node, source)
                 if _ret_type is not None:
                     analysis.method_return_types.setdefault(full_name, _ret_type)
@@ -1510,7 +1511,7 @@ def _extract_symbols_from_file(
                     analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[full_name] = symbol
 
-        # WI-jusus (emission-parity F5): STORED properties / top-level bindings.
+        # STORED properties / top-level bindings (history: WI-jusus).
         # A non-computed property_declaration (no computed_property child; those
         # match the branch above as kind="property") is either a STORED
         # property of a type body -> kind="field", or a top-level let/var ->
@@ -1747,7 +1748,8 @@ def _swift_call_is_value_chain(call_node: "tree_sitter.Node", source: bytes) -> 
     """Is this call ``v.p.m()`` -- a member chain of 2+ hops on a VALUE head?
 
     WI-sulas. The receiver of such a call is ``v.p``, not ``v``, so the head
-    must not name it. A ``self`` head (WI-sizas types ``self.a`` itself) and a
+    must not name it. A ``self`` head (``self.a`` is typed as the enclosing
+    type's field by :func:`_swift_receiver_expr_type`) and a
     TYPE head (``URLSession.shared.dataTask``, capitalised) are not value chains
     here. Depth counts the nested ``navigation_expression`` nodes down the
     operand side: ``v.m`` is 1, ``v.p.m`` is 2.
@@ -1831,8 +1833,9 @@ def _extract_call_target(
         # ``s.db.save()`` with ``s: Store`` would resolve to ``Store.save``.
         # With no hint the receiver EXPRESSION is typed by the walker that
         # types expression receivers, which answers or stays silent. Not
-        # affected: a single hop (``v.m()``), a ``self`` head (WI-sizas types
-        # ``self.a`` itself) and a TYPE head (``URLSession.shared.dataTask``).
+        # affected: a single hop (``v.m()``), a ``self`` head (``self.a`` is
+        # typed as the enclosing type's field by ``_swift_receiver_expr_type``)
+        # and a TYPE head (``URLSession.shared.dataTask``).
         if receiver_hint is not None and _swift_call_is_value_chain(call_node, source):
             receiver_hint = None
         # ``nav_node`` exists, so there IS a receiver expression -- whether or
@@ -2319,7 +2322,7 @@ def _extract_edges_from_file(
 
     ``method_return_type_registry`` (WI-higob): ``<Owner>.<method>`` -> the
     bare type the method returns, aggregated over the repo in Pass 1 and
-    also fed with library rows (WI-lalot's loader). Read when a local is
+    also fed with library rows (``load_library_signatures``; WI-lalot). Read when a local is
     bound to a call result so ``let s = store.session()`` types ``s``.
     ``field_type_registry`` (WI-higob): ``<Type>`` -> ``{property: type}`` for
     every class-level property in the repo, read for a bare receiver inside
@@ -2360,8 +2363,8 @@ def _extract_edges_from_file(
     # the same reason, objc keys by body span). Lookups walk innermost-first,
     # then the enclosing type's members, then the file level.
     # Scope membership follows the exact PARENT CHAIN, never byte-span
-    # containment: in a file tree-sitter recovers with ERROR nodes (Alamofire's
-    # Session.swift, INV-bisok) a function_declaration's span can swallow the
+    # containment: in a file tree-sitter recovers with ERROR nodes
+    # (INV-bisok) a function_declaration's span can swallow the
     # class body, and a class property bound by span would land in that
     # function, hidden from every method outside it. A declaration whose chain
     # reaches a class / protocol / ERROR before any scope is a type member or
@@ -2369,8 +2372,8 @@ def _extract_edges_from_file(
     # A scoped binding is VISIBLE FROM a byte offset -- the end of its
     # declaration -- and a lookup takes the latest binding visible at the use
     # (WI-mofil). Keyed by name alone, a later ``let container = KDC<K>(...)``
-    # would retype the field ``container`` two lines above it (hummingbird),
-    # and ``let s = s.session()`` would read its own initialiser's ``s`` as the
+    # would retype a use of the field ``container`` above it, and
+    # ``let s = s.session()`` would read its own initialiser's ``s`` as the
     # local. File-level declarations stay position-free: a global is visible
     # throughout.
     # A binding is ``(visible_from, visible_to, type)`` and its TYPE MAY BE
@@ -2405,11 +2408,11 @@ def _extract_edges_from_file(
     def _function_ancestors(n: "tree_sitter.Node", *, through_errors: bool) -> list[_ScopeKey]:
         # ERROR nodes cut both ways. A DECLARATION under one is file-level:
         # error recovery cannot be trusted to have attached it to the right
-        # function (Session.swift's `rootQueue` sat under two ERRORs inside a
-        # function whose span swallowed the class). A LOOKUP walks through
-        # them: a call inside an error-recovered body still belongs to the
-        # function that encloses it, and stopping early lost that function's
-        # own parameters (Vernissage's `request.logger.info`).
+        # function (a class property can land under ERRORs inside a function
+        # whose span swallowed the class). A LOOKUP walks through them: a call
+        # inside an error-recovered body still belongs to the function that
+        # encloses it, and stopping at the ERROR would lose that function's
+        # own parameters (``request.logger.info`` with ``request`` a parameter).
         chain: list[_ScopeKey] = []
         cur = n.parent
         while cur is not None:
@@ -2584,9 +2587,10 @@ def _extract_edges_from_file(
         # construction runs, chosen by argument labels among EVERY init of
         # the run (``initializers``).
         # * When the TYPE is known (``built``), an init in the body of a
-        #   different declaration of that name is not its: vapor declares
-        #   eleven ``Storage`` classes, one per extension of ``Application``,
-        #   and a test target a ``Foo`` per file. An init in an extension
+        #   different declaration of that name is not its: a project may
+        #   declare many same-named types (vapor nests a ``Storage`` class in
+        #   each extension of ``Application``; a test target may declare a
+        #   ``Foo`` per file). An init in an extension
         #   cannot be told apart that way and stays a candidate.
         # * A delegating ``self.init`` never runs the init it is in.
         # * An exact binding outranks one that needs defaults, as in Swift
@@ -2896,8 +2900,8 @@ def _extract_edges_from_file(
                         # INV-fahub (WI-votar): a method call `recv.m()` whose
                         # receiver type could not be resolved MUST NOT fall
                         # through to the bare short-name binds below and bind to
-                        # an arbitrary same-named internal def (the
-                        # create/delete/run @0.80 funnel). Emit an honest
+                        # an arbitrary same-named internal def (``create``,
+                        # ``delete``, ``run``). Emit an honest
                         # unresolved external edge instead, mirroring py.py:
                         # `calls` / external-unresolved dst / `is_resolved=False`
                         # / `evidence_type="ast_call"` (→ 0.40) /
@@ -2951,11 +2955,13 @@ def _extract_edges_from_file(
                             )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
-                        # The WI-huzuv structured dst_ref survives suppression
+                        # The structured dst_ref (WI-huzuv) survives suppression
                         # (a module-qualified `HelpersModule.doWork()` keeps its
                         # import-alias module); an untyped receiver yields no
-                        # module candidate at all, so INV-finoh's refusal is
-                        # preserved rather than widened (INV-pirot: a receiver
+                        # module candidate at all, so taint's refusal to match
+                        # an untyped receiver against a catalogued entry
+                        # (INV-finoh) is preserved rather than widened
+                        # (INV-pirot: a receiver
                         # EXPRESSION has no spelling and lands here too).
                         # INV-kotob. The module is never ``receiver_hint`` --
                         # the receiver's VARIABLE NAME: ``fm.fileExists`` would
@@ -3661,8 +3667,8 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         line below then overwrites by ``Type.method`` -- so by Pass 2 the label
         sets of all but one declaration are gone. Accumulating them here lets the
         label check ask "does ANY overload admit this call" rather than only
-        asking about whichever one survived, which would withdraw many true
-        binds (on Alamofire, several times more than it correctly refuses).
+        asking about whichever one survived, which would withdraw the true
+        binds to every other overload.
         """
         labels = (symbol.meta or {}).get("arg_labels")
         if labels is not None:

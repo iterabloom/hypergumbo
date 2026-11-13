@@ -1,66 +1,38 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """``Path(raw).write_text(x)`` — a chain rooted at the CONSTRUCTOR CALL ITSELF.
 
-WHAT WAS MISSING, AND WHY IT IS NOT A DUPLICATE OF #253. PR #253 taught the resolver
-that a constructor call carries a type, but wired it only into the two ASSIGNMENT call
-sites. So the type existed and the emission site never asked for it::
+A constructor call carries a type, and the inline form must reach the same verdict
+as the assignment form::
 
-    p = Path(raw)                    # #253: typed, boundary tagged
+    p = Path(raw)                    # typed, boundary tagged
     p.write_text(data)
 
-    Path(raw).write_text(data)       # SAME I/O, no call edge emitted AT ALL
+    Path(raw).write_text(data)       # SAME I/O, must be typed the same way
 
-Measured on the shipping tree before this change: the assignment form tags 1 boundary
-and the inline form tags 0, with the ``.write_text`` call producing no edge in any
-branch — only the ``instantiates`` edge for ``Path(raw)`` itself survived.
+TWO GAPS, which is why neither fix alone closes it:
 
-TWO GAPS, NOT ONE, which is why a one-line change could not close it:
-
-  1. the emission site called ``_derived_receiver_module`` WITHOUT the ``ctor_type``
-     resolver, so ``(Path(raw) / "o").write_text(x)`` could not type its root; and
+  1. the emission site must pass the ``ctor_type`` resolver when it types the
+     receiver, or ``(Path(raw) / "o").write_text(x)`` cannot type its root; and
   2. ``_derived_receiver_module`` answers "what does this DERIVATION preserve", and a
-     bare ``Path(raw)`` is not a derivation — it is the root. No branch matched it.
+     bare ``Path(raw)`` is not a derivation — it is the root, and no derivation
+     branch matches it.
 
-Gap 2 is closed by extracting :func:`_receiver_type` — the question "what external type
-does this receiver expression have?" — which ``_preserved_receiver_type`` was already
-answering privately inside its own hint computation. Both callers now route through the
-one predicate rather than each carrying an answer, which is the failure mode this area
-has already produced four times (``gate_named_entry`` / ``_match_propagation_entry`` /
-``_lookup_named_entry`` / ``_register_sanitizer_callers``).
+:func:`_receiver_type` answers the question "what external type does this receiver
+expression have?", constructor roots included. The emission site and
+``_preserved_receiver_type`` both route through that one predicate rather than each
+carrying an answer, because separate answers to one question drift apart.
 
-SIZE, with the denominator named. Across pretix, sqlalchemy, mitmproxy, poetry, pyright,
-meson and kserve there are 27,354 call sites whose receiver is itself a call or a ``/``
-expression (the CALL_RESULT_ROOT family). Only 269 of those are TYPEABLE (257 rooted
-directly at a recognized constructor, 12 at a derivation of one) and 128 land on a name
-python.yaml admits for that module. So this closes ~0.5% of that family, not the whole
-of it — the rest are receivers of genuinely unknown type, and emitting an untyped edge
-for them is what PR #231 measured as moving zero findings.
+SCOPE. Most call sites whose receiver is itself a call or a ``/`` expression (the
+CALL_RESULT_ROOT family) have a receiver of genuinely unknown type; only those rooted
+directly at a recognized constructor, or at a derivation of one, are typeable, and
+only those are typed here. The unknown rest get an untyped placeholder (see
+:class:`TestTheEmissionAsymmetryIsDeliberate`).
+``scripts/measure-ctor-root-typing-ab.py`` measures the effect through production.
 
-MEASURED THROUGH PRODUCTION, by ``scripts/measure-ctor-root-typing-ab.py``: +125 boundary
-chains and +260 typed call edges, with +260 total edges — so every new edge is NET-NEW
-and none was re-keyed.
-
-TWO POPULATIONS, AND THEY ARE NOT THE SAME NUMBER. The static census counts 128 reaching
-SITES; the A/B counts 125 boundary CHAINS. ``tag_io_boundaries`` collapses same-caller,
-same-primitive sites — mitmproxy's ``test_init_dir`` calls ``Path(mydir).exists()`` twice
-in one function, and that file is duplicated under ``examples/`` and
-``docs/src/examples/``, which accounts for the entire 3-count difference. Neither number
-is wrong; quoting one as the other would be.
-
-CONCENTRATION, stated because it limits the claim: meson alone supplies 89 of the 125
-chains (71.2%) — mitmproxy 14, poetry 7, kserve 6, sqlalchemy 5, pretix 4, pyright 0.
-This is not an evenly distributed win, and it does not support a general "Python gains
-~125 boundaries" claim.
-
-DIRECTION, both signs, because since PR #214 a ``False`` earns ``sanitized`` and DELETES
-a flow. Typed edges ADD I/O boundaries and taint sinks (more findings), and they also
-populate ``callees_at``, which lets ``_use_site_terminates`` return ``True`` more often
-and produce more ``False`` verdicts (fewer findings). The suppression direction measured
-ZERO on hypergumbo's own claims (``check-self-claims`` byte-identical across the change,
-against a snapshot recorded pre-fix). THAT ZERO IS WEAK AND IS NOT EVIDENCE OF SAFETY:
-it is one repo, and the barrier arm — the only consumer of a ``False`` — has measured
-zero walks on every repo tried, so this change has not been observed under the conditions
-where it could suppress.
+DIRECTION, both signs, because a ``False`` from the walk earns ``sanitized`` and
+DELETES a flow. Typed edges ADD I/O boundaries and taint sinks (more findings), and
+they also populate ``callees_at``, which lets ``_use_site_terminates`` return ``True``
+more often and produce more ``False`` verdicts (fewer findings).
 
 The binding check is inherited rather than re-implemented: the root goes through
 ``_external_constructor_module``, so a locally defined ``class Path`` and a
@@ -90,7 +62,7 @@ def _slot(edges: list, method: str) -> str:
 
 
 class TestTheConstructorCallItselfIsATypedReceiver:
-    """Gap 2 — the root shape, which no branch matched."""
+    """Gap 2 — the root shape, which no derivation branch matches."""
 
     def test_bare_constructor_root(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -115,8 +87,8 @@ class TestTheConstructorCallItselfIsATypedReceiver:
         assert _tagged(edges) >= 1
 
     def test_open_result_is_the_synthetic_file_module(self, tmp_path: Path) -> None:
-        """``open(p, "w").write(x)`` — python.yaml's synthetic ``file`` module was
-        reachable only through an assignment, so the inline idiom was invisible."""
+        """``open(p, "w").write(x)`` — the inline idiom must reach python.yaml's
+        synthetic ``file`` module just as the assigned form does."""
         edges = _edges(
             tmp_path / "openroot",
             "def h(raw, data):\n"
@@ -127,7 +99,7 @@ class TestTheConstructorCallItselfIsATypedReceiver:
 
 
 class TestADerivationOfAConstructorRoot:
-    """Gap 1 — the resolver could answer, the emission site never asked."""
+    """Gap 1 — the emission site must ask the constructor resolver."""
 
     def test_truediv_from_a_constructor_root(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -165,7 +137,7 @@ class TestADerivationOfAConstructorRoot:
 
 class TestTheBindingCheckIsInheritedNotBypassed:
     """A constructor ROOT must clear the same INV-kipor binding check an assigned
-    constructor does. Widening the root must not become a back door around it."""
+    constructor does. Typing the root must not become a back door around it."""
 
     def test_locally_defined_class_named_path(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -191,8 +163,8 @@ class TestTheBindingCheckIsInheritedNotBypassed:
         assert _tagged(edges) == 0
 
     def test_unknown_constructor_stays_untyped(self, tmp_path: Path) -> None:
-        """The 99.5% of the CALL_RESULT_ROOT family this change deliberately does
-        NOT type. Emitting an untyped edge here is what PR #231 measured at zero."""
+        """The bulk of the CALL_RESULT_ROOT family: a receiver of unknown type
+        stays untyped and tags no boundary."""
         edges = _edges(
             tmp_path / "unknown",
             "from somewhere import make_thing\n"
@@ -234,9 +206,10 @@ class TestTheOneReceiverTypePredicate:
     is satisfiable by a third copy that looks right, so this asserts BEHAVIOUR: the
     inline form and the assigned form of the same shape must reach the same verdict.
 
-    THE PROPERTY IS THE TYPE AND THE BOUNDARY, NOT THE EDGE COUNT — see
-    :class:`TestTheEmissionAsymmetryIsDeliberate` for the one thing that does differ
-    and why leaving it that way is the measured choice.
+    THE PROPERTY IS THE TYPE AND THE BOUNDARY, NOT THE EDGE COUNT: both spellings
+    of "untyped" (:data:`_UNTYPED`) count as the same verdict here, and
+    :class:`TestTheEmissionAsymmetryIsDeliberate` pins the unknown-type emission
+    separately.
     """
 
     SHAPES = (
@@ -275,26 +248,17 @@ class TestTheOneReceiverTypePredicate:
 
 
 class TestTheEmissionAsymmetryIsDeliberate:
-    """The one way the two forms still differ, pinned so it is disclosed rather than
-    discovered.
+    """For a receiver of UNKNOWN type, the inline and assigned forms emit the SAME
+    untyped ``external`` placeholder edge.
 
-    For a receiver of UNKNOWN type the assigned form emitted an untyped ``external``
-    placeholder edge (PR #231) and the inline form emitted no edge at all. PR #254
-    kept that asymmetry deliberately — the ~27,085 untypeable call-or-``/`` receivers
-    across seven repos are what PR #231 measured as moving zero findings — and wrote
-    down the re-evaluation trigger: a consumer that distinguishes "no edge" from "an
-    edge to an untyped receiver".
-
-    THE TRIGGER FIRED (INV-luhug). The ADR-0017 §3a walk is that consumer: a call
-    with no edge has no ``callees_at`` entry, so the walk cannot ask whether the
-    callee consumes the value and records an ESCAPE where a §4 summary could have
-    accounted for the step. INV-busis measured "no call edge emitted at all" at
-    50.0% of call-node escape sites, and INV-foluz closed the bare-builtin half of
-    that bucket on the same reasoning. So the inline form now emits the SAME
-    placeholder as the assigned form. What has NOT changed is the recall claim:
-    an untyped placeholder still reaches no catalogue row, both forms still tag
-    zero boundaries, and the cost is priced in edge rows and walk escapes, not
-    findings (``test_py_unknown_root_and_imported_ctor.py``).
+    Recall cannot tell "no edge" from the placeholder — an untyped placeholder
+    reaches no catalogue row, and both forms tag zero boundaries — but the
+    ADR-0017 §3a walk can: a call with no edge has no ``callees_at`` entry, so the
+    walk cannot ask whether the callee consumes the value and records an ESCAPE
+    where a §4 summary could have accounted for the step. So the inline form must
+    not go silent. The placeholder's effect shows up in edge rows and walk
+    escapes, not findings (``test_py_unknown_root_and_imported_ctor.py``).
+    (history: INV-luhug, INV-busis, INV-foluz)
     """
 
     def test_unknown_receiver_emits_the_same_placeholder_inline_and_assigned(

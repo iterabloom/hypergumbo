@@ -279,10 +279,9 @@ end
         assert edge is not None
         assert edge.confidence == 0.6
         # WI-bagon: dst must be a well-formed 5-part id
-        # (lang:path:span:name:kind), not the legacy 2-part
-        # 'unresolved:{name}' that fell through ir._parse_dangling_id and
-        # produced boundary nodes with language='unresolved' (sentinel
-        # leak; INV-nodij violation).
+        # (lang:path:span:name:kind), not a 2-part 'unresolved:{name}',
+        # which falls through ir._parse_dangling_id and produces boundary
+        # nodes with language='unresolved' (sentinel leak; INV-nodij).
         parts = edge.dst.split(":")
         assert len(parts) == 5, (
             f"unresolved-call dst must be 5-part, got {edge.dst!r}"
@@ -372,7 +371,7 @@ end
 
 
 class TestLuauCyclomaticComplexity:
-    """INV-loguk slice C: callable luau symbols carry non-null CC + LOC.
+    """INV-loguk: callable luau symbols carry non-null CC + LOC.
     Real-grammar verification (if/elseif/for/while/repeat + and/or)."""
 
     def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
@@ -403,10 +402,10 @@ class TestLuauCallerAndCalleeByFile:
     contains it, found by POSITION (``symbols_at`` / ``symbol_declared_by``),
     and a callee binds THIS file's definition before the run-wide registry.
 
-    Both used to be name lookups in a registry built from ``global_symbols``,
-    which keeps one symbol per name (last file wins), so two files each
-    defining ``local function helper`` had one file's calls come out of, or
-    go into, the other file's ``helper``.
+    A name lookup in a registry built from ``global_symbols``, which keeps
+    one symbol per name (last file wins), would make two files that each
+    define ``local function helper`` send one file's calls out of, or into,
+    the other file's ``helper``.
     """
 
     @staticmethod

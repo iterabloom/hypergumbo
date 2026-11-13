@@ -95,22 +95,23 @@ The validator does NOT fail ``hypergumbo run`` by default. Violations are:
   artifact"``).
 * CI-gated by a separate test (``tests/test_validation_report_empty.py``).
 
-The gate's realized form (WI-kafar, WI-himoj). The file is named "…_empty" for its aspiration, but the corpus is not at zero
-violations and an "assert empty" gate would be permanently red, so the
-gate is a SHRINK-ONLY per-substrate RATCHET over a four-substrate matrix
-(default / ``--frameworks all`` / ``--include-docs`` / ``--max-tier 4``)
+The gate's realized form. The file is named "…_empty" for its goal, but
+the corpus is not at zero violations and an "assert empty" gate would be
+permanently red, so the gate is a SHRINK-ONLY per-substrate RATCHET over a
+four-substrate matrix (default / ``--frameworks all`` / ``--include-docs`` / ``--max-tier 4``)
 run against the multi-language ``schema-coverage-corpus`` fixture tree.
 Each substrate's violation count may shrink below its committed baseline
 (ratchet it down when it does) but never grow — a regression that adds a
 violation trips CI. ``--include-docs`` exercises the flag-gated writer
-paths a default-only gate would let escape (WI-himoj). The gate also
+paths a default-only gate would let escape. The gate also
 co-ratchets the ADR-0023 §3 ``runtime_coherence`` offender count per
 substrate as a separate dimension; per substrate, the fixture gate ratchets
 the lumped total, each (validator_class, severity) cell, and
 runtime_coherence. A full-suite ``self-tree-validation`` job ratchets the
 same per-(validator_class, severity) matrix on hypergumbo's own tree
 (``scripts/check-self-tree-validation`` vs
-``.ci/self-tree-validation-baselines.json``, WI-jigup).
+``.ci/self-tree-validation-baselines.json``). (history: WI-kafar,
+WI-himoj, WI-jigup)
 
 Under this posture users see violations as informational warnings, CI
 catches regressions, and producer fixes ratchet each substrate's baseline
@@ -354,7 +355,7 @@ def _check_no_harmful_receiver_blind_magnets(
     the finalized graph ``find_harmful_magnets`` should return nothing. A survivor
     means the demotion ran out of order, a new producer path emitted one the pass
     missed, or the shared detector has a gap — this corpus-wide gate fires
-    and the ratchet blocks. The refined criterion is deliberate: the correct-but-unprovable
+    and the ratchet blocks. The narrow criterion is deliberate: the correct-but-unprovable
     trait-dispatch residual (Rust ``x.next()`` → ``Red::next``) needs real type
     resolution (ADR-0012) and is a KEPT bind, so it is NOT flagged here.
     """
@@ -2021,10 +2022,10 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
 # colon-free tokens (span, name, kind) per ADR-0036 Ruling 1 and assert
 # they round-trip to the Symbol's own fields and the symbol-kind registry.
 #
-# Severity: ERROR. The kind-slot membership, kind-slot==Symbol.kind and
-# non-empty-name checks have no tolerated backlog (the id-changing folds
-# are done: WI-pubiv, WI-kugaj, WI-lusoh, WI-pusan), so a new violation is
-# a producer defect and reports as one (WI-popak).
+# Severity: ERROR. No producer is expected to emit an id that fails the
+# kind-slot membership, kind-slot==Symbol.kind or non-empty-name checks,
+# so any violation is a producer defect and reports as one. (history:
+# WI-pubiv, WI-kugaj, WI-lusoh, WI-pusan, WI-popak)
 _ID_ROUNDTRIP_SEVERITY = "error"
 
 
@@ -2047,8 +2048,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
       Symbol's own kind. Skipped when ``Symbol.kind`` is absent / None
       (required-field presence is ``axis_conformance``'s job).
     * **name-slot non-empty** (error).
-    * **span start <= end** (error) — a genuine malformation with no
-      id-changing backlog.
+    * **span start <= end** (error) — a genuine malformation.
     * **the file pseudo-symbol is 1-1:file:file** (error, WI-dipim) — an id
       named ``file`` of kind ``file`` with another span.
     * **no <unknown> path slot** (warning, WI-dipim) — finalize's fallback

@@ -8,7 +8,8 @@ Step 1: Send recent transcript entries to a distillation model
         (Small 3.2 via OpenRouter) to distill the agent's current goals.
 Step 2: Send goals + playbook summaries to a reasoning model
         (Small 2603 via OpenRouter) to select 0-3 relevant playbooks.
-Step 3: Read and output the full content of every selected playbook.
+Step 3: Read and output the full content of every selected playbook
+        that was not already injected recently (see the dedup state).
 
 stdout is injected back into the agent's conversation as context.
 
@@ -146,8 +147,9 @@ MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "4000"))
 DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "200000"))
 CHARS_PER_TOKEN = 4.4
 
-# Training data collection: log LLM inputs/outputs for future local model finetuning.
-# Set TRANSCRIPT_TRAINING_LOG to a path to enable. Default: .agent/.training-data.jsonl
+# Training data collection: every non-dry-run LLM call is logged for local
+# model finetuning. TRANSCRIPT_TRAINING_LOG overrides the path; when unset,
+# log_training_example writes to <repo>/.agent/.training-data.jsonl.
 TRAINING_LOG = os.environ.get("TRANSCRIPT_TRAINING_LOG", "")
 
 # Parse-outcome sidecar path.  Dormant: nothing in the pipeline calls
@@ -953,8 +955,9 @@ def read_playbook(repo_root: str, rel_path: str) -> str:
 # Each entry leads with a natural-language title plus a repo-relative
 # path (the names the agent greps for and speaks of) and has its leading
 # SPDX HTML comment stripped, so the block reads as a reference document.
-# A block that does not look like one gets re-Read by the agent within a
-# few turns of injection (scripts/measure-playbook-overlap.py, WI-fusak).
+# A block that does not look like one tends to be re-Read by the agent soon
+# after injection, paying for the same content twice
+# (scripts/measure-playbook-overlap.py measures this; history: WI-fusak).
 
 _SPDX_HEADER_RE = re.compile(
     r"^<!--\s*SPDX-License-Identifier:[^>]*-->\s*\n", re.IGNORECASE,

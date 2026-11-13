@@ -65,7 +65,7 @@ class TestDeadCodeMaybe:
         assert "helper" not in dead_names
         # dead-code-maybe JSON carries the schema envelope (INV-fipol).
         # This view has its own schema-version constant rather than the
-        # shared read-view placeholder because its wire shape diverged — the
+        # shared read-view placeholder because its wire shape differs — the
         # escape hatch schema.py documents (WI-jozah). Asserted against the
         # constant, never a literal — a literal is a second home for a
         # single-sourced value.
@@ -257,8 +257,8 @@ class TestDeadCodeMaybe:
 
         In Go/Java, calling an interface method dispatches to concrete
         implementations via dispatches_to edges.  The BFS must follow these
-        edges so that implementations like Notifier.Notify in alertmanager
-        are NOT flagged as dead code.
+        edges so that implementations like Notifier.Notify are NOT flagged
+        as dead code.
         """
         import argparse
 
@@ -1713,7 +1713,7 @@ def _run_dead_code_f2(
 
 
 def _f2_behavior_map() -> dict:
-    """Fixture exercising the dispatch:F2 seed cohorts.
+    """Fixture exercising the dead-code seed cohorts (dispatch:F2).
 
     - ``api`` is a route entrypoint; ``helper`` is reachable from it.
     - ``public_api`` is an export (reachable under the production default via
@@ -1754,8 +1754,8 @@ def _f2_behavior_map() -> dict:
 
 
 class TestDispatchF2SeedsDefault:
-    """dispatch:F2 — default seed mode is ``production`` (entrypoints + exports)
-    with disclosure buckets. The strict entrypoint-only view, which flags most
+    """Default seed mode is ``production`` (entrypoints + exports) with
+    disclosure buckets (dispatch:F2). The strict entrypoint-only view, which flags most
     production callables dead, is not the headline; it and test-only
     reachability are kept as labeled cohorts (WI-lirob / WI-jufih)."""
 

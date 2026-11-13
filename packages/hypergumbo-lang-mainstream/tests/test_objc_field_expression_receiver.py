@@ -1,47 +1,40 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-garar stage 1: a ``self.<property>`` receiver desynchronises the message parse.
+"""A ``self.<property>`` receiver must not desynchronise the message parse (WI-garar).
 
-THE DEFECT IS ONE SHARED ASSUMPTION IN TWO FUNCTIONS, not a missing feature.
-``_extract_message_selector`` and ``_extract_message_receiver`` both take THE
-RECEIVER TO BE THE FIRST ``identifier`` CHILD of the ``message_expression``. Each
-already handles a NESTED receiver (``[[obj alloc] init]``) by testing for a
-``message_expression`` child. Neither handles ``field_expression``, which is what
-``self.<prop>`` parses to::
+``self.<prop>`` parses to a ``field_expression`` receiver::
 
     message_expression
       [  field_expression(self.session)  identifier(dataTaskWithRequest)
          :  identifier(request)  ]
 
-So both skip past the real receiver and mis-key on the SELECTOR: the receiver
+``_extract_message_selector`` and ``_extract_message_receiver`` must both treat
+that node as the receiver, as they treat a nested ``[[obj alloc] init]``
+receiver. Taking THE RECEIVER TO BE THE FIRST ``identifier`` CHILD instead
+skips past the real receiver and mis-keys on the SELECTOR: the receiver
 extractor returns ``"dataTaskWithRequest"``, and the selector extractor then
 consumes that same identifier as the receiver it must skip and returns the first
-ARGUMENT as the selector.
-
-MEASURED BEFORE THE FIX, through the real analyzer::
+ARGUMENT as the selector::
 
     [self.session dataTaskWithRequest:r]  ->  objc:external:0-0:r:unresolved
     [self.session writeData:nil]          ->  objc:NSFileHandle:0-0:nil:unresolved
                                               receiver_type_hint='NSFileHandle'
 
-BOTH SLOTS ARE WRONG, AND THE SECOND LINE IS A LIVE FALSE POSITIVE. The module
-slot reads ``NSFileHandle`` because the enclosing body declared a LOCAL named
-``writeData`` — which collides with the selector the receiver extractor mistook
-for a receiver name — so ``_objc_receiver_type`` looked THAT name up. The real
-receiver is ``self.session``, an ``NSURLSession``. A wrong module in the slot is
-the INV-fazim category error arriving from the other direction: it can match a
-catalogued row of the same short name and assert a boundary the program does not
-cross.
+BOTH SLOTS WOULD BE WRONG, AND THE SECOND LINE IS A FALSE POSITIVE. The module
+slot would read ``NSFileHandle`` because the enclosing body declares a LOCAL
+named ``writeData`` -- which collides with the selector the receiver extractor
+mistook for a receiver name -- so ``_objc_receiver_type`` would look THAT name
+up. The real receiver is ``self.session``, an ``NSURLSession``. A wrong module in
+the slot is the INV-fazim category error arriving from the other direction: it
+can match a catalogued row of the same short name and assert a boundary the
+program does not cross.
 
-SIZE, counted from source by a scan sharing no code with the analyzer:
-AFNetworking has 2,729 message sends, **429 (15.7%) with a ``field_expression``
-receiver, 379 of them ``self.<x>``**. So this is not a corner.
+``field_expression`` receivers are common in Objective-C (most of them
+``self.<x>``), so this is not a corner.
 
-SCOPE. This file fixes the PARSE only — the selector returns to the name slot and
-the bogus module/hint go away. TYPING ``self.<prop>`` from the class's
-``@property`` declarations is stage 2 (still WI-garar), and it had to come second:
-a property map keyed by receiver name is unreachable while the extractor never
-returns the receiver's name. The controls below pin the sentinel so stage 2's
-widening cannot be mistaken for stage 1's.
+SCOPE. These tests pin the PARSE -- the selector in the name slot, no module or
+hint borrowed from a same-named local -- and, where the module slot is asserted,
+the receiver TYPED from the class's ``@property`` declarations
+(``NSURLSession``).
 """
 
 from __future__ import annotations
@@ -125,8 +118,8 @@ LINE_CONTROL = _line_of("[h writeData:nil]")
 
 
 class TestTheSelectorReachesTheNameSlot:
-    """ADR-0036 ruling 1: the name slot must carry the NAME. It was carrying an
-    argument for every ``field_expression`` receiver."""
+    """ADR-0036 ruling 1: the name slot must carry the NAME, never an argument,
+    for a ``field_expression`` receiver too."""
 
     def test_keyword_selector_is_not_the_argument(
         self, tmp_path: Path, objc_available: None,
@@ -136,13 +129,12 @@ class TestTheSelectorReachesTheNameSlot:
         # READ THE NAME FROM ITS LOSSLESS HOME, NEVER FROM THE ID (ADR-0036
         # ruling 1). An ObjC selector ENDS in a colon, so the id's
         # second-to-last token is the EMPTY STRING -- the exact INV-divuf /
-        # WI-nakut failure `meta["callee_name"]` exists for. The first cut of
-        # this test re-derived it from the id and read '' against a dst that was
-        # already correct, which would have read as the fix not working.
+        # WI-nakut failure `meta["callee_name"]` exists for. Re-deriving it
+        # from the id reads '' even against a correct dst.
         assert (got[0].meta or {}).get("callee_name") == "dataTaskWithRequest:"
-        # The MODULE slot is stage 2's business (`session` is a declared
-        # `NSURLSession` property); this test is about the NAME slot, which used
-        # to hold the argument `req`.
+        # The MODULE slot is the property-typing's business (`session` is a
+        # declared `NSURLSession` property); this test is about the NAME slot,
+        # which must not hold the argument `req`.
         assert got[0].dst.endswith(":dataTaskWithRequest::unresolved"), got[0].dst
 
     def test_simple_selector_survives(
@@ -173,10 +165,9 @@ class TestTheCollidingLocalNoLongerTypesTheReceiver:
         )
         assert (edge.meta or {}).get("receiver_type_hint") != "NSFileHandle"
         assert (edge.meta or {}).get("callee_name") == "writeData:"
-        # Since stage 2 this site is typed from the DECLARED property rather
-        # than left at the sentinel, which makes the point more sharply: the
-        # module is now the receiver's real class, and still not the colliding
-        # local's.
+        # This site is typed from the DECLARED property rather than left at
+        # the sentinel, which makes the point more sharply: the module is the
+        # receiver's real class, not the colliding local's.
         assert edge.dst == "objc:NSURLSession:0-0:writeData::unresolved", edge.dst
 
     def test_the_borrowed_module_did_not_classify_a_boundary(
@@ -192,15 +183,14 @@ class TestTheCollidingLocalNoLongerTypesTheReceiver:
         assert prim is None, (
             f"self.session writeData: classified as {prim.qualified_name!r}"
         )
-        # Still None, for a BETTER reason than before: the module now names
-        # NSURLSession, which has no `writeData:` row, rather than the
-        # NSFileHandle it borrowed from a same-named local, which does.
+        # None because the module names NSURLSession, which has no
+        # `writeData:` row -- unlike NSFileHandle, the class of the same-named
+        # local, which does.
 
 
 class TestTheTypedLocalControlIsUnmoved:
-    """CONTROL. A plain identifier receiver the body DECLARES is WI-higob's
-    shipped path and must be untouched — it passed before this change, so it
-    cannot have been fixed into passing."""
+    """CONTROL. A plain identifier receiver the body DECLARES is typed from its
+    declaration (WI-higob) and must keep reaching its catalogued row."""
 
     def test_declared_local_receiver_still_reaches_fs_write(
         self, tmp_path: Path, objc_available: None,

@@ -3,13 +3,14 @@
 calls are drawn from it by POSITION, and a call in a definition with no honest
 name is drawn from the nearest enclosing record and says so.
 
-``_get_function_name`` looked for a ``function_declarator`` as a DIRECT child of
-the definition, so every function returning a pointer (``float *f()``) got no
-symbol and every call in it was dropped; a member (``field_identifier``),
-qualified (``A::run``), operator or template-specialisation leaf got none either.
-The caller was found by NAME (``local_symbols``, one per name), so of two
-same-named definitions every call was drawn from the last. The shared C-family
-walk (``hypergumbo_core.analyze.c_family``) and the position index cure both.
+A name reader that looks for a ``function_declarator`` only as a DIRECT child of
+the definition gives every function returning a pointer (``float *f()``) no
+symbol and drops every call in it; a member (``field_identifier``), qualified
+(``A::run``), operator or template-specialisation leaf would get none either.
+A caller found by NAME (one symbol per name) draws every call of two
+same-named definitions from the last. ``_get_function_name`` reads the name
+through the shared C-family walk (``hypergumbo_core.analyze.c_family``), and
+the caller is found through a position index.
 
 Every test checks that no edge's src is unemitted (``unemitted_edge_sources``)
 and asserts REACH (an edge at the line) before CONTAINMENT.
@@ -43,7 +44,7 @@ def _calls(result) -> dict[int, tuple[str, dict]]:
 def test_a_pointer_returning_function_is_a_symbol_and_its_calls_are_drawn_from_it(
     tmp_path: Path,
 ) -> None:
-    """WI-fohuh's filed repro, plus a function returning a function pointer."""
+    """Pointer-returning functions, plus a function returning a function pointer."""
     (tmp_path / "k.cu").write_text("""\
 __device__ int helper(int x) { return x; }
 __device__ int plain(int n) { return helper(n); }
@@ -82,7 +83,7 @@ template <> __global__ void kern<int>(int *x) { helper(7); }
 
 def test_same_named_definitions_are_told_apart_by_position(tmp_path: Path) -> None:
     """Two ``#ifdef`` alternatives of one name: each call is drawn from the
-    definition that holds it (the name lookup drew both from the last)."""
+    definition that holds it (a name lookup would draw both from the last)."""
     (tmp_path / "k.cu").write_text("""\
 __device__ int one(int x) { return x; }
 __device__ int two(int x) { return x; }

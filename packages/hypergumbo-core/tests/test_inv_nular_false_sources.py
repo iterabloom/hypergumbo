@@ -2,7 +2,7 @@
 """INV-nular: three families of rows that manufacture taint SOURCES out of
 operations that read nothing.
 
-THE MECHANISM, WHICH IS SHARPER THAN THE ITEM'S TITLE. ``AUTO_SOURCE_LABEL_MAP``
+THE MECHANISM. ``AUTO_SOURCE_LABEL_MAP``
 collapses ``net_recv``, ``ipc_recv`` and ``db_read`` into the single label
 ``untrusted_input``. So a row is not merely a mislabel: declaring a
 non-reading operation ``db_read`` or ``net_recv`` MINTS A TAINT SOURCE at that
@@ -190,10 +190,9 @@ def _f2_languages() -> tuple[str, ...]:
     adds it, with no second edit to remember.
 
     Deliberately NOT ``CATALOG_LANGUAGES`` (test_io_boundary.py): that
-    constant names fourteen while the package ships fifteen -- ``bash.yaml``
-    sits outside it, and so outside the WI-sugav drift guard that iterates it.
-    Inheriting that list would reproduce the very defect this function exists
-    to close.
+    constant omits ``bash.yaml``, which the package ships, so bash sits
+    outside the WI-sugav drift guard that iterates it. Inheriting that list
+    would reproduce the very defect this function exists to close.
     """
     catalog_dir = (pathlib.Path(io_boundary_module.__file__).parent
                    / "io_primitives")
@@ -226,8 +225,7 @@ F2_EXEMPT: dict[str, str] = {
 #:
 #: **EMPTY, AND KEPT.** :func:`test_f2_row_exemptions_still_describe_a_live_row`
 #: fails once an entry's row is retagged, forcing the entry out in the same
-#: change -- which is how fiber's entry left when ``App.Listen`` moved to
-#: ``net_listen``. The dict stays because the NEXT predicate false positive
+#: change. The dict stays because the NEXT predicate false positive
 #: should land here rather than in a language-wide skip, which is strictly
 #: wider.
 F2_EXEMPT_ROWS: dict[str, dict[tuple[str, str], str]] = {}
@@ -337,7 +335,7 @@ def test_javascript_is_deliberately_out_of_scope() -> None:
 @pytest.mark.parametrize("lang", ("erlang", "elixir"))
 @pytest.mark.parametrize("mod", ("gen_tcp", "gen_sctp", "ssl"))
 def test_erlang_listen_is_not_a_network_receive(lang: str, mod: str) -> None:
-    """elixir inherits erlang, so one edit clears both."""
+    """elixir inherits erlang's rows, so both languages are asserted."""
     assert not _has(lang, "net_recv", mod, "listen")
     assert _has("erlang", "net_recv", "gen_tcp", "recv"), "control"
 
@@ -389,8 +387,8 @@ def test_jpa_query_construction_is_not_a_database_read(
     lang: str, pkg: str, meth: str,
 ) -> None:
     """kotlin and scala are asserted too because ``_CATALOG_PARENTS`` gives
-    them java's rows: one edit clears three languages, and a test that only
-    watched java would not notice if that inheritance changed."""
+    them java's rows: a java row reaches three languages, and a test that
+    only watched java would not notice if that inheritance changed."""
     assert not _has(lang, "db_read", f"{pkg}.EntityManager", meth)
 
 
@@ -730,12 +728,12 @@ class TestStandardInputIsNotLogging:
         the two arms of this undecidable primitive disagree about sourcehood,
         and which one a call site reports decides it.
 
-        In practice the fs_read arm is the one reported (measured on ejabberd
-        and emqx): ``classify_call`` yields ONE primitive, so an undecidable
-        pair reports whichever row the lookup finds first (the INV-zumin
-        row-order hazard, here benign). The false OUTBOUND sink is gone, which
-        is the precision fix; making a stdin read an actual taint source is a
-        separate, recall-side question and is NOT achieved here."""
+        The fs_read arm is the one reported: ``classify_call`` yields ONE
+        primitive, so an undecidable pair reports whichever row the lookup finds
+        first (the INV-zumin row-order hazard, here benign). The ruling removes
+        the false OUTBOUND sink, which is a precision fix; making a stdin read an
+        actual taint source is a separate, recall-side question and is NOT
+        achieved here."""
         assert AUTO_SOURCE_LABEL_MAP.get("ipc_recv") == "untrusted_input"
         assert "fs_read" not in AUTO_SOURCE_LABEL_MAP
         assert "logging" not in AUTO_SOURCE_LABEL_MAP
@@ -862,7 +860,7 @@ class TestWaiResponsesAreEgress:
         """A row that MOVES cannot strand its module the way a row that is
         DELETED can (the method-starved hazard), but the two are easy to
         confuse, so the property is asserted rather than assumed: Network.Wai
-        is still catalogued, and it is now catalogued as egress."""
+        is still catalogued, and it is catalogued as egress."""
         boundaries = {p.boundary for p in _rows("haskell")
                       if p.module == "Network.Wai"}
         assert boundaries == {"net_send"}
@@ -873,10 +871,10 @@ class TestServerLaunchIsADeferredCrossing:
 
     A launch call blocks and serves; the bytes reach the handler the runtime
     invokes, never the caller. So these rows sit on ``net_listen``, which
-    mints no taint and shadows ``net_recv``. The retag cleared ADR-0049's
-    evidence bar: a corrected census (WI-hazop), reachability measurement
-    0009, adjudicated findings per shape in measurement 0010, and a
-    represented-crossing proof per language, run rather than reasoned.
+    mints no taint and shadows ``net_recv``. ADR-0049's evidence bar for
+    such a retag is a census, reachability, adjudicated findings per shape,
+    and a represented-crossing proof per language, run rather than reasoned
+    (history: WI-hazop, measurements 0009 and 0010).
 
     THIS CLASS PINS the moved rows AND the rows that did NOT move -- because
     they stay for DIFFERENT reasons, and collapsing them into one assertion is
@@ -970,8 +968,8 @@ class TestServerLaunchIsADeferredCrossing:
         ``ws.onmessage = cb``, reach their rows, so ``WebSocket.onmessage``,
         ``WebSocket.onclose`` and ``EventSource.onmessage`` would still
         represent JavaScript's inbound network after the move (ADR-0049 ruling
-        3; INV-misup, WI-dosuh). ``F2_EXEMPT``'s note still gives that older
-        unreachability reason, which no longer holds.
+        3; INV-misup, WI-dosuh). ``F2_EXEMPT``'s note gives that
+        unreachability reason; it does not hold.
 
         Deciding the retag needs measurement 0010's adjudication repeated on
         JavaScript, on a per-repo basis, since reachable in a fixture is not
@@ -983,10 +981,9 @@ class TestServerLaunchIsADeferredCrossing:
     def test_the_register_shape_did_not_move_either(self, name: str) -> None:
         """PHOENIX IS HELD BACK ON AN UNMET EVIDENCE BAR.
 
-        ADR-0049 step 3's bar is ADJUDICATED FINDINGS PER SHAPE, and
-        measurement 0010 adjudicated **none** for the REGISTER shape --
-        `Phoenix.Router` appears in one repository of seventeen and produced no
-        violating situation. Absence of findings is not evidence of
+        ADR-0049 step 3's bar is ADJUDICATED FINDINGS PER SHAPE, and no
+        findings have been adjudicated for the REGISTER shape (history:
+        measurement 0010). Absence of findings is not evidence of
         harmlessness. These rows move when a cohort supplies the findings, not
         because they resemble the rows that did."""
         assert _has("elixir", "net_recv", "Phoenix.Router", name)
@@ -1012,8 +1009,7 @@ def test_f2_row_exemptions_still_describe_a_live_row() -> None:
     false positive of the predicate". If the row is retagged, renamed or
     dropped, the claim is about nothing and the entry is indistinguishable from
     a forgotten line. Asserting the row is still there AND still ``net_recv``
-    makes the entry self-retiring (fiber's ``App.Listen`` entry left this way
-    when the row moved to ``net_listen``).
+    makes the entry self-retiring.
 
     A PLAIN LOOP, NOT A PARAMETRIZE, because the dict is empty today and an
     empty parametrize is collected as a skip -- a green tick over a gate that
@@ -1080,8 +1076,8 @@ ADJACENCY_RATIONALISATION = re.compile(
 #: that run belongs here, with a filed item, until its fix ships with its own
 #: measurement.
 #:
-#: Empty: the last entry, javascript's ``path`` rows, were deleted and the
-#: module is a completeness grant (INV-nular F7 / WI-jojaf).
+#: Empty: javascript's ``path`` module carries no rows and is granted
+#: complete (history: INV-nular F7, WI-jojaf).
 ADJACENCY_KNOWN_UNFIXED: set[tuple[str, str]] = set()
 
 
@@ -1095,18 +1091,16 @@ class TestAdjacencyIsNotACrossing:
 
     THE ABSENCE IS LICENSED BY A RUN, NOT BY THE SEMANTICS. ADR-0049 ruling 3
     permits removal only once the crossing is represented somewhere else, and
-    says to test that AT THE FINDING LEVEL. On rabbitmq, both arms run cold
-    (the survey cache keys on repo CONTENT and would otherwise hand arm B arm
-    A's answer): ``host-secret-no-logging`` stays violated, its sink module
-    moves from ``io_lib`` to ``io``, every adjudicated true positive re-roots
-    onto ``io:format``, and the other claims' evidence sets are identical. The
-    flows that vanish reach no traceable output: ``rabbit_misc:format/2`` is
-    literally ``lists:flatten(io_lib:format(Fmt, Args))``, a pure function
-    whose result is returned inside an ``{error, _}`` tuple.
+    says to test that AT THE FINDING LEVEL. ``io:format`` is that
+    representation: true positives that reached a sink through
+    ``io_lib:format`` re-root onto it (the control below pins the row). The
+    flows that vanish reach no traceable output -- e.g. rabbitmq's
+    ``rabbit_misc:format/2`` is ``lists:flatten(io_lib:format(Fmt, Args))``,
+    a pure function whose result is returned inside an ``{error, _}`` tuple.
 
     A SEPARATE GAP, NOT AN ARGUMENT FOR THE ROW. Logging through OTP's
     ``?LOG_*`` macros is invisible because the analyzer does not expand them,
-    and on rabbitmq most of the logging surface goes through them; an
+    and much of an OTP application's logging goes through them; an
     ``io_lib:format`` row would stand in for some of it only BY COINCIDENCE.
     Keeping a wrong row to cover a missing one makes the correct fix look like
     a regression. Tracked separately.
@@ -1133,7 +1127,7 @@ class TestAdjacencyIsNotACrossing:
         self, lang: str, name: str,
     ) -> None:
         """ADR-0049 ruling 3's represented-crossing half, as a control. This is
-        the row the rabbitmq findings re-root ONTO; if it ever leaves, the
+        the row ``io_lib:format`` findings re-root ONTO; if it ever leaves, the
         removal above stops being a relocation and becomes a deletion."""
         assert _has(lang, "logging", "io", name)
 

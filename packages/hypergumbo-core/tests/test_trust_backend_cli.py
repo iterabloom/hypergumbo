@@ -2,9 +2,9 @@
 """``hypergumbo trust-backend`` (ADR-0045 rulings 6-8).
 
 The command is the only supported way to make a backend opt-in durable for a
-single repository. Before it existed the sole durable route was exporting
-``HYPERGUMBO_RUST_ANALYZER=1``, which is global and therefore opts in every
-Rust repository the user ever analyses — including ones cloned to audit
+single repository. The other durable route, exporting
+``HYPERGUMBO_RUST_ANALYZER=1``, is global and therefore opts in every Rust
+repository the user ever analyses — including ones cloned to audit
 (WI-sobig). These tests hold the surface a person actually meets: what it
 prints, what it refuses, and that a grant is legible afterwards.
 """
@@ -80,10 +80,9 @@ class TestWhatItRefuses:
 
 
 class TestWhatShowSaysAfterAChange:
-    """Owner ruling 2026-08-23 (ADR-0045 OQ1), at the surface a person meets.
+    """ADR-0045 OQ1, at the surface a person meets.
 
-    This class previously pinned "changed but still GRANTED". The ruling
-    inverted that for build.rs and kept it for Cargo.toml, so both directions
+    A changed build.rs revokes; a changed Cargo.toml does not. Both directions
     are asserted — a one-sided test here would let "revoke on any change"
     pass while quietly over-implementing the ruling.
     """

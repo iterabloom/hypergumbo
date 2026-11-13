@@ -1,23 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-fafol: a ``module_attr_ref`` must be anchored to the callable that reads.
 
-Propagation pairs a source and a sink that SHARE A CALLER. Every tree-sitter
-analyzer passed the FILE pseudo-symbol as ``caller_symbol`` to
-``emit_module_attribute_refs``, so an attribute source's ``src`` was the file
-while the sink's was the function, and the two could never meet. Python was
-unaffected because its own WI-guhok helper already anchors to the enclosing
-callable.
+Propagation pairs a source and a sink that SHARE A CALLER. An analyzer that
+passes the FILE pseudo-symbol as ``caller_symbol`` to
+``emit_module_attribute_refs`` makes an attribute source's ``src`` the file
+while the sink's is the function, so the two can never meet. (Python's own
+WI-guhok helper anchors to the enclosing callable.)
 
-Measured on one JS file holding both shapes in sibling functions:
+The shape, in one JS file holding both in sibling functions:
 
-    os.hostname()        -> fs.writeFileSync    FOUND     (a CALL, anchored
-                                                           to its function)
-    process.env.API_KEY  -> fs.writeFileSync    MISSED    (an ATTRIBUTE,
-                                                           anchored to the file)
+    os.hostname()        -> fs.writeFileSync    a CALL, anchored to its function
+    process.env.API_KEY  -> fs.writeFileSync    an ATTRIBUTE: it too must be
+                                                anchored to its function,
+                                                not the file
 
-Same file, same sink, same claim — the only difference is which end anchors
-where. After the fix the same fixture reports **2** flows instead of 1, and
-the emitted edge's src is ``javascript:app.js:4-7:leakEnv:function``.
+Same file, same sink, same claim. Anchored to the file, the attribute flow is
+missed while the call flow is found; anchored correctly, both are reported and
+the attribute edge's src is ``javascript:app.js:4-7:leakEnv:function``.
 
 RESOLVED BY LINE SPAN rather than by walking tree-sitter ancestors to a
 function node: span containment needs no per-language knowledge of which node
@@ -62,7 +61,7 @@ class TestInnermostCallable:
     def test_a_module_level_read_has_no_owner(self) -> None:
         """None is a REAL answer and is load-bearing: a top-of-file
         ``process.env`` read genuinely belongs to the file, and the caller
-        keeps its existing pseudo-symbol for exactly that case. The fix must
+        keeps its existing pseudo-symbol for exactly that case. Anchoring must
         not invent a callable that is not there."""
         syms = [_sym("leakEnv", "function", 4, 7)]
         assert _innermost_callable_at(1, syms) is None
@@ -79,15 +78,15 @@ class TestInnermostCallable:
 
 
 class TestPathIndex:
-    """The key format is NOT stable across the pipeline, and assuming it was
-    cost a silent no-op.
+    """The key format is NOT stable across the pipeline, and assuming it is
+    produces a silent no-op.
 
     At the point js_ts builds this index the symbols carry ABSOLUTE paths,
-    while the per-file name computed at the emit site is repo-RELATIVE. The
-    lookup returned an empty list, the anchoring silently did nothing, and the
-    measured verdict was unchanged — indistinguishable from the fix not
-    working at all. Both halves live in one module so neither can drift into
-    assuming a format the other does not produce.
+    while the per-file name computed at the emit site is repo-RELATIVE. A
+    single-spelling lookup returns an empty list, the anchoring silently does
+    nothing, and the verdict is unchanged — indistinguishable from anchoring
+    not working at all. Both halves live in one module so neither can drift
+    into assuming a format the other does not produce.
     """
 
     def test_lookup_tries_each_spelling_in_turn(self) -> None:

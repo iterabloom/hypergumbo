@@ -38,21 +38,19 @@ containing that language can no longer be a BARE ``confirmed``. It becomes
 :data:`~hypergumbo_core.verify_claims.CAVEAT_ANALYZER_METHOD_CALL_BLIND`, which
 names the language and the size of what went unexamined. It is a QUALIFIED
 OPINION rather than a disclaimer (ADR-0016 §4) on purpose: a language declared
-``False`` still emits call edges of other shapes (kotlin and javascript did
-while they were declared ``False``), so "I examined everything I could see,
+``False`` still emits call edges of other shapes, so "I examined everything I could see,
 except this whole construct" is the true sentence — withholding to
 ``inconclusive`` would say the analysis formed no view at all, which is false
 and less useful.
 
 WHEN AN ENTRY FLIPS TO ``True``, the caveat stops firing on its own and no
-invariant changes colour. kotlin and javascript were declared ``False`` on
-2026-08-23 and flipped on 2026-09-03, when WI-nasuf built the missing edges.
-Every entry in :data:`DECLARATIONS` is now ``True``, so the caveat fires only
+invariant changes colour (history: WI-nasuf flipped kotlin and javascript).
+Every entry in :data:`DECLARATIONS` is ``True``, so the caveat fires only
 for a language with method-kind sinks and no entry at all, which is the case
 the gate test above exists to catch. That is the point of declaring rather than
-blocking: under a CAPABILITY-phrased bar, teaching kotlin to emit these edges
-would have read as a mass NEW violation, because those sinks would suddenly
-become visible-but-untyped. LIVE.md rule 19.
+blocking: under a CAPABILITY-phrased bar, teaching an analyzer to emit these
+edges would read as a mass NEW violation, because those sinks would suddenly
+become visible-but-untyped (LIVE.md rule 19).
 
 THREE SHAPES LIVE HERE, kept apart because their remedies differ.
 :data:`DECLARATIONS` is a whole construct an analyzer cannot see (fix: build
@@ -105,10 +103,10 @@ class MethodCallEdgeDeclaration:
 #: type. Fixtures, probe and results:
 #: ``~/hypergumbo_lab_notebook/disclosure_parity_08232026/``.
 #:
-#: THE FIXTURE SHAPE IS LOAD-BEARING and a first pass got it wrong: written
-#: with a CAST receiver, scala and swift both read as non-emitting. A cast
-#: takes a different, bare-call branch in both analyzers. These entries are
-#: measured on the plain ``receiver.method()`` shape real code uses.
+#: THE FIXTURE SHAPE IS LOAD-BEARING: a CAST receiver takes a different,
+#: bare-call branch in the scala and swift analyzers, so a cast-receiver
+#: fixture reads them as non-emitting. These entries are measured on the plain
+#: ``receiver.method()`` shape real code uses; re-measure on that shape.
 _MEASUREMENT = "disclosure_parity_08232026, plain receiver.method() fixture"
 
 DECLARATIONS: dict[str, MethodCallEdgeDeclaration] = {
@@ -185,27 +183,26 @@ def method_call_blind_languages(
 #: I therefore never look at?".
 #:
 #: WHY THE DENYLIST IS RIGHT AND STAYS. Without receiver types, resolving
-#: ``x.load()`` by name binds it to an arbitrary concrete ``load`` — WI-bakak
-#: measured 22 of 29 false callers on ``JoltDevice::load`` from
-#: ``AtomicU64.load(Ordering::Relaxed)``. Name-only resolution with conservative
+#: ``x.load()`` by name binds it to an arbitrary concrete ``load`` — an
+#: ``AtomicU64.load(Ordering::Relaxed)`` becomes a caller of a domain
+#: ``JoltDevice::load`` (history: WI-bakak). Name-only resolution with conservative
 #: guards is the intended design, and receiver-type discrimination is a
 #: fidelity question (WI-nanom / rust-analyzer), not a denylist question.
 #:
-#: WHY IT NONETHELESS COSTS A DISCLOSURE. Ten of these names are methods
+#: WHY IT NONETHELESS COSTS A DISCLOSURE. Some of these names are methods
 #: ``io_primitives/rust.yaml`` declares as I/O SINKS, so a call to one of them
-#: on an untypable receiver produced no edge and a clean boundary verdict had
-#: nothing to disclose — INV-polad. The overlap is computed from the shipped
+#: on an untypable receiver produces no edge, and a clean boundary verdict
+#: would hide it without a disclosure (INV-polad). The overlap is computed from the shipped
 #: catalogue by :func:`suppressed_catalogued_sinks` rather than listed here, so
 #: adding a catalogue row for a denylisted name extends the disclosure without
 #: anyone remembering to.
 #:
-#: WHY NOT SIMPLY EMIT THE SUPPRESSED CALLS, measured before being rejected:
-#: emitting them as ordinary unresolved-external edges took total edges +33% /
-#: +67% and the external-edge population +115% / +207% on two real crates
-#: (bellman, tiktoken-rs), because the same set contains ``clone`` / ``unwrap``
-#: / ``map``. Paying that in centrality, dead-code, slice and supply-chain
-#: output on every Rust repository to make ten names disclosable is the wrong
-#: trade; declaring the gap costs nothing and says the same true thing.
+#: WHY NOT SIMPLY EMIT THE SUPPRESSED CALLS: the same set contains ``clone`` /
+#: ``unwrap`` / ``map``, so emitting them as ordinary unresolved-external edges
+#: multiplies a Rust repository's external-edge population and distorts its
+#: centrality, dead-code, slice and supply-chain output, all to make a handful
+#: of names disclosable. Declaring the gap costs nothing and says the same true
+#: thing.
 SUPPRESSED_METHOD_NAMES: dict[str, frozenset[str]] = {
     "rust": frozenset({
     # core::convert
@@ -237,7 +234,7 @@ SUPPRESSED_METHOD_NAMES: dict[str, frozenset[str]] = {
     "from_str", "parse", "unwrap",
     # std::sync::atomic — .load()/.store() on AtomicU64, AtomicU8, etc.
     # Without receiver type info, x.load() conflates AtomicU64.load()
-    # with domain-specific load() methods (WI-bakak: 22 false positives).
+    # with domain-specific load() methods (WI-bakak).
     "load", "store", "fetch_add", "fetch_sub", "compare_exchange", "swap",
     # std::io — Read/Write trait methods
     "read", "write", "flush",
@@ -245,7 +242,7 @@ SUPPRESSED_METHOD_NAMES: dict[str, frozenset[str]] = {
     "new", "build",
     # Channel / async
     "send", "recv",
-    # Command — .output() conflates with test utilities (ripgrep bakeoff)
+    # Command — .output() conflates with test utilities
     "output", "status", "spawn",
     # Logging — ubiquitous across log/tracing crates
     "warn", "error", "info", "debug", "trace",
@@ -262,9 +259,7 @@ def suppressed_catalogued_sinks(language: str, catalog: object) -> set[str]:
     call of the same name is unaffected. ``std::process::Command.new`` is the
     worked example — ``new`` is on the denylist, yet a crate calling
     ``Command::new("sh").status()`` still returns ``violated`` with the launch
-    site named, because that is a ``Type::method`` call on a different path. A
-    first reading of this overlap claimed all four subprocess rows were
-    unreachable; a live control refuted it.
+    site named, because that is a ``Type::method`` call on a different path.
     """
     names = {
         p.name for p in getattr(catalog, "primitives", ())
@@ -300,22 +295,18 @@ class ConstructBlindRows:
 #: construct is NOT A CALL at all, so there is no edge to withhold or admit —
 #: the source form simply has no representation in the graph.
 #:
-#: EMPTY SINCE 2026-09-10, AND THAT IS THE MECHANISM WORKING. Its one entry
-#: declared javascript's handler-assignment blindness — ``ws.onmessage = h``
-#: reaching ``WebSocket.onmessage``, ``WebSocket.onclose`` and
-#: ``EventSource.onmessage``, none of which any analyzer could see. WI-dosuh
-#: built the registration edge (``js_ts.py``, the
-#: ``assignment_expression`` branch), so the declaration was removed in the
-#: same change: a disclosure that outlives the limitation it discloses
-#: teaches a reader to discount every disclosure in the file.
+#: EMPTY, AND THAT IS THE MECHANISM WORKING. Remove an entry in the same
+#: change that builds the missing edge: a disclosure that outlives the
+#: limitation it discloses teaches a reader to discount every disclosure in
+#: the file (history: WI-dosuh, javascript ``ws.onmessage = h``).
 #:
-#: THE MACHINERY STAYS, AND IS STILL TESTED (against an injected declaration
-#: in ``test_construct_blind_disclosure.py``, since there is no shipped one
-#: to test against). Emptiness here is a claim about today's analyzers, not
+#: THE MACHINERY IS TESTED against an injected declaration in
+#: ``test_construct_blind_disclosure.py``, since no shipped entry exists to
+#: test against. Emptiness here is a claim about today's analyzers, not
 #: about the shape: any language can acquire a catalogued row reached only by
 #: a construct its analyzer does not model, and the next one to find one adds
-#: an entry rather than rebuilding the disclosure path. What an entry must
-#: carry is unchanged — dated, evidenced, and DERIVED against the catalogue at
+#: an entry rather than rebuilding the disclosure path. An entry must be
+#: dated, evidenced, and DERIVED against the catalogue at
 #: render time by :func:`construct_blind_catalogued_sinks`, so a deleted row
 #: leaves the disclosure on its own and a declared row the catalogue does not
 #: carry fails its test.

@@ -1,44 +1,31 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""One symbol-id path slot, one parser — and the Rust defect that proved it.
+"""One symbol-id path slot, one parser.
 
 WHY THIS FILE EXISTS. Per ADR-0036 (D1a) the path slot is the ONE colon-tolerant
 slot in ``{lang}:{path}:{span}:{name}:{kind}``; lang/span/name/kind are
-colon-free, so the parse must be RIGHT-ANCHORED. That fact had four homes, two
-of which took ``parts[1]``:
+colon-free, so a naive ``parts[1]`` truncates a colon-bearing path. Every reader
+of the slot — ``ir._extract_path_slot``, ``ir._parse_dangling_id``,
+``verify_claims._symbol_path_slot`` and ``taint._extract_callee_module`` — must
+therefore route through the one parser, ``ir.symbol_path_slot`` (span-anchored;
+see ``test_symbol_path_slot_span_anchored.py``). With several homes for the fact,
+a wrong copy goes live even while another copy's docstring warns against it.
 
-    ir._extract_path_slot          parts[1]         WRONG
-    ir._parse_dangling_id          right-anchored   correct
-    verify_claims._symbol_path_slot right-anchored  correct
-    taint._extract_callee_module   parts[1]         WRONG
-
-The two in ``ir.py`` sit thirteen lines apart. ``_symbol_path_slot``'s docstring
-had already named ``_extract_path_slot`` as wrong and warned "this must not
-become a third naive copy" — while a fourth copy was live in ``taint.py``.
-
-THE MEASURED CONSEQUENCE, which is why this is a defect and not tidiness. Rust
-is the only language whose taint catalogue uses ``::`` module paths, and ALL
-NINE of its distinct sink modules are colon-bearing (``std::fs``,
-``std::process``, ``std::io``, ``std::net::TcpStream``, ...). ``parts[1]``
-truncates every one of them to ``std``. ``_module_matches('std::fs', 'std')`` is
-False, and ``_lookup_named_entry`` treats a present-but-mismatched module as a
-REJECTION rather than a degrade. So on dev, before this fix::
+WHY A WRONG COPY IS A DEFECT AND NOT UNTIDINESS. Rust is the only language whose
+taint catalogue uses ``::`` module paths, and all of its sink modules are
+colon-bearing (``std::fs``, ``std::process``, ``std::io``,
+``std::net::TcpStream``, ...). ``parts[1]`` truncates every one of them to
+``std``. ``_module_matches('std::fs', 'std')`` is False, and
+``_lookup_named_entry`` treats a present-but-mismatched module as a REJECTION
+rather than a degrade. So with a truncating parse::
 
     rust:std::fs:0-0:write:external_symbol        -> MATCH=None
     rust:external:0-0:write:external_symbol       -> MATCH=std::fs.write
 
 The edge that correctly names its module is rejected; the edge carrying no
 module information at all matches. The better-informed input produces the worse
-answer.
-
-WHY IT IS FILED AS LATENT RATHER THAN AS A LIVE REGRESSION. On a 9-repo cohort
-the fix moves exactly one flow (+1 source, 0 lost): Rust analyzers today emit
-the ``external`` sentinel for 396 of 449 unresolved taint call edges, and the 53
-that do carry real module paths name non-catalogued callees (``assert_cmd::
-Command``, ``std::path::PathBuf``), so their rejections are accidentally
-correct. The exposure is forward-looking and large: WI-jokij raises external-id
-module coverage, at which point those 396 sentinel edges start carrying
-``std::fs`` — and an unfixed truncation would take Rust from 45 matched sinks to
-zero. That is why WI-jokij is blocked on this.
+answer, and the more Rust external ids carry a real module instead of the
+``external`` sentinel, the more sinks a truncating parse loses (history:
+WI-jokij).
 """
 
 from __future__ import annotations
@@ -109,9 +96,8 @@ class TestOneParserForOneSlot:
     def test_a_colon_bearing_case_is_actually_exercised(self) -> None:
         """Non-vacuity floor (L17).
 
-        If every CASES entry were colon-free the suite above would pass on the
-        unfixed ``parts[1]`` code, which is exactly the vacuous green this
-        project keeps re-learning. Assert the fixture has teeth.
+        If every CASES entry were colon-free the suite above would pass on a
+        ``parts[1]`` parse — a vacuous green. Assert the fixture has teeth.
         """
         with_colons = [c for c in CASES if ":" in c[1]]
         assert len(with_colons) >= 4, (
@@ -150,7 +136,7 @@ class TestRustSinksMatchThroughTheirRealModule:
         """The premise, asserted rather than assumed (L1).
 
         If a future catalogue edit made Rust's modules colon-free, the test
-        below would pass for a reason unrelated to this fix.
+        below would pass for a reason unrelated to the parse.
         """
         cat = load_builtin_taint_catalog()
         modules = {s.module for s in cat.sinks_for_language("rust") if s.module}
@@ -169,7 +155,7 @@ class TestRustSinksMatchThroughTheirRealModule:
         assert _module_matches("std::fs", "std::fs")
 
     def test_module_bearing_rust_sink_id_matches(self) -> None:
-        """The regression. Fails on dev with MATCH=None."""
+        """A module-bearing id matches; a truncating parse gives MATCH=None."""
         idx = self._rust_sink_index()
         sid = "rust:std::fs:0-0:write:external_symbol"
         matched = _match_propagation_entry(
@@ -184,9 +170,9 @@ class TestRustSinksMatchThroughTheirRealModule:
     def test_the_sentinel_form_still_matches(self) -> None:
         """Non-destructiveness (L57): the path that worked must keep working.
 
-        396 of 449 rust unresolved taint call edges on the cohort arrive via
-        this sentinel form. The correct outcome of this fix is that they are
-        UNAFFECTED, and a break here would look like a precision improvement.
+        Most rust unresolved taint call edges arrive via this sentinel form.
+        The parse must leave them UNAFFECTED, and a break here would look like
+        a precision improvement.
         """
         idx = self._rust_sink_index()
         matched = _match_propagation_entry(
@@ -197,11 +183,11 @@ class TestRustSinksMatchThroughTheirRealModule:
         assert matched.module == "std::fs"
 
     def test_the_name_half_is_unchanged_for_both_forms(self) -> None:
-        """The name parse serves 100% of the population and must not move.
+        """The name parse serves every edge and must not move.
 
-        Re-keying the NAME onto ``dst_ref`` was the WI-lonad remedy as filed;
-        measurement showed it would drop 60.5% of taint call edges. This pins
-        the name half against that.
+        Re-keying the NAME onto ``dst_ref`` would drop the many taint call
+        edges that carry no ``dst_ref`` (history: WI-lonad). This pins the
+        name half against that.
         """
         for sid in ("rust:std::fs:0-0:write:external_symbol",
                     "rust:external:0-0:write:external_symbol",

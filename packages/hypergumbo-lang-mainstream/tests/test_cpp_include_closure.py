@@ -2,15 +2,17 @@
 """C++'s include stamp names every header the unit can see (INV-zikul).
 
 cpp.py stamps EVERY unresolved call with the file's include set (WI-rupik),
-not only the ambiguous names C stamps, so the defect c.py had was wider
-here. Live on the shipped CLI before this change:
+not only the ambiguous names C stamps, so a stamp naming only the file's own
+direct includes misleads more calls here than in C. Two shapes show it:
 
 * pq2: only ``#include "net.h"`` (net.h includes ``<sys/socket.h>``), then
-  ``send()``. Placeholder slot; NO-NET-SEND CONFIRMED.
+  ``send()``. Without the headers net.h reaches, the slot is the placeholder
+  and a NO-NET-SEND claim is falsely CONFIRMED.
 * pq4: ``#include <cstdint>`` + ``#include "util.h"`` (util.h includes
-  ``<cstdio>``), then ``fopen(p, "w")``. Slot ``cstdint``; the module filter
-  refused the stdio row, cstdint is granted, and NO-FSWRITE read CONFIRMED.
-  ``fopen`` is not an ambiguous name, so C never had this half.
+  ``<cstdio>``), then ``fopen(p, "w")``. Stamped ``cstdint`` alone, the module
+  filter refuses the stdio row, cstdint is granted, and a NO-FSWRITE claim is
+  falsely CONFIRMED. ``fopen`` is not an ambiguous name, so C has no such
+  case.
 """
 
 from __future__ import annotations
@@ -74,7 +76,7 @@ def test_an_angled_header_found_in_the_repository(tmp_path: Path) -> None:
 
 
 def test_a_file_with_no_include_keeps_the_placeholder(tmp_path: Path) -> None:
-    """The short-name fallback the sentinel enables is unchanged."""
+    """With no include, the slot keeps the sentinel and its short-name fallback."""
     repo = _repo(tmp_path, {"main.cpp": _FOPEN})
     assert _slots(repo, "fopen") == [["external"]]
 
@@ -190,10 +192,11 @@ def test_a_direct_call_outside_analyze_reads_the_file_s_own_directory(
 def test_a_wide_include_set_is_a_bounded_handle_stored_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """INV-jahuf. envoy's files see ~140 headers, and the list rode in every
-    unresolved call's id, label, dst and dst_ref, 1-12 KB each. The slot is now
-    a handle, the behavior map stores the list once, and the verdict read back
-    from the written map is unchanged (pq4's violation, 200 headers wider)."""
+    """INV-jahuf. A file can see a hundred or more headers; carried inline, the
+    list would ride in every unresolved call's id, label, dst and dst_ref,
+    kilobytes each. The slot is a handle, the behavior map stores the list
+    once, and the verdict read back from the written map is pq4's violation,
+    200 headers wider."""
     many = "".join(f'#include "h{i}.h"\n' for i in range(200))
     files = {f"h{i}.h": "" for i in range(200)}
     files["main.cpp"] = '#include <cstdint>\n#include "util.h"\n' + many + _FOPEN

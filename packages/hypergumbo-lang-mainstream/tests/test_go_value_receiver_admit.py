@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-surid: a call on a VALUE (``x.F()``) reaches a method or a func-typed field.
+"""A call on a VALUE (``x.F()``) reaches a method or a func-typed field (WI-surid).
 
 Go's selector on a value names a method of the value's type or a field of it;
 it cannot name a package-level function, a struct or a named type. When the
-receiver's type is unknown, the analyzer fell through its guards to the
-repo-wide short-name lookup with no filter, and the sole in-repo candidate of
-that name was bound whatever its kind: cert-manager's 306
+receiver's type is unknown, the analyzer falls through its guards to the
+repo-wide short-name lookup; without a kind filter, the sole in-repo candidate
+of that name is bound whatever its kind -- e.g.
 ``corev1.SchemeGroupVersion.WithResource("secrets")`` (a method on an external
-package variable) went to ``func WithResource`` in ``pkg/logs``. The shared
-resolver's ``admit`` hook (WI-jomik, #2004) is the filter; this is its Go
-value-receiver adopter, the rule #2006 gave Rust.
+package variable) bound to an in-repo ``func WithResource``. The shared
+resolver's ``admit`` hook is the filter; this is its Go value-receiver
+adopter, the same rule Rust applies (history: WI-jomik).
 
-A field is admitted only when its declared type is a function type: the
-registry ``field_type_registry`` holds (the field symbol's ``signature`` is
-display-only, ADR-0058). WI-jalal's review found 43 of 78 field binds on
-alertmanager were calls through such fields; the rest were data fields.
+A field is admitted only when its declared type is a function type, as held
+in ``field_type_registry`` (the field symbol's ``signature`` is display-only,
+ADR-0058). Calls through such fields are common, but a data field is never a
+call target (history: WI-jalal).
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def test_a_reachable_kind_still_binds(
     calls: dict, caller: str, name: str, kind: str,
 ) -> None:
     """Controls: a func-typed field and a method on a value, and a package
-    function on the package, resolve as before."""
+    function on the package, still resolve."""
     assert (name, kind, True) in calls.get(caller, []), calls.get(caller)
 
 

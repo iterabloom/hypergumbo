@@ -2,14 +2,12 @@
 """Per-repository backend trust grants (ADR-0045 rulings 5-8).
 
 WHAT IS BEING STORED. Enabling the SCIP Rust backend makes indexing execute the
-analysed crate's ``build.rs`` and proc macros as the invoking user. Until now
-the only durable way to express that was ``export HYPERGUMBO_RUST_ANALYZER=1``
-from a shell profile — which is GLOBAL, and therefore opts in every Rust
-repository the user ever analyses, including ones cloned specifically to audit.
-The trust decision is per-repository; the only persistence available had the
-wrong scope for it (WI-sobig).
+analysed crate's ``build.rs`` and proc macros as the invoking user. The trust
+decision is per-repository; ``export HYPERGUMBO_RUST_ANALYZER=1`` from a shell
+profile is GLOBAL, and therefore opts in every Rust repository the user ever
+analyses, including ones cloned specifically to audit (WI-sobig).
 
-FOUR PROPERTIES THE TESTS BELOW EXIST TO HOLD, each of which would be easy to
+THREE PROPERTIES THE TESTS BELOW EXIST TO HOLD, each of which would be easy to
 lose in a refactor that "simplified" the store:
 
 1. It lives OUTSIDE ``$XDG_CONFIG_HOME``. ``~/.config`` is designed to be synced
@@ -18,9 +16,12 @@ lose in a refactor that "simplified" the store:
    ADR-0013 uses for its cache, which deliberately SHARES across checkouts.
 3. A DECLINE is recorded as a decision, not as absence, so the nudge can go
    quiet without anyone being opted in.
-4. The grant is refused when the store is writable by the analysed repo's own
-   user context — a trust store an automated agent can write is not a trust
-   store (ADR-0045 ruling 6, generalising ADR-0013's human-owned config).
+
+NOT ENFORCED HERE: ADR-0045 ruling 6 asks for a store an automated agent
+cannot write. hypergumbo cannot tell an agent from a person sharing a uid, so
+the store is only written ``0o600`` (pinned in ``test_user_state_config_zones``);
+an operator who wants the stronger property ``chown``s the store to the human
+account.
 """
 
 from __future__ import annotations
@@ -124,13 +125,10 @@ class TestADeclineIsADecision:
 
 
 class TestAChangedBuildScriptRevokes:
-    """Owner ruling 2026-08-23, resolving ADR-0045 OQ1.
+    """ADR-0045 OQ1, resolved in a split form: ``build.rs`` revokes,
+    ``Cargo.toml`` does not.
 
-    These tests previously pinned the OPPOSITE behaviour — a changed build
-    script warned and the grant stood — and their docstrings named themselves
-    as the ones to change if OQ1 resolved toward strictness. It did, in a
-    split form: ``build.rs`` revokes, ``Cargo.toml`` does not. The
-    discriminating test is the Cargo.toml one; without it, "revoke on any
+    The discriminating test is the Cargo.toml one; without it, "revoke on any
     change" would pass everything here and the ruling would be silently
     over-implemented.
     """
@@ -245,16 +243,16 @@ class TestOnlyExecutingBackendsNeedAGrant:
 
 
 class TestTheNudgeStopsAskingSomeoneWhoAnswered:
-    """ADR-0045 ruling 8, and the defect that showed up while wiring it.
+    """ADR-0045 ruling 8.
 
     The suppression is only safe because "enabled" is resolved through the
-    whole precedence chain. It briefly was not: ``rust_analyzer_backend_
-    enabled`` read the environment variable alone, so a TRUST-GRANTED run
-    (no variable set) reported not-enabled, took the nudge branch, and was
-    then suppressed by its own recorded decision — a run that WAS executing
-    the repository's build scripts printed nothing about it at all. That is
-    the exact opposite of what this disclosure is for, so the granted case
-    is pinned here rather than left to the wiring.
+    whole precedence chain. If ``rust_analyzer_backend_enabled`` read the
+    environment variable alone, a TRUST-GRANTED run (no variable set) would
+    report not-enabled, take the nudge branch, and then be suppressed by its
+    own recorded decision — a run that IS executing the repository's build
+    scripts would print nothing about it at all. That is the exact opposite
+    of what this disclosure is for, so the granted case is pinned here rather
+    than left to the wiring.
     """
 
     def _profile(self):
@@ -410,8 +408,8 @@ class TestTheGrantIsTheLowestTier:
 
 class TestTheStoreGatesOnTheDeclaredBit:
     """ADR-0045 ruling 5, second half: the store refuses a backend that does
-    not DECLARE ``executes_analysed_code`` (WI-hohuh moved the bit from a
-    hardcoded set in ``user_config`` onto ``@register_analyzer``)."""
+    not DECLARE ``executes_analysed_code`` on ``@register_analyzer``
+    (history: WI-hohuh)."""
 
     @pytest.fixture(autouse=True)
     def isolated_registry(self):

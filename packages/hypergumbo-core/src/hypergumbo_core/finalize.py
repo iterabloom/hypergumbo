@@ -251,7 +251,7 @@ def _finalize_re_relativize(ctx: FinalizeContext) -> None:
 def _finalize_stamp_run_lifecycle(ctx: FinalizeContext) -> None:
     """Sub-step 2 — backfill empty ``pass_version`` from pass_metadata (WI-mipul).
 
-    The ~13 override-``analyze()`` analyzers + the enclosure synthetic emit an empty
+    Analyzers that override ``analyze()``, and the enclosure synthetic, emit an empty
     ``pass_version`` (they bypass ``_analyze_body``'s auto-stamping). pass_metadata carries
     the canonical code-hash for every pass_id, so we fill the empty ones here. Pure fill —
     never overwrites a present value — so it is shrink-only w.r.t. the validation ratchet.
@@ -268,9 +268,10 @@ def _finalize_recompute_run_signature(ctx: FinalizeContext) -> None:
 
     ``AnalysisRun.create`` hashes run_signature at construction from placeholder
     config_fingerprint/toolchain (ir.py); analyzers then stamp the real values but never
-    re-hash, so the emitted signature is stale (META-hufaz / WI-luzud). Recompute from the
-    AR dict's final ``pass``/``version``/``config_fingerprint``/``toolchain``. R2: strictly
-    after the stamp sub-step (so the inputs are final before they are hashed).
+    re-hash, so without this sub-step the emitted signature is stale (history: WI-luzud).
+    Recompute from the AR dict's final ``pass``/``version``/``config_fingerprint``/
+    ``toolchain``. R2: strictly after the stamp sub-step (so the inputs are final before
+    they are hashed).
     """
     for run in ctx.analysis_runs:
         run["run_signature"] = _compute_run_signature(

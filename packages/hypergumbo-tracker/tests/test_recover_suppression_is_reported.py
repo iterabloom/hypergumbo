@@ -7,38 +7,34 @@ WHAT IT GUARDS, verified by executing the guard rather than reading it.
 the unsuppressed arm invokes ``recover`` and the suppressed arm invokes nothing.
 While it is in force, a ``git reset --hard`` or ``git checkout`` drops pending
 ``.ops`` and nothing restores them. The out-of-repo journal still holds the
-data, so this is a degraded-safety window, not loss. One was observed open for
-~10 HOURS (WI-pohir).
+data, so this is a degraded-safety window, not loss — but an unowned
+suppression can hold that window open for hours (history: WI-pohir).
 
-WHY A FLAG COULD NOT WORK, AND WHY THIS IS THE SECOND TIME THE PROJECT LEARNED
-IT. ``do_sync`` clears its marker in a ``finally``; ``auto-pr`` clears its in an
-EXIT trap; measured, bash runs that trap on SIGTERM and on SIGINT and NOT on
-SIGKILL. So a hard kill left a ``touch``ed file behind, and a file cannot answer
-"does anyone still own this?" -- a leaked marker and a healthy 45-minute
-``auto-pr`` were the same observation. WI-nutin had already made exactly this
-move for the marker next door: ``SyncGate``'s docstring records that the OS
-releases an flock even on SIGKILL, "so the gate cannot leak across process
-lifetimes". This marker simply never got the same treatment.
+WHY A FLAG CANNOT WORK. ``do_sync`` releases in a ``finally``; ``auto-pr`` in
+an EXIT trap, which bash runs on SIGTERM and on SIGINT and NOT on SIGKILL. So a
+hard kill leaves a ``touch``ed file behind, and a file cannot answer "does
+anyone still own this?" -- a leaked marker and a healthy 45-minute ``auto-pr``
+are the same observation. The OS releases an flock even on SIGKILL, so a lock
+cannot leak across process lifetimes; ``SyncGate`` uses the same design
+(history: WI-nutin).
 
-THE FILE'S EXISTENCE NOW MEANS NOTHING. Only a live holder suppresses anything,
-so the shape that caused the original ten-hour incident -- a leftover file --
-is inert, and ``test_a_leftover_file_suppresses_nothing`` pins that directly.
+THE FILE'S EXISTENCE MEANS NOTHING. Only a live holder suppresses anything, so
+a leftover file is inert, and ``test_a_leftover_file_suppresses_nothing`` pins
+that directly.
 
-THE ONE REMAINING WAY IT CAN OUTLIVE ITS OWNER, measured before the design was
-written rather than reasoned about afterwards: every git and curl ``auto-pr``
-forks INHERITS the lock fd, and bash has no close-on-exec escape for it (tried:
-``exec {var}>`` does not set it -- ``/proc/<child>/fd`` still showed the marker).
-So a SIGKILLed run keeps the lock until its orphaned children exit. Normally
-that is seconds and it self-heals. When it is not, the lock body -- ``pid=`` and
-``started=``, the same shape ``SyncGate`` writes -- lets a reader ask a FACT
-instead of starting a stopwatch: the lock is held and the process that claimed
-it is gone.
+THE ONE REMAINING WAY IT CAN OUTLIVE ITS OWNER: every git and curl ``auto-pr``
+forks INHERITS the lock fd, and bash has no close-on-exec escape for it
+(``exec {var}>`` does not set it -- ``/proc/<child>/fd`` still shows the
+marker). So a SIGKILLed run keeps the lock until its orphaned children exit,
+which for short-lived git/curl children is seconds, and then it self-heals.
+When a child lives longer, the lock body -- ``pid=`` and ``started=``, the same shape
+``SyncGate`` writes -- lets a reader ask a FACT instead of starting a
+stopwatch: the lock is held and the process that claimed it is gone.
 
-WHICH IS WHY THERE IS NO LONGER A GRACE PERIOD HERE. The previous version timed
-an unowned marker out at 900s, a constant that had to be measured against a live
-``auto-pr``'s phases (and was wrong at 300s on its first attempt). A lock
-answers "is anybody there" directly, so the constant and the measuring are both
-deleted.
+WHICH IS WHY THERE IS NO GRACE PERIOD HERE. A timeout on an unowned marker
+needs a constant measured against a live ``auto-pr``'s phases, and is wrong
+whenever those phases change. A lock answers "is anybody there" directly, so
+no time constant is involved.
 """
 
 from __future__ import annotations
@@ -120,8 +116,9 @@ class TestTheLockPrimitive:
         """THE CLAIM THE WHOLE DESIGN RESTS ON, exercised for real.
 
         A subprocess takes the lock and is killed with SIGKILL -- the one signal
-        that runs no cleanup anywhere. If the OS did not drop the flock, this is
-        the old bug with extra steps, so it is asserted rather than cited.
+        that runs no cleanup anywhere. If the OS did not drop the flock, a
+        killed holder would leave self-healing off indefinitely, so it is
+        asserted rather than cited.
         """
         git_dir = _git_dir(tmp_path)
         marker = git_dir / RECOVER_MARKER_NAME
@@ -162,12 +159,12 @@ class TestNothingToReport:
         assert status.warning() is None
 
     def test_a_leftover_file_suppresses_nothing(self, tmp_path: Path) -> None:
-        """THE ORIGINAL BUG'S SHAPE, now inert.
+        """A LEFTOVER FILE WITH NO HOLDER is inert.
 
         This is exactly what a SIGKILLed auto-pr leaves behind: the file, with
         no holder. The hooks test the lock, so it disables nothing and there is
-        nothing to warn about. Under the old flag semantics this same state
-        silently switched self-healing off.
+        nothing to warn about. Were suppression a flag, this same state would
+        silently switch self-healing off.
         """
         git_dir = _git_dir(tmp_path)
         (git_dir / RECOVER_MARKER_NAME).touch()
@@ -297,9 +294,9 @@ class TestTheWarningActuallyReachesTheOperator:
         """END TO END, through the real dispatcher.
 
         ``count-todos`` is picked deliberately: it is what the stop hook calls,
-        it is one of the commands WI-pohir named, and before this work it
-        printed the auto-sync banner and nothing else while self-healing was off
-        underneath it.
+        and it is one of the commands a reader reaches for when ops look wrong
+        (history: WI-pohir), so it must not print the auto-sync banner and
+        nothing else while self-healing is off underneath it.
         """
         from hypergumbo_tracker.cli import main
 

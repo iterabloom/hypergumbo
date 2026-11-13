@@ -46,22 +46,19 @@ EXPECTED_VERDICTS_PATH = REPO_ROOT / "docs" / "hypergumbo.claims.expected.json"
 # `scripts/check-self-claims` diffs the live run against, so the prose here and
 # the gate cannot disagree: changing one without the other fails CI.
 #
-# WHY THIS EXISTS. This section used to assert that regressions "fail the gate"
-# while no workflow referenced verify-claims at all, and it drifted until it
-# asserted the OPPOSITE of what the tool reports about this very repository --
-# "runtime CLI subcommands do not shell out", against 1101 reported flows and a
-# canary that caught `git` executed 28 times by `sketch`. Prose describing
-# machine-checkable facts has to be GENERATED from those facts.
+# Prose describing machine-checkable facts has to be GENERATED from those
+# facts: hand-written, it drifts until it asserts the opposite of what the
+# tool reports about this very repository.
 
 _BADGE = {
     "violated": "\u26a0 **CURRENTLY VIOLATED** \u2014 ",
     "inconclusive": "**INCONCLUSIVE** (the analysis could not see enough "
                     "to confirm) \u2014 ",
     "confirmed": "\u2713 confirmed \u2014 ",
-    # INV-pojib. An unknown verdict badges as "" here, which renders a caveated
-    # claim indistinguishable from a confirmed one in the very document whose
-    # job is to not overstate what was verified. Registered when the fourth
-    # verdict value was added rather than left to be discovered.
+    # Every verdict value needs an entry: an unknown verdict badges as "" here,
+    # which renders a caveated claim indistinguishable from a confirmed one in
+    # the very document whose job is to not overstate what was verified
+    # (history: INV-pojib).
     "confirmed_with_caveats": "\u2713 confirmed WITH CAVEATS (rests on an "
                               "entry this repository supplied about itself) "
                               "\u2014 ",
@@ -175,14 +172,14 @@ def _render_measured_status(verdicts: dict[str, str]) -> list[str]:
 
 
 def _render_scope_section() -> list[str]:
-    """WI-kozos: say which execution context the claims cover.
+    """Say which execution context the claims cover (history: WI-kozos).
 
     Every claim declares a python ``cmd_*`` handler as its source, so the
     whole artifact describes ONE thing: what the installed CLI does when a
-    user runs it. It said so nowhere, which left "hypergumbo's safety claims
-    are checked by running hypergumbo against its own source" readable as a
-    claim about the REPOSITORY. It is not one, and the narrower statement is
-    both true and load-bearing for everything else in this file.
+    user runs it. Unless that is stated, "hypergumbo's safety claims are
+    checked by running hypergumbo against its own source" reads as a claim
+    about the REPOSITORY. It is not one, and the narrower statement is both
+    true and load-bearing for everything else in this file.
 
     Placed BEFORE the measured verdicts on purpose: a reader needs to know
     what was examined before being told whether it passed.
@@ -537,9 +534,9 @@ def _render_claims_section(
         "safety regressions."
     )
     lines.append("")
-    # Data-driven on purpose: an earlier hardcoded version of this
-    # paragraph said "both are ``inconclusive``" and kept saying it after
-    # the verdicts moved \u2014 the exact drift THIS file's history warns about.
+    # Data-driven on purpose: a hardcoded verdict for these two claims
+    # (e.g. "both are ``inconclusive``") goes stale the moment the verdicts
+    # move, the exact drift this generator exists to prevent.
     dz = verdicts.get("runtime-cli-no-dev-zone", "unmeasured")
     ia = verdicts.get("runtime-cli-no-install-artifact", "unmeasured")
     lines.append(

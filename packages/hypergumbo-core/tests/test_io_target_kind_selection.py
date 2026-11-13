@@ -10,20 +10,20 @@ states the invariant it violates -- "a catalogue row's io_boundary must be true
 of every call site the row matches".
 
 THE DIRECTION IS THE OPPOSITE OF THE GO CASE AND THAT CHANGES THE DEFAULT.
-``go.yaml`` filed ``bufio.NewScanner`` as ``ipc_recv``, which MINTS, so a wrong
-argument INVENTED a taint source and the fix removed false positives. ``c.yaml``
-and ``haskell.yaml`` file their stream-takers as ``fs_read``, which mints
-nothing, so a wrong argument LOSES a real one. Any change here therefore ADDS
-findings and must be judged as new surface, which is why every abstention below
-resolves to the DECLARED DEFAULT (the ``fs_read`` row) rather than to the
-minting one.
+A fixed ``ipc_recv`` row on go's ``bufio.NewScanner`` MINTS, so a wrong
+argument INVENTS a taint source, and selection there removes false positives.
+``c.yaml`` and ``haskell.yaml`` declare their stream-takers ``fs_read`` first,
+which mints nothing, so a wrong argument LOSES a real one. Selection here
+therefore ADDS findings and must be judged as new surface, which is why every
+abstention below resolves to the DECLARED DEFAULT (the ``fs_read`` row) rather
+than to the minting one.
 
 ALL SITES MUST AGREE, and that is the mirror of the source-mint gate rather
 than a copy of it. ``_source_call_can_mint_taint`` refuses on ANY non-minting
 site because it REMOVES a finding and silencing a real receive on a different
 site's evidence is the false-negative trade. Selection here ADDS one, so the
 conservative quantifier flips: a collapsed edge whose sites disagree keeps
-today's behaviour.
+the declared default.
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _stream_catalog() -> IoBoundaryCatalog:
     """``fgets`` under fs_read AND ipc_recv, read first.
 
     Declaration ORDER is deliberate and mirrors ``c.yaml``: ``fs_read`` first,
-    so an unstamped call keeps the boundary the catalogue has always given it.
+    so an unstamped call keeps the catalogue's declared default.
     """
     return IoBoundaryCatalog(
         language="c",
@@ -98,11 +98,10 @@ class TestResolveTargetKindAcrossSites:
 class TestNarrowByTargetKind:
     """Dropping the losing rows, given the candidates.
 
-    NARROWING, NOT SELECTING. A ``_narrow_by_target_kind`` twin was written and
-    deleted: it could have no production caller without breaking composition
-    with the mode seam, which is WI-famig's defect and was caught by its own
-    uncovered line. What survives here is the list, and whatever selects from
-    it afterwards falls back to the FIRST row -- which is why declaration order
+    NARROWING, NOT SELECTING. This seam returns the surviving rows rather than
+    picking one: a selector of its own could have no production caller without
+    breaking composition with the mode seam (WI-famig). Whatever selects from the
+    list afterwards falls back to the FIRST row -- which is why declaration order
     is pinned against the shipped catalogues below.
     """
 
@@ -131,7 +130,7 @@ class TestNarrowByTargetKind:
         assert [c.boundary for c in kept] == ["fs_read"]
 
     def test_no_kinds_keeps_every_row_in_declared_order(self) -> None:
-        """THE ORDERING GATE. An unstamped call must classify as it always did."""
+        """THE ORDERING GATE. An unstamped call must keep the declared default."""
         cands = [
             IoPrimitive("fs_read", "stdio", "fgets", "function"),
             IoPrimitive("ipc_recv", "stdio", "fgets", "function"),
@@ -160,7 +159,7 @@ class TestNarrowByTargetKind:
         """``fs_write`` is not a read boundary, so this seam must not touch it.
 
         Without this, a ``host_path`` stamp on ``open`` would drop the
-        ``fs_write`` row and undo INV-rusof's fix.
+        ``fs_write`` row and lose the write (INV-rusof).
         """
         cands = [
             IoPrimitive("fs_read", "builtins", "open", "function"),
@@ -285,9 +284,9 @@ class TestTheWriteDirection:
     """WI-suhug: the same seam, pointed at the WRITER.
 
     ``fmt.Fprintf(w, ...)`` and ``io.WriteString(w, s)`` cross whatever ``w``
-    is, exactly as ``bufio.NewScanner(r)`` reads whatever ``r`` is, and go.yaml
-    gave each a fixed boundary (measurement 0012's vacuous class: a write to a
-    child's ``StdinPipe`` reported as a host-filesystem crossing). The
+    is, exactly as ``bufio.NewScanner(r)`` reads whatever ``r`` is, so a fixed
+    boundary misreports them -- e.g. a write to a child's ``StdinPipe`` reported as
+    a host-filesystem crossing (measurement 0012). The
     direction is the ASKER's, so a second map answers writes; the two maps
     share one key vocabulary so a kind one direction knows and the other does
     not is a drift, not a feature.
@@ -463,7 +462,7 @@ class TestShippedWriteRows:
     def test_the_fallback_is_todays_answer(
         self, module: str, name: str, fallback: str,
     ) -> None:
-        """INV-fatok: an unstamped call classifies exactly as before the rows."""
+        """INV-fatok: an unstamped call abstains to the writer's single fallback."""
         rows = [
             p for p in load_catalog("go").primitives
             if p.module == module and p.name == name
@@ -487,7 +486,7 @@ class TestShippedWriteRows:
     def test_the_readers_gained_the_network_row_the_vocabulary_now_reaches(
         self, module: str, name: str,
     ) -> None:
-        """INV-bagok's own note withheld this row until ``net_stream`` existed."""
+        """The ``net_recv`` row is reachable because ``net_stream`` selects it (INV-bagok)."""
         rows = [
             p for p in load_catalog("go").primitives
             if p.module == module and p.name == name

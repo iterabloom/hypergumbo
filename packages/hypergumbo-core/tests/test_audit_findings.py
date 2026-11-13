@@ -715,8 +715,8 @@ def test_validate_deprecate_no_fold_resolved_present_fails():
 
 
 def test_validate_prelim_resolved_endpoint_shape_passes(monkeypatch):
-    # The Edge.edge_type endpoint_shape axis is now EMPTY (the ADR-0023 fold-tail
-    # drained it — WI-pumav / audit-findings 0017), so no live value can exercise
+    # The Edge.edge_type endpoint_shape axis is EMPTY (ADR-0023 §6; history:
+    # WI-pumav / audit-findings 0017), so no live value can exercise
     # the PRELIM_RESOLVED "present on endpoint_shape" branch. Inject a synthetic
     # endpoint_shape spec into the registry binding to cover it.
     from hypergumbo_core import audit_findings as af
@@ -958,9 +958,8 @@ def test_zero_producer_violations_flags_literal_kwarg_emit(tmp_path: Path):
 def test_zero_producer_violations_flags_assignment_form_emit(tmp_path: Path):
     """A DEPRECATE-NO-FOLD row whose value a producer emits via
     function-local assignment-form-to-Name returns a violation. This is
-    Step 4.5 producer-shape #3 (assignment-form to Name) — exactly the
-    shape that the Wave 6 PR 4 reclassification surfaced as a literal-grep
-    blind spot."""
+    Step 4.5 producer-shape #3 (assignment-form to Name) — a shape a
+    literal grep misses."""
     md = _write_audit_with_deprecate_row(tmp_path, "leaked_kind_beta")
     findings = parse_audit_findings(md)
 
@@ -1051,8 +1050,8 @@ verdicts:
 
 def test_zero_producer_violations_handles_empty_findings(tmp_path: Path):
     """No findings → no violations, no producer scan triggered. Guards
-    against the regression where the empty-input path crashes on the
-    later axis-emitter dispatch."""
+    against the empty-input path crashing on the later axis-emitter
+    dispatch."""
     errors = find_zero_producer_violations(tmp_path, [])
     assert errors == []
 
@@ -1103,16 +1102,8 @@ def test_live_tree_deprecate_no_fold_has_zero_producers():
     asserts no producer call site emits the value via literal kwarg or
     assignment-form-to-Name.
 
-    This is the regression guard called for in
-    ``~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md``
-    §"High-value (file as tracker items) #3" — closes the gap demonstrated
-    by Wave 6 PR 4 (theorem/inductive/message reclassification) where
-    DEPRECATE-NO-FOLD verdicts shipped while real producers existed.
-    Promoted from the smoke check that landed alongside this regression
-    guard's machinery in PR #189 (WI-viluk) once the verdict-correctness
-    re-audit on 2026-05-07 absorbed the two leaks the new assertion
-    surfaced (`reference` at swift_objc.py:167 from Wave 5;
-    `import` at wasm_bindgen.py:266 from Wave 6 PR 3).
+    This guards against a DEPRECATE-NO-FOLD verdict standing while a
+    real producer still emits the value (history: WI-viluk).
 
     Coverage gap, by design: helper-call indirection (e.g.
     ``add_symbol(node, name, "<value>")``), f-string interpolation, and
@@ -1317,12 +1308,8 @@ def test_live_tree_readme_index_in_sync_with_audit_docs():
     """Walks the live ``docs/audits/`` tree and asserts the README index
     Status column agrees with each doc's verdict YAML row counts.
 
-    Closes the README-index-drift gap called for in
-    ``~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md``
-    §"High-value (file as tracker items) #4". Wave 6 PR 5 demonstrated
-    the recurrence pattern (four index rows fell behind their per-doc
-    Status fields after Wave 5 + Wave 6 advances landed); this test
-    blocks the next recurrence at every-commit time.
+    Index rows fall behind their per-doc Status fields when audit docs
+    advance; this test catches that drift at every commit.
 
     Skips when ``docs/audits/`` is absent (isolated package run).
     """

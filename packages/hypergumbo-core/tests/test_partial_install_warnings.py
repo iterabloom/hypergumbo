@@ -466,7 +466,7 @@ class TestCheckPartialLinkerRequirements:
         Returns ``(mock_diag, fake_spec)`` shaped like the real CGO linker:
         ``language_pairs=[("go", "c"), ("go", "cpp")]`` activation, one met
         ``c_cpp_functions`` requirement and one unmet ``go_cgo_calls``
-        requirement (the candle-shaped partial diagnostic).
+        requirement (the partial diagnostic a repo with C but no Go yields).
         """
         from unittest.mock import MagicMock
 
@@ -502,7 +502,7 @@ class TestCheckPartialLinkerRequirements:
 
         The CGO linker activates on
         ``language_pairs=[("go", "c"), ("go", "cpp")]``. A repo with
-        C/C++ symbols but no Go (e.g. candle: Rust + Python + C/CUDA
+        C/C++ symbols but no Go (e.g. Rust + Python with C/CUDA
         bindings) produces a CGO diagnostic with met=c_cpp_functions
         and unmet=go_cgo_calls. Without the gate, this fires
         ``CGO linker found N C/C++ implementations but 0 Go cgo
@@ -573,13 +573,13 @@ class TestCheckPartialLinkerRequirements:
         )
 
     def test_activation_gate_no_op_when_detection_info_empty(self) -> None:
-        """Backward-compat: existing tests pass empty detection info.
+        """With empty detection info the activation gate does not apply.
 
         The WI-zamoz gate is a noise-reducer for real CLI runs (where
         the profile always populates ``detected_languages`` /
-        ``detected_frameworks``). Test fixtures that skip detection —
-        e.g. crafted-diagnostic mocks with the default empty sets —
-        must keep their existing behavior.
+        ``detected_frameworks``). A caller that skips detection — e.g.
+        a crafted-diagnostic mock with the default empty sets — gets the
+        ungated warning.
         """
         from unittest.mock import MagicMock, patch
 
@@ -801,7 +801,7 @@ class TestCheckPartialInstallWarnings:
                 )
 
         # No Python warning: its "cli.py:NNN: UserWarning:" prefix and
-        # echoed source line were the noise.
+        # echoed source line are noise.
         assert len(w) == 0
         err = capsys.readouterr().err
         assert err.startswith("Detected 5 zig file(s)")
@@ -999,14 +999,13 @@ class TestRustAnalyzerDisclosure:
     """The Rust backend is opt-in, and the reason must be stated.
 
     `rust-analyzer scip <workspace>` EXECUTES that workspace's build.rs and
-    expands its proc macros, as the invoking user. Verified with a canary
-    crate on three fresh, never-built projects: the bare invocation fires it,
-    and so does `--config-path` with `cargo.buildScripts.enable=false` under
-    both key spellings — the config is accepted, reports no errors, and the
-    build script runs anyway. An earlier "safe mode works" reading was Cargo
-    CACHING the first run's build-script output; on a clean crate it does not
-    hold. So there is no known way to index a Cargo project without running
-    its code.
+    expands its proc macros, as the invoking user — and so does
+    `--config-path` with `cargo.buildScripts.enable=false` under both key
+    spellings: the config is accepted, reports no errors, and the build
+    script runs anyway. (On an already-built crate it can look otherwise,
+    because Cargo caches the build-script output; check on a clean crate.)
+    So there is no known way to index a Cargo project without running its
+    code.
 
     That makes the opt-in gate load-bearing for SAFETY, not only for the
     ~10x indexing cost its docstring cites. A user is entitled to know both
@@ -1072,12 +1071,12 @@ def test_rust_disclosure_is_reachable_from_the_aggregator(
     )
     profile = RepoProfile(languages={"rust": LanguageStats(files=4, loc=120)})
 
-    # Production's own LinkerContext, not a hand-rolled stub. The first
-    # version of this test used a fake carrying only the attributes the
-    # aggregator read WHEN NO LINKERS WERE REGISTERED; under the full suite
-    # every package loads, the JNI linker registers, and it reads `symbols`,
-    # which the fake lacked. A stub whose adequacy depends on global registry
-    # state is a test-isolation trap.
+    # Production's own LinkerContext, not a hand-rolled stub. Which
+    # attributes the aggregator reads depends on which linkers are
+    # registered: under the full suite every package loads, the JNI linker
+    # registers, and it reads `symbols`. A stub carrying only what the
+    # aggregator reads with no linkers registered fails there — its adequacy
+    # would depend on global registry state, a test-isolation trap.
     # A REAL empty repo root, not None. The neighbouring tests pass None and
     # survive only because they patch `check_linker_requirements`; this test
     # deliberately exercises the real path, where the gRPC linker's
@@ -1096,17 +1095,15 @@ def test_rust_disclosure_is_reachable_from_the_aggregator(
 
 
 class TestRustAnalyzerDisclosureRespectsTheGate:
-    """The nudge told users to enable a backend that was already running.
+    """The nudge must not tell users to enable a backend that is running.
 
-    ``check_rust_analyzer_disclosure`` chose its message from ``available``
-    (is the binary on PATH) alone, so on any Rust repo with rust-analyzer
-    installed it printed the "installed but NOT enabled" arm — including in
-    runs where ``--backend rust-analyzer`` was active and the SCIP backend
-    demonstrably ran. Reproduced 2026-08-18: the same invocation that printed
-    it emitted 2 ``references`` edges with ``origin == ["scip"]``, which only
-    the SCIP path produces.
+    ``check_rust_analyzer_disclosure`` picks its arm from ``available`` (is
+    the binary on PATH) AND ``enabled``. Choosing from ``available`` alone
+    prints the "installed but NOT enabled" arm on every Rust repo with
+    rust-analyzer installed, including runs where ``--backend rust-analyzer``
+    is active and the SCIP backend runs.
 
-    Why this is worth a guard rather than a one-line edit: the warning carries
+    Why this is worth a guard: the warning carries
     a SECURITY disclosure (indexing executes the workspace's ``build.rs`` and
     proc macros as the invoking user). A nudge that fires when it is already
     moot trains people to skim past the one sentence that must land.
@@ -1116,7 +1113,7 @@ class TestRustAnalyzerDisclosureRespectsTheGate:
         return RepoProfile(languages={"rust": LanguageStats(files=3, loc=120)})
 
     def test_enabled_backend_does_not_get_told_to_enable_it(self):
-        """The defect, stated as the behaviour it broke."""
+        """An enabled backend is never told to enable itself."""
         warnings = check_rust_analyzer_disclosure(
             self._profile(), available=True, enabled=True,
         )
@@ -1150,7 +1147,8 @@ class TestRustAnalyzerDisclosureRespectsTheGate:
             assert all("build.rs" in w.message for w in warnings)
 
     def test_a_repo_with_no_rust_says_nothing_regardless(self):
-        """POSITIVE CONTROL on the pre-existing guard: don't widen the blast."""
+        """POSITIVE CONTROL on the no-Rust guard: ``enabled`` does not widen
+        the disclosure to repos without Rust."""
         prof = RepoProfile(languages={"python": LanguageStats(files=5, loc=200)})
         for enabled in (True, False):
             assert check_rust_analyzer_disclosure(
@@ -1158,16 +1156,14 @@ class TestRustAnalyzerDisclosureRespectsTheGate:
             ) == []
 
     def test_enabled_truthiness_has_exactly_one_home(self):
-        """Was: pinned two copies of the truthy set together. The duplication
-        it guarded against no longer exists, so the assertion changed shape.
+        """The HYPERGUMBO_RUST_ANALYZER truthy set has one definition.
 
-        This module used to parse HYPERGUMBO_RUST_ANALYZER itself, because
-        core cannot import the optional rust-analyzer package and so could
-        not share that package's copy. ADR-0045 moved the vocabulary DOWN
-        into hypergumbo_core.backend_selection, which both core and the
-        optional package import — so there is one definition rather than two
-        kept in step. Pinning copies is the weaker guarantee; assert the
-        strong one, and assert the copies are actually gone.
+        Core cannot import the optional rust-analyzer package, so the
+        vocabulary lives in core, in hypergumbo_core.backend_selection
+        (ADR-0045), which both core and the optional package import. Pinning
+        two copies together would be the weaker guarantee; this asserts the
+        shared definition and that ``partial_install_warnings`` keeps no copy
+        of its own.
         """
         from hypergumbo_core import backend_selection
         from hypergumbo_core import partial_install_warnings as piw
@@ -1239,8 +1235,8 @@ class TestFirstPartyRequirementCounts:
         assert self._cgo_warnings(self._ctx(symbols)) == []
 
     def test_first_party_c_still_warns(self) -> None:
-        # The warning is narrowed, not deleted: first-party C with no cgo
-        # calls is still a partial install.
+        # Only vendored code is excluded: first-party C with no cgo calls
+        # is still a partial install.
         symbols = [
             self._sym("go", "main", "main.go", 1),
             self._sym("c", "helper", "native/helper.c", 1),
@@ -1283,8 +1279,9 @@ class TestRequirementLanguages:
     """WI-tonuh: the relevance gate and package suggestions read the languages
     each ``LinkerRequirement`` declares, through the real registry.
 
-    They used to read a table keyed ``jni`` / ``swift_objc`` / ``dependency``
-    while diagnostics carry registered names (``jni-linker``), so neither ran.
+    Diagnostics carry registered names (``jni-linker``), so a table keyed by
+    short names (``jni`` / ``swift_objc`` / ``dependency``) would match
+    nothing and neither would run.
     """
 
     @staticmethod
@@ -1421,9 +1418,10 @@ def _analyzer_languages_by_package() -> dict[str, set[str]]:
 
 
 def test_language_packages_name_the_package_that_ships_the_analyzer() -> None:
-    """WI-tonuh: 22 of 56 entries named the wrong package (sql, lua, html,
-    css ... are in -mainstream, not -common), so the unanalyzed-files warning
-    told users to install a package that would not help."""
+    """Every LANGUAGE_PACKAGES entry names a package that analyzes the
+    language (sql, lua, html, css ... are in -mainstream, not -common); a
+    wrong entry makes the unanalyzed-files warning tell users to install a
+    package that would not help (WI-tonuh)."""
     actual = _analyzer_languages_by_package()
     wrong = {
         lang: (pkg, sorted(actual.get(lang, ())))

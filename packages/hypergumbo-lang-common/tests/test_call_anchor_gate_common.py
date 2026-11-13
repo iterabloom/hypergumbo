@@ -24,7 +24,7 @@ from hypergumbo_core.analyze.edge_source import unemitted_edge_sources
 _SRC = Path(__file__).resolve().parents[1] / "src" / "hypergumbo_lang_common"
 _LOOKUP = re.compile(r"^def _(?:get|find)_enclosing_(?:function|method|callable)\w*\(", re.M)
 #: A module that emits a ``calls`` edge anchors it somewhere, whatever its lookup
-#: is called. The name pattern alone missed 25 such modules (WI-tosum).
+#: is called. The name pattern alone misses such modules (history: WI-tosum).
 _CALLS = re.compile(r"""edge_type=["']calls["']""")
 
 #: module -> ("verified", "test_module::test_name") | ("unverified", row id)
@@ -101,8 +101,7 @@ def _assert_contained(result, calls: list[int]) -> None:
 
 
 def test_dart_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: one method name in two classes. It measured correct when first
-    checked (WI-mapor); this pins it."""
+    """Same-named shape: one method name in two classes (history: WI-mapor)."""
     from hypergumbo_lang_common.dart import analyze_dart
 
     (tmp_path / "a.dart").write_text("""\
@@ -124,7 +123,7 @@ class B {
 
 def test_elm_same_named_callables(tmp_path: Path) -> None:
     """Same-named shape: none: a name is unique per module, so this pins containment in a
-    ``let`` body. It measured correct when first checked (WI-mapor); this pins it."""
+    ``let`` body (history: WI-mapor)."""
     from hypergumbo_lang_common.elm import analyze_elm
 
     (tmp_path / "Main.elm").write_text("""\
@@ -144,8 +143,9 @@ run x =
 
 
 def test_fsharp_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: ``let run`` in two nested modules. Its calls went to the last
-    same-named declaration until the lookup keyed on position (WI-mapor)."""
+    """Same-named shape: ``let run`` in two nested modules. The lookup must key on
+    position: a name-keyed one sends the calls to the last same-named declaration
+    (history: WI-mapor)."""
     from hypergumbo_lang_common.fsharp import analyze_fsharp
 
     (tmp_path / "M.fs").write_text("""\
@@ -165,8 +165,9 @@ module Y =
 
 
 def test_glsl_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: an overload pair. Its calls went to the last same-named
-    declaration until the lookup keyed on position (WI-mapor)."""
+    """Same-named shape: an overload pair. The lookup must key on
+    position: a name-keyed one sends the calls to the last same-named declaration
+    (history: WI-mapor)."""
     from hypergumbo_lang_common.glsl import analyze_glsl_files
 
     (tmp_path / "a.frag").write_text("""\
@@ -183,8 +184,9 @@ float run(vec2 v) {
 
 
 def test_hlsl_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: an overload pair. Its calls went to the last same-named
-    declaration until the lookup keyed on position (WI-mapor)."""
+    """Same-named shape: an overload pair. The lookup must key on
+    position: a name-keyed one sends the calls to the last same-named declaration
+    (history: WI-mapor)."""
     from hypergumbo_lang_common.hlsl import analyze_hlsl
 
     (tmp_path / "a.hlsl").write_text("""\
@@ -201,8 +203,9 @@ float run(float2 v) {
 
 
 def test_julia_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: two methods of one function (multiple dispatch). Its calls went to
-    the last same-named declaration until the lookup keyed on position (WI-mapor)."""
+    """Same-named shape: two methods of one function (multiple dispatch). The lookup must key on
+    position: a name-keyed one sends the calls to the last same-named declaration
+    (history: WI-mapor)."""
     from hypergumbo_lang_common.julia import analyze_julia
 
     (tmp_path / "a.jl").write_text("""\
@@ -220,7 +223,7 @@ end
 
 def test_matlab_same_named_callables(tmp_path: Path) -> None:
     """Same-named shape: none: subfunction names are unique per file, so this pins
-    containment. It measured correct when first checked (WI-mapor); this pins it."""
+    containment (history: WI-mapor)."""
     from hypergumbo_lang_common.matlab import analyze_matlab
 
     (tmp_path / "main.m").write_text("""\
@@ -241,8 +244,9 @@ end
 
 
 def test_nix_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: ``run = x: ...`` in two attribute sets. Its calls went to the last
-    same-named declaration until the lookup keyed on position (WI-mapor)."""
+    """Same-named shape: ``run = x: ...`` in two attribute sets. The lookup must key on
+    position: a name-keyed one sends the calls to the last same-named declaration
+    (history: WI-mapor)."""
     from hypergumbo_lang_common.nix import analyze_nix_files
 
     (tmp_path / "a.nix").write_text("""\
@@ -263,8 +267,9 @@ in a
 
 
 def test_r_lang_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: a local helper of one name in two functions. Its calls went to the
-    last same-named declaration until the lookup keyed on position (WI-mapor)."""
+    """Same-named shape: a local helper of one name in two functions. The lookup must key on
+    position: a name-keyed one sends the calls to the last same-named declaration
+    (history: WI-mapor)."""
     from hypergumbo_lang_common.r_lang import analyze_r_files
 
     (tmp_path / "a.r").write_text("""\
@@ -287,8 +292,7 @@ outer2 <- function() {
 
 
 def test_scheme_same_named_callables(tmp_path: Path) -> None:
-    """Same-named shape: a top-level ``define`` repeated. It measured correct when first
-    checked (WI-mapor); this pins it."""
+    """Same-named shape: a top-level ``define`` repeated (history: WI-mapor)."""
     from hypergumbo_lang_common.scheme import analyze_scheme
 
     (tmp_path / "a.scm").write_text("""\
@@ -304,7 +308,7 @@ def test_scheme_same_named_callables(tmp_path: Path) -> None:
 
 def test_starlark_same_named_callables(tmp_path: Path) -> None:
     """Same-named shape: none: a top-level name cannot be rebound, so this pins
-    containment. It measured correct when first checked (WI-mapor); this pins it."""
+    containment (history: WI-mapor)."""
     from hypergumbo_lang_common.starlark import analyze_starlark
 
     (tmp_path / "a.bzl").write_text("""\
@@ -323,7 +327,7 @@ def run():
 
 def test_wgsl_same_named_callables(tmp_path: Path) -> None:
     """Same-named shape: none: a function name is unique per module, so this pins
-    containment. It measured correct when first checked (WI-mapor); this pins it."""
+    containment (history: WI-mapor)."""
     from hypergumbo_lang_common.wgsl import analyze_wgsl_files
 
     (tmp_path / "a.wgsl").write_text("""\
@@ -340,9 +344,9 @@ fn run() -> f32 {
 def test_nix_a_call_in_the_file_function_is_credited_to_it(tmp_path: Path) -> None:
     """A nix file is often itself a function (``{ pkgs }: let ... in ...``); its
     symbol is named after the file. A call inside it but outside any
-    function-valued binding had no src, except when a binding inside shared
-    the file's name, so the name lookup landed on the file function by
-    accident (postgrest's style.nix)."""
+    function-valued binding must be credited to that file function; a name
+    lookup reaches it only by accident, when a binding inside shares the
+    file's name."""
     from hypergumbo_lang_common.nix import analyze_nix_files
 
     (tmp_path / "tool.nix").write_text("""\

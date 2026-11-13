@@ -1,21 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A name assigned in a script joined by ``source`` is not an environment read.
 
-INV-pujob / WI-zovuz's third deliverable. bash.py's env-read discriminator is
-"a name expanded but never assigned in THIS FILE came from the environment" --
-the conservative rule available without cross-file analysis. It is wrong the
-moment one script ``source``s another, because bash is DYNAMICALLY SCOPED: the
-sourced script sees the sourcer's assignments and the sourcer sees the sourced
-script's. guacamole's ``DESTINATION`` is assigned once in the whole tree, at
-``build-guacamole.sh:58`` as ``$2``, and every ``build.d`` script that reads it
-was reported as reading a host secret.
+bash.py's per-file env-read discriminator is "a name expanded but never
+assigned in THIS FILE came from the environment" -- the conservative rule
+available without cross-file analysis. On its own it is wrong the moment one
+script ``source``s another, because bash is DYNAMICALLY SCOPED: the sourced
+script sees the sourcer's assignments and the sourcer sees the sourced
+script's. A ``DESTINATION`` assigned once, in a build script that sources a
+``build.d`` directory, would be reported as a host-secret read in every
+``build.d`` script that reads it (history: INV-pujob, WI-zovuz).
 
-WHY RESOLUTION IS THE HARD HALF, measured over the cohort's 97 ``source``/``.``
-statements: only 12 have a target the emitted edge can follow. 80 (82.5%) are a
-variable or a command substitution. But they are dynamic in the PREFIX and
-literal in the TAIL -- ``source $TOOL_LIB_PATH/gitlib.sh`` -- so matching the
-literal trailing component against repository bash files lifts 12 to 81 of 97
-with ZERO ambiguity on that cohort.
+WHY RESOLUTION IS THE HARD HALF: few ``source``/``.`` targets are literal
+enough for the emitted ``sources`` edge to follow; most are a variable or a
+command substitution. But they are typically dynamic in the PREFIX and literal
+in the TAIL -- ``source $TOOL_LIB_PATH/gitlib.sh`` -- so matching the literal
+trailing component against repository bash files resolves most of them.
 
 FAIL CLOSED IS THE WHOLE DISCIPLINE HERE. This removes taint SOURCES, which is
 the false-all-clear direction: an unresolved target, or one whose tail matches
@@ -50,7 +49,7 @@ class TestTheSourcingGraphCarriesAssignments:
     """An assignment reaches every file joined to it by ``source``."""
 
     def test_sourced_file_sees_the_sourcers_assignment(self, tmp_path):
-        # guacamole's shape exactly: the sourcER assigns, the sourcED file
+        # The build-script shape: the sourcER assigns, the sourcED file
         # reads. Dynamic scoping makes this a binding, not an environment read.
         (tmp_path / "main.sh").write_text(
             'DESTINATION="$2"\n'
@@ -62,8 +61,7 @@ class TestTheSourcingGraphCarriesAssignments:
         assert "DESTINATION" not in _env_names(tmp_path)
 
     def test_sourcer_sees_the_sourced_files_assignment(self, tmp_path):
-        # The other direction, which is the ordinary "library of settings"
-        # idiom and the one cilium's contrib/backporting uses.
+        # The other direction: the ordinary "library of settings" idiom.
         (tmp_path / "lib.sh").write_text('GHCURL="curl -s"\n')
         (tmp_path / "main.sh").write_text(
             'source ./lib.sh\n'
@@ -82,8 +80,8 @@ class TestTheSourcingGraphCarriesAssignments:
         assert "REAL_ENV_VAR" in _env_names(tmp_path)
 
     def test_an_unconnected_file_does_not_donate_assignments(self, tmp_path):
-        # rabbitmq's refutation, pinned: a vendored `mvnw` reading $HOME must
-        # not be silenced by an unrelated script that happens to assign HOME.
+        # Pinned: a vendored `mvnw` reading $HOME must not be silenced by an
+        # unrelated script that happens to assign HOME.
         (tmp_path / "unrelated.sh").write_text('HOME=/somewhere\n')
         (tmp_path / "mvnw").write_text(
             '#!/bin/sh\n'
@@ -96,7 +94,7 @@ class TestResolvingADynamicTarget:
     """Dynamic in the prefix, literal in the tail."""
 
     def test_variable_prefix_with_literal_tail_resolves(self, tmp_path):
-        # cilium: `source $TOOL_LIB_PATH/gitlib.sh`.
+        # `source $TOOL_LIB_PATH/gitlib.sh`.
         (tmp_path / "gitlib.sh").write_text('GHCURL="curl -s"\n')
         (tmp_path / "main.sh").write_text(
             'source $TOOL_LIB_PATH/gitlib.sh\n'
@@ -105,7 +103,7 @@ class TestResolvingADynamicTarget:
         assert "GHCURL" not in _env_names(tmp_path)
 
     def test_command_substitution_prefix_with_literal_tail_resolves(self, tmp_path):
-        # cilium: `source $(dirname $(readlink -ne $BASH_SOURCE))/k8s-common.sh`.
+        # `source $(dirname $(readlink -ne $BASH_SOURCE))/k8s-common.sh`.
         (tmp_path / "k8s-common.sh").write_text('TOOL_LIB_PATH=/x\n')
         (tmp_path / "main.sh").write_text(
             'source $(dirname $(readlink -ne $BASH_SOURCE))/k8s-common.sh\n'
@@ -115,8 +113,8 @@ class TestResolvingADynamicTarget:
 
     def test_an_ambiguous_tail_declines(self, tmp_path):
         # Two `common.sh` in different directories: the rule must FAIL CLOSED
-        # rather than pick one. This is the case the cohort happens not to
-        # contain, which is exactly why it is pinned here.
+        # rather than pick one. Real trees rarely exercise this case, which
+        # is exactly why it is pinned here.
         (tmp_path / "a").mkdir()
         (tmp_path / "b").mkdir()
         (tmp_path / "a" / "common.sh").write_text('SHARED=1\n')
@@ -136,7 +134,7 @@ class TestResolvingADynamicTarget:
 
 
 class TestTheGlobLoopShape:
-    """``for X in DIR/*.sh; do source "$X"; done`` -- INV-pujob's own instance."""
+    """``for X in DIR/*.sh; do source "$X"; done`` (INV-pujob)."""
 
     def test_loop_glob_over_a_repo_directory_resolves(self, tmp_path):
         (tmp_path / "build.d").mkdir()
@@ -152,8 +150,8 @@ class TestTheGlobLoopShape:
         assert "DESTINATION" not in _env_names(tmp_path)
 
     def test_container_path_resolves_by_directory_suffix(self, tmp_path):
-        # guacamole VERBATIM: the glob names /opt/guacamole/build.d/, a path
-        # that does not exist in the repository at all. The repo's own
+        # The glob names /opt/guacamole/build.d/, a container path that does
+        # not exist in the repository at all. The repo's own
         # `build.d` is the unique directory whose trailing component matches.
         (tmp_path / "guacamole-docker").mkdir()
         (tmp_path / "guacamole-docker" / "build.d").mkdir()
@@ -183,7 +181,7 @@ class TestTheGlobLoopShape:
         assert "V" in _env_names(tmp_path)
 
     def test_a_bare_variable_with_no_binding_loop_declines(self, tmp_path):
-        # rabbitmq's `source $ENV_FILE` -- nothing binds it to repo files.
+        # `source $ENV_FILE` -- nothing binds it to repo files.
         (tmp_path / "lib.sh").write_text('SETTING=1\n')
         (tmp_path / "main.sh").write_text(
             'source $ENV_FILE\n'
@@ -318,14 +316,13 @@ class TestResolutionEdgesThatMustDecline:
 
 class TestExtensionlessDiscoveryUnderAFileIndex:
     """``find_bash_files`` has two ways to reach an extensionless script, and
-    the repo index this feature adds walks the tree through it.
+    the repo index (``_RepoBashIndex``) walks the tree through it.
 
-    An extensionless shebang script is not a corner case for INV-pujob: the
-    cohort's sourcing chains run through several (rabbitmq's
-    ``selenium/bin/suite_template`` and ``selenium/bin/components/rabbitmq``,
-    cilium's ``contrib/backporting/check-stable``), so if the FileIndex path
-    missed them the sourcing graph would silently lose those edges and every
-    name they carry would stay a false environment read.
+    An extensionless shebang script is not a corner case for cross-source
+    names: real sourcing chains run through them (e.g. a
+    ``contrib/backporting/check-stable``), so if the FileIndex path missed
+    them the sourcing graph would silently lose those edges and every name
+    they carry would stay a false environment read.
     """
 
     def test_the_file_index_fast_path_finds_a_shebang_script(self, tmp_path):

@@ -12,15 +12,12 @@ indexes.
 
 Why This Module Exists
 ----------------------
-The logic lived in ``cli.py`` as ``_build_python_ddg_for_verify_claims``,
-which is two problems in one name. ``cli.py`` scopes itself to "argument
-parsing and dispatching to command handlers", and a repo-walking analysis
-pipeline is not that — it had grown to ~200 lines inside a 10,000-line
-module. More importantly the name encoded a hardcoded *language* and a
-single *consumer*, and both were load-bearing: the sole call site passed
-the literal string ``"python"`` to ``populate_def_use_for_cfg``, so the
-Rust and TypeScript def/use extractors — registered, tested, and covered —
-were never invoked by any production path at all.
+``cli.py`` scopes itself to "argument parsing and dispatching to command
+handlers", and a repo-walking analysis pipeline is not that. Keeping the
+pipeline here, keyed by language rather than by consumer, also keeps it
+from hardcoding one language: a call site that passes a literal
+``"python"`` to ``populate_def_use_for_cfg`` leaves every other language's
+def/use extractor registered and tested but never invoked in production.
 
 How It Works
 ------------
@@ -69,10 +66,9 @@ types in ``bound_callable_node_types``, and such a node is walked ONLY under
 the id the analyzer emitted at exactly its span -- ``analyzer_symbols``,
 passed in by the caller that already holds the survey. Re-deriving the names
 here would be a second copy of the analyzer's naming that drifts; a node the
-analyzer did not name is not walked. Before this, dash.js had 3,981 of 7,592
-callable symbols the DDG never walked, and a flow inside one read
-``structural`` -- a FALSE ``violated`` where the same body as a declaration
-was refuted by the walk.
+analyzer did not name is not walked. A callable the DDG does not walk leaves
+a flow inside it at ``structural``, which reads as a FALSE ``violated`` where
+the same body written as a declaration is refuted by the walk.
 
 Bindings That Hold Callables (WI-rovun)
 ---------------------------------------
@@ -106,8 +102,8 @@ is anchored by the analyzer on the FILE pseudo-symbol
 ``module_node_types`` has that root walked as one more function under the file
 id when the module has at least one call outside every nested function (a
 definitions-and-imports-only module is skipped), so a flow written at module
-scope is adjudicated like the same lines in a function, where before it was
-decided by call-graph reachability alone.
+scope is adjudicated like the same lines in a function rather than by
+call-graph reachability alone.
 
 The module's top-level ``def`` / ``function`` / ``class`` are its nested
 functions: may-run regions, never statements in sequence (the cfg mappings'
@@ -140,8 +136,8 @@ closure's ``return`` sits in its enclosing function's CFG, and a statement
 carries only its start line. :func:`return_statement_spans` therefore reads the
 AST, stopping at every node that opens a callable scope of its own, and
 records ``(start line, end line)``. It runs for EVERY walked function, with or
-without DDG edges: ``def get(): return os.getenv("K")`` defines nothing, has
-no edges, and is the filed instance. Two bodies with no return statement still
+without DDG edges: ``def get(): return os.getenv("K")`` defines nothing and
+has no edges, yet returns the source's value. Two bodies with no return statement still
 return a value and are recorded as one (WI-sodoj): an expression body (a JS /
 TS arrow ``() => process.env.K``) spans as a single return. A Python
 ``lambda`` body would too, but the Python spec does not walk lambdas, so none
@@ -236,8 +232,9 @@ class LanguageDdgSpec:
             default) for the extensions ``taxonomy.LANGUAGES`` declares for
             ``language`` -- the list discovery classifies files by and the
             language's analyzer reads. A spec that sets it is NARROWING its
-            language, and must be able to say why (WI-fovus): a private glob
-            is how the JS/TS specs came to walk ``*.js`` / ``*.ts`` only.
+            language, and must be able to say why: a private glob silently
+            skips extensions the analyzer reads, as a JS/TS glob of ``*.js`` /
+            ``*.ts`` alone skips ``.jsx`` / ``.tsx`` (history: WI-fovus).
     """
 
     language: str
@@ -253,8 +250,7 @@ class LanguageDdgSpec:
     #: ``(node, source) -> [name, ...]``: the parameter names of a function
     #: node, in declaration order, for the solver's entry definitions and
     #: ``RepoDdg.params`` (WI-sosov). ``None`` (and a node that is not a
-    #: function: a module root, a Go ``var_spec``) means no parameters, which
-    #: is exactly what every language had before the hook existed.
+    #: function: a module root, a Go ``var_spec``) means no parameters.
     params_for: Optional[Callable[[Any, bytes], list[str]]] = None
 
     def globs(self) -> tuple[str, ...]:
@@ -329,34 +325,37 @@ class RepoDdg:
     #: §3a walk has to know. ``keep = str(server); path = name`` defines both
     #: ``keep`` and ``path`` at the same line, and only the first derives from
     #: the tainted ``server``; the edge set alone is equally consistent with
-    #: either. Statement-level ``defines``/``uses`` resolves it, and the CFG
-    #: already carries them — ``populate_def_use_for_cfg`` fills them in one
-    #: line above where this is collected, and they were simply discarded.
+    #: either. Statement-level ``defines``/``uses`` resolves it: the CFG
+    #: carries them once ``populate_def_use_for_cfg`` has run, and this index
+    #: keeps them.
     stmt_defuse: dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]] = field(
         default_factory=dict,
     )
     #: ``symbol_id -> [(line, targets), ...]`` for each statement whose
     #: def/use extractor reported its left-hand side BY POSITION
     #: (``CfgStatement.targets``; ``None`` marks a slot that binds nothing).
-    #: WI-sitaf. Kept apart from ``stmt_defuse`` on purpose: every consumer
+    #: Kept apart from ``stmt_defuse`` on purpose (WI-sitaf): every consumer
     #: of a statement's ``defines`` reads its entries as variables, and Go's
-    #: blank ``_`` is none -- folded in, it became an heir with no recorded
-    #: use and a seed with no definition, two false ``escaped`` walks (concept
-    #: audit 2026-10-21, F1). Only the return lift's received-position seeds
-    #: read this. Collected on the same terms as ``stmt_defuse``.
+    #: blank ``_`` is none -- folded in, it would become an heir with no
+    #: recorded use and a seed with no definition, two false ``escaped``
+    #: walks. Only the return lift's received-position seeds read this.
+    #: Collected on the same terms as ``stmt_defuse``.
     stmt_targets: dict[str, list[tuple[int, tuple[Optional[str], ...]]]] = field(
         default_factory=dict,
     )
     #: Symbol ids whose §3a walk may NOT return ``False`` (WI-joluk).
     #:
     #: A function lands here when the CFG's recorded statement extents do not
-    #: cover every call node in its AST body — the def/use extractor
+    #: cover every call node and semantic leaf in its AST body
+    #: (:func:`cfg.uncovered_semantic_lines`) — the def/use extractor
     #: demonstrably did not see part of it — or when the language declares no
-    #: ``call_node_types`` and coverage is unknowable. Both are the same fact
-    #: for this purpose: the walk's picture is incomplete, so an exhausted walk
-    #: over it is not evidence the flow is absent.
+    #: ``call_node_types`` and coverage is unknowable. A binding whose walk
+    #: cannot see all of it lands here too (see "Bindings That Hold
+    #: Callables"). All are the same fact for this purpose: the walk's picture
+    #: is incomplete, so an exhausted walk over it is not evidence the flow is
+    #: absent.
     #:
-    #: Populated for every function with DDG edges, INCLUDING the unknowable
+    #: Checked for every function with DDG edges, INCLUDING the unknowable
     #: case, because the permitting case is the one being enumerated: a
     #: language nobody configured must forfeit rather than silently qualify.
     forfeit_refutation: set[str] = field(default_factory=set)
@@ -432,36 +431,26 @@ def _walk_functions(
 ) -> None:
     """Walk an AST collecting per-function DDG edges and refinement hints.
 
-    ITERATIVE, NOT RECURSIVE, AND THAT IS THE WHOLE POINT (INV-gotir). This was
-    a per-child recursion, so the Python stack depth WAS the tree-sitter AST
-    depth — one frame per level — and CPython's default limit is 1000. Machine
-    generated code exceeds that without being pathological: keda's
-    ``vendor/go.temporal.io/api/workflowservice/v1/request_response.pb.go``
-    (725,832 bytes of generated protobuf) measures an **AST depth of 1171**,
-    because one ``const`` is a string built as ``"..." + "..." + "..."`` 1,165
-    times and ``+`` is left-associative. ``verify-claims`` aborted with
-    ``RecursionError`` and exited 1 with an empty stdout — and exit 1 is also
-    what VIOLATED returns, so a CI gate could not tell a crash from a finding.
+    ITERATIVE, NOT RECURSIVE, AND THAT IS THE WHOLE POINT (INV-gotir). A
+    per-child recursion makes the Python stack depth the tree-sitter AST
+    depth — one frame per level — and CPython's default limit is 1000.
+    Machine-generated code exceeds that without being pathological: a
+    generated protobuf ``const`` built as a long ``"..." + "..." + ...`` chain
+    nests one level per ``+``, because ``+`` is left-associative. A
+    ``RecursionError`` here aborts ``verify-claims`` with exit 1 and an empty
+    stdout — and exit 1 is also what VIOLATED returns, so a CI gate cannot
+    tell a crash from a finding.
 
-    THE TRANSFORMATION IS EXACTLY EQUIVALENT, and it is worth saying why rather
-    than asserting it: there is no work after the child loop. The recursion
-    carried no state a worklist cannot hold, no accumulator unwound on the way
-    back up, and no post-order step. Children are pushed REVERSED so ``pop()``
+    The iterative walk is exactly equivalent to a recursive one because there
+    is no work after the child loop: no accumulator unwound on the way back
+    up and no post-order step. Children are pushed REVERSED so ``pop()``
     yields them left to right, preserving pre-order visit order — which matters
     because ``out`` accumulates in visit order and a consumer diffing two runs
     would otherwise see a spurious reordering.
 
-    ``sys.setrecursionlimit`` was rejected: it trades a catchable
+    ``sys.setrecursionlimit`` is not a fix: it trades a catchable
     ``RecursionError`` for a C-stack segfault, which is strictly worse for a
     failure mode already indistinguishable from a verdict.
-
-    SCOPE. An AST sweep finds 72 self-recursive child-loop walks in this tree,
-    so the shape is a class rather than one bug. A corpus depth census sizes
-    the realized exposure narrowly — keda has 7 files at depth >= 900, all
-    generated Go under ``vendor/``, while dash.js, caddy and mitmproxy top out
-    at 74/37/79 — and ``survey`` over the same input does not crash. So the
-    class is filed (INV-gotir) rather than rewritten wholesale, and this is the
-    one walk with a measured failure.
     """
     stack = [node]
     while stack:
@@ -702,8 +691,8 @@ def _block_tail_return(block: Any, mapping: Any, source: bytes) -> list[ReturnSt
 
     WI-sodoj. Rust returns a block's last expression when it carries no ``;``:
     ``fn get() -> String { env::var("TOOL").unwrap() }`` is its idiomatic
-    return, so most Rust helpers had no return statement for the INV-komoj
-    lift to see. A language opts in with ``block_tail_returns: true`` in its
+    return, so without this most Rust helpers have no return statement for
+    the INV-komoj lift to see. A language opts in with ``block_tail_returns: true`` in its
     cfg mapping. The tail is the last named child that is not a statement
     (``*_statement``, ``*_declaration``, ``*_item``) -- in tree-sitter-rust a
     ``;`` makes an ``expression_statement``. Comments are skipped.
@@ -735,8 +724,9 @@ def _solve_one_function(
     refine_ctx: dict[str, Any],
 ) -> None:
     """Build one function's CFG, solve reaching defs, record the result."""
-    # INV-komoj: before the solve, and whatever it yields -- the filed helper
-    # has no definitions, so no edges, and is still what returns the value.
+    # Before the solve, and whatever it yields: a helper like ``return
+    # os.getenv("K")`` has no definitions, so no edges, and still returns the
+    # value (INV-komoj).
     spans = return_statement_spans(body_node, mapping, spec, source)
     if spans:
         out.return_spans.setdefault(sym_id, []).extend(spans)
@@ -761,7 +751,8 @@ def _solve_one_function(
     if result.bailed_out:
         return
     # WI-lokok: a nested function reads what it captures when it runs, so a
-    # definition placed after it reaches its reads too. See "Nested Functions".
+    # definition placed after it reaches its reads too. See "Nested Functions
+    # Read Late".
     result.ddg_edges.extend(deps["late_capture_edges"](
         cfg, body_node, mapping, result.ddg_edges,
     ))
@@ -783,8 +774,8 @@ def _solve_one_function(
             if s.defines or s.uses
         ]
         # EXTEND, never assign: a binding's bodies share one id (WI-rovun), and
-        # an assignment kept only the last body's statements while every
-        # body's edges stayed in ``ddg_edges``.
+        # an assignment would keep only the last body's statements while every
+        # body's edges stay in ``ddg_edges``.
         if stmts:
             out.stmt_defuse.setdefault(sym_id, []).extend(stmts)
         positional = [
@@ -827,11 +818,10 @@ def build_repo_ddg(
         repo_root: Repository root to walk.
         languages: Language keys to process. Unregistered keys and
             languages with no cfg mapping are skipped silently — the
-            caller falls back to structural taint propagation, which is
-            the pre-existing behaviour when DDG data is unavailable.
+            caller falls back to structural taint propagation.
         analyzer_symbols: The analyzer's callable symbols by exact span
             (:func:`analyzer_symbol_index`). Without it no binding-named
-            callable is walked, which is the behaviour before WI-mufag.
+            callable is walked.
 
     Returns:
         A :class:`RepoDdg`. Empty when tree-sitter is unavailable.
@@ -1069,10 +1059,10 @@ def _python_function_name(node: Any, source: bytes) -> str:
         method                  ``Outer.meth``
         method of nested class  ``Inner.deep``   (not ``Outer.Inner.deep``)
 
-    Without this the default bare-``name`` fallback stored every method under a
-    key the taint walk never constructs, so ``fn_has_ddg`` was false for 68.5%
-    of python callables and their findings degraded to ``structural`` by
-    construction. Nested FUNCTIONS were mis-keyed by the same fallback.
+    The default bare-``name`` fallback would store every method and nested
+    function under a key the taint walk never constructs, so ``fn_has_ddg``
+    would be false for them and their findings would degrade to
+    ``structural`` by construction.
     """
     name_node = node.child_by_field_name("name")
     if name_node is None:  # pragma: no cover - grammar always supplies a name
@@ -1121,9 +1111,8 @@ def _python_params(node: Any, source: bytes) -> list[str]:
     return names
 
 
-# ``*.py`` only: LANGUAGES also lists ``*.pyi``, and whether walking stub files
-# is wanted was not measured when the JS/TS specs moved to the shared list
-# (WI-fovus) -- a declared narrowing, not an oversight.
+# ``*.py`` only, a declared narrowing: LANGUAGES also lists ``*.pyi``, and
+# whether walking stub files is wanted is undecided (history: WI-fovus).
 register_ddg_language(LanguageDdgSpec(
     language="python",
     file_globs=("*.py",),

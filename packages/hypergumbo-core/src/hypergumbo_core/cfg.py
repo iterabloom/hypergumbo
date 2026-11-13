@@ -238,8 +238,7 @@ def registered_def_use_languages() -> frozenset[str]:
     "is it non-empty" check looks equivalent and is not: a test that clears the
     registry and then reloads only ITS OWN extractor module leaves the registry
     populated but INCOMPLETE, and a truthiness check reports everything fine
-    while ``javascript`` is missing. That is the actual observed failure, and a
-    first attempt at this guard keyed on emptiness and did not fix it.
+    while ``javascript`` is missing.
     """
     return frozenset(_DEF_USE_EXTRACTORS)
 
@@ -483,10 +482,10 @@ class NestedFunctionMapping:
     A lambda, closure, arrow function, function literal or nested declaration
     does not run where it is written: it runs when it is called, which may be
     never, once, many times, or after the enclosing statement has finished.
-    Inlining its body as though it ran in sequence (what the builder did before
-    this mapping existed) makes its bindings DEFINE and KILL the enclosing
-    function's variables -- a closure's ``t := "x"`` shadowing an outer ``t``
-    hid the outer value from every later use.
+    Inlining its body as though it ran in sequence would make its bindings
+    DEFINE and KILL the enclosing function's variables: a closure's
+    ``t := "x"`` shadowing an outer ``t`` would hide the outer value from
+    every later use.
 
     ``body_child`` names the body. The builder records the statement holding
     the function as ONE statement and builds the body as its own CFG region
@@ -514,31 +513,30 @@ class CfgNodeMapping:
     break_statements: list[str] = field(default_factory=list)
     continue_statements: list[str] = field(default_factory=list)
     return_statements: list[str] = field(default_factory=list)
-    #: WI-sodoj: the language returns a block's tail expression (Rust).
+    #: The language returns a block's tail expression (Rust) (history: WI-sodoj).
     block_tail_returns: bool = False
     try_catch: list[TryCatchMapping] = field(default_factory=list)
     early_return: list[EarlyReturnMapping] = field(default_factory=list)
     context_manager: list[ContextManagerMapping] = field(default_factory=list)
     deferred: list[DeferredMapping] = field(default_factory=list)
     switch: list[SwitchMapping] = field(default_factory=list)
-    # Atomic statement node types — types that the CFG builder treats
-    # as a single CfgStatement, NOT as a control-flow construct. Without
-    # this hint, _process_sequential decomposes every unmapped node into
-    # its children, which for Python recurses past expression_statement
-    # all the way down to bare identifiers / integers — losing the
-    # statement-level granularity that def/use extractors need.
     #: Tree-sitter node types that ARE a call in this grammar. Declared here
     #: rather than sniffed from the type name because "does this node invoke
     #: something" is a per-grammar fact (Go ``call_expression``, Python
-    #: ``call``, Java ``method_invocation``, Rust ``macro_invocation``), and a
-    #: substring heuristic over node-type names is exactly the hand-rolled
-    #: predicate this codebase keeps getting wrong.
+    #: ``call``, Java ``method_invocation``, Rust ``macro_invocation``) that a
+    #: substring heuristic over node-type names gets wrong.
     #:
     #: Consumed by :func:`uncovered_semantic_lines` (WI-joluk). A language that
     #: declares NONE cannot be checked, and the consumer treats that as
     #: "forfeit everything" rather than "nothing uncovered" — the permitting
     #: case is enumerated, so an unconfigured language fails CLOSED.
     call_node_types: list[str] = field(default_factory=list)
+    # Atomic statement node types — types that the CFG builder treats
+    # as a single CfgStatement, NOT as a control-flow construct. Without
+    # this hint, _process_sequential decomposes every unmapped node into
+    # its children, which for Python recurses past expression_statement
+    # all the way down to bare identifiers / integers — losing the
+    # statement-level granularity that def/use extractors need.
     atomic_statements: list[str] = field(default_factory=list)
     #: Functions nested in a function body (WI-faful); see
     #: :class:`NestedFunctionMapping`. Deliberately NOT a ``classify()``
@@ -681,13 +679,10 @@ def load_cfg_mapping(language: str, search_dir: Optional[Path] = None) -> Option
     the resolved name would be a micro-optimisation that makes a future
     per-language post-processing step silently wrong.
     """
-    # INV-kazij class: resolve the directory BEFORE keying. The previous key
-    # spelled the default as the literal 'default' while the resolved dir
-    # came from patchable ``get_cfg_nodes_dir()`` — the same
-    # partial-input-memoization hole that poisoned the framework-pattern
-    # cache (a patched dir's Nones cached under the unpatched caller's key).
-    # No test patches this getter today; keyed on the resolved dir so none
-    # ever can.
+    # Resolve the directory BEFORE keying. The default dir comes from the
+    # patchable ``get_cfg_nodes_dir()``; a key that spelled it as a literal
+    # would cache a patched dir's results (Nones included) under the
+    # unpatched caller's key (history: INV-kazij).
     search = search_dir or get_cfg_nodes_dir()
     cache_key = f"{search}:{language}"
     if cache_key in _MAPPING_CACHE:
@@ -1089,13 +1084,15 @@ class CfgBuilder:
 
         The walk does not enter a nested function (WI-faful). A branch inside a
         lambda is the LAMBDA's control flow, not this statement's: counting it
-        was what made ``Runnable q = () -> { if (x > 0) go(); };`` decompose
-        into leaves, so ``q`` was read as a use and never defined. Nor does it
-        enter a control-flow node, whose own handler owns everything inside it.
+        would make ``Runnable q = () -> { if (x > 0) go(); };`` decompose
+        into leaves, so ``q`` would read as a use and never be defined. Nor
+        does it enter a control-flow node, whose own handler owns everything
+        inside it.
 
         Only named children are walked: anonymous nodes are punctuation and
-        keywords, which no mapping classifies. Iterative, for the reason every
-        AST walk in this module is (INV-gotir).
+        keywords, which no mapping classifies. Iterative, like every AST walk
+        in this module: an AST can nest deeper than Python's recursion limit
+        (INV-gotir).
         """
         control_flow: list[Any] = []
         functions: list[Any] = []
@@ -1204,9 +1201,8 @@ class CfgBuilder:
            b };``, ``int r = switch (n) { ... };``, ``let k = env::var("K")?;``.
            The control flow runs first and is processed as control flow; THEN
            the statement is recorded, once, after it -- so it DEFINES its
-           target where later code can read it. Decomposing it instead (the
-           builder's rule until WI-faful) recorded the target as a bare
-           identifier USE and never defined it.
+           target where later code can read it. Decomposing it instead would
+           record the target as a bare identifier USE and never define it.
 
         A nested function anywhere outside that control flow (a lambda, a
         closure, a callback argument) is not control flow of this function:
@@ -1293,9 +1289,9 @@ class CfgBuilder:
           (where a sink call in a callback is);
         - a binding inside the body MAY reach code after the statement (a
           closure can assign a captured variable) but can never KILL an outer
-          definition, because the skip edge keeps the outer one alive. The
-          inlined body this replaces killed it: a closure's ``t := "x"`` hid
-          the outer ``t`` from every later use;
+          definition, because the skip edge keeps the outer one alive.
+          Inlining the body instead would kill it: a closure's ``t := "x"``
+          would hide the outer ``t`` from every later use;
         - the repeat edge lets a binding made late in the body reach a use
           early in it, as a callback invoked twice does.
 
@@ -1367,10 +1363,10 @@ class CfgBuilder:
         condition block of its own, whose ``false`` edge is the REST of the
         list (plus any alternatives of its own, for a nesting grammar), and
         an alternative with no conditional mapping (an ``else``) ends the
-        chain (INV-kakav). Reading the field once kept the first ``elif``
-        as straight-line code on the ``false`` edge and dropped every later
-        arm from the CFG, so their definitions and uses never reached the
-        DDG and the taint walk forfeited the function.
+        chain (INV-kakav). Reading the field only once would keep the first
+        ``elif`` as straight-line code on the ``false`` edge and drop every
+        later arm from the CFG, so their definitions and uses would never
+        reach the DDG and the taint walk would forfeit the function.
         """
         if not alternatives:
             return None
@@ -1472,16 +1468,15 @@ class CfgBuilder:
           a ``continue`` goes, and flows back to the header.
 
         An infinite loop's header is empty. Break edges go to the fringe.
-        Until WI-losod the header held the condition alone, so ``for v in
+        A header holding the condition alone would leave ``for v in
         os.environ:``, Go's ``for _, e := range os.Environ()`` and every
-        classic ``for`` initializer defined nothing.
+        classic ``for`` initializer defining nothing.
 
         A mapped ``else_child`` (Python) takes the header's normal-exit edge
         and its fringe becomes the loop's; ``break`` edges still join the
         fringe directly, so the clause never runs after a ``break``. It is
         processed AFTER the loop context is popped: a ``break`` inside it
-        belongs to the enclosing loop. Until INV-rotol the clause was
-        skipped whole.
+        belongs to the enclosing loop.
         """
         mapping = self._mapping.get_loop(node.type)
         if mapping is None:
@@ -1998,18 +1993,17 @@ class CfgBuilder:
                     fringe.extend(arm_partial.fringe)
 
         # "NO CASE MATCHED" LEAVES THE SWITCH, ALWAYS (WI-sozob). Without this
-        # edge the scrutinee's only successors were the arms, so in a switch
-        # with no default a definition killed in EVERY arm did not reach the
-        # code after it -- the source's ``t`` vanished from ``sink(t)`` after
+        # edge the scrutinee's only successors are the arms, so in a switch
+        # with no default a definition killed in EVERY arm does not reach the
+        # code after it -- the source's ``t`` vanishes from ``sink(t)`` after
         # ``switch x { case 1: t = "c" }`` -- which REMOVES reaching
         # definitions, the direction that manufactures a walk ``False``.
         # Always on rather than "only when no arm is a default": recognising a
         # default is per grammar (Go ``default_case``, Java / C ``default``,
         # Python ``case _``), and the edge an exhaustive switch gains never
         # runs, so it only ADDS definitions -- the conservative side. With no
-        # recognised arm at all it is the only exit, which is what kept a Java
-        # arrow-form switch's continuation reachable before ``switch_rule``
-        # was mapped (WI-faful).
+        # recognised arm at all (an arm type the mapping does not name) it is
+        # the only exit, and it keeps the switch's continuation reachable.
         fringe.append(_FringeEdge(source_block=scrutinee_block.id, edge_type="always"))
 
         return _PartialCfg(
@@ -2096,7 +2090,7 @@ def populate_def_use_for_cfg(
     # position AND a type: in ``open("o", "wb").write(e)`` the outer call and
     # the inner ``open(...)`` are both ``call`` at the same column. The walk is
     # pre-order, so the statement's own (outer) node is met first; populating
-    # again from the inner one replaced ``uses=["e"]`` with ``[]``, and a
+    # again from the inner one would replace ``uses=["e"]`` with ``[]``, and a
     # tainted value with no recorded use escapes the walk.
     populated: set[tuple[int, int, str]] = set()
 
@@ -2127,10 +2121,7 @@ def uncovered_semantic_lines(
     source: bytes,
     mapping: CfgNodeMapping,
 ) -> Optional[frozenset[int]]:
-    """Lines whose code no CFG statement covers (WI-joluk, widened by WI-mugop).
-
-    WAS ``uncovered_call_lines`` and asked only about CALL nodes; the name is
-    changed with the predicate because the old one would now be a lie.
+    """Lines whose code no CFG statement covers (history: WI-joluk, WI-mugop).
 
     The coverage question behind INV-lupav: did the def/use extractor actually
     SEE all of this function? If code sits outside every statement the CFG
@@ -2141,41 +2132,32 @@ def uncovered_semantic_lines(
     the caller passes ``forfeit_refutation=True`` when this returns a non-empty
     set.
 
-    WHY "CALL NODE" WAS TOO NARROW (WI-mugop). The omission that motivates this
-    gate is not a call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a
-    range clause the loop hook did not record until WI-losod, and the clause
-    contains no call at all — so the original predicate returned an EMPTY set
-    for a function whose taint chain the extractor had demonstrably not
-    followed, and the walk was free to refute. Measured on that exact shape:
-    calls-only reported ``frozenset()``, the widened predicate reported the
-    clause's line.
+    WHY NOT CALL NODES ALONE. Code the extractor never saw need not contain a
+    call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a range
+    clause with no call in it; if no statement records that clause, a
+    calls-only predicate returns an EMPTY set for a function whose taint chain
+    the extractor did not follow, and the walk is free to refute. So the
+    predicate also counts semantic leaves (identifiers, literals).
 
-    WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The considered
-    alternative was a per-language list of node types that bind or use a
+    WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The alternative
+    is a per-language list of node types that bind or use a
     variable. That list is open-ended — it is coextensive with "everything the
     def/use extractor does not model", which :func:`_ddg_taint_reaches` says
     outright is not knowable from inside the walk — so an incomplete one reports
     "fully covered" and PERMITS an unearned refutation, with nothing to diff it
-    against. The project has run that experiment: ``atomic_statement`` was
-    missing from ``rust.yaml`` and ``typescript.yaml`` and both emitted zero DDG
-    edges for months at 100% test coverage. :func:`_is_semantic_leaf` asks a
-    structural question instead and needs no vocabulary to keep in step.
+    against. Such vocabularies decay silently: a language whose mapping lacks
+    ``atomic_statement`` emits zero DDG edges while its tests still pass.
+    :func:`_is_semantic_leaf` asks a structural question instead and needs no
+    vocabulary to keep in step.
 
-    PRICED BEFORE IT WAS WIDENED, on WI-joluk's own five repo-language pairs:
-    the forfeit share moves 12.5-35.5% to 18.8-51.6%, so refutation survives
-    on 48.4-81.2% of walkable functions. WI-joluk pre-registered "not near 100%,
-    so refutation stays viable on the remainder" as the condition; it is met.
-
-    WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
-    Until WI-losod ``CfgBuilder._process_conditional`` recorded ONLY the
-    condition child of an ``if`` — for Go's ``if err := do(); err != nil`` that
-    was ``err != nil``, and the initializer ``err := do()`` became no statement
-    at all. Both are on the same line, so line-matching reported the call as
-    covered and the gate was vacuous exactly where the gap was. The recorded
-    statement's byte range did not contain the initializer's, so an extent test
-    caught it. The same reasoning is why a loop header recorded AT its loop
-    node carries :attr:`CfgStatement.extent_end_byte`: its extent stops at the
-    body.
+    WHY BYTE EXTENTS AND NOT LINES. Unrecorded code often shares a line with a
+    recorded statement. If only the condition of Go's ``if err := do(); err !=
+    nil`` were recorded, the initializer ``err := do()`` would sit on the same
+    line, so a line test would report it covered and the gate would be vacuous
+    exactly where the gap is; the condition's byte range does not contain the
+    initializer's, so an extent test catches it. The same reasoning is why a
+    loop header recorded AT its loop node carries
+    :attr:`CfgStatement.extent_end_byte`: its extent stops at the body.
 
     RETURNS ``None`` — NOT AN EMPTY SET — when the language declares no
     ``call_node_types``. Those are different facts: an empty set means "checked,
@@ -2212,11 +2194,11 @@ def uncovered_semantic_lines(
     extents: list[tuple[int, int]] = []
     hits: list[tuple[int, int, int]] = []
 
-    # ITERATIVE. This recursed one frame per AST level, which is the crash
-    # INV-gotir fixed in ddg_build's own walk — keda's generated protobuf
-    # measures an AST depth of 1,171 against CPython's default limit of 1,000.
-    # Here the RecursionError would have been swallowed by the caller's
-    # ``except Exception`` and read as "function has no DDG edges".
+    # ITERATIVE. A recursive walk takes one frame per AST level, and generated
+    # code (protobuf output, for one) can nest deeper than CPython's default
+    # recursion limit of 1,000. The caller's ``except Exception`` would swallow
+    # the RecursionError and read it as "function has no DDG edges"
+    # (history: INV-gotir).
     stack: list[Any] = [body_node]
     while stack:
         node = stack.pop()
@@ -2246,7 +2228,7 @@ def uncovered_semantic_lines(
 # Reaching-def solver (ADR-0017 §1b)
 # ---------------------------------------------------------------------------
 
-#: Node types that carry no semantics for coverage purposes. Extracted from
+#: Node types that carry no semantics for coverage purposes. Shared with
 #: :meth:`CfgBuilder._process_sequential`, which skips exactly these, so the
 #: "is this node worth accounting for" question has ONE spelling and the
 #: coverage gate cannot drift from the builder that produces its input.
@@ -2260,7 +2242,7 @@ def _is_semantic_leaf(node: Any) -> bool:
     """A named terminal that carries meaning — an identifier, a literal.
 
     GRAMMAR-NEUTRAL BY CONSTRUCTION, and that is the point. The alternative
-    considered for :func:`uncovered_semantic_lines` was a declared per-language
+    for :func:`uncovered_semantic_lines` is a declared per-language
     list of node types that bind or use a variable. That list is open-ended —
     it is coextensive with "everything a def/use extractor does not model",
     which is not knowable in advance — so an incomplete one would report
@@ -2271,8 +2253,7 @@ def _is_semantic_leaf(node: Any) -> bool:
     Interior nodes are deliberately excluded. A function body is contained in
     no statement extent by construction, so counting interior nodes forfeits
     every function on every repository — a predicate that cannot return
-    "covered" is not a gate, and that spelling was measured and rejected
-    rather than reasoned away (WI-mugop phase 1).
+    "covered" is not a gate (history: WI-mugop).
     """
     return (
         bool(node.is_named)
@@ -2294,28 +2275,27 @@ def unaccounted_names(
     INSIDE a statement it did record, the def/use extractor accounted for the
     variables the statement mentions. Both failures produce the same downstream
     lie — the §3a walk exhausts and returns ``False``, "every step accounted
-    for", for a value it never followed — and since 2026-09-02 that ``False``
-    REMOVES a reported flow.
+    for", for a value it never followed — and that ``False`` REMOVES a
+    reported flow.
 
     WHY THE EXTENT TEST CANNOT SEE THIS. Go's grouped ``var ( msg = cwd )`` is
     recorded as one ``var_declaration`` statement whose extent covers the whole
-    block, and the extractor then fills it with ``defines=[] uses=[]``: the
-    grammar nests the specs one level deeper than the handler descends. There
-    is no uncovered region to find, so the coverage predicate is silent at any
-    width. Python's ``c[key] = 1`` is the same shape — ``defines=['c']
-    uses=[]``, the index never read — and so is a Go grouped ``const``.
+    block; the grammar nests the specs one level below it, so a handler that
+    does not descend that far fills it with ``defines=[] uses=[]``. There is
+    no uncovered region to find, so the coverage predicate is silent at any
+    width. Python's ``c[key] = 1`` reported as ``defines=['c'] uses=[]``, the
+    index never read, is the same shape, and so is a Go grouped ``const``.
 
-    MEASURED, NOT ARGUED: with the handler present and wrong in six of the
-    seven shapes found by a four-language sweep, a per-handler "I understood
-    this construct" flag — the remedy this clause was filed proposing — would
-    have claimed understanding in all six. Membership in a dispatch table is
+    WHY NOT A PER-HANDLER FLAG. A handler that exists but handles its
+    construct wrongly would still claim, through an "I understood this
+    construct" flag, to have understood it. Membership in a dispatch table is
     not evidence that the dispatch was complete.
 
     SAME PREDICATE AS THE EXTENT GATE, DELIBERATELY. "Worth accounting for" has
     one spelling here (:func:`_is_semantic_leaf`), so the two questions cannot
     drift apart, and neither needs a per-language vocabulary of binding
-    constructs — the list that ``atomic_statement`` already proved decays
-    silently in the direction that deletes findings.
+    constructs — a kind of list that decays silently in the direction that
+    deletes findings.
 
     ACCOUNTED FOR BY *ANY* ENCLOSING STATEMENT, not by the innermost one. Go
     records ``defer log.Print(msg)`` as two nested statements: the outer
@@ -2330,12 +2310,9 @@ def unaccounted_names(
     a statement's ``defines`` — seeds through ``defs_at`` and heirs through
     ``inherits`` are both built from them — so a callee name, a type name, a
     struct-literal key or a package qualifier can never be queried and is not
-    worth reporting. FLOOR-CHECKED on two real repositories rather than
-    reasoned about: 12.6% of alertmanager's functions and 4.9% of hypergumbo's
-    carry any unaccounted name at all (4.8% and 2.1% of tracked names), so this
-    withholds ``False`` from a minority and a predicate that fires everywhere —
-    the failure that killed one candidate spelling in WI-mugop phase 1 — is
-    ruled out by measurement.
+    worth reporting. Without the restriction those names would fire on
+    nearly every function, and a gate that fires everywhere withholds
+    ``False`` everywhere.
 
     EMPTY IS A REAL ANSWER HERE, AND ONLY BECAUSE OF THE CALLER. A function
     whose statements define nothing yields an empty ``tracked`` set and so an
@@ -2366,10 +2343,10 @@ def unaccounted_names(
         return frozenset()
 
     out: set[str] = set()
-    # ITERATIVE, for the reason uncovered_semantic_lines is (INV-gotir): keda's
-    # generated protobuf measures an AST depth of 1,171 against CPython's
-    # default limit of 1,000, and the caller's ``except Exception`` would read
-    # the RecursionError as "this function has no DDG edges".
+    # ITERATIVE, for the reason uncovered_semantic_lines is (INV-gotir):
+    # generated code can nest deeper than CPython's default recursion limit,
+    # and the caller's ``except Exception`` would read the RecursionError as
+    # "this function has no DDG edges".
     #
     # The stack carries the accumulated ``accounted`` set of every ENCLOSING
     # recorded statement, which is what makes the nested-statement case right.
@@ -2527,12 +2504,12 @@ def solve_reaching_defs(
         entry_defs: ``(variable, line)`` pairs defined on ENTRY, before the
             entry block's first statement -- the function's parameters at
             its own line (WI-sosov). No def/use extractor defines a
-            parameter, so a use of ``req`` had no reaching definition and no
-            DDG edge, and a value that arrives as a parameter was invisible
-            to the taint walk. They are definitions like any other (a later
-            statement defining the name kills them) and NOTHING else: no
-            statement is added, so ``stmt_defuse``, ``unaccounted_names``
-            and the coverage gate read what they read before.
+            parameter, so without these a use of ``req`` has no reaching
+            definition and no DDG edge, and a value that arrives as a
+            parameter is invisible to the taint walk. They are definitions
+            like any other (a later statement defining the name kills them)
+            and NOTHING else: no statement is added, so ``stmt_defuse``,
+            ``unaccounted_names`` and the coverage gate are unaffected.
 
     Returns:
         A ReachingDefResult with DDG edges, or bailed_out=True if the
@@ -2718,16 +2695,16 @@ def late_capture_edges(
         const k = process.env.K;          // no edge into setup
         setup(); fetch(u);
 
-    The walk then saw the secret go only where the enclosing function used it
-    and removed a flow that runs. This returns, for each read of a name inside
+    Without these edges the walk sees the secret go only where the enclosing
+    function uses it and removes a flow that runs. This returns, for each read of a name inside
     a nested function, an edge from every definition of that name placed after
     the function's end and outside every nested function -- the definitions the
     solve could not have connected. A definition before the function is left to
     the solve, which already kills the ones overwritten in between. A read that
     follows the nested function's own binding of the name reads that binding,
-    not the enclosing one, and gets no edge: buildah's callbacks declare their
-    own ``err``, and linking the outer ``err`` to them confirmed walks through
-    a value the callback never saw.
+    not the enclosing one, and gets no edge: a callback that declares its own
+    ``err`` must not be linked to the outer ``err``, or walks confirm through a
+    value the callback never saw.
 
     May, not must: the closure might never run after the definition. That only
     adds paths, so a walk over the result can turn ``False`` into ``True`` or
@@ -2851,17 +2828,13 @@ def select_ddg_targets(
        every file of a registered language, with no sampling, no budget and
        no cache.
 
-       The previous wording here — "DDG analysis is expensive, so only 2-10%
-       of functions are analyzed" — described an intended design as though it
-       were current behaviour, and a reader sizing DDG cost from it would be
-       wrong by more than an order of magnitude. Corrected 2026-08-03 rather
-       than deleted, because the selection policy below is still the intended
-       one and is worth keeping until it is either wired or withdrawn.
+       The selection policy below is the intended one, kept until it is
+       either wired or withdrawn. Do not size DDG cost from it: nothing
+       samples today.
 
-       Wiring it is deliberately sequenced *after* ADR-0017 §3a lands: it
-       reduces which functions carry DDG data, so switching it on before the
-       forward walk exists would move two variables in one measurement and
-       make §3a's effect unreadable.
+       Wiring it reduces which functions carry DDG data, and so what the
+       ADR-0017 §3a forward walk can see; measure that change on its own,
+       not alongside another change to the walk.
 
     Implements ADR-0017 §1c targeted analysis selection — the *design*, not
     the running behaviour.
@@ -2921,10 +2894,10 @@ def select_ddg_targets(
                 continue
             if _tier_ok(finding.source_symbol):
                 result.taint_relevant.add(finding.source_symbol)
-            # INV-karud: read the SET. An unadjudicated finding now stands
-            # for every sink symbol it reached, and ``sink_symbol`` is only
-            # the witness the ``path`` belongs to — selecting on it would
-            # silently drop the rest of the group from DDG coverage.
+            # Read the SET: an unadjudicated finding stands for every sink
+            # symbol it reached, and ``sink_symbol`` is only the witness the
+            # ``path`` belongs to — selecting on it would silently drop the
+            # rest of the group from DDG coverage (history: INV-karud).
             for _sink in finding.sink_symbols:
                 if _tier_ok(_sink):
                     result.taint_relevant.add(_sink)

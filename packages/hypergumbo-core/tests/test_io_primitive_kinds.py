@@ -183,9 +183,9 @@ class TestSwiftConstructorsAreFunctions:
         assert not ctors, ctors
 
     def test_the_adjudicated_constructors(self) -> None:
-        """INV-gujoh, 2026-09-23. Pinned by (module, name) -> boundary so a
-        re-added row, or one moved back onto a transfer boundary, is a visible
-        diff. ADR-0049: SETUP / REGISTER / LAZY rows are disclosed
+        """The constructors INV-gujoh adjudicated. Pinned by (module, name) ->
+        boundary so a re-added row, or one moved back onto a transfer boundary,
+        is a visible diff. ADR-0049: SETUP / REGISTER / LAZY rows are disclosed
         (net_listen, db_compose); HANDLE rows keep the transfer boundary."""
         rows = {(p.module, p.name): (p.boundary, p.kind)
                 for p in load_catalog("swift").primitives if p.name[:1].isupper()
@@ -212,7 +212,7 @@ class TestSwiftConstructorsAreFunctions:
     def test_command_line_is_an_attribute_read(self) -> None:
         rows = [(p.boundary, p.kind) for p in load_catalog("swift").primitives
                 if p.module == "CommandLine"]
-        # Two rows since WI-zidam, both attribute reads.
+        # Two rows, both attribute reads (WI-zidam).
         assert sorted(rows) == [
             ("command_line_read", KIND_ATTRIBUTE), ("env_read", KIND_ATTRIBUTE),
         ]
@@ -242,9 +242,10 @@ class TestJvmStaticsAreFunctions:
         """Java has no free functions: every function row is called on its
         class, and a bare call with no module context can reach one only by a
         static import, which java.py slots. So the no-context path must not
-        match one by name. Arm B of the re-kind did exactly that without this
-        rule: sbt's own ``now()`` became ``Instant.now``, gatling's own
-        ``readString()`` became ``Files.readString``."""
+        match one by name. Without this rule it does, and a repo's own
+        functions are misread as JDK statics: sbt's own ``now()`` as
+        ``Instant.now``, gatling's own ``readString()`` as
+        ``Files.readString``."""
         catalog = load_catalog("java")
         functions = {p.name for p in catalog.primitives if p.kind == KIND_FUNCTION}
         assert functions, "reach: java must carry function rows"
@@ -258,13 +259,13 @@ class TestJvmStaticsAreFunctions:
     @pytest.mark.parametrize("language,name", [("scala", "now"), ("scala", "readString"),
                                                ("kotlin", "getenv"), ("java", "walk")])
     def test_a_bare_no_context_call_does_not_match(self, language: str, name: str) -> None:
-        """The two false positives arm B found, plus one per other language."""
+        """The two false positives above (sbt, gatling), plus one per other language."""
         assert load_catalog(language).lookup_with_module(name, "external") is None
 
     @pytest.mark.parametrize("language", ["java", "kotlin", "scala"])
     def test_a_call_whose_slot_names_the_class_still_matches(self, language: str) -> None:
-        """REACH: the definite slot java writes and WI-kilap made kotlin and
-        scala write reaches the row regardless of the stamp."""
+        """REACH: the definite slot java, kotlin and scala write (WI-kilap) reaches
+        the row regardless of the stamp."""
         hit = load_catalog(language).lookup_with_module(
             "readAllBytes", "java.nio.file.Files", call_construct="method")
         assert hit is not None and hit.kind == KIND_FUNCTION
@@ -294,9 +295,9 @@ class TestScalaProcessLaunchIsReachable:
 
     def test_a_bare_apply_needs_module_context(self) -> None:
         """``apply`` is the most common method name in scala; a no-context
-        ``apply`` is anything's companion. sbt alone has 11 unstamped or
-        function-stamped ``external:apply`` edges that would all read as
-        process launches."""
+        ``apply`` is anything's companion, and a single large build (sbt) has
+        many unstamped or function-stamped ``external:apply`` edges that would
+        all read as process launches."""
         catalog = load_catalog("scala")
         assert "apply" in catalog.ambiguous_names
         assert catalog.lookup_with_module("apply", "external") is None
@@ -304,13 +305,12 @@ class TestScalaProcessLaunchIsReachable:
     def test_a_bare_process_still_matches(self) -> None:
         """Measured, not assumed. ``import scala.sys.process._`` (and scala 3's
         ``.*``) leaves the slot at ``external``, so a bare ``Process`` is how the
-        wildcard spelling arrives. On 11 scala repos (sbt, tapir, lila,
-        playframework, pekko, spark, scala3, gatling, http4s, cats, zio), every
+        wildcard spelling arrives. Across a corpus of real scala repos, every
         bare ``external:Process`` edge this row matched was a genuine
-        scala.sys.process launch: 8 of 8, 0 lost and 0 changed. A project type
-        named ``Process`` resolves in-repo and never reaches this path. If a
-        false positive is ever found, list the name in ``ambiguous_names``: that
-        was arm B1, which gave up those 8."""
+        scala.sys.process launch, and a project type named ``Process`` resolves
+        in-repo and never reaches this path. If a false positive is ever found,
+        listing the name in ``ambiguous_names`` is the fix, at the cost of
+        those genuine launches."""
         hit = load_catalog("scala").lookup_with_module("Process", "external")
         assert hit is not None and hit.module == self._MODULE
 
@@ -318,10 +318,10 @@ class TestScalaProcessLaunchIsReachable:
 def test_the_loader_takes_each_kind_from_the_section_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """WI-mifup: ``kind_for_yaml_section`` had no production caller -- the
-    loader carried one copy-pasted loop per section with the ``KIND_*``
-    constant written in -- so the registry it guards was not the load path.
-    The loader now walks :data:`YAML_SECTIONS` and asks it for each kind."""
+    """The loader walks :data:`YAML_SECTIONS` and asks ``kind_for_yaml_section``
+    for each kind, so the registry is the load path. A loader with one loop
+    per section and the ``KIND_*`` constant written in would leave the
+    registry with no production caller, guarding nothing (WI-mifup)."""
     import hypergumbo_core.io_boundary as io_boundary
     from hypergumbo_core.io_boundary import IoBoundaryCatalog
 

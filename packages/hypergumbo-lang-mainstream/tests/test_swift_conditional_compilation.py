@@ -2,12 +2,13 @@
 """A ``#if`` block inside a Swift type body must not cost the type its symbol
 (INV-bisok).
 
-tree-sitter-swift 0.0.1 could not parse a conditional-compilation block inside
-a class body; error recovery then re-parented the class header, so Alamofire's
-``open class Session: @unchecked Sendable`` was never minted as a class, its
-methods surfaced as top-level FUNCTIONS, and every ``session.x`` receiver in
-the repository was treated as an external type. The pin moved to 0.7.3, where
-the same shape parses cleanly; this test is what fails under the old grammar.
+tree-sitter-swift 0.0.1 cannot parse a conditional-compilation block inside a
+class body; error recovery then re-parents the class header, so a class like
+Alamofire's ``open class Session: @unchecked Sendable`` is never minted as a
+class, its methods surface as top-level FUNCTIONS, and every ``session.x``
+receiver in the repository is treated as an external type. The pinned grammar
+(``tree-sitter-swift~=0.7.4``) parses the shape cleanly; this test fails under
+a grammar that does not.
 """
 from __future__ import annotations
 

@@ -34,10 +34,11 @@ floor asserting that the registered languages read capable.
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — I. Capability is reported per
 LANGUAGE, and that is not a per-function completeness claim. A capable language
 still contains constructs the CFG does not model (a Go ``select`` case's
-``v := <-ch`` binding, a Python ``for ... else:`` clause), and a reader who
+``v := <-ch`` binding, a type switch's ``v := x.(type)``), and a reader who
 took the bit for coverage would be making exactly the assumption clause (a3)
 forbids. The finer signal is the per-function coverage gate: a function whose
-CFG statement extents miss a call node in its body forfeits refutation. So
+CFG statement extents miss a call node or semantic leaf in its body forfeits
+refutation. So
 ``coverage_granularity`` reads ``function``, and the emitted record counts the
 forfeiting functions rather than leaving that fact here, where no consumer
 would find it (history: WI-joluk).
@@ -47,7 +48,7 @@ constant, not a measurement. It reads
 ``call_graph_reachability_minus_ddg_refutation`` because both halves are true:
 a flow is *included* by call-graph reachability, and the §3a walk can *remove*
 one it refutes. The constant has a test on it, so if §3a's authority changes
-again the declared value must change with it (R16; history: WI-kabif).
+the declared value must change with it (R16; history: WI-kabif).
 
 The walk only ever SUBTRACTS: it adds no flow that reachability did not already
 report, and it removes only on ``refuted`` — the walk exhausted every route

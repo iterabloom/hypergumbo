@@ -5,33 +5,24 @@ WHY A STATIC CHECK WHEN A RUNTIME ONE EXISTS. ``spec_validator._check_id_format`
 already classifies a malformed ``Symbol.id``, but only for ids that a given run
 actually produced: a linker that only fires on Handlebars templates is invisible
 until someone surveys a repository with ``.hbs`` files AND runs the validator.
-The producer side is where the grammar is decided, and it was never checked.
-This module reads the producers.
+The producer side is where the grammar is decided, so this module reads the
+producers.
 
-THE POPULATION IS THE POINT, AND THE FILED SHAPE IS THE RAREST SPELLING OF IT.
-WI-vodin names ``Symbol(id=f"...")``. Measured over ``packages/*/src`` on
-2026-09-11 there is exactly ONE such site. The real distribution of the 470
-``id=`` arguments is:
-
-    231  a bare local name          <- 20 of these resolve to an f-string
-    168  make_symbol_id(...)        <- canonical
-     56  a module-local _make_*_id  <- 55 such helpers hand-build a string
-     11  make_file_id(...)          <- canonical
-      1  an f-string at the call    <- the filed shape
-
-So a check that stops at the constructor reaches 1 site in 470. This one
-resolves three hops — the argument, one in-function local assignment, one
-same-module function's returns — which is what it takes to reach the 40 places
-that really hand-build a node id. A fourth hop needs genuine dataflow and would
-trade a sharp rule for a fuzzy one; the tests pin the boundary rather than
-leaving it to be rediscovered.
+WHY THREE HOPS. An f-string written directly at the constructor,
+``Symbol(id=f"...")``, is the rarest spelling of a hand-built id. Many ``id=``
+arguments are a bare local name or a call to a module-local ``_make_*_id``
+helper, and the hand-built strings sit behind those. So a check that stops at
+the constructor reaches almost none of them. This one resolves three hops —
+the argument, one in-function local assignment, one same-module function's
+returns. A fourth hop needs genuine dataflow and would trade a sharp rule for
+a fuzzy one; the tests pin the boundary rather than leaving it to be
+rediscovered.
 
 WHAT IS FORBIDDEN IS NOT THE F-STRING, IT IS THE UNGRAMMATICAL ID. A synthetic
-linker stand-in has no source span and legitimately writes ``0-0`` by hand;
-14 of the 40 hand-built templates are conformant and stay. Banning the spelling
-would have deleted those for nothing and taught authors to route around the
-check. So the rule for ``Symbol(id=...)`` is ADR-0036's grammar applied to
-the TEMPLATE:
+linker stand-in has no source span and legitimately writes ``0-0`` by hand.
+Banning the spelling would reject those conformant templates for nothing and
+teach authors to route around the check. So the rule for ``Symbol(id=...)`` is
+ADR-0036's grammar applied to the TEMPLATE:
 
     {lang}:{path}:{start}-{end}:{name}:{kind}
 
@@ -40,19 +31,18 @@ is the only one allowed to contain colons. A slot filled by an interpolation is
 OPAQUE and is not judged — the check refuses to invent a verdict it has no
 evidence for, which is why ``python:{}:1-1:{}:{}`` passes.
 
-EDGE IDS GET THEIR OWN RULE. WI-vodin asked for ``Edge.id`` to meet the node
-grammar. Measured, that premise is false: all 18,283 apollo-server edge ids
-are content digests. So ``Edge(id=...)`` is judged, through the same three
-hops, against ``edge:sha256:<16hex>`` (:func:`edge_template_problem`). For
+EDGE IDS GET THEIR OWN RULE. An ``Edge.id`` is a content digest,
+``edge:sha256:<16hex>``, not a node id, so ``Edge(id=...)`` is judged, through
+the same three hops, against that shape (:func:`edge_template_problem`). For
 both constructors, an id built by a ``+`` chain is reported as
 ``concatenated_id``, because a concatenation cannot be checked against
 either grammar.
 
-WHAT IT FOUND ON ITS FIRST RUN, and the reason this is INV-kurup's class rather
-than hygiene: 26 of the 40 templates produce ids that hypergumbo's OWN runtime
-validator classifies as malformed. The dominant defect is a single ``line``
-interpolated where the grammar wants ``start-end`` (``grpc:{path}:{line}:...``),
-which right-anchored parsing then reads as a span of ``"12"``.
+WHY IT IS NOT HYGIENE (INV-kurup's class). A template this check flags
+produces ids that hypergumbo's OWN runtime validator classifies as malformed.
+The typical defect is a single ``line`` interpolated where the grammar wants
+``start-end`` (``grpc:{path}:{line}:...``), which right-anchored parsing then
+reads as a span of ``"12"``.
 """
 from __future__ import annotations
 
@@ -78,17 +68,15 @@ _SPAN_RE = re.compile(r"^(\x00|\d+)-(\x00|\d+)$")
 _CANONICAL_FACTORIES = frozenset({"make_symbol_id", "make_file_id"})
 
 #: The constructors whose ``id=`` slot this rule governs, and the grammar each
-#: one answers to. WI-vodin asked for ``Edge.id`` to be checked "for the same
-#: canonical shape it enforces on Symbol.id"; MEASURED on a live survey, that
-#: premise is false — every one of apollo-server's 18,283 edge ids is
-#: ``edge:sha256:<16hex>``, a content digest, and enforcing the five-slot node
-#: grammar on it would flag all of them. The two ids are counterparts in ROLE
-#: (per-instance identity) and not in SHAPE, so they get two rules.
+#: one answers to. An ``Edge.id`` is ``edge:sha256:<16hex>``, a content digest,
+#: so enforcing the five-slot node grammar on it would flag every edge. The two
+#: ids are counterparts in ROLE (per-instance identity) and not in SHAPE, so
+#: they get two rules.
 _NODE_ID_CONSTRUCTORS = frozenset({"Symbol"})
 _EDGE_ID_CONSTRUCTORS = frozenset({"Edge"})
 
 #: ``Edge.id``'s canonical shape, minted at ``ir.py``'s ``edge:sha256:{hash}``
-#: and copied into ~15 per-language ``_make_edge_id`` helpers.
+#: and copied into per-language ``_make_edge_id`` helpers.
 _EDGE_ID_RE = re.compile(r"^edge:sha256:(\x00|[0-9a-f]{16})$")
 
 _FuncDef = ast.FunctionDef | ast.AsyncFunctionDef
@@ -217,7 +205,7 @@ def _problems_in_file(path: Path) -> list[tuple[int, str]]:
                 continue
             callee = _callee_name(node)
             # The public classifiers, so the rule the tests pin is the rule
-            # the lint runs (WI-mifup: it ran private skeleton twins).
+            # the lint runs, not a private twin that can drift (WI-mifup).
             if callee in _NODE_ID_CONSTRUCTORS:
                 classify = id_template_problem
             elif callee in _EDGE_ID_CONSTRUCTORS:

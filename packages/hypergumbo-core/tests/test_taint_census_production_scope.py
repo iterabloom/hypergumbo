@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-sarum: the taint census and the coverage check must share a population.
+"""The taint census and the coverage check must share a population (INV-sarum).
 
 ``_taint_blind_reason`` runs two checks that have to agree about what
 "present in this repo" means:
@@ -7,21 +7,18 @@
 1. the language census, built from behavior-map NODES;
 2. ``compute_boundary_coverage``, which walks production-scoped EDGES.
 
-The 08-13 fix (``adfaaeebf2``) scoped the EDGE list so both checks walked one
-population — and did not scope the NODE census that decides which languages
-are *supported*. So a language present only as test fixtures counted as
-present (check 1) while its edges were deliberately excluded (check 2), and
-the pair read as analyzer blindness: "supported language(s) ... were analyzed
-but produced no call edges". Measured on a real self-survey of 152,154 edges,
-that was elixir, go, java, rust and swift — every tracked file of each living
-under a test or fixture directory.
+BOTH must be production-scoped. Scoping only the EDGE list leaves the NODE
+census that decides which languages are *supported* unscoped, so a language
+present only as test fixtures counts as present (check 1) while its edges are
+deliberately excluded (check 2), and the pair reads as analyzer blindness:
+"supported language(s) ... were analyzed but produced no call edges" — for
+every language whose files all live under a test or fixture directory.
 
-This is INV-motos' shape for the third time in one function: sharing the
-*predicate* is not enough when the callers run it over different
-*populations*.
+This is INV-motos' shape: sharing the *predicate* is not enough when the
+callers run it over different *populations*.
 
-WHICH DIRECTION IS CORRECT was a threat-model question, and it is now
-answered rather than assumed. ``SECURITY.md``'s scope statement (WI-kozos)
+WHICH DIRECTION IS CORRECT is a threat-model question, answered rather than
+assumed. ``SECURITY.md``'s scope statement (WI-kozos)
 declares that the audit covers the INSTALLED CLI, so a fixture is not part of
 what the claims describe and the census must be production-scoped, in parity
 with WI-bifob's flow filter.
@@ -29,8 +26,8 @@ with WI-bifob's flow filter.
 THE OBVIOUS FIX WOULD BE WRONG, which is why the second test below matters
 more than the first. Narrowing the supported set to "languages that produced
 scoped call edges" also makes it impossible to flag a language that IS
-production code and emits nothing — Kotlin, which misses roughly 95% of its
-catalogued sinks. That would convert the F69.A1 blindness signal into a
+production code and emits nothing — e.g. Kotlin, whose catalogued sinks the
+analyzer mostly misses. That would convert the F69.A1 blindness signal into a
 silent pass. The narrowing must be by PRESENCE IN PRODUCTION SOURCE, never by
 having produced edges.
 """
@@ -85,15 +82,13 @@ def test_census_can_be_widened_the_same_way_the_flow_filter_is():
 
 
 def test_a_synthetic_external_node_is_not_evidence_of_presence():
-    """MEASURED CORRECTION to this test's earlier assertion.
+    """An ``<external>`` node is not production source.
 
-    The first version of this fix counted any node whose path did not
-    classify as a test — including ``<external>``, the sentinel for a
-    reference TARGET rather than a source file. On the real self-survey that
-    kept go, java, rust, swift and elixir in the census on the strength of 9,
-    9, 8, 4 and 1 ``<external>`` nodes respectively, with zero production
-    source files among them — i.e. exactly the five languages INV-sarum was
-    filed about, surviving the fix meant to drop them.
+    ``<external>`` is the sentinel for a reference TARGET rather than a
+    source file. Counting every node whose path does not classify as a
+    test would keep a fixture-only language in the census on the strength
+    of the ``<external>`` nodes its fixtures reference — exactly the
+    languages this census must drop.
 
     An ``<external>`` node exists BECAUSE a fixture referenced it. Reading it
     as evidence that the language is present in shipped code inverts its
@@ -122,7 +117,7 @@ def test_census_ignores_nodes_with_no_language():
     assert _census_languages([{"id": "x", "path": "src/a.py"}]) == set()
 
 
-# -- the two checks now agree ----------------------------------------
+# -- the two checks agree --------------------------------------------
 
 
 def test_a_fixture_only_language_no_longer_blocks():

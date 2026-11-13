@@ -99,11 +99,11 @@ the same way.
 WHAT IT REFUSES TO GUESS. A record with two candidate partners, or a
 candidate claimed by two records, is left unmerged and reported
 (:attr:`MergeReport.ambiguous`); a wrong fold would be a false identity
-claim, and the fixture measures zero such cases on aardvark-dns. A language
+claim. A language
 with one producer present is untouched: a tree-sitter-only run is
 byte-identical before and after, and no AnalysisRun is appended for a pass
-that folded nothing (the file-symbol synthesizer's convention; whether a
-no-op pass gets a run is the ADR-0056 question the owner reserved).
+that folded nothing (whether a no-op pass gets a run is a decision ADR-0056
+leaves open).
 
 A LEFTOVER'S SPAN (INV-lodum). A token-anchored record the pass did not fold
 has no partner item to take, but its producer may have observed the item

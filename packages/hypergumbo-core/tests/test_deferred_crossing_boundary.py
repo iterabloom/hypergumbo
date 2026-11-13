@@ -12,10 +12,10 @@ WHY THE TAG ALONE IS NOT ENOUGH, WHICH IS WHAT THIS FILE EXISTS TO PIN. A call
 the catalogue CLASSIFIED is what ``examined`` means (INV-buzab). Retagging
 a launch to a boundary that mints no taint STILL CLASSIFIES IT, so without a
 shadow the call becomes an examined negative and ``verify-claims`` returns a
-green tick over live ingress. ADR-0016's own table measures that shape in the
-outbound direction: cataloguing ``curl`` as ``net_send`` took a cron-dropper
-claim from ``inconclusive`` rc 2 to ``confirmed`` rc 0 -- six correct lines
-bought a false all-clear. A disclosure boundary without its shadow is strictly
+green tick over live ingress. ADR-0016's table shows the same shape in the
+outbound direction: a correct row that classifies a call without a shadow can
+turn an ``inconclusive`` rc 2 claim into ``confirmed`` rc 0 -- a false
+all-clear. A disclosure boundary without its shadow is strictly
 worse than leaving the false source in place, so the middle row of the table
 below is the one that matters.
 
@@ -154,11 +154,10 @@ GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
 
 
 def _go_catalog_without_deferrals():
-    """The shipped go catalogue without INV-kanuk's retag.
+    """The shipped go catalogue with every ``net_listen`` row forced back to ``net_recv``.
 
-    Every ``net_listen`` row forced back to ``net_recv``. This is the
-    falsifiability control for every assertion below: the shipped catalogue
-    cannot play that role, because it genuinely defers.
+    This is the falsifiability control for every assertion below (INV-kanuk):
+    the shipped catalogue cannot play that role, because it genuinely defers.
     """
     cat = load_catalog("go")
     prims = [
@@ -413,22 +412,21 @@ class TestTheUnruledDebtListIsReachable:
 
 
 class TestTheGoRetag:
-    """INV-kanuk: the first catalogue rows to use ``net_listen``.
+    """Go's connection-setup and serve rows are ``net_listen`` (INV-kanuk).
 
     Go's connection-SETUP rows return a descriptor or an ``error``; as
     ``net_recv`` rows they would mint ``untrusted_input`` at calls that never
-    see the data -- the same shape WI-dosov removed from Haskell. Go
-    capitalises every export, so a name check over these rows must compare
-    case-insensitively.
+    see the data (the same shape as WI-dosov in Haskell). Go capitalises every
+    export, so a name check over these rows must compare case-insensitively.
 
-    THE FIX IS A RETAG, NOT A REMOVAL, AND THAT DISTINCTION IS THE ITEM.
+    THE ROWS ARE RETAGGED, NOT REMOVED, AND THAT DISTINCTION IS THE POINT.
     Removal is not licensed: go's real receive surface is unreachable on
     idiomatic code (``ln, _ := net.Listen(...)`` then ``ln.Accept()`` emits
     ``go:external:0-0:Accept``), so deleting the rows would take go's
-    network-input surface to nothing rather than relocating it (the WI-lunav
-    failure). A retag has no such problem: the call
-    is still classified, so it still counts as examined (INV-buzab), and the
-    shadow qualifies the clean verdict instead of granting it.
+    network-input surface to nothing rather than relocating it (WI-lunav). A
+    retag has no such problem: the call is still classified, so it still
+    counts as examined (INV-buzab), and the shadow qualifies the clean verdict
+    instead of granting it.
     """
 
     def test_every_setup_and_serve_row_moved(self) -> None:
@@ -540,8 +538,9 @@ EVALUATION_EDGE = {
     "line": 13,
 }
 
-#: The ``django.db.models`` rows that carried ``db_read`` BEFORE the retag,
-#: written out rather than derived, for the reason ``GO_DEFERRED_ROWS`` gives.
+#: The ``django.db.models`` QuerySet rows, executing and composing alike --
+#: the set that would all be ``db_read`` without ``db_compose``. Written out
+#: rather than derived, for the reason ``GO_DEFERRED_ROWS`` gives.
 DJANGO_PRE_RETAG_READ_ROWS: frozenset[str] = frozenset({
     "all", "filter", "exclude", "get", "count", "exists", "first", "last",
     "values", "values_list", "annotate", "aggregate", "order_by", "distinct",
@@ -557,8 +556,8 @@ DJANGO_READ_ROWS: frozenset[str] = frozenset({
 
 
 def _python_catalog_with_the_combinators_reading():
-    """The shipped python catalogue without WI-fasap's retag: every
-    ``db_compose`` row forced back to ``db_read``. The falsifiability control
+    """The shipped python catalogue with every ``db_compose`` row forced
+    back to ``db_read`` (WI-fasap). The falsifiability control
     for the assertions below, exactly as :func:`_go_catalog_without_deferrals`
     is for the net family."""
     cat = load_catalog("python")
@@ -580,9 +579,9 @@ class TestTheDatabaseTwinVocabulary:
     def test_it_is_catalog_declarable_and_declared_last(self) -> None:
         assert "db_compose" in CATALOG_BOUNDARY_TYPES
         assert "db_compose" in KNOWN_IO_BOUNDARIES
-        # Declared after every boundary that existed before it, so
-        # first-declared-wins resolution of every existing row is untouched by
-        # the addition; only boundaries added later follow it.
+        # Declared after the boundaries that precede it, so it changes no
+        # earlier row's first-declared-wins primary; only the boundaries
+        # listed below follow it.
         later = CATALOG_BOUNDARY_TYPES[CATALOG_BOUNDARY_TYPES.index("db_compose") + 1:]
         assert later == ("navigation_read", "ipc_listen", "command_line_read")
 
@@ -771,9 +770,9 @@ class TestTheIpcListenerVocabulary:
     def test_it_is_catalog_declarable_and_declared_last(self) -> None:
         assert "ipc_listen" in CATALOG_BOUNDARY_TYPES
         assert "ipc_listen" in KNOWN_IO_BOUNDARIES
-        # Declared after every boundary that existed before it, so
-        # first-declared-wins leaves every existing row's primary alone; only
-        # command_line_read (WI-zidam) follows it.
+        # Declared after the boundaries that precede it, so it changes no
+        # earlier row's first-declared-wins primary; only command_line_read
+        # (WI-zidam) follows it.
         assert CATALOG_BOUNDARY_TYPES[-2:] == ("ipc_listen", "command_line_read")
 
     def test_clause_1_it_mints_no_taint(self) -> None:

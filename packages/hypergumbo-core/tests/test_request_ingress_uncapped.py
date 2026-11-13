@@ -1,18 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-vumig: the unseeded-ingress disclosure reads every request handler, not the capped list.
+"""The unseeded-ingress disclosure reads every request handler, not the capped list (WI-vumig).
 
 ``detect_entrypoints`` floors its ranked list at ``MIN_ENTRYPOINT_CONFIDENCE``
 (a test-file handler ranks x0.1 and falls under it) and caps it at
 ``compute_entrypoint_cap(node_count)`` with a 40% per-kind share. Both are
 right for a ranked overview and wrong for a completeness claim: WI-fuzik's
 disclosure ("N request handler(s) receive network data that no taint source
-represents") read ``behavior_map["entrypoints"]`` and so named only the
-handlers that survived. Measured before this (mlflow, 76k nodes, cap 500):
-302 route handlers, 200 in the list; the disclosure named 254 production
-handlers of all ingress kinds, 320 once it reads the full list.
+represents") reading ``behavior_map["entrypoints"]`` would name only the
+handlers that survived, and on a large repo the cap drops a large share of
+the route handlers.
 
-Now the survey writer computes the candidates once, derives the capped
-``entrypoints`` from them as before, and writes ``request_ingress`` beside it:
+So the survey writer computes the candidates once, derives the capped
+``entrypoints`` from them, and writes ``request_ingress`` beside it:
 every candidate whose kind is a request-ingress kind, before the floor and the
 cap. The disclosure reads that list when the map has it and falls back to
 ``entrypoints`` for an older map; its ``include_non_production`` flag keeps

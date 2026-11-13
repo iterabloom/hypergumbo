@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """`self.<property>.<method>()` carries the PROPERTY's type (WI-dodop).
 
-Writing ``self.`` in front of a property destroyed the receiver hint for the
-identical call. Measured on a minimal production repro:
+Writing ``self.`` in front of a property must not lose the receiver type the
+identical call has without it:
 
     db.write(2)        -> name='write' hint='db'   has_recv=True
     self.db.write(1)   -> name='write' hint=None   has_recv=True
@@ -10,17 +10,14 @@ identical call. Measured on a minimal production repro:
 ``self`` parses as ``self_expression``, not ``simple_identifier``, so
 ``_walk_nav`` collects nothing into ``receiver_parts`` and the inner
 ``navigation_suffix`` -- ``db``, the token that IDENTIFIES the receiver -- is
-consumed as a ``method_name`` and then overwritten by the outer suffix. The
-emit cascade's third stage (WI-higob slice 2) already routed these sites to
-``_swift_receiver_expr_type``, which returned ``None`` for a
-``navigation_expression``. That is the gap this closes.
+consumed as a ``method_name`` and then overwritten by the outer suffix. With no
+hint, the emit site types the receiver EXPRESSION with
+``_swift_receiver_expr_type``, which types a ``self.<property>``
+``navigation_expression`` through the enclosing type's members.
 
-Sized on vapor: 393 of 1,913 classified untyped sites, of which an estimated
-59.3% carry an EXTERNAL property type. The estimate is not an acceptance
-criterion -- it keys declarations by property name repo-wide -- so these tests
-pin the MECHANISM and the corpus delta is measured separately.
+These tests pin the MECHANISM, not a corpus delta.
 
-THE THIRD LANGUAGE WITH THIS SHAPE: objc WI-garar, rust WI-dizag A.
+The same shape exists in objc (WI-garar) and rust (WI-dizag A).
 """
 from __future__ import annotations
 
@@ -47,7 +44,7 @@ def _call(edges: list[Edge], method: str) -> Edge:
 
 class TestTheModuleSlot:
     def test_an_external_property_type_reaches_the_module_slot(self, tmp_path) -> None:
-        """The 59.3% case: the property's type is not a project type."""
+        """The property's type is not a project type: it fills the module slot."""
         edges = _edges(tmp_path, (
             "import Foundation\n"
             "class Client {\n"
@@ -62,10 +59,9 @@ class TestTheModuleSlot:
     def test_a_PROJECT_property_type_is_typed_but_REFUSED(self, tmp_path) -> None:
         """INV-kotob: a project type is a symbol, not a module.
 
-        The 34.9% case, and it must NOT be counted as a win: the hint is
-        earned and correct, and the module slot stays the ``external``
-        placeholder. A change that routed this into the slot would be the
-        exact defect filed against objc as WI-dason.
+        The hint is earned and correct, and the module slot stays the
+        ``external`` placeholder. Routing a project type into the slot is the
+        defect WI-dason describes for objc.
         """
         edges = _edges(tmp_path, (
             "class Database { func write(_ x: Int) { } }\n"
@@ -84,8 +80,8 @@ class TestItResolvesTheFIELDNotALocal:
         """``self.db`` means the FIELD, whatever a local is called.
 
         This is the test that pins WHICH resolver is used. ``_type_of``
-        consults scoped locals and ``var_types`` BEFORE falling through to
-        ``_inherited_field_type``, so wiring this to ``type_of`` would resolve
+        consults scoped locals BEFORE the enclosing type's members
+        (``_member_lookup``), so wiring this to ``_type_of`` would resolve
         ``self.db`` to the local ``Decoy`` here and stamp a confidently wrong
         type -- which `method_call_recovery` step 3a then trusts to REFUTE a
         correct class hint. The field resolver is the only correct one.
@@ -132,13 +128,12 @@ class TestItStaysSilentWhenItDoesNotKnow:
         assert (e.meta or {}).get("receiver_type_hint") is None
 
     def test_a_bare_self_method_call_is_left_alone(self, tmp_path) -> None:
-        """Deliberately OUT of this slice.
+        """``self.doThing()`` stamps no receiver type.
 
-        ``self.doThing()`` has the enclosing type as its receiver, which is a
-        PROJECT type and can never fill the module slot, so typing it buys no
-        catalogue reach (L5). It also stamps a hint that
-        ``method_call_recovery`` step 3a would act on, so it is a separate
-        decision with its own measurement rather than a freebie folded in here.
+        Its receiver is the enclosing type, a PROJECT type that can never fill
+        the module slot, so typing it buys no catalogue reach (L5). It would
+        also stamp a hint that ``method_call_recovery`` step 3a acts on, so
+        typing it is a separate decision, not part of the property typing.
         """
         edges = _edges(tmp_path, (
             "class Client {\n"
@@ -153,15 +148,13 @@ class TestItStaysSilentWhenItDoesNotKnow:
     def test_a_DEEPER_self_chain_is_not_guessed_at(self, tmp_path) -> None:
         """`self.a.b.method()` — the receiver is `self.a.b`, not `self.<prop>`.
 
-        112 of the 1,913 classified vapor sites are a chain off a
-        navigation_expression. This slice did not resolve one, and the reason
-        still binds: `method_call_recovery` step 3a treats a stamped
-        `receiver_type_hint` as grounds to REFUTE a class hint, so a GUESS here
-        would delete a correct recovery somewhere else. WI-hojib added the
-        member lookup it needed -- the type of `self.a`, then `b` as DECLARED on
-        that type (test_swift_initialiser_shapes) -- so the declared chain is
-        typed, and what stays pinned here is the no-guess half: a member the
-        intermediate type does not declare names nothing.
+        `method_call_recovery` step 3a treats a stamped `receiver_type_hint`
+        as grounds to REFUTE a class hint, so a GUESS here would delete a
+        correct recovery somewhere else. A DECLARED chain is typed -- the type
+        of `self.a`, then `b` as declared on that type (WI-hojib;
+        test_swift_initialiser_shapes) -- and what is pinned here is the
+        no-guess half: a member the intermediate type does not declare names
+        nothing.
         """
         edges = _edges(tmp_path, (
             "import Foundation\n"

@@ -1450,7 +1450,7 @@ def _cmd_tags(args: argparse.Namespace, ts: TrackerSet) -> int:
     # keyset so that catalog-only tags (described but never affixed, or
     # deprecated after their last use) still surface in --json /
     # --count output. Plain ``tracker tags`` (no flags) lists only
-    # currently-used tags per the locked design.
+    # currently-used tags.
     catalog_only = set(catalog.keys()) - set(counts.keys())
 
     if args.json:
@@ -1473,7 +1473,7 @@ def _emit_tags_count(
 ) -> int:
     """Print the ``--count`` output: tag<TAB>count<TAB>status, one per line.
 
-    Sorted by count desc then alpha (locked design). Catalog-only tags
+    Sorted by count desc then alpha. Catalog-only tags
     (count == 0) are included so deprecated-but-cleaned-up tags remain
     visible to the agent's existing-coverage check.
     """

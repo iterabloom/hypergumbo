@@ -9,53 +9,29 @@ A language whose analyzer never stamps that key reaches a clean ``confirmed``
 and discloses NOTHING, and no test anywhere notices, because every analyzer
 test asserts what it DOES emit rather than what a downstream safety gate needs.
 
-Measured 2026-08-23 across the nine catalogued languages that declare
-method-kind sinks (fixtures and results:
-``~/hypergumbo_lab_notebook/disclosure_parity_08232026/``):
+WHAT IT ASSERTS. The edge for a method call on a receiver the analyzer cannot
+type carries ``call_construct="method"``, in three receiver shapes:
 
-    python, go, scala, swift   disclosure fires              427 sinks
-    java, objc, rust           edge emitted, NO stamp        295 sinks
-    kotlin, javascript         no external call edge at all  232 sinks
+- a plain identifier (``f.mkdirs()``) -- :data:`FIXTURES`;
+- an EXPRESSION -- object creation, a call result, a cast, a chain
+  (``new File("x").mkdirs()``, ``get().mkdirs()``, ``((File) o).mkdirs()``) --
+  :data:`COMPLEX_RECEIVER_FIXTURES`. Deriving ``call_construct`` from the
+  receiver's NAME misses every one of these, because the name is ``None`` for
+  an expression: "what type can I look this receiver up under" and "is there a
+  receiver at all" are two questions, and one variable cannot answer both
+  (LIVE.md rule 7; history: INV-tutar, INV-pirot);
+- an explicit ``this`` / ``self`` -- :data:`THIS_RECEIVER_FIXTURES`.
 
-527 of 954 method-kind sinks (55%) sat in languages where the disclosure could
-not fire. Method-kind is nearly the whole catalogue for several of them:
-java 98%, kotlin 97%, objc 95%, swift 93%, scala 89%.
+A fourth gate checks that the callee's name slot does not carry the receiver
+identifier.
 
-THE FIXTURE SHAPE IS LOAD-BEARING AND A FIRST DRAFT GOT IT WRONG. Written with
-a CAST receiver (``f.asInstanceOf[java.io.File].createNewFile()``,
-``(fm as! FileManager).createFile(...)``), scala and swift both read as INERT
-and the headline was 82%. They are not: a cast expression takes a different,
-bare-call branch in both analyzers, and the plain ``receiver.method()`` shape —
-the one real code uses — is already stamped correctly in both. Fixtures here
-use the plain shape deliberately. The cast-receiver gap is real but separate
-and much narrower; it is recorded on the PR1 work item, not fixed here.
+THE FIXTURE SHAPE IS LOAD-BEARING. A cast expression takes a different,
+bare-call branch than a plain ``receiver.method()`` in the scala and swift
+analyzers, so a fixture set built on one shape can report a whole language
+inert when only that shape is. The plain arm uses the shape real code uses;
+the expression arm varies the shape across languages.
 
-THE CAST-RECEIVER RESIDUAL IS NOW CLOSED HERE, AND IT WAS BIGGER THAN "CASTS".
-Re-measured 2026-08-25 (INV-tutar/INV-pirot Phase 0, dev e41a655d6d): the gap
-is not casts, it is EVERY receiver that is not a bare identifier -- object
-creation, a call result, a cast, a chain -- and it is in THREE languages, not
-two:
-
-    java   f.mkdirs()                  method   <- control
-           new File("x").mkdirs()      ABSENT
-           get().mkdirs()              ABSENT
-           ((File) o).mkdirs()         ABSENT
-           f.getParentFile().mkdirs()  ABSENT
-    scala  f.createNewFile()           method   <- control
-           new File(..) / get() / asInstanceOf   ABSENT
-    swift  fm.createFile(...)          method   <- control
-           get() / (o as! FileManager)           ABSENT
-    objc / rust / go                   method   (all shapes, already clean)
-    python                             NO EDGE AT ALL for a call-result
-                                       receiver -- WI-makij, not a stamp gap
-
-The cause is one predicate per analyzer: ``call_construct`` was derived from
-the receiver's NAME, and the name is ``None`` for a receiver EXPRESSION -- so
-a variable that answers "what type can I look this receiver up under" was
-asked "is there a receiver at all". Two questions, one variable (LIVE.md rule
-7). :data:`COMPLEX_RECEIVER_FIXTURES` below is the arm that keeps them apart.
-
-THE GATE, not the five stamps, is the point. It is driven from the io_primitives
+THE GATE, not the stamps, is the point. It is driven from the io_primitives
 catalogues rather than a hand-written list, so a language that ARRIVES LATER
 with method-kind sinks and no fixture fails here instead of going silently
 blind. LIVE.md rule 7: a predicate is inert until its call sites pass it, and
@@ -131,13 +107,15 @@ FIXTURES: dict[str, tuple[str, str, str, str]] = {
     ),
 }
 
-#: Languages whose analyzer emits NO external call edge at all for an instance
-#: method call, so there is nothing to stamp and the disclosure cannot be made
-#: to fire by stamping (WI-nasuf: kotlin 89/93 sinks, javascript 29/83).
-#: These are handed to the DECLARED-BLINDNESS work (owner ruling 2026-08-23,
-#: "declare the blindness"), which makes the coverage gate refuse a bare
-#: ``confirmed`` for them. Listed here so the set is visible and BOUNDED —
-#: see :func:`test_the_no_edge_exemption_set_is_exactly_the_measured_two`.
+#: Languages exempt from the plain-receiver fixtures on the grounds that their
+#: analyzer emits NO external call edge for an instance method call, so there
+#: is nothing to stamp; the declared-blindness path
+#: (``analyzer_disclosure.DECLARATIONS``) is what qualifies a verdict for such
+#: a language. Listed here so the set is visible and BOUNDED — see
+#: :func:`test_the_no_edge_exemption_set_is_exactly_the_measured_two`.
+#: STALE: ``analyzer_disclosure.DECLARATIONS`` declares both kotlin and
+#: javascript as emitting this edge (WI-nasuf), so the grounds no longer hold
+#: and neither language is covered by a fixture here.
 NO_EXTERNAL_CALL_EDGE: frozenset[str] = frozenset({"kotlin", "javascript"})
 
 
@@ -216,13 +194,11 @@ def test_untyped_receiver_method_call_carries_call_construct(
 
 #: The SECOND arm of the same rule: the receiver is an EXPRESSION rather than a
 #: bare identifier. Same languages, same catalogued sinks, same assertion — the
-#: only thing that changes is the shape of the receiver, which is exactly the
-#: variable the defect turned on (INV-pirot).
+#: only thing that changes is the shape of the receiver (INV-pirot).
 #:
 #: Shapes are deliberately varied across languages (object creation, cast, call
-#: result) rather than uniform, because a uniform fixture set is how the FIRST
-#: draft of this file concluded "scala and swift are inert" from one arm and
-#: was wrong (LIVE.md rule 12).
+#: result) rather than uniform: a uniform fixture set exercises one analyzer
+#: branch and can misreport a whole language from it (LIVE.md rule 12).
 COMPLEX_RECEIVER_FIXTURES: dict[str, tuple[str, str, str, str]] = {
     "java": (
         "hypergumbo_lang_mainstream.java", "analyze_java", "Main.java",
@@ -259,10 +235,9 @@ COMPLEX_RECEIVER_FIXTURES: dict[str, tuple[str, str, str, str]] = {
 }
 
 #: Languages that emit NO external call edge for a COMPLEX-receiver method call,
-#: so there is nothing to stamp. Measured 2026-08-25: python emits an edge for
-#: the ``make()`` call and none for the ``.open("w")`` on its result. That is an
-#: EMISSION gap, not a stamp gap, and it is already filed as WI-makij (chained
-#: method calls emit no call edge) — cited rather than re-filed.
+#: so there is nothing to stamp. python emits an edge for the ``make()`` call
+#: and none for the ``.open("w")`` on its result: an EMISSION gap, not a stamp
+#: gap (WI-makij, chained method calls emit no call edge).
 COMPLEX_RECEIVER_NO_EDGE: frozenset[str] = frozenset({"python"})
 
 
@@ -302,8 +277,8 @@ def test_complex_receiver_method_call_carries_call_construct(
     nicety. ``taint._register_sanitizer_callers`` refuses to bind an unresolved
     bare-name sanitizer match ONLY when ``call_construct == "method"``. With the
     key absent the edge reaches the permit branch and registers a PHANTOM
-    BARRIER — and since PR #214 a barrier earns ``sanitized``, which DROPS the
-    flow from the claim's violation set. A missing stamp therefore DELETES
+    BARRIER — and a barrier earns ``sanitized``, which DROPS the flow from the
+    claim's violation set. A missing stamp therefore DELETES
     findings, so the shape that misses it is a security defect and not a
     cosmetic one.
     """
@@ -341,16 +316,14 @@ def test_complex_receiver_method_call_carries_call_construct(
     )
 
 
-#: The THIRD shape, and the one where java stands alone: an EXPLICIT ``this`` /
-#: ``self`` receiver on a call the analyzer cannot resolve, because the method
+#: The THIRD shape: an EXPLICIT ``this`` / ``self`` receiver on a call the analyzer cannot resolve, because the method
 #: is inherited from a supertype outside the repository. The receiver is named
 #: but the DECLARING TYPE is not, so the catalogue cannot be asked what the call
 #: does — which is precisely what ``call_construct`` exists to record.
 #:
-#: Measured 2026-08-25 across every language with a plain-receiver fixture:
-#: python, objc, rust and go stamp it; scala and swift stamp it; java alone
-#: leaves it bare. This arm is parity with the other six, not a new convention
-#: — the same argument WI-sajis used for the plain shape.
+#: Every language with a plain-receiver fixture must stamp it; this arm is
+#: parity with the plain shape, not a new convention (history: WI-sajis; java
+#: was the language that left it bare).
 #:
 #: THE IMPLICIT form (a bare ``doFinal(p)`` with no receiver token) is
 #: DELIBERATELY NOT ASSERTED here and is not a bug in this key. A bare call is
@@ -413,16 +386,14 @@ def test_explicit_this_receiver_carries_call_construct(
     enclosing class and the supertype is outside the repository. That is a want
     of receiver evidence in exactly the sense the two taint gates read the key
     for, and leaving it bare is what lets a bare short name bind a catalogued
-    sanitizer as a phantom barrier — measured, with a control, in
+    sanitizer as a phantom barrier — shown, with a control, in
     ``test_this_receiver_phantom_barrier.py`` in hypergumbo-core.
 
-    THE RECALL COST IS ZERO WHERE IT MATTERS AND SMALL ELSEWHERE, measured
-    rather than assumed: ``gate_named_entry`` returns ``None`` immediately for
-    ``call_construct == "method"``, so the stamp can only refuse a
-    FUNCTION-kind catalogue hit — and java's catalogue declares 139 method-kind
-    primitives, 3 attribute-kind and **no function-kind entry at all**, so
-    nothing it could refuse exists. scala has 17 function-kind entries and
-    swift 7; both already stamp this shape and are here as controls.
+    THE RECALL COST is bounded: ``gate_named_entry`` returns ``None``
+    immediately for ``call_construct == "method"``, so the stamp can only
+    refuse a FUNCTION-kind catalogue hit, and an explicit ``this.m()`` is not a
+    call of a free function. scala and swift, whose catalogues declare
+    function-kind entries, stamp this shape too and serve as controls.
     """
     module, entry, filename, source = THIS_RECEIVER_FIXTURES[lang]
     target = tmp_path / filename
@@ -456,8 +427,8 @@ def test_explicit_this_receiver_carries_call_construct(
 #: The receiver IDENTIFIER in each :data:`FIXTURES` source, so the parity gate
 #: below can name what must NOT appear in the callee's name slot. Kept beside
 #: the fixtures rather than parsed out of them: a regex over java source is a
-#: second thing to get wrong, and this file's own history is that a fixture
-#: detail nobody wrote down produced a wrong headline.
+#: second thing to get wrong, and a fixture detail nobody wrote down is how a
+#: parity gate misreports a language.
 FIXTURE_RECEIVERS: dict[str, str] = {
     "java": "u",
     "scala": "f",
@@ -471,7 +442,7 @@ FIXTURE_RECEIVERS: dict[str, str] = {
 
 def test_every_parity_language_declares_its_receiver_identifier() -> None:
     """A fixture added later must declare its receiver or the gate below is
-    silently inert for it — the one-of-N shape this file already paid for."""
+    silently inert for it."""
     assert set(FIXTURE_RECEIVERS) == set(FIXTURES), (
         f"FIXTURE_RECEIVERS and FIXTURES disagree: "
         f"{set(FIXTURE_RECEIVERS) ^ set(FIXTURES)}"
@@ -484,7 +455,7 @@ def test_the_name_slot_names_the_callee_not_the_receiver(
 ) -> None:
     """The unresolved dst's name slot must not carry the receiver identifier.
 
-    THE THIRD ARM OF THE SAME RULE, and the one java failed. The two arms above
+    THE THIRD ARM OF THE SAME RULE. The two arms above
     ask whether the disclosure can FIRE for a language; this asks whether what
     it fires with is a name any catalogue has keyed. Both boundary-scoped
     consumers — ``verify_claims.untyped_receiver_sites`` and
@@ -493,10 +464,9 @@ def test_the_name_slot_names_the_callee_not_the_receiver(
     clean verdict, counts the sites, and can never say which boundary they are
     catalogued for.
 
-    Measured 2026-09-07 with these very fixtures: go, kotlin, python, rust and
-    scala emitted the bare method name and java emitted ``u.write`` (WI-nakut,
-    measurement 0018). The gate exists so the next analyzer to arrive cannot
-    reintroduce it silently.
+    The gate exists so no analyzer, including one that arrives later, can glue
+    a receiver on silently (history: WI-nakut, where java emitted
+    ``u.write``).
 
     ASSERTED AS "DOES NOT START WITH ``<receiver>.``" RATHER THAN "CONTAINS NO
     DOT", because a dot in the name slot is not by itself wrong: ADR-0036

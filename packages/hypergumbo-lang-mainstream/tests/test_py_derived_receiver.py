@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A derivation from a typed receiver keeps the type — for an ALLOWLISTED member only.
 
-PR #246 taught the analyzer that an annotated parameter is receiver evidence, so ``d`` in
-``def h(d: Path, x)`` is correctly typed ``pathlib.Path``. The type was then lost the moment
-anything was derived from it::
+An annotated parameter is receiver evidence, so ``d`` in ``def h(d: Path, x)`` is typed
+``pathlib.Path``. Without propagation the type is lost the moment anything is derived
+from it::
 
-    p = d / "f.txt";      p.write_text(x)    # slot 'external', 0 boundaries
-    p = d.joinpath("f");  p.write_text(x)    # slot 'external', 0 boundaries
+    p = d / "f.txt";      p.write_text(x)    # would be slot 'external', 0 boundaries
+    p = d.joinpath("f");  p.write_text(x)    # would be slot 'external', 0 boundaries
 
 WHY THIS IS AN ALLOWLIST AND NOT "PROPAGATE THE RECEIVER TYPE". Most members of a typed
 receiver do NOT return that type, and propagating through them is the single most dangerous
@@ -14,25 +14,21 @@ error available here. ``Path.read_text`` returns ``str``; ``.stat`` returns ``os
 ``.exists`` returns ``bool``; ``.open`` returns a file object; ``.glob``/``.iterdir`` return
 iterators; ``.name``/``.stem``/``.suffix``/``.as_posix`` return ``str``.
 
-Measured: propagating by default scores **25.9% precision** on adversarial fixtures — 7 of
-27 added boundaries correct — and mints 16 false taint sinks including 2 ``database`` and 2
-``network``. Across 8 Python repos, 1,955 of 2,296 (85.1%) hop>=1 propagations are provably
-wrong or unverifiable, and 20 of the 21 provably-wrong ones are a Path-to-``str`` transition.
-The allowlist scores 85.7% on the same fixtures and costs 3 boundaries out of 427 (0.7%).
-Default-deny is therefore not caution, it is the measured design.
+Propagating by default produces more wrong boundaries than right ones, including false
+``database`` and ``network`` taint sinks, and the commonest wrong propagation is a
+Path-to-``str`` transition. Default-deny is therefore not caution; it is the design.
 
-WHY THE HINT IS COMPARED BY STRING EQUALITY. ``_module_matches`` is permissive by design —
-it accepts an unqualified reference as a component suffix, so it treats a vendored
-``mylib.pathlib.Path`` as ``pathlib.Path``. Using it here mints a real ``fs_write`` boundary
-plus a ``host_fs`` taint sink for a third-party class that merely shares a name. The table is
-keyed by exact type string, so the comparison is a dict lookup and the vendored case simply
-misses.
+WHY THE HINT IS COMPARED BY STRING EQUALITY. A looser module match risks treating a
+vendored ``mylib.pathlib.Path`` as ``pathlib.Path``, which would mint a real ``fs_write``
+boundary plus a ``host_fs`` taint sink for a third-party class that merely shares a name.
+The table is keyed by exact type string, so the comparison is a dict lookup and the
+vendored case simply misses.
 
 THERE IS NO BACKSTOP, which is why the allowlist carries the safety. A minted hint bypasses
-both ``gate_named_entry`` and the ``ambiguous_names`` net by design. Control measurement: the
-19 catalogued ``pathlib.Path`` member names — 10 of them taint sinks, including ``replace``
-(also ``str.replace``) and ``rename`` (also ``DataFrame.rename``) — match **zero** times with
-no module hint, and are all reachable the instant a hint appears.
+both ``gate_named_entry`` and the ``ambiguous_names`` net by design. The catalogued
+``pathlib.Path`` member names include taint sinks such as ``replace`` (also
+``str.replace``) and ``rename`` (also ``DataFrame.rename``); they match nothing without a
+module hint and are all reachable the instant a hint appears.
 
 SCOPE. Calls and the ``/`` operator on a bare-name or derived receiver. Deliberately NOT
 routed: ``.parent`` and ``.parents[n]`` (attribute reads, a different AST shape and a smaller
@@ -112,7 +108,7 @@ class TestAllowlistedDerivationsKeepTheType:
 
 
 class TestMeasuredFalsePositiveClassesStayRefused:
-    """Each is a measured FP class. All are at zero today and must remain there."""
+    """Each is a known false-positive class and must stay at zero."""
 
     def test_numeric_division_is_not_a_path(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -136,9 +132,9 @@ class TestMeasuredFalsePositiveClassesStayRefused:
     def test_path_to_str_member_does_not_propagate(self, tmp_path: Path) -> None:
         """``.name`` returns ``str``; ``str.replace`` must not become ``Path.replace``.
 
-        This is the exact shape behind 20 of the 21 provably-wrong corpus propagations,
-        and it is the WI-razol false-positive cascade the catalogue's ``ambiguous_names``
-        list exists to prevent.
+        This Path-to-``str`` transition is the commonest wrong propagation, and it is
+        the false-positive cascade the catalogue's ``ambiguous_names`` list exists to
+        prevent. (history: WI-razol)
         """
         edges = _edges(
             tmp_path / "tostr",
@@ -170,8 +166,7 @@ class TestMeasuredFalsePositiveClassesStayRefused:
     def test_vendored_lookalike_type_does_not_propagate(self, tmp_path: Path) -> None:
         """A third-party class sharing the name must not inherit path semantics.
 
-        ``_module_matches`` would accept ``mylib.pathlib.Path`` as ``pathlib.Path``;
-        the table is keyed by exact type string, so this misses.
+        The table is keyed by exact type string, so ``mylib.pathlib.Path`` misses.
         """
         edges = _edges(
             tmp_path / "vendored",
@@ -232,7 +227,7 @@ class TestTheAllowlistIsDataAndStaysHonest:
             )
 
     def test_no_known_transforming_member_is_allowlisted(self) -> None:
-        """The members measured to break propagation must never appear in the table."""
+        """Members that do not return the receiver type must never appear in the table."""
         transforming = {
             "read_text", "read_bytes", "as_posix", "as_uri", "name", "stem",
             "suffix", "suffixes", "parts", "exists", "is_dir", "is_file",

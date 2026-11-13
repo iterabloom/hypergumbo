@@ -161,13 +161,13 @@ def _install_zone_root() -> Path:
 def _require_within_zone(path: Path, root: Path, zone: str) -> None:
     """Refuse ``path`` unless it is inside ``root``.
 
-    THE DEFECT THIS EXISTS TO CLOSE, stated plainly because a guard whose
-    reason is forgotten gets removed: ``cmd_cache_clear`` built its target as
-    ``cache_dir / repo`` and deleted it. ``pathlib`` discards the left
-    operand when the right is ABSOLUTE, so ``--repo /home/you/thesis``
-    resolved to ``/home/you/thesis`` and was recursively deleted, reported as
-    a routine cache eviction. A relative ``../..`` escapes the same way. The
-    call site checked ``is_dir()`` — existence, not containment.
+    The escape this closes, stated plainly because a guard whose reason is
+    forgotten gets removed: ``pathlib`` discards the left operand when the
+    right is ABSOLUTE, so a target built as ``cache_dir / repo`` with
+    ``--repo /home/you/thesis`` IS ``/home/you/thesis``, and deleting it
+    recursively deletes the user's directory while reporting a routine cache
+    eviction. A relative ``../..`` escapes the same way. Checking ``is_dir()``
+    tests existence, not containment.
 
     Both paths are ``resolve()``d first, so a symlink pointing out of the
     zone is refused too; checking the unresolved path would let
@@ -235,15 +235,14 @@ def cache_rmtree(
 
     SAFETY ZONE: ``user_cache``. Used by ``cache-clear`` to remove entries, and
     by the end-of-run eviction after ``survey`` (``_maybe_evict_cache`` and
-    ``_archive_entry``) to drop what it reclaims. Wrapping ``shutil.rmtree`` here gives the
-    structural-taint pass a distinct callee — verify-claims previously
-    flagged generic ``.rmtree`` reachability from runtime CLI as a
-    documented overapproximation because the bare callee match couldn't
-    tell cache-clear writes apart from arbitrary fs deletes.
+    ``_archive_entry``) to drop what it reclaims. Wrapping ``shutil.rmtree``
+    here gives the structural-taint pass a distinct callee: a bare ``.rmtree``
+    callee match cannot tell a cache eviction apart from an arbitrary
+    filesystem delete reachable from the runtime CLI.
 
     ENFORCED, not merely declared: a path outside the cache root raises
     :class:`SafetyZoneViolation`. See :func:`_require_within_zone` for the
-    verified escape this closes.
+    escape this closes.
 
     ``zone_root`` lets a caller that already resolved the cache base pass it
     in, so the guard is checked against the SAME root the caller is
@@ -292,9 +291,8 @@ def cache_write_zip(
     :class:`SafetyZoneViolation`.
 
     The archive is assembled in memory and written in one call, so peak
-    additional memory is the COMPRESSED size — measured at 6% of the source on
-    a real 210.9 MB cache entry — rather than the size of the inputs, which are
-    streamed through the compressor.
+    additional memory is the COMPRESSED size rather than the size of the
+    inputs, which are streamed through the compressor.
     """
     import io
     import zipfile
@@ -314,8 +312,8 @@ def cache_unlink(path: Path, zone_root: Path | None = None) -> None:
     SAFETY ZONE: ``user_cache``. The soft-delete folders hold one zip per
     evicted entry, so bounding them means unlinking FILES rather than trees —
     ``cache_rmtree``'s shape does not fit, and a bare ``Path.unlink`` would be
-    an unwrapped filesystem delete reachable from the runtime CLI, which is
-    exactly the population the ``runtime-cli-no-host-fs`` claim drove to zero.
+    an unwrapped filesystem delete reachable from the runtime CLI, which the
+    ``runtime-cli-no-host-fs`` claim reports as a ``host_fs`` flow.
 
     ENFORCED, not merely declared: a path outside the cache root raises
     :class:`SafetyZoneViolation`, via the same guard ``cache_rmtree`` uses.
@@ -333,18 +331,12 @@ def cache_rename(src: Path, dst: Path, zone_root: Path | None = None) -> None:
     the ``.evicting-`` scratch name — the rename-before-delete ordering that
     is the whole crash-safety argument for soft eviction.
 
-    WHY THIS WRAPPER HAD TO EXIST. It did not, and that was the defect. The
-    module shipped ``cache_write`` / ``cache_write_bytes`` / ``cache_rmtree``
-    / ``cache_write_zip`` / ``cache_unlink`` / ``cache_mkdir`` and no rename
-    of any zone, so ``_archive_entry``'s two renames were bare for want of
-    anything to call. Once ``pathlib.Path``'s surface was rowed in the I/O
-    catalogue, ``Path.rename`` became a catalogued ``host_fs`` sink and
-    ``runtime-cli-no-host-fs`` went ``confirmed_with_caveats`` ->
-    ``violated`` on precisely those two flows, reachable from ``cmd_run`` and
-    ``cmd_cache_status`` via ``_maybe_evict_cache``. The writes were always
-    inside the cache; what was missing was the barrier that says so. This is
-    the same argument ``cache_unlink``'s docstring makes about a bare
-    ``Path.unlink``, one primitive later.
+    WHY A WRAPPER. ``Path.rename`` is a catalogued ``host_fs`` sink, so a bare
+    rename in ``_archive_entry`` (reachable from ``cmd_run`` and
+    ``cmd_cache_status`` via ``_maybe_evict_cache``) violates
+    ``runtime-cli-no-host-fs`` even though both endpoints are inside the
+    cache: what the claim needs is the barrier that says so. This is the same
+    argument ``cache_unlink``'s docstring makes about a bare ``Path.unlink``.
 
     ENFORCED, not merely declared: **both** endpoints must lie within the
     cache root or :class:`SafetyZoneViolation` is raised. Checking only the
@@ -412,12 +404,12 @@ def _publish_when_complete(path: Path, *, keep_mode: bool) -> Iterator[Path]:
     ``path`` is exactly what it was before.
 
     WHY. ``survey.json`` in the results cache is found by existence alone, so a
-    survey killed while writing it (Ctrl-C, the OOM killer on a big map, a full
-    disk) used to leave a truncated file that every read command then served as
-    a cache hit and failed on, "not valid JSON", until the user re-surveyed. A
-    gitleaks install that died mid-copy left a partial binary that shadowed a
-    working one on PATH. The fix is the one eviction already uses: publish
-    whole files only.
+    survey killed while writing it in place (Ctrl-C, the OOM killer on a big
+    map, a full disk) would leave a truncated file that every read command
+    serves as a cache hit and fails on, "not valid JSON", until the user
+    re-surveys. Likewise a gitleaks install that dies mid-copy would leave a
+    partial binary shadowing a working one on PATH. Eviction follows the same
+    rule: publish whole files only.
 
     A symlinked ``path`` is resolved first, so the link keeps pointing at the
     file it named and that file is what is replaced. ``keep_mode`` carries an
@@ -479,14 +471,11 @@ def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
 def user_out_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
     """Create the parent directory of a user-supplied ``--out`` path.
 
-    SAFETY ZONE: ``user_out``. INV-zudak, reopened: this wrapper did not
-    exist, and its absence is why the violation was unavoidable rather than
-    careless. Four of the five offending ``cli.py`` callsites sit on the line
-    DIRECTLY ABOVE a :func:`user_out_write` / :func:`user_out_open_json_dump`
-    call — the write was already wrapped and the ``mkdir`` that creates its
-    directory could not be, because ``user_out`` was the one zone with a write
-    wrapper and no mkdir wrapper. The zone whose path comes from the USER is
-    the one most in need of a checked call, and it was the one missing it.
+    SAFETY ZONE: ``user_out``. A wrapped :func:`user_out_write` /
+    :func:`user_out_open_json_dump` is often preceded by the ``mkdir`` that
+    creates its directory; that ``mkdir`` needs a wrapper of the same zone, or
+    it surfaces as a raw ``host_fs`` flow beside a correctly wrapped write.
+    (history: INV-zudak)
 
     DELIBERATELY NOT ZONE-BOUNDED, unlike :func:`tmp_artifact_rmtree` and
     :func:`cache_rmtree`. There is no zone root to check against: the user
@@ -496,8 +485,8 @@ def user_out_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False)
     write is recorded as a ``user_out`` crossing instead of surfacing as an
     unsanitized ``host_fs`` flow that ``runtime-cli-no-host-fs`` must report.
     Creating the directory the user asked for is correct behaviour; doing it
-    through a bare ``Path.mkdir`` is what made it indistinguishable from
-    arbitrary directory creation.
+    through a bare ``Path.mkdir`` makes it indistinguishable from arbitrary
+    directory creation.
     """
     _safety_zone_barrier()
     path.mkdir(parents=parents, exist_ok=exist_ok)
@@ -534,9 +523,9 @@ def tmp_artifact_write_bytes(path: Path, data: bytes) -> None:
     SAFETY ZONE: ``tmp_artifact``. Used by ``install-gitleaks`` to land the
     release archive inside a :func:`tmp_artifact_dir` before
     :func:`tmp_artifact_extract` unpacks it; only the extracted binary
-    reaches the install zone (:func:`install_artifact_copy`). The archive
-    used to go through an ``install_artifact`` wrapper, so verify-claims
-    counted a scratch write as an install.
+    reaches the install zone (:func:`install_artifact_copy`). Writing the
+    archive through an ``install_artifact`` wrapper would make verify-claims
+    count a scratch write as an install.
 
     ENFORCED, though its one caller's path is inside the zone by
     construction: the check makes the name true of every future caller too.
@@ -582,17 +571,17 @@ def tmp_artifact_extract(archive: Path, dest: Path) -> None:
     SAFETY ZONE: ``tmp_artifact``. ENFORCED, and enforced TWICE OVER, because
     an archive is the one input that NAMES ITS OWN DESTINATIONS: the caller's
     ``dest`` must lie in the zone, and so must every member path after
-    resolution. Checking only ``dest`` would be the ``cmd_cache_clear`` defect
-    one level down -- containment of the argument you looked at, while the
-    thing doing the writing supplies paths you did not.
+    resolution. Checking only ``dest`` would repeat the escape
+    :func:`_require_within_zone` describes one level down -- containment of
+    the argument you looked at, while the thing doing the writing supplies
+    paths you did not.
 
-    WHY THIS ARRIVED LATE, and it is INV-lalad's lesson again: INV-zudak
-    enumerated the fs-write primitives that must route through a wrapper, and
-    ``extractall`` is not among them. It became visible only when WI-jabus
-    rowed ``zipfile.ZipFile`` as a class-qualified receiver, at which point
-    ``install-gitleaks-no-host-fs`` moved to ``violated`` -- a claim asserting
-    writes go ONLY through wrappers, over code whose extraction did not. The
-    write was always there; what was missing was the barrier that says so.
+    Extraction is a filesystem write even though ``extractall`` is not in the
+    enumerated list of fs-write primitives (write_text / mkdir / unlink / ...):
+    the taint pass sees it through the catalogued ``zipfile.ZipFile`` /
+    ``tarfile`` receivers, and unwrapped it violates
+    ``install-gitleaks-no-host-fs``, which asserts that writes go ONLY through
+    wrappers. (history: INV-lalad, INV-zudak, WI-jabus)
 
     THE TAR BRANCH IS THE DANGEROUS ONE, and it is the one almost every user
     takes: ``_get_download_url`` picks ``.zip`` only on Windows. CPython's
@@ -620,10 +609,9 @@ def tmp_artifact_extract(archive: Path, dest: Path) -> None:
             for name in zf.namelist():
                 _require_within_zone(dest / name, dest_root, "tmp_artifact")
             # The suppressions sit HERE, one line under the loop that earns
-            # them:
-            # every member was resolved against dest_root immediately above.
-            # In gitleaks.py they stood in for that check rather than after
-            # it, which is the difference between a mitigation and a waiver.
+            # them: every member was resolved against dest_root immediately
+            # above. A suppression with no such check before it is a waiver,
+            # not a mitigation.
             zf.extractall(dest)  # noqa: S202  # nosec B202
         return
     with tarfile.open(archive, "r:gz") as tf:
@@ -656,17 +644,14 @@ def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
     which must be private: pip runs the ``setup.py`` written into it), the
     rust-analyzer run in ``graceful_degrade`` and scip-python's index scratch.
 
-    WHY THIS ARRIVED LATE (INV-lalad). INV-zudak established that every
-    fs-write primitive on a claimed entry point must route through a wrapper,
-    and enumerated them as write_text / mkdir / unlink / chmod / copy2 /
-    rmtree / replace. ``tempfile.TemporaryDirectory`` is none of those: it is
-    CONSTRUCTOR-shaped, and until INV-lalad the taint walk could not traverse
-    construction edges at all (``instantiates`` was absent from
-    ``TAINT_CALL_EDGE_TYPES``). So the two unwrapped call sites never surfaced
-    as raw ``host_fs`` flows, and the drain looked complete while two writes
-    sat outside the discipline the claims assert. An enumerated list of
+    WHY A WRAPPER. Every fs-write primitive on a claimed entry point must
+    route through a wrapper, and ``tempfile.TemporaryDirectory`` creates a
+    directory without being one of the enumerated primitives (write_text /
+    mkdir / unlink / chmod / copy2 / rmtree / replace): it is
+    CONSTRUCTOR-shaped, visible to the taint walk only through the
+    ``instantiates`` edges in ``TAINT_CALL_EDGE_TYPES``. An enumerated list of
     primitives is only as complete as the analysis that would notice a
-    missing one.
+    missing one. (history: INV-lalad, INV-zudak)
 
     No ``_require_within_zone`` check: unlike the other wrappers this does not
     accept a caller-supplied path — ``TemporaryDirectory`` allocates inside
@@ -704,12 +689,12 @@ def install_artifact_copy(src: Path, dst: Path) -> None:
     ENFORCED: ``dst`` is resolved, so a ``~/.local/bin/gitleaks`` that is a
     symlink to a binary elsewhere (a dotfile manager's, ``~/go/bin``'s) raises
     :class:`SafetyZoneViolation` instead of being overwritten through the link
-    -- the file :func:`install_artifact_unlink` already refused to remove.
+    -- the same file :func:`install_artifact_unlink` refuses to remove.
 
     PUBLISHED WHOLE, as :func:`_publish_when_complete` does for ``user_out``:
     a copy that dies part-way leaves the previous binary intact. A partial one
-    was preferred over a good gitleaks on PATH, could not run, and turned every
-    later secret scan off. Inline rather than through that helper so each
+    would be preferred over a good gitleaks on PATH, could not run, and would
+    turn every later secret scan off. Inline rather than through that helper so each
     zone's writes stay in a function of that zone.
     """
     _safety_zone_barrier()
@@ -735,7 +720,7 @@ def install_artifact_chmod(path: Path, mode: int) -> None:
     user's filesystem.
 
     ENFORCED, as :func:`install_artifact_copy` is: ``chmod`` follows a
-    symlink, so an unchecked one re-moded a file outside the zone.
+    symlink, so an unchecked one would re-mode a file outside the zone.
     """
     _safety_zone_barrier()
     _require_within_zone(path, _install_zone_root(), "install_artifact")
@@ -762,19 +747,15 @@ def install_artifact_unlink(path: Path) -> None:
 # repo_inspection zone (WI-fasuv)
 # ---------------------------------------------------------------------------
 #
-# WHY THIS ZONE EXISTS. The shipped claim ``runtime-cli-no-subprocess`` said
-# "Runtime CLI subcommands do not shell out. All subprocess invocations (curl,
-# git, pip, rustup, gitleaks) happen only via extras / build-time subcommands."
-# That is false as written: ``strace -f -e trace=execve`` on a default
-# ``sketch`` shows git x25, a real gitleaks secret scan, and a rust-analyzer
-# --version probe. gitleaks is named in the claim as build-time-only and is not.
-#
-# THE OWNER CHOSE TO DECLARE THE CAPABILITY RATHER THAN REWORD THE CLAIM
-# (2026-08-11). Rewording -- "except read-only repo inspection" -- was the
-# cheap option and is the one that launders: it weakens a shipped security
-# claim with nothing enforcing the carve-out's bounds, so the sentence becomes
-# true by meaning less. Routing through declared wrappers keeps the claim
-# strong AND true, and makes the boundary machine-checked.
+# WHY THIS ZONE EXISTS. Runtime CLI subcommands DO launch subprocesses
+# against the analysed repository: a default ``sketch`` runs local git
+# (fingerprinting, repo identity), a real gitleaks secret scan, and a
+# rust-analyzer ``--version`` probe. ``runtime-cli-no-subprocess`` stays true
+# by declaring that capability through these wrappers, not by rewording the
+# claim with a carve-out ("except read-only repo inspection"): a carve-out
+# with nothing enforcing its bounds weakens a shipped security claim until it
+# is true by meaning less, while the wrappers keep the boundary
+# machine-checked. (history: WI-fasuv)
 #
 # WHAT UNITES THESE THREE, since it is not what they read. It is what they
 # CANNOT do: none writes to the host filesystem, none takes a network action on

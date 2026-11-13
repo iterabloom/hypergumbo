@@ -66,28 +66,17 @@ def get_git_commit_sha() -> str | None:
     return None
 
 
-# How many recent commits reachable from HEAD are accepted by ``--check``.
-# The doc's recorded SHA gets "stale" the moment the doc-regeneration
-# commit lands (HEAD moves past the SHA the doc was generated against),
-# so strict equality with HEAD is unworkable. The window absorbs the
-# doc-update commit plus follow-on changes that don't materially affect
+# How many commits HEAD may advance past the point the doc was generated
+# at before ``--check`` fails. Strict equality with HEAD is unworkable: the
+# doc-regeneration commit itself moves HEAD past that point. The window
+# absorbs that commit plus follow-on changes that don't materially affect
 # the self-analysis (typos, comment fixes, README edits, small refactors)
 # without letting the doc rot indefinitely.
 #
-# Raised 15 → 30 (2026-08-03) after the window closed mid-PR on a change that
-# touched no architecture at all: a taint-analysis branch was in flight while
-# two feature merges and three tracker auto-syncs landed, and the doc hit 17
-# commits of distance. Pre-flighting cannot prevent that — the counter moves
-# after your last commit, not before your first (L35) — so the failure lands
-# on whoever happens to be holding an open PR.
-#
-# The counter is also consumed by commits that CANNOT invalidate the doc.
-# Tracker auto-sync commits touch only ``.agent/tracker*/.ops`` and never any
-# analyzed source, yet each one advances the distance. Excluding them would
-# fix the cause rather than the symptom; filed separately rather than widened
-# into this change.
-#
-# At ``dev``'s commit cadence, 30 commits ≈ ~6 days of headroom.
+# The distance keeps growing after your last commit, as other PRs merge onto
+# ``dev`` while yours is open, so pre-flighting cannot prevent a window
+# failure; a window that is too small fails PRs that touched no architecture.
+# Tracker-only commits are not counted (see ``count_tracker_only_commits``).
 RECENT_COMMIT_WINDOW = 30
 
 
@@ -139,10 +128,10 @@ def count_tracker_only_commits(n: int) -> int:
     """How many of the ``n`` most recent commits are tracker-only commits.
 
     Those commits move no code, so they must not age docs/ARCHITECTURE.md:
-    on 2026-10-16 an afternoon of tracker filing produced 34 auto-sync commits
-    on ``dev`` with zero code commits between them, and a doc regenerated that
-    morning failed the 30-commit window on the very next PR. Git failures count
-    as zero so the check degrades to the plain distance rather than erroring.
+    a burst of tracker filing can land more auto-sync commits than the whole
+    window with no code commit between them, failing a doc regenerated hours
+    earlier. Git failures count as zero so the check degrades to the plain
+    distance rather than erroring.
     """
     if n <= 0:
         return 0
@@ -286,11 +275,10 @@ def _registers_a_linker(py_file: Path) -> bool:
     module is both: ``linkers/_third_party_bases.py`` registers
     ``django-third-party-dispatch-linker``.
 
-    Deciding on the decorator instead of the filename closes the class.
-    Before this, an underscore-named linker was skipped outright, so the
-    ADR-3bbb Uncategorized counter could flag it neither way — the
-    enforcement promise had a hole exactly the shape of this file, and the
-    generated count read 60 against a registry of 61.
+    Deciding on the decorator rather than the filename keeps such a module
+    in the linker count and in the ADR-3bbb Uncategorized check; skipping
+    it by name would drop it from both, leaving the count one short of the
+    registry.
     """
     if py_file.parent.name != "linkers":
         return False
@@ -360,8 +348,8 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
             if parts[-1] == "__init__.py":
                 continue  # Skip __init__ files in listing
 
-            # Use with_suffix to properly remove only the .py extension
-            # (avoids bug where analyze/py.py became "analyze" via .replace(".py", ""))
+            # with_suffix removes only the trailing extension; .replace(".py", "")
+            # would also eat a ".py" inside the path (a module named py.py).
             module_path = rel_path.with_suffix("")
             module_name = f"{package_name}.{'.'.join(module_path.parts)}"
             docstring = extract_module_docstring(py_file)
@@ -503,8 +491,8 @@ def _docstring_attributes(docstring: str) -> dict[str, str]:
 
     An attribute line is the block's shallowest indent with ``name: text``
     where ``name`` is an identifier; anything deeper, or not shaped that
-    way, continues the previous description. Splitting every ``word:``
-    instead turned wrapped prose ("producer: fingerprint.py") into fields.
+    way, continues the previous description. Splitting on every ``word:``
+    would turn wrapped prose ("producer: fingerprint.py") into fields.
     When a name is described twice, the longer description is kept.
     """
     attrs: dict[str, str] = {}
@@ -592,8 +580,8 @@ def extract_linker_howto() -> str:
 
     The code is the indented block under "In a linker module:" in the
     module docstring's Usage section, dedented with its relative
-    indentation kept (stripping every line made the function body
-    unreadable). No block raises: the section would otherwise ship a
+    indentation kept (stripping every line would flatten the function
+    body). No block raises: the section would otherwise ship a
     how-to without its example.
     """
     registry_path = (
@@ -731,9 +719,9 @@ def count_linker_subcategories(
     Returns a dict keyed by subcategory name ("Protocol", "Bridge",
     "Framework", "Infrastructure") plus an "Uncategorized" bucket for
     modules that don't declare a subcategory in the expected form. The
-    Uncategorized count SHOULD be zero after ADR-3bbb is fully rolled
-    out; a non-zero count is a documentation-drift signal that surfaces
-    automatically in the generated architecture doc.
+    Uncategorized count should be zero; a non-zero count is a
+    documentation-drift signal that surfaces automatically in the
+    generated architecture doc.
     """
     counts: dict[str, int] = {name: 0 for name in _LINKER_SUBCATEGORIES}
     counts["Uncategorized"] = 0
@@ -1464,8 +1452,9 @@ def main() -> int:
         # PRIMARY signal: ``commit_count`` (rebase-stable). GitHub's rebase-merge
         # REWRITES the merged commits' SHAs, so any recorded branch ``commit:``
         # SHA is orphaned on ``dev`` the moment the PR merges — a SHA-membership
-        # check then false-fails on the very next code PR (it did, twice). The
-        # count of ancestors survives rebase, so staleness = current - recorded.
+        # check then false-fails on the very next code PR. The count of
+        # ancestors survives rebase, so staleness = current - recorded
+        # (less tracker-only commits, see ``staleness_distance``).
         content = output_path.read_text(encoding="utf-8")
         if "Auto-generated" not in content:
             print("ERROR: docs/ARCHITECTURE.md doesn't appear to be auto-generated")

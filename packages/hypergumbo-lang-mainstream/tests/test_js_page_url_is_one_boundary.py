@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The page URL is one value under one boundary, however it is spelled (INV-dadu).
 
-``javascript.yaml`` filed ``document.location`` under ``env_read`` (a
-``host_secret`` source) and ``window.location`` -- the same ``Location`` object
--- under ``host_info_read`` (``host_description``). Measured on the shipped CLI
-before this change: ``fetch(u + document.location.href)`` was a
-``host_secret -> network`` flow and ``fetch(u + window.location.href)`` was not.
+``document.location`` and ``window.location`` are the same ``Location``
+object, so ``javascript.yaml`` must file them under the same boundary. Split
+between ``env_read`` (a ``host_secret`` source) and ``host_info_read``
+(``host_description``), ``fetch(u + document.location.href)`` is a
+``host_secret -> network`` flow while ``fetch(u + window.location.href)`` is
+not.
 
 ``env_read`` is the right home for both by the owner ruling that it means "may
 carry a credential" (INV-nular): a URL can carry an OAuth or reset token. The

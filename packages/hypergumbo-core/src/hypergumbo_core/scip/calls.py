@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""SCIP ``Occurrence`` → hypergumbo call-edge translation shim (WI-mafut Phase 2 Slice D, WI-kopav).
+"""SCIP ``Occurrence`` → hypergumbo call-edge translation shim.
 
-This module completes the SCIP ingest by emitting hypergumbo ``Edge``
+This module emits hypergumbo ``Edge``
 objects for non-``Definition`` ``Occurrence`` entries — references,
 reads, writes, and other "this symbol appears at this span" signals.
 Each such occurrence is attributed to its enclosing Definition, so a
@@ -9,8 +9,8 @@ downstream slice / reachability / dead-code pass can see the edge
 ``caller → callee`` even when the upstream language has no static
 call graph of its own.
 
-Slices A (vendor), B (Index → Symbol), and C (Relationship → Edge)
-landed earlier. Slice D is the final piece: it walks the
+Its siblings are :mod:`.index` (Index → Symbol) and :mod:`.edges`
+(Relationship → Edge). This one walks the
 ``Occurrence`` list of each Document, finds the enclosing
 ``Definition``-role Occurrence for every non-Definition Occurrence via
 span containment, and emits an Edge from the enclosing definition's
@@ -32,15 +32,12 @@ Enclosure resolution:
   are different things: ``range`` is where the symbol's NAME is,
   ``enclosing_range`` is where the whole item is. rust-analyzer's
   Definition ``range`` is the identifier token — one line — so with
-  ``range`` alone no reference inside a function body was ever inside
-  a function, and the only Definition that contained anything was the
-  document's ``crate/`` namespace spanning the whole file. Measured
-  on aardvark-dns after the locals were dropped: 182 of 182 SCIP edges
-  were sourced from a namespace and 0 from a callable (INV-mofiv). An
-  earlier version of this docstring, and of :mod:`.edges`, said
-  ``enclosing_range`` "is rarely populated in practice"; rust-analyzer
-  1.94.0 populates it on every Definition occurrence with exactly the
-  item range (20 of 20 on the recorded sample: ``increment``
+  ``range`` alone no reference inside a function body is inside a
+  function, and the only Definition that contains anything is the
+  document's ``crate/`` namespace spanning the whole file: every edge
+  would be sourced from a namespace, none from a callable (INV-mofiv).
+  rust-analyzer 1.94.0 populates ``enclosing_range`` on its Definition
+  occurrences with exactly the item range (``increment``:
   range=[13,11,20], enclosing_range=[13,4,16,5]). Emitters that leave
   it empty keep the ``range`` behaviour. ``Symbol.span`` in
   :mod:`.index` is deliberately NOT moved to ``enclosing_range`` here:
@@ -64,9 +61,7 @@ Enclosure resolution:
   document-scoped, so the same string is a different binding in every
   file — and an edge naming one would name an endpoint no Symbol
   carries. In resolved mode the resolver would drop it anyway; the
-  filter here makes raw mode tell the same truth. On aardvark-dns the
-  unfiltered shim emitted 455 local-pointing edges, 329 of them
-  resolved across files.
+  filter here makes raw mode tell the same truth.
 
 * Self-edges (enclosing symbol == occurrence symbol) are dropped as
   noise. Recursive calls in particular show up here — rank / slice
@@ -86,17 +81,12 @@ Edge shape:
   the SCIP descriptor decides instead (``_descriptor_says_callable``,
   WI-nanom): a target whose leaf descriptor is METHOD (``name().``) is
   ``calls``, any other is ``references``. A declared kind always wins.
-  Until WI-zapuk every occurrence edge was ``references`` "so a
-  downstream specialization pass can refine to calls / writes_to /
-  imports when it has target-kind context"; no such pass existed, and
-  the tree-sitter arm labels the same call sites ``calls``, so under
-  ``edge_key = (src, dst, edge_type)`` none of the shared call sites
-  was a duplicate the merge pass could fold (121 of 130 callable-target
-  SCIP edges on the recorded aardvark-dns fixture have a tree-sitter
-  ``calls`` twin on the paired endpoints). The row prescribed mapping
-  ``Occurrence.symbol_roles`` instead; measured on the recording,
-  rust-analyzer 1.94.0 sets ``symbol_roles = 0`` on 3,543 of 3,543
-  reference occurrences, so there is nothing there to map. The bitfield
+  Labelling every occurrence edge ``references`` instead would leave the
+  merge pass nothing to fold: the tree-sitter arm labels the same call
+  sites ``calls``, and ``edge_key = (src, dst, edge_type)``.
+  ``Occurrence.symbol_roles`` cannot decide instead: rust-analyzer 1.94.0
+  leaves it ``0`` on reference occurrences, so there is nothing there to
+  map. The bitfield
   is still preserved in ``meta["symbol_roles"]``, and NO read / write
   edge type is minted from it: no recorded producer sets those bits
   yet, and a mapping nothing exercises is a claim (ADR-0057 §12). What
@@ -106,12 +96,12 @@ Edge shape:
   occurrence-ref level rather than rising to a syntactic call's.
 
 * ``evidence_type="scip_occurrence_ref"`` distinguishes these edges
-  from Slice C's ``scip_relationship`` edges so the bakeoff-reflect
+  from :mod:`.edges`' ``scip_relationship`` edges so the bakeoff-reflect
   prompt and downstream diagnostics can tell explicit SCIP
   relationships apart from span-enclosed references.
 
 * Confidence 0.85 — explicit SCIP-indexer data, but the span-enclosure
-  heuristic is a layer of indirection compared to Slice C's direct
+  heuristic is a layer of indirection compared to :mod:`.edges`' direct
   relationship emission, so the floor is slightly lower.
 
 Symbol resolution contract matches :mod:`hypergumbo_core.scip.edges`:
@@ -176,8 +166,9 @@ def _descriptor_says_callable(symbol: str) -> bool:
     (scip-python 0.6.6: ``kind == 0`` on every symbol, WI-nanom): a METHOD
     descriptor — ``name().`` — is a function or method in the grammar, so a
     reference to it is a call site. Only consulted when the producer was
-    silent; a declared kind keeps winning (WI-gapup measured the leaf suffix
-    wrong against a producer that DID declare). Cached per symbol string:
+    silent; a declared kind keeps winning, because against a producer that
+    DOES declare, the leaf suffix alone is wrong (see :mod:`.index`). Cached
+    per symbol string:
     an index references the same callee many times.
     """
     try:

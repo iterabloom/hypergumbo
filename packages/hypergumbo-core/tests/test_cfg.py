@@ -683,8 +683,8 @@ class TestCfgBuilderRust:
 
         The direct-child case (``expression_statement > if_expression``) is
         covered by ``test_if_else``; this one is deliberately *nested*, since
-        the containment check recurses and a one-level fixture leaves that
-        recursion unexercised.
+        the containment walk descends through several levels and a one-level
+        fixture leaves that descent unexercised.
         """
         cfg = self._build(
             "fn foo(c: bool) -> i32 {\n"
@@ -1290,7 +1290,7 @@ class TestCfgBuilderEdgeCases:
         assert cfg.entry_block in reachable
 
     def test_conditional_empty_true_body(self) -> None:
-        """Conditional where true body produces no partial (lines 741-743)."""
+        """Conditional where true body produces no partial."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             conditionals=[ConditionalMapping(
@@ -1340,7 +1340,7 @@ class TestCfgBuilderEdgeCases:
         assert found_true or len(cfg.blocks) >= 2
 
     def test_conditional_empty_false_body(self) -> None:
-        """Conditional where false body found but produces no partial (line 756)."""
+        """Conditional where false body found but produces no partial."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             conditionals=[ConditionalMapping(
@@ -1407,7 +1407,7 @@ class TestCfgBuilderEdgeCases:
         assert len(cfg.blocks) >= 2
 
     def test_loop_empty_body_not_infinite(self) -> None:
-        """Non-infinite loop with empty body (lines 826-827)."""
+        """Non-infinite loop with empty body."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             loops=[LoopMapping(
@@ -1451,7 +1451,7 @@ class TestCfgBuilderEdgeCases:
         assert cfg.exit_block in reachable
 
     def test_context_manager_no_body_content(self) -> None:
-        """Context manager where body exists but produces no partial (line 1081)."""
+        """Context manager where body exists but produces no partial."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             context_manager=[ContextManagerMapping(
@@ -1500,7 +1500,7 @@ class TestCfgBuilderEdgeCases:
         assert found_exception
 
     def test_sequential_child_no_entry(self) -> None:
-        """Sequential composition where a child returns partial with no entry (line 630)."""
+        """Sequential composition where a child returns partial with no entry."""
         mapping = CfgNodeMapping(language="test", grammar="test")
 
         # First child: produces a normal block
@@ -1665,7 +1665,7 @@ class TestCfgBuilderEdgeCases:
         arm2.is_named = True
         arm2.children = [arm2_body]
 
-        # Punctuation child that should be skipped (line 1170 coverage)
+        # Punctuation child that should be skipped
         punct = MagicMock()
         punct.type = ","
         punct.is_named = False
@@ -2579,7 +2579,7 @@ class TestUncoveredCallLines:
         and reads as a finding about the substrate rather than a broken gate.
 
         Deliberately carries string and integer literals and a keyword-heavy
-        construct, because the widened predicate counts named LEAVES — if it
+        construct, because the predicate counts named LEAVES — if it
         tripped on ordinary tokens inside recorded statements it would fail
         here rather than silently on a corpus.
         """

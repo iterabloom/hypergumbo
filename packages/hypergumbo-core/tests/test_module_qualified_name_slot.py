@@ -7,19 +7,14 @@ WITHOUT it. java emits ``module_path="System", name="System.in"`` where java.yam
 rows ``module=java.lang.System, name=in``; python emits ``module="sys",
 name="sys.stderr"`` against ``module=sys, name=stderr``.
 
-The two items were filed separately — INV-januj as python-only, INV-fofoj's java
-half as a "call site is not a function application" shape — and are one defect.
-The java diagnosis in particular was wrong in its specifics: the module slot DOES
-resolve, ``module_attr_ref`` IS in ``tag_io_boundaries``' ``call_types``, and the
-edge reaches the pipeline. Only the name slot is at fault. Measured across a
-21-repo cohort: 3,515 refs re-state the qualifier, 299 miss a row the bare name
-would hit, 58 of them boundaries not otherwise tagged in that repo.
+It is one defect across languages, and only the NAME slot is at fault: the module
+slot resolves, ``module_attr_ref`` is in ``tag_io_boundaries``' ``call_types``,
+and the edge reaches the pipeline.
 
-WHY THE RETRY IS SAFE IN THE ADDING DIRECTION, which is the part that needed
-measuring rather than arguing. The bare name is tried ONLY after the qualified
-name has already missed, so no existing match can change. And the existing gates
-still run on the retry, which is what keeps the recall gain from becoming a
-precision loss: on the same cohort ``os.path``, ``./constants.open``,
+WHY THE RETRY IS SAFE IN THE ADDING DIRECTION. The bare name is tried ONLY after
+the qualified name has already missed, so no existing match can change. And the
+existing gates still run on the retry, which is what keeps the recall gain from
+becoming a precision loss: ``os.path``, ``./constants.open``,
 ``../js/phoenix/ajax.request``, ``sre_constants.error``, ``urllib.parse`` and
 ``reflect.String`` all still resolve to None after unqualification.
 """
@@ -46,7 +41,7 @@ def _classify(lang: str, module: str, name: str, meta: dict | None = None):
 # --- the defect, per language -------------------------------------------------
 
 def test_java_system_in_reaches_its_ipc_recv_row():
-    """java's ONLY ipc_recv row. The two-line differential that found this."""
+    """java's ONLY ipc_recv row."""
     prim = _classify("java", "System", "System.in", {})
     assert prim is not None, "java System.in must reach java.lang.System.in"
     assert prim.boundary == "ipc_recv"
@@ -106,8 +101,7 @@ def test_a_miss_with_nothing_redundant_returns_none_without_a_retry():
 def test_a_miss_whose_qualifier_is_not_redundant_returns_none():
     """A head the module slot does not repeat gives the retry nothing to try.
 
-    NOT spelled ``os``-hinted ``sys.stderr``, which was the first draft and asks a
-    different question: ``sys.stderr`` is the QUALIFIED NAME of a real row, and
+    NOT spelled ``os``-hinted ``sys.stderr``, which asks a different question: ``sys.stderr`` is the QUALIFIED NAME of a real row, and
     ``lookup_with_module``'s qualified-name arm wins before any module filter by
     design, so that pair matches on evidence the name itself carries and never
     reaches the retry.
@@ -164,8 +158,7 @@ def test_bare_name_lookup_is_unchanged():
 #
 # io_boundary and taint both match a callee against a catalogue keyed without the
 # qualifier, so a fix to one and not the other is the "one fact, two homes" shape
-# this subsystem has paid for repeatedly (INV-fokik, INV-zimud, and the WI-lipis
-# TaintSource.requires_target_boundary miss). Both now call the one helper.
+# (cf. INV-fokik, INV-zimud, WI-lipis). Both call the one helper.
 
 from hypergumbo_core.taint import (  # noqa: E402
     _match_propagation_entry,
@@ -234,8 +227,7 @@ def test_a_head_deeper_than_the_hint_is_not_redundant():
 
     ``java.lang.System.in`` against a bare ``System`` hint: the head is three
     components against a one-component hint, so the hint does not contain it and
-    nothing is stripped. Guards the length check that the dead-emptiness clause
-    was hiding.
+    nothing is stripped. Guards the length check directly.
     """
     assert strip_redundant_module_qualifier(
         "System", "java.lang.System.in") is None

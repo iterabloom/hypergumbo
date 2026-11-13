@@ -6,10 +6,10 @@ Runs `hypergumbo dead-code-maybe --format json --exclude-annotated` on a
 user-specified set of repos and aggregates the results by linker gap
 category.  Produces a single JSON artifact ranking candidates globally.
 
-Per WI-tubot (created from WI-duroz human directive 2026-04-10): this
-is an explicit ONE-SHOT variant, not a recurring bakeoff cohort.  The
-goal is to surface which linker gaps appear most frequently across a
-20-30 repo polyglot subset, prioritizing linker investment.
+This is an explicit ONE-SHOT variant, not a recurring bakeoff cohort.
+The goal is to surface which linker gaps appear most frequently across a
+polyglot subset of repos, prioritizing linker investment (history:
+WI-tubot).
 
 Usage:
     python scripts/dead-code-prospector-run.py \
@@ -17,8 +17,9 @@ Usage:
         --repos repo1,repo2,repo3 \
         --output ~/hypergumbo_lab_notebook/prospector_runs/run-YYYYMMDD/
 
-If --repos is omitted, uses a built-in default selection of 20
-polyglot repos covering Go, Java, Python, JS/TS, and Rust.
+If --repos is omitted, uses the built-in default selection
+(``_DEFAULT_REPOS``), which spans Go, Java, Python, JS/TS, Rust and a few
+polyglot repos.
 """
 from __future__ import annotations
 
@@ -58,8 +59,8 @@ _DEFAULT_REPOS = [
 
 # WI-zafab filter 1: polyglot-only detection. Mapping of file extension
 # to a language label for the harness-level polyglot check. Limited to
-# the languages the prospector cares about (the eight covered by the
-# default cohort plus a few common adjacents). Build files, shell
+# the languages the prospector cares about (those of the default
+# cohort plus a few common adjacents). Build files, shell
 # scripts, and config files are intentionally excluded — they don't
 # count toward "polyglot" because every repo has them.
 _LANG_BY_EXT: dict[str, str] = {
@@ -139,7 +140,7 @@ def _is_polyglot_repo(
 
 
 # ---------------------------------------------------------------------------
-# Categorization rules (WI-vupin v5)
+# Categorization rules
 # ---------------------------------------------------------------------------
 #
 # Each entry is (predicate, category_name). The first matching rule wins,
@@ -148,13 +149,10 @@ def _is_polyglot_repo(
 # and returns bool. Using a table rather than a nested if-chain keeps the
 # rules testable in isolation and the order explicit.
 #
-# Success criterion from WI-tubot: the rule set must leave <50% of
-# candidates `uncategorized` on the 2026-04-11 prospector corpus. v5
-# lands at ~43.5% (baseline was 94%). Each iteration improves by less
-# than 3 percentage points now, so additional narrow rules have hit
-# diminishing returns on heuristic-only categorization. See WI-vupin
-# discussion for the analytic reflection on why further heuristic
-# expansion overfits the corpus.
+# The target is to leave under half the candidates `uncategorized`.
+# Heuristic-only categorization has diminishing returns: each further
+# narrow rule moves that share little and tends to overfit the corpus it
+# was tuned on (history: WI-tubot, WI-vupin).
 
 
 _RE_YAML_JSON = re.compile(r"unmarshal|marshaljson|unmarshalyaml")
@@ -615,8 +613,8 @@ def run_prospecting(
                 "name": c.get("name", ""),
                 "path": c.get("path", ""),
                 "language": c.get("language", ""),
-                # WI-bozid: Symbol field renamed lines_of_code -> line_span;
-                # read the new key, fall back to the legacy one for old maps.
+                # Symbol's size field is ``line_span``; maps written before
+                # the rename carry ``lines_of_code`` (history: WI-bozid).
                 "loc": c.get("line_span", c.get("lines_of_code", 0)),
                 "cross_language_hits": c.get("cross_language_hits", 0),
                 "path_shape_boost": c.get("path_shape_boost", 0),

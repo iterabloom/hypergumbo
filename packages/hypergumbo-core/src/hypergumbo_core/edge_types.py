@@ -10,14 +10,14 @@ This module is the single source of truth: ``scripts/generate-schema``
 imports ``EDGE_TYPES`` to emit both the JSON Schema enum and per-value
 axis annotations (under the ``x-axis-of-values`` extension keyword).
 
-It also exports the meta-discriminator vocabulary consumers need once
-``edge_type`` alone stopped answering their question: ``IMPORT_EDGE_TYPES``
+It also exports the meta-discriminator vocabulary consumers need where
+``edge_type`` alone does not answer their question: ``IMPORT_EDGE_TYPES``
 and ``INHERITANCE_EDGE_TYPES`` (curated subsets), ``PROTOCOL_KINDS`` and
 ``BRIDGE_KINDS`` (the closed value sets for ``edge.meta['protocol']`` and
-``edge.meta['bridge_kind']``, the mechanism the ADR-0023 §6 fold moved out of
-the edge-type name),
+``edge.meta['bridge_kind']``, the mechanism ADR-0023 §6 keeps out of the
+edge-type name),
 ``is_grpc_rpc_implementation`` (a predicate that reads ``meta`` because the
-fold moved the distinction there), ``is_callback_registration`` (a predicate
+distinction lives there), ``is_callback_registration`` (a predicate
 that reads ``meta`` because ``references`` is OVERLOADED — one edge type
 carrying handler registrations, TypeScript type references and object-literal
 fields, which taint must tell apart even though reachability need not), and
@@ -42,14 +42,13 @@ against ``INHERITANCE_EDGE_TYPE_LANGUAGES``.
 Axis taxonomy:
 
 - ``relationship`` — ADR-0023 compliant. The value names the
-  relationship between src and dst. **Every registered value now sits
-  on this axis.**
-- ``endpoint_shape`` — **empty.** The ADR-0023 §6 fold retired every
-  value that occupied it (see the note at the end of the ``EDGE_TYPES``
-  tuple).
-- ``pending_classification`` — **empty.** The dispatch and publish
-  family audits issued per-value verdicts and promoted or folded every
-  member (audit-findings 0001 onward).
+  relationship between src and dst. **Every registered value sits on
+  this axis.**
+- ``endpoint_shape`` — **empty.** A type label that encodes a property
+  of an endpoint is folded to a relationship type plus a ``meta``
+  discriminator (ADR-0023 §6).
+- ``pending_classification`` — **empty.** The axis where a new value
+  waits for its family audit's per-value verdict (ADR-0023 §5).
 
 Because exactly one axis is occupied, ``edge_types_on_axis(...)`` is
 degenerate on current data and has no caller outside this module. It is
@@ -166,25 +165,23 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "module_attr_ref", AXIS_RELATIONSHIP,
         "Reads an attribute on an imported module (e.g., os.environ).",
     ),
-    # Promoted from pending_classification by audit-findings 0001 (dispatch family
-    # audit): apex of single-target dispatch via runtime indirection.
+    # Apex of single-target dispatch via runtime indirection (history:
+    # audit-findings 0001).
     EdgeTypeSpec(
         "dispatches_to", AXIS_RELATIONSHIP,
         "Caller dispatches to callee via runtime indirection "
         "(virtual method, function pointer, DI resolution, etc.).",
     ),
-    # Promoted from pending_classification by audit-findings 0001 (publish family
-    # audit): apex of producer→consumer over an async channel.
+    # Apex of producer→consumer over an async channel (history:
+    # audit-findings 0001).
     EdgeTypeSpec(
         "event_publishes", AXIS_RELATIONSHIP,
         "Producer publishes an event/message that the consumer "
         "receives via an async channel (event bus, queue, CRDT, etc.).",
     ),
-    # Registry-completeness fills per WI-tavas-voror sweep —
-    # canonical relationship-axis values per ADR-0023's
-    # 'Edge types that stay' list (and a couple of obvious-canonical
-    # additions the original list didn't enumerate). Producers
-    # already emitted these; the registry was just missing entries.
+    # Canonical relationship-axis values from ADR-0023's 'Edge types that
+    # stay' list, plus a few that list does not enumerate (history:
+    # WI-tavas-voror).
     EdgeTypeSpec(
         "inherits", AXIS_RELATIONSHIP,
         "Class/contract inherits from a parent (used by languages "
@@ -231,22 +228,12 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "to extends/implements; the override declaration itself).",
     ),
 
-    # ADR-0023 Phase 4b' COMPLETE (WI-pumav): all 21 long-tail
-    # endpoint_shape values were producer-migrated to canonical relationship
-    # types + meta discriminators (audit-findings 0017, Batches 1a-7) and
-    # their dead registry entries pruned. Together with the earlier
-    # dst-kind / bridge / IPC / publish / dispatch closures and the
-    # protocol-call (WI-hirud) + script_src (Batch 0) prunes, the
-    # endpoint_shape axis of Edge.edge_type is now EMPTY — the fold declared
-    # by ADR-0023 §6 is complete.
-    #
-    # The pending_classification axis is now ALSO empty (WI-sumik / WI-pusuv
-    # Option B): the resolver/OpenAPI/RPC family (resolver_implements,
-    # resolver_for_type, openapi_implements, implements_rpc) was producer-
-    # migrated to canonical implements/references + meta per audit-findings
-    # 0016 (Batches A/B) and its dead registry entries pruned here. The
-    # AXIS_PENDING constant is retained (a future edge type may land pending
-    # its per-family audit per ADR-0023 §5), but no value occupies it today.
+    # No value sits on the endpoint_shape or pending_classification axis:
+    # an endpoint property is carried as a canonical relationship type plus
+    # a meta discriminator (ADR-0023 §6). AXIS_ENDPOINT_SHAPE and
+    # AXIS_PENDING stay valid so a new edge type can land pending its
+    # per-family audit (ADR-0023 §5). (history: WI-pumav, WI-sumik;
+    # audit-findings 0016, 0017)
 )
 
 
@@ -277,20 +264,19 @@ def find_edge_type(name: str) -> EdgeTypeSpec | None:
 def is_grpc_rpc_implementation(
     edge_type: str, meta: Mapping[str, object] | None
 ) -> bool:
-    """True for a folded gRPC RPC-implementation edge (audit-findings 0016).
+    """True for a gRPC RPC-implementation edge.
 
-    ``implements_rpc`` folded to canonical ``implements`` +
+    A gRPC RPC implementation is emitted as canonical ``implements`` +
     ``meta['protocol']='grpc'`` (a Go method satisfying a proto RPC IS a
-    Go interface implementation). But ``implements_rpc`` carried call-like
-    consumer coupling — traceable for taint (``taint.TAINT_CALL_EDGE_TYPES``),
-    I/O-boundary reachability (``io_boundary._TRACEABLE_EDGE_TYPES`` /
+    Go interface implementation). Unlike a *structural* ``implements`` edge
+    (reverse-only, weight 0.5), it needs call-like treatment — traceable
+    for taint (``taint.TAINT_CALL_EDGE_TYPES``), I/O-boundary reachability
+    (``io_boundary._TRACEABLE_EDGE_TYPES`` /
     ``verify_claims._COVERAGE_CALL_EDGE_TYPES``), ranked at call weight
-    (``ranking`` weight 1.0), and forward-traversable in slices — whereas
-    canonical ``implements`` is a *structural* (reverse-only, weight-0.5)
-    edge. This predicate lets those consumers keep matching the folded
-    form WITHOUT wholesale-including every structural ``implements`` edge,
-    so gRPC reachability / taint / ranking / slice coupling is preserved
-    (audit-findings 0016 finding 3). It is the single source of truth for
+    (``ranking`` weight 1.0), and forward-traversable in slices. This
+    predicate lets those consumers match it WITHOUT including every
+    structural ``implements`` edge (history: audit-findings 0016, which
+    folded the former ``implements_rpc`` type). It is the single source of truth for
     "is this the folded gRPC edge", shared by every consumer so they can
     never drift. Callers pass primitives so it works on both dict-shaped
     edges (``edge['type']`` / ``edge['meta']``) and ``Edge`` objects
@@ -307,10 +293,11 @@ def is_grpc_rpc_implementation(
 #: a callable handed to something that will invoke it with data the far side
 #: chooses. Membership is the measured half of a family, not the family.
 #:
-#: ``callback_argument_reference`` is emitted by js_ts.py at two sites, for a
+#: ``callback_argument_reference`` is emitted by js_ts.py for a
 #: bare-identifier callback argument (``ws.addEventListener('message', onMsg)``,
-#: ``process.on('message', h)``) and for an inline anonymous one
-#: (``http.createServer((req, res) => ...)``).
+#: ``process.on('message', h)``), for an inline anonymous one
+#: (``http.createServer((req, res) => ...)``), and for a function assigned to a
+#: catalogued handler property (``ws.onmessage = onMsg``).
 #:
 #: THE SIBLING THAT IS NOT HERE. kotlin emits ``references`` +
 #: ``callable_reference`` for ``::fn``, which is the same shape one language
@@ -330,26 +317,26 @@ def is_callback_registration(
 
     ``references`` is OVERLOADED, and that is the whole reason this is a
     predicate rather than a member of ``taint.TAINT_CALL_EDGE_TYPES``. In
-    js_ts.py alone the one edge type carries four evidence types: this
-    registration shape, ``ast_type_ref`` (TypeScript type references — the
-    bespoke ``type_ref`` edge folded onto ``references``),
+    js_ts.py alone the one edge type carries several evidence types: this
+    registration shape, ``ast_type_ref`` (TypeScript type references),
     ``object_field_reference`` (``{onClick: handleClick}`` and the
-    ``{handleClick}`` shorthand) and an ``ast_call_direct`` middleware chain.
-    Admitting the edge TYPE wholesale would make a type reference carry
-    dataflow — the error class INV-putug measured at 20 of 47 spurious
-    situations on pretix — and would let ``module.exports = {parse, stringify}``
-    flow a module-level source into every exported function.
+    ``{handleClick}`` shorthand), ``function_reference`` (a function stored
+    as a value) and an ``ast_call_direct`` middleware chain. Admitting the
+    edge TYPE wholesale would make a type reference carry dataflow (the
+    INV-putug error class) and would let
+    ``module.exports = {parse, stringify}`` flow a module-level source into
+    every exported function.
 
-    WHY THE REGISTRATION SHAPE IS DIFFERENT FROM THOSE THREE. A registration
-    really does hand data to the handler it invokes: this is the argparse
-    reading INV-zuhig put ``dispatches_to`` in the taint call family for, one
-    language over. Measured 2026-09-14 on a seven-arm javascript fixture:
-    ``addEventListener``, ``http.createServer`` and ``process.on`` all classify
-    correctly and produced ZERO findings while both controls fired, because the
-    source is attributed to the ENCLOSING function and the sink lives in the
-    CALLBACK. The common property is that the handler OWNS A SYMBOL — an inline
-    ``ws.onmessage = function (ev) {...}`` is minted none, collapses onto its
-    enclosing function, and was already reporting its flow.
+    WHY THE REGISTRATION SHAPE IS DIFFERENT FROM THE OTHERS. A registration
+    really does hand data to the handler it invokes — the same reading that
+    puts ``dispatches_to`` in the taint call family (INV-zuhig). Without this
+    predicate a registered handler's flow is lost: the source is attributed
+    to the ENCLOSING function and the sink lives in the CALLBACK, so an
+    ``addEventListener``, ``http.createServer`` or ``process.on`` handler
+    reports nothing. The common property is that the handler OWNS A SYMBOL —
+    an inline ``ws.onmessage = function (ev) {...}`` is minted none,
+    collapses onto its enclosing function, and reports its flow there
+    already.
 
     This is the :func:`is_grpc_rpc_implementation` move and it is here for the
     same stated reason: one home for "is this the narrowed form", so the
@@ -358,8 +345,8 @@ def is_callback_registration(
     objects (``edge.edge_type`` / ``edge.meta``) alike.
 
     NOT a reachability question. ``io_boundary`` and the slice traversal do NOT
-    consult this — a registration edge was always correct as reachability and
-    those consumers already treat it so. Only the taint walk's reading changes.
+    consult this — a registration edge is correct as reachability as it
+    stands. Only the taint walk reads it.
     """
     return (
         edge_type == "references"
@@ -369,22 +356,16 @@ def is_callback_registration(
 
 
 # ---------------------------------------------------------------------------
-# Phase-2 migration helpers (per ADR-0023 §6 Phase 2)
+# Curated edge-type subsets (ADR-0023 §6)
 # ---------------------------------------------------------------------------
 #
 # Centralized constants that consumers use in place of hand-rolled
-# ``*_EDGE_TYPES`` literals. Each covers (a) the canonical
-# relationship-axis name(s) the registry keeps through Phase 4, plus
-# (b) the deprecated endpoint_shape variants Phase 3 will fold back.
-# After Phase 4's deprecation removal, the deprecated entries vanish
-# and the constant simplifies; consumer call sites stay correct
-# throughout the migration.
+# ``*_EDGE_TYPES`` literals.
 #
-# The drift linter catches future analyzers that introduce
+# The drift linter catches an analyzer that introduces a value such as
 # ``imports_widget`` without registering it (subset coherence with
-# ``EDGE_TYPES``); WI-tavas-voror's triage of emitted-but-unregistered
-# values is the complementary completeness check that catches
-# additions to the registry which should also enter these sets.
+# ``EDGE_TYPES``). Nothing checks the other direction: when a value is
+# added to the registry, decide by hand whether it belongs in these sets.
 
 IMPORT_EDGE_TYPES: Final[frozenset[str]] = frozenset({
     "imports",
@@ -501,9 +482,9 @@ def is_inheritance_edge(
 
     The one answer every consumer should use. Prefer it over
     ``edge_type in INHERITANCE_EDGE_TYPES``: the set alone cannot express
-    the Ruby-mixin half of the overloaded ``includes`` value, and six
-    consumers previously each guessed at the family and disagreed
-    (INV-nosoz).
+    the Ruby-mixin half of the overloaded ``includes`` value, and
+    hand-rolled copies of the family disagree with each other (history:
+    INV-nosoz).
 
     Args:
         edge_type: the edge's type. Note that a *serialized* edge carries
@@ -556,8 +537,8 @@ def inheritance_dispatch_role(
 def inheritance_edge_fields(edge: object) -> tuple[str, str | None]:
     """Read ``(edge_type, evidence_type)`` off an ``Edge`` **or** a dict.
 
-    The two shapes diverge in two ways that have each cost a debugging
-    session: a serialized edge names its type ``"type"`` rather than
+    The two shapes diverge in two ways that are easy to miss: a serialized
+    edge names its type ``"type"`` rather than
     ``"edge_type"``, and its ``evidence_type`` is nested under ``meta``
     rather than sitting at the top level. Consumers read whichever shape
     their stage of the pipeline hands them — linkers get ``Edge`` objects,
@@ -687,21 +668,15 @@ def find_axis_drift(
     ``search_roots=`` to ``find_drift`` directly if a narrower or
     wider scope is needed.
 
-    When ``strict=True`` (per WI-variv-lujug, post-Phase-4b), the
-    linter additionally enforces axis-principle membership: consumer
-    sets are flagged if they contain any registry value whose axis is
-    not in ``{relationship, pending_classification}``. Pending values
-    stay allowed by design — they are real edges produced by GraphQL/
-    OpenAPI/RPC analyzers awaiting per-family audit, and a consumer set
-    may legitimately reference one. (The resolver/OpenAPI/RPC family —
-    the last pending values — has since been folded to canonical
-    relationships per audit-findings 0016: the folded gRPC edge is now
-    matched by ``is_grpc_rpc_implementation`` rather than by a set
-    membership, so no consumer set names a pending value today; the
-    registry prune that drains the axis follows.) When the per-family
-    audits move pending values to canonical-relationship, the existing
-    membership check catches any consumer that didn't follow the
-    rename.
+    When ``strict=True``, the linter additionally enforces
+    axis-principle membership: consumer sets are flagged if they
+    contain any registry value whose axis is not in
+    ``{relationship, pending_classification}``. Pending values stay
+    allowed by design — a pending value is a real emitted edge awaiting
+    its per-family audit, so a consumer set may legitimately name one;
+    when the audit renames it to a canonical relationship, the
+    membership check catches any consumer that didn't follow. No value
+    is pending today (history: WI-variv-lujug).
 
     Used by the property test in ``tests/test_edge_types.py`` and the
     pre-commit linter at ``scripts/check-edge-type-drift``.
@@ -726,8 +701,8 @@ def find_axis_drift(
 # Languages that can emit each inheritance spelling, measured from the
 # producer sites rather than assumed. Used to decide whether a linker that
 # declares ``depends_on`` is *entitled* to omit a spelling: a Java-only
-# linker omitting ``inherits`` is correct, ``type_hierarchy`` omitting it is
-# the INV-nosoz defect.
+# linker omitting ``inherits`` is correct, while ``type_hierarchy`` (every
+# language) omitting it is a defect (INV-nosoz).
 INHERITANCE_EDGE_TYPE_LANGUAGES: Final[dict[str, frozenset[str]]] = {
     "extends": frozenset({
         "blade", "dart", "java", "javascript", "python", "ruby", "twig",
@@ -744,11 +719,12 @@ INHERITANCE_EDGE_TYPE_LANGUAGES: Final[dict[str, frozenset[str]]] = {
 def find_partial_inheritance_family_literals(repo_root: Path) -> list[str]:
     """Find literals that enumerate PART of the inheritance family by hand.
 
-    INV-nosoz measured six consumers each answering "is this an inheritance
-    edge?" with their own literal, four of which omitted ``inherits`` — so
-    Solidity's 516 ``inherits`` edges on openzeppelin-contracts produced zero
-    dispatch. The rule enforced here is the same one audit-findings 0018 set
-    for ``Symbol.kind``: **enumerate all or none**. A complete literal is
+    A consumer that answers "is this an inheritance edge?" with its own
+    literal and omits a spelling silently disables that spelling's
+    languages: a set without ``inherits`` gives Solidity contracts no
+    dispatch (history: INV-nosoz). The rule enforced here is the one
+    ``Symbol.kind`` also follows (audit-findings 0018): **enumerate all or
+    none**. A complete literal is
     allowed (the resolver is preferred, but a complete set is not the bug);
     a partial one is not.
 
@@ -840,10 +816,9 @@ def _equality_chain_offenders(
     """Flag a function that branches on family members via ``==`` chains.
 
     A literal-collection scanner cannot see ``if e.edge_type == "extends":
-    ... elif e.edge_type == "implements":`` — and that shape, in
-    ``type_hierarchy.build_inheritance_maps``, is precisely what cost
-    Solidity its dispatch on all 516 ``inherits`` edges. A guard blind to
-    the site that caused the defect it is named after is not a guard.
+    ... elif e.edge_type == "implements":`` — and that shape drops a family
+    member just as a partial literal does (a chain without ``inherits``
+    gives Solidity no dispatch), so a guard blind to it is not a guard.
 
     Scoped per enclosing function, since two functions legitimately
     handling different halves of the family are not one partial

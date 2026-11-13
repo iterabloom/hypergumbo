@@ -25,8 +25,8 @@ What the recording pins about the producer, read off the bytes:
 
 * ``Document.language`` is EMPTY on every document and
   ``SymbolInformation.kind`` is 0 on every symbol — the two silences the
-  shared importer now fills from the file extension and the descriptor
-  grammar (PR #1082).
+  shared importer fills from the file extension and the descriptor
+  grammar.
 * Every global Definition occurrence's ``range`` is the identifier TOKEN
   (single-line), so this arm's ``span_role`` is ``token``.
 * Parameters are GLOBAL symbols (``main().(argv)``), one per parameter, and
@@ -80,22 +80,18 @@ SAMPLE_PROJECT_PAIRING = {
 # Per attribute over the 10 paired records: (agree, disagree, python only, scip_python only).
 # `name`: the four methods are `Shape.x` here and `x` there. `is_exported`:
 # one-sided to the incumbent on ALL 10 — `py.py` computes exportedness and the
-# SCIP arm computes none, so only the incumbent supplies a value.
-#
-# WAS 6 of 10 UNTIL WI-kohah, and the four missing ones were the METHODS. This
-# comment used to read "for which neither arm has a rule: since INV-kubup the
-# field abstains (`None`)" — an accurate description of a PRODUCER GAP that the
-# fixture had been recording as though it were a property of the comparison.
-# py.py now decides a method's exportedness conjunctively (the enclosing class's
-# verdict AND the method not being private-by-name), so the incumbent supplies
-# all 10 and the count is one-sided for the same reason at every record rather
-# than for two different reasons at six and four.
+# SCIP arm computes none, so only the incumbent supplies a value. That
+# includes the four METHODS: py.py decides a method's exportedness
+# conjunctively (the enclosing class's verdict AND the method not being
+# private-by-name), so the count is one-sided for the same reason at every
+# record. (history: WI-kohah)
 # `span`: token vs item, by construction.
-# `stable_id`: contested on all 10, because the arms hash different things. It read 8 / 2-one-sided
-# while the harness skipped the kind backstop a survey runs before the merge:
-# the 2 were the syntax arm's variables, reaching the merge with no id
-# (WI-paluk). This follows from the survey's code path; it is not a live measurement,
-# because scip-python is not installed where this was pinned.
+# `stable_id`: contested on all 10, because the arms hash different things. The
+# harness must run the kind backstop a survey runs before the merge: skipping it
+# lets the syntax arm's two variables reach the merge with no id, which reads as
+# 8 contested / 2 one-sided (WI-paluk). This follows from the survey's code
+# path; it is not a live measurement, because scip-python is not installed where
+# this was pinned.
 SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 2, 0),
     "is_exported": (0, 0, 10, 0),
@@ -111,8 +107,8 @@ SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
 # the module (`pathlib.Path.glob`, `builtins.sorted`) fold on identical ids
 # under §11, and the six module-less stubs are absorbed by their typed twins
 # under §15 — a partial external key matched by a complete one. scip_python-only
-# is 0 BECAUSE of that absorption: before §15 those six twins had no partner,
-# and one call carried two edges.
+# is 0 BECAUSE of that absorption: without §15 those six twins would have no
+# partner, and one call would carry two edges.
 SAMPLE_PROJECT_EDGE_OVERLAP = {
     ("calls", True): (3, 0, 1),
     ("calls", False): (8, 5, 0),

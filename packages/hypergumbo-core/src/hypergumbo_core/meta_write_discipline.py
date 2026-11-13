@@ -1,23 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
+"""Static enforcement of ``MetaKeySpec.write_discipline`` (INV-hazov).
 
 Why this exists
 ---------------
 
-Seven times between 2026-04 and 2026-08, a meta slot several writers could
-reach held a single value and the last writer silently erased the earlier
-ones (INV-forim, the BUG-04/05 family, INV-zumin, INV-pojib, INV-virat, the
-``verify_claims`` caveat list, and ``framework_patterns`` overwriting
-producer-set ``concepts``). Every one was fixed correctly, locally, and in a
-way that did nothing to prevent the next — which is the definition of a
-missing mechanism rather than a run of bad luck.
+A single-valued meta slot that several writers can reach lets the last
+writer silently erase the earlier ones. Fixing each occurrence locally does
+nothing to prevent the next, so the rule needs a mechanism (history:
+INV-forim, INV-zumin, INV-pojib, INV-virat, among others).
 
-:mod:`hypergumbo_core.axis_meta_keys` already governed *which* keys may
-exist and *what vocabulary* their values draw from. It was blind to
-**arity**: the offending write in INV-virat was a correctly-spelled
-assignment of a registered key, so no existing check could have objected.
-``write_discipline`` is the arity declaration; this module is what makes it
-binding instead of advisory.
+:mod:`hypergumbo_core.axis_meta_keys` governs *which* keys may exist and
+*what vocabulary* their values draw from, but not **arity**: an erasing
+write can be a correctly-spelled assignment of a registered key, which no
+vocabulary check objects to. ``write_discipline`` is the arity declaration;
+this module is what makes it binding instead of advisory.
 
 The three rules
 ---------------
@@ -40,24 +36,21 @@ The three rules
    routed through the chokepoint is still a second writer. This is the rule
    that fails CLOSED: silence from an author is not evidence of single-writer.
 
-   The discriminator is narrow on purpose, and was validated before it was
-   trusted: 80 registered keys are written by more than one *module*, but
-   only four are collision-capable, and two of those four are the io keys
-   that produced INV-virat and INV-zumin. A measurement that independently
-   rediscovers both known defects is a control; a module count would have
-   reported 80 mostly-benign hits and taught nobody anything (each of 26
-   linkers writing ``framework_dispatch`` on edges it constructs itself has
-   26 writers and zero collisions).
+   The discriminator is narrow on purpose. Counting writer *modules* instead
+   would flag most registered keys and teach nobody anything: every linker
+   writing ``framework_dispatch`` on edges it constructs itself is a separate
+   writer module, and none of them collides. Construction plus post-hoc
+   mutation is the shape that collides (the io keys behind INV-virat and
+   INV-zumin have it).
 
 3. **No meta-bearing construction followed by wholesale replacement.**
-   ``edge = Edge.create(..., access_mode="write"); edge.meta = {...}`` is
-   INV-forim exactly. Nine such sites survive on the live tree and all are
-   currently harmless — none of them passes a kwarg that lands in ``meta``,
-   so there is nothing to destroy. That is safety by coincidence of which
-   kwargs those call sites happen to use, and adding one ``access_mode=``
-   to any of them reinstates the bug with no test failing. Scoping the rule
-   to meta-bearing constructions converts the coincidence into a
-   guarantee while requiring zero migration today.
+   ``edge = Edge.create(..., access_mode="write"); edge.meta = {...}``
+   destroys ``access_mode`` (history: INV-forim). A construction followed by
+   wholesale replacement is harmless only while the construction passes no
+   kwarg that lands in ``meta`` — safety by coincidence, which one added
+   ``access_mode=`` breaks with no test failing. Scoping the rule to
+   meta-bearing constructions turns the coincidence into a guarantee and
+   needs no migration of the harmless sites.
 """
 
 from __future__ import annotations
@@ -121,21 +114,14 @@ def _meta_aliases(scope: ast.AST) -> set[str]:
         meta = symbol.meta        # an ALIAS — same dict object
         meta["concepts"] = kept   # invisible to rule 1
 
-    That was one live site (``framework_patterns.strip_test_file_only_concepts``)
-    bypassing the chokepoint on a ``merge_union`` key, in the same module that
-    produced this invariant's own seventh instance.
+    A COPY IS NOT AN ALIAS, and keeping them apart is what makes this rule
+    usable rather than noise. ``m = dict(x.meta)`` builds a fresh dict;
+    mutating it destroys nothing until it is assigned back, and assigning it
+    back is already rule 3's business. Copies far outnumber aliases in the
+    tree, so a predicate that matched every local dict would bury the aliases.
 
-    A COPY IS NOT AN ALIAS, and conflating them is what makes this rule usable
-    rather than noise. ``m = dict(x.meta)`` builds a fresh dict; mutating it
-    destroys nothing until it is assigned back, and assigning it back is
-    already rule 3's business. Measured over the tree: 1 alias, 13 copies. The
-    13 are the control showing this predicate is not simply matching every
-    local dict.
-
-    PER SCOPE, for the reason rule 3 already learned the hard way: a
-    module-wide name scan let an alias bound in one function match subscripts
-    in every other, and reported 5 where the truth is 1 — the identical
-    false-positive shape that a module-wide first draft produced on ``go.py``.
+    PER SCOPE, as for rule 3: a module-wide name scan lets an alias bound in
+    one function match subscripts in every other function.
     """
     names: set[str] = set()
     for node in _walk_scope(scope):
@@ -228,8 +214,8 @@ def _scan(root: Path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
         # INV-hazov (a): an alias-mediated mutation is still a POST-HOC
         # mutation, so the census must count it or a key reachable only that
         # way would read as construction-only and drop out of the
-        # collision-capable set — the same under-count that let a fixed key
-        # be silently down-declared before chokepoint calls were counted.
+        # collision-capable set — the same under-count that not counting
+        # chokepoint calls would cause (see ``_chokepoint_key``).
         for scope in _scopes(tree):
             aliases = _meta_aliases(scope)
             if not aliases:
@@ -257,8 +243,7 @@ def _scopes(tree: ast.AST) -> list[ast.AST]:
     Rule 3 must be evaluated PER SCOPE. A module-wide name scan reports
     that ``sym`` was bound to a meta-bearing construction somewhere in the
     file and then flags an unrelated ``for sym in analysis.symbols`` loop
-    in another function — measured, not hypothetical: that false positive
-    is what a module-wide first draft of this check produced on ``go.py``.
+    in another function.
     """
     return [tree] + [
         n for n in ast.walk(tree)
@@ -273,13 +258,10 @@ def _walk_scope(scope: ast.AST) -> list[ast.AST]:
     each is examined on its own. But ``ast.walk`` from the MODULE reaches into
     every function body, so a name bound in one function and a subscript in
     another are both "in the module scope" — which re-creates the exact
-    module-wide false positive ``_scopes`` was introduced to kill.
+    module-wide false positive ``_scopes`` exists to prevent.
 
-    Found by a test written for the alias rule (INV-hazov (a)) and true of rule
-    3 as well: the leak was latent there, surviving only because no module in
-    the tree happened to pair a meta-bearing construction in one function with
-    a wholesale ``.meta`` replacement in another. One walker for both rules, so
-    the boundary is defined once rather than depended upon twice.
+    Rule 1's alias scan and rule 3 both use this one walker, so the scope
+    boundary is defined once rather than depended upon twice.
     """
     out: list[ast.AST] = []
     stack: list[ast.AST] = list(ast.iter_child_nodes(scope))
@@ -320,8 +302,7 @@ def find_discipline_drift(root: Path) -> list[str]:
         exempt = path.name in _CHOKEPOINT_MODULES
 
         # Rule 1 — direct assignment bypassing the chokepoint, whether written
-        # against the attribute or against a local ALIAS of it (INV-hazov (a):
-        # a bare name defeated this rule entirely, and one live site used it).
+        # against the attribute or against a local ALIAS of it (INV-hazov (a)).
         if not exempt:
             alias_hits: dict[int, str] = {}
             for scope in _scopes(tree):
@@ -408,8 +389,8 @@ def unaudited_key_count(root: Path) -> int:
     """Visible debt: registered keys still at the default.
 
     Reported rather than hidden, per the No Weasel Words rule — 'explicit
-    gaps over implicit completeness'. Landing the mechanism does not audit
-    all 84 keys and this number says so out loud.
+    gaps over implicit completeness'. The mechanism does not audit every
+    key, and this number says out loud how many remain.
     """
     from .axis_meta_keys import META_KEYS
 

@@ -4,18 +4,19 @@
 ``reader, writer = await asyncio.open_connection(host, 80)`` hands back a
 ``StreamReader`` and a ``StreamWriter``; ``proc = await
 asyncio.create_subprocess_exec(...)`` a ``Process`` whose ``stdout`` is a
-``StreamReader``. py.py typed none of them -- an AWAITED call was never typed,
-and a TUPLE target never was -- so ``await reader.read(100)`` emitted
-``python:external:0-0:read`` and reached no catalogue row: a TCP read through
-``open_connection`` was not a ``net_recv`` crossing at all.
+``StreamReader``. Typing them takes two things a plain assignment does not:
+seeing through ``await``, and typing a TUPLE target position by position.
+Without them ``await reader.read(100)`` emits ``python:external:0-0:read`` and
+reaches no catalogue row, so a TCP read through ``open_connection`` is not a
+``net_recv`` crossing at all.
 
 The types come from the library-signature catalogue: ``tuple_returns`` (a
 tuple-returning producer, one type per position) and ``member_types`` (a
-member attribute of a typed object), beside the existing ``signatures``. The
+member attribute of a typed object), beside ``signatures``. The
 MEDIUM comes from which factory made the stream: ``open_connection`` is a
 ``net_stream``, ``open_unix_connection`` and the subprocess pipes are a
 ``pipe`` -- stamped as ``io_target_kind`` on every call through that receiver,
-the stamp WI-foloh's ``net_recv`` / ``ipc_recv`` dual row selects on.
+the stamp the ``net_recv`` / ``ipc_recv`` dual row selects on (WI-foloh).
 """
 from __future__ import annotations
 
@@ -77,7 +78,7 @@ def test_a_subprocess_s_pipes_are_its_members(tmp_path: Path) -> None:
 def test_a_rebound_name_loses_the_medium(tmp_path: Path) -> None:
     """``reader = other`` drops the medium the stream carried. (Its TYPE
     outlives an untyped rebinding -- py.py's typed-assignment arms purge only
-    when the new value is typed, for every external type, not this item's.)"""
+    when the new value is typed, for every external type, not only these.)"""
     calls = _calls(tmp_path, (
         "import asyncio\n\n\nasync def f(host, other):\n"
         "    reader, writer = await asyncio.open_connection(host, 80)\n"

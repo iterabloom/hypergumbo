@@ -9,25 +9,20 @@ directory with one of those names is excluded only when it carries a virtualenv
 marker. PEP 405 specifies ``pyvenv.cfg`` at a virtualenv root; older tooling writes
 only ``bin/activate``, and Windows writes ``Scripts/activate``.
 
-WHY IT MATTERS. Measured across 467 corpus repositories, name-matching drops:
-
-    427 source files, in 77 directories, across 39 repositories (8.4%)
-    425 of 427 (99.5%) classified FIRST_PARTY by supply_chain.classify_file
-    0 of the 110 venv-NAMED directories in the corpus carry any virtualenv marker
-
-The two worst instances are whole subsystems, not stray files: ``rocksdb/env/``
-(``env_posix.cc``, ``fs_posix.cc``, ``io_posix.cc``, ``file_system.cc``) is RocksDB's
-entire POSIX filesystem/IO abstraction layer, and ``qemu-u-boot/env/`` (``env.c``,
-``ext4.c``, ``fat.c``, ``mmc.c``, ``nand.c``, ``flash.c``) is U-Boot's environment
-storage subsystem. On poetry, the ``env`` package is its **virtualenv manager**. In
-every case the code is unusually I/O-dense, which is the opposite of what an
-exclusion list should be removing from a boundary analysis.
+WHY IT MATTERS. A COMMITTED directory named ``env`` / ``venv`` is usually
+first-party source, not a virtualenv (virtualenvs are installed, not committed),
+so name-matching drops real first-party code, sometimes whole subsystems: RocksDB's ``env/``
+(``env_posix.cc``, ``fs_posix.cc``, ``io_posix.cc``, ``file_system.cc``) is its
+entire POSIX filesystem/IO abstraction layer, and U-Boot's ``env/`` (``env.c``,
+``ext4.c``, ``fat.c``, ``mmc.c``, ``nand.c``, ``flash.c``) is its environment
+storage subsystem. In poetry, the ``env`` package is its **virtualenv manager**.
+Such code is unusually I/O-dense, which is the opposite of what an exclusion list
+should be removing from a boundary analysis.
 
 WHY THE CONTENT TEST RATHER THAN ROOT-ANCHORING. Anchoring the pattern to the repo
-root (``env/*``, which the matcher supports) recovers 379 of 427 (88.8%) and
-**structurally cannot** recover the two worst cases: rocksdb's and U-Boot's ``env/``
-both sit AT the repo root, exactly where a virtualenv would. Only a content test
-separates them.
+root (``env/*``, which the matcher supports) **structurally cannot** recover the
+worst cases: rocksdb's and U-Boot's ``env/`` both sit AT the repo root, exactly
+where a virtualenv would. Only a content test separates them.
 
 DIRECTION, STATED. Compared with name-matching, this ADDS analyzable source, so it
 can add findings and add analysis time. It cannot delete a finding.
@@ -35,14 +30,13 @@ can add findings and add analysis time. It cannot delete a finding.
 THE FAILURE TO FEAR is the mirror image — re-including a real virtualenv drags in
 thousands of dependency files. ``test_a_real_virtualenv_is_still_excluded`` and
 ``test_hypergumbo_own_venv_is_still_excluded`` pin that door shut; the latter runs
-against this repository's actual ``.venv`` rather than a fixture, because the
-corpus that supplied the 0-of-110 figure contains **no installed virtualenvs at
-all** (467 bare clones, never pip-installed), so that zero is partly a property of
-the corpus and cannot be the only evidence.
+against this repository's actual ``.venv`` rather than a fixture, because bare
+clones of other repositories contain **no installed virtualenvs at all**, so they
+cannot be the only evidence that real virtualenvs are still excluded.
 
 HONEST GAP: the ``Scripts/activate`` (Windows) arm has no real-world positive
-control — zero corpus hits and no Windows virtualenv measured against. It is
-pinned by fixture below and is not claimed to be validated.
+control — no Windows virtualenv has been tested against. It is pinned by fixture
+below and is not claimed to be validated.
 """
 
 from pathlib import Path
@@ -73,8 +67,8 @@ def _source_pkg(root: Path, rel: str) -> Path:
 
 
 class TestFirstPartyPackagesNamedEnvAreAnalyzed:
-    """First-party packages named ``env``. Each shape below is a real corpus
-    instance."""
+    """First-party packages named ``env``. Each shape below mirrors a real
+    project's layout."""
 
     def test_nested_source_package_named_env(self, tmp_path: Path) -> None:
         """poetry: ``src/poetry/utils/env/`` — its virtualenv MANAGER, not a venv."""
@@ -115,20 +109,20 @@ class TestRealVirtualenvsStayExcluded:
         ) is True
 
     def test_windows_scripts_activate_marker(self, tmp_path: Path) -> None:
-        """PINNED WITHOUT A REAL-WORLD CONTROL. Zero corpus hits and no Windows
-        virtualenv was available to measure against, so this arm is asserted by
-        fixture only and is NOT claimed to be validated."""
+        """PINNED WITHOUT A REAL-WORLD CONTROL. No Windows virtualenv has been
+        tested against, so this arm is asserted by fixture only and is NOT
+        claimed to be validated."""
         v = _venv(tmp_path, "venv", "Scripts/activate")
         assert is_excluded(v, tmp_path) is True
 
     def test_hypergumbo_own_venv_is_still_excluded(self) -> None:
         """Runs against this repository's REAL .venv, not a fixture.
 
-        Load-bearing because the corpus that produced "0 of 110 venv-named dirs carry
-        a marker" contains no installed virtualenvs at all — 467 bare clones — so that
-        zero is partly a property of the corpus. This is a live positive control on
-        the arm that keeps this repository's own .venv — tens of thousands of
-        dependency files — out of analysis."""
+        Load-bearing because bare clones of other repositories contain no
+        installed virtualenvs at all, so fixtures shaped on them cannot show that
+        a real one is still excluded. This is a live positive control on the arm
+        that keeps this repository's own .venv — tens of thousands of dependency
+        files — out of analysis."""
         repo_root = Path(__file__).resolve().parents[3]
         venv = repo_root / ".venv"
         if not venv.is_dir():  # pragma: no cover - dev machines without a local venv
@@ -167,7 +161,7 @@ class TestTheRestOfTheExcludeListIsUntouched:
     def test_vendor_below_root_is_analysed_as_dependency_code(
         self, tmp_path: Path,
     ) -> None:
-        """kata-containers ``src/runtime/vendor`` — 3,282 genuine dependency files,
+        """kata-containers ``src/runtime/vendor`` — genuine dependency files,
         committed. No package-manager marker here, so it is analysed; it is tier 3,
         not first-party."""
         from hypergumbo_core.supply_chain import Tier, classify_file
@@ -201,7 +195,7 @@ class TestAllWalkersAgree:
     pruning rule, and these tests hold them to it.
 
     Asserted BEHAVIOURALLY rather than structurally: a test that greps for a call to
-    the shared helper can be satisfied by a fourth copy that merely looks right.
+    the shared helper can be satisfied by yet another copy that merely looks right.
     These run the actual entry points and compare their answers."""
 
     @pytest.mark.parametrize(

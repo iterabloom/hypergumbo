@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The C def/use extractor, CFG mapping and DDG spec (WI-himob).
 
-Before this, c had no extractor, no CFG mapping and no DDG spec, so every c
-taint finding was ``structural`` with the walk ``unavailable``. Measured on the
-shipped CLI: ``getenv`` then ``send`` of that value, and ``getenv`` whose result
-is thrown away beside a ``send`` of a constant, produced BYTE-IDENTICAL
+Without all three, every c taint finding is ``structural`` with the walk
+``unavailable``, so ``getenv`` then ``send`` of that value, and ``getenv`` whose
+result is thrown away beside a ``send`` of a constant, produce identical
 verdicts. A finding that cannot be told from its refutation cannot be triaged.
 """
 from __future__ import annotations
@@ -90,12 +89,12 @@ def test_a_real_flow_is_confirmed_by_the_walk(
 def test_a_secret_that_never_reaches_the_sink_is_labelled_apart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """THE ITEM'S REPRO: source and sink sharing a function, the value not passed.
+    """WI-himob's repro: source and sink sharing a function, the value not passed.
 
     ``ddg_mixed`` is java's label for the same shape (WI-gotun): the walk ran and
     did not confirm the value reaches the sink. The finding still counts -- the
-    extractor changes the LABEL, not the count, as the item priced it -- but it
-    is no longer indistinguishable from the leak above.
+    extractor changes the LABEL, not the count -- but it is distinguishable
+    from the leak above.
     """
     verdict = _evidence(tmp_path, monkeypatch,
                         '    char *k = getenv("API_KEY");\n    int n = 1;\n'
@@ -106,8 +105,8 @@ def test_a_secret_that_never_reaches_the_sink_is_labelled_apart(
 def test_c_reports_data_flow_capable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The four blockers verify-claims named for c (cfg_mapping, atomic_statement,
-    def_use_extractor, ddg_spec) are gone."""
+    """verify-claims reports none of the four blockers for c (cfg_mapping,
+    atomic_statement, def_use_extractor, ddg_spec)."""
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "leak.c").write_text(

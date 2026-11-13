@@ -1,30 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The adjudication collector must carry the tool's OWN disclosure forward.
 
-WHAT WENT WRONG, and it cost two measurements. ``verify-claims`` emits
-``walk_verdict`` and ``walk_blocked_by`` on every evidence row. For a
-``structural`` finding it emits ``walk_verdict: "unavailable"`` — the
-propagator stamps it deliberately, and its comment says why: blank would
-conflate "no walk was possible" with "this record predates the field".
+``verify-claims`` emits ``walk_verdict`` and ``walk_blocked_by`` on every
+evidence row. For a ``structural`` finding it emits ``walk_verdict:
+"unavailable"`` — the propagator stamps it deliberately, and its comment says
+why: blank would conflate "no walk was possible" with "this record predates
+the field".
 
-``cmd_collect`` builds its row from an EXPLICIT key list and both fields were
-absent from it. So every adjudication packet ever built from this collector
-told the adjudicator that a source reaches a sink in N hops, printed the route,
-and silently withheld the tool's own statement that NO DATAFLOW WALK RAN and
-the route is call-graph reachability.
-
-MEASURED CONSEQUENCE. Measurement 0006's ``sample/sample-112.json`` has neither
-key, so its two independent 16-agent panels judged 112 situations without it.
-A later blind panel on rabbitmq spent its whole effort refuting a 16-hop route
-— correctly, and reaching FALSE POSITIVE by reading source, which is the
-rubric's bar — that the tool had already flagged as unwalked. The verdicts are
-not thereby wrong: the rubric says to judge the SOURCE and treat the route as a
-hint. What was wasted is the adjudicator's effort, and what was hidden is how
-much of the population rests on no walk at all — 72.3% ``structural`` on the
-16-repo cohort, against 1.5% with a confirmed dependence.
-
-0006 named its own packet builder as defect family F and said "Fix before
-reuse". This is that fix, for the field that mattered most.
+The collector builds each row (``flows_from_payload``) from an EXPLICIT key
+list, so a field left off that list is dropped silently. Dropping these two
+leaves a packet that tells the adjudicator a source reaches a sink in N hops,
+prints the route, and withholds the tool's own statement that NO DATAFLOW WALK
+RAN and the route is only call-graph reachability. The verdicts are not thereby
+wrong — the rubric says to judge the SOURCE and treat the route as a hint — but
+the adjudicator spends effort refuting routes the tool already flagged as
+unwalked, and the packet hides how much of the population rests on no walk at
+all (``structural`` findings can be most of it).
 """
 
 from __future__ import annotations
@@ -104,10 +95,9 @@ class TestTheWalkDisclosureSurvivesCollection:
     def test_a_blocked_walk_carries_its_reason(
         self, collector: ModuleType,
     ) -> None:
-        """``walk_blocked_by`` is the field measurement 0007 partitioned the
-        blocked walks with (cross_function 76.3% / source_not_tracked 17.3% /
-        sink_before_source 6.5%). Dropping it makes that partition
-        unrecoverable from a flow file."""
+        """``walk_blocked_by`` is the field that partitions the blocked walks
+        by reason (cross_function / source_not_tracked / sink_before_source).
+        Dropping it makes that partition unrecoverable from a flow file."""
         rows = collector.flows_from_payload(
             _payload(walk_verdict="not_attempted",
                      walk_blocked_by="cross_function"), "beads")
@@ -121,7 +111,7 @@ class TestTheWalkDisclosureSurvivesCollection:
 
         A change that stamped every row "unavailable" would pass the two tests
         above and be worthless — worse than worthless, since it would label the
-        1.5% of findings that DO carry a confirmed dependence as unwalked. This
+        findings that DO carry a confirmed dependence as unwalked. This
         pins that the field is carried FAITHFULLY, not defaulted."""
         rows = collector.flows_from_payload(
             _payload(analysis_method="ddg", confidence="precise",
@@ -143,16 +133,16 @@ class TestTheWalkDisclosureSurvivesCollection:
 
 
 class TestTheNonProductionSourceArmIsReachable:
-    """WI-zamud: a population that lives entirely in test code is invisible to
-    every arm this collector could previously produce.
+    """A population that lives entirely in test code must be reachable by
+    some arm of this collector.
 
     ``verify-claims`` excludes test/fixture-sourced flows by default
-    (WI-bifob), and ``run_verify_claims`` hardcoded its argv, so the flag that
-    lifts that exclusion could not be reached at all. On such a population the
-    collector's "no new situations" and "the rule does nothing" are the same
-    number -- a blind instrument, not a null result. The flag is passed through
-    to PRODUCTION's parser rather than reinterpreted here, which is the same
-    discipline the surrounding function already documents.
+    (WI-bifob). If the collector cannot pass the flag that lifts that
+    exclusion, then on such a population its "no new situations" and "the
+    rule does nothing" are the same number -- a blind instrument, not a null
+    result. The flag is passed through to PRODUCTION's parser rather than
+    reinterpreted here, which is the same discipline the surrounding function
+    already documents (history: WI-zamud).
     """
 
     def _capture_argv(self, collector: ModuleType, monkeypatch, **kwargs):
@@ -284,11 +274,11 @@ def _shell_flows(tmp_path: Path) -> tuple[Path, Path]:
 
 
 class TestTheCodeUnderTestIsChosenNotInherited:
-    """The pretix A/B (WI-valav) ran the subject analyzer in BOTH arms: this
-    script inserted its own tree's packages ahead of PYTHONPATH whenever the
-    copy run was not the editable-install tree, and reported a 0 delta, exit
-    0. A fake package on PYTHONPATH that announces itself and exits 97 makes
-    the imported copy observable; each test pins one replacement for the
+    """Inserting this script's own tree ahead of PYTHONPATH whenever the copy
+    being run is not the editable-install tree runs the subject analyzer in
+    BOTH arms of an A/B, which then reports a 0 delta, exit 0 (history:
+    WI-valav). A fake package on PYTHONPATH that announces itself and exits 97
+    makes the imported copy observable; each test pins one replacement for the
     silent outcome, on ``collect`` AND ``packet`` (WI-binod's import)."""
 
     @pytest.mark.parametrize("command", ["collect", "packet"])

@@ -1,20 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A sink the project declares trusted is excluded AND disclosed (WI-lukoz).
 
-``TaintSink.trust_level`` was documented as the knob a project turns for "a
-sink that is safe in context" -- docs/hypergumbo-spec.md said so twice, and the
-``verify-claims`` implementation's docstring once -- and nothing read it.
-Measured before this change: a project sink catalogue declaring
-``subprocess.run`` with ``trust_level: trusted`` left a host_secret ->
-subprocess verdict ``violated`` with the same one flow, while the same entry
-with a different ZONE moved the verdict, so the override was applied and the
-level alone did nothing.
+``TaintSink.trust_level`` is the documented knob a project turns for "a sink
+that is safe in context" (docs/hypergumbo-spec.md). A project sink catalogue
+declaring ``subprocess.run`` with ``trust_level: trusted`` must therefore move a
+host_secret -> subprocess verdict, not leave it ``violated`` on the same flow --
+the override applying while the level does nothing is the defect pinned here.
 
-A trusted sink's flows now leave ``evidence_count`` and are counted in
+A trusted sink's flows leave ``evidence_count`` and are counted in
 ``trusted_sink_flows``, the ``resource_naming_flows`` shape (WI-bulag): a true
 flow set aside by a declaration the project made, said so in the sentence on
-the path where silence would mislead. ``untrusted`` and every other value
-behave as before.
+the path where silence would mislead. ``untrusted`` and every other value keep
+their flows in the evidence.
 """
 
 from __future__ import annotations
@@ -109,12 +106,12 @@ def go():
 def test_a_trusted_sink_does_not_clear_an_untrusted_one_beside_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """WI-gajir. ``go`` reads the secret and reaches TWO launchers, only one
-    of them declared trusted. Both flows are call-reachability-only, so they
-    collapse into one situation; before the fix the group took
-    ``trusted_sink`` from its first member (``subprocess.run``) and the claim
-    read ``confirmed_with_caveats`` with 0 evidence, although the secret
-    reaches ``subprocess.Popen``, which nobody vouched for."""
+    """``go`` reads the secret and reaches TWO launchers, only one of them
+    declared trusted. Both flows are call-reachability-only, so they collapse
+    into one situation. A group that took ``trusted_sink`` from its first
+    member (``subprocess.run``) would read ``confirmed_with_caveats`` with 0
+    evidence, although the secret reaches ``subprocess.Popen``, which nobody
+    vouched for (WI-gajir)."""
     verdict = _verdict(tmp_path, monkeypatch, "trusted", app=_TWO_LAUNCHES)
     assert verdict["verdict"] == "violated"
     assert verdict["evidence_count"] == 1

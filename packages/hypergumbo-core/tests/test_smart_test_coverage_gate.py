@@ -1,22 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-kalub: static source guards for smart-test's baseline scope + coverage gate.
+"""Guards for smart-test's baseline scope, pytest verdict and coverage gate (WI-kalub).
 
-``scripts/smart-test`` is bash, so it contributes no pytest coverage and has no
-behavioral harness; the repo convention (cf. ``test_smart_test_slice_robustness``)
-is a source-level invariant test. These guards pin the four Step-1 properties of
-the WI-kalub fix, each of whose regression reintroduces a concrete failure:
+``scripts/smart-test`` is bash, so it contributes no pytest coverage. Most guards
+here are source-level invariant tests (the repo convention, cf.
+``test_smart_test_slice_robustness``); the ``run_pytest`` guards at the bottom
+instead extract the real bash functions and drive them against a stub pytest.
+The source-level guards pin four properties, each of whose regression
+reintroduces a concrete failure:
 
 1. **Branch-own baseline (1a/1d).** The per-PR baseline is ``merge-base(HEAD,
    <authoritative-dev>)`` — the branch's own changes — NOT the ``last-green-sha``
-   marker. Anchoring on the (routinely 50-commits-stale) marker inflates the
-   changed set with already-merged files whose full test sets the affected slice
-   does not select, which is the root of both the false-red scoped-coverage
-   failures AND the ~whole-suite-every-PR runtime bloat. Whole-codebase coverage
-   is enforced separately by full-suite teeth + nightly, not by this per-PR gate.
+   marker. Anchoring on the (routinely stale) marker inflates the changed set
+   with already-merged files whose full test sets the affected slice does not
+   select, which causes both false-red scoped-coverage failures AND
+   near-whole-suite runtime on every PR. Whole-codebase coverage is enforced
+   separately by full-suite teeth + nightly, not by this per-PR gate.
 
-2. **Word-bounded 'failed' match (1b).** The pass/fail re-derivation must not let
-   ``grep -q "failed"`` match the always-present ``4 xfailed`` summary line (which
-   silently defeats the green re-confirmation). Use ``[0-9]+ failed``.
+2. **Verdict from pytest's own exit status (1b).** The captured run keeps
+   pytest's status (``|| exit_code=$?``) instead of re-deriving a verdict from
+   the log. A bare ``grep -q "failed"`` matches the always-present ``N xfailed``
+   summary token, and a log re-derivation that can only de-escalate to success
+   reports a collection-error run as green (INV-vilag).
 
 3. **'No data' is not a coverage failure (1c).** coverage.py exits 1 with "No data
    to report" when the affected slice didn't exercise a changed source file (e.g.
@@ -24,8 +28,8 @@ the WI-kalub fix, each of whose regression reintroduces a concrete failure:
    distinguish them and not false-red on no-data.
 
 4. **Verdict written to the captured log (1e).** The scoped-coverage verdict +
-   summary print to smart-test stdout, but ``.ci/pytest-output.log`` (the file the
-   ADR/handoff tell you to read) receives only raw pytest output. The verdict must
+   summary print to smart-test stdout, but ``.ci/pytest-output.log`` (the file
+   contributors are told to read) receives only raw pytest output. The verdict must
    also be written into ``$PYTEST_LOG`` so the captured log carries the green
    signal.
 """
@@ -88,18 +92,11 @@ def test_baseline_uses_merge_base_not_stale_marker() -> None:
 def test_baseline_anchors_on_merge_base_with_authoritative_dev() -> None:
     """1a/1d: the merge-base anchor is the authoritative remote's dev.
 
-    THIS TEST USED TO ASSERT THE OPPOSITE (WI-kasin) — it required
-    ``get_baseline`` to keep a failover branch re-anchoring onto a second
-    remote. That was right while the failover existed; WI-hajif step 1 retired
-    it, and the retirement's own recurrence gate forbids the string this test
-    demanded. Both failed on clean dev and neither was selected by any ordinary
-    PR, so the contradiction sat in the suite unnoticed.
-
-    What survives the retirement is the anchoring property itself, which is
-    what 1a/1d was actually about: the baseline is the branch's own fork point
-    against the authoritative dev, not a stale marker. The sibling test above
-    pins the negative half (no ``last-green-sha.txt`` consumption); this pins
-    the positive half.
+    The baseline is the branch's own fork point against the authoritative dev
+    (``origin/dev``, the only authoritative remote — there is no failover
+    remote to re-anchor onto), not a stale marker. The sibling test above pins
+    the negative half (no ``last-green-sha.txt`` consumption); this pins the
+    positive half. (history: WI-kasin, WI-hajif)
     """
     body = _get_baseline_body(_text())
     assert "git merge-base HEAD" in body, (
@@ -114,16 +111,16 @@ def test_baseline_anchors_on_merge_base_with_authoritative_dev() -> None:
 
 
 def test_exit_code_is_sourced_from_pytest_not_re_derived() -> None:
-    """1b, superseded by INV-vilag: the run's verdict comes from pytest itself.
+    """1b: the run's verdict comes from pytest itself.
 
-    WI-kalub Step 1b hardened an affirmative-green re-derivation clause (``N
-    passed`` && ! ``N failed`` -> 0) so its ``failed`` match could not be
-    satisfied by the always-present ``N xfailed`` token. INV-vilag removed that
-    clause outright: it could only ever de-escalate to success, which is exactly
-    how a collection-error run (``N passed`` + ``N errors``, no ``FAILED``) was
-    reported green. The 1b property is now satisfied STRUCTURALLY — there is no
-    ``failed``-matching green clause left to mis-word-bound — so this guard pins
-    the stronger successor property instead of the clause it protected.
+    An affirmative-green re-derivation clause (``N passed`` && ! ``N failed``
+    -> 0) has two hazards: a bare ``failed`` match is satisfied by the
+    always-present ``N xfailed`` token, and the clause can only ever
+    de-escalate to success, so a collection-error run (``N passed`` + ``N
+    errors``, no ``FAILED``) reads as green. smart-test therefore has no such
+    clause; this guard pins that the bare match is absent, that the captured
+    run keeps pytest's own status, and that no code line reads PIPESTATUS.
+    (history: WI-kalub Step 1b, INV-vilag)
     """
     text = _text()
     assert '! grep -q "failed"' not in text, (
@@ -146,7 +143,7 @@ def test_exit_code_is_sourced_from_pytest_not_re_derived() -> None:
             "coverage verdict over modules that never imported (INV-vilag). Capture "
             f"it with `|| exit_code=$?`. Line:\n  {ln}"
         )
-    # Scope to CODE lines: the fix's own explanatory comment names PIPESTATUS.
+    # Scope to CODE lines: smart-test's explanatory comments may name PIPESTATUS.
     code_pipestatus = [
         ln for ln in text.splitlines()
         if "PIPESTATUS" in ln and not ln.lstrip().startswith("#")
@@ -190,8 +187,8 @@ def test_captured_pytest_run_neutralizes_forced_color() -> None:
     summary line then starts with an ANSI escape, so summarize's anchored
     ``^=+ …`` result-line grep (and the ``^FAILED`` re-derivation grep) fail to
     match; the unguarded result-line grep aborts smart-test under
-    ``set -e + pipefail`` with a false exit 1 on a *green* run (the WI-kalub
-    dev-loop symptom — CI is unaffected, it has no FORCE_COLOR). Neutralizing the
+    ``set -e + pipefail`` with a false exit 1 on a *green* run (a local dev-loop
+    hazard — CI is unaffected, it has no FORCE_COLOR). Neutralizing the
     color-forcing env for the captured run aligns the local dev loop with CI."""
     cap = [
         ln for ln in _text().splitlines()
@@ -233,13 +230,13 @@ def test_summarize_result_grep_cannot_abort() -> None:
 # out of the shipped script and drive them against a stub `pytest`, so they
 # exercise the actual code rather than pinning its text.
 #
-# The defect: `pytest … > "$PYTEST_LOG" 2>&1 || true` makes PIPESTATUS[0] always
-# 0, so the re-derivation started from 0 and the affirmative-green clause
-# (`N passed` && ! `N failed`) could only ever HOLD it at 0 — a collection-error
-# run satisfies neither failure clause, because pytest reports `ERROR`/`N errors`
-# and not `FAILED`. run_pytest returned 0, the caller's `TEST_EXIT -eq 0` gate
-# then ran the scoped coverage check WITHOUT the modules that never imported, and
-# smart-test exited 0 printing "✅ … 11756 passed, 3 errors".
+# The hazard: with `pytest … > "$PYTEST_LOG" 2>&1 || true`, PIPESTATUS[0] is
+# always 0, and a log re-derivation that starts from 0 with an affirmative-green
+# clause (`N passed` && ! `N failed`) can only HOLD it at 0 — a collection-error
+# run satisfies no failure clause, because pytest reports `ERROR`/`N errors` and
+# not `FAILED`. run_pytest would return 0, the caller's `TEST_EXIT -eq 0` gate
+# would run the scoped coverage check WITHOUT the modules that never imported,
+# and smart-test would exit 0 printing "✅ … N passed, N errors".
 # ---------------------------------------------------------------------------
 
 _STUB_PYTEST = """#!/usr/bin/env bash
@@ -389,10 +386,10 @@ def test_run_pytest_still_reports_green_on_a_clean_run(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # INV-tazur: run_pytest must not report green when NOTHING executed.
 #
-# The filed log, verbatim in shape: a dead path handed to `pytest -n` is not a
-# usage error under xdist. The controller prints "N workers [0 items]" and "no
-# tests ran", exits 5, and the "file or directory not found" message stays in a
-# worker. The summary then printed "COVERAGE: (all files at 100%)".
+# The log shape: a dead path handed to `pytest -n` is not a usage error under
+# xdist. The controller prints "N workers [0 items]" and "no tests ran", exits
+# 5, and the "file or directory not found" message stays in a worker. A summary
+# that trusts that run prints "COVERAGE: (all files at 100%)" over nothing.
 # ---------------------------------------------------------------------------
 
 

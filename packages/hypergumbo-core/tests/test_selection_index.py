@@ -3,8 +3,8 @@
 
 THE SHAPE OF THE THING. A run tells us which tests executed which lines; those
 lines resolve to AST blocks; the index stores ``block -> tests``. At commit time
-we re-hash the changed files, diff against the stored digests, and select the
-tests attached to blocks that moved.
+we re-hash the changed files, diff each against the base-commit source the
+caller supplies, and select the tests attached to blocks that moved.
 
 WHAT THESE TESTS ARE REALLY FOR. Selecting too many tests is merely slow;
 selecting too FEW is a missed regression, so every "is selected" assertion below
@@ -119,9 +119,9 @@ class TestPrecision:
     def test_reformatting_selects_nothing(self, indexed) -> None:
         """The property that motivated block hashing over line numbers.
 
-        Reformatting means WHITESPACE, not "prepend an import" — the first
-        version of this test did the latter and rightly selected everything,
-        because adding a module-level statement IS a module-level change.
+        Reformatting means WHITESPACE, not "prepend an import": adding a
+        module-level statement IS a module-level change and rightly selects
+        everything (the partner test below).
         """
         conn, mod = indexed
         mod.write_text(_SAMPLE.replace("return x + 1", "return x+1  # tidy"))
@@ -275,8 +275,8 @@ class TestPersistence:
         assert {"block", "test_block", "unmeasured_test", "meta"} <= names
 
     def test_a_full_run_marker_is_recorded(self, tmp_path) -> None:
-        """Selection is only sound as of the last FULL run; the age of that
-        marker is what the dry-run reports as index_age."""
+        """Selection is only sound as of the last FULL run; this marker
+        records that run's sha so a caller can report the index's age."""
         db = _run(tmp_path, _SAMPLE)
         conn = open_index(tmp_path / "i.sqlite")
         update_from_run(conn, db, ran_tests=["test_a", "test_b"],
@@ -356,9 +356,10 @@ class TestNodeIdNormalisation:
         full run     -> packages/hypergumbo-core/tests/test_x.py::test_y
         targeted run -> tests/test_x.py::test_y
 
-    smart-test now pins ``--rootdir`` so this does not arise at the source, but
+    smart-test pins ``--rootdir`` so this does not arise at the source, but
     the index must survive being fed by a run that did not go through it.
-    Same class of defect as the ``|setup`` suffix that once matched 0 of 20,437.
+    Same class of defect as an unstripped ``|setup`` phase suffix, which
+    makes no context join at all.
     """
 
     def test_a_package_relative_id_is_rewritten_to_repo_relative(
@@ -410,11 +411,11 @@ class TestUnmeasuredRequiresCompleteScope:
     """"Ran and produced nothing" is only meaningful if coverage was watching
     everything.
 
-    OBSERVED: smart-test's targeted path scopes ``--cov`` to the CHANGED SOURCE
-    FILES ONLY, so on an ordinary run most tests touch nothing in scope. Taken
-    at face value that marked 1,507 of 1,662 tests unmeasured in a single run —
+    smart-test's targeted path scopes ``--cov`` to the CHANGED SOURCE FILES
+    ONLY, so on an ordinary run most tests touch nothing in scope. Taken at
+    face value that would mark most of the suite unmeasured in a single run —
     and :func:`select_tests` EXCLUDES unmeasured tests, so most of the suite
-    would have become permanently unselectable with every unit test green.
+    would become permanently unselectable with every unit test green.
     """
 
     def test_a_partial_run_does_NOT_declare_tests_unmeasured(
@@ -428,7 +429,7 @@ class TestUnmeasuredRequiresCompleteScope:
 
     def test_a_full_run_does_declare_them(self, tmp_path) -> None:
         """The partner: with complete scope the claim IS meaningful, and losing
-        it would mean the 3,614-test unmeasured population is never recorded."""
+        it would mean the unmeasured population is never recorded."""
         db = _run(tmp_path, _SAMPLE, which="a")
         conn = open_index(tmp_path / "i.sqlite")
         update_from_run(conn, db, ran_tests=["test_a", "test_c"], full_run=True)
@@ -453,16 +454,15 @@ class TestUnmeasuredRequiresCompleteScope:
 
 
 class TestChangeIsMeasuredAgainstGitNotAgainstTheIndex:
-    """THE BASELINE BUG, observed end-to-end on 2026-08-14.
+    """THE BASELINE comes from git, not from the index.
 
-    ``changed_blocks`` originally diffed current source against the digests
-    STORED IN THE INDEX. But the index is rewritten after every run, so the
-    baseline moved every time: run 1 stored the working tree, run 2 compared the
-    working tree against itself and selected NOTHING, while smart-test — which
-    diffs against a GIT baseline (last-green-sha / merge-base) — selected 87
-    files. Measured: `coverage would select 0 files, actually selected 87,
-    trustworthy: True`. It answered "what changed since I last looked" when the
-    question is "what changed in this commit".
+    Diffing current source against the digests STORED IN THE INDEX is wrong:
+    the index is rewritten after every run, so the baseline moves every time —
+    once a run has stored the working tree, the next comparison is the working
+    tree against itself and selects NOTHING, while smart-test, which diffs
+    against a GIT baseline (last-green-sha / merge-base), selects the real
+    change. That answers "what changed since I last looked" when the question
+    is "what changed in this commit".
 
     So the caller supplies the BASE SOURCE per path and the index supplies only
     ``block -> tests``. Change detection is git's job; attribution is the

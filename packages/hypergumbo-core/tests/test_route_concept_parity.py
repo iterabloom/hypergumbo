@@ -1,55 +1,47 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-tosul route-concept parity gate — the gate-before-sweep for per-language
-web-route detection breadth, and (WI-tufil / WI-zugob) the identity contract the
-route-marker symbols it finds must satisfy.
+"""Route-concept parity gate: per-language web-route detection breadth, and the
+identity contract the route-marker symbols it finds must satisfy (WI-tosul,
+WI-tufil, WI-zugob).
 
-WI-tosul's residual (after its entrypoint-*existence* half was locked by
-`test_entrypoint_parity.py` and reclassified in the emission-parity matrix) is a
-per-language framework/route detection *coverage* problem — the named upstream
-cause of dead-code-maybe's "Python monoculture" and the handler-slice HTTP
-monoculture. Per the correctness-strategy G2 discipline (and WI-rubip: never
-measure this from self-substrate counts at small N), this gate measures it on
-*injected, idiom-verified* per-case fixtures run through the FULL pipeline
+Per-language framework/route detection *coverage* is measured here on
+*injected, idiom-verified* per-case fixtures (`fixtures/route-parity/`), never
+from self-substrate counts at small N (WI-rubip), and through the FULL pipeline
 (`run_behavior_map`, not the isolated analyzer — route enrichment is a pipeline
-concern), and locks the current state so a future breadth sweep ratchets against
-it (a fix that closes a hole XPASSes the strict-xfail and forces a flip to green).
+concern). The gate locks the current state so a breadth sweep ratchets against
+it (a fix that closes a hole XPASSes the strict-xfail and forces a flip to
+green). Entrypoint *existence* per language is a separate gate,
+`test_entrypoint_parity.py`.
 
-The 2026-07-01 re-measure (`fixtures/route-parity/`, one canonical web-route
-idiom per language) found route detection is **three-mechanism and inconsistently
-surfaced**:
+Route detection surfaces through three mechanisms, inconsistently by language:
 
-  * python  — Flask `@app.route`      -> `meta['concepts']` `concept=route`
-              (manifest-detection-gated: fires only with the framework declared
-              in requirements.txt/pyproject — the partial explanation for the
-              Python monoculture, since real Python repos reliably declare it)
-  * rust    — actix `#[get]`          -> `meta['concepts']` `concept=route`
-              (also manifest-gated: needs actix-web in Cargo.toml)
-  * go      — net/http `HandleFunc`   -> `meta['framework_role']='route'`
-              (analyzer/usage-level; fires with no manifest)
-  * javascript — Express `app.get`    -> analyzer-level `meta['route_path']`
-              + `meta['http_method']` (NOT a concept; fires with no manifest)
-  * java    — Spring `@GetMapping`     -> `meta['concepts']` `concept=route`
-              (manifest-gated on the pom). This was the WI-tolap gap: spring-boot
-              was detected from the pom but `refine_frameworks`' demote phase
-              dropped it to `dev_frameworks` because its import patterns
-              (`org.springframework.boot`) did not match a Spring MVC controller's
-              actual annotation import (`org.springframework.web.bind.annotation`),
-              which starved `enrich_symbols` of `spring-boot.yaml`. Closed by
-              broadening spring-boot's import patterns to the Spring annotation
-              namespaces (`org.springframework.web`/`.stereotype`/`.context`).
+  * `meta['concepts']` `concept=route` — python Flask `@app.route`, rust actix
+    `#[get]`, java Spring `@GetMapping`. Manifest-detection-gated: it fires only
+    with the framework declared (requirements.txt/pyproject, Cargo.toml, the
+    pom).
+  * `meta['framework_role']='route'` — go net/http `HandleFunc`
+    (analyzer/usage-level; fires with no manifest).
+  * analyzer-level `meta['route_path']` + `meta['http_method']` — javascript
+    Express `app.get` (NOT a concept; fires with no manifest).
+
+For java, spring-boot's import patterns must include the Spring annotation
+namespaces (`org.springframework.web`/`.stereotype`/`.context`): a Spring MVC
+controller imports `org.springframework.web.bind.annotation`, not
+`org.springframework.boot`, so without them `refine_frameworks` demotes
+spring-boot to `dev_frameworks` and `enrich_symbols` never sees
+`spring-boot.yaml` (history: WI-tolap).
 
 `_route_detected` therefore accepts route detection via ANY of the three
 surfacing mechanisms (`concept=route` / `framework_role=route` / `route_path`
 meta) — capturing the real cross-language invariant "this language's canonical
 web-route idiom is recognized" without prejudging which mechanism carries it.
-The surfacing INCONSISTENCY itself is an INV-numat-family concern the WI-tosul
-sweep should unify; this gate only locks detection existence per case.
+The surfacing INCONSISTENCY itself is an INV-numat-family concern; this gate
+only locks detection existence per case.
 
 The ratchet: `ROUTE_GREEN` is the hard-locked floor (each entry a real assert).
 When the sweep introduces a NEW per-language/framework fixture that does NOT yet
 detect, add it to `ROUTE_HOLES` with a strict-xfail so that a later breadth fix
 XPASSes and forces the maintainer to promote it into `ROUTE_GREEN`. `ROUTE_HOLES`
-is empty now because every fixture case detects.
+is empty because every fixture case detects.
 """
 from __future__ import annotations
 
@@ -72,15 +64,12 @@ CORPUS = Path(__file__).resolve().parent / "fixtures" / "route-parity"
 
 # Fixture CASES whose canonical web-route idiom the full pipeline detects today.
 #
-# A *case* is one directory under ``fixtures/route-parity/``. The original five
-# are one-per-language; the cases added 2026-07-29 (WI-zugob) are
-# language+framework, because a single language can reach route detection
-# through several independent producers (``python`` is Flask, ``django`` and
-# ``starlette`` are two further py.py paths) and each producer needs its own
-# fixture to be gated at all.
-#
-# Measured 2026-07-01; java added 2026-07-02 (WI-tolap); the ten framework cases
-# added 2026-07-29 (WI-zugob). Each entry is a hard assert.
+# A *case* is one directory under ``fixtures/route-parity/``. Some cases are one
+# per language, others are language+framework, because a single language can
+# reach route detection through several independent producers (``python`` is
+# Flask, ``django`` and ``starlette`` are two further py.py paths) and each
+# producer needs its own fixture to be gated at all. Each entry is a hard
+# assert.
 #
 # ``go-mount`` is deliberately NOT here: a chi/gorilla ``r.Mount()`` emits
 # ``framework_role='route_mount'`` with no ``route_path``, so it is a route
@@ -115,8 +104,8 @@ ROUTE_HOLES: dict[str, str] = {}
 
 def _route_detected(behavior_map: dict) -> bool:
     """True if any node carries route detection via ANY of the three surfacing
-    mechanisms the re-measure found: a ``concept=route`` enrichment, a
-    ``framework_role=route`` tag, or analyzer-level ``route_path`` meta."""
+    mechanisms: a ``concept=route`` enrichment, a ``framework_role=route`` tag,
+    or analyzer-level ``route_path`` meta."""
     for node in behavior_map.get("nodes", []):
         meta = node.get("meta") or {}
         if meta.get("framework_role") == "route":
@@ -135,17 +124,14 @@ def route_maps(tmp_path_factory) -> dict:
     """Run the full pipeline once per fixture case; cache the behavior map.
 
     Uses ``run_behavior_map`` (not the isolated analyzer) because route
-    enrichment is a pipeline concern gated on framework detection — the whole
-    point of the re-measure.
+    enrichment is a pipeline concern gated on framework detection.
 
     Each case is COPIED OUT to a tmp dir and analyzed there rather than in
     place. Analyzing under ``…/tests/fixtures/…`` subjects every case to the
     pipeline's own test-path heuristics, which is not the thing this gate is
-    trying to measure — and it silently suppressed a producer: the grpc linker
+    trying to measure — and it silently suppresses producers: the grpc linker
     emits its route marker for a ``.proto`` at an ordinary path but not for the
-    byte-identical file under ``tests/fixtures/`` (measured 2026-07-29; in-repo
-    ``.probe-grpc/`` → 4 markers, ``tests/fixtures/route-parity/grpc/`` → 0).
-    A fixture that measures the suppression instead of the producer is a
+    byte-identical file under ``tests/fixtures/``. A fixture that measures the suppression instead of the producer is a
     vacuous green, so the corpus is analyzed from a neutral location.
     """
     ensure_discovered()
@@ -178,46 +164,34 @@ def test_route_detected(case: str, route_maps: dict) -> None:
 # When a language surfaces a route via a *synthesized route-marker symbol*
 # (``meta['framework_role'] in {route, route_mount, route_include}``) rather than
 # a ``concept=route`` tag on the handler function, that marker must still satisfy
-# the same referential/identity invariants as any other Symbol. The WI-tosul
-# re-measure (WI-tolap increment) found the trio go/js/java markers violated
-# three validators at once:
-#   * id_format        — the id kind-slot was the literal ``route`` while
-#                        ``Symbol.kind`` is ``function`` (the ADR-0027 Phase-3
-#                        fold set kind=function but left the id-slot a ``route``
-#                        fossil), and ``route`` is not a registered symbol-kind;
-#   * cross_field      — the framework_patterns materializer minted js/java
-#                        markers with an empty ``origin_run_id`` (WI-mosil
-#                        regression: a direct ``Symbol(...)`` constructor that
-#                        never stamped the producing run's execution_id);
-#   * axis_conformance — ``Symbol.origin`` named an unregistered pass-id
-#                        (``route-materializer`` / ``django-cbv-method-expander``).
+# the same referential/identity invariants as any other Symbol, each checked by
+# its own validator: the id kind slot (id_format), the id name slot, the id
+# grammar, and provenance (cross_field for ``origin_run_id``, axis_conformance
+# for ``origin``). Marker producers break these in ways a direct ``Symbol(...)``
+# constructor makes easy: a role left in the id kind slot, an empty
+# ``origin_run_id`` because the producing run's execution_id was never stamped,
+# an ``origin`` naming an unregistered pass-id.
 #
-# WI-tufil closed that for the trio and locked it with ONE AGGREGATE test over
-# three languages. 2026-07-29 (WI-zugob) replaced that aggregate with the
-# per-case property tests below, for two reasons the aggregate structurally
-# could not serve:
+# Each property gets its own test and its own hole set, parametrized per case:
 #
-#   1. It checked three properties and never the id NAME-slot. Adding that one
-#      assertion put ``go`` — the analyzer-direct producer the gate leans on as
-#      its "the checks actually ran" anchor — in violation, inside the very
-#      cohort WI-tufil had declared clean. A gate's UNCHECKED properties are a
-#      blind spot exactly as much as an unwalked code path, so each property now
-#      gets its own test and its own hole set.
-#   2. Aggregating over languages means one language's violation cannot be
-#      recorded without disabling the check for all of them. Per-case
-#      parametrization + per-property ``*_HOLES`` lets the fleet sweep drain a
-#      measured number one producer at a time.
+# 1. A gate's UNCHECKED properties are a blind spot exactly as much as an
+# unwalked code path; an aggregate test over a few properties hides the rest
+# (an aggregate that never checked the name slot reported ``go`` clean while
+# it violated it).
+# 2. Aggregating over cases means one case's violation cannot be recorded
+# without disabling the check for all of them. Per-case parametrization +
+# per-property ``*_HOLES`` lets a sweep drain holes one producer at a time.
 #
-# Every hole below was MEASURED on 2026-07-29 by running the full pipeline over
-# these fixtures, not inferred from reading the producers.
+# Record a hole only after running the full pipeline over the fixture, not by
+# reading the producer.
 #
 # Production vs. cleanliness: most cases are ANALYZER- or LINKER-DIRECT (grammar
 # or file-shape only, no framework detection) so they are produced in every
 # environment. java's and javascript's markers come via
 # ``framework_patterns.materialize_route_symbols``, gated on framework detection
 # (spring-boot from the pom / express from package.json) whose import-evidence
-# step can vary by environment (an earlier CI run had express undetected → no js
-# marker). Those two are therefore exempt from the non-vacuity guard below; the
+# step can vary by environment (express undetected means no js marker). Those
+# two are therefore exempt from the non-vacuity guard below; the
 # property tests still validate every marker they DO produce.
 ROUTE_MARKER_CASES = [
     "annotation",
@@ -243,22 +217,21 @@ MANIFEST_GATED_CASES = {"java", "javascript"}
 
 # ADR-0036 Ruling 2: the id kind-slot must equal ``Symbol.kind`` and name a
 # registered symbol kind. A ``route`` / ``route_mount`` / ``route_include`` /
-# ``annotated_route`` kind-slot is the ADR-0027 Phase-3 fossil: the fold set
-# ``kind="function"`` but left the role in the id.
+# ``annotated_route`` kind-slot puts the role in the id while ``Symbol.kind`` is
+# ``function`` (the role belongs in meta, ADR-0027).
 KIND_SLOT_HOLES: dict[str, str] = {}
 
 # ADR-0036 Ruling 1: a node id's ``{name}`` slot must equal
-# ``sanitize_id_name_segment(Symbol.name)``. Route-marker producers drifted here
-# in the INVERTED direction from WI-vuzaf Pattern A: the id carries the specific
-# ``"{METHOD} {path}"`` while ``Symbol.name`` carries the handler name, so a
-# consumer reconstructing a node's name from its documented id gets a different
-# string. ``analyze.base.make_route_symbol`` is the chokepoint that derives one
-# from the other; a producer is fixed by routing through it.
+# ``sanitize_id_name_segment(Symbol.name)``. The route-marker failure shape is
+# the id carrying the specific ``"{METHOD} {path}"`` while ``Symbol.name``
+# carries the handler name, so a consumer reconstructing a node's name from its
+# documented id gets a different string. ``analyze.base.make_route_symbol`` is
+# the chokepoint that derives one from the other; a producer is fixed by
+# routing through it.
 #
-# go was promoted out on migration (PR #64) — its four inline minting sites now
-# route through the chokepoint. Its FIFTH site (``r.Mount()``) was missed by that
-# PR and is the ``go-mount`` case here, which is exactly why the fixture exists:
-# the original go fixture is net/http only and never exercised the mount path.
+# go mints route markers at several sites; the ``go-mount`` case exists because
+# the net/http-only ``go`` fixture never exercises the ``r.Mount()`` site, so a
+# mount site that bypasses the chokepoint would go unseen (history: PR #64).
 NAME_SLOT_HOLES: dict[str, str] = {}
 
 # ADR-0036: the canonical node id is FIVE anchored segments,
@@ -273,9 +246,9 @@ CANONICAL_ID_HOLES: dict[str, str] = {}
 
 # Every Symbol carries producer provenance: a non-empty ``origin`` naming
 # registered pass-ids, and an ``origin_run_id`` joining a real AnalysisRun.
-# WI-tufil closed the ``origin_run_id`` half for the trio; an EMPTY ``origin``
-# list passed its "for elem in origin" check vacuously, which is how elixir's
-# total absence of provenance survived.
+# ``origin`` must be NON-EMPTY: a "for elem in origin" check passes an empty
+# list vacuously, so a producer with no provenance at all would go unseen
+# (history: WI-tufil).
 ORIGIN_HOLES: dict[str, str] = {}
 
 
@@ -314,7 +287,7 @@ def test_route_marker_case_produces_markers(case: str, route_maps: dict) -> None
     """Each analyzer/linker-direct case actually mints a marker.
 
     Without this, every property test below passes VACUOUSLY the moment a
-    producer stops emitting — a green that proves nothing (the pt.35 lesson).
+    producer stops emitting — a green that proves nothing.
     The manifest-gated pair is exempt because their production legitimately
     varies by environment.
     """

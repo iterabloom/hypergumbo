@@ -6,19 +6,19 @@ boundaries at once because the *call* decides which one applies: Python's
 ``builtins.open`` is ``fs_read`` with its default mode and ``fs_write`` when
 handed ``"w"``/``"a"``/``"x"``. ``python.yaml`` states that rule in a ``notes:``
 field -- "Dual-classified: fs_read when mode is 'r'/'rb' (default), fs_write
-when 'w'/'a'/'x'" -- but ``notes`` is free text that nothing consumes, so the
-rule was documented and unimplemented.
+when 'w'/'a'/'x'" -- but ``notes`` is free text that nothing consumes; the
+mode discrimination tested here is what implements the rule.
 
-The consequence was measured on hypergumbo itself and ran in BOTH directions,
-which is why the two consumers have to be fixed in one change:
+Without it the error runs in BOTH directions, which is why the two consumers
+have to agree:
 
-- ``io-boundaries`` classified every ``open()`` as ``fs_read``, because the
-  qualified-name index is first-wins and ``fs_read`` is declared first. Real
-  ``open(p, "w")`` writes were invisible -- a FALSE NEGATIVE.
-- ``verify-claims`` derives a taint sink from every catalogue row, so
-  ``builtins.open`` was always a ``host_fs`` sink. 24 of the 35 distinct
-  violations of the shipped ``runtime-cli-no-host-fs`` claim were read-mode
-  ``open()`` calls -- a FALSE POSITIVE, and the dominant one.
+- ``io-boundaries``: a first-wins qualified-name lookup classifies every
+  ``open()`` as ``fs_read``, because ``fs_read`` is declared first, so real
+  ``open(p, "w")`` writes are invisible -- a FALSE NEGATIVE.
+- ``verify-claims`` derives a taint sink from every catalogue row, so an
+  ungated ``builtins.open`` is a ``host_fs`` sink on every call, read-mode
+  included -- a FALSE POSITIVE, and the dominant one against hypergumbo's own
+  ``runtime-cli-no-host-fs`` claim.
 
 Fixing only one side moves the error rather than removing it, so these tests
 pin both directions.
@@ -42,8 +42,8 @@ def _dual_catalog() -> IoBoundaryCatalog:
     """A catalogue with ``open`` under both fs_read and fs_write, read first.
 
     Declaration ORDER matters and is deliberate: ``fs_read`` first reproduces
-    ``python.yaml``, and therefore reproduces the first-wins qualified-index
-    behaviour that produced the false negative.
+    ``python.yaml``, the order in which a first-wins qualified index produces the
+    false negative.
     """
     return IoBoundaryCatalog(
         language="python",
@@ -99,20 +99,22 @@ class TestModeDiscriminatedNames:
 
 
 class TestTheKeyIsThePRIMITIVE_NotTheShortName:
-    """INV-kaduh's control finding: short-name keying gates the wrong rows.
+    """Short-name keying gates the wrong rows (INV-kaduh).
 
     ``mode_discriminated_names`` answers "which SHORT NAMES need a mode", which
     is the right question for an EMITTER — it sees ``open(`` before it knows the
     receiver. It is the wrong question for the SINK DERIVATION, which holds the
-    whole ``IoPrimitive`` and was keying ``requires_mode_boundary`` on ``prim.name``.
+    whole ``IoPrimitive`` and must not key ``requires_mode_boundary`` on
+    ``prim.name``.
 
-    Rust pays for that. ``std::fs::File.open`` is fs_read and
+    Rust shows why. ``std::fs::File.open`` is fs_read and
     ``std::fs::OpenOptions.open`` is fs_write — two DIFFERENT primitives that
     share a short name, exactly the shape ``lookup_with_module`` exists to keep
-    apart. Under short-name keying the OpenOptions sink inherited
-    ``requires_mode_boundary="fs_write"``, no Rust analyzer stamps ``io_mode``, and
-    ``resolve_mode_boundary(None)`` is ``fs_read`` — so Rust's only mode-gated
-    host_fs write sink matched NOTHING, in every repo, unconditionally.
+    apart. Under short-name keying the OpenOptions sink would inherit
+    ``requires_mode_boundary="fs_write"``; no Rust analyzer stamps ``io_mode``,
+    and ``resolve_mode_boundary(None)`` is ``fs_read`` — so Rust's only
+    mode-gated host_fs write sink would match NOTHING, in every repo,
+    unconditionally.
 
     That is the fail-open direction: a deleted sink is a clean verdict.
     """
@@ -168,9 +170,10 @@ class TestSimultaneousIsNotAModeQuestion:
     marker for exactly this, so the derivation must consult it instead of
     inferring a mode question from the boundary pair alone.
 
-    Left un-consulted it was the same deletion as rust's: erlang and elixir
-    (which inherits erlang) both derived a ``requires_mode_boundary="fs_write"``
-    ensure_dir sink that no analyzer could ever satisfy.
+    Left un-consulted it is the same deletion as rust's: erlang and elixir
+    (which inherits erlang) would both derive a
+    ``requires_mode_boundary="fs_write"`` ensure_dir sink that no analyzer could
+    ever satisfy.
     """
 
     def test_simultaneous_pair_is_excluded(self) -> None:
@@ -205,17 +208,17 @@ class TestSimultaneousIsNotAModeQuestion:
 
 
 class TestEveryModeGatedLanguageHasAProducer:
-    """INV-kaduh proper: a gate whose input nobody produces is a deletion.
+    """A gate whose input nobody produces is a deletion (INV-kaduh).
 
     ``requires_mode_boundary`` and ``select_by_mode`` both consume ``meta["io_mode"]``.
-    Python's analyzer stamps it; C's did not, so ``fopen(p, "w")`` tagged
-    ``fs_read`` and the ``stdio.fopen`` write sink never matched — an EXAMINED
+    In a language whose analyzer does not stamp it, ``fopen(p, "w")`` is tagged
+    ``fs_read`` and the ``stdio.fopen`` write sink never matches — an EXAMINED
     negative for the boundary that is actually true, which reads clean rather
     than inconclusive.
 
-    This is the parity test the item asked for, and it is written over the LIVE
-    catalogues so the NEXT language to declare a mode-discriminated primitive
-    fails HERE instead of silently classifying every write as a read.
+    This parity test is written over the LIVE catalogues so the NEXT language to
+    declare a mode-discriminated primitive fails HERE instead of silently
+    classifying every write as a read.
     """
 
     def test_every_mode_discriminated_language_declares_where_the_mode_sits(
@@ -274,7 +277,7 @@ class TestModeArgumentResolution:
         """cpp gets C's answer by the SAME link it gets C's rows by.
 
         A copied ``cpp`` entry would be a second home for one fact and would
-        drift on the first edit — the failure this module has paid for.
+        drift on the first edit.
         """
         from hypergumbo_core.io_boundary import mode_argument_for
 
@@ -361,8 +364,8 @@ class TestSelectByMode:
     def test_unknown_mode_falls_back_to_read(self) -> None:
         """A non-literal mode (``open(p, m)``) must not invent a write.
 
-        Guessing ``fs_write`` here would re-create the false positive this
-        whole change exists to remove; guessing from nothing is not evidence.
+        Guessing ``fs_write`` here would re-create the false positive mode
+        discrimination exists to remove; guessing from nothing is not evidence.
         """
         cat = _dual_catalog()
         got = select_by_mode(cat.lookup_all("builtins.open"), None)
@@ -385,8 +388,7 @@ class TestSelectByMode:
         ``lookup_with_module`` funnels every multi-candidate list here, not
         only mode-discriminated ones — two same-named primitives from
         different modules land here too. Falling back to the first candidate
-        preserves the pre-existing ``filtered[0]`` behaviour for them rather
-        than dropping a match that used to resolve.
+        keeps them resolving to a match rather than dropping it.
         """
         got = select_by_mode(
             [
@@ -403,9 +405,8 @@ class TestTheSinkSideOfTheSameDefect:
     """The taint consumer, which failed in the OPPOSITE direction.
 
     ``_derive_auto_sinks_from_io_primitives`` turns every ``fs_write`` row into
-    a ``host_fs`` sink. For ``builtins.open`` that made EVERY ``open()`` call a
-    filesystem-write sink regardless of mode, which is where 24 of the 35
-    distinct ``runtime-cli-no-host-fs`` violations came from.
+    a ``host_fs`` sink. For ``builtins.open``, ungated, that makes EVERY
+    ``open()`` call a filesystem-write sink regardless of mode.
 
     The gate has to be narrow. ``os.remove`` is ``fs_write`` only and carries
     no mode argument, so a rule of "no ``io_mode`` means not a write" would
@@ -461,27 +462,24 @@ class TestTheSinkSideOfTheSameDefect:
     def test_every_matcher_call_site_actually_threads_io_mode(self) -> None:
         """The gate is worthless if no caller supplies the evidence.
 
-THE ARGUMENT IS NOW ``io_modes`` (plural, INV-vukiv): a collapsed edge
-        carries EVERY site's mode, and asking the survivor's singular
-        ``io_mode`` answered for whichever site arrived first — measured, that
-        deleted a real ``open(p,'w')`` when an ``open(p,'r')`` sat above it.
-        This probe follows the rename because an unwired call site is the same
-        failure under either spelling.
+        Every production call to ``_match_propagation_entry`` must pass
+        ``io_modes``. The unit tests above pass the mode explicitly, so they
+        stay green when a call site omits it — and an unwired site resolves
+        every mode to ``None``, hence ``fs_read``, so the ``builtins.open``
+        sink matches NOTHING rather than matching writes only. On a repo whose
+        ``open()`` calls are all reads that looks identical to correct
+        discrimination, while a genuine ``open(p, "w")`` is silently dropped
+        from the violation set — a false negative in a security gate.
 
-        THIS IS THE TEST THAT WAS MISSING. The unit tests above pass
-        the mode explicitly and went green while all four production call
-        sites still omitted it — so ``io_mode`` was always ``None``, always
-        resolved to ``fs_read``, and the ``builtins.open`` sink matched
-        NOTHING rather than matching writes only. The corpus number was
-        identical (24 -> 0) because this repo's ``open()`` calls happen to be
-        reads, so the measurement could not tell suppression from
-        discrimination. A genuine ``open(p, "w")`` would have been silently
-        dropped from the violation set — a false negative in a security gate.
+        The argument is ``io_modes`` (plural, INV-vukiv) because a collapsed
+        edge carries EVERY site's mode; asking the survivor's singular
+        ``io_mode`` answers for whichever site arrived first, and can drop a
+        real ``open(p,'w')`` when an ``open(p,'r')`` sits above it.
 
         Asserted structurally rather than behaviourally because the failure
         is an ABSENT argument: there is no input that makes an unwired call
         site behave differently from a correctly-wired one on read-mode data,
-        which is exactly why it survived a full-suite run.
+        so a full-suite run does not catch it.
         """
         import ast
         import inspect
@@ -505,7 +503,7 @@ THE ARGUMENT IS NOW ``io_modes`` (plural, INV-vukiv): a collapsed edge
         )
 
     def test_ungated_sink_is_unaffected_by_absent_mode(self) -> None:
-        """The regression guard for the 99% that carry no mode at all."""
+        """The guard for the sinks that carry no mode at all, nearly all of them."""
         from hypergumbo_core.taint import TaintSink, _match_propagation_entry
 
         plain = TaintSink(
@@ -521,13 +519,12 @@ THE ARGUMENT IS NOW ``io_modes`` (plural, INV-vukiv): a collapsed edge
 class TestTheWholeChainThroughTheProducer:
     """A write-mode ``open`` must still produce a FINDING, end to end.
 
-    THE NON-VACUITY FLOOR FOR THIS ENTIRE CHANGE. Everything else here can
-    pass while the gate merely suppresses ``builtins.open`` universally — and
-    it briefly did: the corpus went 24 -> 0 distinct violations under blanket
-    suppression, which is the identical number discrimination produces on a
-    repo whose ``open()`` calls are all reads. A test that only asserts the
-    reads disappear cannot tell the two apart. This one asserts the write
-    SURVIVES, which only discrimination can satisfy.
+    THE NON-VACUITY FLOOR FOR MODE DISCRIMINATION. Everything else here can
+    pass while the gate merely suppresses ``builtins.open`` universally, and on
+    a repo whose ``open()`` calls are all reads blanket suppression produces the
+    same violation count as discrimination. A test that only asserts the reads
+    disappear cannot tell the two apart. This one asserts the write SURVIVES,
+    which only discrimination can satisfy.
     """
 
     @staticmethod
@@ -583,12 +580,12 @@ class TestTheWholeChainThroughTheProducer:
 
 
 class TestQualifiedIndexKeepsBothRows:
-    """The regression that produced the false negative.
+    """The qualified index must keep every row for a name, not the first.
 
-    ``_rebuild_indices`` kept ONE row per qualified name ("first one wins --
-    shouldn't have duplicates"), so the ``fs_write`` row for ``builtins.open``
-    was dropped from the qualified index entirely and no amount of mode
-    information could have recovered it.
+    If ``_rebuild_indices`` kept ONE row per qualified name, the ``fs_write``
+    row for ``builtins.open`` would be dropped from the qualified index entirely
+    and no amount of mode information could recover it — the io-boundaries
+    false negative.
     """
 
     def test_lookup_all_returns_both_boundaries_for_qualified_name(self) -> None:
@@ -602,14 +599,13 @@ class TestQualifiedIndexKeepsBothRows:
         assert boundaries == {"fs_read", "fs_write"}
 
     def test_the_dot_normalised_alias_is_in_the_all_index_too(self) -> None:
-        """Regression: a second index that skipped WI-vipur's ``::`` alias.
+        """The all-rows index carries the ``::`` alias too (WI-vipur).
 
         ``_rebuild_indices`` registers ``std.env.consts`` alongside
         ``std::env.consts`` so edges emitted in scoped-path mode still hit
-        the catalogue. Adding ``_by_qualified_all`` without the alias made
-        every Rust and C++ ``::`` primitive stop matching — caught by
-        ``test_rust.py``'s ``std::env.consts`` case, pinned here at the
-        index level so the two indices cannot drift apart again.
+        the catalogue. ``_by_qualified_all`` without the alias makes every Rust
+        and C++ ``::`` primitive stop matching; this pins it at the index level
+        so the two indices cannot drift apart.
         """
         cat = IoBoundaryCatalog(
             language="rust",

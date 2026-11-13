@@ -18,13 +18,13 @@ Ranking uses multiple signals combined:
    have high in-degree but near-zero out-degree.  Pure sinks (out=0) get
    a 0.5x multiplier instead of the (1 + ln(1 + out_degree)) boost, which
    is at least 1.69x, penalizing popular leaf utilities
-   (e.g., Elm ``map`` with in=71, out=0) that are plumbing.  Extreme
+   (e.g., Elm ``map``) that are plumbing.  Extreme
    in-degree is
    saturated via ``hub_threshold`` to prevent infrastructure utilities
    (error sentinels, loggers) from dominating rankings.  Cross-file edges
    count as 1.0 while within-file edges are dampened (default 0.3x) to
    prevent local variables referenced many times within a single file
-   (e.g., ``pSpec`` with 96 in-degree) from outranking architecturally
+   (e.g., a ``pSpec`` used throughout one file) from outranking architecturally
    important symbols referenced across many files.  The ranking entry
    points (``rank_symbols``, ``rank_files``, ``compute_dampened_centrality``)
    also weight each edge by its type (``DEFAULT_EDGE_TYPE_WEIGHTS``: e.g.
@@ -63,7 +63,7 @@ Ranking uses multiple signals combined:
    whose span includes a docstring), get 90% centrality reduction.  These
    are trivial accessors/stubs that accumulate high in-degree through
    ubiquitous use but have no architectural significance (e.g. a 3-line
-   ``Timer.Duration`` or a 1-line ``noopMetric.Inc`` with in-degree ~100).
+   ``Timer.Duration`` or a 1-line ``noopMetric.Inc``).
 
 6. **Noise Path Dampening**: Symbols in database-migration / noise paths
    (e.g. ``db/migrate/``, ``migrations/``) get a 0.1x multiplier
@@ -93,8 +93,8 @@ Ranking uses multiple signals combined:
     (ADR-0039 ruling 3 keys this ranking filter on ``rank_score``, not on
     detection ``confidence``). The default 0.0 turns it off; ``symbols`` and
     the survey's output order pass 0.5, which removes method-name-collision
-    in-degree such as DirLocker.Lock's 255 edges from unrelated .Lock()
-    calls and MemoryCache.get's 228 from unrelated .get() calls.
+    in-degree, such as unrelated ``.Lock()`` or ``.get()`` calls all landing
+    on one ``DirLocker.Lock`` or ``MemoryCache.get``.
     ``compute_dampened_centrality`` (sketch, compact) does no confidence
     filtering.
 
@@ -241,7 +241,7 @@ DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     # demoted.
     "event_publishes": 0.8,
     # The crypto linker is data_flows_to's only producer, so this is the
-    # weight of crypto-flow edges (ADR-0023 Batch 7 / audit-findings 0017).
+    # weight of crypto-flow edges (history: ADR-0023, audit-findings 0017).
     "data_flows_to": 0.8,
     "dispatches_to": 0.6,
     "imports": 0.3,
@@ -276,9 +276,8 @@ def compute_centrality(
         raw_score = effective_in_degree * out_multiplier
 
     Pure sinks (out_degree=0) get a 0.5x multiplier instead of the standard
-    1.0x floor.  This ensures popular leaf utilities (e.g., ``map`` with
-    in=71, out=0) rank below architectural connectors with the same
-    in-degree.
+    1.0x floor.  This ensures popular leaf utilities (e.g., ``map``) rank
+    below architectural connectors with the same in-degree.
 
     When ``hub_threshold`` is set, in-degree is saturated for symbols above
     the threshold to prevent infrastructure utilities (error sentinels,
@@ -412,7 +411,7 @@ def compute_centrality(
 
         # Pure sinks (out_degree=0) get a dampened multiplier (0.5); the
         # smallest boost otherwise is 1 + ln 2.  This penalizes popular leaf utilities
-        # (e.g., Elm map with in=71, out=0) that accumulate high in-degree
+        # (e.g., Elm map) that accumulate high in-degree
         # through ubiquitous use but have no outgoing dependencies — they're
         # plumbing, not connectors.  Symbols with out_degree >= 1 get the
         # standard (1 + ln(1 + out_degree)) boost.
@@ -650,9 +649,10 @@ def _is_helper_file(path: str) -> bool:
     Files named ``*_helpers.*``, ``*_utils.*``, ``*_util.*``, ``helpers.*``,
     ``utils.*``, ``util.*``, or located in ``utils/`` or ``helpers/``
     directories are infrastructure plumbing whose symbols should be dampened
-    in rankings.  E.g. ``openapi_helpers.go`` whose ``createYAMLNode``,
-    ``responsesWithErrorExamples`` dominate rankings in prometheus, or Elm
-    ``Utils/Api.elm`` whose ``map`` dominated rankings in alertmanager.
+    in rankings.  E.g. ``openapi_helpers.go`` (``createYAMLNode``) or Elm
+    ``Utils/Api.elm`` (``map``), whose many-caller helpers would otherwise
+    top the rankings.  Test fixture files (``conftest``, ``fixtures``,
+    ``factories``, ``test_helper*``) are treated the same way.
     """
     if not path:
         return False
@@ -747,13 +747,13 @@ def apply_trivial_sink_weights(
     are no connectors with enough in-degree to overcome the sink's base
     score.
 
-    Examples dampened by this function:
-      - Timer.Duration (in=98, out=0, LoC=3) — 1-line accessor
-      - noopMetric.Inc (in=109, out=0, LoC=1) — null object stub
-      - CheckError (in=195, out=1, LoC=3) — error-handling wrapper
-      - syncTask.name (in=109, out=0, LoC=2) — trivial accessor
-      - node_text (in=496, out=0, LoC=11) — tree-sitter helper with docstring
-      - find_child_by_type (in=291, out=0, LoC=16) — utility with docstring
+    Shapes dampened by this function (each with high in-degree):
+      - Timer.Duration (out=0, LoC=3) — 1-line accessor
+      - noopMetric.Inc (out=0, LoC=1) — null object stub
+      - CheckError (out=1, LoC=3) — error-handling wrapper
+      - syncTask.name (out=0, LoC=2) — trivial accessor
+      - node_text (out=0, LoC=11) — tree-sitter helper with docstring
+      - find_child_by_type (out=0, LoC=16) — utility with docstring
 
     Two tiers of detection:
       1. Near-sinks (out_degree <= 1, loc <= max_loc=5): strict, catches
@@ -774,7 +774,7 @@ def apply_trivial_sink_weights(
             out_degree == 0 (default 20).  Higher than max_loc because
             pure sinks are definitively non-architectural — they call
             nothing.  The higher threshold catches utility helpers whose
-            spans include docstrings (e.g., node_text at 11 lines).
+            spans include docstrings (e.g., node_text).
 
     Returns:
         Dictionary mapping symbol ID to dampened centrality score.
@@ -1083,12 +1083,11 @@ def filter_edges_for_ranking(
     if min_edge_confidence > 0:
         # ADR-0039 ruling 3: this is a RANKING filter (filter_edges_for_RANKING),
         # so it keys on ``rank_score`` — the ranking-prominence quantity — not the
-        # detection-reliability ``confidence``. For every edge whose producer has
-        # not relocated a ranking adjustment, rank_score == confidence, so the
-        # filtered set is unchanged; the one edge family that differs is the
-        # type_hierarchy ``dispatches_to`` fan-out (rank_score carries the 1/sqrt(N)
-        # dampener + test penalty), which is exactly the demotion this filter
-        # is meant to apply (WI-kabom).
+        # detection-reliability ``confidence``. rank_score equals confidence
+        # unless a producer moves a ranking adjustment into it; the one family
+        # that does is the type_hierarchy ``dispatches_to`` fan-out (rank_score
+        # carries the 1/sqrt(N) dampener + test penalty), and demoting those
+        # edges is exactly what this filter is for (history: WI-kabom).
         filtered = [
             e for e in filtered
             if e.rank_score >= min_edge_confidence
@@ -1100,8 +1099,9 @@ def filter_edges_for_ranking(
 # Canonical 7-stage dampener stack applied by rank_symbols and the four
 # selection surfaces (sketch._format_symbols, compact.select_by_coverage,
 # compact.select_by_connectivity, compact.format_tiered_behavior_map's
-# victim-removal step). Order is load-bearing — see ranking.py for
-# rationale on why tier comes first and file_kind comes last.
+# victim-removal step). Every stage multiplies each symbol's score by a
+# factor that does not depend on the other stages, so the order does not
+# change the ranking; fixing one order keeps every caller's floats identical.
 #
 # There is no separate sibling-implementation dampener:
 # apply_common_method_name_weights (threshold=10) already dampens large
@@ -1267,7 +1267,7 @@ def rank_symbols(
     # referenced across many files.
     # max_per_file_in=5 caps per-source-file in-degree contribution,
     # preventing utility functions called many times from few files
-    # (e.g., createYAMLNode with 46 calls from 1 file) from outranking
+    # (e.g., createYAMLNode called dozens of times from one file) from outranking
     # architecturally important symbols called from many files.
     raw_centrality = compute_centrality(
         symbols, filtered_edges, hub_threshold=100,
@@ -1312,9 +1312,12 @@ def rank_files(
 ) -> List[RankedFile]:
     """Rank files by importance using symbol density scoring.
 
-    Uses the same pipeline as rank_symbols(): edge filtering, hub saturation,
-    tier weighting, and full dampening (noise, utility, common method name,
-    trivial sink) before computing file scores.
+    Uses the same edge filtering and centrality settings as rank_symbols()
+    (hub saturation, same-file and per-file dampening, edge-type weights),
+    then tier weighting and the noise, utility, common-method-name and
+    trivial-sink dampeners before computing file scores.  Unlike
+    rank_symbols() it does not apply the generated-code or file-kind
+    dampeners.
 
     Args:
         symbols: List of symbols to analyze.
@@ -1352,7 +1355,8 @@ def rank_files(
     else:
         centrality = raw_centrality
 
-    # Apply full dampening pipeline (same as rank_symbols)
+    # Noise, utility, common-method and trivial-sink dampeners (rank_symbols
+    # additionally applies the generated and file_kind stages)
     centrality = apply_noise_weights(centrality, symbols)
     centrality = apply_utility_symbol_weights(centrality, symbols)
     centrality = apply_common_method_name_weights(centrality, symbols)
@@ -1663,9 +1667,9 @@ class _NameMatcher:
 
     WHY NOT ONE ALTERNATION (WI-rukaz). ``\\b(n1|n2|...|nN)\\b`` makes
     CPython's sre try every branch at every text position, so a scan costs
-    names x bytes: with ~100k eligible names over ~20 MB of docs (flink) it
-    does not finish in tens of minutes. The thread pool cannot help, because
-    ``re`` holds the GIL for a whole ``findall``.
+    names x bytes, which on a large repo (~100k eligible names over tens of
+    MB of docs) runs for tens of minutes. The thread pool cannot help,
+    because ``re`` holds the GIL for a whole ``findall``.
 
     HOW. A name is reported iff ``\\b<name>\\b`` matches somewhere in the
     text, decided per name without scanning per name:
@@ -1680,9 +1684,9 @@ class _NameMatcher:
     * a name with no word segment (``+``) is substring-checked, then
       confirmed the same way.
 
-    Matching each name independently is a deliberate change from the
-    alternation, which CONSUMED text: ``run`` inside a matched ``Svc.run``
-    was never reported. Now every name that occurs counts.
+    Each name is matched independently, so overlapping names all count:
+    ``run`` is reported even where it occurs only inside ``Svc.run``. An
+    alternation would CONSUME the matched ``Svc.run`` and miss ``run``.
     """
 
     def __init__(self, names: Iterable[str]) -> None:

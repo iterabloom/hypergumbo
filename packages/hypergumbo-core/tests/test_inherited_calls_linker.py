@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the inherited_calls linker (WI-hatip / PR-2 of INV-nilud).
+"""Tests for the inherited_calls linker.
 
-The linker resolves unresolved `calls` edges that carry an
-``enclosing_class`` hint in ``Edge.meta`` by walking the ancestor chain
-of the named class (using language-specific MRO semantics) and looking
-for a matching short-name method. When found, it emits a resolved
-``calls`` edge with ``evidence_type="ast_call_inherited"``.
-
-PR-2 implements the Ruby/Groovy walker (``_walk_insertion_order``) only;
-other languages stay unwalked until PR-3+ adds their dispatch rules.
+The linker resolves unresolved `calls` edges that carry a class hint in
+``Edge.meta`` by walking the ancestor chain of the named class (using
+language-specific MRO semantics) and looking for a matching short-name
+method. An ``enclosing_class`` hint alone (Site 1) resolves to an
+``ast_call_inherited`` edge; ``receiver_type_hint`` (Site 2) and
+``inherited_field_receiver`` (Site 3) have their own evidence types. The
+per-language walkers are registered in ``_MRO_WALKERS``; a language without
+one gets no ancestor walk. (history: WI-hatip, INV-nilud)
 """
 
 from __future__ import annotations
@@ -568,7 +568,7 @@ class TestEndToEndInheritedCalls:
         assert result.edges == []
 
     def test_no_op_when_unresolved_edge_has_no_enclosing_class_hint(self) -> None:
-        """Unresolved edges without the hint are ignored (PR-1 backward compat)."""
+        """Unresolved edges without the hint are ignored."""
         a = _cls("sym:A", "A")
         a_init = _method("sym:A#initialize", "A#initialize")
         caller = _caller()
@@ -586,10 +586,9 @@ class TestEndToEndInheritedCalls:
         assert result.edges == []
 
     def test_no_op_for_unregistered_language(self) -> None:
-        """Languages without an MRO walker are silently skipped. The INV-fahub
-        fleet rollout registered php/js/ts/csharp/cpp/objc/go/rust, so this test
-        uses ``haskell`` (a functional language with no class-MRO walker, and
-        none planned) to exercise the ``walker is None`` branch."""
+        """Languages without an MRO walker are silently skipped. This test
+        uses ``haskell`` (a functional language with no class MRO, so no
+        walker) to exercise the ``walker is None`` branch."""
         a = _cls("sym:A", "A", language="haskell")
         a_init = _method("sym:A.foo", "A.foo", language="haskell")
         b = _cls("sym:B", "B", language="haskell")
@@ -609,8 +608,8 @@ class TestEndToEndInheritedCalls:
         assert result.edges == []
 
     def test_resolves_java_unresolved_call_via_extends_chain(self) -> None:
-        """PR-3: Java analyzer emits make_unresolved_edge(...,
-        enclosing_class=<owner>); linker walks extends chain and emits
+        """The Java analyzer emits make_unresolved_edge(...,
+        enclosing_class=<owner>); the linker walks the extends chain and emits
         ast_call_inherited at confidence 0.90."""
         a = _cls("sym:A", "A", language="java")
         a_foo = _method("sym:A.foo", "A.foo", language="java")
@@ -640,10 +639,8 @@ class TestEndToEndInheritedCalls:
     def test_resolves_java_through_implements_when_extends_chain_lacks_method(
         self,
     ) -> None:
-        """PR-3 enhancement: with Java 8+ default methods, an interface
-        method should resolve via implements when the extends chain has
-        no match. This goes beyond the old in-analyzer walk which only
-        followed extends.
+        """With Java 8+ default methods, an interface method resolves via
+        implements when the extends chain has no match.
         """
         parent = _cls("sym:Parent", "Parent", language="java")
         iface = _cls("sym:Iface", "Iface", language="java")
@@ -758,7 +755,7 @@ class TestEndToEndInheritedCalls:
 
 # ---------------------------------------------------------------------------
 # Site-2 (typed-receiver) + Site-3 (inherited-field-receiver) resolution
-# (WI-puvil / PR-5 of INV-nilud).
+# (history: WI-puvil).
 # ---------------------------------------------------------------------------
 
 
@@ -833,7 +830,7 @@ def _unresolved_site3(
 class TestSite2TypedReceiverResolution:
     """Site 2 resolves ``var.method()`` calls where ``var``'s type was
     inferred by the Java analyzer and threaded into ``Edge.meta`` as
-    ``receiver_type_hint`` (PR-4)."""
+    ``receiver_type_hint``."""
 
     def test_resolves_method_directly_on_type(self) -> None:
         """``var.method()`` where ``Type`` has ``method`` defined directly
@@ -892,9 +889,9 @@ class TestSite2TypedReceiverResolution:
     def test_falls_back_to_type_symbol_when_method_not_found(self) -> None:
         """``var.method()`` where ``Type`` exists but method isn't on it
         or any ancestor — a ``uses`` edge to the type symbol itself at
-        confidence 0.70 (ast_call_inherited_method). WI-jomik: never a
-        ``calls`` edge, which named a non-callee and fed
-        method_call_recovery a false class hint."""
+        confidence 0.70 (ast_call_inherited_method). Never a ``calls``
+        edge: that would name a non-callee and hand method_call_recovery a
+        false class hint (WI-jomik)."""
         repo_iface = _java_iface(
             "sym:OwnerRepository", "OwnerRepository",
         )
@@ -949,13 +946,12 @@ class TestSite2TypedReceiverResolution:
         assert result.edges == []
 
     def test_site2_walker_skipped_for_unregistered_language(self) -> None:
-        """If the source language lacks an MRO walker, Site-2 still
-        attempts the *direct* type-method lookup (no MRO walk needed).
-        Python is a strict INV-fahub language (not in _LEGACY_SITE2_LANGS),
-        so it gets NO Step-3 type-symbol fallback — but the direct match
-        here needs no fallback and resolves via Step 1."""
-        # Python is not in _MRO_WALKERS yet. Direct method lookup does not
-        # require an MRO walker, so the single unambiguous Repo.save resolves.
+        """Site-2's *direct* type-method lookup (Step 1) needs no MRO walker.
+        Python gets NO Step-3 type-use edge (it is not in
+        _SITE2_TYPE_USE_LANGS), but the direct match here needs no fallback
+        and resolves via Step 1."""
+        # Direct method lookup does not require an MRO walker, so the single
+        # unambiguous Repo.save resolves.
         repo = Symbol(
             id="sym:py.Repo", name="Repo", kind="class", language="python",
             path="/r.py",
@@ -997,9 +993,8 @@ class TestSite3InheritedFieldResolution:
     """Site 3 resolves ``field.method()`` calls where ``field`` is declared
     on a parent of the enclosing class. The Java analyzer threads both
     ``enclosing_class`` and ``inherited_field_receiver`` into
-    ``Edge.meta`` (PR-5 extends PR-4 to also stash enclosing_class on
-    the Case-3.5 path), and each class symbol carries
-    ``meta["fields"] = {name: type, ...}`` (PR-5).
+    ``Edge.meta``, and each class symbol carries
+    ``meta["fields"] = {name: type, ...}``.
     """
 
     def test_resolves_field_declared_on_immediate_parent(self) -> None:
@@ -1329,7 +1324,7 @@ def _unresolved_site3_lang(
     name (matching the Python producer, which stamps the field in meta, not the
     dst). WI-supat: an optional ``enclosing_class_id`` is post-injected into
     ``edge.meta`` (the Site-3 ENCLOSING disambiguation; the field-TYPE id rides
-    the parent class symbol's meta, added in PR-B)."""
+    the parent class symbol's meta)."""
     from hypergumbo_core.analyze.base import make_unresolved_edge
     edge = make_unresolved_edge(
         lang=lang, src_id=src_id, callee_name=callee_name,
@@ -1344,17 +1339,17 @@ def _unresolved_site3_lang(
 
 
 class TestPythonSite2StrictMode:
-    """WI-noham Part A: Python receiver_type_hint edges (emitted by py.py's
-    final unresolved-emit else) get the STRICT INV-fahub Site-2 mode — the
-    method must be DIRECTLY on the concretely-named, unambiguous type (Step 1).
-    Two gates key off ``_LEGACY_SITE2_LANGS`` (only ``java`` today, which keeps
-    its INV-nilud-validated permissive behavior): the Step-3 type-symbol
-    fallback is OFF, and a same-name-class collision biases to unresolved
-    (INV-fahub: never bind an under-determined receiver to an arbitrary
-    same-named internal def)."""
+    """Python receiver_type_hint edges (emitted by py.py's final
+    unresolved-emit else) get the STRICT INV-fahub Site-2 mode: the method
+    must be on the concretely-named, unambiguous type (Step 1) or its C3 MRO
+    (Step 2). Two Java-only sets make Java the exception: Python is not in
+    ``_LEGACY_SITE2_LANGS``, so a same-name-class collision biases to
+    unresolved (INV-fahub: never bind an under-determined receiver to an
+    arbitrary same-named internal def), and not in ``_SITE2_TYPE_USE_LANGS``,
+    so a method found nowhere gets no Step-3 type-use edge. (history: WI-noham)"""
 
     def test_direct_method_on_unambiguous_type_resolves(self) -> None:
-        """The in-PR recall path: ``receiver_type_hint='Foo'`` + a single
+        """The recall path: ``receiver_type_hint='Foo'`` + a single
         in-repo ``Foo`` with ``Foo.bar`` directly on it → Step-1 resolves
         (ast_call_type_inferred @0.85). Guards the gate does not break the
         direct path."""
@@ -1377,11 +1372,11 @@ class TestPythonSite2StrictMode:
         assert resolved[0].is_resolved is True
 
     def test_step3_type_symbol_fallback_gated_off_for_python(self) -> None:
-        """Method nowhere on the (single, walker-less) type → Python gets NO
-        Step-3 fallback edge (would be a ``calls→class`` edge — a new
-        runtime_coherence partition AND an INV-fahub under-determined bind).
-        Stays unresolved. Java (legacy) still falls back — asserted by the
-        existing ``test_falls_back_to_type_symbol_when_method_not_found``."""
+        """Method nowhere on the (single, baseless) type → Python gets NO
+        Step-3 edge (the type-use edge is Java-only,
+        ``_SITE2_TYPE_USE_LANGS``). Stays unresolved. Java still gets its
+        ``uses`` edge — asserted by
+        ``test_falls_back_to_type_symbol_when_method_not_found``."""
         foo = _py_cls("sym:py.Foo", "Foo")  # Foo defines NO 'save'
         caller = _py_caller()
         unresolved = _unresolved_site2_lang(
@@ -1399,8 +1394,9 @@ class TestPythonSite2StrictMode:
         """INV-fahub airtight: two in-repo classes both named ``Foo`` (only
         one defines ``bar``). The hint carries only the NAME, so the receiver
         is under-determined → NO resolution (the ambiguity guard), NOT a
-        confident bind to whichever ``Foo`` happens to have ``bar``. D3
-        (concrete class-id) later recovers this recall."""
+        confident bind to whichever ``Foo`` happens to have ``bar``. A
+        concrete ``receiver_type_id`` recovers this recall
+        (TestWiSupatConcreteClassId)."""
         foo_a = _py_cls("sym:py.a.Foo", "Foo", path="/a.py")
         bar = _py_method("sym:py.a.Foo.bar", "Foo.bar", path="/a.py")
         foo_b = _py_cls("sym:py.b.Foo", "Foo", path="/b.py")  # no 'bar'
@@ -1438,13 +1434,12 @@ class TestPythonSite2StrictMode:
         assert resolved[0].dst == bar.id
 
     def test_ancestor_only_method_resolves_via_python_walker(self) -> None:
-        """WI-hiziz (D1): a typed receiver whose method lives ONLY on an ancestor
-        now resolves for Python via Site-2 Step-2 (the C3 MRO walker). Sub
-        extends Base, Base defines ``save``, receiver_type_hint='Sub' → the
-        walker finds Base.save (``ast_call_inherited_method`` @ 0.70). This is
-        the flipped counterpart of the pre-D1 no-walker freeze; the Step-3
-        fallback stays gated off (python not in _LEGACY_SITE2_LANGS), so the
-        resolution is a genuine calls→method MRO hit, never a calls→class."""
+        """A typed receiver whose method lives ONLY on an ancestor resolves
+        for Python via Site-2 Step-2 (the C3 MRO walker). Sub extends Base,
+        Base defines ``save``, receiver_type_hint='Sub' → the walker finds
+        Base.save (``ast_call_inherited_method`` @ 0.70). Python gets no
+        Step-3 edge, so this is a genuine calls→method MRO hit. (history:
+        WI-hiziz)"""
         parent = _py_cls("sym:py.Base", "Base", path="/base.py")
         save = _py_method("sym:py.Base.save", "Base.save", path="/base.py")
         sub = _py_cls("sym:py.Sub", "Sub", path="/sub.py")  # defines no 'save'
@@ -1468,7 +1463,7 @@ class TestPythonSite2StrictMode:
         assert resolved[0].is_resolved is True
 
     def test_python_c3_diamond_resolves_correct_ancestor(self) -> None:
-        """WI-hiziz (D1) C3 precision: E(C, D), C(B), B(A), D(A); both B and D
+        """C3 precision: E(C, D), C(B), B(A), D(A); both B and D
         define ``save``. Python's C3 MRO is [E, C, B, D, A], so E().save()
         resolves to B.save — NOT D.save, which the shallower insertion-order BFS
         would pick. A confidently-wrong ancestor is worse than unresolved, so
@@ -1504,13 +1499,13 @@ class TestPythonSite2StrictMode:
     def test_python_c3_respects_source_base_order_over_edge_arrival(
         self,
     ) -> None:
-        """WI-hiziz (D1) base-order robustness: a QUALIFIED in-tree base written
+        """Base-order robustness: a QUALIFIED in-tree base written
         first (``class D(mod.Bar, Baz)``) has its ``extends`` edge recovered
         LATE by the inheritance-linker, so it ARRIVES after Baz's. The C3 walker
         must still honor SOURCE order (from ``meta['base_classes']``) — D().m()
         resolves to Bar.m (the first base), NOT Baz.m — else the reversed
         edge-arrival order silently picks the wrong ancestor on a method-name
-        collision. Regression for the adversarial-review base-order blocker."""
+        collision."""
         bar = _py_cls("sym:py.Bar", "Bar", path="/base.py")
         bar_m = _py_method("sym:py.Bar.m", "Bar.m", path="/base.py")
         baz = _py_cls("sym:py.Baz", "Baz", path="/main.py")
@@ -1593,10 +1588,9 @@ class TestPythonSite2StrictMode:
 
     def test_legacy_site2_langs_membership_and_walker_decoupling(self) -> None:
         """``_LEGACY_SITE2_LANGS`` is the explicit opt-in for permissive
-        Site-2 (Step-3 fallback + no ambiguity guard). Only Java qualifies
-        today. It is DELIBERATELY decoupled from ``_MRO_WALKERS`` so that
-        landing a Python MRO walker (deferred D1) does not silently re-enable
-        Python's Step-3 fallback and re-breach the ratchet."""
+        Site-2 (no same-name ambiguity guard); only Java is in it. It is
+        DELIBERATELY decoupled from ``_MRO_WALKERS``: registering a walker
+        for a language must not silently make its Site-2 permissive."""
         from hypergumbo_core.linkers.inherited_calls import _LEGACY_SITE2_LANGS
         assert "java" in _LEGACY_SITE2_LANGS
         assert "python" not in _LEGACY_SITE2_LANGS
@@ -1607,13 +1601,14 @@ class TestPythonSite2StrictMode:
 
 
 class TestPythonSite1SelfCalls:
-    """WI-hiziz PR-2: Site-1 (``enclosing_class`` hint) resolution for Python
-    ``self.method()`` inherited calls, plus the new INV-fahub ambiguity guard.
+    """Site-1 (``enclosing_class`` hint) resolution for Python
+    ``self.method()`` inherited calls, plus the INV-fahub ambiguity guard.
 
     py.py stamps ``enclosing_class`` on the unresolved ``self.method()`` edge;
-    the linker walks the class's C3 MRO (Python walker landed in PR-1) and mints
-    the resolved edge. A same-short-name class collision biases to unresolved
-    (the guard) for non-legacy langs; Java stays permissive.
+    the linker walks the class's C3 MRO and mints the resolved edge. A
+    same-short-name class collision biases to unresolved (the guard) for
+    ``_SITE1_STRICT_LANGS`` (Python); Java and Ruby stay permissive.
+    (history: WI-hiziz)
     """
 
     def test_site1_python_self_method_resolves_via_c3(self) -> None:
@@ -1641,7 +1636,7 @@ class TestPythonSite1SelfCalls:
         assert resolved[0].evidence_type == "ast_call_inherited"
         assert resolved[0].confidence == 0.90
         assert resolved[0].is_resolved is True
-        # FM7: the minted edge does NOT inherit the producer's meta payload
+        # The minted edge does NOT inherit the producer's meta payload
         # (call_construct / resolution_quality live on the surviving unresolved
         # twin only, never on the resolved edge).
         assert "call_construct" not in (resolved[0].meta or {})
@@ -1650,8 +1645,8 @@ class TestPythonSite1SelfCalls:
     def test_site1_python_collision_biases_unresolved(self) -> None:
         # Two in-tree python classes both named "Worker" make the enclosing
         # receiver under-determined by NAME → the guard biases to unresolved,
-        # even though one Worker would resolve the method. (WI-supat/D3 recovers
-        # this with a concrete class id.)
+        # even though one Worker would resolve the method. (A concrete
+        # enclosing_class_id recovers this; WI-supat.)
         base = _py_cls("sym:py.Base", "Base", path="/base.py")
         base_run = _py_method("sym:py.Base.run", "Base.run", path="/base.py")
         w1 = _py_cls("sym:py.Worker1", "Worker", path="/w1.py")
@@ -1677,8 +1672,8 @@ class TestPythonSite1SelfCalls:
         # namespace — ubiquitous in Rails), NOT a collision. The guard must NOT
         # fire; Ruby keeps its loop-all-first-match Site-1 resolution, preserving
         # the INV-nilud-validated `X.new -> inherited #initialize` edges this
-        # linker was built for. (Regression lock for the review-caught Ruby
-        # recall regression from reusing the java-only exemption set.)
+        # linker was built for. Reusing the Java-only _LEGACY_SITE2_LANGS as
+        # the Site-1 exemption set would wrongly apply the guard to Ruby.
         base = _cls("sym:rb.Base", "Base", path="/base.rb", language="ruby")
         base_init = _method(
             "sym:rb.Base#initialize", "Base#initialize",
@@ -1753,7 +1748,7 @@ class TestPythonSite1SelfCalls:
         assert result.edges == []
 
     def test_site1_python_external_base_mixin_known_gap(self) -> None:
-        # RESIDUAL (FM1, INV-guviv): the C3 walker spans only in-tree ``extends``
+        # RESIDUAL (INV-guviv): the C3 walker spans only in-tree ``extends``
         # edges. Sub subclasses an EXTERNAL base (no edge, invisible) plus an
         # in-tree mixin; if the external base defined `save` it would win the
         # real MRO, but the walk sees only the mixin and binds Mixin.save at 0.90.
@@ -1794,12 +1789,11 @@ class TestPythonSite1SelfCalls:
         assert resolved[0].dst == mixin_save.id  # FM1: possibly-wrong; documented
 
     def test_site1_python_crosslang_namesake_resolves(self) -> None:
-        # INV-milud (was FM3, "accepted over-suppression"): class_ids_by_name is
-        # language-agnostic, but the name->ids lookup is now filtered to
-        # src_lang, so a java "Config" no longer inflates the python "Config"
-        # collision count. The python enclosing class is actually UNIQUE, so the
-        # call resolves to its inherited python method instead of being
-        # over-suppressed as a false-negative.
+        # INV-milud: class_ids_by_name is language-agnostic, but the name->ids
+        # lookup is filtered to src_lang, so a java "Config" does not inflate
+        # the python "Config" collision count. The python enclosing class is
+        # UNIQUE, so the call resolves to its inherited python method instead
+        # of being over-suppressed as a false-negative.
         base = _py_cls("sym:py.PyBase", "PyBase", path="/base.py")
         base_m = _py_method("sym:py.PyBase.m", "PyBase.m", path="/base.py")
         py_config = _py_cls("sym:py.Config", "Config", path="/cfg.py")
@@ -1840,11 +1834,11 @@ def _py_cls_fields(
     sid: str, name: str, fields: dict, path: str = "/m.py",
     field_ids: dict | None = None,
 ) -> Symbol:
-    """Python class symbol carrying meta['fields'] (mirrors the PR-3 producer).
+    """Python class symbol carrying meta['fields'] (mirrors the Python producer).
 
-    WI-supat PR-B: an optional ``field_ids`` populates the parallel
+    An optional ``field_ids`` populates the parallel
     ``meta['field_type_ids'] = {field: type_id}`` map the field-type-id resolver
-    reads."""
+    reads (WI-supat)."""
     meta: dict = {"fields": dict(fields)}
     if field_ids is not None:
         meta["field_type_ids"] = dict(field_ids)
@@ -1856,7 +1850,7 @@ def _py_cls_fields(
 
 
 class TestPythonSite3InheritedField:
-    """WI-hiziz PR-3 part (c): Site-3 (self.field.method()) resolution for
+    """WI-hiziz: Site-3 (self.field.method()) resolution for
     Python, with the INV-fahub same-short-name ambiguity guards that Site-1/
     Site-2 carry (Python is in _SITE1_STRICT_LANGS; Java stays permissive)."""
 
@@ -2000,13 +1994,13 @@ class TestPythonSite3InheritedField:
 
 
 class TestWiSupatConcreteClassId:
-    """WI-supat (D3): a CONCRETE, authoritative class id threaded through the
+    """WI-supat: a CONCRETE, authoritative class id threaded through the
     Site meta contract lets the linker resolve a same-short-name / cross-language
     namesake PRECISELY instead of biasing to unresolved via the len>1 ambiguity
     guard. The id is trusted only when it is a real ``class_symbols`` key of the
     caller's OWN language; absent / stale / foreign-language ids fall back to the
-    name+guard path (byte-identical to pre-WI-supat behavior — the existing
-    ``*_biases_unresolved`` tests stay GREEN as the no-id fallback locks)."""
+    name+guard path, unchanged (the ``*_biases_unresolved`` tests pin that
+    no-id fallback)."""
 
     # ---- Site-1 (enclosing_class_id) ----
 
@@ -2064,11 +2058,11 @@ class TestWiSupatConcreteClassId:
         assert result.edges == []
 
     def test_site1_crosslang_namesake_id_resolves(self) -> None:
-        # FM3 recovery: a python "Config" + a java "Config" both inflate
-        # class_ids_by_name["Config"] (language-agnostic), so the NAME path
-        # over-suppresses a python call whose python enclosing class is unique.
-        # enclosing_class_id=py_config.id resolves it precisely (sibling of the
-        # existing test_site1_python_crosslang_namesake_over_suppressed no-id lock).
+        # A python "Config" and a java "Config" share the language-agnostic
+        # class_ids_by_name["Config"] key. enclosing_class_id=py_config.id
+        # resolves the python call precisely (the no-id counterpart, which
+        # resolves via the src_lang-filtered name path, is
+        # test_site1_python_crosslang_namesake_resolves).
         base = _py_cls("sym:py.PyBase", "PyBase", path="/base.py")
         base_m = _py_method("sym:py.PyBase.m", "PyBase.m", path="/base.py")
         py_config = _py_cls("sym:py.Config", "Config", path="/cfg.py")
@@ -2097,7 +2091,7 @@ class TestWiSupatConcreteClassId:
         # A python edge whose enclosing_class_id is a JAVA class id (present in
         # class_symbols, wrong language). The ``language == src_lang`` guard
         # rejects it -> name+guard fallback -> two python Config collide (len>1)
-        # -> unresolved. Closes FM3's cross-language leak fully.
+        # -> unresolved, so a foreign-language id cannot leak a cross-language bind.
         # NON-VACUITY: jv_config is made RESOLVABLE (extends jv_base which defines
         # `m`), so WITHOUT the language guard the python C3 walker would bind the
         # java JBase.m @0.90 — the test's `edges == []` would then FAIL. The guard
@@ -2235,9 +2229,9 @@ class TestWiSupatConcreteClassId:
 
     def test_site2_id_wrong_namesake_no_step3_stays_unresolved(self) -> None:
         # receiver_type_id=foo_b.id (the "Foo" WITHOUT bar). Not on foo_b directly
-        # nor via MRO. Python is strict -> Step-3 (calls->class type-symbol
-        # fallback) stays OFF -> unresolved. Pins that the id selects the TYPE and
-        # NEVER re-opens the calls->class ratchet partition.
+        # nor via MRO. Python gets no Step-3 edge (the type-use edge is
+        # Java-only) -> unresolved. Pins that the id selects the TYPE and never
+        # turns a miss into an edge to the type.
         foo_a = _py_cls("sym:py.FooA", "Foo", path="/a.py")
         bar = _py_method("sym:py.FooA.bar", "Foo.bar", path="/a.py")
         foo_b = _py_cls("sym:py.FooB", "Foo", path="/b.py")
@@ -2399,7 +2393,7 @@ class TestWiSupatConcreteClassId:
 
 
 class TestWiSupatFieldTypeId:
-    """WI-supat (D3) PR-B: a concrete field-TYPE id, threaded on the PARENT
+    """WI-supat: a concrete field-TYPE id, threaded on the PARENT
     class symbol's meta['field_type_ids'], lets Site-3 resolve a same-short-name
     field-type collision precisely instead of biasing to unresolved. Absent
     (java/legacy fields-only), stale, or foreign-language ids fall back to the
@@ -2443,7 +2437,7 @@ class TestWiSupatFieldTypeId:
     def test_field_type_id_resolves_right_namesake(self) -> None:
         # Unique enclosing Sub; the field's TYPE name "Logger" resolves to TWO
         # classes (logger1 has info, logger2 none). field_type_ids picks logger1
-        # -> resolves (was [] under the field-type len>1 guard, B9).
+        # -> resolves (without the id, the field-type len>1 guard gives []).
         logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
         info1 = _py_method("sym:py.Logger1.info", "Logger.info", path="/log1.py")
         logger2 = _py_cls("sym:py.Logger2", "Logger", path="/log2.py")
@@ -2565,9 +2559,8 @@ class TestWiSupatFieldTypeId:
         assert result.edges == []
 
     def test_field_type_id_absent_but_unambiguous_name_resolves(self) -> None:
-        # Mixed / backward-compat: no field_type_ids, single "Logger" -> the name
-        # path resolves with no collision (existing python Site-3 edges survive
-        # the walker return-shape change).
+        # No field_type_ids, single "Logger" -> the name path resolves with no
+        # collision (a parent without field_type_ids still resolves by name).
         logger = _py_cls("sym:py.Logger", "Logger", path="/log.py")
         info = _py_method("sym:py.Logger.info", "Logger.info", path="/log.py")
         base = _py_cls_fields(
@@ -2593,10 +2586,10 @@ class TestWiSupatFieldTypeId:
         assert resolved[0].dst == info.id
 
     def test_enclosing_id_and_field_type_id_both_skip_guards(self) -> None:
-        # BOTH id-preference guard-skips active in ONE edge (belt-and-suspenders,
-        # review follow-up): a same-name enclosing 'Sub' collision (PR-A
-        # enclosing_class_id disambiguates) AND a same-name field TYPE 'Logger'
-        # collision (PR-B field_type_ids disambiguates). Resolves iff both skips
+        # BOTH id-preference guard-skips active in ONE edge: a same-name
+        # enclosing 'Sub' collision (enclosing_class_id disambiguates) AND a
+        # same-name field TYPE 'Logger' collision (field_type_ids
+        # disambiguates). Resolves iff both skips
         # compose; dropping either id would bias to unresolved.
         logger1 = _py_cls("sym:py.Logger1", "Logger", path="/log1.py")
         info1 = _py_method("sym:py.Logger1.info", "Logger.info", path="/log1.py")
@@ -3060,7 +3053,7 @@ class TestInvGuvivStdlibBaseShadow:
         assert resolved[0].dst == base_m.id
 
     def test_site1_intree_base_aliased_to_builtin_name_no_false_shadow(self) -> None:
-        # F1: an in-tree class import-aliased to a builtin's exact name
+        # An in-tree class import-aliased to a builtin's exact name
         # (`from .m import DictBase as dict; class Repo(dict, Base)`). The extends
         # edge names the parent "DictBase" but meta['base_classes'] records "dict".
         # The alignment guard (in-tree parent names must appear among declared
@@ -3089,11 +3082,11 @@ class TestInvGuvivStdlibBaseShadow:
         assert resolved[0].dst == dictbase_pop.id
 
     def test_site1_builtin_between_intree_bases_is_undersuppression_residual(self) -> None:
-        # F2 (documented UNDER-suppression residual, SAFE direction): class
+        # Documented UNDER-suppression residual (SAFE direction): class
         # Repo(FirstMixin, dict, SecondMixin) where FirstMixin lacks pop, dict has
         # pop, SecondMixin has pop. Real MRO dispatches dict.pop, but the scan
         # stops at the first in-tree base (FirstMixin) and does not fire — leaving
-        # the pre-existing (possibly-wrong) SecondMixin.pop edge. Never
+        # the walker's (possibly-wrong) SecondMixin.pop edge. Never
         # over-suppresses; asserted to lock the residual eyes-open.
         first = _py_cls("sym:py.FirstMixin", "FirstMixin", path="/f.py")
         second = _py_cls("sym:py.SecondMixin", "SecondMixin", path="/s.py")
@@ -3451,7 +3444,7 @@ class TestScalaSwiftInheritedCallIntegration:
 
 
 class TestFleetSite1Walkers:
-    """INV-fahub fleet walkers (PR-2): each newly-registered fleet language
+    """INV-fahub fleet walkers: each registered fleet language
     recovers a bare inherited implicit-``this``/``self`` call via Site-1 — the
     enclosing class's registered MRO walker traversing an ``extends`` edge to a
     base class's method. Validates the ``_MRO_WALKERS`` registration + Site-1
@@ -3514,10 +3507,11 @@ class TestSite2TypeUseDoesNotSupersedeTheCall:
     """WI-gupak: the Step-3 ``uses`` edge does not consume the call stub.
 
     When the method is nowhere on the type's chain the call stays unresolved,
-    and the type-use edge only records that the caller uses the type. It named
-    the call stub in ``derived_from``, which ADR-0057 §14.1 reads as "this
-    resolution consumed that stub", so finalize halved the still-unresolved
-    call's rank and stamped it ``superseded_by`` a ``uses`` edge.
+    and the type-use edge only records that the caller uses the type. It must
+    not name the call stub in ``derived_from``: ADR-0057 §14.1 reads that as
+    "this resolution consumed that stub", so finalize would halve the
+    still-unresolved call's rank and stamp it ``superseded_by`` the ``uses``
+    edge.
     """
 
     def test_the_stub_keeps_its_rank_and_is_not_superseded(self) -> None:

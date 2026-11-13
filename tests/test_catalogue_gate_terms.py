@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-bigaz / INV-dohoj: the catalogue gate was keyed to ONE family of ten.
+"""INV-bigaz / INV-dohoj: the catalogue gate must cover EVERY catalogue family.
 
-``smart-test`` unions the tests that read a changed catalogue YAML, and the
-union worked — for ``io_primitives``. It was keyed on a regex naming that
-directory and its overlays, which is 23 of the 169 YAML files the wheel ships.
-Measured on dev 81f1a69f88, a change confined to ``frameworks/`` (107 files),
-``dataflow_patterns/``, ``cfg_nodes/``, ``function_summaries/`` or
-``taint_sources/`` selected ZERO tests, wrote a 0-test manifest, printed "no
-test-relevant files changed (docs/config only)", and CI then skipped pytest.
+``smart-test`` unions the tests that read a changed catalogue YAML. Keyed on a
+regex naming only ``io_primitives`` and its overlays, that union covers a small
+fraction of the YAML files the wheel ships: a change confined to
+``frameworks/`` (the largest family), ``dataflow_patterns/``, ``cfg_nodes/``,
+``function_summaries/`` or ``taint_sources/`` then selects ZERO tests, writes a
+0-test manifest, prints "no test-relevant files changed (docs/config only)",
+and CI skips pytest.
 
-So the terms are now DERIVED PER FAMILY from ``YAML_CATALOGS`` — the registry
+So the terms are DERIVED PER FAMILY from ``YAML_CATALOGS`` — the registry
 ``validate_registry()`` already gates against the tree — rather than written
 into the selector. The tests here pin the three properties that makes it
 worth: every registered family selects something, the io_primitives selection
@@ -31,8 +31,8 @@ REGISTRY = (
     / "packages/hypergumbo-core/src/hypergumbo_core/yaml_catalogs.py"
 )
 
-#: What the selector greps for today, written down so a narrowing is visible.
-#: These three literals WERE the whole catalogue gate before this change.
+#: The io_primitives selection's baseline terms, written down so a narrowing is
+#: visible: an io_primitives change must still reach every test these select.
 HISTORICAL_IO_PRIMITIVES_ARMS = ("load_catalog", "io_primitives", "io_boundary")
 
 
@@ -98,7 +98,7 @@ def a_yaml_under(directory: str) -> str:
 
 
 class TestTheResidualThisCloses:
-    """The five directories measured selecting ZERO on 2026-09-16."""
+    """Families a selector keyed on io_primitives alone selects ZERO for."""
 
     @pytest.mark.parametrize(
         "directory",
@@ -120,7 +120,7 @@ class TestTheResidualThisCloses:
         )
 
     def test_frameworks_is_the_largest_family_and_was_wholly_dark(self) -> None:
-        """107 of the 169 shipped YAMLs, and the old regex named none of them."""
+        """The largest family, and an io_primitives-keyed regex names none of it."""
         old_key = "(io_primitives|io_primitives_overlays)"
         assert "frameworks" not in old_key
         assert selection_for([a_yaml_under("frameworks")])
@@ -238,9 +238,9 @@ class TestDataIsWhatIsNotPython:
 
     ``url_folding/SCOPE.md`` is read on every run that folds a URL, by
     ``get_scoped_languages()``. INV-bigaz's statement is about a non-Python
-    input the production code loads at runtime, and a YAML-shaped key selected
-    nothing for it — the same "keyed to one instance" shape one level down from
-    the defect this helper was written to fix.
+    input the production code loads at runtime, and a YAML-shaped key would
+    select nothing for it — the same "keyed to one instance" shape, one level
+    down.
     """
 
     def test_a_runtime_parsed_markdown_input_is_data(self) -> None:

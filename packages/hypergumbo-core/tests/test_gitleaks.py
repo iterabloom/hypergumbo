@@ -302,8 +302,9 @@ class TestInstallGitleaks:
 
         So every wrapper the install calls must name the zone its path lands
         in: tmp_artifact_* inside the extraction dir, install_artifact_*
-        inside the install dir. The downloaded archive was written into the
-        extraction dir through an install_artifact wrapper.
+        inside the install dir. The downloaded archive lands in the
+        extraction dir, so it must go through a tmp_artifact wrapper, not an
+        install_artifact one.
         """
         import io
         import tarfile
@@ -467,8 +468,8 @@ class TestScanContentRealBinary:
     def test_real_gitleaks_detects_known_secret(self) -> None:
         """The real binary must detect a known secret fed via _scan.
 
-        An empty result here means the stdin contract broke again
-        (the INV-pirad regression).
+        An empty result here means the scan is not reading stdin (the
+        ``detect --pipe`` contract described on the class; INV-pirad).
         """
         findings = _scan(f"aws_access_key_id = {self._AWS_VECTOR}\n")
         assert findings, (
@@ -527,8 +528,8 @@ class TestScanRunsInADirectoryOfItsOwn:
     """INV-nihab: gitleaks auto-discovers ``.gitleaks.toml`` / ``.gitleaksignore``
     in its working directory, and removes and recreates its report path. Run
     in the inherited cwd with ``--report-path /dev/stdout``, the analysed
-    repository could configure (and empty) the scan, and gitleaks tried to
-    unlink ``/dev/stdout`` -- which succeeds as root. The scan now reports on
+    repository could configure (and empty) the scan, and gitleaks would try to
+    unlink ``/dev/stdout`` -- which succeeds as root. So the scan reports on
     ``-`` and runs in an empty scratch directory of its own."""
 
     def _invoke(self, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> dict:
@@ -586,10 +587,10 @@ class TestScanContentCached:
         """No result is not a clean result.
 
         A gitleaks that cannot run (a partial install), a scan that times out,
-        or output that is not JSON used to return ``[]``, which was then cached
-        as "no secrets" for that content: sketch said "Secret scan complete"
-        and kept saying it after gitleaks was fixed. Now the scan reports that
-        it did not run (``None``) and nothing is cached.
+        or output that is not JSON must not return ``[]``: that would be cached
+        as "no secrets" for that content, and sketch would keep saying "Secret
+        scan complete" even after gitleaks was fixed. Instead the scan reports
+        that it did not run (``None``) and nothing is cached.
         """
         from hypergumbo_core.gitleaks import scan_content_cached
 
@@ -618,8 +619,8 @@ class TestScanContentCached:
 
         The scan passes ``--exit-code 0``, so findings never make gitleaks
         exit non-zero; any other exit means it failed. Gitleaks 8.30 given a
-        config it cannot load exits 1 with empty stdout, which was read as
-        "no secrets" and cached as clean (WI-rapuh).
+        config it cannot load exits 1 with empty stdout; reading that as "no
+        secrets" would cache it as clean (WI-rapuh).
         """
         from hypergumbo_core.gitleaks import scan_content_cached
 
@@ -1066,7 +1067,8 @@ class TestUninstallGitleaks:
         """A ``~/.local/bin/gitleaks`` that links elsewhere is not ours to remove.
 
         The wrapper refuses it with ``SafetyZoneViolation``, which is not an
-        ``OSError``: uninstall-gitleaks used to exit 1 with "internal error".
+        ``OSError``, so uninstall-gitleaks must catch it explicitly or it exits
+        1 with "internal error".
         """
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
         bindir = tmp_path / ".local" / "bin"

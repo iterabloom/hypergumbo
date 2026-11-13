@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A disjunctive module slot is a short handle, expanded where it is read (INV-jahuf).
 
-envoy-half carried 2.07 GB of repeated #include lists in 151,591 edges'
-module slots, against 14 MB of distinct content. The slot now holds a
-content-addressed handle, and the list is stored once. The two expansion
-points must see exactly what they saw before, so every verdict is unchanged.
+A large C/C++ repo repeats the same #include lists across a great many edges'
+module slots, so storing each list inline multiplies a little distinct content
+into gigabytes. The slot holds a content-addressed handle instead, and the list
+is stored once. The two expansion points must see exactly the list the inline
+form would carry, so no verdict depends on which form is stored.
 """
 
 from __future__ import annotations
@@ -58,8 +59,8 @@ def test_only_the_exact_spelling_is_a_handle(slot: str) -> None:
 
 
 def test_both_expansion_points_read_a_handle_as_its_list() -> None:
-    """Classification (ANY) and the coverage gate (ALL) see the same slot as
-    the comma-joined form gave them, so no verdict can move."""
+    """Classification (ANY) and the coverage gate (ALL) see a handle exactly
+    as they see the comma-joined form, so no verdict depends on the handle."""
     joined = ",".join(_HEADERS)
     handle = module_sets.module_slot(_HEADERS)
     assert module_hint_disjuncts(handle, "cpp") == module_hint_disjuncts(joined, "cpp")

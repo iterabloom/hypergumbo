@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A Go write through the handle's own method is a write (WI-nunab, WI-ninuz).
 
-Two gaps in go.yaml, measured on the shipped commands before this change:
+Two sets of go.yaml rows make these visible:
 
-* WI-nunab. ``os.File.{Write,WriteString}`` and ``bufio.Writer.{Write,
-  WriteString}`` had no row, so ``f.Write(b)`` -- the idiomatic Go file write
-  -- had no sink and no chain. It was disclosed under ``external_potential``,
-  and a must_not_exist fs_write claim over a program whose only write went
-  through the handle was ``inconclusive`` (go.yaml grants no module, so the
-  gate withheld rather than confirmed).
-* WI-ninuz. ``os.OpenFile`` had no row at all, so Go's flag-based open was
-  unclassified at the open itself.
+* ``os.File.{Write,WriteString}`` and ``bufio.Writer.{Write,WriteString}``.
+  Without them ``f.Write(b)`` -- the idiomatic Go file write -- has no sink
+  and no chain: it is disclosed under ``external_potential``, and a
+  must_not_exist fs_write claim over a program whose only write goes through
+  the handle is ``inconclusive`` (no row grants the module, so the gate
+  withholds rather than confirms) (history: WI-nunab).
+* ``os.OpenFile``, so Go's flag-based open is classified at the open itself
+  (history: WI-ninuz).
 
 The handle rows follow ``io.WriteString``'s shape (WI-suhug): one row per
 write boundary, ``call_site_undecidable``, abstaining to ``fs_write``, with the
@@ -122,7 +122,8 @@ def test_an_in_memory_builder_is_still_no_write(
 def test_a_write_through_an_opened_handle_fails_the_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The finding the rows were filed on: this was inconclusive."""
+    """A write through an opened handle VIOLATES the claim; without the
+    handle rows the verdict would be inconclusive."""
     repo = _repo(tmp_path, _CASES["openfile_write"])
     claims = tmp_path / "claims.yaml"
     claims.write_text(

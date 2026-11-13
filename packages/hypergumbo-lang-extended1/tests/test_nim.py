@@ -193,9 +193,9 @@ class TestNimExportedSymbols:
     """INV-bisom: Nim marks a public symbol with a ``*`` export postfix
     (``proc greet*``), which the tree-sitter grammar wraps in an
     ``exported_symbol`` node instead of exposing a bare ``identifier`` child.
-    The extractors previously looked only for a direct ``identifier``, so EVERY
-    exported proc / func / method / type was silently dropped (0/246 on the
-    filed corpus). They must be extracted AND marked ``is_exported``."""
+    An extractor that looks only for a direct ``identifier`` silently drops
+    EVERY exported proc / func / method / type. They must be extracted AND
+    marked ``is_exported``."""
 
     def test_extracts_exported_proc(self, temp_repo: Path) -> None:
         (temp_repo / "m.nim").write_text('''
@@ -318,7 +318,8 @@ proc caller() =
         # Find the edge from caller to internalProc
         resolved_call = next((e for e in call_edges if "internalProc" in e.dst and "external" not in e.dst), None)
         assert resolved_call is not None
-        # Resolved calls have confidence 0.85 * lookup confidence (usually 1.0)
+        # A resolved call's confidence is the ast_call pathway graded by the
+        # lookup's resolution score (Edge.create's resolution_score)
         assert resolved_call.confidence > 0.70
 
 
@@ -334,8 +335,8 @@ class TestNimCallAnchor:
         }
 
     def test_exported_proc_call_edge(self, temp_repo: Path) -> None:
-        """``proc exported*`` names itself through an ``exported_symbol`` node. The
-        lookup read a bare ``identifier`` child, found none, and dropped the call."""
+        """``proc exported*`` names itself through an ``exported_symbol`` node. A
+        lookup by a bare ``identifier`` child finds none and drops the call."""
         (temp_repo / "a.nim").write_text(
             "proc helper(): int = 1\n"
             "proc exported*(): int = helper()\n"
@@ -465,7 +466,7 @@ proc processText(text: string) =
 
 
 class TestNimCyclomaticComplexity:
-    """INV-loguk slice C: callable Nim symbols carry non-null CC + LOC.
+    """INV-loguk: callable Nim symbols carry non-null CC + LOC.
     Real-grammar verification of the collision-free arm nodes (elif_branch /
     of_branch / except_branch) + and/or short-circuit via infix_expression.
     Note: primary if/for/while/case/try are NOT counted (keyword/named-node

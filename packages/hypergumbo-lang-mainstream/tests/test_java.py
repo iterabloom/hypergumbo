@@ -611,7 +611,7 @@ class TestJavaInheritanceEdges:
         )
 
     def test_single_file_extends_fallback(self, tmp_path: Path) -> None:
-        """Legacy _analyze_java_file path creates extends edges without multi-value lookup."""
+        """Single-file _analyze_java_file path creates extends edges without multi-value lookup."""
         from hypergumbo_lang_mainstream.java import _analyze_java_file
         from hypergumbo_core.ir import AnalysisRun
 
@@ -631,7 +631,7 @@ class TestJavaInheritanceEdges:
         assert "Base" in extends_edges[0].dst
 
     def test_single_file_implements_fallback(self, tmp_path: Path) -> None:
-        """Legacy _analyze_java_file path creates implements edges without multi-value lookup."""
+        """Single-file _analyze_java_file path creates implements edges without multi-value lookup."""
         from hypergumbo_lang_mainstream.java import _analyze_java_file
         from hypergumbo_core.ir import AnalysisRun
 
@@ -1140,8 +1140,8 @@ public abstract class Shape {
 class TestSpringBootRouteDetection:
     """Tests for Spring Boot route detection via YAML patterns (ADR-3aaa v1.0.x).
 
-    These tests verify that Spring Boot routes are detected through the YAML
-    pattern system rather than deprecated analyzer-level detection.
+    Spring Boot routes are detected by the YAML pattern system; the Java
+    analyzer itself does no route detection.
     """
 
     def test_get_mapping_detection(self, tmp_path: Path) -> None:
@@ -1382,8 +1382,8 @@ public class Controller {
 class TestJaxRsRouteDetection:
     """Tests for JAX-RS route detection via YAML patterns (ADR-3aaa v1.0.x).
 
-    These tests verify that JAX-RS routes are detected through the YAML
-    pattern system rather than deprecated analyzer-level detection.
+    JAX-RS routes are detected by the YAML pattern system; the Java analyzer
+    itself does no route detection.
     """
 
     def test_jaxrs_get_with_path(self, tmp_path: Path) -> None:
@@ -2745,8 +2745,8 @@ class TestJavaImportResolution:
         from hypergumbo_lang_mainstream.java import analyze_java
 
         # Define utils in a package directory matching the declaration so that
-        # WI-fuhaj's import-class-mismatch guard recognises the resolved symbol
-        # as the one pointed at by ``import com.example.Utils``.
+        # the import-class-mismatch guard recognises the resolved symbol as the
+        # one pointed at by ``import com.example.Utils`` (WI-fuhaj).
         utils_dir = tmp_path / "com" / "example"
         utils_dir.mkdir(parents=True)
         (utils_dir / "Utils.java").write_text("""
@@ -2877,7 +2877,7 @@ public class Handler {
 
 
 # ============================================================================
-# Java Annotation Metadata Tests (Phase 5)
+# Java Annotation Metadata Tests
 # ============================================================================
 
 
@@ -5027,10 +5027,8 @@ public class Wrong {
             "is_resolved": e.is_resolved, "meta": dict(e.meta or {}),
         } for e in result.edges]
         callers: dict = defaultdict(dict)
-        # The registrar takes the barrier index and the output map, plus
-        # optional ``sanitizer_lines``; it has no ``ambiguous_names``
-        # parameter, which never held a sanitizer short name in any language
-        # (INV-fuduz).
+        # The registrar takes the edges, the barrier index and the output
+        # map, plus optional ``sanitizer_lines`` (history: INV-fuduz).
         _register_sanitizer_callers(edge_dicts, index, callers, {})
         assert not callers, (
             f"phantom barrier registered from a non-Cipher receiver: {dict(callers)}"

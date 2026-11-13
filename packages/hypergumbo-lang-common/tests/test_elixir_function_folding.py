@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-tusad (B2): one Elixir function per name/arity, with a producer stable_id.
+"""WI-tusad: one Elixir function per name/arity, with a producer stable_id.
 
 Elixir identifies a function by its module, name and arity. Several ``def``
 clauses of one name and arity are ONE function (pattern-matched in order), and
-``f/1`` and ``f/2`` are two. The analyzer used to emit a symbol per clause, all
-named ``M.f``; the ADR-0035 backstop floor keys on ``(kind, language, path,
-name)``, so every multi-clause or multi-arity function in a file shared a floor
-key and was left with ``stable_id = null`` (699 of 2,221 nodes on phoenix/lib).
+``f/1`` and ``f/2`` are two. The clauses of a name/arity fold into one node
+(the Erlang shape), whose stable_id is the ADR-0035 producer formula over the
+module scope chain and the declared arity
+(``overload_arity.declared_arity_stable_id``). The name stays ``M.f``: arity
+is in ``meta["parameters"]``. Deleting a clause, or a function of another
+arity, moves no other id.
 
-Now the clauses of a name/arity fold into one node (the Erlang shape), whose
-stable_id is the ADR-0035 producer formula over the module scope chain and the
-declared arity (``overload_arity.declared_arity_stable_id``). The name stays
-``M.f``: arity is in ``meta["parameters"]``. Deleting a clause, or a function
-of another arity, moves no other id.
+A symbol per clause, all named ``M.f``, would not work: the ADR-0035 backstop
+floor keys on ``(kind, language, path, name)``, so every multi-clause or
+multi-arity function in a file would share a floor key and be left with
+``stable_id = null``.
 """
 from __future__ import annotations
 

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A C++ member call on an explicit receiver resolves on the receiver's type (WI-lamij).
 
-``impl_->Generate(a, b)`` took ``local_symbols["Generate"]`` -- whichever
-same-file method of ANY class registered last -- so the pimpl idiom
-(``X::Generate`` forwarding to ``impl_->Generate``) became a false SELF-call:
-990 such sites on sherpa-onnx. The receiver is now typed where the source
-declares it (a local, a parameter, a field of the caller's class), and an
-untyped receiver is never bound by short name nor read as implicit ``this``.
+Binding ``impl_->Generate(a, b)`` through ``local_symbols["Generate"]`` --
+whichever same-file method of ANY class registered last -- turns the pimpl
+idiom (``X::Generate`` forwarding to ``impl_->Generate``) into a false
+SELF-call. The receiver is typed where the source declares it (a local, a
+parameter, a field of the caller's class), and an untyped receiver is never
+bound by short name nor read as implicit ``this``.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py
 from __future__ import annotations

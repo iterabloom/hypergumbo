@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-tipoh: an explicit import outranks a same-named project symbol elsewhere.
+"""An explicit import outranks a same-named project symbol elsewhere (WI-tipoh).
 
-The scala and kotlin analyzers resolved a call by the callee's simple name across
-the whole project, and the file's own import did not take part. spark's
-``TestUtils.scala`` imports ``scala.sys.process.Process``, and its
-``Process(cmd).!`` bound to a ``case class Process`` in an unrelated test suite.
-scala3's ``TestScripts.scala`` did the same with the sbt build's ``object
-Process``. The edge was false, and the launch never reached the catalogue.
-kotlin had the same shape: ``import java.io.File`` then ``File("x")`` bound to a
-project ``class File``.
+The scala and kotlin analyzers resolve a call by the callee's simple name across
+the whole project, so the file's own import has to take part. Without it, a file
+that imports ``scala.sys.process.Process`` and calls ``Process(cmd).!`` binds to
+an unrelated test suite's ``case class Process`` or a build directory's ``object
+Process``, and a kotlin ``import java.io.File`` then ``File("x")`` binds to a
+project ``class File``. The edge is false, and the launch never reaches the
+catalogue.
 
 Every test runs the production analyzer on real files. REACH comes first: a
 fixture that emitted no call edge would pass every negative control.
@@ -58,8 +57,8 @@ class TestScala:
         }))
 
     def test_an_imported_stdlib_process_is_not_the_project_object(self, tmp_path: Path) -> None:
-        """scala3's shape, exactly: a selector import, and a project object named
-        Process in the build directory."""
+        """A selector import, and a project object named Process in the build
+        directory."""
         result = self._analyze(tmp_path, """\
 package dotty.tools.scripting
 
@@ -145,10 +144,11 @@ object T {{
             "root-is-not-relative", "another-package-tree"])
     def test_a_relative_import_resolves_against_the_enclosing_packages(
             self, tmp_path: Path, package: str, imports: str, resolves: bool) -> None:
-        """pekko writes ``import pekko.util.OptionVal`` inside ``org.apache.pekko``.
-        Reading that as an absolute path withheld correct edges on pekko. An
-        import that fits no reading, and a ``_root_`` path outside the symbol's
-        package, are still refused."""
+        """A Scala import is relative to the enclosing packages: ``import
+        pekko.util.OptionVal`` inside ``org.apache.pekko`` names
+        ``org.apache.pekko.util.OptionVal``, and reading it as an absolute path
+        would withhold correct edges. An import that fits no reading, and a
+        ``_root_`` path outside the symbol's package, are still refused."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         result = analyze_scala(_write(tmp_path, {
@@ -171,7 +171,7 @@ object T {{
          "import org.apache.spark.sql.catalyst.util.truncatedString",
          "truncatedString(c)"),
         # A second ``hl`` makes the resolver choose by the import (its
-        # path-hint branch), as scala3's several ``hl`` definitions do. A lone
+        # path-hint branch), as several same-named definitions in a project do. A lone
         # suffix match to a method is deferred before any import is read.
         ("package dotty.tools.dotc.core\n\nobject SymDenotations {\n"
          "  class SymDenotation(x: String)\n}\n",
@@ -195,9 +195,9 @@ object T {{
             "through-a-renamed-import", "relative-to-a-type"])
     def test_a_name_the_symbol_spells_differently_still_resolves(
             self, tmp_path: Path, target: str, imports: str, call: str) -> None:
-        """Spark's shapes: the symbol's name omits its enclosing object, or its
-        package omits the package object. Both withheld correct edges when the
-        import was compared to an exact ``<package>.<name>``."""
+        """The symbol's name omits its enclosing object, or its package omits
+        the package object. Comparing the import to an exact
+        ``<package>.<name>`` would withhold correct edges in both shapes."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         result = analyze_scala(_write(tmp_path, {
@@ -210,9 +210,9 @@ object T {{
         assert calls and all(resolved for _, resolved in calls), [e.dst for e, _ in calls]
 
     def test_a_block_scoped_import_applies_only_inside_its_block(self, tmp_path: Path) -> None:
-        """zio's shape: ``import scala.concurrent.Promise`` inside ONE test, and
-        ``zio.Promise`` everywhere else in the file. The analyzer reads imports
-        file-wide, so the scoped import had refused the calls outside it."""
+        """An import inside ONE block (``import scala.concurrent.Promise`` in a
+        single test, ``zio.Promise`` everywhere else in the file) governs only
+        that block. Read file-wide, it would refuse the calls outside it."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         result = analyze_scala(_write(tmp_path, {
@@ -242,7 +242,7 @@ object T {
     def test_a_braced_package(self, tmp_path: Path, target: str, resolves: bool) -> None:
         """A braced ``package a { ... }`` names the package of what it encloses
         when it is the file's only definition. A file holding two cannot be
-        given one package, so its symbols are never refused: the old behaviour."""
+        given one package, so its symbols are never refused."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         result = analyze_scala(_write(tmp_path, {
@@ -356,12 +356,12 @@ class Use {{
 @pytest.mark.parametrize("imported", ["org.apache.spark.util", "org.apache.spark.sql.util"])
 def test_a_scala_import_of_a_project_path_keeps_the_placeholder_slot(
         tmp_path: Path, imported: str) -> None:
-    """spark imports ``org.apache.spark.util.Utils`` while the name-keyed registry
-    holds another project ``Utils``. The import still names a project type, so the
-    call keeps the ``external`` placeholder the Tier-2 linkers resolve from
-    (WI-kilap). Reading the mismatch as "not a project type" moved 1217 spark
-    slots to the import path. Both imports are tried: the registry keeps ONE
-    ``Utils``, so one of the two contradicts it, whichever it keeps."""
+    """A file imports ``org.apache.spark.util.Utils`` while the name-keyed
+    registry holds another project ``Utils``. The import still names a project
+    type, so the call keeps the ``external`` placeholder the Tier-2 linkers
+    resolve from (WI-kilap); reading the mismatch as "not a project type" would
+    move such slots to the import path. Both imports are tried: the registry
+    keeps ONE ``Utils``, so one of the two contradicts it, whichever it keeps."""
     from hypergumbo_lang_mainstream.scala import analyze_scala
 
     result = analyze_scala(_write(tmp_path, {
@@ -413,9 +413,10 @@ class TestKotlinBindsTheImportedPath:
 
 
 def test_a_kotlin_companion_import_still_resolves(tmp_path: Path) -> None:
-    """okhttp imports ``okhttp3.Headers.Companion.headersOf``. The member's
-    qualified name has no ``Companion`` segment, and reading the import literally
-    withheld 207 correct okhttp edges."""
+    """An import through a companion object
+    (``okhttp3.Headers.Companion.headersOf``) names a member whose qualified
+    name has no ``Companion`` segment; reading the import literally would
+    withhold correct edges."""
     from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
     result = analyze_kotlin(_write(tmp_path, {

@@ -1,35 +1,32 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The mypy strict ratchet must gate testing, locally and in CI.
 
-WHY THIS FILE EXISTS. INV-zogud's ratchet is shrink-only and was documented in
-AGENTS.md and the Wave-5 notebooks as "BLOCKING, instrument-pinned to mypy
-2.1.x". On the pipeline that actually gates merges it was neither.
+WHY THIS FILE EXISTS. INV-zogud's ratchet is shrink-only and is documented
+as BLOCKING and instrument-pinned to mypy 2.1.x. That is only true if every
+path that gates work runs it strict and lets its failure count:
 
-``auto-pr`` polls exactly one CI context — ``ci/woodpecker/pr/woodpecker`` —
-and merges on it. That Woodpecker step ran ``--mode=warning`` *and* carried
-``failure: ignore``, so the ratchet could not fail a pipeline by either route.
-Nothing ran mypy locally at all: not ``.githooks/pre-commit`` (tracker schema,
-five axis gates, test manifest), not ``.githooks/pre-push`` (protected-branch
-block only), not ``scripts/auto-pr``, not the documented pre-commit checklist.
+* ``auto-pr`` merges on the Woodpecker PR context
+  (``ci/woodpecker/pr/woodpecker``), so the Woodpecker step must run
+  ``--mode=strict`` and must not carry ``failure: ignore``;
+* locally, ``smart-test`` runs the ratchet before anything else and stops on
+  a breach (the git hooks and ``auto-pr`` do not run mypy).
 
-Measured consequence: dev drifted **672 → 682** across sixty commits touching
-24 source files. One of the ten new errors reported a *live* ``isinstance``
-guard as "always true", and the comment three lines above that guard explains
-exactly why it exists — draining it the obvious way deletes it. That is the
-shape that once took the whole-tree ratchet to a CLEAN 832 → 789 on a rewrite
-deleting 43 live guards.
+A ratchet that cannot fail lets the error surface drift upward commit by
+commit, and new errors are not always safe to drain: mypy can report a *live*
+``isinstance`` guard as "always true", and draining that error the obvious
+way deletes the guard.
 
-WHAT THESE TESTS PIN, AND WHY EACH IS NOT REDUNDANT. Three edits were needed
-and **two of them are silent alone**: with ``failure: ignore`` still set,
-``--mode=strict`` exits 1 and Woodpecker passes the step anyway, so flipping
-the mode by itself reads as a fix and gates nothing. A test that checked only
-the mode would have gone green over exactly that. So the mode, the
-failure-policy and the version pin are each asserted separately.
+WHAT THESE TESTS PIN, AND WHY EACH IS NOT REDUNDANT. Of the three settings,
+**two are silent alone**: with ``failure: ignore`` set, ``--mode=strict``
+exits 1 and Woodpecker passes the step anyway, so a strict mode by itself
+reads as a gate and gates nothing. A test that checked only the mode would go
+green over exactly that. So the mode, the failure-policy and the version pin
+are each asserted separately.
 
 The gate's *message* is pinned too, and deliberately. Its job is to close the
-"not my change" exit — the response that turns a two-line drift into a
-ten-error one — and a message that quietly loses that clause has lost the
-thing it was written for.
+"not my change" exit — the response that lets a small drift grow while each
+agent declines to own a breach it did not cause — and a message that quietly
+loses that clause has lost the thing it was written for.
 """
 
 from __future__ import annotations
@@ -87,16 +84,15 @@ class TestEveryInvocationIsStrict:
     def test_no_invocation_anywhere_uses_warning_mode(self) -> None:
         """The whole-tree assertion, so a fourth call site cannot be lax.
 
-        Scoped to lines that invoke THE RATCHET, on purpose. Two earlier
-        drafts of this test were wrong in opposite directions and both are
-        worth recording:
+        Scoped to lines that invoke THE RATCHET, on purpose. Broader scopes
+        are wrong in opposite directions:
 
-        * grepping the raw text for ``--mode=warning`` failed on all three
-          files, because each one *documents* why warning mode is wrong — the
-          forbidden string appears in the prose explaining the prohibition;
-        * dropping comments and grepping the remainder still failed, because
-          ``check-schema-coverage --mode=warning`` is a DIFFERENT tool that is
-          legitimately advisory. That draft would have forbidden correct
+        * grepping the raw text for ``--mode=warning`` hits prose: the files
+          *document* why warning mode is wrong, so the forbidden string
+          appears in the explanation of the prohibition;
+        * dropping comments and grepping the remainder still hits
+          ``check-schema-coverage --mode=warning``, a DIFFERENT tool that is
+          legitimately advisory. Forbidding it would forbid correct
           configuration, which is worse than not testing at all.
 
         So the unit is the invocation, not the file: find every executable
@@ -151,7 +147,7 @@ class TestInstrumentIsPinned:
 
         Under the loose spec a fresh install can resolve a mypy the baseline
         was not measured with, at which point the ratchet refuses to compare
-        at all — and under the old warning mode that refusal was silent too.
+        at all.
         """
         code = "\n".join(
             line for line in path.read_text(encoding="utf-8").splitlines()
@@ -203,8 +199,8 @@ class TestSmartTestGate:
     def test_the_message_closes_the_not_my_fault_exit(self) -> None:
         """The clause this gate exists for.
 
-        Ten errors survived sixty commits because each agent in turn could
-        observe a breach it had not caused and decline to own it. A message
+        A breach survives when each agent in turn observes it, did not cause
+        it, and declines to own it. A message
         that loses this clause has lost its point, so it is pinned rather
         than left to editorial drift.
         """

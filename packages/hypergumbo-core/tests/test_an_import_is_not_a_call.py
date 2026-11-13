@@ -1,26 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """An import edge is not a call site for a FUNCTION row (INV-lagir).
 
-``tag_io_boundaries`` counts ``imports`` edges among its call types, and has
-since the tagger was written. A Python import's dst is the imported name, so
-``import glob`` (dst ``python:glob:0-0:glob``) has the same (module, name) as
-the catalogued FUNCTION ``glob.glob`` and matched it. A file containing only
-``import glob`` was an ``fs_read`` chain, and failed a
+``tag_io_boundaries`` counts ``imports`` edges among its call types. A Python
+import's dst is the imported name, so ``import glob`` (dst
+``python:glob:0-0:glob``) has the same (module, name) as the catalogued
+FUNCTION ``glob.glob``. Matched as a call, a file containing only
+``import glob`` becomes an ``fs_read`` chain and fails a
 ``{boundary: fs_read, must_not_exist: true}`` claim: violated, rc 1, for a
-program that performs no I/O. On hypergumbo's own survey 158 import edges were
-tagged, 133 of them ``import time`` as ``host_info_read``.
+program that performs no I/O. ``import time`` would likewise read as
+``host_info_read``.
 
-WHY NOT DROP ``imports`` FROM THE TAGGER. Measured before changing it: after
-``from os import environ`` or ``from sys import argv``, the USE
-(``environ["K"]``, ``argv[1]``) emits no edge at all, so the import edge is
-the only thing that makes those reads visible. Those are ATTRIBUTE rows (read,
-not called). A FUNCTION row has a call site of its own: ``from subprocess
-import run`` then ``run(cmd)`` emits a ``calls`` edge, and the import was a
-second, file-level chain for the same call. So an import may match an
-attribute row and never a function or method row.
+WHY NOT DROP ``imports`` FROM THE TAGGER. After ``from os import environ`` or
+``from sys import argv``, the USE (``environ["K"]``, ``argv[1]``) emits no edge
+at all, so the import edge is the only thing that makes those reads visible.
+Those are ATTRIBUTE rows (read, not called). A FUNCTION row has a call site of
+its own: ``from subprocess import run`` then ``run(cmd)`` emits a ``calls``
+edge, and the import would be a second, file-level chain for the same call. So
+an import may match an attribute row and never a function or method row.
 
 The only residual is a function imported and then used without a call (passed
-as a callback): that shape now produces no chain.
+as a callback): that shape produces no chain.
 """
 
 from __future__ import annotations
@@ -113,8 +112,8 @@ def test_an_imported_function_is_reported_where_it_is_called(
     assert ("net_send", "urllib.request.urlopen", "e") in chains
     assert ("fs_read", "glob.glob", "g") in chains
     at_file = {(b, p) for b, p, src in chains if src == "file"}
-    # sys.argv is two boundaries at once since WI-zidam (env_read +
-    # command_line_read), so the one read is reported under both.
+    # sys.argv is two boundaries at once (env_read + command_line_read;
+    # WI-zidam), so the one read is reported under both.
     assert at_file == {
         ("env_read", "os.environ"), ("env_read", "sys.argv"),
         ("command_line_read", "sys.argv"),
@@ -124,7 +123,7 @@ def test_an_imported_function_is_reported_where_it_is_called(
 def test_an_import_no_longer_fails_a_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The finding the item was filed on: violated, rc 1, for no I/O."""
+    """The core case: a program with no I/O must not be reported violated (rc 1)."""
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "m.py").write_text(_IMPORTS_ONLY)

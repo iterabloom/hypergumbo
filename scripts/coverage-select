@@ -3,7 +3,8 @@
 """CLI for coverage-directed test selection (shadow phase).
 
 DELIBERATELY THIN. Every decision lives in hypergumbo_core.{block_hash,
-selection_index,selection_shadow}, which are unit-tested at 100%; code in
+selection_index,selection_shadow,selection_log,prose_only}, which are
+unit-tested at 100%; code in
 scripts/ is exercised only through subprocess and so contributes nothing to
 coverage. Anything here that is more than argument shuffling is in the wrong
 file.
@@ -20,6 +21,7 @@ catches broadly and exits 0 — see `main`.
     narrow  print a run set with provably-irrelevant test files REMOVED
     prose-select  write the changed files that differ only in comments or
                   docstrings, and the tests recorded evidence says they need
+    report  print the accrued shadow evidence and its verdict
 """
 from __future__ import annotations
 
@@ -56,10 +58,10 @@ DEFAULT_INDEX = Path(
                    Path.home() / "hypergumbo_lab_notebook" / "selection_index.sqlite")
 )
 
-#: APPEND-ONLY, and out-of-repo for the same reason as the index. The shadow
-#: originally wrote one JSON file per run that the next run overwrote, so no
-#: evidence could accumulate; the observations are a forward-only time series
-#: and a lost run is lost permanently.
+#: APPEND-ONLY, and out-of-repo for the same reason as the index. The
+#: observations are a forward-only time series: a per-run file that the next
+#: run overwrites would accumulate no evidence, and a lost run is lost
+#: permanently.
 DEFAULT_LOG = Path(
     os.environ.get("HG_SELECTION_LOG",
                    Path.home() / "hypergumbo_lab_notebook" / "selection_observations.jsonl")
@@ -137,8 +139,8 @@ def _base_source(root: Path, base: str, rel: str) -> str | None:
 
     Change detection is GIT's job. The index stores block -> tests and nothing
     about what the tree used to look like: it is rewritten after every run, so
-    using its digests as the baseline made every run compare the working tree
-    against itself and select nothing (measured: 0 vs smart-test's 87).
+    using its digests as the baseline would compare the working tree against
+    itself and select nothing.
     """
     done = subprocess.run(["git", "-C", str(root), "show", f"{base}:{rel}"],
                           capture_output=True, text=True)
@@ -236,8 +238,8 @@ def cmd_select(args: argparse.Namespace) -> int:
 def cmd_narrow(args: argparse.Namespace) -> int:
     """Print the run set with safely-irrelevant test files REMOVED.
 
-    Phase 3 (WI-bolot). Reads the current run set on ``--run-set`` and prints
-    what survives, one file per line. Refusals go to stderr and the run set is
+    Reads the current run set on ``--run-set`` and prints what survives, one
+    file per line (history: WI-bolot). Refusals go to stderr and the run set is
     echoed back UNCHANGED, so a caller can pipe unconditionally.
 
     HOW THIS DIFFERS FROM `select`, since both consult the same index. `select`

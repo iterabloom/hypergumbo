@@ -2,22 +2,18 @@
 """``System.out`` / ``System.err`` calls are PrintStream calls on a standard stream (WI-dorus).
 
 ``java.lang.System.out`` and ``.err`` are declared ``java.io.PrintStream``, so
-the field fixes the receiver's type. The analyzer emitted
-``java:external:0-0:println`` with ``call_construct=method`` and took the FIELD
-NAME (``out``) as the receiver, so:
+the field fixes the receiver's type: the receiver is typed
+``java.io.PrintStream`` and the call is stamped ``io_target_kind: std_stream``.
+java.yaml's PrintStream rows apply ONLY with that stamp
+(``requires_target_kind``). A PrintStream from anywhere else -- a buffer, a
+file, a parameter -- stays typed and unclassified. With INV-hopib's
+subsumption, ``System.out.println(k)`` is one finding, named by the call.
 
-- every such call counted as an UNTYPED-receiver site in the
-  ``unknown_receiver_scope`` caveat (census on 09-26: cassandra 383, jenkins
-  125, sherpa-onnx 186), and the caveat decorated clean verdicts with
-  ``println``;
-- a local variable named ``out`` lent ``System.out`` its own type.
-
-Now the receiver is typed ``java.io.PrintStream`` and the call is stamped
-``io_target_kind: std_stream``; java.yaml's PrintStream rows apply ONLY with
-that stamp (``requires_target_kind``). A PrintStream from anywhere else -- a
-buffer, a file, a parameter -- is left exactly as before: typed, unclassified.
-With INV-hopib's subsumption, ``System.out.println(k)`` is one finding, named by
-the call.
+Treating the FIELD NAME (``out``) as an untyped receiver instead
+(``java:external:0-0:println`` with ``call_construct=method``) makes every such
+call an UNTYPED-receiver site in the ``unknown_receiver_scope`` caveat, which
+then decorates clean verdicts with ``println``, and lets a local variable named
+``out`` lend ``System.out`` its own type.
 """
 
 from __future__ import annotations
@@ -108,9 +104,9 @@ class TestTheVerdict:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The println is a logging finding, not an ipc one, and not an untyped
-        receiver. The ipc claim is withheld for a DIFFERENT reason since
-        WI-sojok: java has no sink in the ipc zone at all, which the per-zone
-        gate now says instead of reading confirmed."""
+        receiver. The ipc claim is withheld for a DIFFERENT reason: java has
+        no sink in the ipc zone at all, which the per-zone gate reports rather
+        than reading confirmed (WI-sojok)."""
         v = _verdicts(tmp_path, monkeypatch, _java(tmp_path, "        System.out.println(k);\n"))
         assert v["HS-IPC"]["verdict"] == "inconclusive", v["HS-IPC"]["details"]
         assert "java has no sink in the 'ipc' zone" in v["HS-IPC"]["details"]
@@ -157,9 +153,9 @@ class TestTheBoundaryMap:
     def test_another_printstream_is_no_crossing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """THE CONTROL, on the boundary map's own narrowing: the call stays what
-        it was before the rows existed -- an unclassified external call,
-        disclosed as ``external_potential`` -- and is not a logging crossing."""
+        """THE CONTROL, on the boundary map's own narrowing: the call stays an
+        unclassified external call, disclosed as ``external_potential``, and is
+        not a logging crossing."""
         assert self._chains(tmp_path, monkeypatch, "        ps.println(k);\n") == {
             ("external_potential", "java.io.PrintStream.println"),
         }

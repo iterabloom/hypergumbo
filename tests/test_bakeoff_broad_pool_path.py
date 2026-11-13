@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for scripts/bakeoff-broad ``_pool_repo_path``.
 
-Regression for the WI-favav parity gap: cohort SELECTION resolved a repo living
-one level down in a collection subdir (``ALL_REPOS/<collection>/<repo>``) via
-``pool_utils.resolve_repo_path``, but the RUN reconstructed the path with a bare
-``os.path.join(pool_path, repo_name)`` — so it looked for the repo at the pool
-top level, missed it, and ``get_dir_size`` raised ``FileNotFoundError`` (observed
-on ``ALL_REPOS/whole_bunch_of_repos/webtunnel``). ``_pool_repo_path`` centralizes
-the resolver so both paths agree.
+Cohort SELECTION resolves a repo living one level down in a collection subdir
+(``ALL_REPOS/<collection>/<repo>``) via ``pool_utils.resolve_repo_path``. A RUN
+that reconstructs the path with a bare ``os.path.join(pool_path, repo_name)``
+looks for the repo at the pool top level, misses it, and ``get_dir_size``
+raises ``FileNotFoundError``. ``_pool_repo_path`` centralizes the resolver so
+both paths agree (history: WI-favav).
 
 The script is imported as a module (despite the hyphen) — no bakeoff run needed.
 """
@@ -38,7 +37,7 @@ def _make_repo(path: Path) -> None:
 
 
 def test_nested_collection_repo_resolves(bbroad, tmp_path: Path) -> None:
-    # A repo one level down in a collection subdir (the shape that broke the run).
+    # A repo one level down in a collection subdir (the shape a naive join misses).
     _make_repo(tmp_path / "whole_bunch_of_repos" / "webtunnel")
     resolved = bbroad._pool_repo_path(str(tmp_path), "webtunnel")
     assert Path(resolved) == tmp_path / "whole_bunch_of_repos" / "webtunnel"

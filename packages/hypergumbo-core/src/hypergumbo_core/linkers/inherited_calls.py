@@ -904,7 +904,7 @@ def _extract_method_short_name(callee_name: str) -> str:
     #             type (this is what adds ``d`` and ``kotlin``)
     #   Site 3  — ``inherited_field_receiver`` producers
     # ``test_depends_on_producer_sets.py`` re-derives all three and fails when
-    # the registry moves again. Note ``_MRO_WALKERS`` is keyed on
+    # this list drifts from the registry. Note ``_MRO_WALKERS`` is keyed on
     # ``Symbol.language``, a wider vocabulary than pass ids: its ``typescript``
     # key maps onto the ``javascript`` pass.
     #

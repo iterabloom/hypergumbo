@@ -1,33 +1,29 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """An ObjC file the grammar cannot parse is retried through a byte-length-preserving
-rewrite of the two Apple SDK macros tree-sitter-objc 3.0.2 chokes on (WI-lafom).
+rewrite of the Apple SDK macros tree-sitter-objc 3.0.2 chokes on (WI-lafom).
 
-WI-lafom filed the symptom -- 74 of 387 real ObjC files carry a parse ERROR and the
-grammar silently falls back to C, so ``@property`` never becomes a node -- and named
-``NS_ASSUME_NONNULL_BEGIN``, ``nullable`` and generics together as candidate triggers.
-Bisecting the constructs one at a time REFUTES most of that: ``nullable``, generics,
-``NS_DESIGNATED_INITIALIZER``, ``NS_SWIFT_NAME``, block properties and
-``NS_ASSUME_NONNULL_BEGIN`` **alone** all parse with zero ERROR nodes. What breaks the
-parse is ``NS_ASSUME_NONNULL_BEGIN`` in the WRAPPING position, and ``NS_ENUM`` /
-``NS_OPTIONS``, which the item did not name at all.
+A parse ERROR makes the grammar silently fall back to C, so ``@property`` never
+becomes a node. What breaks the parse is ``NS_ASSUME_NONNULL_BEGIN`` in the
+WRAPPING position, ``NS_ENUM`` / ``NS_OPTIONS`` / ``NS_CLOSED_ENUM``, and
+availability / deprecation attributes. ``nullable``, generics, ``NS_DESIGNATED_INITIALIZER``,
+``NS_SWIFT_NAME``, block properties and ``NS_ASSUME_NONNULL_BEGIN`` **alone** all
+parse with zero ERROR nodes, so they are not rewritten.
 
-There is no grammar to bump to: 3.0.2 is the newest tree-sitter-objc published, and it
-is what is installed. So this takes INV-bisok's route -- a rewrite behind
-``TreeSitterAnalyzer.parse_source``, guarded twice: it runs ONLY on a file that already
-fails to parse, and its result is kept ONLY when it strictly reduces ERROR nodes, so a
-file the grammar handles is byte-identical through the hook.
+3.0.2 is the newest tree-sitter-objc published, so there is no grammar to bump
+to. The rewrite therefore takes INV-bisok's route -- behind
+``TreeSitterAnalyzer.parse_source``, guarded twice: it runs ONLY on a file that
+already fails to parse, and its result is kept ONLY when it strictly reduces
+ERROR nodes, so a file the grammar handles is byte-identical through the hook.
 
-A third rule blanks availability / deprecation attributes PREFIX-TOLERANTLY. Its
-first version listed Apple's names exactly and recovered zero files -- a name search
-over an incomplete vocabulary does not error, it returns clean. AFNetworking spells
-its own wrapper ``AF_API_AVAILABLE``, and that single macro is 820 of
-``AFURLSessionManager.m``'s 822 ERROR nodes: the file holding every
-``[self.session dataTaskWithRequest:…]`` call site the item was filed about.
+The availability / deprecation rule blanks attributes PREFIX-TOLERANTLY. A rule
+listing Apple's names exactly would recover nothing on a project with its own
+wrapper -- a name search over an incomplete vocabulary does not error, it returns
+clean -- and AFNetworking spells its wrapper ``AF_API_AVAILABLE``.
 
 The NS_ENUM rule CONSUMES a leading ``typedef``. Rewriting ``typedef NS_ENUM(NSInteger, S)``
-to ``typedef enum S`` -- the first draft -- is a typedef with no declarator, which
-yields a MISSING ``type_identifier``: a new parse failure inside the fix for parse
-failures. ``enum S`` plus padding is what parses.
+to ``typedef enum S`` is a typedef with no declarator, which yields a MISSING
+``type_identifier``: a new parse failure inside the fix for parse failures.
+``enum S`` plus padding is what parses.
 """
 from __future__ import annotations
 
@@ -96,11 +92,11 @@ class TestTheRewriteItself:
         assert out == b"enum S                x;\n"
 
     def test_an_availability_attribute_is_blanked_whatever_its_prefix(self) -> None:
-        """The first version of this rule listed Apple's names EXACTLY and scored zero.
+        """A rule listing Apple's names EXACTLY would miss a project's own wrapper.
 
         A name search over an incomplete vocabulary does not error, it returns
-        clean. AFNetworking spells its wrapper ``AF_API_AVAILABLE``, and that one
-        macro is 820 of ``AFURLSessionManager.m``'s 822 ERROR nodes.
+        clean. AFNetworking spells its wrapper ``AF_API_AVAILABLE``, which on its
+        own can account for nearly every ERROR node in a file.
         """
         src = b"typedef void (^B)(NSURLSession *s) AF_API_AVAILABLE(ios(10), macosx(10.12));\n"
         out = _objc_rewrite_unparseable(src)

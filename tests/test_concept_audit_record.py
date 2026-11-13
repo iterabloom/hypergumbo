@@ -157,8 +157,8 @@ def test_main_records_and_prints_confirmation(tmp_path: Path, capsys):
     _init_repo(tmp_path)
     _commit(tmp_path, "a.txt", "1", "first")
     state_path = tmp_path / ".agent" / ".last_concept_audit.json"
-    # A findings document is now a precondition for recording (2026-08-27);
-    # the notebook root is patched so this never reads the real one.
+    # A findings document is a precondition for recording; the notebook
+    # root is patched so this never reads the real one.
     nb = tmp_path / "nb"
     nb.mkdir()
     (nb / "concept-audit-edge_edge_type_04292026.md").write_text("# f\n")
@@ -173,15 +173,13 @@ def test_main_records_and_prints_confirmation(tmp_path: Path, capsys):
     assert state_path.exists()
 
 
-# --- WI/audit 2026-08-27: the recorder must refuse to advance the cadence
-#     state when the audit left no findings document.
+# --- The recorder must refuse to advance the cadence state when the audit
+#     left no findings document.
 #
-#     WHY THIS EXISTS. The 2026-08-20 record advanced `audits_run` for suspect
-#     domain "call_construct" with no write-up anywhere and no Examples entry,
-#     so the cadence bookkeeping moved while the audit trail did not. The
-#     2026-08-27 re-run of the same domain found five off-axis values the
-#     earlier pass had left behind — recoverable only because it re-derived the
-#     inventory from scratch. A silent audit is no audit; this is the gate.
+#     WHY THIS EXISTS. Recording an audit with no write-up moves the cadence
+#     bookkeeping (`audits_run`) while the audit trail does not, and leaves
+#     the next audit of that domain to re-derive the inventory from scratch.
+#     A silent audit is no audit; this is the gate.
 
 def _writeup(root: Path, name: str) -> Path:
     root.mkdir(parents=True, exist_ok=True)
@@ -237,10 +235,9 @@ def test_findings_documents_matches_docs_surveys(tmp_path: Path):
     has no value registry, so an audit of a meta-key's value family cannot be
     filed under ``docs/audits`` at all — ``docs/surveys/README.md`` calls itself
     the acknowledged sibling for exactly that case. With this root unsearched
-    the cadence gate refused a real, written-up audit (the 2026-09-10
-    ``call_construct`` one) and pushed the author toward ``--force``, which is
-    the single outcome this gate exists to prevent: a recorded audit with no
-    discoverable write-up.
+    the cadence gate refuses a real, written-up audit and pushes the author
+    toward ``--force``, which is the single outcome this gate exists to
+    prevent: a recorded audit with no discoverable write-up.
     """
     repo = tmp_path / "repo"
     want = _writeup(
@@ -342,12 +339,12 @@ def test_main_rejects_an_unknown_flag(capsys):
     assert "usage:" in capsys.readouterr().err
 
 
-# --- Recency. The first cut of this gate was satisfied by ANY historical
-#     document naming the domain, which meant it would have passed the very
-#     case it was built for: on 2026-08-20 the April-era
-#     docs/audits/0012-evidence-type-cluster-d-call-construct.md already
-#     existed. A write-up only witnesses THIS audit if it postdates the last
-#     recorded one.
+# --- Recency. A gate satisfied by ANY historical document naming the
+#     domain would pass an audit that left no write-up of its own, whenever
+#     an older document already names that domain (as
+#     docs/audits/0012-evidence-type-cluster-d-call-construct.md names
+#     call_construct). A write-up only witnesses THIS audit if it postdates
+#     the last recorded one.
 
 def _age(path: Path, iso: str) -> None:
     """Set a file's mtime from an ISO-8601 timestamp."""
@@ -398,7 +395,7 @@ def test_prior_audit_time_is_none_when_absent_corrupt_or_unparseable(tmp_path: P
 def test_main_refuses_when_the_only_writeup_predates_the_last_audit(
     tmp_path: Path, capsys,
 ):
-    """THE 2026-08-20 CASE, reproduced."""
+    """The only write-up naming the domain predates the last audit."""
     _init_repo(tmp_path)
     _commit(tmp_path, "a.txt", "1", "first")
     state_path = tmp_path / ".agent" / ".last_concept_audit.json"

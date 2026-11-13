@@ -16,14 +16,14 @@ for focused LLM context.
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
 - **371** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 116 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **58543** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13128, of which 7513 are functions, methods or classes
-- **235180** edges, test code included, by type:
-  - calls: 132943
-  - contains: 54530
-  - imports: 20120
-  - instantiates: 12965
-  - references: 10576
-  - module_attr_ref: 2235
+- **58588** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13138, of which 7520 are functions, methods or classes
+- **235359** edges, test code included, by type:
+  - calls: 133021
+  - contains: 54562
+  - imports: 20149
+  - instantiates: 12966
+  - references: 10602
+  - module_attr_ref: 2248
   - other: 1811
 
 ## Package Architecture
@@ -190,19 +190,19 @@ A code symbol (function, class, etc.) detected by analysis.
 - `id`: Location-based identifier in format {lang}:{file}:{start}-{end}:{name}:{kind}
 - `name`: The symbol's name (e.g., function name, class name)
 - `kind`: Type of symbol (function, class, etc.)
-- `language`: Programming language (python, javascript, etc.). Optional per ADR-0031 — Symbols representing source-code declarations carry the host language; synthetic-stand-in Symbols emitted by linkers for protocol/framework patterns (Kafka topics, WASM modules, IPC channels, etc.) leave this ``None`` and populate ``protocol_origin`` instead. Producers not yet migrated to ADR-0031 still pass a string (ADR-0031 §"Phase 1 Producer migration").
+- `language`: Programming language (python, javascript, etc.). Optional per ADR-0031 — Symbols representing source-code declarations carry the host language; synthetic-stand-in Symbols emitted by linkers for protocol/framework patterns (Kafka topics, WASM modules, IPC channels, etc.) leave this ``None`` and populate ``protocol_origin`` instead. Some stand-in producers still pass a language string rather than following this split (ADR-0031).
 - `path`: File path where the symbol is defined
 - `span`: Source location with lines and columns
-- `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat. The declared type is ``str | List[str]`` so this accepted-input contract holds at the type level; do NOT narrow it to ``List[str]`` — most producers pass a single scalar pass ID, and narrowing would produce hundreds of arg-type errors under mypy strict (INV-zogud). The stored value is always a list after ``__post_init__``.
+- `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat. The declared type is ``str | List[str]`` so this accepted-input contract holds at the type level; do NOT narrow it to ``List[str]`` — most producers pass a single scalar pass ID, and narrowing would produce arg-type errors at those call sites under mypy strict (INV-zogud). The stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014; INV-bazij). Survives BODY edits; does NOT survive rename or move — those are identity-changing operations, because name + qualified_name are hash inputs. Without them, same-shaped symbols in one scope collide (e.g. the zero-param bash functions of one file would share one ID). Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix, and their value-spaces are disjoint (0 overlap on the dogfood corpus). This is by design (WI-tisar): unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified. Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
+- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014; INV-bazij). Survives BODY edits; does NOT survive rename or move — those are identity-changing operations, because name + qualified_name are hash inputs. Without them, same-shaped symbols in one scope collide (e.g. the zero-param bash functions of one file would share one ID). Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix. Unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified (WI-tisar). Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
 - `shape_id`: Structural *skeleton* hash — the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 §1 compute_shape_id), so two symbols with the same code shape but different names/values collide. Compared within-language only (Python uses an ast-based variant). Contrast ``fingerprint``, which KEEPS identifiers/literals — ``shape_id`` is a strict coarsening of it. Serialized as ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that field's note on cross-axis bare-hash joins; WI-tisar).
 - `fingerprint`: Structural *content* hash of the symbol's parse subtree — shape PLUS identifiers and literals, whitespace/ comment-invariant, tagged with the scheme in ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw source-byte hash (ADR-0032). ``None`` for grammarless languages / parse errors / synthetic spans. Producer: fingerprint.py.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
 - `supply_chain_tier`: Supply-chain distance, from the project, of the code this node stands for (1=first_party, 2=internal_dep, 3=external_dep, 4=derived); a dependency declaration stands for the package it names, a boundary stub for the code it replaces. ADR-0041 §1, spec §14.
 - `supply_chain_reason`: Why this tier was assigned (e.g., "matches ^src/")
-- `is_test_file`: True if the file holds test *code* — the NARROW supply-chain role flag (spec §14), where examples/benches/fuzz carry their own role rather than this flag. Independent of tier — co-located test files can be tier 1. Deliberately distinct from the broader ``paths.is_test_file`` ranking/scan heuristic (which also covers mocks/fixtures/testdata/benches for entrypoint deprioritization); do not swap consumers of one for the other without re-running the WI-popok concept audit.
+- `is_test_file`: True if the file holds test *code* — the NARROW supply-chain role flag (spec §14), where examples/benches/fuzz carry their own role rather than this flag. Independent of tier — co-located test files can be tier 1. Deliberately distinct from the broader ``paths.is_test_file`` ranking/scan heuristic (which also covers mocks/fixtures/testdata/benches for entrypoint deprioritization); do not swap a consumer of one for the other without checking that it wants the other definition (history: WI-popok).
 - `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
 - `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
 - `is_generated_file`: True if the file is generated code. Independent of the role flags above.
@@ -631,7 +631,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
 - **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests use recorde...
-- **`hypergumbo_core.claims_coverage_guard`**: INV-jojog: the per-PR arm of the self-claims COVERAGE question.
+- **`hypergumbo_core.claims_coverage_guard`**: Per-PR guard for the self-claims COVERAGE question (INV-jojog).
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.confidence_sites`**: Static audit of explicit ``Edge.create(confidence=...)`` sites (WI-...
@@ -647,7 +647,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.evidence_types`**: Canonical registry of Edge.evidence_type values in hypergumbo's beh...
 - **`hypergumbo_core.fallback_coherence`**: INV-zuhub fallback-coherence linter.
 - **`hypergumbo_core.finalize`**: The finalize stage: the single pre-serialization reconcile point (A...
-- **`hypergumbo_core.fingerprint`**: Symbol-level content fingerprinting (WI-fanun; context-aware since ...
+- **`hypergumbo_core.fingerprint`**: Symbol-level structural content fingerprinting (WI-fanun).
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-3aaa).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
@@ -663,7 +663,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
 - **`hypergumbo_core.meta_key_coherence`**: Producer-side registry gate for ``Edge.meta`` keys (WI-lijaz).
-- **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
+- **`hypergumbo_core.meta_write_discipline`**: Static enforcement of ``MetaKeySpec.write_discipline`` (INV-hazov).
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.module_key_axis`**: The module-key axis: what may occupy a module slot (ADR-0051).
 - **`hypergumbo_core.module_sets`**: A disjunctive module slot is stored once and named by a short handl...
@@ -692,10 +692,10 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
-- **`hypergumbo_core.scip.calls`**: SCIP ``Occurrence`` → hypergumbo call-edge translation shim (WI-maf...
+- **`hypergumbo_core.scip.calls`**: SCIP ``Occurrence`` → hypergumbo call-edge translation shim.
 - **`hypergumbo_core.scip.descriptor`**: Parser for Sourcegraph SCIP symbol strings.
 - **`hypergumbo_core.scip.edges`**: SCIP ``Index`` → hypergumbo ``Edge`` translation shim (WI-mafut Pha...
-- **`hypergumbo_core.scip.index`**: SCIP ``Index`` → hypergumbo ``Symbol`` translation shim (WI-mafut P...
+- **`hypergumbo_core.scip.index`**: SCIP ``Index`` → hypergumbo ``Symbol`` translation shim.
 - **`hypergumbo_core.scip.resolve`**: Resolve a SCIP symbol to the record it names, in the Document that ...
 - **`hypergumbo_core.scip_python_install`**: Availability probes for the scip-python backend (WI-nanom).
 - **`hypergumbo_core.selection.filters`**: Path classification and symbol kind filtering for selection.
@@ -713,7 +713,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.symbol_indexes`**: Multi-value Symbol-name indexes for analyzers and linkers (WI-sofaf).
 - **`hypergumbo_core.symbol_kinds`**: Canonical registry of Symbol.kind values in hypergumbo's behavior map.
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
-- **`hypergumbo_core.taint`**: Taint catalog loading and taint-flow propagation (ADR-0017 Phases 1...
+- **`hypergumbo_core.taint`**: Taint catalog loading and taint-flow propagation (ADR-0017).
 - **`hypergumbo_core.taint_refine`**: Post-DDG IR refinement pass: resolve unresolved-external method-cal...
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
@@ -871,7 +871,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_lang_extended1.zig`**: Zig language analyzer using tree-sitter.
 - **`hypergumbo_lang_rust_analyzer.analyzer`**: Registered analyzer entry point for the SCIP-backed Rust backend.
 - **`hypergumbo_lang_rust_analyzer.crate_units`**: Which crate target each Document of a rust-analyzer index belongs t...
-- **`hypergumbo_lang_rust_analyzer.gate`**: Opt-in gate for the SCIP-backed Rust analyzer (WI-duzul Slice C gate).
+- **`hypergumbo_lang_rust_analyzer.gate`**: Opt-in gate for the SCIP-backed Rust analyzer.
 - **`hypergumbo_lang_rust_analyzer.graceful_degrade`**: Graceful-degrade orchestrator for the SCIP-backed Rust analyzer (WI...
 - **`hypergumbo_lang_rust_analyzer.invoke`**: Shell-out wrapper for ``rust-analyzer scip`` (WI-duzul Slice B-first).
 - **`hypergumbo_lang_rust_analyzer.translate`**: SCIP bytes → hypergumbo ``(Symbol, Edge)`` translation with rust.py...
@@ -997,8 +997,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 103083af1cf6
-  commit_count: 9091
+  commit: 2e4e4f1bdf11
+  commit_count: 9112
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

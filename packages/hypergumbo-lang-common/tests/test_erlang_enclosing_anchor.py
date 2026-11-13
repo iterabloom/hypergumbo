@@ -2,11 +2,10 @@
 """INV-mozas: an Erlang call edge is anchored to the function that CONTAINS it.
 
 Erlang names a function by name AND arity, so ``get_timeout/0`` and
-``get_timeout/2`` are two functions. The enclosing-function lookup used to
-key on the bare atom, which every arity registers under, so a call inside
-``get_timeout/0`` was anchored to whichever arity registered last. On
-rabbitmq that put an ``application:get_env`` source 1,900 lines away from
-the symbol it was attributed to.
+``get_timeout/2`` are two functions. An enclosing-function lookup keyed on
+the bare atom, which every arity registers under, would anchor a call inside
+``get_timeout/0`` to whichever arity registered last, possibly a function
+far away in the file.
 
 The property checked everywhere below is the item's statement: the edge's
 line lies inside its ``src`` symbol's span.
@@ -90,9 +89,9 @@ def test_ifdef_alternatives_anchor_to_the_branch_that_contains_the_call(
     """-ifdef/-else defines one name/arity twice; each keeps its own calls.
 
     ``teardown/0`` sits between the two so they are NOT coalesced into one
-    symbol -- the shape of ejabberd's misc.erl, where the ``-ifdef`` copy of
-    ``json_encode/1`` never reached Pass 2 because the name-keyed dict held
-    only the ``-else`` copy, and its ``jiffy:encode`` call was lost.
+    symbol. A name-keyed dict holds only one copy (the ``-else`` one), so
+    the ``-ifdef`` copy would never reach Pass 2 and its calls would be
+    lost.
     """
     text = """\
 -module(mod).

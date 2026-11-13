@@ -37,18 +37,16 @@ def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
 
 
 def test_stable_id_survives_body_edits(tmp_path: Path) -> None:
-    """stable_id survives BODY edits (Phase 6 PR3 / INV-bazij).
+    """stable_id survives BODY edits (INV-bazij).
 
-    Per ADR-0014's Phase-6 amendment: stable_id is "structural identity
-    within a (qualified_name, module_path) scope" — it survives BODY
-    edits but NOT rename or move. Two functions with the same name,
-    same module path, same signature, but different body content must
-    share stable_id. This pins the surviving half of the original
-    "survives renames/moves" promise.
+    Per ADR-0014 (as amended): stable_id is "structural identity within a
+    (qualified_name, module_path) scope" — it survives BODY edits but NOT
+    rename or move. Two functions with the same name, same module path,
+    same signature, but different body content must share stable_id.
 
-    (The untyped-fallback path produces a stable_id from a 7-tuple
-    that excludes body content: kind, param_count, arity_flags,
-    decorators, containing_stable_id, name, qualified_name.)
+    (The untyped path hashes a tuple that excludes body content: kind,
+    param_count, arity_flags, decorators, containing_stable_id, name,
+    qualified_name, occurrence_index — see ``assemble_stable_id``.)
     """
     out_path = tmp_path / "out.json"
     src = tmp_path / "mod.py"
@@ -287,12 +285,11 @@ def test_stable_id_decorator_attribute(tmp_path: Path) -> None:
 def test_stable_id_decorator_call(tmp_path: Path) -> None:
     """stable_id should handle decorator(args) style decorators.
 
-    Phase 6 PR3 (INV-bazij) reframed this test: two functions with the
-    same decorator name but DIFFERENT function names now split by name
-    (the disambiguator that closes the 60% same-file collision rate).
-    The narrow invariant this test still pins is that both functions
-    have a well-formed sha256-prefixed stable_id derived from the
-    decorator extraction path (i.e. neither stable_id is None).
+    Two functions with the same decorator name but DIFFERENT function
+    names split by name, the disambiguator that keeps same-file symbols
+    apart (INV-bazij). Beyond that, this pins that both functions have a
+    well-formed sha256-prefixed stable_id derived from the decorator
+    extraction path (i.e. neither stable_id is None).
     """
     (tmp_path / "app.py").write_text(
         "@decorator(1, 2)\n"
@@ -309,8 +306,8 @@ def test_stable_id_decorator_call(tmp_path: Path) -> None:
 
     func_nodes = [n for n in data["nodes"] if n["kind"] == "function"]
     assert len(func_nodes) == 2
-    # Phase 6 PR3 (INV-bazij): name is now a disambiguator — distinct
-    # function names split stable_id even when decorators match.
+    # INV-bazij: name is a disambiguator — distinct function names split
+    # stable_id even when decorators match.
     assert func_nodes[0]["stable_id"] != func_nodes[1]["stable_id"]
     assert func_nodes[0]["stable_id"].startswith("sha256:")
     assert func_nodes[1]["stable_id"].startswith("sha256:")

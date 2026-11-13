@@ -3,9 +3,9 @@
 
 This linker detects Phoenix Channel patterns in Elixir code and creates
 ``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``) for
-cross-process communication. Only publish-direction edges are emitted; the
-bespoke ``message_send``/``message_receive`` types were folded onto
-``event_publishes`` per the audit-findings 0001 consolidation.
+cross-process communication. Only publish-direction edges are emitted: the
+sender → receiver ``event_publishes`` edge captures the relationship, so no
+converse receive edge is minted (audit-findings 0001, 0002).
 
 Detected Patterns
 -----------------
@@ -220,8 +220,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     """Link Phoenix Channel patterns across files in a repository.
 
     Scans Elixir files for Phoenix Channel patterns and creates
-    ``event_publishes`` edges for matching events (the pre-fold
-    ``message_send`` / ``message_receive`` pair).
+    ``event_publishes`` edges for matching events.
 
     Args:
         repo_root: Root directory of the repository
@@ -265,7 +264,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     receive_by_event: dict[str, list[PhoenixPattern]] = {}
 
     # NB: distinct loop variable from the ``for p in patterns`` (dict) loop
-    # above — reusing ``p`` left mypy narrowing this PhoenixPattern iteration to
+    # above — reusing ``p`` makes mypy narrow this PhoenixPattern iteration to
     # the earlier ``dict`` type (spurious attr-defined on .type/.event).
     for pat in all_patterns:
         if pat.type == "send":
@@ -292,20 +291,18 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
         """Create symbol for Phoenix endpoint if not already created."""
         sym_id = _make_symbol_id(pattern, event)
         if sym_id not in created_symbol_ids:
-            # ADR-0027 Phase 3 / audit-findings 0013: f-string Symbol.kind
-            # framework-role leak (was kind=f"ipc_{pattern.type}", expanding
-            # to "ipc_send" or "ipc_receive"). Fold to canonical
-            # kind="function" + meta["framework_role"] capturing the same
-            # information dynamically. Mirrors the linkers/ipc.py fold
-            # shape; the L3 producer-coherence linter's f-string blind spot
-            # (only catches literal-form kwargs) is what hid this site
-            # through Wave 5.
+            # Canonical kind="function" with the send/receive role in
+            # meta["framework_role"], as in linkers/ipc.py: a per-role kind
+            # such as f"ipc_{pattern.type}" would leak a framework role into
+            # the kind axis (ADR-0027; audit-findings 0013). The L3
+            # producer-coherence linter checks only literal-form kwargs, so
+            # an f-string kind here would slip past it.
             # ADR-0031 Class B: synthetic stand-in for a Phoenix Channel IPC
-            # event. Was LITERAL-HOST ("elixir") — Phoenix is fundamentally
-            # an Elixir protocol but the protocol identity belongs in
-            # protocol_origin, not language. discovery_language records the
-            # actual host file's language (typically elixir, but Phoenix
-            # could surface from a non-elixir consumer in future bindings).
+            # event. The protocol identity belongs in protocol_origin, not
+            # language (hence language=None rather than a literal
+            # "elixir"); discovery_language records the actual host file's
+            # language (typically elixir, but Phoenix could surface from a
+            # non-elixir consumer in future bindings).
             symbols.append(Symbol(
                 id=sym_id,
                 name=f"phoenix:{pattern.type}:{event}",
@@ -338,10 +335,10 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
             src_id = _ensure_symbol(sender, event)
             for receiver in receivers:
                 dst_id = _ensure_symbol(receiver, event)
-                # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-                # Phoenix Channels event match is publish-family
-                # shape; "ipc" is the channel kind. Canonical
-                # 'event_publishes' + meta['channel_kind']='ipc'.
+                # A Phoenix Channels event match is publish-family, with
+                # "ipc" as the channel kind: canonical 'event_publishes' +
+                # meta['channel_kind']='ipc' (ADR-0023 §6; audit-findings
+                # 0002).
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
@@ -363,10 +360,8 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                 }
                 edges.append(edge)
 
-    # audit-findings 0002 (WI-hahap-farid): converse-direction
-    # message_receive edges dropped — same verdict as audit-findings 0001's
-    # event_subscribes shape problem; the forward
-    # event_publishes edges already capture the relationship.
+    # No converse receiver → sender edge: the forward event_publishes edges
+    # already capture the relationship (audit-findings 0001, 0002).
 
     # WI-lisan: the claim is what the scan found, never what was emitted.
     # A scan that read no file leaves the orchestrator's no_candidate_files.

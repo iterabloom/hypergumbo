@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Base classes and utilities for language analyzers.
 
-This module provides shared infrastructure for all language analyzers,
-eliminating duplication across the analyzer files (119 call
-``register_analyzer``) spread across the five ``hypergumbo-lang-*``
-packages.
+This module provides shared infrastructure for all language analyzers, so
+the analyzer modules spread across the ``hypergumbo-lang-*`` packages do
+not each carry their own copy.
 
 Shared Components
 -----------------
@@ -14,9 +13,9 @@ Shared Components
   and imports against the global symbol registry — plus grammar loading,
   file discovery, graceful degradation when a grammar is unavailable, and
   result assembly. Most subclasses override the language-specific extraction
-  hooks and inherit the orchestration. ~105 analyzer modules subclass it,
-  but 34 of those classes (go, java, js_ts, csharp, kotlin, php and ruby
-  among them) override ``analyze()`` with their own loop and never reach
+  hooks and inherit the orchestration, but a minority of subclasses (go,
+  java, js_ts, csharp, kotlin, php and ruby among them) override
+  ``analyze()`` with their own loop and never reach
   ``_analyze_body``, so the per-file and between-pass steps described next
   apply only to the subclasses that run it, directly or through
   ``super().analyze`` (as cpp, dart, elixir and scala do).
@@ -166,7 +165,8 @@ from ..ir import (
 )
 
 # EXPLICIT re-export (the ``X as X`` form), not a plain import: ``--strict``
-# forbids implicit re-export, and six linkers import this name from here. The
+# forbids implicit re-export, and linkers and analyzers import this name from
+# here. The
 # sanitizer lives in ``ir`` because ``ir`` mints boundary ids too
 # (``_canonical_external_id``) and importing it from here would be a cycle;
 # ``analyze.base`` remains the producer-facing surface (INV-divuf).
@@ -236,15 +236,15 @@ class AnalysisResult:
     Attributes:
         symbols: List of detected symbols (functions, classes, etc.)
         edges: List of relationships between symbols (calls, imports, etc.)
-        usage_contexts: List of usage contexts for call-based pattern matching (v1.1.x)
+        usage_contexts: List of usage contexts for call-based pattern matching
         run: Provenance tracking for the analysis pass
         skipped: Whether the analysis was skipped (e.g., missing dependency)
         skip_reason: Human-readable reason for skipping
         skip_reason_code: The same fact on the closed pass-silence-reason axis
-            (WI-dukoh / ADR-0056 W2). One channel, two fields: ``skip_reason``
+            (ADR-0056, WI-dukoh). One channel, two fields: ``skip_reason``
             keeps the payload a code cannot express (the pip command, the
             exception text) and this carries the classification a consumer can
-            branch on without matching twenty-eight spellings. Empty means the
+            branch on without matching free-text spellings. Empty means the
             producer did not classify itself, which reads as ``unreported`` —
             never as ``no_candidate_files``, the most common value, which a
             permissive default would manufacture on its behalf.
@@ -349,9 +349,10 @@ class ArityFlags:
     """Parameter arity classification for stable_id computation (ADR-0014 §2).
 
     Captures the structural shape of a function's parameter list without
-    recording names or types.  Two functions with the same ArityFlags and
-    kind will produce the same untyped-tier stable_id (by design — they
-    have the same *interface shape*).
+    recording names or types, so two functions with the same *interface
+    shape* share ArityFlags. The untyped-tier stable_id
+    (:func:`assemble_stable_id`) hashes these flags alongside the name,
+    scope chain and decorators, so equal flags alone do not make equal ids.
 
     Attributes:
         param_count: Number of regular parameters (excludes self/cls/receiver).
@@ -618,17 +619,17 @@ def make_symbol_id(
     and the id stops parsing, while colons in the ``path`` slot are harmless and
     stay verbatim (Rust's ``std::cmp`` module ids depend on that).
 
-    Colon-bearing source identifiers such as Objective-C selectors
-    (``removeItemAtPath:error:``) and coordinate-style names are the main
-    beneficiaries: unsanitized, they would yield unparseable seven-segment ids,
-    so the fold makes them parseable rather than churning ids that worked.
+    The ids it changes are those of colon-bearing source identifiers such as
+    Objective-C selectors (``removeItemAtPath:error:``) and coordinate-style
+    names, which unsanitized would yield unparseable seven-segment ids; a
+    colon-free name passes through unchanged.
 
     The substitution is documented-lossy (full fidelity lives in ``Symbol.name``)
-    and idempotent, so producers that already route through
-    :func:`sanitize_id_name_segment` — the synthetic linker stand-ins per
-    WI-vuzaf, the Maven manifest sites per INV-dulah — are unaffected. Those
-    explicit calls stay: they pin the right *value* into the slot, whereas this
-    only guarantees the slot is colon-free.
+    and idempotent, so producers that route through
+    :func:`sanitize_id_name_segment` themselves — the synthetic linker
+    stand-ins (WI-vuzaf), the Maven manifest sites (INV-dulah) — get the same
+    id. Those explicit calls are needed regardless: they pin the right *value* into
+    the slot, whereas this only guarantees the slot is colon-free.
     """
     return (
         f"{lang}:{path}:{start_line}-{end_line}"
@@ -903,7 +904,7 @@ def synthesize_file_anchors_for_node_bearing_paths(
     origin_run_id: str = "",
 ) -> list[Symbol]:
     """Synthesize a ``kind="file"`` anchor for every path that has content
-    nodes but no file anchor (WI-dagif; file-anchor:F1, node-bearing slice).
+    nodes but no file anchor (WI-dagif, file-anchor:F1).
 
     Sibling of :func:`synthesize_file_symbols_for_dangling_edges`: that pass is
     keyed on dangling ``make_file_id`` EDGE endpoints (WI-ramuv); this one is
@@ -920,7 +921,7 @@ def synthesize_file_anchors_for_node_bearing_paths(
     — no separate ``contains``-edge emission is needed here.
 
     SAFETY: these paths already carry content nodes, so they are already in the
-    Additional-Files exclusion set (``source_paths`` in cli.py) and minting their
+    Additional-Files exclusion set (``content_source_paths`` in cli.py) and minting their
     anchors cannot empty that surface. Nodeless files (yaml/markdown/config files
     with zero nodes) are deliberately NOT anchored here;
     :func:`synthesize_file_anchors_for_paths` mints those for the candidates the
@@ -989,7 +990,7 @@ def synthesize_file_anchors_for_paths(
     origin_run_id: str = "",
 ) -> list[Symbol]:
     """Mint a ``kind="file"`` anchor for each ``(rel_path, language)`` whose path
-    has no existing Symbol (file-anchor:F1, additional-file-candidate cohort).
+    has no existing Symbol (file-anchor:F1).
 
     Generic path-keyed minter: the caller (``all_analyzers``) selects the
     candidates via :func:`taxonomy.additional_file_candidates` + ``get_language``
@@ -1094,7 +1095,7 @@ def make_unresolved_edge(
             from ``(lang, module_hint, callee_name)`` (ADR-0037 ruling 2),
             EXCEPT when ``module_hint`` is the ``"external"`` sentinel — then
             the module is unknown and ``dst_ref`` stays ``None`` (WI-huzuv,
-            the ADR-0037 "unidentified reference" cell). The legacy ``dst``
+            the ADR-0037 "unidentified reference" cell). The ``dst``
             string is built from the same components so the two stay coherent.
         enclosing_class: Owning class short name of the call site (Site 1:
             bare / `this` / `self` calls). Lands on ``Edge.meta`` under
@@ -1202,7 +1203,7 @@ def defer_bare_method_call(
     class (implicit ``this``). It must NOT confidently bind to a DIFFERENT class's
     method on weak short-name evidence — that is the cross-language magnet misbind
     (``copy`` → ``FileCopyTask.copy``, ``delete`` → ``ActivityPubClient.delete``:
-    dozens of call sites → one arbitrary def). Deferring
+    every such call site → one arbitrary def). Deferring
     such a call to the shared ``inherited_calls`` **Site-1** walker (by emitting
     ``make_unresolved_edge(..., enclosing_class=<enclosing_type>)``) lets it be
     recovered iff the method is actually on the enclosing class's linearization (a
@@ -1302,8 +1303,9 @@ def make_route_symbol(
     drifts in three ways the validators catch — an id kind-slot of the literal
     ``route`` (``route`` is not a registered symbol kind, so ``id_format``
     fails), an absent ``origin_run_id`` (``cross_field``), and an unregistered
-    ``origin`` pass-id (``axis_conformance``). It encapsulates the shape
-    ``framework_patterns.materialize_route_symbols`` uses (WI-tufil).
+    ``origin`` pass-id (``axis_conformance``).
+    ``framework_patterns.materialize_route_symbols`` mints through it too
+    (WI-tufil).
 
     **Naming.** ``Symbol.name`` is ``"{METHOD} {path}"`` and the id name-slot is
     derived from it, so ADR-0036 Ruling 1 (``id name-slot == sanitized(name)``)
@@ -1358,8 +1360,9 @@ def make_route_symbol(
             to the language of the file carrying the directive.
 
     Returns:
-        A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
-        route→function fold, which every Class-B stand-in shares; the route
+        A route-marker ``Symbol`` with ``kind="function"`` (``route`` is not a
+        symbol kind: ADR-0027 folds it into ``function``, as for every Class-B
+        stand-in; the route
         signal lives in ``meta.framework_role``).
     """
     from ..routes import route_protocol_origin, transport_meta
@@ -1403,7 +1406,7 @@ def make_route_symbol(
 
 
 def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str:
-    """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (v8, WI-napoh).
+    """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (WI-napoh).
 
     Identity formula: ``sha256("site:{protocol_origin}:{rel_path}:{target}")[:16]``.
 
@@ -1469,7 +1472,7 @@ def assemble_stable_id(
     *,
     is_async: bool = False,
 ) -> str:
-    """The single stable_id v6 hash formula (ADR-0035 §1), shared by every producer.
+    """The single untyped-tier stable_id hash formula (ADR-0035 §1).
 
     ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
              :name:qualified_name:occurrence_index[:async])``
@@ -1484,8 +1487,8 @@ def assemble_stable_id(
 
     The ``qualified_name`` slot carries the FULL enclosing scope chain (enclosing classes →
     enclosing functions → local name), which is what makes two same-local-name symbols in
-    distinct scopes hash distinctly (ADR-0035 §1 "unique within run"). ``body_sig`` is
-    deliberately ABSENT: structural identity is ``shape_id``'s job, and folding the member set
+    distinct scopes hash distinctly (ADR-0035 §1 "unique within run"). A body signature
+    is deliberately ABSENT: structural identity is ``shape_id``'s job, and folding the member set
     here would churn the class id on every member add/remove (violating §1 "survives body
     edits").
 
@@ -1603,7 +1606,7 @@ def make_module_stable_id(language: str, path: str, name: str) -> str:
     """Stable identity for ``kind="module"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("module:{language}:{path}:{name}")[:16]``. The
-    declaring file ``path`` is folded in (ADR-0035 §4 same-shape audit): module
+    declaring file ``path`` is folded in (ADR-0035 §4): module
     names are file-scoped local identifiers (e.g. two Verilog ``module counter``
     in distinct files), so without the path they collapse cross-file. Mirrors
     :func:`make_variable_stable_id` / :func:`make_export_stable_id`.
@@ -1913,8 +1916,10 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     keep priority — this backstop never overrides a non-``None`` value.
 
     **Table kinds.** A ``None`` symbol whose kind is in
-    ``_KIND_STABLE_ID_FACTORIES`` (the eight INV-sotiv kinds, the six WI-rihob
-    container kinds, META-nomiz's ``template``; ADR-0014 §5b) takes its table
+    ``_KIND_STABLE_ID_FACTORIES`` (``file``, ``module``, ``dependency``,
+    ``variable``, ``export``, ``project``, ``interface``, ``type``; the
+    container kinds ``class`` / ``struct`` / ``enum`` / ``trait`` /
+    ``protocol`` / ``contract``; ``template``; ADR-0014 §5b) takes its table
     formula. Two same-name members of one table kind in a file share the key
     and are split later by :func:`split_within_file_stable_id_collisions`.
 
@@ -1977,11 +1982,11 @@ def make_synthetic_symbol_identity(
     rule applied uniformly): a freshly-stamped id churns only when same-key
     siblings in a file are added/removed/reordered, not on unrelated edits.
 
-    ADR-0036 assigns the lang-slot binding for ``language=None`` synthetic node
-    IDs to this chokepoint — bound to ``discovery_language or language``. That
-    binding is not a hash input: ``make_protocol_stable_id`` takes a
-    *category*, not a language, and ``node.id`` is owned by the producing
-    linker (re-keying its kind slot is deferred).
+    The node's language is not a hash input: ``make_protocol_stable_id`` takes
+    a *category*, not a language. ADR-0036 binds the lang slot of a
+    ``language=None`` stand-in's id to ``discovery_language or language``,
+    but ``node.id`` is owned by the producing linker; this resolver does not
+    re-key it.
     """
     stable_id = make_protocol_stable_id(
         sym.protocol_origin, sym.kind, sym.path, sym.name, str(occurrence),
@@ -2005,9 +2010,9 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
 
     A Class-B stand-in (ADR-0031: ``language is None`` AND ``protocol_origin``
     set) minted by a linker may ship without ``stable_id`` / ``display_label`` /
-    ``fingerprint`` (the ~7 zero-stable_id protocol linkers — ipc / openapi /
-    phoenix_ipc / solidity_abi / swift_objc / websocket / wasm_bindgen — plus
-    the unstamped subset of others such as yjs_crdt / crypto_flow). This
+    ``fingerprint`` (ipc, openapi, phoenix_ipc, solidity_abi and swift_objc
+    mint theirs with no ``stable_id``; wasm_bindgen, yjs_crdt and crypto_flow
+    pass ``stable_id=None``). This
     post-*linker* orchestrator pass — a sibling to
     :func:`populate_kind_stable_ids`, run AFTER linkers extend ``symbols`` —
     fills those three fields via the :func:`make_synthetic_symbol_identity`
@@ -2271,10 +2276,11 @@ def make_typed_stable_id(
 ) -> str:
     """Compute a typed-tier stable_id from a normalized signature.
 
-    v6 formula (ADR-0014 §3 + ADR-0035 §1 WI-zitod ``name``/``qualified_name`` slots)::
+    Formula (ADR-0014 §3, with the ADR-0035 §1 ``name`` / ``qualified_name``
+    slots)::
 
         sha256({kind}:{normalized_signature}:{visibility}:{decorators}
-               :{containing_stable_id}:{name}:{qualified_name})
+               :{containing_stable_id}:{name}:{qualified_name}[:async])
 
     The typed tier is preferred when type information is available (e.g. Java,
     C#, Kotlin, TypeScript, Dart, Go, Python with annotations).  It produces
@@ -2285,7 +2291,7 @@ def make_typed_stable_id(
     without them two distinct-named symbols with the same normalized signature,
     visibility, decorators, and container collapse to one id. ``qualified_name`` carries the full enclosing scope chain — the same
     role it plays in :func:`assemble_stable_id`. They have no default so a producer that
-    forgets them fails loudly rather than silently re-opening the collision.
+    forgets them fails loudly rather than silently collapsing ids.
 
     Decorators/annotations are included because they change runtime behavior
     (e.g. ``@staticmethod``, ``@lru_cache``, ``@Override``).  Two functions
@@ -2914,7 +2920,8 @@ def iter_tree(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
     """Iterate over all nodes in a tree-sitter tree without recursion.
 
     Uses an explicit stack to avoid RecursionError on deeply nested code
-    (e.g., TensorFlow has files exceeding Python's 1000-level limit).
+    (large generated or framework sources can nest deeper than Python's
+    default 1000-frame recursion limit).
 
     Args:
         root: The root node of the tree to traverse
@@ -2966,7 +2973,7 @@ def html_element_tag(node: "tree_sitter.Node") -> Optional[str]:
     The ``label_of`` an element scope chain passes to :func:`ancestor_labels`
     in the component grammars that share tree-sitter-html's element shape
     (Vue, Svelte, Astro): a slot or directive inside ``<div>`` and the same one
-    inside ``<section>`` are two identities (ADR-0035 §1, scheme v9).
+    inside ``<section>`` are two identities (ADR-0035 §1).
     """
     if node.type not in ("element", "template_element"):
         return None
@@ -3266,8 +3273,8 @@ def emit_module_attribute_refs(
             ``use_declaration`` / ``using_declaration`` for imports,
             ``scoped_type_identifier`` / ``generic_type`` /
             ``function_definition`` / ``declaration`` for type
-            positions.  Empty by default, so the languages that pass
-            nothing (javascript, java, go) are unaffected.
+            positions.  Empty by default (javascript, java and go pass
+            nothing).
 
             The walk below treats every scoped node outside callee
             position as an attribute read, and in a ``scoped_path``
@@ -3317,31 +3324,21 @@ def emit_module_attribute_refs(
             os.Stderr, k)`` makes ``os.Stderr`` a taint sink beside the call
             that writes; the carrier is what lets taint report the write once
             and lets a surviving stream finding name its call. Empty (the
-            default) stamps nothing, so cpp and rust -- whose stream writes
-            are ``<<`` expressions and ``stdout()`` calls, not attribute
-            uses inside a call -- are unaffected.
+            default) stamps nothing; cpp and rust pass nothing, since their
+            stream writes are ``<<`` expressions and ``stdout()`` calls, not
+            attribute uses inside a call.
         carrier_receiver_fields: see ``carrier_call_kinds``.
         carrier_arguments_field: the call's arguments field name.
         carrier_argument_wrapper_kinds: node types a grammar puts BETWEEN an
             argument and the arguments node (tree-sitter-kotlin's
             ``value_argument``); a use inside one is still handed to the call.
-            Empty (the default) changes nothing.
+            Empty by default.
         attribute_names: when given, only an access whose attribute is one of
             these is a read. For a language that calls a parameterless method
             without parentheses (scala's ``System.currentTimeMillis``), an
             access on the module is not necessarily a FIELD read, and the
             caller names the fields (WI-rabum). None, the default, keeps every
             attribute.
-
-    FIELD NAMES MAY NAME A CHILD BY POSITION OR TYPE. Every ``*_field_names`` /
-    ``*_fields`` / ``*_field`` argument goes through :func:`_child_by_fields`,
-    where a name beginning ``@`` selects a NAMED child instead of a field:
-    ``@first``, ``@last``, or ``@<node type>``. tree-sitter-kotlin declares no
-    fields on ``navigation_expression`` or ``call_expression``, so kotlin
-    passes ``@first`` / ``@last`` / ``@value_arguments`` (WI-rabum).
-
-    A BACKTICK-QUOTED attribute names the member it quotes: kotlin writes
-    ``System.`in``` because ``in`` is a keyword there.
         owner_kinds: the symbol kinds a read may be anchored on (see
             :func:`_innermost_callable_at`). Defaults to callables.
         is_local_value: given the base node of an attribute access whose
@@ -3365,6 +3362,16 @@ def emit_module_attribute_refs(
             colon-tolerant).  Catalog matching still works because
             ``IoBoundaryCatalog`` registers both ``::`` and ``.``
             forms in its qualified-name index.
+
+    FIELD NAMES MAY NAME A CHILD BY POSITION OR TYPE. Every ``*_field_names`` /
+    ``*_fields`` / ``*_field`` argument goes through :func:`_child_by_fields`,
+    where a name beginning ``@`` selects a NAMED child instead of a field:
+    ``@first``, ``@last``, or ``@<node type>``. tree-sitter-kotlin declares no
+    fields on ``navigation_expression`` or ``call_expression``, so kotlin
+    passes ``@first`` / ``@last`` / ``@value_arguments`` (WI-rabum).
+
+    A BACKTICK-QUOTED attribute names the member it quotes: kotlin writes
+    ``System.`in``` because ``in`` is a keyword there.
     """
     # tree-sitter's Python bindings return a fresh wrapper object on each
     # accessor call, so `id()` is unstable across two walks of the same
@@ -3571,7 +3578,7 @@ def make_file_finder(patterns: list[str]) -> Callable[[Path], Iterator[Path]]:  
 class TreeSitterAnalyzer:
     """Base class for tree-sitter-based language analyzers.
 
-    Encapsulates the universal two-pass architecture used by 100+ analyzers:
+    Encapsulates the two-pass architecture every tree-sitter analyzer uses:
       Pass 1: Discover files, parse with tree-sitter, extract symbols
       Pass 2: Re-walk ASTs, resolve calls/imports against global symbol registry
 
@@ -4089,11 +4096,10 @@ class TreeSitterAnalyzer:
         because a ``self`` chain is rooted in the impl/class; this starts from
         ``var_types[root]`` because a variable carries its own declared type.
 
-        This is what Go's ``_resolve_field_chain`` does (root in ``var_types``,
-        walk the field registry), ported so Rust's WI-dizag shape B —
-        ``h.f.write_all(..)`` — can recover ``File`` from ``Holder.f`` instead
-        of discarding it. Additive: nothing else calls it, so no analyzer that
-        relies on the self-only resolver changes behaviour.
+        Go's own ``_resolve_field_chain`` follows the same scheme (root in
+        ``var_types``, walk the field registry). The rust analyzer calls this
+        to type ``h.f.write_all(..)``, recovering ``File`` from ``Holder.f``
+        (WI-dizag).
 
         Args:
             value_node: The receiver node of a method call (e.g. the ``h.f``
@@ -4421,10 +4427,12 @@ class TreeSitterAnalyzer:
     ) -> str:
         """Compute an untyped-tier stable_id for a function/class/method node.
 
-        Delegates to :func:`assemble_stable_id` — the single v6 formula (ADR-0035 §1)::
+        Delegates to :func:`assemble_stable_id` — the single untyped-tier
+        formula (ADR-0035 §1)::
 
             sha256({kind}:{param_count}:{arity_flags}:{decorators}
-                   :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index})
+                   :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}
+                   [:async])
 
         Interface shape alone does not distinguish, e.g., many zero-parameter
         functions in one file or tests with empty bodies, so `name` and
@@ -4473,7 +4481,7 @@ class TreeSitterAnalyzer:
         decorators = self._extract_decorator_names(node)
         decorators_str = ",".join(sorted(decorators))
 
-        # 3. Hash via the shared v6 formula (ADR-0035 §1); an async
+        # 3. Hash via the shared formula (ADR-0035 §1); an async
         # declaration's marker is read from the node itself.
         return assemble_stable_id(
             kind,
@@ -4595,15 +4603,15 @@ class TreeSitterAnalyzer:
     ) -> AnalysisResult:
         """Inner ``analyze()`` body that does the actual work.
 
-        Kept as a separate method so the outer ``analyze()`` is a thin
-        seam — handy for INV-pitab-style future wiring (e.g., per-call
-        instrumentation) without re-threading every analyzer."""
+        ``analyze()`` only creates the ``AnalysisRun`` and start time and
+        hands them here, so it stays a thin seam where per-call wiring (such
+        as instrumentation) can go without touching any analyzer."""
         effective_pass_id = self.pass_id or make_pass_id(self.lang)
         # Stamp pass_version from the concrete analyzer subclass's module
         # hash when the subclass hasn't set one explicitly; otherwise every
         # TreeSitterAnalyzer subclass inherits the empty default (INV-gizik).
         # Mirrors the linker-side stamping in
-        # registry.py:_stamp_pass_version.
+        # linkers/registry.py:_stamp_pass_version.
         if not run.pass_version:
             try:
                 run.pass_version = compute_pass_version(type(self))

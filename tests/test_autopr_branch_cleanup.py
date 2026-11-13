@@ -9,13 +9,11 @@ safety check is exactly that ancestry test, so it refuses every time:
 
     error: the branch '<name>' is not fully merged.
 
-Both that command and the ``git push --delete`` beside it were written
-``2>/dev/null || true``, so the script printed "🧹 Cleaning up local branch..."
-and reported nothing while deleting nothing. Seven merged branches accumulated
-in a single day before a branch count surfaced it; an earlier session found 97
-local branches and 436 remote-tracking refs from the same cause.
+Swallowing that refusal (``2>/dev/null || true``) makes cleanup announce
+"🧹 Cleaning up local branch..." while deleting nothing, so merged local
+branches and remote-tracking refs pile up one per merge, unreported.
 
-Two further facts shape the fix:
+Two further facts shape the implementation:
 
 * The remote branch is already gone by this point —
   ``_github_delete_pr_head_branch`` deletes it via the API during the merge —
@@ -137,13 +135,11 @@ def _build_rebase_merged_repo(tmp_path: Path) -> Path:
 
 
 def _run_cleanup_local(repo: Path) -> subprocess.CompletedProcess[str]:
-    # PRODUCTION flags. This harness ran `set -uo pipefail` for its whole life,
-    # and the missing `-e` is not cosmetic: auto-pr runs under `set -euo
-    # pipefail`, where a bare `git checkout` or a `read` at EOF inside
-    # cleanup_local aborts the script outright. Dropping `-e` here made that
-    # entire failure class invisible to the one test file that owns this
-    # function, and it stayed invisible through 41 of 481 recorded auto-pr
-    # runs that merged and then reported failure (INV-rahib).
+    # PRODUCTION flags. The `-e` is not cosmetic: auto-pr runs under `set -e`
+    # (with -uo pipefail), where a bare `git checkout` or a `read` at EOF
+    # inside cleanup_local aborts the script outright. A harness without `-e`
+    # cannot see that failure class — a run that merged and then reported
+    # failure (INV-rahib).
     script = (
         f"set -euo pipefail\n"
         f"REPO_ROOT='{repo}'\n"
@@ -181,7 +177,7 @@ def test_stale_remote_tracking_ref_is_pruned(tmp_path: Path) -> None:
 
 
 def test_branch_with_unmerged_work_is_kept(tmp_path: Path) -> None:
-    """The safety property `-d` was there for must survive the fix.
+    """The safety property `git branch -d` provides must be kept.
 
     A forced delete that skips the check would pass the two tests above and
     still be wrong, so this pins the other side: a commit that never landed

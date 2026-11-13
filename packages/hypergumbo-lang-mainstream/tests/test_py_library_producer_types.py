@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-kozaj: a receiver bound to a library FACTORY call is typed from its signature row.
+"""A receiver bound to a library FACTORY call is typed from its signature row.
 
-THE GAP. ``_external_constructor_type`` typed a receiver from an external call
-only when the call was a construction: a catalogued type name or a PascalCase
-import. ``w = csv.writer(f)`` is neither -- ``csv.writer`` is a builtin
-function that returns a ``_csv.Writer`` -- so ``w.writerow(row)``, the call
-that carries the data into the file, arrived as ``python:external:0-0:writerow``
-and no catalogue row could reach it. Measured on the analyzer before this
-change: every form below emitted the ``external`` slot.
+THE GAP A CONSTRUCTION RULE LEAVES. Typing a receiver only when the call is a
+construction -- a catalogued type name or a PascalCase import -- misses
+``w = csv.writer(f)``: ``csv.writer`` is a builtin function that returns a
+``_csv.Writer``, so ``w.writerow(row)``, the call that carries the data into
+the file, would arrive as ``python:external:0-0:writerow`` and no catalogue
+row could reach it. (history: WI-kozaj)
 
 THE MECHANISM, GENERAL BY CONSTRUCTION. A ``library_signatures`` row keyed by
 the callee's IMPORT-RESOLVED qualified name (``csv.writer: _csv.Writer``) types
@@ -116,10 +115,10 @@ class TestAnyRowWorksNotOnlyCsv:
     """The mechanism is the row, not the call: a user row for a producer this
     file names nowhere else types its receiver, and removing it untypes it.
 
-    The producer is a name NO shipped row will ever carry. It used to be
-    ``urllib.request.build_opener``, until WI-dibit shipped that row built-in
-    and the control below went red: a control keyed to a real library name
-    tests the catalogue's contents, not the user channel."""
+    The producer is a name NO shipped row will ever carry. A control keyed to
+    a real library name breaks the day that row ships built-in, and from then
+    on tests the catalogue's contents, not the user channel.
+    (history: WI-dibit)"""
 
     _SOURCE = (
         "import acme_unrowed.net\n\n\ndef f(url, data):\n"

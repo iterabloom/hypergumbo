@@ -103,8 +103,6 @@ Provenance Fields
   exists). Serialized as provenance only and never read back; the results
   cache recomputes the same digest (compute_repo_fingerprint, truncated to 16
   hex) as its state_hash path segment, alongside analyzer_identity.
-- origin_run_signature: not a field; it is absent from the schema
-  (WI-gapin).
 """
 import functools
 import hashlib
@@ -254,17 +252,17 @@ def compute_pass_version(target: types.ModuleType | Callable[..., Any]) -> str:
         when unrelated package code (e.g., a sibling analyzer in a different
         module, or a docstring edit elsewhere) is bumped.
 
-    Rationale (INV-morag option A):
+    Rationale (history: INV-morag):
         A version tied to the package release bumps whether or not the
         pass logic changed, so caches and reproducibility comparisons
         cannot tell "this analyzer's behavior changed" from "this
         analyzer's package version bumped." Hashing the module source
         gives a signal that changes when the pass's own code does.
 
-        Module-level hashing was chosen over function-level for two reasons:
-        (1) most analyzers depend on helper functions and module-level
-        constants in the same file; (2) hashing just the registered function
-        misses changes in those helpers, leading to stale cache hits.
+        The hash covers the whole module, not just the registered function:
+        most analyzers depend on helper functions and module-level
+        constants in the same file, and hashing only the registered function
+        would miss changes to those helpers, producing stale cache hits.
         Cross-module helper changes (e.g., to ``analyze.base``) are still
         missed — those are covered by the surrounding package version,
         which lives in ``AnalysisRun.version``.
@@ -352,13 +350,14 @@ def compute_config_fingerprint(config: Dict[str, Any]) -> str:
     enclosure synthesis passes. Keys are sorted for determinism and the
     digest truncated to 16 hex chars, mirroring ``_compute_run_signature``.
 
-    NOTE (INV-lidul / concept-audit): despite the ``config`` name, the
+    NOTE: despite the ``config`` name, the
     production producers all key this on PRODUCER IDENTITY (analyzer/linker
     class + grammar + static file globs, or the pass_id for synthesis
     passes), NOT on the run-time effective CLI config. It exists to make
     distinct passes carry distinct cache-keying fingerprints; it does not
     (yet) distinguish two runs of the *same* pass under different runtime
-    flags. See ``AnalysisRun.config_fingerprint``'s field note.
+    flags. See ``AnalysisRun.config_fingerprint``'s field note (history:
+    INV-lidul).
     """
     payload = json.dumps(config, sort_keys=True, default=str)
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]}"
@@ -584,8 +583,8 @@ class Symbol:
             host language; synthetic-stand-in Symbols emitted by linkers for
             protocol/framework patterns (Kafka topics, WASM modules, IPC
             channels, etc.) leave this ``None`` and populate ``protocol_origin``
-            instead. Producers not yet migrated to ADR-0031 still pass a
-            string (ADR-0031 §"Phase 1 Producer migration").
+            instead. Some stand-in producers still pass a language string
+            rather than following this split (ADR-0031).
         path: File path where the symbol is defined
         span: Source location with lines and columns
         origin: Provenance list (INV-jidat). Each element is a pass ID that
@@ -594,8 +593,8 @@ class Symbol:
             Auto-normalized from scalar str for backward compat. The declared
             type is ``str | List[str]`` so this accepted-input contract holds at
             the type level; do NOT narrow it to ``List[str]`` — most producers
-            pass a single scalar pass ID, and narrowing would produce hundreds of
-            arg-type errors under mypy strict (INV-zogud). The stored value is
+            pass a single scalar pass ID, and narrowing would produce
+            arg-type errors at those call sites under mypy strict (INV-zogud). The stored value is
             always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         stable_id: Structural-identity hash within a (qualified_name,
@@ -609,11 +608,10 @@ class Symbol:
             lives in the top-level ``stable_id_scheme`` descriptor.
             ``shape_id`` shares this exact surface; the two are discriminated
             by field identity (and their ``*_scheme`` descriptors), NOT by an
-            in-value prefix, and their value-spaces are disjoint (0 overlap on
-            the dogfood corpus). This is by design (WI-tisar): unlike
-            ``fingerprint``'s ``hgfp2:`` *version* tag or the edges'
-            ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value
-            discriminator because they are always field-qualified. Consumers
+            in-value prefix. Unlike ``fingerprint``'s ``hgfp2:`` *version*
+            tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these
+            two need no in-value discriminator because they are always
+            field-qualified (WI-tisar). Consumers
             must therefore retain field context — do NOT join on bare hash
             values across the stable_id/shape_id axes.
         shape_id: Structural *skeleton* hash — the parse subtree with
@@ -655,8 +653,9 @@ class Symbol:
             co-located test files can be tier 1. Deliberately distinct from the
             broader ``paths.is_test_file`` ranking/scan heuristic (which also
             covers mocks/fixtures/testdata/benches for entrypoint
-            deprioritization); do not swap consumers of one for the other
-            without re-running the WI-popok concept audit.
+            deprioritization); do not swap a consumer of one for the other
+            without checking that it wants the other definition (history:
+            WI-popok).
         is_example_file: True if the file is example/demo/sample/tutorial code.
             Set when the path matches an EXAMPLE_PATTERN.
         is_config_file: True if the file is a dependency/build manifest such as
@@ -1138,7 +1137,7 @@ class Edge:
                 meta = merged
             else:
                 meta = dataflow_meta
-        # confidence:F1 (ADR-0039): when the producer passes no explicit
+        # ADR-0039: when the producer passes no explicit
         # confidence, derive detection-reliability from the inference pathway
         # (Edge.evidence_type), conditioned on is_resolved. Unseeded pathways
         # fall back to the 0.85 default; producers that pass an explicit
@@ -1464,9 +1463,9 @@ def deduplicate_edges(
     more edges share a key, the survivor gains ``meta["call_lines"]`` — the
     sorted union of every collapsed site's line, its own included. One edge
     per relationship stays the call-graph model (emitting one edge per call
-    site would multiply the graph: a single Go function's ``fmt.Printf`` calls
-    alone turn 1 edge into 12, inflating every centrality and fan-out metric
-    downstream), but ``edge.line`` is not the *only* recoverable site.
+    site would multiply the graph — a function calling ``fmt.Printf`` twelve
+    times would contribute twelve edges — inflating every centrality and
+    fan-out metric downstream), but ``edge.line`` is not the *only* recoverable site.
     ADR-0017 §4 needs this: to decide what a DDG use at line U flows into, it
     has to know which callee is called at line U, and with one line per
     relationship every call site but the first would be unrecoverable.
@@ -1902,8 +1901,8 @@ def callee_name_of(
        stamps on every unresolved-external edge. ADR-0036 Ruling 1 makes the
        id's name slot deliberately lossy and says in as many words that a
        consumer needing the exact name must never re-derive it from the id.
-    2. ``dst_ref.name`` — structured and equally lossless, but WI-huzuv
-       withholds the ref when the module is the ``external`` sentinel, so it
+    2. ``dst_ref.name`` — structured and equally lossless, but the ref is
+       withheld when the module is the ``external`` sentinel (WI-huzuv), so it
        is absent on precisely the edges whose name is hardest to recover.
     3. :func:`symbol_name_slot` — the id, span-anchored so a colon-bearing
        objc selector survives (INV-fokik). ``""`` means "no name information",
@@ -2002,24 +2001,20 @@ def _dedupe_key(
     neither confirm nor refute an edge anchored there, and a taint flow seeded
     from one would name no place.
 
-    WHICH FILES REACH HERE: ``synthesize_file_symbols_for_dangling_edges``
-    mints a real ``kind="file"`` Symbol for analyzer-emitted file ids
-    (WI-ramuv), so the remaining population is the files whose Symbol
-    something REMOVED — in practice tier-4 (DERIVED) files dropped by
-    ``cli.py``'s tier filter, whose edges are deliberately kept (WI-pozur /
-    ADR-0043 C2, pinned by ``test_pb2_import_srcs_resolved``). That is a
-    handful of files per repo at most.
-
-    SO THE FILE IS NAMED, NOT THE EDGE DROPPED. Dropping it would delete the
-    dependency fact WI-pozur deliberately keeps, and
-    ``test_pb2_import_srcs_resolved`` fails on it.
+    WHICH FILES REACH HERE: few, in the CLI pipeline.
+    ``synthesize_file_symbols_for_dangling_edges`` mints a real
+    ``kind="file"`` Symbol for analyzer-emitted file ids (WI-ramuv), and the
+    tier filter removes a removed file's edges along with it (INV-saruf). What
+    remains is an edge whose file Symbol was removed by a step that kept the
+    edge; keeping the path names that file instead of folding it onto a
+    shared id. Whether such an edge should exist is the remover's decision,
+    not this key's.
 
     ``kind`` is accepted but is **not** part of the returned key —
     ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
     ``external_symbol``, so boundary identity is ``(language, path, name)``
     only. Two references to the same external via different use-site syntaxes
-    therefore collapse to one node (measured lossless: no external is reached
-    via more than one syntax on any corpus).
+    therefore collapse to one node.
     """
     return (language, path, name)
 
@@ -2171,14 +2166,14 @@ def create_boundary_nodes(
     for (language, key_path, name), members in sorted(groups.items()):
         # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
         # (external_symbol); the use-site reference syntax moves to
-        # meta.reference_syntax. ``min()`` is deterministic and, in practice,
-        # unambiguous — no (language, path, name) external is reached via more
-        # than one reference syntax on any measured corpus, so the collapse is
-        # lossless (guarded by the boundary-id-uniqueness property test).
+        # meta.reference_syntax. ``min()`` picks one deterministically; when an
+        # external is reached via more than one reference syntax, only that
+        # one is recorded (pinned by
+        # test_boundary_ids_are_unique_even_across_reference_syntaxes).
         reference_syntax = min(group_ref_kinds[(language, key_path, name)])
         canonical_id = _canonical_external_id(language, key_path, name)
 
-        # ADR-0041 §1/§2 (supply:F5): tier names supply-chain distance only, so
+        # ADR-0041 §1/§2: tier names supply-chain distance only, so
         # every boundary node is tier 3 (external), and a manifest-declared
         # direct dep is NOT promoted to tier 2. The direct/transitive/
         # undeclared declaration relationship is emitted as the `directness`
@@ -2233,7 +2228,7 @@ def create_boundary_nodes(
             meta=boundary_meta,
             supply_chain_tier=3,
             supply_chain_reason="unresolved external reference",
-            # synthetic:F1: stamp the synthesis mechanism as origin and the
+            # Stamp the synthesis mechanism as origin and the
             # orchestrator-emitted AnalysisRun's execution_id as origin_run_id
             # so the node->AnalysisRun JOIN resolves (WI-sijut, WI-mosil).
             origin="boundary_external_symbol_synthesis",
