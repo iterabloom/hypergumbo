@@ -38,6 +38,7 @@
 #   ./scripts/smart-test --raw        # Stream full pytest output (no summary)
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
+#   ./scripts/smart-test --no-narrow  # Keep the tests coverage narrowing would drop
 #   ./scripts/smart-test --background # Kick off full suite in background
 #
 # TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
@@ -169,11 +170,13 @@ SELECT_SHADOW=true
 # disable in isolation when a run looks wrong. Opt out with --no-select-union.
 SELECT_UNION=true
 
-# PHASE 3 (WI-bolot): NARROWING, and the default is the opposite of the other
-# two for a reason. Phase 2 can only add tests, so its worst case is wasted
-# time; narrowing REMOVES them, and between full runs the index can be short a
-# test that covers part of a changed file. Opt in per run with --narrow.
-SELECT_NARROW=false
+# PHASE 3 (WI-bolot): NARROWING, ON BY DEFAULT (owner ruling 2026-11-12,
+# WI-zirus). It REMOVES tests, so it is the one selection step whose worst case
+# is a missed failure rather than wasted time: between full runs the index can
+# be short a test that covers part of a changed file. It narrows the MANIFEST,
+# so merge CI runs the narrowed set; the full-suite cron never reads the
+# manifest and is never narrowed. Opt out per run with --no-narrow.
+SELECT_NARROW=true
 
 # THE PROSE-ONLY RULE: a changed .py file whose code is unchanged (comments
 # and docstrings only) selects just the tests recorded seeing its text, its
@@ -227,6 +230,7 @@ for arg in "$@"; do
         --no-select-shadow) SELECT_SHADOW=false ;;
         --no-select-union) SELECT_UNION=false ;;
         --narrow) SELECT_NARROW=true ;;
+        --no-narrow) SELECT_NARROW=false ;;
         --no-prose-rule) SELECT_PROSE=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
@@ -244,13 +248,12 @@ for arg in "$@"; do
     esac
 done
 
-# NARROWING IS OFF IN CI UNCONDITIONALLY, and this guard sits AFTER argument
-# parsing on purpose — the shadow/union guards run before it and can be placed
-# earlier because no flag turns those ON. `--narrow` does, so a guard above the
-# parse loop would be overridden by the flag it exists to override. Not even
-# HG_SELECT_SHADOW re-enables this: reason 1 above (CI IS THE GATE) is absolute
-# for an operation that REMOVES tests, and that escape hatch exists to exercise
-# wiring, not to let a selector shrink the merge gate.
+# NO SELECTION RUNS IN CI: it consumes the committed manifest, which a
+# developer's smart-test narrowed against the coverage index on that machine;
+# CI has no index. This guard sits AFTER argument parsing on purpose -- the
+# shadow/union guards run before it and can be placed earlier because no flag
+# turns those ON. `--narrow` does, so a guard above the parse loop would be
+# overridden by the flag it exists to override.
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
     # The prose-only rule's evidence is recorded on a developer's machine;
@@ -1970,18 +1973,65 @@ select_static
 # coverage-selected tests in and Phase 3 narrows; with one variable, Phase 2
 # would silently make CI slower and Phase 3 would silently narrow the merge gate.
 #
-# So: everything ABOVE this line is the static import-graph slice plus its
-# declarative augmentations, and that is what the manifest publishes. Everything
-# BELOW may widen or narrow `AFFECTED_TESTS` for THIS machine only.
-#
-# ONE EXCEPTION, by owner instruction of 2026-11-11: the prose-only rule sits
-# ABOVE the line. A change that is only comments and docstrings selects its
-# tests from recorded evidence for the manifest too, and the manifest header
-# says so ("Prose-only files"), so the narrowing is never silent.
+# So: everything ABOVE this line is what the manifest publishes, and everything
+# BELOW may widen `AFFECTED_TESTS` for THIS machine only. Above the line: the
+# static import-graph slice plus its declarative augmentations; the prose-only
+# rule (owner, 2026-11-11), which selects a comments-and-docstrings-only file's
+# tests from recorded evidence; and coverage NARROWING (owner, 2026-11-12,
+# WI-zirus), so merge CI runs the narrowed set. The manifest header names both
+# ("Prose-only files", "Narrowed"), so neither is silent. The Phase 2 union
+# stays below (owner, 2026-08-16): it only adds, so locally its worst case is
+# wasted time, and above the line it would widen the merge gate as well.
 #
 # Pinned by packages/hypergumbo-core/tests/test_smart_test_manifest_split.py,
 # because a future edit that "simplifies" these back into one variable would
 # reintroduce the coupling silently and pass every existing test.
+# ── Coverage-directed selection, PHASE 3: NARROW (WI-bolot, WI-zirus) ──────────
+# ON BY DEFAULT, ABOVE THE SEAM: the narrowed set is what the manifest publishes,
+# so merge CI runs it too (owner ruling 2026-11-12). `--no-narrow` keeps every
+# selected test. The full-suite cron does not read the manifest and is never
+# narrowed.
+#
+# THE RISK, AND WHAT CATCHES IT. The index knows "tests I have OBSERVED
+# executing block B", which is a subset of "tests that execute B" until every
+# test has run since B appeared. Between full runs the keep set can therefore be
+# short a test that covers part of a changed file. The local run executes this
+# same narrowed set under the whole-file coverage gate before anything is
+# pushed, so a short keep set shows up there as uncovered lines first.
+#
+# IT REFUSES WHENEVER IT CANNOT BE SOUND. A change to import-time code (a module
+# or class body), a new or deleted file, or an unindexed source file keeps the
+# whole selection (`narrowing_blockers`); measured on 200 recent source-changing
+# commits, that is about 4 in 5 (WI-zirus). Only about 55% of test wall-clock is
+# index-speakable at all (scripts/measure-narrowing-headroom.py), and the rest is
+# kept unconditionally.
+NARROWED_OUT_COUNT=0
+if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _nar_changed=$(mktemp); _nar_run=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_nar_changed" || true
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_nar_run" || true
+    NARROWED=$("$TOOLS_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" ${VERBOSE:+--verbose} narrow \
+        --changed-files "$_nar_changed" --run-set "$_nar_run" \
+        --base "${BASELINE:-HEAD}" || echo "")
+    rm -f "$_nar_changed" "$_nar_run"
+    # A failed or refusing narrow prints the run set back unchanged; an EMPTY
+    # answer means the helper died, and then the run set must stand rather than
+    # collapse to nothing (pytest exits 5 — green — on an empty collection).
+    if [[ -n "$NARROWED" ]]; then
+        _before_narrow="$AFFECTED_TESTS"
+        # Narrowing judges tests against $CHANGED_FILES, which the prose-only
+        # files are not in; the tests they selected stay.
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$NARROWED" "$PROSE_TESTS" | sed '/^$/d' | sort -u)
+        NARROWED_OUT_COUNT=$(comm -23 \
+            <(echo "$_before_narrow" | sed '/^$/d' | sort -u) \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) | grep -c . || true)
+        if [[ "$NARROWED_OUT_COUNT" -gt 0 ]]; then
+            echo "Coverage narrowing removed $NARROWED_OUT_COUNT test file(s) the index shows never run the changed code (--no-narrow keeps them)"
+        fi
+    fi
+fi
+
 MANIFEST_TESTS="$AFFECTED_TESTS"
 MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 # INV-tazur: CI runs this list verbatim, so a dead path here reddens (or, in a
@@ -2037,44 +2087,7 @@ fi
 
 UNION_RUN_SET="$AFFECTED_TESTS"
 
-# ── Coverage-directed selection, PHASE 3: NARROW (WI-bolot) ──────────────────
-# OPT-IN, never the default, never in CI — the item's own constraint, and the
-# right one: this is the first operation in the family that can REMOVE a test.
-# Below the seam like the union, so the committed manifest is untouched.
-#
-# WHY IT IS NOT DEFAULT-ON EVEN THOUGH THE RULES ARE SOUND. The index knows
-# "tests I have OBSERVED executing block B", which is a subset of "tests that
-# execute B" until every test has run since B appeared. Between full runs the
-# keep set can therefore be short a test that covers part of a changed file, and
-# the whole-file coverage gate below would report that as a coverage regression
-# when it is really a stale index. Opt-in means whoever accepts that accepts it
-# knowingly.
-#
-# MEASURED CEILING, so nobody expects more of this than it can give
-# (scripts/measure-narrowing-headroom.py): across the timed suite only 55.3% of
-# wall-clock is index-speakable at all — the other 44.7% is unmeasured or unseen
-# and is kept unconditionally. On a small change the run set is already ~20s of
-# tests, so the saving is seconds; the win is on large selections.
-if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$LOCAL_CHANGED_FILES" ]]; then
-    _nar_changed=$(mktemp); _nar_run=$(mktemp)
-    echo "$LOCAL_CHANGED_FILES" | grep -E '\.py$' > "$_nar_changed" || true
-    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_nar_run" || true
-    NARROWED=$("$TOOLS_ROOT/scripts/coverage-select" \
-        --repo-root "$REPO_ROOT" ${VERBOSE:+--verbose} narrow \
-        --changed-files "$_nar_changed" --run-set "$_nar_run" \
-        --base "${BASELINE:-HEAD}" || echo "")
-    rm -f "$_nar_changed" "$_nar_run"
-    # A failed or refusing narrow prints the run set back unchanged; an EMPTY
-    # answer means the helper died, and then the run set must stand rather than
-    # collapse to nothing (pytest exits 5 — green — on an empty collection).
-    if [[ -n "$NARROWED" ]]; then
-        # Narrowing judges tests against $LOCAL_CHANGED_FILES, which the
-        # prose-only files are not in; the tests they selected stay.
-        AFFECTED_TESTS=$(printf '%s\n%s\n' "$NARROWED" "$PROSE_TESTS" | sed '/^$/d' | sort -u)
-    fi
-fi
-
-# INV-tazur: the union and the narrowing above may change the local run set;
+# INV-tazur: the union above may change the local run set;
 # hold it to the same rule as the manifest before pytest sees it.
 require_selection_on_disk "the local run set" "$AFFECTED_TESTS"
 
@@ -2143,6 +2156,9 @@ mkdir -p "$MANIFEST_DIR"
     echo "# Selected tests: $MANIFEST_TEST_COUNT"
     if [[ -n "$PROSE_ONLY_FILES" ]]; then
         echo "# Prose-only files: $(echo "$PROSE_ONLY_FILES" | wc -l) (comments and docstrings only; their tests come from recorded evidence, not the import graph)"
+    fi
+    if [[ "$NARROWED_OUT_COUNT" -gt 0 ]]; then
+        echo "# Narrowed: $NARROWED_OUT_COUNT test file(s) removed by coverage narrowing (smart-test --no-narrow keeps them)"
     fi
     echo "#"
     echo "# === CHANGED_SOURCE_FILES ==="

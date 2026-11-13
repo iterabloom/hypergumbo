@@ -283,8 +283,15 @@ fast-ci:
 
 CI does not run `scripts/smart-test`; it runs the committed `.ci/affected-tests.txt`. So whatever `smart-test` writes there is the merge gate's selection, and two selections are kept apart in `scripts/smart-test` (pinned by `packages/hypergumbo-core/tests/test_smart_test_manifest_split.py`):
 
-- **The manifest** carries the static import-graph slice of the changed files plus its declarative augmentations (conftest owners, coverage-only dependencies, and the like).
-- **The local run** may differ for this machine only: coverage-directed selection adds tests to it, and the opt-in `--narrow` removes tests from it. Neither reaches the manifest.
+- **The manifest** carries the static import-graph slice of the changed files plus its declarative augmentations (conftest owners, coverage-only dependencies, and the like), narrowed by coverage (below).
+- **The local run** may differ for this machine only: coverage-directed selection adds tests to it. The addition never reaches the manifest.
+
+**Coverage narrowing reaches the manifest, and is on by default.** `coverage-select narrow` removes a selected test file only when the local coverage index can speak about it (it has rows and no unmeasured test) and it was never observed executing any block of a changed file. It never removes a changed file in the run set, nor a test the prose-only rule selected, and it refuses outright, keeping the whole selection, when the change touches import-time code (a module or class body), adds or deletes a file, or names a coverable source file the index has never seen.
+
+- Narrowing runs above the manifest snapshot, so merge CI runs the narrowed set; the header line `# Narrowed: N` appears whenever it removed anything.
+- `--no-narrow` turns it off for one run. It is off when `CI` is set: CI has no index and only consumes the manifest.
+- The Woodpecker full-suite cron never reads the manifest, so it is never narrowed and stays the backstop for a test the index wrongly judged irrelevant.
+- Expect it to act on a minority of changes: on 200 recent commits changing package source, about four in five change import-time code and are refused.
 
 **One exception: prose-only files.** A changed `.py` file is prose-only when its AST with docstrings removed, and its machine-read comments (`# pragma:`, `# covers:`, `# type:`, `# noqa` ...), equal the base's (`hypergumbo_core.prose_only.classify`). Such a file never enters the import-graph slice. Its tests come from recorded evidence instead (`select_for_prose`: the tests recorded reading the file, reading a changed docstring or its line numbers, or starting a process the recorder cannot see, plus any test file with no usable record), and those tests are what the manifest carries for it.
 
