@@ -4205,46 +4205,41 @@ end
             "C.new should walk C->B->A to find the inherited #initialize"
         )
 
+    @pytest.mark.parametrize("hops, reached", [(10, True), (11, False)])
     def test_inheritance_walk_respects_depth_limit(
-        self, tmp_path: Path,
+        self, tmp_path: Path, hops: int, reached: bool,
     ) -> None:
-        """A 12-class chain in which no class defines ``#initialize`` yields
-        no edge to any ``#initialize`` from ``analyze_ruby``. The analyzer
-        does no ancestor walk: for a project receiver it emits an unresolved
-        ``initialize`` call carrying an ``enclosing_class`` hint, and the
-        ``inherited_calls`` linker (not run here) walks the chain with a
-        10-hop depth cap.
+        """``ChainN.new`` reaches an ``#initialize`` defined only on the root of
+        the chain when it is at most 10 inheritance hops up, and not when it is
+        11: the ``inherited_calls`` linker caps its ancestor walk at 10 hops
+        (``_DEFAULT_DEPTH_CAP``). ``analyze_ruby`` does no walk of its own; it
+        emits an unresolved ``initialize`` call carrying an ``enclosing_class``
+        hint, so the test runs the linker pipeline. The in-cap case is the
+        control: without it, "no edge" could mean the walk never ran.
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
-        # Construct a long-chain inheritance with NO #initialize anywhere.
-        # Analysis must not crash or emit an edge to any #initialize.
-        files = []
-        for i in range(12):
-            parent = f" < Chain{i - 1}" if i > 0 else ""
-            files.append((f"chain{i}.rb", f"class Chain{i}{parent}\nend\n"))
-        for fname, content in files:
-            (tmp_path / fname).write_text(content)
-        (tmp_path / "caller.rb").write_text("""
-class Caller
-  def run
-    Chain11.new
-  end
-end
-""")
+        (tmp_path / "chain0.rb").write_text(
+            "class Chain0\n  def initialize\n  end\nend\n"
+        )
+        for i in range(1, hops + 1):
+            (tmp_path / f"chain{i}.rb").write_text(
+                f"class Chain{i} < Chain{i - 1}\nend\n"
+            )
+        (tmp_path / "caller.rb").write_text(
+            f"class Caller\n  def run\n    Chain{hops}.new\n  end\nend\n"
+        )
+
         result = analyze_ruby(tmp_path)
-        run = next((s for s in result.symbols if s.name == "Caller#run"), None)
-        assert run is not None
-        # No #initialize exists anywhere in the chain, so no constructor
-        # edge should be emitted (no FP, no inherited-walk false hit).
-        from_run = [e for e in result.edges if e.src == run.id]
-        # Each edge target must NOT be a method named "initialize"
-        for e in from_run:
-            dst = next((s for s in result.symbols if s.id == e.dst), None)
-            if dst is not None:
-                assert "initialize" not in dst.name, (
-                    f"No #initialize edge expected, got {dst.name}"
-                )
+        run = next(s for s in result.symbols if s.name == "Caller#run")
+        root_init = next(s for s in result.symbols if s.name == "Chain0#initialize")
+
+        all_edges = _run_inherited_calls_pipeline(result)
+        to_root_init = [
+            e for e in all_edges
+            if e.src == run.id and e.dst == root_init.id and e.is_resolved
+        ]
+        assert bool(to_root_init) is reached, (hops, to_root_init)
 
     def test_inherits_initialize_via_parent_chain(self, tmp_path: Path) -> None:
         """When ``Sub < Base`` and only ``Base`` defines ``#initialize``,

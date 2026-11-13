@@ -7256,8 +7256,29 @@ def _extract_edges(
                         ns_import_path = namespace_imports[ns_name]
                     break
 
-            # Resolve class via class_resolver, using import path for disambiguation
-            if class_name:
+            # A RELATIVE import names the file, so of several same-named
+            # classes the instantiation is that file's: ``new ns.Client()``
+            # under a namespace import, or ``new Client()`` under a named import
+            # or destructured require (``import { Client as C }`` looks up the
+            # original name). The name-keyed class table keeps only the one
+            # enumerated last, so a path hint on it alone cannot pick the other
+            # (as for calls, WI-povub).
+            import_hint = ns_import_path
+            imported_name = class_name
+            if class_name and ns_import_path is None:
+                import_hint = (named_imports or {}).get(class_name)
+                imported_name = (named_import_originals or {}).get(class_name, class_name)
+            if (
+                imported_name and import_hint and import_hint.startswith(".")
+                and symbols_by_name
+            ):
+                target_sym = _disambiguate_by_import(
+                    import_hint, file_path, imported_name,
+                    {imported_name: [s for s in symbols_by_name.get(imported_name, ())
+                                     if s.kind == "class"]},
+                )
+            # Otherwise resolve via class_resolver, using the import path as a hint
+            if class_name and target_sym is None:
                 lookup_result = class_resolver.lookup(class_name, path_hint=ns_import_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target_sym = lookup_result.symbol

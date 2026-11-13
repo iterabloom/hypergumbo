@@ -74,6 +74,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Java call to a method its receiver's type lacks stays a full-weight unresolved call**; recording that the caller uses the type no longer demotes it.
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
+- **JS/TS: `new` of an imported class reaches the imported file's class**, not a same-named one elsewhere.
 - **A method is attributed to its own type, as are the calls in its body, and a bare call inside it resolves within that type**: C# records, Groovy enums, PHP traits and enums, Kotlin classes, Scala classes declared after their companion object.
 - **Java and Dart constructions reach the constructor**, which now belongs to its class.
 - **Java interface methods without `public` count as exported**, as the language makes them.
@@ -158,6 +159,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Three output strings no longer carry stale history or a dead path.**
 - **Adjudication-packet comments state current rules and cite the real test path.**
 - **History distilled from comments and docstrings in 320 more files.**
+- **Three tests now reach the cases they name: file order, depth cap, tier drop.**
 - **Archaeology corpus adds 480 random blind-labelled blocks; weights refit to all comments.**
 - **`archaeology_heuristic.py --min-words` (default 10) skips short comments and docstrings.**
 - **smart-test: a comment-or-docstring-only change runs only tests that read the file.**
