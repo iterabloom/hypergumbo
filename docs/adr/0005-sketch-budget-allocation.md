@@ -227,7 +227,7 @@ The Key Symbols section uses a rich output format:
 - **Grouped by file**: Symbols are organized under file headers
 - **Signature truncation**: Long signatures are truncated with `…`
 - **Docstring excerpts**: First line of docstring shown when available
-- **Overflow indicator**: `(... +N more, top score: X.XX)` shows additional symbols not displayed
+- **Overflow indicator**: `(... +N more, top score: X.XX)` counts every key symbol of that file that is not a bullet under it: bullets plus N is the file's key symbols. The section's last line, `(... and M more symbols across K other files)`, counts only the symbols of the K files that are not shown. Data Models follows the same rule (`... and N more in this file`; `... and M more data models in K other files`): a list cut by rank and then grouped by file says, per file, what the cut removed, and a file's group is not kept whole when most of it made the cut.
 
 ### Centrality Computation
 
