@@ -107,6 +107,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A dependency naming an in-tree package gets its tier** (ADR-0041 §1): on nest, 172 of 1,379 move from tier 3 to 1.
 - **A file the tier filter removes takes its edges with it**, instead of leaving them on a shared pathless placeholder.
 - **Sketch names a data model's framework once.**
+- **A budget-tier survey file fits its budget as written**, and records the size it reached in `tier_tokens_used`.
 
 #### Run reporting and graph integrity
 
