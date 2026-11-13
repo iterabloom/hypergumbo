@@ -169,6 +169,26 @@ respecting exclude patterns. Also provides:
   ``lcov.info``, ``package-lock.json``, ...) and hypergumbo's own outputs.
   Each is dot-prefixed or a name a tool coined for itself; no project names a
   source directory ``__pycache__``, so the name IS the evidence.
+
+- **What the VCS ignores and does not track (ADR-0004 §"Installed dependency
+  source" point 9).** The rules above claim DIRECTORIES; nothing asked about
+  a single file. A working tree holds files a clean checkout does not --
+  local outputs, editor state, ``.env``, ``credentials.json`` -- and a sketch
+  quoted them. ``_vcs_prunes`` is the rule: left out when the work tree's
+  ignore rules match AND HEAD does not hold it. Both halves are git's own
+  answer (``VcsIgnored``): ``git check-ignore --no-index --stdin``, one call
+  per directory LEVEL so an ignored ``node_modules/`` is never walked, and
+  HEAD's tree for "tracked" -- never the index, for the reason
+  ``_head_entries`` gives. ``FileIndex.build`` asks afresh
+  (``refresh_vcs_ignored``) and records what it left out
+  (``vcs_ignored_skipped`` -> ``vcs_ignored_summary`` /
+  ``format_vcs_ignored_disclosure``); ``_is_excluded_classified`` and
+  ``walks_into`` reuse the answer a run already has; and a walk that is
+  neither asks ``vcs_ignored``. NO ANSWER, NO EXCLUSION: outside a git work
+  tree, with git missing or failing, or when the analysed directory is
+  itself ignored (the user named it), nothing is left out. Installed
+  dependency source keeps its own rules: an ignored ``node_modules/`` under
+  ``--trace-deps`` is analysed.
 """
 from __future__ import annotations
 
@@ -1398,11 +1418,14 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     )
 
 
-def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
-    """``git ls-tree HEAD <args...> --`` style query run in ``cwd``: stdout,
-    or ``None`` when git cannot say. The hazards and the environment
-    scrubbing are :func:`_head_entries`'s; this is the one place they live."""
-    import os
+def _repo_git(
+    cwd: Path, args: list[str], stdin: bytes | None = None,
+) -> tuple[int, bytes] | None:
+    """``git <args...>`` run in ``cwd``: ``(returncode, stdout)``, or ``None``
+    when git could not be run at all. The one place a discovery query to git
+    is launched; the hazards and the environment scrubbing are
+    :func:`_head_entries`'s. No caller may pass a command that reads the
+    INDEX (see there)."""
     import shutil
     import subprocess  # nosec B404 - only for SubprocessError; the call goes through repo_inspect_git
 
@@ -1417,18 +1440,24 @@ def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
                      "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
     }
     env["GIT_NO_LAZY_FETCH"] = "1"
-    *opts, target = args
     try:
         proc = repo_inspect_git(
-            [git, "ls-tree", *opts, "HEAD", "--", target],
-            cwd=cwd, capture_output=True, text=True, check=False,
-            env=env, timeout=30,
+            [git, *args], cwd=cwd, input=stdin, capture_output=True,
+            check=False, env=env, timeout=30,
         )
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - defensive
         return None
-    if proc.returncode != 0:
+    return proc.returncode, bytes(proc.stdout)
+
+
+def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
+    """``git ls-tree HEAD <args...> --`` style query run in ``cwd``: stdout,
+    or ``None`` when git cannot say."""
+    *opts, target = args
+    answer = _repo_git(cwd, ["ls-tree", *opts, "HEAD", "--", target])
+    if answer is None or answer[0] != 0:
         return None
-    return str(proc.stdout)
+    return answer[1].decode("utf-8", "replace")
 
 
 def _is_committed_dir(directory: str) -> bool:
@@ -1443,6 +1472,259 @@ def _is_untracked_dir(directory: str) -> bool:
     the opposite failure direction from :func:`_is_committed_dir`, because
     here "untracked" is evidence FOR a prune and must not be assumed."""
     return _head_entries(directory) == ()
+
+
+# ---------------------------------------------------------------------------
+# Files the VCS ignores and does not track (ADR-0004 point 9)
+# ---------------------------------------------------------------------------
+
+
+class VcsIgnored:
+    """What the work tree of one analysis root ignores, and what its HEAD
+    holds: the two facts :meth:`ignores` needs.
+
+    ``ignored`` holds root-relative POSIX paths of the ignored entries the
+    scan met, files and directories alike; a directory entry stands for
+    everything below it, because git cannot re-include a path under an
+    excluded directory. ``tracked`` is HEAD's files (empty when nothing is
+    ignored: it is only read to exempt an ignored path).
+    """
+
+    __slots__ = ("_prefix", "ignored", "root", "tracked", "tracked_dirs")
+
+    def __init__(self, root: Path, ignored: set[str], tracked: set[str]) -> None:
+        #: Absolute, so a walker's own spelling of a path (relative, or
+        #: under another remembered root) still finds its place below it.
+        self.root = Path(os.path.abspath(root))
+        self._prefix = str(self.root).rstrip(os.sep) + os.sep
+        self.ignored = frozenset(ignored)
+        self.tracked = frozenset(tracked)
+        dirs: set[str] = set()
+        for rel in tracked:
+            while "/" in rel:
+                rel = rel.rpartition("/")[0]
+                if rel in dirs:
+                    break
+                dirs.add(rel)
+        self.tracked_dirs = frozenset(dirs)
+
+    def ignores_rel(self, rel: str) -> bool:
+        """Is the root-relative POSIX path ``rel`` ignored and not in HEAD?
+        For a directory: ignored, with no file of HEAD below it."""
+        if not self.ignored or rel in self.tracked or rel in self.tracked_dirs:
+            return False
+        while rel:
+            if rel in self.ignored:
+                return True
+            rel = rel.rpartition("/")[0]
+        return False
+
+    def rel_of(self, path: Path) -> str | None:
+        """``path`` as a POSIX path below :attr:`root`; ``None`` when it is
+        the root itself or lies outside it."""
+        text = os.path.abspath(path)
+        if not text.startswith(self._prefix):
+            return None
+        return text[len(self._prefix):].replace(os.sep, "/")
+
+
+def _work_tree_top(directory: Path) -> Path | None:
+    """The nearest ancestor-or-self of absolute ``directory`` holding a ``.git``: the
+    top of the git work tree it belongs to, found without launching git."""
+    for d in (directory, *directory.parents):
+        if os.path.lexists(d / ".git"):
+            return d
+    return None
+
+
+#: The one ignore query. Paths go in on stdin, NUL-separated, never in argv;
+#: ``--no-index`` keeps git off the index (:func:`_head_entries` says why).
+_CHECK_IGNORE = ["check-ignore", "--no-index", "-z", "--stdin"]
+
+
+def _scan_vcs_ignored(root: Path) -> tuple[set[str], set[str]] | None:
+    """``(ignored entries, HEAD's files)`` under ``root``, root-relative, or
+    ``None`` when git cannot say.
+
+    One ``git check-ignore --no-index --stdin`` per directory LEVEL, never
+    one per directory or per file: level N's entries are asked together, and
+    only the directories git did not ignore are listed for level N+1, so an
+    ignored ``node_modules/`` or ``target/`` is never walked. ``--no-index``
+    keeps the query off the index (:func:`_head_entries` says why); the
+    tracked half of the question is HEAD's tree, read once and only when
+    something is ignored. A repository with no commits has an empty HEAD:
+    nothing is exempt there.
+
+    A directory below ``root`` that holds its own ``.git`` is another work
+    tree (a submodule, a nested clone). Its files are asked of ITS git, with
+    its ignore rules and its HEAD; when that git cannot say, nothing in it
+    is excluded.
+    """
+    ignored: set[str] = set()
+    tracked: set[str] = set()
+    nested: list[str] = []
+    pending = [""]
+    while pending:
+        batch: list[str] = []
+        dirs: list[str] = []
+        for d in pending:
+            try:
+                entries = sorted(os.scandir(root / d), key=lambda e: e.name)
+            except OSError:  # pragma: no cover - a directory unreadable or gone mid-walk
+                continue
+            for entry in entries:
+                if entry.name == ".git":
+                    continue
+                rel = f"{d}/{entry.name}" if d else entry.name
+                batch.append(rel)
+                if entry.is_dir(follow_symlinks=False):
+                    dirs.append(rel)
+        if not batch:
+            break
+        answer = _repo_git(
+            root, _CHECK_IGNORE,
+            b"".join(os.fsencode(rel) + b"\0" for rel in batch),
+        )
+        if answer is None or answer[0] not in (0, 1):
+            return None
+        now = {os.fsdecode(raw) for raw in answer[1].split(b"\0") if raw}
+        ignored |= now
+        pending = []
+        for d in dirs:
+            if d in now:
+                continue
+            if os.path.lexists(root / d / ".git"):
+                nested.append(d)
+            else:
+                pending.append(d)
+    if ignored:
+        head = _repo_git(root, ["ls-tree", "-r", "-z", "--name-only", "HEAD"])
+        if head is not None and head[0] == 0:
+            tracked = {os.fsdecode(raw) for raw in head[1].split(b"\0") if raw}
+    for d in nested:
+        inner = _scan_vcs_ignored(root / d)
+        if inner is not None:
+            ignored |= {f"{d}/{rel}" for rel in inner[0]}
+            tracked |= {f"{d}/{rel}" for rel in inner[1]}
+    return ignored, tracked
+
+
+#: Analysis root (as the walker spelled it) -> its answer, ``None`` when the
+#: VCS has none to give. ``FileIndex.build`` always asks afresh; the per-path
+#: walkers reuse what a run already asked.
+_vcs_ignored_cache: dict[str, "VcsIgnored | None"] = {}
+
+
+def refresh_vcs_ignored(root: Path) -> "VcsIgnored | None":
+    """Ask ``root``'s VCS what it ignores and does not track, and remember
+    the answer for the per-path walkers. ``None`` -- nothing is excluded --
+    when there is no answer to act on:
+
+    - ``root`` is in no git work tree (no VCS, or a VCS other than git), or
+      git cannot be run or fails;
+    - ``root`` is itself ignored by the work tree it sits in. The user named
+      that directory as the thing to analyse, and an explicit request
+      outranks the rule (as ``--trace-deps`` does for installed source).
+    """
+    answer: VcsIgnored | None = None
+    here = Path(os.path.abspath(root))
+    top = _work_tree_top(here)
+    if top is not None:
+        named_ignored = False
+        if here != top:
+            asked = _repo_git(
+                top, [*_CHECK_IGNORE, "-q"],
+                os.fsencode(here.relative_to(top).as_posix()) + b"\0",
+            )
+            named_ignored = asked is None or asked[0] != 1
+        scan = None if named_ignored else _scan_vcs_ignored(here)
+        if scan is not None:
+            answer = VcsIgnored(here, *scan)
+    if len(_vcs_ignored_cache) >= 256:
+        _vcs_ignored_cache.clear()
+    _vcs_ignored_cache[str(here)] = answer
+    return answer
+
+
+def _vcs_ignored_for(path: Path, root: Path | None = None) -> "VcsIgnored | None":
+    """The remembered answer covering ``path``: ``root``'s own when a walker
+    names its root and it was asked, else that of the nearest ancestor a run
+    already got an answer for. Asked now when there is none (of ``root``, or
+    of ``path``'s directory: a top-down walk's first question is about its
+    root's children)."""
+    start = Path(os.path.abspath(path if root is None else root / "_"))
+    if root is not None and str(start.parent) in _vcs_ignored_cache:
+        return _vcs_ignored_cache[str(start.parent)]
+    for anc in start.parents:
+        known = _vcs_ignored_cache.get(str(anc))
+        if known is not None:
+            return known
+    # An ancestor with no answer says nothing about a work tree below it.
+    if root is None and str(start.parent) in _vcs_ignored_cache:
+        return None
+    return refresh_vcs_ignored(start.parent)
+
+
+def _vcs_prunes(vcs: "VcsIgnored | None", rel: str, path: Path) -> bool:
+    """THE rule (ADR-0004 point 9): ``path`` (``rel`` under ``vcs.root``) is
+    not analysed when its VCS ignores it and HEAD does not hold it -- unless
+    it lies in installed dependency source, where points 2 and 5 decide: an
+    ignored ``node_modules/`` the user opted into with ``--trace-deps`` is
+    analysed."""
+    if vcs is None or not vcs.ignores_rel(rel):
+        return False
+    rule = match_content_rule(path)
+    if rule is not None and rule.is_installed_dep:
+        return False
+    return _nearest_installed_root(path) is None
+
+
+def vcs_ignored(path: Path, root: Path | None = None) -> bool:
+    """Does the VCS of ``path``'s work tree ignore ``path`` and not track it
+    (ADR-0004 point 9)? For walks that are neither :meth:`FileIndex.build`
+    nor :func:`is_excluded`, which apply the rule themselves."""
+    vcs = _vcs_ignored_for(path, root)
+    rel = None if vcs is None else vcs.rel_of(path)
+    return rel is not None and _vcs_prunes(vcs, rel, path)
+
+
+def vcs_ignored_summary(
+    skipped: "Iterable[tuple[Path, bool]]", repo_root: Path,
+) -> dict[str, Any]:
+    """``supply_chain_summary.vcs_ignored_skipped`` for the entries a walk
+    left out under ADR-0004 point 9 (``FileIndex.vcs_ignored_skipped``):
+    ``{paths, entries}``. ``paths`` counts the entries the walk MET -- a
+    pruned directory is one entry, whatever it holds, because counting its
+    files walks the tree the prune exists to avoid. ``entries`` names them
+    (a directory with a trailing ``/``), sorted and capped at 10."""
+    names: list[str] = []
+    for path, is_dir in skipped:
+        try:
+            rel = path.relative_to(repo_root).as_posix()
+        except ValueError:  # pragma: no cover - the walk only yields children
+            rel = path.as_posix()
+        names.append(f"{rel}/" if is_dir else rel)
+    names.sort()
+    return {"paths": len(names), "entries": names[:10]}
+
+
+def format_vcs_ignored_disclosure(summary: "dict[str, Any] | None") -> str | None:
+    """The one-line disclosure, or ``None`` when nothing was left out.
+
+    ``Not analysed, because git ignores them and does not track them:
+    config/secrets.yml, out/, slice.json, 4 more (ADR-0004).`` -- naming at
+    most three, like the two lines beside it. Names only: the point of the
+    rule is that the content is not read."""
+    if not summary or not summary.get("paths"):
+        return None
+    parts = list((summary.get("entries") or [])[:3])
+    more = int(summary["paths"]) - len(parts)
+    if more > 0:
+        parts.append(f"{more} more")
+    return (
+        "Not analysed, because git ignores them and does not track them: "
+        f"{', '.join(parts)} (ADR-0004)."
+    )
 
 
 @functools.lru_cache(maxsize=8192)
@@ -1909,6 +2191,9 @@ def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
     ``--trace-deps`` says. These walks read the PROJECT's own manifests and
     source roots; a dependency's ``mix.exs`` or ``pyproject.toml`` names a
     third-party package, never the project.
+
+    Nor into a directory the VCS ignores and does not track (ADR-0004 point
+    9): a manifest there is not the project's either.
     """
     return (
         entry.is_dir()
@@ -1916,6 +2201,7 @@ def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
         and entry.name not in set(skip)
         and not entry.name.startswith(".")
         and match_content_rule(entry) is None
+        and not vcs_ignored(entry)
     )
 
 
@@ -2163,7 +2449,9 @@ def _is_excluded_classified(
             if fnmatch(rel_str, pattern):
                 return True
 
-    return False
+    # ADR-0004 point 9, the same rule FileIndex.build applies: one question
+    # for the whole path, since an ignored directory covers what is below it.
+    return rel_path is not path and vcs_ignored(path, repo_root)
 
 
 def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) -> bool:
@@ -2303,6 +2591,7 @@ class FileIndex:
     __slots__ = (
         "_all_files", "_by_ext", "_by_name", "_children",
         "_generated_output_roots", "_installed_dep_roots", "_repo_root",
+        "_vcs_ignored_skipped",
     )
 
     def __init__(
@@ -2313,6 +2602,7 @@ class FileIndex:
         all_files: list[Path],
         installed_dep_roots: "list[tuple[Path, ContentRule]] | None" = None,
         generated_output_roots: "list[tuple[Path, ContentRule]] | None" = None,
+        vcs_ignored_skipped: "list[tuple[Path, bool]] | None" = None,
     ) -> None:
         self._repo_root = repo_root
         self._by_ext = by_ext
@@ -2320,6 +2610,7 @@ class FileIndex:
         self._all_files = all_files
         self._installed_dep_roots = installed_dep_roots or []
         self._generated_output_roots = generated_output_roots or []
+        self._vcs_ignored_skipped = vcs_ignored_skipped or []
         self._children: "dict[Path, dict[str, bool]] | None" = None
 
     def children(self, dir_path: Path) -> "dict[str, bool] | None":
@@ -2364,6 +2655,14 @@ class FileIndex:
         :func:`generated_output_summary`."""
         return self._generated_output_roots
 
+    @property
+    def vcs_ignored_skipped(self) -> "list[tuple[Path, bool]]":
+        """``(path, is_dir)`` for each entry the walk left out because the
+        VCS ignores it and does not track it (ADR-0004 point 9; never one
+        nested inside a pruned directory) -- the input to
+        :func:`vcs_ignored_summary`."""
+        return self._vcs_ignored_skipped
+
     @classmethod
     def build(
         cls,
@@ -2396,6 +2695,12 @@ class FileIndex:
         all_files: list[Path] = []
         installed_roots: list[tuple[Path, ContentRule]] = []
         generated_roots: list[tuple[Path, ContentRule]] = []
+        # ADR-0004 point 9. Asked afresh for every index: a file ignored
+        # since the last one must not ride in on a remembered answer.
+        vcs = refresh_vcs_ignored(repo_root)
+        if vcs is not None and not vcs.ignored:
+            vcs = None
+        vcs_skipped: list[tuple[Path, bool]] = []
         # Per-package --trace-deps is the one mode in which a FILE can be
         # pruned by the content-rule arm (a stray file beside the traced
         # packages); every other mode skips that per-file check entirely.
@@ -2403,6 +2708,8 @@ class FileIndex:
 
         for dirpath_str, dirnames, filenames in os.walk(repo_root):
             dirpath = Path(dirpath_str)
+            rel_here = None if vcs is None else vcs.rel_of(dirpath)
+            rel_prefix = f"{rel_here}/" if rel_here else ""
 
             # Prune excluded directories in-place (prevents os.walk
             # from descending into them). Path-anchored patterns are
@@ -2432,6 +2739,9 @@ class FileIndex:
                 # this is not an inline membership test.
                 if is_pruned_dir(d, dirpath / d, exact_exc, glob_exc):
                     continue
+                if _vcs_prunes(vcs, rel_prefix + d, dirpath / d):
+                    vcs_skipped.append((dirpath / d, True))
+                    continue
                 kept_dirs.append(d)
             dirnames[:] = kept_dirs
 
@@ -2457,6 +2767,9 @@ class FileIndex:
                         continue
                 if per_package and content_rule_prunes(fname, dirpath / fname):
                     continue
+                if vcs is not None and _vcs_prunes(vcs, rel_prefix + fname, dirpath / fname):
+                    vcs_skipped.append((dirpath / fname, False))
+                    continue
 
                 fpath = dirpath / fname
                 all_files.append(fpath)
@@ -2475,6 +2788,7 @@ class FileIndex:
 
         return cls(
             repo_root, by_ext, by_name, all_files, installed_roots, generated_roots,
+            vcs_skipped,
         )
 
     @classmethod

@@ -142,7 +142,8 @@ if TYPE_CHECKING:
 from .discovery import (
     DEFAULT_EXCLUDES, DEPENDENCY_DIR_NAMES, find_files,
     format_generated_output_disclosure, format_installed_deps_disclosure,
-    match_content_rule, under_content_rule_dir,
+    format_vcs_ignored_disclosure,
+    match_content_rule, under_content_rule_dir, vcs_ignored,
 )
 from .profile import detect_profile, RepoProfile
 from .supply_chain import format_vendored_disclosure
@@ -743,6 +744,18 @@ BIG_PICTURE_QUESTIONS = [
 
 # Config files to extract project metadata from
 # Config files grouped by language/ecosystem for targeted discovery
+def _described(path: Path, repo_root: Path) -> bool:
+    """Is ``path`` part of the repository this sketch describes?
+
+    Not when the repository's VCS ignores it and does not track it (ADR-0004
+    point 9). Discovery leaves such a file out of the file index; the
+    sections that find a file by NAME or by glob, past discovery -- root
+    manifests, the README and what it links to, licence and build files --
+    ask here before they list or read it.
+    """
+    return not vcs_ignored(path, repo_root)
+
+
 CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     # JavaScript/TypeScript ecosystem
     "javascript": ["package.json"],
@@ -1172,7 +1185,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             continue
         for subdir in CONFIG_SUBDIRS:
             config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
-            if not config_path.exists():
+            if not (config_path.exists() and _described(config_path, repo_root)):
                 continue
             prefix = f"{subdir}/" if subdir else ""
             lines.extend(extractor(config_path, prefix))
@@ -1192,8 +1205,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
             matches.extend(repo_root.glob(pattern))
         for match in sorted(matches):
-            if not match.is_file():
-                continue  # pragma: no cover - glob rarely yields a dir named like a manifest
+            if not (match.is_file() and _described(match, repo_root)):
+                continue
             resolved = match.resolve()
             if resolved in seen_manifest_paths:
                 continue
@@ -1217,13 +1230,13 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     seen_license_paths: set[Path] = set()
     for license_name in LICENSE_FILES:
         root_license = repo_root / license_name
-        if root_license.exists():
+        if root_license.exists() and _described(root_license, repo_root):
             license_paths.append(root_license)
             seen_license_paths.add(root_license.resolve())
         for pattern in (f"*/{license_name}", f"*/*/{license_name}"):
             for match in sorted(repo_root.glob(pattern)):
-                if not match.is_file():
-                    continue  # pragma: no cover
+                if not (match.is_file() and _described(match, repo_root)):
+                    continue
                 resolved = match.resolve()
                 if resolved in seen_license_paths:
                     continue  # pragma: no cover
@@ -1276,7 +1289,7 @@ def _collect_config_content(
     for config_name in CONFIG_FILES:
         for subdir in CONFIG_SUBDIRS:
             config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
-            if not config_path.exists():
+            if not (config_path.exists() and _described(config_path, repo_root)):
                 continue
 
             try:
@@ -1301,8 +1314,8 @@ def _collect_config_content(
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
             matches.extend(repo_root.glob(pattern))
         for match in sorted(matches):
-            if not match.is_file():
-                continue  # pragma: no cover
+            if not (match.is_file() and _described(match, repo_root)):
+                continue
             resolved = match.resolve()
             if resolved in seen_paths:
                 continue
@@ -1352,7 +1365,7 @@ def _get_repo_languages(repo_root: Path) -> set[str]:
             # sorted: the >10 early exit makes WHICH languages are detected
             # depend on visit order, and rglob yields filesystem order
             for item in sorted(repo_root.rglob("*")):
-                if item.is_file():
+                if item.is_file() and _described(item, repo_root):
                     ext = item.suffix.lower()
                     if ext in ext_to_lang:
                         languages.add(ext_to_lang[ext])
@@ -1438,7 +1451,10 @@ def _discover_config_files_embedding(
         else:
             # sorted like FileIndex.all_files(): candidate order feeds the
             # max_candidates truncation's tie-break
-            all_items = sorted(f for f in repo_root.rglob("*") if f.is_file())
+            all_items = sorted(
+                f for f in repo_root.rglob("*")
+                if f.is_file() and _described(f, repo_root)
+            )
         for item in all_items:
             # Skip hidden directories and common non-config paths
             parts = item.relative_to(repo_root).parts
@@ -1583,7 +1599,8 @@ def _collect_config_content_with_discovery(
                 if search_dir.exists():
                     for match in sorted(search_dir.glob(config_name)):
                         resolved = match.resolve()
-                        if match.is_file() and resolved not in seen_paths:
+                        if (match.is_file() and resolved not in seen_paths
+                                and _described(match, repo_root)):
                             try:
                                 content = match.read_text(encoding="utf-8", errors="replace")
                                 rel_path = match.relative_to(repo_root)
@@ -2715,7 +2732,7 @@ def _detect_test_frameworks_from_markers(repo_root: Path) -> set[str]:
     found: set[str] = set()
     for glob, framework, required in _TEST_FRAMEWORK_MARKERS:
         for path in sorted(repo_root.glob(glob)):
-            if not path.is_file():  # pragma: no cover - a dir named like config
+            if not (path.is_file() and _described(path, repo_root)):
                 continue
             if required is not None:
                 try:
@@ -3007,7 +3024,10 @@ def _kept_dir_children(
     children = _dir_children_from_index(dir_path)
     if children is None:
         try:
-            children = [(it.name, it.is_dir()) for it in dir_path.iterdir()]
+            children = [
+                (it.name, it.is_dir()) for it in dir_path.iterdir()
+                if _described(it, repo_root)
+            ]
         except (PermissionError, OSError):  # pragma: no cover
             return []
     kept: list[tuple[str, bool]] = []
@@ -3223,11 +3243,11 @@ def _format_structure_tree_fallback(
             if not d.is_dir():
                 continue
             excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
-            if not excluded and match_content_rule(d) is None:
+            if not excluded and match_content_rule(d) is None and _described(d, repo_root):
                 dirs.append(d.name)
         # Also get root-level files (source and config/doc files)
         for f in repo_root.iterdir():
-            if not f.is_file():
+            if not (f.is_file() and _described(f, repo_root)):
                 continue
             if any(fnmatch(f.name, pattern) for pattern in name_excludes):
                 continue
@@ -3569,7 +3589,7 @@ def _collect_important_files(
     ]
     for pattern in config_patterns:
         config_path = repo_root / pattern
-        if config_path.exists():
+        if config_path.exists() and _described(config_path, repo_root):
             add_file(pattern)
         if len(important_files) >= 2:  # 2+ config files
             break
@@ -3657,7 +3677,8 @@ def _collect_important_files(
             )
         else:
             root_file_names = sorted(
-                item.name for item in repo_root.iterdir() if item.is_file()
+                item.name for item in repo_root.iterdir()
+                if item.is_file() and _described(item, repo_root)
             )
         for name in root_file_names:
             # Check if it matches a source file pattern
@@ -3680,7 +3701,10 @@ def _collect_important_files(
             if file_index is not None and file_index.repo_root == repo_root:  # pragma: no cover - only via run_behavior_map
                 all_items = file_index.all_files()
             else:
-                all_items = [f for f in repo_root.rglob("*") if f.is_file()]
+                all_items = [
+                    f for f in repo_root.rglob("*")
+                    if f.is_file() and _described(f, repo_root)
+                ]
             candidates: list[str] = []
             for item in all_items:
                 # Skip excluded directories
@@ -3761,6 +3785,7 @@ def _find_readme_path(repo_root: Path) -> Optional[Path]:
         candidates = [
             f for f in repo_root.iterdir()
             if f.is_file() and f.name.lower().startswith("readme")
+            and _described(f, repo_root)
         ]
     except OSError:  # pragma: no cover
         return None
@@ -4277,12 +4302,12 @@ def _resolve_readme_link(
         target = target.resolve()
         target.relative_to(repo_root)
         if target.is_file():
-            return target
+            return target if _described(target, repo_root) else None
         elif target.is_dir():
             # Check for index file in directory
             for index_name in ["README.md", "index.md", "README.rst", "index.html"]:
                 index_path = target / index_name
-                if index_path.is_file():
+                if index_path.is_file() and _described(index_path, repo_root):
                     return index_path
     except (ValueError, OSError):
         pass
@@ -4344,7 +4369,7 @@ def _resolve_pages_url(url: str, repo_name: str, repo_root: Path) -> Optional[Pa
 
     for search_path in search_paths:
         candidate = repo_root / search_path
-        if candidate.is_file():
+        if candidate.is_file() and _described(candidate, repo_root):
             return candidate
 
     return None
@@ -4803,7 +4828,7 @@ def _select_additional_files(
     else:
         all_files = [
             f for f in repo_root.rglob("*")
-            if f.is_file() and not _is_excluded(f)
+            if f.is_file() and not _is_excluded(f) and _described(f, repo_root)
         ]
 
     if not all_files:
@@ -5335,7 +5360,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
 
     # meson.build: executable('name', ...)
     meson_build = repo_root / "meson.build"
-    if meson_build.exists():
+    if meson_build.exists() and _described(meson_build, repo_root):
         try:
             content = meson_build.read_text(errors="replace")
             # Match executable('name' or executable("name"
@@ -5347,7 +5372,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
     # Makefile: TARGET, BINARY, PROGRAM, NAME variables
     for makefile_name in ["Makefile", "makefile", "GNUmakefile"]:
         makefile = repo_root / makefile_name
-        if makefile.exists():
+        if makefile.exists() and _described(makefile, repo_root):
             try:
                 content = makefile.read_text(errors="replace")
                 # Match TARGET = name, BINARY := name, etc.
@@ -5365,7 +5390,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
 
     # CMakeLists.txt: add_executable(name ...)
     cmake_lists = repo_root / "CMakeLists.txt"
-    if cmake_lists.exists():
+    if cmake_lists.exists() and _described(cmake_lists, repo_root):
         try:
             content = cmake_lists.read_text(errors="replace")
             # Match add_executable(name or add_executable( name
@@ -5378,7 +5403,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
 
     # Cargo.toml: name in [package] section
     cargo_toml = repo_root / "Cargo.toml"
-    if cargo_toml.exists():
+    if cargo_toml.exists() and _described(cargo_toml, repo_root):
         try:
             content = cargo_toml.read_text(errors="replace")
             # Simple pattern for name = "..." in package section
@@ -5389,7 +5414,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
 
     # go.mod: module path (use last component)
     go_mod = repo_root / "go.mod"
-    if go_mod.exists():
+    if go_mod.exists() and _described(go_mod, repo_root):
         try:
             content = go_mod.read_text(errors="replace")
             match = re.search(r"^module\s+(\S+)", content, re.MULTILINE)
@@ -5402,7 +5427,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
 
     # configure.ac: AC_INIT([name], ...)
     configure_ac = repo_root / "configure.ac"
-    if configure_ac.exists():
+    if configure_ac.exists() and _described(configure_ac, repo_root):
         try:
             content = configure_ac.read_text(errors="replace")
             match = re.search(r"AC_INIT\s*\(\s*\[?([^\],\[]+)", content)
@@ -5418,7 +5443,7 @@ def _detect_project_binary_names(repo_root: Path) -> list[str]:
         has_compiled_source = any(
             f.suffix in compiled_extensions
             for f in repo_root.iterdir()
-            if f.is_file()
+            if f.is_file() and _described(f, repo_root)
         )
         if has_compiled_source:
             binary_names.add(repo_root.name)
@@ -6989,6 +7014,10 @@ def _generate_sketch_impl(
     )
     if output_line:
         header = f"{header}\n\n{output_line}"
+    # ADR-0004 point 9: and what the VCS ignores and does not track.
+    ignored_line = format_vcs_ignored_disclosure(_scs.get("vcs_ignored_skipped"))
+    if ignored_line:
+        header = f"{header}\n\n{ignored_line}"
     # ADR-0004 point 3a (WI-pasan): and the vendored code analysed but left out
     # of the language line above.
     vendored_line = format_vendored_disclosure(_scs.get("vendored_analysed"))

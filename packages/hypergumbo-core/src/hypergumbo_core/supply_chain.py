@@ -1633,7 +1633,7 @@ def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[
     before any analysis runs. A symlinked manifest FILE is still read --
     reading one file is bounded.
     """
-    from .discovery import manifest_walk_skip, walks_into
+    from .discovery import manifest_walk_skip, vcs_ignored, walks_into
 
     skip = manifest_walk_skip()
     stack = [repo_root]
@@ -1645,7 +1645,7 @@ def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[
             continue
         for entry in entries:
             if entry.is_file():
-                if entry.name in file_names:
+                if entry.name in file_names and not vcs_ignored(entry):
                     yield entry
             elif walks_into(entry, skip):
                 stack.append(entry)
