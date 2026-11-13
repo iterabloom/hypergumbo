@@ -9478,3 +9478,122 @@ def test_test_analysis_skips_vendored_tests(tmp_path: Path) -> None:
     (vend_tests / "test_lib.py").write_text("def test_b():\n    pass\n")
     analysis = _analyze_test_files(tmp_path)
     assert (analysis.test_files, analysis.test_loc) == (1, 2)
+
+
+class TestKeySymbolFileEligibility:
+    """Which files Key Symbols may draw from (WI-toloj).
+
+    The gate was "the top 20 files by score, plus every file holding an
+    entry point". Twenty did not grow with the budget, and the entry-point
+    clause had no bound, so a larger sketch filled with entry-point files.
+    """
+
+    @staticmethod
+    def _files(count: int, prefix: str, top_score: float) -> tuple[dict, dict, dict]:
+        """``count`` files of three symbols each, scores falling by file from
+        ``top_score`` to half of it."""
+        by_file: dict[str, list[Symbol]] = {}
+        centrality: dict[str, float] = {}
+        file_scores: dict[str, float] = {}
+        for i in range(count):
+            path = f"{prefix}{i:03d}.py"
+            score = top_score * (1 - i / (2 * count))
+            symbols = [
+                Symbol(id=f"{path}:f{j}", name=f"f{j}", kind="function", language="python",
+                       path=path, span=Span(1, 5, 0, 0))
+                for j in range(3)
+            ]
+            by_file[path] = symbols
+            for j, symbol in enumerate(symbols):
+                centrality[symbol.id] = score / (j + 1)
+            file_scores[path] = score
+        return by_file, centrality, file_scores
+
+    @staticmethod
+    def _selected_files(by_file, centrality, file_scores, max_symbols, entry_files=frozenset()):
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        picked = _select_symbols_two_phase(
+            by_file=by_file, centrality=centrality, file_scores=file_scores,
+            max_symbols=max_symbols, entrypoint_files=set(entry_files),
+            language_proportional=False,
+        )
+        return {path for path, _symbol in picked}
+
+    @pytest.mark.parametrize(("max_symbols", "limit"), [
+        (5, 20), (16, 20), (60, 20), (61, 21), (103, 35), (315, 105)])
+    def test_the_file_limit_follows_the_symbol_budget(self, max_symbols: int, limit: int) -> None:
+        from hypergumbo_core.sketch import key_symbol_file_limit
+
+        assert key_symbol_file_limit(max_symbols) == limit
+
+    def test_a_file_ranked_past_twenty_is_shown_at_a_larger_budget(self) -> None:
+        by_file, centrality, file_scores = self._files(60, "src/m", 1.0)
+        thirtieth = "src/m029.py"
+        small = self._selected_files(by_file, centrality, file_scores, 16)
+        large = self._selected_files(by_file, centrality, file_scores, 120)
+        assert thirtieth not in small
+        assert thirtieth in large
+        # Reach: the small budget's gate was the binding one, not the budget.
+        assert small <= {f"src/m{i:03d}.py" for i in range(20)}
+
+    def test_entry_point_files_that_did_not_rank_are_bounded(self) -> None:
+        """200 scripts each holding an entry point, all scoring below 30
+        modules: the scripts get one place for every four ranked files."""
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        scripts, script_centrality, script_scores = self._files(200, "scripts/s", 0.1)
+        by_file.update(scripts)
+        centrality.update(script_centrality)
+        file_scores.update(script_scores)
+
+        picked = self._selected_files(
+            by_file, centrality, file_scores, max_symbols=400, entry_files=set(scripts))
+        ranked = {f"src/m{i:03d}.py" for i in range(30)} | {
+            f"scripts/s{i:03d}.py" for i in range(104)}  # limit 134: 30 modules, then scripts
+        entry_only = picked - ranked
+        assert len(picked & set(scripts)) < 200  # reach: not every script got in
+        assert entry_only == {f"scripts/s{i:03d}.py" for i in range(104, 104 + 134 // 4)}
+
+    def test_at_a_small_budget_five_entry_files_join_the_twenty(self) -> None:
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        scripts, script_centrality, script_scores = self._files(40, "scripts/s", 0.1)
+        by_file.update(scripts)
+        centrality.update(script_centrality)
+        file_scores.update(script_scores)
+        picked = self._selected_files(
+            by_file, centrality, file_scores, max_symbols=400, entry_files=set(scripts))
+        # max_symbols=400 lifts the budget so the GATE is what is tested; the
+        # gate here is the explicit small one.
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        gated = {path for path, _s in _select_symbols_two_phase(
+            by_file=by_file, centrality=centrality, file_scores=file_scores,
+            max_symbols=400, entrypoint_files=set(scripts), max_files=20,
+            language_proportional=False)}
+        assert gated == {f"src/m{i:03d}.py" for i in range(20)} | {
+            f"scripts/s{i:03d}.py" for i in range(5)}
+        assert gated < picked
+
+    def test_an_entry_point_file_that_ranked_takes_no_extra_place(self) -> None:
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        gated = {path for path, _s in _select_symbols_two_phase(
+            by_file=by_file, centrality=centrality, file_scores=file_scores,
+            max_symbols=400, entrypoint_files={"src/m000.py", "src/m001.py"},
+            max_files=20, language_proportional=False)}
+        assert gated == {f"src/m{i:03d}.py" for i in range(20)}
+
+    def test_equal_scores_are_gated_by_path(self) -> None:
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        for path in file_scores:
+            file_scores[path] = 1.0
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        for order in (sorted(by_file), sorted(by_file, reverse=True)):
+            gated = {path for path, _s in _select_symbols_two_phase(
+                by_file={p: by_file[p] for p in order}, centrality=centrality,
+                file_scores={p: file_scores[p] for p in order},
+                max_symbols=400, entrypoint_files=set(), max_files=20,
+                language_proportional=False)}
+            assert gated == {f"src/m{i:03d}.py" for i in range(20)}

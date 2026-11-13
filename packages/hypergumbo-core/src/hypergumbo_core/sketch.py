@@ -5847,13 +5847,36 @@ def _format_datamodels(
     return "\n".join(lines)
 
 
+#: Key Symbols draws from at least this many files, whatever the budget.
+_KEY_SYMBOL_MIN_FILES = 20
+#: ... and from one more file for every three symbols of budget: the
+#: two-phase policy shows about three symbols a file.
+_KEY_SYMBOLS_PER_FILE = 3
+#: For every four files admitted by rank, one more may come in because it
+#: holds an entry point and for no other reason.
+_ENTRY_FILES_PER_RANKED = 4
+
+
+def key_symbol_file_limit(max_symbols: int) -> int:
+    """How many files, best score first, Key Symbols may draw from.
+
+    The limit was a constant 20 (WI-toloj). The symbol budget grows with the
+    token budget and the file limit did not, so a larger sketch could spend
+    its extra symbols only inside the same twenty files or in files admitted
+    for holding an entry point: on a repository with many small scripts a
+    128k sketch showed 51 script files and never the eighteenth-ranked
+    module.
+    """
+    return max(_KEY_SYMBOL_MIN_FILES, -(-max_symbols // _KEY_SYMBOLS_PER_FILE))
+
+
 def _select_symbols_two_phase(
     by_file: dict[str, list[Symbol]],
     centrality: dict[str, float],
     file_scores: dict[str, float],
     max_symbols: int,
     entrypoint_files: set[str],
-    max_files: int = 20,
+    max_files: int | None = None,
     coverage_fraction: float = 0.33,
     diminishing_alpha: float = 0.7,
     language_proportional: bool = True,
@@ -5875,8 +5898,16 @@ def _select_symbols_two_phase(
         centrality: Centrality scores for each symbol ID.
         file_scores: File importance scores (sum of top-K).
         max_symbols: Total symbol budget.
-        entrypoint_files: Set of file paths containing entrypoints (always included).
-        max_files: Maximum number of files to consider.
+        entrypoint_files: Set of file paths containing entrypoints. A file
+            that holds one and did not make the ranked set may still be
+            admitted, best score first, up to one for every
+            ``_ENTRY_FILES_PER_RANKED`` ranked files: an entry file's symbols
+            are called by nothing, so centrality alone would never show the
+            program's own ``main``, but a repository can have hundreds of
+            entry points (one per script, per command, per handler) and they
+            must not be able to outnumber the files chosen on merit.
+        max_files: Files admitted by rank. ``None`` (the default) derives it
+            from ``max_symbols`` (:func:`key_symbol_file_limit`).
         coverage_fraction: Fraction of budget for phase 1 (coverage).
         diminishing_alpha: Penalty factor for repeated file picks in phase 2.
         language_proportional: If True, use language-stratified selection in Phase 1.
@@ -5886,9 +5917,16 @@ def _select_symbols_two_phase(
     """
     import heapq
 
-    # Gate eligible files: top N by file_score, plus entrypoint files
-    sorted_files = sorted(file_scores.keys(), key=lambda f: -file_scores.get(f, 0))
-    eligible_files = set(sorted_files[:max_files]) | entrypoint_files
+    # Gate eligible files: the top N by file score, plus a bounded number of
+    # the files that hold an entry point and did not rank. Ties in score go
+    # by path, so the gate is the same on every run.
+    if max_files is None:
+        max_files = key_symbol_file_limit(max_symbols)
+    sorted_files = sorted(file_scores, key=lambda f: (-file_scores[f], f))
+    entry_only = [f for f in sorted_files[max_files:] if f in entrypoint_files]
+    eligible_files = set(sorted_files[:max_files]) | set(
+        entry_only[:max(1, max_files // _ENTRY_FILES_PER_RANKED)]
+    )
 
     # Filter by_file to eligible files only
     eligible_by_file = {f: syms for f, syms in by_file.items() if f in eligible_files}
