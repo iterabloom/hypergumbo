@@ -23,3 +23,25 @@
     fields:  # a6e0
       statement: "A tiered survey file written for a budget of N tokens holds at most N tokens, measured on the bytes written to disk at CHARS_PER_TOKEN. When N cannot hold the fixed sections plus one node, the file says so in a field a reader can check; it does not silently exceed N."  # a6e0
       root_cause: "Two independent causes in compact.format_tiered_behavior_map. (1) Every top-level section outside _TIERED_STRIP_KEYS is copied unchanged, and the shrink loop removes nodes only and stops at one node, so nothing bounds limits, profile, reproducibility_context or supply_chain_summary. (2) estimate_json_tokens sizes json.dumps(data) with default separators, while the tier file is written with indent=2."  # a6e0
+- op: discuss  # 4cb3
+  at: '2026-11-13T09:51:11Z'  # 4cb3
+  by: agent  # 4cb3
+  actor: jgstern_agent  # 4cb3
+  clock: 2  # 4cb3
+  nonce: 4cb3  # 4cb3
+  message: "PLAN 2026-11-13 (owner asked for the fix). (1) One definition of the written form: selection/token_budget gains written_json_text / estimate_written_json_tokens (indent=2, sort_keys=True, as safety_zones.user_out_open_json_dump writes), pinned by a test that writes a file through the real writer and compares its size. (2) format_tiered_behavior_map budgets against that form. The shrink loop keeps an exact running size from per-record lengths instead of re-serializing the map each step (the indented encoder is the pure-Python one), then re-checks the finished map (features re-projected, summary and metrics recomputed) and shrinks further if it is still over. (3) Every tier file records what it reached: tier_tokens_used beside tier_tokens, always present, so a file that cannot meet its budget (fixed sections plus one node already over) says so; the CLI warns on stderr for such a file. NOT in this change: making the fixed sections smaller (WI-lavum), so survey.4k.json on a repo this size will still hold one node and will now say it is over. Acceptance to report: tier files on at least three repos that are not hypergumbo, bytes on disk against budget."  # 4cb3
+- op: update  # b2a4
+  at: '2026-11-13T11:07:54Z'  # b2a4
+  by: agent  # b2a4
+  actor: jgstern_agent  # b2a4
+  clock: 3  # b2a4
+  nonce: b2a4  # b2a4
+  set:  # b2a4
+    status: satisfied  # b2a4
+- op: discuss  # 4cf6
+  at: '2026-11-13T11:07:54Z'  # 4cf6
+  by: agent  # 4cf6
+  actor: jgstern_agent  # 4cf6
+  clock: 4  # 4cf6
+  nonce: 4cf6  # 4cf6
+  message: "Fixed in PR #2168 (dev e46e89a9a8). Both causes: (1) the budget is now checked against the form that is written: token_budget.written_json_text / estimate_written_json_tokens (indent=2, sort_keys), pinned by a test that writes through safety_zones.user_out_open_json_dump and compares bytes; the shrink loop keeps an exact running size (compact._WrittenTierSize) and re-checks the finished map. (2) every tier records tier_tokens_used beside tier_tokens, so a file whose fixed sections exceed the budget says so. EVIDENCE, production path (hypergumbo survey, files read from disk, tokens = bytes // 4), three repositories that are not hypergumbo: alertmanager 4k 6854 used (1 node, over, reported), 16k 10323, 64k 56798; killbill 4k 13854 (1 node, over, reported), 16k 13814, 64k 58303; kserve 4k 8240 (1 node, over, reported), 16k 8227, 64k 58202. In all nine files tier_tokens_used equals bytes on disk // 4; all six 16k/64k files are within budget; all three 4k files are over and say so. A two-function repo: 4k 4189 used (limits alone is 2.8k tokens). Tests: packages/hypergumbo-core/tests/test_tier_budget_written.py (53 cases; six mutations of what they pin each went red). Affected-test run 19,694 passed. NOT DONE HERE, moved to WI-lavum-sikag-hadir-gojiz-tarij-nirob-kirom-totik: the fixed sections are unchanged, so the 4k tier of every repository measured still holds one node; and the acceptance run showed a second loss, below."  # 4cf6

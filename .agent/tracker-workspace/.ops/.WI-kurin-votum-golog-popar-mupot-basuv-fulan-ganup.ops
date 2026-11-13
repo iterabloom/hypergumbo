@@ -1,0 +1,23 @@
+- op: create  # 680d
+  at: '2026-11-13T09:22:44Z'  # 680d
+  by: agent  # 680d
+  actor: jgstern_agent  # 680d
+  clock: 1  # 680d
+  nonce: 680d  # 680d
+  data:  # 680d
+    kind: work_item  # 680d
+    title: "help text names one thing two ways in four places: catalog/catalogue, rust-analyzer/rust_analyzer, two stated defaults for --input, two descriptions of the default sketch budget"  # 680d
+    status: todo_hard  # 680d
+    priority: 4  # 680d
+    parent:  # 680d
+    tags:  # 680d
+    - outside_reader_review_20261113  # 680d
+    - dogfood  # 680d
+    - cli  # 680d
+    - ux  # 680d
+    isbefore: []  # 680d
+    duplicate_of: []  # 680d
+    not_duplicate_of: []  # 680d
+    pr_ref:  # 680d
+    description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.  Re-checked with \"hypergumbo --help --all\" on dev d6a8a140e7.\n\nOBSERVED\n1. Spelling of one noun in command and flag names: catalog, init-catalogs, catalog-inventory beside trust-catalogues and --in-repo-catalogues.\n2. One backend, two spellings a user must type: --backend takes rust-analyzer; trust-backend documents its BACKEND argument as \"currently: rust_analyzer\".\n3. --input states \"default: survey.json\" on search, routes, explain, test-coverage and symbols, and \"default: auto-detect cached ...\" or \"auto-discover or run\" on dead-code-maybe, repeat-finder, io-boundaries and verify-claims. The epilogs of the first group say \"Auto-discovers cached results\". Which behaviour each command has was not checked here; the help has to state the real one.\n4. The default sketch budget is \"~8000 tokens default\" in the quick start and \"Sketch with auto token budget\" in the examples, for the same invocation. -t has default=None in the parser. Which description is true was not checked here.\n\nASK. One spelling per noun in names a user types, with the other accepted as an alias where a name already shipped (renaming a command or a value is a compatibility decision: surface it, do not perform it silently). One shared source for the --input help line across the commands that share its behaviour. One statement of the default budget, taken from the code that sets it.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nHere that means a mechanism, never eight hand edits: option help that several subcommands share comes from one definition, and a check over the built parser reports a noun spelled two ways across command names, flags and choices. A later subcommand is then covered without touching the check."  # 680d
+    fields: {}  # 680d
