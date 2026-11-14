@@ -1,0 +1,21 @@
+- op: create  # 6fcc
+  at: '2026-11-14T02:22:53Z'  # 6fcc
+  by: agent  # 6fcc
+  actor: jgstern_agent  # 6fcc
+  clock: 1  # 6fcc
+  nonce: 6fcc  # 6fcc
+  data:  # 6fcc
+    kind: work_item  # 6fcc
+    title: "Five readers still read a git-ignored, untracked manifest or file: route them through discovery.vcs_ignored"  # 6fcc
+    status: todo_hard  # 6fcc
+    priority: 3  # 6fcc
+    parent:  # 6fcc
+    tags:  # 6fcc
+    - sketch  # 6fcc
+    - discovery  # 6fcc
+    isbefore: []  # 6fcc
+    duplicate_of: []  # 6fcc
+    not_duplicate_of: []  # 6fcc
+    pr_ref:  # 6fcc
+    description: "Residual of WI-jolov-saham-fatob-pujat-jilan-fojib-mahiz-gakuh (ADR-0004 point 9: a file the VCS ignores and does not track is not analysed). The rule is applied by discovery (FileIndex.build, is_excluded, find_files, walks_into), by the sketch's name/glob readers and by the profile's framework detection. Five readers still open a manifest, or read file text, without asking discovery.vcs_ignored. Each derives a fact or counts names; none prints a file's content. They are listed under \"Not yet covered\" in ADR-0004 point 9.\n\n1. discovery content rules (ADR-0004 points 2 and 7) read a sibling manifest as evidence whether or not git ignores it. Seen 2026-11-13 on a synthetic repository: an ignored, untracked package.json beside an ignored out/ made the walk report \"out/ (untracked JS build output)\".\n2. supply_chain.detect_package_roots reads the root package.json and Cargo.toml workspace lists by name.\n3. The per-language dependency readers take a manifest FILE in a directory they walk without asking (they never ENTER an ignored directory, because walks_into asks): hypergumbo_lang_mainstream py_deps, npm_deps and jvm_deps, hypergumbo_lang_common mix_deps. Effect: the directness stamp on tier-3 symbols can come from an ignored manifest.\n4. verify_claims finds its scope roots with repo_root.rglob(\"pyproject.toml\").\n5. The dead-code report's cross-language name-collision count (cli, the os.walk that reads every source file's text) counts names in ignored files.\n\nASK. Route each through discovery.vcs_ignored (or through one shared project-manifest walker: the same iterdir/walks_into loop is written five times, in three packages), with a test per reader that shows both halves: ignored and untracked contributes nothing, committed past the same rule contributes.\n\nGENERALITY. Any repository and language: the readers above cover Python, npm, JVM, Mix and Cargo manifests; the rule is the VCS's answer, never a file name.\n\nNOT MEASURED. How often any of the five changes an output on a real working tree. On the ten local trees that hold ignored-and-untracked files, the files discovery left out were local outputs, logs, .env files, a private key and built static assets; none was a manifest."  # 6fcc
+    fields: {}  # 6fcc
