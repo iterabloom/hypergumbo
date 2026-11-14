@@ -85,12 +85,14 @@ def test_usage_metavar_includes_every_registered_subparser():
     )
     metavar = sub_action.metavar
     assert metavar is not None
-    # Every registered subparser name appears in the metavar. The deprecated
-    # ``run`` alias (ADR-0042) is intentionally hidden — it is an alias of
-    # ``survey`` (which does appear), so it is excluded here.
-    for name in sub_action.choices:
-        if name == "run":
-            continue
+    # Every registered subparser appears in the metavar under its own name.
+    # An alias (``run`` for ``survey``, ADR-0042; ``catalogue`` for
+    # ``catalog``) is the same parser under a second name and is not listed.
+    primaries = {a.dest for a in sub_action._choices_actions}
+    assert {id(sub_action.choices[name]) for name in primaries} == {
+        id(parser_) for parser_ in sub_action.choices.values()}
+    assert {"run", "catalogue"} <= set(sub_action.choices) - primaries
+    for name in primaries:
         assert name in metavar, f"{name!r} missing from sub.metavar={metavar!r}"
     # Explicit guards for five named commands, so the test still fails if a
     # command drops out of the choices and the metavar together.
