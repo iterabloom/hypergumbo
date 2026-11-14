@@ -3872,8 +3872,29 @@ class TestACutListSaysWhoseEntriesItLeftOut:
         out = _format_symbols(symbols, edges, Path("/fake/repo"), max_symbols=1)
         headings = [ln for ln in out.splitlines() if ln.startswith("### ")]
         assert headings == ["### `a.py`"]
-        assert "  (... +3 more, top score:" in out
+        assert "  (... +3 more, highest: " in out
         assert "(... and 5 more symbols across 2 other files)" in out
+
+    def test_the_best_hidden_symbol_is_given_on_the_stars_scale(self) -> None:
+        """One file, room for one symbol. The count line under it names the
+        best symbol NOT shown as a share of the repository's highest
+        centrality, the scale the star is defined on. It used to read
+        "top score: 1.03": no scale, and not said to be a hidden symbol's."""
+        import re
+
+        symbols = self._functions({"a.py": 3, "b.py": 1})
+        # a_fn0 is called four times, a_fn1 twice, a_fn2 never.
+        edges = [Edge(id=f"e{i}", src="b.py:0", dst=dst, edge_type="calls",
+                      line=1, confidence=0.9, origin="t", origin_run_id="t")
+                 for i, dst in enumerate(["a.py:0"] * 4 + ["a.py:1"] * 2)]
+        out = _format_symbols(symbols, edges, Path("/fake/repo"), max_symbols=1)
+        lines = out.splitlines()
+        shown = next(i for i, ln in enumerate(lines) if ln.startswith("- `a_fn0"))
+        assert "★" in lines[shown]
+        found = re.fullmatch(r"  \(\.\.\. \+2 more, highest: (\d+)% of max\)", lines[shown + 1])
+        assert found, lines[shown + 1]
+        assert 0 < int(found[1]) < 100
+        assert "top score" not in out
 
 
 class TestFormatDatamodels:
@@ -4068,7 +4089,7 @@ class TestFormatSymbols:
 
         # All twenty are in the one file shown, so the fifteen are that
         # file's and none is "in another file" (WI-nurid).
-        assert "(... +15 more, top score:" in result
+        assert "(... +15 more, highest: " in result
         assert "other file" not in result
 
     def test_max_symbols_breaks_across_files(self) -> None:
