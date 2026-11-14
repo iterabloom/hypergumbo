@@ -4,9 +4,11 @@
 WHAT PROBLEM THIS SOLVES. smart-test's static selector is ``hypergumbo slice
 --files``, a reverse slice from the SYMBOLS of the changed files. It lists a
 module that imports a changed file, but it reaches a test of that module only
-through a chain of call edges into the changed file. Reading a constant,
-reading an attribute of the module object, or keeping a value the changed file
-computed at import leaves no call edge. So when ``schema.STABLE_ID_SCHEME``
+through a chain of call edges into the changed file. Reading a constant
+imported by name, keeping a value the changed file computed at import, or
+importing it inside a function leaves no call edge. (A read of an attribute of
+the module object leaves none in the 9.0.0 slice; the 9.2.0 slice follows it.)
+So when ``schema.STABLE_ID_SCHEME``
 changed, the selection held 252 test files and not the one that asserts the
 scheme's prefix through ``cli``: that test fails, and PR CI never ran it.
 
