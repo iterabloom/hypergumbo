@@ -138,6 +138,13 @@ an existing survey JSON instead of re-analyzing.
 identical flags. Prefer `survey` (ADR-0042 renamed the view; the alias is retained
 so existing scripts keep working).
 
+🟩 **Second spellings.** One noun is written two ways in names that shipped, so each name is
+accepted in the other spelling too, as an alias with an identical parser: `hypergumbo catalogue`
+(for `catalog`), `hypergumbo init-catalogues` (for `init-catalogs`), `hypergumbo catalogue-inventory`
+(for `catalog-inventory`), `hypergumbo trust-catalogs` (for `trust-catalogues`), and the flag
+`--in-repo-catalogs` (for `--in-repo-catalogues`). `hypergumbo trust-backend` takes a backend as
+`--backend` spells it (`rust-analyzer`) or as the trust store keys it (`rust_analyzer`).
+
 #### Read views over a survey
 
 These load a cached survey, or auto-run analysis when none exists, and share the
