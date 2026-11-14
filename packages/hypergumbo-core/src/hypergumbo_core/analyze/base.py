@@ -2407,37 +2407,99 @@ _DOC_COMMENT_TYPES = frozenset({
     "multiline_comment",
 })
 
-# Prefixes to strip from comment text, in order of specificity.
-_COMMENT_STRIP_RE = _re.compile(
-    r"^\s*(?:"
-    r"/\*\*\s*"   # /** (Javadoc/JSDoc/KDoc/PHPDoc opener)
-    r"|\*/\s*"    # */ (block closer)
-    r"|\*\s?"     # * (block continuation line)
-    r"|///\s?"    # /// (Rust/C#/Swift)
-    r"|//!\s?"    # //! (Rust inner doc)
-    r"|//\s?"     # // (Go)
-    r"|%+\s?"     # % or %% (Erlang)
-    r"|#\s?"      # # (Ruby/Python/Elixir)
-    r")"
-)
+# A block comment's opener and closer, by the first two characters of the
+# comment's own text. What follows the opener on its line (``*`` or ``!`` of a
+# doc comment, ``|`` of a Haddock or Elm one) belongs to the opener.
+_BLOCK_COMMENTS = {
+    "/*": (_re.compile(r"^/\*+!?"), _re.compile(r"\*+/\s*$")),
+    "{-": (_re.compile(r"^\{-+\|?"), _re.compile(r"-+\}\s*$")),
+    "(*": (_re.compile(r"^\(\*+"), _re.compile(r"\*+\)\s*$")),
+    "<!": (_re.compile(r"^<!--+"), _re.compile(r"--+>\s*$")),
+}
+# A continuation line of a ``/* ... */`` block conventionally starts with a
+# star of its own.
+_BLOCK_CONTINUATION_RE = _re.compile(r"^\s*\*+(?!/)\s?")
+# The characters a line comment opens with, in any of the languages analysed:
+# ``//`` ``///`` ``//!`` ``#`` ``##`` ``--`` ``;`` ``;;`` ``%`` ``%%`` ``!``.
+_LINE_MARKER_CHARS = "/#-;%!"
 
 # Tag lines to skip (Javadoc @param, @returns, etc.)
 _DOC_TAG_RE = _re.compile(r"^\s*@\w+")
+# A line that is about the file and its tooling, not about the declaration
+# under it: an editor modeline, an encoding declaration, a licence header.
+_FILE_HEADER_RE = _re.compile(
+    r"^(?:-\*-.*-\*-$|(?:vim?|ex):\s|coding[:=]"
+    r"|SPDX-License-Identifier\b|Copyright\b|\(c\)\s|\u00a9)",
+    _re.IGNORECASE,
+)
+# A word of running text. A usage line has none after the name: what follows
+# is placeholders (``DOTPATH``, ``<file>``, ``[-v]``, ``$1``, ``(a, b)``).
+_LOWERCASE_WORD_RE = _re.compile(r"[a-z]{3,}")
+_PLACEHOLDER_RE = _re.compile(r"<[^>]*>|\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|\$\w+")
+
+
+def _comment_text_lines(raw: str) -> list[str]:
+    """The lines of one comment node with its own markers removed.
+
+    The markers are read from the comment, not from a list of languages: a
+    comment that opens with a block opener is closed by the matching closer,
+    and any other comment is a line comment whose marker is the run of
+    marker characters it starts with (plus ``!`` after ``//``, Rust's inner
+    doc form). Every line of the node is stripped of that same marker, so
+    ``--`` is a marker in a ``--`` comment and text in a ``#`` one.
+    """
+    stripped = raw.strip()
+    block = _BLOCK_COMMENTS.get(stripped[:2])
+    if block is not None:
+        opener, closer = block
+        body = closer.sub("", opener.sub("", stripped, count=1), count=1)
+        return [_BLOCK_CONTINUATION_RE.sub("", line).strip() for line in body.split("\n")]
+    char = stripped[:1]
+    if char not in _LINE_MARKER_CHARS or not char:
+        return [line.strip() for line in stripped.split("\n")]
+    marker = _re.compile(rf"^\s*{_re.escape(char)}+!?\s?")
+    return [marker.sub("", line, count=1).strip() for line in stripped.split("\n")]
+
+
+def _is_usage_line(line: str, name: str) -> bool:
+    """Whether ``line`` only restates the declaration: its name, then
+    nothing but argument placeholders."""
+    head, _, rest = line.partition(" ")
+    if "(" in head:
+        head, _, tail = head.partition("(")
+        rest = f"({tail} {rest}"
+    return head.rstrip(":") == name and not _LOWERCASE_WORD_RE.search(
+        _PLACEHOLDER_RE.sub(" ", rest))
 
 
 def extract_doc_comment(
     node: "tree_sitter.Node",
     source: bytes,
     max_len: int = 80,
+    name: str | None = None,
 ) -> str | None:
     """Extract first-line summary of the doc comment preceding a declaration node.
 
     Walks backwards through prev_named_sibling collecting consecutive comment
-    nodes with no blank-line gap.  Cleans comment delimiters and returns the
-    first non-empty content line, truncated to *max_len*.
+    nodes with no blank-line gap, removes each comment's own markers
+    (:func:`_comment_text_lines`) and returns the first line that documents
+    the declaration, truncated to *max_len*.
 
-    Works across languages: handles ``/** */`` (Java/Kotlin/JS/PHP),
-    ``///`` (Rust/C#/Swift), ``//`` (Go), and ``#`` (Ruby) comment styles.
+    Which lines document a declaration is decided on the text left after the
+    markers are gone, so the rule is the same for every comment syntax:
+
+    - A line with no letter says nothing: a ruled line of dashes or stars, a
+      box corner, a block opener standing alone on its line.
+    - A tag line (``@param``) describes a part, not the whole.
+    - A shebang (``#!`` on the file's first line), an editor modeline, an
+      encoding declaration and a licence or copyright line are about the
+      file. They are reached when the declaration is the first thing in it.
+    - A line that only restates the declaration (``json_field DOTPATH``,
+      given *name*) is passed over when a describing line follows, and is
+      the summary when none does.
+
+    A comment with no documenting line gives ``None``: no summary is better
+    than a row of dashes printed as what a function does.
     """
     # Collect comment nodes walking backwards from the declaration
     comment_nodes: list["tree_sitter.Node"] = []
@@ -2457,24 +2519,25 @@ def extract_doc_comment(
     # Reverse so we process top-to-bottom
     comment_nodes.reverse()
 
-    # Decode and clean comment text
+    usage_line: str | None = None
     for cnode in comment_nodes:
         raw = source[cnode.start_byte:cnode.end_byte].decode("utf-8", errors="replace")
-        for raw_line in raw.split("\n"):
-            line = _COMMENT_STRIP_RE.sub("", raw_line)
-            # Strip trailing block-comment closer
-            if line.rstrip().endswith("*/"):
-                line = line.rstrip()[:-2]
-            line = line.strip()
-            # Skip empty lines, closing delimiters, and tag lines
-            if not line or line == "/" or _DOC_TAG_RE.match(line):
+        if cnode.start_point[0] == 0 and raw.startswith("#!"):
+            raw = raw.partition("\n")[2]
+        for line in _comment_text_lines(raw):
+            if (not any(ch.isalpha() for ch in line) or _DOC_TAG_RE.match(line)
+                    or _FILE_HEADER_RE.match(line)):
                 continue
-            # Found the first content line — truncate and return
-            if len(line) > max_len:
-                return line[: max_len - 1] + "\u2026"
-            return line
+            if name and usage_line is None and _is_usage_line(line, name):
+                usage_line = line
+                continue
+            return _truncate_summary(line, max_len)
 
-    return None
+    return _truncate_summary(usage_line, max_len) if usage_line else None
+
+
+def _truncate_summary(line: str, max_len: int) -> str:
+    return line if len(line) <= max_len else line[: max_len - 1] + "\u2026"
 
 
 def populate_docstrings_from_tree(
@@ -2523,7 +2586,7 @@ def populate_docstrings_from_tree(
         # the declaration node whose prev_named_sibling is a comment.
         candidate = node
         while candidate is not None:
-            doc = extract_doc_comment(candidate, source)
+            doc = extract_doc_comment(candidate, source, name=sym.name)
             if doc is not None:
                 sym.docstring = doc
                 break
@@ -4725,7 +4788,8 @@ class TreeSitterAnalyzer:
                         if sym.shape_id is None:
                             sym.shape_id = self.compute_shape_id(ts_node)
                         if sym.docstring is None:
-                            sym.docstring = extract_doc_comment(ts_node, source)
+                            sym.docstring = extract_doc_comment(
+                                ts_node, source, name=sym.name)
 
             # Fallback: populate docstrings for symbols without node_for_symbol
             # by finding their tree-sitter nodes via position matching.

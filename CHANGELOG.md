@@ -124,6 +124,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Configuration prints a manifest value whole or not at all**: TOML and `pom.xml` are parsed, so a licence table, a workspace-inherited field and a Maven module's own artifactId read correctly.
 - **Each semantic Configuration line is under the file it quotes**, with no blank lines left where a file's lines were dropped.
 - **A file's hidden Key Symbols are rated on the star's scale**: "highest: 52% of max" replaces an unlabelled "top score".
+- **A symbol's one-line summary is a line that describes it**: ruled lines, bare comment openers, shebangs and licence lines are passed over, in every comment syntax.
 
 #### Budget-tier files and compact views
 
