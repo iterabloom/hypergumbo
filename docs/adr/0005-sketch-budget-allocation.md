@@ -73,8 +73,8 @@ When `--with-source` is set, budget shifts dramatically from file listings to ac
 | Frameworks | Fixed: all detected frameworks (no limit) | — |
 | Tests | Fixed: summary line only | — |
 | Configuration | Heuristic lines + semantic embedding | — |
-| Entry Points | 33% of remaining, **capped at 2000 tokens** | Prevents starving source content at large budgets |
-| Data Models | 20% of remaining, **capped at 1500 tokens** | Prevents starving source content at large budgets |
+| Entry Points | 33% of remaining, and no more than **13%** of remaining or 2000 tokens, whichever is larger | A listing gives way to code; the floor keeps a small sketch's entry points |
+| Data Models | 20% of remaining, and no more than **8%** of remaining or 1500 tokens, whichever is larger | A listing gives way to code; the floor keeps a small sketch's models |
 | Source Files (list) | **10%** of remaining | Shrink: paths are low-value |
 | Key Symbols | **20%** of remaining | Shrink: actual code is better |
 | Additional Files (list) | **5%** of remaining | Shrink: paths are low-value |
@@ -108,24 +108,20 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 
 ### Cutoff Logic
 
-Each section computes a maximum item count from its budget allocation:
-
-```
-max_items = max(minimum, budget_for_section // tokens_per_item)
-```
+Each section takes entries until its budget allocation is used, measured on the rendered text, and never fewer than its minimum:
 
 | Section | Tokens per Item | Minimum | Default Ceiling | Notes |
 |---------|-----------------|---------|-----------------|-------|
 | Structure | — | — | 10 root dirs | Tree expands until N root dirs shown |
-| Entry Points | ~25 | 5 | 20 | Shows CLI commands + HTTP routes |
-| Data Models | ~15 | 3 | 30 | ORM models, entities, grouped by file |
+| Entry Points | measured | 5 | — | CLI commands, HTTP routes, library API; the most entries whose rendered section fits the share |
+| Data Models | measured | 3 | — | ORM models, entities, grouped by file; the most models whose rendered section fits the share |
 | Source Files | measured | 5 | — | Path and module docstring; entries are taken until the share is used (below) |
 | Key Symbols | measured | 5 | 100 | Max 5 per file to ensure breadth; file blocks are added until the share is used |
 | Additional Files | measured | 1 | — | Paths only; entries are added until the share is used; shrinks with --with-source |
 | Source Content | varies | 1 | — | Harmonic truncation (depth-over-breadth) |
 | Additional File Content | varies | 1 | — | Harmonic truncation by position, 500-token floor |
 
-The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source Files Content and Additional Files Content both use harmonic truncation (earlier files get proportionally more space).
+"measured" means the section is sized by what its entries cost, not by a count derived from a per-entry constant. Source Files Content and Additional Files Content both use harmonic truncation (earlier files get proportionally more space).
 
 ### Source Files: Sized by Its Entries
 
@@ -185,10 +181,9 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 Both Source Files Content (Section 9) and Additional Files Content (Section 10) use dynamic truncation. Files that fit within budget are included in full; oversized files are truncated to a computed target and appended with `[...truncated...]`.
 
 **Truncation for Source Files Content (harmonic):**
-- Uses `compute_harmonic_shares(effective_n, source_budget)` to distribute budget across files by density rank. File at rank *i* (1-indexed) gets `budget * (1/i) / H_n` tokens, where `H_n` is the *n*-th harmonic number.
-- **Effective N** is the largest rank whose harmonic share meets the 500-token floor. This prevents diluting shares across too many files.
-- **Surplus handling**: When a file uses fewer tokens than its harmonic share, the surplus remains available for later files (they can exceed their pure harmonic share).
-- Files that fit entirely within their share are included in full. Oversized files are truncated to their share.
+- The file at density rank *r* (1-indexed) may use `level / r` tokens: a harmonic profile, so a better-ranked file gets proportionally more depth. `level` is the highest the section's budget pays for (`sketch._content_plan`).
+- A file that costs no more than its allowance is printed whole. A longer one is cut to its allowance, and is left out while that allowance is under the 500-token floor (a file shorter than the floor is printed when it fits whole).
+- Every allowance grows with `level`, and `level` with the budget. So a larger budget prints every file a smaller one printed, at no less depth; a long file is held to its rank's allowance at every budget and cannot use up the section.
 
 **Truncation for Additional Files Content (harmonic, by position):**
 - A file that fits in what is left is printed whole. One that does not is cut to its share: the file at position *i* gets `budget * (1/i) / H_N`, where N is the largest number of files for which the smallest share is still at least 500 tokens. A file past position N is cut to the 500-token floor, and printing stops when less than the floor is left.
@@ -197,7 +192,7 @@ Both Source Files Content (Section 9) and Additional Files Content (Section 10) 
 
 **Why harmonic truncation for source files:** The previous elbow+median approach spread content evenly across files. Harmonic weighting gives proportionally more depth to higher-ranked (more architecturally important) files, matching developer intuition: you want the most detail on the most important code.
 
-**Entry Point / Data Model caps (--with-source only):** At large budgets, Entry Points and Data Models can saturate to 100% representativeness early but keep consuming their full percentage allocation. Absolute caps (2000 tokens for Entry Points, 1500 for Data Models) ensure surplus budget flows to Source Files Content where it provides more value. The caps are generous enough that they only clip at large budgets (32k+) where the sections are already fully represented.
+**Entry Points and Data Models with source:** a listing gives way to code. Each keeps 0.4 of its no-source share of what is left, the factor the Source Files listing shrinks by (25% to 10%): 13% for Entry Points and 8% for Data Models, and never less than a floor of 2000 and 1500 tokens, so a small sketch still names its entry points. The limit grows with the budget: a larger sketch shows more of both, and at 128k all of them on every repository measured (20, up to 500 entry points). Both sections are sized by what they cost: the number shown is the most whose rendered section fits the budget (`sketch._largest_fitting`), not the budget over a constant per entry.
 
 **Safety:** Truncation uses `truncate_to_tokens()` which respects line boundaries and proper markdown fencing. The `[...truncated...]` marker signals to readers that content continues.
 
