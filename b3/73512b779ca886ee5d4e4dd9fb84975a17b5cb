@@ -1,0 +1,31 @@
+Original commit body from 029cda5059020eef98373ba6b0e6387f70186379:
+
+The selection index lost true edges, so coverage narrowing could drop tests that run the changed code. This fixes the index and makes narrowing ask what a run measured.
+
+## What was wrong
+
+- Folding a run deleted EVERY recorded edge of each test in it and stored what that run saw. A targeted run measured only the packages holding a changed file, so each such run deleted the tests' edges into every other package; a run in another checkout deleted this checkout's.
+- Measured against the index backup of 11-12: 26,212 of 412,614 test-to-file pairs gone in a day and a half, on 7,497 tests. Simulated on that index, a function-body change to `py.py` selected 267 test files and narrowing dropped 183, 66 of them recorded executing `py.py` two days earlier (one confirmed by running it).
+- Separately, a test last run with part of the source measured has rows, and no row on the rest, for a reason that says nothing about the rest. Narrowing read that as "does not run it".
+
+## What changes
+
+- **Index (format 3, three added tables; a format-2 file is opened in place).** A fold replaces a test's edges only into the files the run measured (coverage's own file list). Each run is recorded: checkout, measured files, whether smart-test declared every package measured, and which tests left no row.
+- **Narrowing.** A test file is dropped only if its latest run in this checkout was complete, measured every changed source file, and left rows for each of its tests. Rows written before runs were recorded count for nothing until the tests run again, so the eroded state is not trusted. `coverage-select narrow` prints how many files it kept for that reason.
+- **smart-test.** A targeted run measures every package and says so to the index; the 100% gate still reads only the changed files. ADR-0011 item 3 states this.
+- **Cleanup.** Each fold removes the rows of checkouts that are no longer on disk (72 of 74 in this index); nothing else would delete them now.
+
+## Evidence
+
+- Filed simulation re-run on a copy of the index: before any run is recorded, narrowing the `py.py` change drops 0 of 267 (183 kept as uninformed). After one run of those files with every package measured: drops 95, none of the 66, and none of the 136 files whose own coverage contexts hold lines of `py.py`.
+- Cost of measuring every package, each selection run twice each way: 5,127 tests selected for a core file, 782 / 779 s scoped against 778 / 780 s; 7,084 tests selected for a mainstream file, 950 / 953 s against 995 / 991 s (+4.4%).
+- Folding a 7,100-test run: 30 s with the old code, 31 s with the new.
+- Seven mutation controls red the new tests.
+
+## Not in this PR
+
+- Narrowing still refuses on about four in five source-changing commits (import-time changes); that is the open refusals item.
+- A worktree running older code cannot open a format-3 index: its coverage selection, narrowing and fold switch themselves off (the selector's non-fatal path) until it is rebased.
+- How many merged PRs had a test wrongly dropped was not examined (narrowing acted on 2 of the 88 PRs since 10-30 that changed package source).
+
+Addresses INV-tabal-novig-tajon-jutiv-fagan-pisug-fizap-tinav
