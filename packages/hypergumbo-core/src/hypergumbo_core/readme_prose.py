@@ -33,6 +33,11 @@ syntaxes recognised:
   ``WARNING:``, ``CAUTION:``) and an admonition block (``[NOTE]`` followed by
   a ``====`` delimited block or a paragraph).
 
+A label is a one-line paragraph that ends with a colon and stands directly
+over a fenced code block (``Output:``, ``Usage:``, ``Install with:``). It is
+about the block, not the project, and is blanked too. A sentence that ends
+with a colon inside a longer paragraph, or over a list, is prose and stays.
+
 Not covered: Org-mode ``#+begin_quote`` and ``#+begin_note`` blocks, and
 plain-text READMEs, which have no callout syntax to recognise.
 
@@ -70,6 +75,20 @@ def _is_prose(lines: Sequence[str], index: int) -> bool:
     # A setext or reStructuredText title is text with an underline below it.
     following = lines[index + 1].strip() if index + 1 < len(lines) else ""
     return not _UNDERLINE.match(following)
+
+
+def _labels_a_code_block(lines: Sequence[str], index: int) -> bool:
+    """Whether ``lines[index]`` is a paragraph of its own that ends with a
+    colon and is followed, after blank lines only, by a fenced code block."""
+    if not lines[index].rstrip().endswith(":"):
+        return False
+    if index > 0 and lines[index - 1].strip():
+        return False
+    following = index + 1
+    while following < len(lines) and not lines[following].strip():
+        following += 1
+    return (following < len(lines) and following > index + 1
+            and bool(_FENCE.match(lines[following].strip())))
 
 
 def _paragraph_end(lines: Sequence[str], start: int) -> int:
@@ -126,6 +145,8 @@ def description_lines(lines: Sequence[str]) -> list[str]:
                 end = min(end + 1, len(lines))
             else:
                 end = _paragraph_end(lines, i)
+            blank = True
+        elif _labels_a_code_block(lines, i):
             blank = True
         elif _is_prose(lines, i):
             seen_prose = True
