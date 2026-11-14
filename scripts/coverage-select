@@ -3,8 +3,8 @@
 """CLI for coverage-directed test selection (shadow phase).
 
 DELIBERATELY THIN. Every decision lives in hypergumbo_core.{block_hash,
-selection_index,selection_shadow,selection_log,prose_only}, which are
-unit-tested at 100%; code in
+selection_index,selection_shadow,selection_log,prose_only,import_closure},
+which are unit-tested at 100%; code in
 scripts/ is exercised only through subprocess and so contributes nothing to
 coverage. Anything here that is more than argument shuffling is in the wrong
 file.
@@ -22,6 +22,8 @@ catches broadly and exits 0 — see `main`.
     prose-select  write the changed files that differ only in comments or
                   docstrings, and the tests recorded evidence says they need
     readers  print the test files recorded reading a changed file as data
+    import-closure  print the test files whose imports reach a source file
+                    whose import-time code changed
     report  print the accrued shadow evidence and its verdict
 """
 from __future__ import annotations
@@ -37,11 +39,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "packages" / "hypergumbo-core" / "src"))
 
+from hypergumbo_core.import_closure import build as build_import_graph
 from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, tests_reading,
 )
 from hypergumbo_core.selection_index import (
-    Narrowing, droppable_test_files, narrow_run_set, narrowing_blockers,
+    Narrowing, droppable_test_files, import_time_changed_sources,
+    narrow_run_set, narrowing_blockers,
     open_index, rebase_to_repo, selectable_test_files, select_tests,
     speakable_test_files, touching_test_files, update_from_run,
 )
@@ -396,6 +400,49 @@ def cmd_readers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_closure(args: argparse.Namespace) -> int:
+    """Print the test FILES whose imports reach a changed source file whose
+    IMPORT-TIME code changed (a module or class body), one per line.
+
+    The call-edge slice lists a module that imports the changed file but
+    reaches a test of that module only through a call into the changed file.
+    A constant read, a module attribute read and a value computed at import
+    are not calls, so such a test was left out of the manifest
+    (:mod:`hypergumbo_core.import_closure` has the case and the cost).
+    smart-test unions this answer in.
+
+    The graph is read from the working tree: every Python file git tracks or
+    would track. A changed function body is not a trigger; the slice and the
+    coverage record select for it. An empty answer prints nothing.
+    """
+    root = Path(args.repo_root).resolve()
+    changed = [c for c in _lines(args.changed_files) if c.endswith(".py")]
+    if not changed:
+        return 0
+    base_sources = {str(root / c): _base_source(root, args.base, c) for c in changed}
+    hit = import_time_changed_sources(base_sources, root)
+    if not hit:
+        return 0
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
+         "--exclude-standard", "--", "*.py"],
+        capture_output=True, text=True, check=True).stdout
+    sources = {rel: text for rel in listed.split("\0")
+               if rel and (text := _read(root / rel)) is not None}
+    graph = build_import_graph(sources, gone=[h for h in hit if h not in sources])
+    tests = sorted(f for f in graph.dependents(hit) if re.match(_TEST_FILE, f))
+    for f in tests:
+        print(f)
+    print(f"[coverage-select] import-closure: {len(hit)} file(s) with changed "
+          f"import-time code are loaded by {len(tests)} test file(s)",
+          file=sys.stderr)
+    if args.verbose:
+        for h in hit:
+            mine = sum(1 for f in graph.dependents([h]) if re.match(_TEST_FILE, f))
+            print(f"    {mine:5d}  {h}", file=sys.stderr)
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     """Print the accrued evidence and the phase's verdict."""
     ev = evaluate(load_observations(Path(args.log)))
@@ -466,6 +513,12 @@ def main(argv: list[str] | None = None) -> int:
     rd = sub.add_parser("readers")
     rd.add_argument("--changed-files", default=None)
     rd.set_defaults(func=cmd_readers)
+
+    ic = sub.add_parser("import-closure")
+    ic.add_argument("--changed-files", default=None)
+    ic.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    ic.set_defaults(func=cmd_import_closure)
 
     rp = sub.add_parser("report")
     rp.set_defaults(func=cmd_report)
