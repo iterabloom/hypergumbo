@@ -122,6 +122,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A data model's framework is named once.**
 - **The description line never ends in a README callout**, whichever extractor found it; a tagline written as a blockquote is kept, and markup is not printed.
 - **Configuration prints a manifest value whole or not at all**: TOML and `pom.xml` are parsed, so a licence table, a workspace-inherited field and a Maven module's own artifactId read correctly.
+- **Each semantic Configuration line is under the file it quotes**, with no blank lines left where a file's lines were dropped.
 
 #### Budget-tier files and compact views
 
