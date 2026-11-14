@@ -6797,8 +6797,15 @@ def _format_symbols(
         # list. So bullets plus this count is the file's key symbols.
         remaining_syms = [s for s in by_file[file_path] if s.id not in rendered_ids]
         if remaining_syms:
+            # On the star's scale (a share of the highest centrality in the
+            # repository), and said to be the best of the ones NOT shown: a
+            # bare "top score: 0.09" under a starred bullet read as a
+            # contradiction, and a raw 1.03 or 2.00 has no scale a reader
+            # can know.
             top_score = max(centrality.get(s.id, 0) for s in remaining_syms)
-            block.append(f"  (... +{len(remaining_syms)} more, top score: {top_score:.2f})")
+            top_share = top_score / max_centrality if max_centrality else 0.0
+            block.append(
+                f"  (... +{len(remaining_syms)} more, highest: {top_share:.0%} of max)")
 
         block.append("")  # Blank line between files
 

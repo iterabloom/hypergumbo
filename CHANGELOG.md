@@ -123,6 +123,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The description line never ends in a README callout**, whichever extractor found it; a tagline written as a blockquote is kept, and markup is not printed.
 - **Configuration prints a manifest value whole or not at all**: TOML and `pom.xml` are parsed, so a licence table, a workspace-inherited field and a Maven module's own artifactId read correctly.
 - **Each semantic Configuration line is under the file it quotes**, with no blank lines left where a file's lines were dropped.
+- **A file's hidden Key Symbols are rated on the star's scale**: "highest: 52% of max" replaces an unlabelled "top score".
 
 #### Budget-tier files and compact views
 
