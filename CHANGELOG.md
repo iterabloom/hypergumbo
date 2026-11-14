@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`hypergumbo catalog` names each pass's grammar package.**
 - **Go functions and methods record `meta.parameters`.**
 - **Missing scip-python or rust-analyzer prints copy-paste install steps.**
+- **Either spelling of a command works**: `catalogue`, `init-catalogues`, `catalogue-inventory`, `trust-catalogs`, `--in-repo-catalogs` and `trust-backend rust-analyzer` are accepted beside the existing names.
 
 ### Changed
 
@@ -211,6 +212,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The spec documents 63 `symbol_meta` keys.**
 - **The pip and python that scip-python launches itself are documented.**
 - **`--help` shows only names a user can use**: every command is under a named group, `--path` takes `PATH`, and tracker IDs are gone.
+- **`--input` and the default sketch budget are each described once in `--help`**, as the code behaves.
 
 ## [9.2.0] - 2026-10-20
 

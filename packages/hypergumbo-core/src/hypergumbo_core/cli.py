@@ -1081,7 +1081,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         )
 
     # Default to 8000 tokens when -t not specified (unified behavior)
-    max_tokens = args.tokens if args.tokens else 8000
+    max_tokens = args.tokens if args.tokens else DEFAULT_SKETCH_TOKENS
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
@@ -10147,6 +10147,30 @@ def _add_path_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+#: The one statement of what ``--input`` does on every command that reads a
+#: survey: each resolves it through the same discover-or-analyse step, so
+#: each says the same thing.
+INPUT_HELP = (
+    "Read this survey file. Default: the repository's cached survey, or a "
+    "fresh analysis when there is none."
+)
+
+#: The sketch budget when ``-t`` is not given; the help quotes it.
+DEFAULT_SKETCH_TOKENS = 8000
+
+
+def _backend_trust_name(value: str) -> str:
+    """A backend named as ``--backend`` spells it (``rust-analyzer``) or as
+    the trust store keys it (``rust_analyzer``): one backend either way."""
+    return value.replace("-", "_")
+
+
+def _add_input_argument(parser: argparse.ArgumentParser) -> None:
+    """Add ``--input`` with the shared help line (:data:`INPUT_HELP`)."""
+    parser.add_argument(
+        "--input", type=str, default=None, metavar="FILE", help=INPUT_HELP)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Main parser with comprehensive help
     main_description = """\
@@ -10166,7 +10190,7 @@ Workflow:
 
     main_epilog = """\
 Examples:
-  hypergumbo ~/myproject                    # Sketch with auto token budget
+  hypergumbo ~/myproject                    # Sketch at the default budget (~8000 tokens)
   hypergumbo ~/myproject -t 8000            # Sketch sized for 8k context
   hypergumbo . -t 4000 -x                   # Exclude test files
   hypergumbo survey . --compact                # LLM-friendly JSON output
@@ -10249,18 +10273,13 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_sketch)
-    p_sketch.add_argument(
-        "--input",
-        type=str,
-        default=None,
-        metavar="FILE",
-        help="Use cached results file instead of re-analyzing (faster)",
-    )
+    _add_input_argument(p_sketch)
     p_sketch.add_argument(
         "-t", "--tokens",
         type=_positive_token_budget,
         default=None,
-        help="Limit output to approximately N tokens (must be a positive integer)",
+        help=("Limit output to approximately N tokens (a positive integer; "
+              f"default: {DEFAULT_SKETCH_TOKENS})"),
     )
     p_sketch.add_argument(
         "-x", "--exclude-tests",
@@ -10394,7 +10413,7 @@ Examples:
   hypergumbo survey . --first-party-only   # Exclude vendored/external code
 
 Side-outputs alongside --out:
-  In addition to the path you pass, `run` writes:
+  In addition to the path you pass, `survey` writes:
     <stem>.4k.json / .16k.json / .64k.json   compact-tier previews at the same
                                               prefix as --out (see --budgets
                                               or --no-sketch-fan-out)
@@ -10665,11 +10684,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         default=None,
         help="Output JSON path (default: slice.<entry-name>.json)",
     )
-    p_slice.add_argument(
-        "--input",
-        default=None,
-        help="Read from existing behavior map file instead of running analysis",
-    )
+    _add_input_argument(p_slice)
     p_slice.add_argument(
         "--max-hops",
         type=int,
@@ -10739,7 +10754,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         "--inline",
         action="store_true",
         help="Include full node/edge objects in output (not just IDs). "
-             "Makes slice.json self-contained without needing the behavior map.",
+             "Makes slice.json self-contained without needing the survey.",
     )
     p_slice.add_argument(
         "--flat",
@@ -10813,11 +10828,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Pattern to search for (case-insensitive substring match)",
     )
     _add_path_argument(p_search)
-    p_search.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_search)
     p_search.add_argument(
         "--kind",
         default=None,
@@ -10855,11 +10866,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_routes)
-    p_routes.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_routes)
     p_routes.add_argument(
         "--language",
         default=None,
@@ -10923,11 +10930,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Symbol name to explain (case-insensitive)",
     )
     _add_path_argument(p_explain)
-    p_explain.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_explain)
     p_explain.add_argument(
         "-x",
         "--exclude-tests",
@@ -10999,6 +11002,7 @@ The output begins with passes suggested for your current directory."""
 
     p_catalog = sub.add_parser(
         "catalog",
+        aliases=["catalogue"],
         help="List available language analyzers",
         epilog=catalog_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -11085,7 +11089,9 @@ The output begins with passes suggested for your current directory."""
     p_trust.add_argument(
         "backend_name",
         metavar="BACKEND",
-        help="Backend to decide about (currently: rust_analyzer)",
+        type=_backend_trust_name,
+        help=("Backend to decide about (currently: rust-analyzer; the "
+              "rust_analyzer spelling is accepted too)"),
     )
     p_trust.add_argument(
         "path", nargs="?", default=".", help="Repository root (default: .)",
@@ -11101,6 +11107,7 @@ The output begins with passes suggested for your current directory."""
     # hypergumbo trust-catalogues (ADR-0061 ruling 4)
     p_trust_cat = sub.add_parser(
         "trust-catalogues",
+        aliases=["trust-catalogs"],
         help=(
             "Record a per-repository decision to load (or refuse) the "
             "catalogue data a repository's own .hypergumbo.toml names"
@@ -11354,11 +11361,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_test_cov)
-    p_test_cov.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_test_cov)
     p_test_cov.add_argument(
         "--format",
         choices=["text", "json"],
@@ -11394,10 +11397,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_dead_code)
-    p_dead_code.add_argument(
-        "--input", default=None,
-        help="Input behavior map file (default: auto-detect cached results)",
-    )
+    _add_input_argument(p_dead_code)
     p_dead_code.add_argument(
         "--format", choices=["text", "json"], default="text",
         help="Output format (default: text)",
@@ -11442,10 +11442,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         help="Find structurally-identical implementations (refactoring leads)",
     )
     _add_path_argument(p_repeat)
-    p_repeat.add_argument(
-        "--input", default=None,
-        help="Input survey file (default: auto-detect cached results)",
-    )
+    _add_input_argument(p_repeat)
     p_repeat.add_argument(
         "--format", choices=["text", "json"], default="text",
         help="Output format (default: text)",
@@ -11503,11 +11500,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_symbols)
-    p_symbols.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_symbols)
     p_symbols.add_argument(
         "-x", "--exclude-tests",
         action="store_true",
@@ -11581,18 +11574,18 @@ Examples:
   hypergumbo compact --input hg.json --max-symbols 50 --coverage 0.9
   hypergumbo compact --input hg.json --no-connectivity
 
-Converts an existing behavior map to compact form with:
+Converts an existing survey to compact form with:
 - Top symbols selected as a 'connected core' by default (connectivity-aware,
   so the crop is a usable graph); pass --no-connectivity for centrality-ranked
 - Summary of omitted symbols (bag-of-words, path patterns, kinds)
 - Induced subgraph edges (only edges between included symbols)
 
-Useful for post-processing large behavior maps into LLM-friendly formats
+Useful for post-processing large surveys into LLM-friendly formats
 without re-running the full analysis."""
 
     p_compact = sub.add_parser(
         "compact",
-        help="Convert behavior map to compact form with coverage-based truncation",
+        help="Convert a survey to compact form with coverage-based truncation",
         epilog=compact_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -11600,7 +11593,7 @@ without re-running the full analysis."""
         "--input",
         required=True,
         metavar="FILE",
-        help="Input behavior map JSON file (required)",
+        help="Input survey JSON file (required)",
     )
     p_compact.add_argument(
         "--out",
@@ -11668,11 +11661,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_io)
-    p_io.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: auto-discover or run analysis)",
-    )
+    _add_input_argument(p_io)
     p_io.add_argument(
         "--format",
         choices=["text", "json"],
@@ -11755,7 +11744,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         ),
     )
     p_io.add_argument(
-        "--in-repo-catalogues",
+        "--in-repo-catalogues", "--in-repo-catalogs",
         action="store_true",
         help=(
             "Load the catalogue data this repository's own .hypergumbo.toml "
@@ -11810,6 +11799,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
 
     p_init_catalogs = sub.add_parser(
         "init-catalogs",
+        aliases=["init-catalogues"],
         help="Create your catalogue home and seed the community overlays "
              "into it",
         epilog=(
@@ -11847,6 +11837,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
 
     p_cat_inv = sub.add_parser(
         "catalog-inventory",
+        aliases=["catalogue-inventory"],
         help="Show what this installation knows: catalogue families, what you "
              "may extend, and per-language status",
         epilog=(
@@ -11946,11 +11937,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help="YAML file with security claims to verify",
     )
     _add_path_argument(p_vc)
-    p_vc.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: auto-discover or run analysis)",
-    )
+    _add_input_argument(p_vc)
     p_vc.add_argument(
         "--format",
         choices=["text", "json"],
@@ -11976,7 +11963,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         ),
     )
     p_vc.add_argument(
-        "--in-repo-catalogues",
+        "--in-repo-catalogues", "--in-repo-catalogs",
         action="store_true",
         help=(
             "Load the catalogue data this repository's own .hypergumbo.toml "
@@ -12055,15 +12042,6 @@ what I could not check" -- and decide per repository whether that is acceptable.
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "survey", "slice", "search", "routes", "explain",
                  "catalog", "config", "test-coverage", "dead-code-maybe",
-    # Trust grants, the analysis cache and the catalogues (group_order=2).
-    # Every subcommand is in a named group: one with none would be listed
-    # under a heading made from an internal fallback name.
-    trust_cmds = ["trust-backend", "trust-catalogues", "backend-agreement",
-                  "cache-status", "cache-clear", "init-catalogs",
-                  "catalog-inventory"]
-    for i, cmd in enumerate(trust_cmds):
-        _set_subparser_group(sub, cmd, "trust", 2, suborder=i)
-
                  "repeat-finder", "symbols", "compact", "io-boundaries",
                  "verify-claims"]
     for i, cmd in enumerate(core_cmds):
@@ -12076,6 +12054,15 @@ what I could not check" -- and decide per repository whether that is acceptable.
                    "install-rust-analyzer", "uninstall-rust-analyzer"]
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
+
+    # Trust grants, the analysis cache and the catalogues (group_order=2).
+    # Every subcommand is in a named group: one with none would be listed
+    # under a heading made from an internal fallback name.
+    trust_cmds = ["trust-backend", "trust-catalogues", "backend-agreement",
+                  "cache-status", "cache-clear", "init-catalogs",
+                  "catalog-inventory"]
+    for i, cmd in enumerate(trust_cmds):
+        _set_subparser_group(sub, cmd, "trust", 2, suborder=i)
 
     # Build metavar dynamically from the registered subparsers in their
     # declared group/suborder, so `hypergumbo --help` cannot silently omit a

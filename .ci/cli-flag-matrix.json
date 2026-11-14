@@ -51,6 +51,16 @@
     "--help",
     "-h"
   ],
+  "catalogue": [
+    "--format",
+    "--help",
+    "-h"
+  ],
+  "catalogue-inventory": [
+    "--format",
+    "--help",
+    "-h"
+  ],
   "compact": [
     "--connectivity",
     "--coverage",
@@ -104,6 +114,12 @@
     "--home",
     "-h"
   ],
+  "init-catalogues": [
+    "--format",
+    "--help",
+    "--home",
+    "-h"
+  ],
   "install-embeddings": [
     "--check",
     "--help",
@@ -128,6 +144,7 @@
     "--exclude-tests",
     "--format",
     "--help",
+    "--in-repo-catalogs",
     "--in-repo-catalogues",
     "--include-tests",
     "--input",
@@ -327,6 +344,12 @@
     "--show",
     "-h"
   ],
+  "trust-catalogs": [
+    "--help",
+    "--revoke",
+    "--show",
+    "-h"
+  ],
   "trust-catalogues": [
     "--help",
     "--revoke",
@@ -353,6 +376,7 @@
     "--claims",
     "--format",
     "--help",
+    "--in-repo-catalogs",
     "--in-repo-catalogues",
     "--include-non-production-sources",
     "--input",
