@@ -15,13 +15,19 @@ each run in as it happens closes that: the moment you run the new test, the
 index learns the new blocks. This is the same reason pytest-testmon maintains
 its database per-run instead of from a profiling pass.
 
-THE THREE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
+THE FOUR SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
 
-1. **Replace, do not union, per test.** Re-indexing a test REPLACES its edges.
-   Union would keep an edge to a block the test no longer touches, and stale
-   edges only ever accumulate. But replacement applies ONLY to tests present in
-   this run — otherwise a targeted run of one file would erase the map for
-   everything else.
+1. **Replace, do not union, per test, inside what the run measured.**
+   Re-indexing a test REPLACES its edges. Union would keep an edge to a block
+   the test no longer touches, and stale edges only ever accumulate. But
+   replacement applies ONLY to tests present in this run — otherwise a
+   targeted run of one file would erase the map for everything else — and ONLY
+   to edges into files this run MEASURED, read from the coverage database's
+   own file list. A run that measured one package knows nothing about a test's
+   edges into another, and a run in one checkout nothing about another
+   checkout's files (test ids are repo-relative, so checkouts share them while
+   paths are absolute). Replacing everything lost this repository's index
+   26,212 of 412,614 test-to-file pairs in a day and a half.
 
 2. **Import-time blocks belong to every test that touches the file.** Module
    bodies, class attributes and decorators execute once at import, under the
@@ -40,16 +46,31 @@ THE THREE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    :class:`Selection`, which is what stops ``--narrow`` (below) from silently
    dropping them.
 
+4. **A test's rows are evidence about a file only if its latest run measured
+   that file, as part of a run that measured everything.** "No row on F" means
+   "does not run F" when F was measured. It means nothing when F was not, and
+   a partial run cannot vouch even for the files it did measure: a new path
+   from measured code into unmeasured code leaves no row anywhere, so the next
+   change to that unmeasured code would find the test silent. Each fold
+   therefore records a RUN (its checkout, the files it measured, whether the
+   caller declared that it measured every package) and makes it the latest run
+   of every test file in it; a test that ran and left no row is recorded as
+   such. :func:`informed_test_files` answers "whose silence about these files
+   is evidence", and narrowing drops nothing else
+   (:func:`droppable_test_files`). An index written before runs were recorded
+   has no latest run for any test, so nothing in it is droppable until its
+   tests run again: the state the lost edges left is distrusted by
+   construction, not repaired by a guess.
+
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
 B", until every test has run since B appeared. So this selector is sound as of
 the last FULL run and under-selects for newly added code between full runs. The
 ``last_full_run_sha`` marker is written so a caller can report that age rather
-than pretend it does not exist, but nothing reads it yet. It is why this is a
-UNION member by default and never the merge gate; the opt-in, local-only
-``--narrow`` mode (history: WI-bolot) may drop only ``speakable_test_files``
-outside the keep set (``touching_test_files`` plus the selected tests' files),
-and refuses outright on any ``narrowing_blockers`` reason.
+than pretend it does not exist, but nothing reads it yet. Narrowing (history:
+WI-bolot) may drop only ``droppable_test_files`` outside the keep set
+(``touching_test_files`` plus the selected tests' files), and refuses
+outright on any ``narrowing_blockers`` reason.
 
 RUN-SET HELPERS AND NARROWING. The index speaks absolute pytest node ids; the
 run set is a list of repo-relative test files. ``files_of``, ``rebase_to_repo``
@@ -58,14 +79,23 @@ files that no longer exist, so widening a run never adds a collection error).
 Narrowing is stated as data rather than left to a shell pipeline:
 ``touching_test_files`` is the keep set (tests observed executing ANY block of a
 changed file, because the local coverage gate is whole-file);
-``speakable_test_files`` is the only droppable set (files with coverage rows and
-no unmeasured test); ``narrowing_blockers`` names the reasons to refuse outright
+``droppable_test_files`` is the only droppable set (``speakable_test_files``:
+files with coverage rows and no unmeasured test; that are also
+``informed_test_files`` about the changed sources, semantic 4);
+``narrowing_blockers`` names the reasons to refuse outright
 (an unknown coverable source file, a missing changed file, changed import-time
 code -- a module or class body, which every importer runs and no coverage row
 records); and
 ``narrow_run_set`` applies them, returning a :class:`Narrowing` whose
 ``refusal`` is set, with the run set left whole, when a blocker fires or the
 result would be empty.
+
+CHECKOUTS THAT ARE GONE. Because a fold no longer deletes edges into files it
+did not measure, the rows of a deleted worktree would stay for good. Each fold
+removes the files that are no longer on disk and are not source files of its
+own checkout, with their blocks and pairs, and the runs of checkout
+directories that are gone (``_forget_dead_checkouts``). A missing source file
+of the checkout itself keeps its rows: it is a file the change deleted.
 
 STORAGE. Each test, source file and block is stored ONCE and numbered; the
 ``test -> block`` pairs are two integers each, in a ``WITHOUT ROWID`` table with
@@ -97,7 +127,14 @@ BlockKey = tuple[str, str]
 #: The storage format, held in ``PRAGMA user_version``. Format 1 predates the
 #: marker and reads as 0, like a file SQLite has only just created; the two are
 #: told apart by format 1's ``test_block.test_id`` column (:func:`_format_of`).
-FORMAT = 2
+#: Format 3 is format 2 plus the run tables (``run``, ``run_file``,
+#: ``test_run``): it adds tables and changes none, so a format-2 file is
+#: opened in place and no test in it has a recorded run.
+FORMAT = 3
+
+#: Formats :func:`open_index` brings up to :data:`FORMAT` by creating the
+#: tables they lack.
+_OPENED_IN_PLACE = frozenset({0, 2, FORMAT})
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS file (
@@ -123,11 +160,30 @@ CREATE TABLE IF NOT EXISTS test_block (
 CREATE INDEX IF NOT EXISTS test_block_by_block ON test_block (block, test);
 CREATE TABLE IF NOT EXISTS unmeasured_test (test_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS run (
+    id       INTEGER PRIMARY KEY,
+    checkout TEXT NOT NULL,
+    complete INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS run_file (
+    run  INTEGER NOT NULL,
+    file INTEGER NOT NULL,
+    PRIMARY KEY (run, file)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS test_run (
+    test INTEGER NOT NULL,
+    run  INTEGER NOT NULL,
+    rows INTEGER NOT NULL,
+    PRIMARY KEY (test, run)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS test_run_by_run ON test_run (run, test);
 """
 
 #: The tables :func:`convert_format_1` rewrites. Every other table in the file
 #: belongs to another module and is copied as it stands.
-_OWN_TABLES = frozenset({"block", "test_block", "unmeasured_test", "meta"})
+_OWN_TABLES = frozenset({
+    "block", "test_block", "unmeasured_test", "meta", "run", "run_file", "test_run",
+})
 
 # The queries below are module constants so that the tests can ask SQLite for
 # each one's plan: all three must be index lookups, never a scan of the pairs.
@@ -154,6 +210,24 @@ _TESTS_OF_BLOCK = (
 _MEASURED = (
     "SELECT t.test_id FROM test t "
     "WHERE EXISTS (SELECT 1 FROM test_block tb WHERE tb.test = t.id)"
+)
+
+#: Remove, for the tests in ``temp.scope_test``, the pairs whose block is in
+#: ``temp.scope_block`` (the blocks of the files a run measured). ``+block``
+#: keeps SQLite from probing the pair table once per measured block and test:
+#: it walks each test's own pairs and looks each block up in the temp table.
+_DELETE_MEASURED_PAIRS = (
+    "DELETE FROM test_block "
+    "WHERE test IN (SELECT id FROM temp.scope_test) "
+    "AND +block IN (SELECT id FROM temp.scope_block)"
+)
+
+#: Every test's latest run in one checkout. ``?`` = the checkout.
+_LATEST_RUNS = (
+    "SELECT t.test_id, tr.run, tr.rows FROM run r "
+    "JOIN test_run tr ON tr.run = r.id "
+    "JOIN test t ON t.id = tr.test "
+    "WHERE r.checkout = ?"
 )
 
 #: Format 1's pairs as integers. ``old`` is the attached format-1 file; a module
@@ -212,10 +286,11 @@ def _format_of(conn: sqlite3.Connection) -> int:
 def open_index(path: Path) -> sqlite3.Connection:
     """Open the index database, creating or converting it as needed.
 
-    A format-1 file is converted first (:func:`convert_format_1`). A file
-    stamped with any other format than :data:`FORMAT` raises
-    :class:`IndexFormatError` and is left alone: creating this format's empty
-    tables beside another format's data would make every lookup miss.
+    A format-1 file is converted first (:func:`convert_format_1`). A format-2
+    file gains the run tables where it stands. A file stamped with a format
+    this code does not know raises :class:`IndexFormatError` and is left
+    alone: creating this format's empty tables beside another format's data
+    would make every lookup miss.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -226,7 +301,7 @@ def open_index(path: Path) -> sqlite3.Connection:
         convert_format_1(path)
         conn = sqlite3.connect(str(path))
         found = _format_of(conn)
-    if found not in (0, FORMAT):
+    if found not in _OPENED_IN_PLACE:
         conn.close()
         raise IndexFormatError(
             f"{path} holds selection-index format {found}; "
@@ -373,30 +448,49 @@ def _numbered(
     return {n: cur.execute(select, (n,)).fetchone()[0] for n in wanted}
 
 
+def _fill_temp(cur: sqlite3.Cursor, table: str, ids: Iterable[int]) -> None:
+    """(Re)fill ``temp.<table>`` with ``ids``. The name is one of this
+    module's own literals."""
+    cur.execute(f"CREATE TEMP TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY)")
+    cur.execute(f"DELETE FROM temp.{table}")  # noqa: S608  # nosec B608
+    cur.executemany(
+        f"INSERT OR IGNORE INTO temp.{table} (id) VALUES (?)",  # noqa: S608  # nosec B608
+        [(i,) for i in ids])
+
+
 def store_edges(
     conn: sqlite3.Connection,
     edges: Mapping[str, Iterable[BlockKey]],
     *,
     digests: Optional[Mapping[str, Mapping[str, str]]] = None,
+    measured: Optional[Iterable[str]] = None,
 ) -> None:
-    """Replace the edges of each test in ``edges``; record ``digests``.
+    """Replace each test's edges into the measured files; record ``digests``.
 
     ``edges`` maps a test id to the ``(path, block name)`` keys it executed.
-    A test named here has its earlier edges REMOVED first (semantic 1 of the
-    module docstring); a test not named keeps what it had. ``digests`` maps a
-    path to ``{block name: digest}`` and may name blocks no test executed. A
-    block that appears only in ``edges`` is stored with an empty digest.
+    ``measured`` is the list of source files the run measured. A test named in
+    ``edges`` has its earlier edges into THOSE files removed first (semantic 1
+    of the module docstring); its edges into any other file, and every edge of
+    a test not named, stay as they were. With no ``measured`` list the files
+    named in ``edges`` and ``digests`` are the scope, so a caller cannot remove
+    an edge into a file it does not mention.
+
+    ``digests`` maps a path to ``{block name: digest}`` and may name blocks no
+    test executed. A block that appears only in ``edges`` is stored with an
+    empty digest.
 
     Does not commit: :func:`update_from_run` stores a run's edges, its
-    unmeasured tests and the full-run marker in one transaction.
+    unmeasured tests, its run record and the full-run marker in one
+    transaction.
     """
     digests = digests or {}
     keys = {key for per_test in edges.values() for key in per_test}
+    named = {*digests, *(path for path, _ in keys)}
+    scope = named if measured is None else {*measured, *named}
     cur = conn.cursor()
     file_ids = _numbered(
         cur, "INSERT OR IGNORE INTO file (path) VALUES (?)",
-        "SELECT id FROM file WHERE path = ?",
-        [*digests, *(path for path, _ in keys)])
+        "SELECT id FROM file WHERE path = ?", scope)
     cur.executemany(
         "INSERT INTO block (file, name, digest) VALUES (?, ?, ?) "
         "ON CONFLICT (file, name) DO UPDATE SET digest = excluded.digest",
@@ -407,18 +501,22 @@ def store_edges(
         "INSERT OR IGNORE INTO block (file, name, digest) VALUES (?, ?, '')",
         sorted((file_ids[path], name) for path, name in keys))
     block_ids: dict[BlockKey, int] = {}
-    for path in sorted({path for path, _ in keys}):
+    scope_blocks: list[int] = []
+    for path in sorted(scope):
         for name, block_id in cur.execute(
                 "SELECT name, id FROM block WHERE file = ?", (file_ids[path],)):
             block_ids[(path, name)] = block_id
+            scope_blocks.append(block_id)
     test_ids = _numbered(
         cur, "INSERT OR IGNORE INTO test (test_id) VALUES (?)",
         "SELECT id FROM test WHERE test_id = ?", edges)
-    for test_id, per_test in edges.items():
-        cur.execute("DELETE FROM test_block WHERE test = ?", (test_ids[test_id],))
-        cur.executemany(
-            "INSERT OR IGNORE INTO test_block (test, block) VALUES (?, ?)",
-            sorted((test_ids[test_id], block_ids[key]) for key in set(per_test)))
+    _fill_temp(cur, "scope_block", scope_blocks)
+    _fill_temp(cur, "scope_test", test_ids.values())
+    cur.execute(_DELETE_MEASURED_PAIRS)
+    cur.executemany(
+        "INSERT OR IGNORE INTO test_block (test, block) VALUES (?, ?)",
+        sorted((test_ids[test_id], block_ids[key])
+               for test_id, per_test in edges.items() for key in set(per_test)))
 
 
 def stored_edges(conn: sqlite3.Connection) -> Iterator[tuple[str, str, str]]:
@@ -496,6 +594,7 @@ def update_from_run(
     git_sha: Optional[str] = None,
     full_run: bool = False,
     repo_root: Optional[Path] = None,
+    scope_complete: bool = False,
 ) -> None:
     """Fold one run's coverage contexts into the index.
 
@@ -504,6 +603,14 @@ def update_from_run(
     database holds line numbers from the tree as it was, and a file edited in
     between would map its lines onto the wrong blocks. Call it immediately
     after the run, which is what smart-test does.
+
+    WHAT THE RUN MEASURED is read from the coverage database's own file list,
+    never assumed: edges are replaced inside that list only
+    (:func:`store_edges`), and the list is stored as the run's record
+    (semantic 4 of the module docstring). ``scope_complete`` is the caller's
+    statement that coverage measured every package of the checkout; a
+    ``full_run`` is one by definition. ``repo_root`` names the checkout the
+    run belongs to.
     """
     src = sqlite3.connect(f"file:{coverage_db}?mode=ro", uri=True)
     try:
@@ -512,6 +619,7 @@ def update_from_run(
             "JOIN context c ON c.id = lb.context_id "
             "JOIN file f ON f.id = lb.file_id"
         ).fetchall()
+        measured = [r[0] for r in src.execute("SELECT path FROM file")]
     finally:
         src.close()
 
@@ -548,8 +656,9 @@ def update_from_run(
         for path in {p for p, _ in keys}:
             keys.update((path, n) for n in import_blocks.get(path, ()))
 
-    # REPLACE per test, and only for tests that appear in THIS run.
-    store_edges(conn, edges, digests=digests)
+    # REPLACE per test, only for tests that appear in THIS run, and only
+    # inside the files this run measured.
+    store_edges(conn, edges, digests=digests, measured=measured)
     cur = conn.cursor()
     # Producing edges is positive evidence at ANY coverage scope, so clearing
     # is always safe.
@@ -576,7 +685,115 @@ def update_from_run(
             "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             (git_sha or "",),
         )
+    checkout = str(repo_root) if repo_root is not None else ""
+    _record_run(
+        conn, checkout=checkout, measured=measured, producers=edges,
+        ran=ran_tests,
+        complete=(scope_complete or full_run) and ran_tests is not None)
+    if repo_root is not None:
+        _forget_dead_checkouts(conn, checkout)
     conn.commit()
+
+
+def _tests_of_file(cur: sqlite3.Cursor, test_file: str) -> list[int]:
+    """Numbers of the tests the index knows in ``test_file``: an index range
+    on the node-id prefix (``;`` is the character after ``:``)."""
+    return [r[0] for r in cur.execute(
+        "SELECT id FROM test WHERE test_id = ? "
+        "UNION ALL SELECT id FROM test WHERE test_id >= ? AND test_id < ?",
+        (test_file, f"{test_file}::", f"{test_file}:;"))]
+
+
+def _record_run(
+    conn: sqlite3.Connection,
+    *,
+    checkout: str,
+    measured: Iterable[str],
+    producers: Iterable[str],
+    ran: Optional[Iterable[str]],
+    complete: bool,
+) -> None:
+    """Make this run the latest run, in ``checkout``, of every test file in it.
+
+    ``producers`` are the tests that left coverage rows; ``ran`` is the list
+    of tests that ran, when the caller has one. A test that ran and left no
+    row is recorded with ``rows = 0``: the run says nothing about it, and
+    :func:`informed_test_files` holds its file back for that.
+
+    A test FILE's earlier records in this checkout are removed whole, so a
+    test that is no longer in the file leaves no record behind to hold the
+    file back for good. Runs no test points at any more are deleted.
+    """
+    produced = set(producers)
+    seen = produced | set(ran or ())
+    cur = conn.cursor()
+    cur.execute("INSERT INTO run (checkout, complete) VALUES (?, ?)",
+                (checkout, int(complete)))
+    run_id = int(cur.lastrowid or 0)
+    file_ids = _numbered(
+        cur, "INSERT OR IGNORE INTO file (path) VALUES (?)",
+        "SELECT id FROM file WHERE path = ?", measured)
+    cur.executemany(
+        "INSERT INTO run_file (run, file) VALUES (?, ?)",
+        sorted((run_id, file_id) for file_id in file_ids.values()))
+    test_ids = _numbered(
+        cur, "INSERT OR IGNORE INTO test (test_id) VALUES (?)",
+        "SELECT id FROM test WHERE test_id = ?", seen)
+    stale = {number for test_file in sorted(files_of(seen))
+             for number in _tests_of_file(cur, test_file)}
+    _fill_temp(cur, "scope_test", stale)
+    cur.execute(
+        "DELETE FROM test_run WHERE test IN (SELECT id FROM temp.scope_test) "
+        "AND run IN (SELECT id FROM run WHERE checkout = ?)", (checkout,))
+    cur.executemany(
+        "INSERT INTO test_run (test, run, rows) VALUES (?, ?, ?)",
+        sorted((test_ids[t], run_id, int(t in produced)) for t in seen))
+    _drop_unreferenced_runs(cur)
+
+
+def _drop_unreferenced_runs(cur: sqlite3.Cursor) -> None:
+    cur.execute("DELETE FROM run WHERE id NOT IN (SELECT run FROM test_run)")
+    cur.execute("DELETE FROM run_file WHERE run NOT IN (SELECT id FROM run)")
+
+
+def _forget_dead_checkouts(conn: sqlite3.Connection, checkout: str) -> None:
+    """Remove what the index holds about checkouts that no longer exist.
+
+    A fold used to delete a test's edges wherever they pointed, so the rows of
+    a deleted worktree went away as its tests ran elsewhere. They no longer
+    do, and worktrees are made and removed all the time. A source file outside
+    ``checkout`` that is not on disk belongs to a checkout that is gone: its
+    blocks and pairs are removed, and so is a run whose checkout directory is
+    gone. A missing SOURCE file of ``checkout`` itself (``packages/*/src``
+    under its root) keeps its rows: it is a file the change deleted, and its
+    rows are how the tests that ran it are found. Any other missing path under
+    the root is a worktree that was nested in this checkout
+    (``.claude/worktrees/<name>/packages/...``) and goes like the rest.
+    """
+    inside = f"{checkout}/"
+
+    def own_source(path: str) -> bool:
+        return path.startswith(inside) and _is_coverable(path[len(inside):])
+
+    cur = conn.cursor()
+    dead = [file_id for file_id, path in cur.execute("SELECT id, path FROM file")
+            if not own_source(path) and not Path(path).exists()]
+    if dead:
+        _fill_temp(cur, "dead_file", dead)
+        cur.execute(
+            "DELETE FROM test_block WHERE block IN ("
+            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
+        cur.execute("DELETE FROM run_file WHERE file IN (SELECT id FROM temp.dead_file)")
+        cur.execute("DELETE FROM block WHERE file IN (SELECT id FROM temp.dead_file)")
+        cur.execute("DELETE FROM file WHERE id IN (SELECT id FROM temp.dead_file)")
+        cur.execute("DELETE FROM temp.dead_file")
+    gone = [(c,) for (c,) in cur.execute("SELECT DISTINCT checkout FROM run").fetchall()
+            if c != checkout and not Path(c).is_dir()]
+    if gone:
+        cur.executemany(
+            "DELETE FROM test_run WHERE run IN (SELECT id FROM run WHERE checkout = ?)",
+            gone)
+        _drop_unreferenced_runs(cur)
 
 
 def changed_blocks(
@@ -749,9 +966,11 @@ def touching_test_files(
 def speakable_test_files(
     conn: sqlite3.Connection, repo_root: Path,
 ) -> frozenset[str]:
-    """Test FILES the index has positive coverage knowledge about.
+    """Test FILES the index has coverage rows for, none of them unmeasured.
 
-    THE ONLY FILES NARROWING MAY DROP. A file qualifies when it has coverage
+    NECESSARY FOR DROPPING A FILE, NOT SUFFICIENT: rows say what a test ran
+    in the files its run measured, so :func:`droppable_test_files` also asks
+    what that run measured. A file qualifies here when it has coverage
     rows AND none of its tests are recorded ``unmeasured``. Both halves matter:
     a file absent from the index was never observed at all, and a file with an
     unmeasured test ran without leaving a trace, so in neither case does the
@@ -768,6 +987,51 @@ def speakable_test_files(
         {r[0] for r in conn.execute("SELECT test_id FROM unmeasured_test")},
         repo_root))
     return measured - unmeasured
+
+
+def informed_test_files(
+    conn: sqlite3.Connection, repo_root: Path, paths: Iterable[str],
+) -> frozenset[str]:
+    """Test FILES whose silence about ``paths`` (absolute) is evidence.
+
+    A file qualifies when its latest run in this checkout was declared
+    complete (coverage measured every package), measured every one of
+    ``paths``, and left rows for every one of the file's tests that ran in
+    it. Then "no row on a path" means the test did not execute it.
+
+    Everything else has rows that prove nothing about ``paths``:
+
+    * a test last run with part of the source measured (a new path from the
+      measured code into unmeasured code is not recorded either, so a partial
+      run does not inform even about the files it did measure);
+    * a test whose rows predate run records, or come from another checkout;
+    * a path the run did not measure (an omitted file, or one nothing in the
+      run imported), or one the index has never seen;
+    * a file with a test that ran and left no row.
+
+    The run's own file list decides "measured"; the caller's declaration
+    decides "complete". Neither is inferred from which rows exist.
+    """
+    checkout = str(repo_root)
+    wanted = sorted(set(paths))
+    file_ids = [row[0] for path in wanted
+                for row in conn.execute("SELECT id FROM file WHERE path = ?", (path,))]
+    if len(file_ids) != len(wanted):
+        return frozenset()
+    vouching = {
+        run_id for (run_id,) in conn.execute(
+            "SELECT id FROM run WHERE checkout = ? AND complete = 1",
+            (checkout,)).fetchall()
+        if all(conn.execute(
+            "SELECT 1 FROM run_file WHERE run = ? AND file = ?",
+            (run_id, file_id)).fetchone() for file_id in file_ids)
+    }
+    verdict: dict[str, bool] = {}
+    for test_id, run_id, rows in conn.execute(_LATEST_RUNS, (checkout,)):
+        test_file = test_id.split("::")[0]
+        verdict[test_file] = (verdict.get(test_file, True)
+                              and bool(rows) and run_id in vouching)
+    return frozenset(f for f, informed in verdict.items() if informed)
 
 
 # ── Narrowing (history: WI-bolot) ───────────────────────────────────────────
@@ -793,6 +1057,28 @@ def _is_test_path(rel: str) -> bool:
 def _is_coverable(rel: str) -> bool:
     parts = Path(rel).parts
     return parts[:1] == ("packages",) and any(p in _COVERABLE for p in parts)
+
+
+def droppable_test_files(
+    conn: sqlite3.Connection, repo_root: Path, changed: Iterable[str],
+) -> frozenset[str]:
+    """THE ONLY TEST FILES NARROWING MAY DROP for a change to ``changed``
+    (absolute paths): those the index has rows for, with no unmeasured test
+    (:func:`speakable_test_files`), whose latest run in this checkout measured
+    every changed coverable source file as part of a complete run
+    (:func:`informed_test_files`).
+
+    A changed test file, or a file outside the coverage scope, is not
+    something a run measures, so it asks nothing of the run's file list.
+    """
+    prefix = f"{repo_root}/"
+    sources = [
+        p for p in changed
+        for r in [p[len(prefix):] if p.startswith(prefix) else p]
+        if not _is_test_path(r) and _is_coverable(r)
+    ]
+    return (speakable_test_files(conn, repo_root)
+            & informed_test_files(conn, repo_root, sources))
 
 
 @dataclass(frozen=True)

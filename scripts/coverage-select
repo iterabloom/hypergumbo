@@ -41,9 +41,9 @@ from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, tests_reading,
 )
 from hypergumbo_core.selection_index import (
-    Narrowing, narrow_run_set, narrowing_blockers, open_index,
-    rebase_to_repo, selectable_test_files, select_tests, speakable_test_files,
-    touching_test_files, update_from_run,
+    Narrowing, droppable_test_files, narrow_run_set, narrowing_blockers,
+    open_index, rebase_to_repo, selectable_test_files, select_tests,
+    speakable_test_files, touching_test_files, update_from_run,
 )
 from hypergumbo_core.selection_log import (
     append_observation, evaluate, load_observations,
@@ -84,6 +84,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     update_from_run(
         conn, Path(args.coverage_db),
         ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
+        scope_complete=args.scope_complete,
     )
     # After the coverage fold, not before: a full run resets both, and the
     # prose-only rule reads the two together.
@@ -251,6 +252,11 @@ def cmd_narrow(args: argparse.Namespace) -> int:
     keep the whole file-touch set (the local coverage gate is whole-file, not
     changed-lines), and refuse outright on an unknown coverable source or a
     missing changed file.
+
+    POSITIVE EVIDENCE is ``droppable_test_files``: the test file's latest run
+    in this checkout measured every package, the changed source files among
+    them, and left rows for each of its tests. A file with rows from a run
+    that measured less is kept, and the count of such files is printed.
     """
     root = Path(args.repo_root).resolve()
     run_set = _lines(args.run_set)
@@ -269,14 +275,20 @@ def cmd_narrow(args: argparse.Namespace) -> int:
     }
     conn = open_index(Path(args.index))
     selection = select_tests(conn, base_sources)
+    keep = (touching_test_files(conn, abs_changed, root)
+            | selectable_test_files(selection.tests, root))
+    droppable = droppable_test_files(conn, root, abs_changed)
     result: Narrowing = narrow_run_set(
         run_set,
-        keep=touching_test_files(conn, abs_changed, root)
-        | selectable_test_files(selection.tests, root),
-        droppable=speakable_test_files(conn, root),
+        keep=keep,
+        droppable=droppable,
         forbidden=narrowing_blockers(selection, root),
         changed=changed,
     )
+    # Files with rows, none on the change, that stay because their latest run
+    # does not vouch for that silence.
+    uninformed = ((speakable_test_files(conn, root) - droppable)
+                  & frozenset(run_set)) - keep - frozenset(changed)
     conn.close()
 
     for f in sorted(result.kept):
@@ -285,8 +297,11 @@ def cmd_narrow(args: argparse.Namespace) -> int:
         print(f"[coverage-select] narrow REFUSED: {result.refusal}",
               file=sys.stderr)
     else:
+        held = (f"; kept {len(uninformed)} more whose latest run did not "
+                "measure the change with every package measured"
+                if uninformed else "")
         print(f"[coverage-select] narrow: {len(run_set)} -> "
-              f"{len(result.kept)} file(s), dropped {len(result.dropped)}",
+              f"{len(result.kept)} file(s), dropped {len(result.dropped)}{held}",
               file=sys.stderr)
         if args.verbose:
             for f in sorted(result.dropped):
@@ -402,6 +417,10 @@ def main(argv: list[str] | None = None) -> int:
     up.add_argument("--coverage-db", required=True)
     up.add_argument("--sha", default=None)
     up.add_argument("--full", action="store_true")
+    up.add_argument("--scope-complete", action="store_true",
+                    help="coverage measured every package of the checkout in "
+                         "this run; without it the run's tests cannot be "
+                         "narrowed away later")
     up.add_argument("--source-reads", default=None,
                     help="directory of pytest_source_reads output to store")
     up.set_defaults(func=cmd_update)
