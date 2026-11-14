@@ -584,6 +584,15 @@ class GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
         return f"{indent}{padded_invocation}{help_text}\n"
 
 
+#: The heading ``--help --all`` prints over each group of subcommands. A
+#: subcommand's group must be one of these keys (test_cli_docs_prose_gate).
+HELP_GROUP_LABELS = {
+    "core": "CORE ANALYSIS COMMANDS",
+    "extras": "INSTALLATION & MAINTENANCE COMMANDS",
+    "trust": "TRUST, CACHE & CATALOGUE COMMANDS",
+}
+
+
 def _set_subparser_group(
     subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
     name: str,
@@ -10132,6 +10141,7 @@ def _add_path_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--path",
         dest="_path_flag",
+        metavar="PATH",
         default=None,
         help="Path to repo root (alternative to positional argument)",
     )
@@ -10561,7 +10571,7 @@ Cache location:
         "--no-handler-slices",
         action="store_true",
         dest="no_handler_slices",
-        help="Disable per-route-handler forward slices (WI-sihok). By default "
+        help="Disable per-route-handler forward slices. By default "
              "`run` emits slice.handler.<METHOD>.<path>.json for each "
              "detected handler into a ``<out-stem>.slices/`` subdirectory next "
              "to --out (capped at --max-handler-slices). Use this flag to "
@@ -11324,7 +11334,7 @@ Analyzes the call graph to estimate which functions are tested.
 Does NOT execute code - uses static analysis only.
 Language agnostic - works with any language hypergumbo supports.
 
-Recall caveat (WI-hular): empirical false-negative rate ~20% across
+Recall caveat: empirical false-negative rate ~20% across
 4 languages measured in UAT 2026-04-13. The tool has high precision
 but limited recall: tests that reach production code via reflection,
 dispatch macros, or visitor patterns produce 'untested' false alarms.
@@ -11396,7 +11406,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         "--seeds", choices=["production", "entrypoints", "tests", "exports", "all"],
         default=None,
         help="Seed set for reachability analysis (default: production = "
-             "entrypoints + exported public API; dispatch:F2). 'entrypoints' is "
+             "entrypoints + exported public API). 'entrypoints' is "
              "the strict entry-only view (also disclosed as a bucket under the "
              "default). 'exports' uses symbols with is_exported=True. 'all' "
              "combines entrypoints, tests, and exports. Omitting the flag prints "
@@ -11413,12 +11423,12 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
     )
     p_dead_code.add_argument(
         "--exclude-exports", action="store_true", default=False,
-        help="WI-zafab filter 3: exclude candidates whose is_exported=True "
+        help="Exclude candidates whose is_exported=True "
              "(public API — reachable by external callers outside the analysis scope)",
     )
     p_dead_code.add_argument(
         "--cross-lang-threshold", type=int, default=3,
-        help="dispatch:F7 (WI-gavub): demote (exclude) candidates whose name "
+        help="Demote (exclude) candidates whose name "
              "appears in >= N other-language files — near-certain cross-language "
              "dispatch / missing-edge false positives (default: 3). Set <= 0 to "
              "disable the demoter.",
@@ -11477,7 +11487,7 @@ Examples:
 By default (and with --all) low-value kinds are hidden from the connectivity
 table — file/dependency/project/package nodes and CSS class/id/variable/
 keyframes/media/font-face/markdown kinds. Request one of these explicitly with
-`--kind <k>` (e.g. `--kind file`, `--kind variable`) to surface it (WI-sufuh).
+`--kind <k>` (e.g. `--kind file`, `--kind variable`) to surface it.
 
 Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
 Deg (total degree), File. Symbol and File columns default to 60 / 80 chars
@@ -11538,7 +11548,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         dest="all",
         help=(
             "Show all symbols (ignore --limit). Low-value kinds are still "
-            "hidden unless requested via --kind (WI-sufuh)"
+            "hidden unless requested via --kind"
         ),
     )
     p_symbols.add_argument(
@@ -11768,7 +11778,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "(requests, httpx, ...) are declared in an overlay. For a "
             "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
             "(`hypergumbo init-catalogs` seeds the community overlays there); "
-            "see docs/CATALOGUES.md. (INV-fotav)"
+            "see docs/CATALOGUES.md."
         ),
     )
     _add_minimal_argument(p_io)
@@ -11885,7 +11895,7 @@ Claims file format (YAML):
 """ + _verify_claims_boundary_vocabulary_help() + """
 A top-level `extra_catalogs:` key may name extra catalogue files --
 `io_primitives`, `sources`, `sinks`, `sanitizers` (see --io-primitives and
---taint-sources/--taint-sinks/--taint-sanitizers; WI-votan). Your persistent
+--taint-sources/--taint-sinks/--taint-sanitizers). Your persistent
 taint model belongs in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/,
 taint_sinks.d/ and taint_sanitizers.d/; see docs/CATALOGUES.md.
 
@@ -11904,9 +11914,9 @@ The claim rested on catalogue data that did not ship with hypergumbo -- a
 `--taint-*` flag, the claims file's `extra_catalogs:`, or your own channel
 directories:
   - a sanitizer from there was credited with removing a flow the tool would
-    otherwise have reported (INV-pojib);
+    otherwise have reported;
   - a row from there DISPLACED a shipped catalogue row that could have
-    produced evidence for this very claim (INV-faput).
+    produced evidence for this very claim.
 
 Or the analysis looked and could not adjudicate what it saw:
   - control leaves this process at named call sites, and hypergumbo cannot see
@@ -11914,7 +11924,7 @@ Or the analysis looked and could not adjudicate what it saw:
   - a method the catalogue declares FOR THE CLAIMED BOUNDARY is called on a
     receiver whose type could not be determined -- `sock.sendall(payload)`
     where `sock` is an unannotated parameter -- so those calls were never
-    decided either way (INV-fibis).
+    decided either way.
 
 In every case the verdict names the entries or the sites, and the JSON envelope
 carries them under each verdict's `caveats`.
@@ -11989,7 +11999,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
             "(requests, httpx, ...) are declared in an overlay. For a "
             "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
             "(`hypergumbo init-catalogs` seeds the community overlays there); "
-            "see docs/CATALOGUES.md. (INV-fotav)"
+            "see docs/CATALOGUES.md."
         ),
     )
     p_vc.add_argument(
@@ -12000,7 +12010,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help=(
             "A taint source YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
-            "auto-derived or built-in source are overridden. (WI-votan)"
+            "auto-derived or built-in source are overridden."
         ),
     )
     p_vc.add_argument(
@@ -12011,7 +12021,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help=(
             "A taint sink YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
-            "auto-derived or built-in sink are overridden. (WI-votan)"
+            "auto-derived or built-in sink are overridden."
         ),
     )
     p_vc.add_argument(
@@ -12022,7 +12032,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help=(
             "A taint sanitizer YAML file or directory for this run. "
             "Repeatable. User sanitizers concatenate onto the built-in "
-            "list. (WI-votan)"
+            "list."
         ),
     )
     p_vc.add_argument(
@@ -12030,7 +12040,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         action="store_true",
         help=(
             "Count taint flows whose SOURCE is test, fixture or migration "
-            "code against taint claims. Off by default (WI-bifob): a test "
+            "code against taint claims. Off by default: a test "
             "that opens a listener is not a network-exposure finding about "
             "the product, and because a claim verdict is a disjunction a "
             "single such flow held whole claims at 'violated'. Excluded "
@@ -12045,6 +12055,15 @@ what I could not check" -- and decide per repository whether that is acceptable.
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "survey", "slice", "search", "routes", "explain",
                  "catalog", "config", "test-coverage", "dead-code-maybe",
+    # Trust grants, the analysis cache and the catalogues (group_order=2).
+    # Every subcommand is in a named group: one with none would be listed
+    # under a heading made from an internal fallback name.
+    trust_cmds = ["trust-backend", "trust-catalogues", "backend-agreement",
+                  "cache-status", "cache-clear", "init-catalogs",
+                  "catalog-inventory"]
+    for i, cmd in enumerate(trust_cmds):
+        _set_subparser_group(sub, cmd, "trust", 2, suborder=i)
+
                  "repeat-finder", "symbols", "compact", "io-boundaries",
                  "verify-claims"]
     for i, cmd in enumerate(core_cmds):
@@ -13656,11 +13675,7 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     if subparsers_action is None:
         return  # pragma: no cover
 
-    # Group labels for display
-    group_labels = {
-        "core": "CORE ANALYSIS COMMANDS",
-        "extras": "INSTALLATION & MAINTENANCE COMMANDS",
-    }
+    group_labels = HELP_GROUP_LABELS
 
     # Print help for each subcommand, ordered by group
     for name, subparser, group, is_new_group in _get_subparsers_by_group(
@@ -13668,7 +13683,7 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     ):
         # Print group header when entering a new group
         if is_new_group:
-            label = group_labels.get(group, group.upper())
+            label = group_labels[group]
             print(f"\n{'=' * 78}")
             print(f"  {label}")
             print("=" * 78)
