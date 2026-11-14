@@ -418,7 +418,15 @@ fi
 # Output file for full pytest log
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
-# Coverage paths for the modular package structure
+# Coverage paths for the modular package structure.
+#
+# COV_SCOPE_COMPLETE says whether COV_PATHS names EVERY package. The selection
+# index is told (fold_selection_index): only a run that measured every package
+# lets a test be narrowed away later, because a test's having no coverage row
+# on a file means "did not run it" only when the file was measured, and a new
+# path from measured code into unmeasured code leaves no row at all. Any place
+# that makes COV_PATHS smaller must set this to false in the same breath.
+COV_SCOPE_COMPLETE=true
 COV_PATHS=(
     "--cov=packages/hypergumbo-core/src"
     "--cov=packages/hypergumbo-lang-mainstream/src"
@@ -598,9 +606,10 @@ get_baseline() {
     echo "$merge_base"
 }
 
-# Build coverage paths for affected-only mode
-# Returns --cov arguments for the package source directories containing changed files
-# Also returns --cov-fail-under=100 since we're scoping to affected packages
+# Which packages hold a changed source file. Prints FULL when no source file
+# changed, else one --cov argument per such package. Only the FULL answer is
+# acted on now: the targeted run measures every package (see "THE GATE IS
+# SCOPED; THE MEASUREMENT IS NOT" below), and the list is kept for the log.
 build_affected_cov_paths() {
     local changed_files="$1"
 
@@ -630,7 +639,7 @@ build_affected_cov_paths() {
     local file_count
     file_count=$(echo "$source_files" | wc -l)
 
-    log "Scoping coverage to $pkg_count package(s) containing $file_count changed source file(s)"
+    log "$file_count changed source file(s) in $pkg_count package(s); every package is measured, the 100% gate reads the changed files"
     echo "${cov_paths[*]}"
 }
 
@@ -802,6 +811,7 @@ fold_selection_index() {
     # `set -u` makes a bare $1 an unbound-variable abort AFTER the suite
     # has already passed -- a green run reported as a failure.
     [[ "${1:-}" == "full" ]] && full_flag=(--full)
+    [[ "$COV_SCOPE_COMPLETE" == "true" ]] && full_flag+=(--scope-complete)
     "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
         --junit "$JUNIT_XML" update \
         --coverage-db "$REPO_ROOT/.coverage" \
@@ -943,7 +953,7 @@ run_pytest() {
     # reports `configfile: packages/hypergumbo-core/pyproject.toml`), so
     # per-package filterwarnings and asyncio settings still apply.
     # ALWAYS ON, and applied HERE rather than in COV_PATHS because COV_PATHS
-    # is REBUILT FROM SCRATCH on the targeted path -- `COV_PATHS=($AFFECTED_COV)`
+    # was once REBUILT FROM SCRATCH on the targeted path
     # near "Running N affected test files with scoped coverage" -- which silently
     # discarded this flag. Measured before the move: a full run recorded 20,519
     # contexts while an ordinary no-args run recorded ONE, empty. That is the
@@ -2272,20 +2282,24 @@ TARGETED_SOURCE_COUNT=$SOURCE_COUNT
 echo "Running $TEST_COUNT affected test files with scoped coverage"
 echo "  (enforcing 100% coverage for changed source files only)"
 
-# Override COV_PATHS with affected-only paths
-# shellcheck disable=SC2206
-COV_PATHS=($AFFECTED_COV)
-
+# THE GATE IS SCOPED; THE MEASUREMENT IS NOT. COV_PATHS stays the full list
+# (every package), and only the report below is limited to the changed files.
+# This used to rebuild COV_PATHS from the packages that hold a changed file.
+# The selection index is folded from this run's coverage, and a run that
+# measured one package (a) deleted every test's recorded edges into the other
+# packages and (b) left each test with rows that say nothing about them, which
+# narrowing read as "does not run that code". The index no longer loses the
+# edges, and narrowing now drops a test only on a run that measured every
+# package, so a narrower COV_PATHS here would switch narrowing off for every
+# test this run touches. Cost of the full list, measured 2026-11-14 on two
+# selections run twice each way: 5,127 tests selected for a core file, 780 s
+# either way; 7,084 tests selected for a mainstream file, 951 s with that
+# package measured and 993 s with all six (+4.4%).
+#
 # Suppress pytest-cov's terminal report - we'll show targeted coverage below
 # The misleading package-level percentage (e.g., "4%") is noise when running
 # a subset of tests. Only the targeted file-level check matters.
 COV_PATHS+=("--cov-report=")
-
-# Add no-embeddings config if needed (in target mode, only if the target has one)
-if [[ "$EMBEDDINGS_AVAILABLE" == "false" ]] && \
-   { [[ "$TARGET_MODE" != "true" ]] || [[ -f "$REPO_ROOT/.coveragerc.no-embeddings" ]]; }; then
-    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
-fi
 
 # Strip --cov-fail-under from PYTEST_ARGS when running scoped mode
 # We'll do our own scoped coverage check below instead of using pytest-cov's

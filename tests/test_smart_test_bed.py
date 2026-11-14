@@ -31,6 +31,7 @@ import importlib.machinery
 import importlib.util
 import json
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -246,6 +247,53 @@ def test_the_rank_of_the_first_must_test_is_its_run_position() -> None:
 
 
 # ── end to end ───────────────────────────────────────────────────────────────
+
+def test_a_targeted_run_measures_every_package_and_keeps_edges_into_them(
+        tmp_path: Path) -> None:
+    """The change is in bed-core alone. The run that tests it used to measure
+    bed-core alone, and folding it deleted every edge the tests it ran had
+    into bed-app: ``test_cli.py`` runs ``bedapp/cli.py`` and the index no
+    longer said so, so narrowing a later change to ``cli.py`` could drop it.
+
+    A targeted run now measures every package and tells the index it did,
+    which is also the only kind of run after which a test may be dropped.
+    """
+    root = bed.materialize(tmp_path / "bed")
+    index = tmp_path / "index.sqlite"
+    assert bed.run_smart_test(root, index, "--full").returncode == 0
+
+    def tests_running(conn: sqlite3.Connection, source: str) -> set[str]:
+        return {row[0].split("::")[0] for row in conn.execute(
+            "SELECT t.test_id FROM file f JOIN block b ON b.file = f.id "
+            "JOIN test_block tb ON tb.block = b.id JOIN test t ON t.id = tb.test "
+            "WHERE f.path = ?", (str(root / source),))}
+
+    cli, test_cli = "packages/bed-app/src/bedapp/cli.py", "packages/bed-app/tests/test_cli.py"
+    with sqlite3.connect(index) as conn:
+        assert test_cli in tests_running(conn, cli)
+
+    edit = next(e for e in bed.load_edits() if e["name"] == "body-edit-c")
+    touched = bed.apply_edit(root, edit)
+    assert touched and all(rel.startswith("packages/bed-core/") for rel in touched)
+    done = bed.run_smart_test(root, index)
+    assert done.returncode == 0, done.stdout[-3000:] + done.stderr[-2000:]
+    assert "affected test files with scoped coverage" in done.stdout
+
+    with sqlite3.connect(index) as conn:
+        # The targeted run is the latest run of test_cli.py, it was declared
+        # complete, and its own file list holds both packages.
+        run_id, complete = conn.execute(
+            "SELECT r.id, r.complete FROM run r JOIN test_run tr ON tr.run = r.id "
+            "JOIN test t ON t.id = tr.test WHERE t.test_id LIKE ? "
+            "ORDER BY r.id DESC LIMIT 1", (test_cli + "::%",)).fetchone()
+        assert complete == 1
+        assert run_id == conn.execute("SELECT max(id) FROM run").fetchone()[0]
+        measured = {Path(row[0]).relative_to(root).parts[1] for row in conn.execute(
+            "SELECT f.path FROM run_file rf JOIN file f ON f.id = rf.file "
+            "WHERE rf.run = ?", (run_id,))}
+        assert measured == {"bed-core", "bed-app"}
+        assert test_cli in tests_running(conn, cli)
+
 
 def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     out = tmp_path / "scores.json"
