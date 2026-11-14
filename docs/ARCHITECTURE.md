@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **373** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 118 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **58749** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13174, of which 7541 are functions, methods or classes
-- **236077** edges, test code included, by type:
-  - calls: 133417
-  - contains: 54721
-  - imports: 20205
-  - instantiates: 12971
-  - references: 10701
-  - module_attr_ref: 2248
-  - other: 1814
+- **374** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 119 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **59155** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13258, of which 7589 are functions, methods or classes
+- **237829** edges, test code included, by type:
+  - calls: 134478
+  - contains: 55110
+  - imports: 20339
+  - instantiates: 13032
+  - references: 10786
+  - module_attr_ref: 2267
+  - other: 1817
 
 ## Package Architecture
 
@@ -685,6 +685,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.python_stdlib_versions`**: Top-level modules that are stdlib on some supported Python but not ...
 - **`hypergumbo_core.qualified_name_axis`**: Per-language separator policy for ``Symbol.qualified_name`` (ADR-00...
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
+- **`hypergumbo_core.readme_prose`**: Which README text can be a project's description, stated once.
 - **`hypergumbo_core.receiver_blind_magnets`**: INV-fahub receiver-blind method-magnet detector (language-agnostic).
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
@@ -999,8 +1000,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ad7827702011
-  commit_count: 9138
+  commit: b0df778e6b8e
+  commit_count: 9162
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

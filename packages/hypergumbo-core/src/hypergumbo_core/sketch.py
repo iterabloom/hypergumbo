@@ -150,6 +150,7 @@ from .supply_chain import format_vendored_disclosure
 from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import is_test_node, names_no_source_file
+from .readme_prose import description_lines, plain_inline
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -3830,8 +3831,10 @@ def _extract_readme_description_heuristic(
     except OSError:  # pragma: no cover
         return None
 
-    # Find the markdown title and extract description
-    lines = content.split("\n")
+    # Find the markdown title and extract description. Callouts are blanked
+    # and a leading blockquote unquoted first, by the one rule both
+    # extractors share (readme_prose).
+    lines = description_lines(content.split("\n"))
     start_idx = 0
     title_subtitle = None
 
@@ -3866,13 +3869,14 @@ def _extract_readme_description_heuristic(
     # Find the first non-empty paragraph (stop at next header or empty line)
     # Skip common non-description content: badges, images, HTML comments
     paragraph_lines: list[str] = []
-    for line in lines[start_idx:]:
+    stopped_at = len(lines)  # index of the line the loop stops on
+    for idx, line in enumerate(lines[start_idx:], start_idx):
         stripped = line.strip()
-        # Stop at headers (markdown ## or RST underlines)
-        if line.startswith("#") or re.match(r"^[=\-~^]+$", stripped):
-            break
-        # Stop at empty line (end of paragraph)
-        if not stripped and paragraph_lines:
+        # Stop at headers (markdown ## or RST underlines), and at an empty
+        # line that ends the paragraph
+        if (line.startswith("#") or re.match(r"^[=\-~^]+$", stripped)
+                or (not stripped and paragraph_lines)):
+            stopped_at = idx
             break
         # Skip markdown images and badges
         if stripped.startswith("![") or stripped.startswith("[!["):
@@ -3885,11 +3889,6 @@ def _extract_readme_description_heuristic(
             continue
         # Skip lines that are just links (often badge URLs)
         if re.match(r"^\[.*\]\(https?://.*\)$", stripped):
-            continue
-        # Skip markdown blockquote notes/callouts (INV-modor): a '> ' aside is
-        # not description prose; embedding it leaks the raw '> ' prefix and can
-        # leave the visible text cut mid-blockquote.
-        if stripped.startswith(">"):
             continue
         if stripped:
             paragraph_lines.append(stripped)
@@ -3904,12 +3903,15 @@ def _extract_readme_description_heuristic(
 
     # If the sentence seems incomplete (no period at end) and we stopped at an
     # empty line, check if the next non-empty line continues the sentence.
-    # This helps complete sentences that span paragraph breaks.
-    if not result.rstrip().endswith((".", "!", "?", ":")):
-        # Find where we stopped in the original lines
-        end_idx = start_idx + len(paragraph_lines)
-        # Skip empty lines to find the next content line
-        next_line_idx = end_idx
+    # This helps complete sentences that span paragraph breaks. Closing
+    # markup after the punctuation ("fun to use!**") does not make a sentence
+    # incomplete.
+    if not result.rstrip().rstrip("*_`\"')").endswith((".", "!", "?", ":")):
+        # Continue from the line the loop stopped on. (Counting the lines
+        # kept from the start index pointed back INTO the paragraph whenever
+        # a badge or image line had been skipped on the way, and the
+        # paragraph's own last line was appended a second time.)
+        next_line_idx = stopped_at
         while next_line_idx < len(lines) and not lines[next_line_idx].strip():
             next_line_idx += 1
 
@@ -3918,8 +3920,8 @@ def _extract_readme_description_heuristic(
             # Strip HTML tags from the line
             next_line = re.sub(r"<[^>]+>", "", next_line)
             # Only continue if it's a regular text line (not a header/image/
-            # blockquote/etc)
-            if next_line and not next_line.startswith(("#", "!", "[", "<", "-", ">")):
+            # etc); a callout is already blank (readme_prose).
+            if next_line and not next_line.startswith(("#", "!", "[", "<", "-")):
                 # Append words until we hit a period or end of line
                 words = next_line.split()
                 for word in words:
@@ -4003,14 +4005,14 @@ def _extract_readme_description(
         from .sketch_embeddings import extract_readme_description_embedding  # pragma: no cover
         description = extract_readme_description_embedding(readme_path)  # pragma: no cover
         if description:  # pragma: no cover
-            return _truncate_description(description, max_chars)  # pragma: no cover
+            return _truncate_description(plain_inline(description), max_chars)  # pragma: no cover
     except Exception:
         pass  # Fall back to heuristic - embeddings unavailable
 
     # Fall back to heuristic extraction
     description = _extract_readme_description_heuristic(readme_path, max_chars)
     if description:
-        return _truncate_description(description, max_chars)
+        return _truncate_description(plain_inline(description), max_chars)
 
     return None
 
