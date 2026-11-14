@@ -145,7 +145,7 @@ from .discovery import (
     format_vcs_ignored_disclosure,
     match_content_rule, under_content_rule_dir, vcs_ignored,
 )
-from .profile import detect_profile, RepoProfile
+from .profile import detect_profile, RepoProfile, _load_toml
 from .supply_chain import format_vendored_disclosure
 from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
@@ -946,6 +946,36 @@ def _detect_license_type(content_upper: str) -> Optional[str]:
     return None
 
 
+def _manifest_value(raw: object, table_keys: tuple[str, ...] = ()) -> str | None:
+    """A manifest field's value as one whole string, or None.
+
+    The Configuration section prints a value whole or not at all: a string
+    as itself, a number as its text, a table by the first of ``table_keys``
+    it holds as a string (a licence table's ``text``, a legacy licence
+    object's ``type``). Anything else has no whole form the caller named,
+    and is left out, never printed half-read.
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (str, int, float)):
+        text = str(raw).strip()
+        return text if text and "\n" not in text else None
+    if isinstance(raw, dict):
+        for key in table_keys:
+            if isinstance(raw.get(key), str) and raw[key].strip():
+                return _manifest_value(raw[key])
+    return None
+
+
+def _toml_table(data: dict[str, Any] | None, *keys: str) -> dict[str, Any]:
+    """The table at ``keys`` in parsed TOML, or an empty one when the file
+    did not parse or the path is not a table."""
+    table: Any = data
+    for key in keys:
+        table = table.get(key) if isinstance(table, dict) else None
+    return table if isinstance(table, dict) else {}
+
+
 def _extract_config_heuristic(repo_root: Path) -> list[str]:
     """Extract config metadata using heuristic pattern matching.
 
@@ -973,10 +1003,12 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
                 return result
             info = []
 
-            # Core metadata
+            # Core metadata. A legacy licence object ({"type": "MIT", "url":
+            # ...}) is shown by its type.
             for key in ["name", "version", "license"]:
-                if key in data:
-                    info.append(f"{key}: {data[key]}")
+                shown = _manifest_value(data.get(key), table_keys=("type",))
+                if shown is not None:
+                    info.append(f"{key}: {shown}")
 
             # Interesting dependencies with versions
             for dep_type in ["dependencies", "devDependencies"]:
@@ -1027,59 +1059,89 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
         return result
 
     def _extract_pom_xml(path: Path, prefix: str) -> list[str]:
-        """Extract Maven coordinates from pom.xml."""
-        result = []
+        """Extract Maven coordinates from pom.xml.
+
+        Only the project element's direct children are read, so a
+        ``<parent>``'s or a ``<dependency>``'s coordinate is not printed as
+        the project's own. A module that omits groupId or version inherits
+        its parent's, which is what Maven resolves and what is shown.
+        """
+        import xml.etree.ElementTree as ET  # nosec B405 - parsing a local pom.xml
+
+        result: list[str] = []
         try:
-            content = path.read_text(encoding="utf-8", errors="replace")[:4000]
-            extracted = []
-
-            for tag in ["groupId", "artifactId", "version", "packaging"]:
-                match = re.search(f"<{tag}>([^<]+)</{tag}>", content)
-                if match:
-                    extracted.append(f"{tag}: {match.group(1)}")
-
-            if extracted:
-                result.append(f"{prefix}pom.xml: {'; '.join(extracted)}")
+            content = path.read_text(encoding="utf-8", errors="replace")
         except OSError:  # pragma: no cover
-            pass  # pragma: no cover
+            return result  # pragma: no cover
+        try:
+            root = ET.fromstring(content)  # noqa: S314  # nosec B314
+        except ET.ParseError:
+            return result
+        ns = root.tag.split("}")[0] + "}" if root.tag.startswith("{") else ""
+        extracted = []
+        for tag, inherited in (("groupId", True), ("artifactId", False),
+                               ("version", True), ("packaging", False)):
+            value = (root.findtext(f"{ns}{tag}") or "").strip()
+            if not value and inherited:
+                value = (root.findtext(f"{ns}parent/{ns}{tag}") or "").strip()
+            if value:
+                extracted.append(f"{tag}: {value}")
+        if extracted:
+            result.append(f"{prefix}pom.xml: {'; '.join(extracted)}")
         return result
 
     def _extract_cargo_toml(path: Path, prefix: str) -> list[str]:
-        """Extract Rust package info from Cargo.toml."""
-        result = []
+        """Extract Rust package info from Cargo.toml.
+
+        Fields come from ``[package]``, or from ``[workspace.package]`` in a
+        manifest that only declares a workspace. A field inherited with
+        ``{ workspace = true }`` is shown as ``workspace``.
+        """
+        result: list[str] = []
         try:
-            content = path.read_text(encoding="utf-8", errors="replace")
-            extracted = []
-
-            # Parse [package] section fields (including edition and rust-version)
-            for field in ["name", "version", "edition", "rust-version", "license"]:
-                match = re.search(rf'^{field}\s*=\s*"([^"]+)"', content, re.MULTILINE)
-                if match:
-                    extracted.append(f"{field}: {match.group(1)}")
-
-            if extracted:
-                result.append(f"{prefix}Cargo.toml: {'; '.join(extracted)}")
+            data = _load_toml(path.read_text(encoding="utf-8", errors="replace"))
         except OSError:  # pragma: no cover
-            pass  # pragma: no cover
+            return result  # pragma: no cover
+        package = _toml_table(data, "package") or _toml_table(data, "workspace", "package")
+        extracted = []
+        for field in ["name", "version", "edition", "rust-version", "license"]:
+            raw = package.get(field)
+            shown = ("workspace" if isinstance(raw, dict) and raw.get("workspace") is True
+                     else _manifest_value(raw))
+            if shown is not None:
+                extracted.append(f"{field}: {shown}")
+        if extracted:
+            result.append(f"{prefix}Cargo.toml: {'; '.join(extracted)}")
         return result
 
     def _extract_pyproject_toml(path: Path, prefix: str) -> list[str]:
-        """Extract Python project info from pyproject.toml."""
-        result = []
+        """Extract Python project info from pyproject.toml.
+
+        Fields come from ``[project]``, else from ``[tool.poetry]``; a
+        ``name`` or ``version`` key of some other table is not the
+        project's. A licence table is shown by its ``text``, or as the file
+        it names; a version listed in ``dynamic`` is shown as ``dynamic``.
+        """
+        result: list[str] = []
         try:
-            content = path.read_text(encoding="utf-8", errors="replace")
-            extracted = []
-
-            for field in ["name", "version", "license"]:
-                # Handle both quoted and unquoted values
-                match = re.search(rf'^{field}\s*=\s*["\']?([^"\'#\n]+)', content, re.MULTILINE)
-                if match:
-                    extracted.append(f"{field}: {match.group(1).strip()}")
-
-            if extracted:
-                result.append(f"{prefix}pyproject.toml: {'; '.join(extracted)}")
+            data = _load_toml(path.read_text(encoding="utf-8", errors="replace"))
         except OSError:  # pragma: no cover
-            pass  # pragma: no cover
+            return result  # pragma: no cover
+        project = _toml_table(data, "project")
+        poetry = _toml_table(data, "tool", "poetry")
+        extracted = []
+        for field in ["name", "version", "license"]:
+            raw = project.get(field, poetry.get(field))
+            shown = _manifest_value(raw, table_keys=("text",))
+            if shown is None and isinstance(raw, dict) and isinstance(raw.get("file"), str):
+                shown = f"file {raw['file']}"
+            dynamic = project.get("dynamic")
+            if shown is None and isinstance(dynamic, list) and field in dynamic:
+                shown = "dynamic"
+            if shown is not None:
+                extracted.append(f"{field}: {shown}")
+        if extracted:
+            result.append(f"{prefix}pyproject.toml: {'; '.join(extracted)}")
         return result
 
     def _extract_mix_exs(path: Path, prefix: str) -> list[str]:
@@ -1118,18 +1180,25 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             extracted = []
 
             # Group
-            group_match = re.search(r'group\s*[=:]\s*["\']?([^"\'\s]+)', content)
+            # A build script is code: only a quoted literal is a value that
+            # can be shown whole. ``group = rootProject.group`` or
+            # ``version = findProperty("v")`` is an expression, and is left
+            # out, never printed up to its first quote or space.
+            group_match = re.search(
+                r'^\s*group\s*[=:]?\s*(["\'])([^"\'\n]+)\1\s*(?://.*)?$', content, re.MULTILINE)
             if group_match:
-                extracted.append(f"group: {group_match.group(1)}")
+                extracted.append(f"group: {group_match.group(2)}")
 
             # Version
-            version_match = re.search(r'version\s*[=:]\s*["\']?([^"\'\s]+)', content)
-            if version_match and version_match.group(1) != "=":
-                extracted.append(f"version: {version_match.group(1)}")
+            version_match = re.search(
+                r'^\s*version\s*[=:]?\s*(["\'])([^"\'\n]+)\1\s*(?://.*)?$', content, re.MULTILINE)
+            if version_match:
+                extracted.append(f"version: {version_match.group(2)}")
 
             # Look for plugins (kotlin, java, application)
             for plugin in ["kotlin", "java", "application", "dokka"]:
-                if f'"{plugin}"' in content or f"'{plugin}'" in content or "kotlin(" in content:
+                if (f'"{plugin}"' in content or f"'{plugin}'" in content
+                        or (plugin == "kotlin" and "kotlin(" in content)):
                     extracted.append(plugin)
 
             if extracted:
@@ -1147,9 +1216,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             extracted = []
 
             # Ruby version
-            ruby_match = re.search(r'ruby\s+["\']([^"\']+)', content)
+            ruby_match = re.search(r'^\s*ruby\s+(["\'])([^"\'\n]+)\1', content, re.MULTILINE)
             if ruby_match:
-                extracted.append(f"ruby: {ruby_match.group(1)}")
+                extracted.append(f"ruby: {ruby_match.group(2)}")
 
             # Key gems
             interesting_gems = {"rails", "sinatra", "puma", "devise", "sidekiq", "redis", "pg", "mysql2"}
