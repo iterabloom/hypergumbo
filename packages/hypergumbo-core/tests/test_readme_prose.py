@@ -37,6 +37,10 @@ pip install widget
 > Intel Mac users: see docs/INTEL_MAC.md.
 
 Output:
+
+```bash
+# widget
+```
 """
 
 TAGLINE_IN_A_BLOCKQUOTE = """# [widget.js](https://widget.example/documentation/)
@@ -68,7 +72,7 @@ def test_both_extractors_drop_a_callout_that_follows_the_description(tmp_path: P
     assert _heuristic(tmp_path, CALLOUT_AFTER_PROSE) == DESCRIPTION
     candidates = _candidates(CALLOUT_AFTER_PROSE)
     assert DESCRIPTION in candidates
-    for callout in ("Requires Python", "Intel Mac", ">"):
+    for callout in ("Requires Python", "Intel Mac", ">", "Output:"):
         assert callout not in candidates
 
 
@@ -118,6 +122,8 @@ def test_the_description_is_printed_without_markup(
      ["Do not run", "Ever", "===="]),
     ("asciidoc block as a paragraph", "= widget\n\nReal words here.\n\n[TIP]\nUse the wrapper.\n\nMore.\n",
      ["Use the wrapper", "[TIP]"]),
+    ("a label over a code block", "# t\n\nReal words here.\n\nOutput:\n\n```\nx\n```\n\nMore.\n",
+     ["Output:"]),
     ("asciidoc block left open", "= widget\n\nReal words here.\n\n[NOTE]\n====\nNever closed.\n",
      ["Never closed"]),
 ])
@@ -131,6 +137,21 @@ def test_a_callout_is_blanked_in_each_format(name: str, text: str, callouts: lis
         assert callout not in kept, (name, callout)
     if "More." in text:
         assert "More." in kept, name
+
+
+@pytest.mark.parametrize("text", [
+    # a sentence that ends a longer paragraph
+    "# t\n\nA builder for Node.js,\nfeaturing:\n\n```\nx\n```\n",
+    # over a list, not a code block
+    "# t\n\nFeatures:\n\n- one\n- two\n",
+    # the code block follows with no blank line: the same paragraph in most renderers
+    "# t\n\nRun:\n```\nx\n```\n",
+    # nothing follows
+    "# t\n\nTo be continued:\n",
+])
+def test_a_colon_alone_does_not_make_a_label(text: str) -> None:
+    lines = text.split("\n")
+    assert description_lines(lines) == lines
 
 
 def test_text_under_a_title_underline_does_not_count_as_prose() -> None:
