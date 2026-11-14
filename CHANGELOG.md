@@ -121,6 +121,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The Tests line says what it counts**: functions reached from tests in the static call graph, and that more may be tested.
 - **A data model's framework is named once.**
 - **The description line never ends in a README callout**, whichever extractor found it; a tagline written as a blockquote is kept, and markup is not printed.
+- **Configuration prints a manifest value whole or not at all**: TOML and `pom.xml` are parsed, so a licence table, a workspace-inherited field and a Maven module's own artifactId read correctly.
 
 #### Budget-tier files and compact views
 
