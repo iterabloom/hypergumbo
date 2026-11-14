@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Imports the constant by name and reads it in a function."""
+from bedcore.limits import CAP
+
+
+def tripled():
+    return CAP * 3

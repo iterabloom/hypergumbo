@@ -1,0 +1,5 @@
+from bedcore.reads_at_import import kept
+
+
+def test_kept():
+    assert kept() == 4

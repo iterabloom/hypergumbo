@@ -246,3 +246,45 @@
       new: |
         LIMIT = 5 * 2
   should_not: [packages/bed-core/tests/test_chain_a.py, packages/bed-core/tests/test_shapes.py]
+
+# INV-mikag: a module-level statement of limits.py changes. Four modules read
+# what it defines and none of their functions calls a limits function, so the
+# call-edge slice lists the modules and not their tests. reads_lazily imports
+# limits inside a function.
+- name: constant-read-elsewhere
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/limits.py
+      old: |
+        CAP = 4
+      new: |
+        CAP = 2 + 2
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_shapes.py,
+               packages/bed-app/tests/test_beta.py]
+
+# The same file, a function body: only the tests that run the function.
+- name: body-edit-limits
+  oracle: mutate
+  ops:
+    - file: packages/bed-core/src/bedcore/limits.py
+      old: |
+            return CAP
+      new: |
+            return CAP + 0
+  should_not: [packages/bed-core/tests/test_reads_attr.py, packages/bed-core/tests/test_reads_name.py,
+               packages/bed-core/tests/test_reads_lazily.py, packages/bed-core/tests/test_alpha.py]
+
+# WI-kazig: a module is deleted in a change that also edits another file, so
+# the run stays targeted. test_legacy still imports the deleted module; the
+# slice runs on the tree without it and has no symbol to start from.
+- name: delete-module-and-edit
+  oracle: mutate
+  ops:
+    - file: packages/bed-app/src/bedapp/legacy.py
+      delete: true
+    - file: packages/bed-core/src/bedcore/chain_c.py
+      old: |
+            return x + 3
+      new: |
+            return 3 + x
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_shapes.py]

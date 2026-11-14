@@ -40,6 +40,7 @@
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --no-narrow  # Keep the tests coverage narrowing would drop
 #   ./scripts/smart-test --no-read-union  # Leave out tests added for reading a changed file by path
+#   ./scripts/smart-test --no-import-union  # Leave out tests added for importing a file whose import-time code changed
 #   ./scripts/smart-test --background # Kick off full suite in background
 #
 # TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
@@ -198,6 +199,20 @@ SELECT_PROSE=true
 # CI was green. Opt out per run with --no-read-union.
 SELECT_READERS=true
 
+# THE IMPORT-CLOSURE UNION (INV-mikag): the slice follows CALL edges. It lists
+# a module that imports a changed file, and reaches a test of that module only
+# through a call into the changed file. A module that reads a constant of the
+# changed file, an attribute of its module object, or a value it computed at
+# import has no such call, so its tests were left out: one constant changed
+# in schema.py, 252 test files selected, and the test that fails was not
+# among them. When a source file's IMPORT-TIME code changes (a module or class
+# body), every test file whose imports reach that file is added, through any
+# number of files, lazy imports inside functions included (owner ruling,
+# 2026-11-14). It only adds, and it is part of the MANIFEST selection: the
+# failure it exists for is a PR whose own CI was green. A changed function
+# body does not trigger it. Opt out per run with --no-import-union.
+SELECT_IMPORTERS=true
+
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
 #
 #   1. CI IS THE GATE. This selector is an accelerator whose whole safety story
@@ -243,6 +258,7 @@ for arg in "$@"; do
         --no-narrow) SELECT_NARROW=false ;;
         --no-prose-rule) SELECT_PROSE=false ;;
         --no-read-union) SELECT_READERS=false ;;
+        --no-import-union) SELECT_IMPORTERS=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -2092,6 +2108,44 @@ if [[ "$SELECT_READERS" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     fi
 fi
 
+# ── THE IMPORT-CLOSURE UNION (INV-mikag) ─────────────────────────────────────
+# ABOVE THE SEAM, like the read-record union and for its reason: what it adds
+# is in the manifest, so merge CI runs it. See SELECT_IMPORTERS above for the
+# case.
+#
+# AFTER NARROWING. Narrowing refuses on the very changes this step answers
+# (import-time code), so today the order changes nothing; it is placed here so
+# that a narrowing rule admitting some import-time change later cannot take
+# these tests back out.
+#
+# ADDITIVE, AND NEVER ABLE TO FAIL THE RUN. The helper exits 0 whatever
+# happens and prints only test files of the tree it read; an empty answer adds
+# nothing. It parses every Python file of the repository, and only when the
+# change holds import-time code.
+IMPORT_UNION_COUNT=0
+if [[ "$SELECT_IMPORTERS" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _ic_changed=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_ic_changed" || true
+    _ic_verbose=()
+    [[ "$VERBOSE" == "true" ]] && _ic_verbose=(--verbose)
+    IMPORT_TESTS=$("$TOOLS_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" ${_ic_verbose[@]+"${_ic_verbose[@]}"} import-closure \
+        --changed-files "$_ic_changed" --base "${BASELINE:-HEAD}" || echo "")
+    rm -f "$_ic_changed"
+    if [[ -n "$IMPORT_TESTS" ]]; then
+        # Only what the selection did not already hold.
+        IMPORT_NEW=$(comm -13 \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
+            <(echo "$IMPORT_TESTS" | sed '/^$/d' | sort -u))
+        if [[ -n "$IMPORT_NEW" ]]; then
+            IMPORT_UNION_COUNT=$(echo "$IMPORT_NEW" | grep -c . || true)
+            echo "Import-closure union added $IMPORT_UNION_COUNT test file(s) that import a file whose import-time code changed (--no-import-union leaves them out)"
+            log "Import-closure union adding: $(echo "$IMPORT_NEW" | tr '\n' ' ')"
+            AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$IMPORT_NEW" | sed '/^$/d' | sort -u)
+        fi
+    fi
+fi
+
 MANIFEST_TESTS="$AFFECTED_TESTS"
 MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 # INV-tazur: CI runs this list verbatim, so a dead path here reddens (or, in a
@@ -2222,6 +2276,9 @@ mkdir -p "$MANIFEST_DIR"
     fi
     if [[ "$READ_UNION_COUNT" -gt 0 ]]; then
         echo "# Read-record tests: $READ_UNION_COUNT added (recorded reading a changed file by path; the import graph does not reach them)"
+    fi
+    if [[ "$IMPORT_UNION_COUNT" -gt 0 ]]; then
+        echo "# Import-closure tests: $IMPORT_UNION_COUNT added (they import a file whose import-time code changed; the call-edge slice does not reach them)"
     fi
     echo "#"
     echo "# === CHANGED_SOURCE_FILES ==="

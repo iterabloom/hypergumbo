@@ -21,18 +21,20 @@ base, then:
      with history no scenario controls is the noise this exists to remove.
   2. The edit is applied to the working tree and ``smart-test --manifest
      --no-narrow`` computes the unnarrowed selection. ``SMART_TEST_SELECTION_OUT``
-     hands back its stages: the MANIFEST (the import-graph slice plus its
+     hands back its stages: the MANIFEST (the call-edge slice plus its
      declarative unions for the files whose code changed, the tests recorded
-     reading one of those files as data (WI-nifif), and the tests the
-     prose-only rule lists from recorded evidence for the files that changed
-     in comments or docstrings only) and the UNION (plus coverage's picks,
+     reading one of those files as data (WI-nifif), the tests whose imports
+     reach a file whose import-time code changed (INV-mikag), and the tests
+     the prose-only rule lists from recorded evidence for the files that
+     changed in comments or docstrings only) and the UNION (plus coverage's picks,
      WI-kuliv). A second ``smart-test --manifest`` with narrowing on (the
      default, WI-zirus) gives the NARROWED local run set (WI-bolot); its
      manifest, which is what CI runs, is that run set without the union's
      additions. STATIC is a third ``--manifest`` run, with
-     ``--no-prose-rule --no-narrow --no-read-union``: the import-graph
+     ``--no-prose-rule --no-narrow --no-read-union --no-import-union``: the slice's
      selection for every changed file, the yardstick for what the prose-only
-     rule leaves out and for what the read record adds. A run that exits early (a full-suite fallback,
+     rule leaves out and for what the read record and the import closure add.
+     A run that exits early (a full-suite fallback,
      nothing to run) writes no stages, and every selector is then read from
      the manifest, which is what such a run actually executes.
   3. The ORACLE. ``mutate`` edits: every block the edit changed
@@ -300,10 +302,10 @@ def score_edit(edit: dict, readers: dict[str, list[str]], work: Path) -> Score:
     touched = apply_edit(root, edit)
     stages = root / ".ci" / "selection"
     static = run_smart_test(root, index, "--manifest", "--no-prose-rule", "--no-narrow",
-                            "--no-read-union")
+                            "--no-read-union", "--no-import-union")
     if static.returncode != 0:
         raise BedError(f"{edit['name']}: smart-test --manifest --no-prose-rule --no-narrow "
-                       f"--no-read-union failed:\n{static.stderr[-2000:]}")
+                       f"--no-read-union --no-import-union failed:\n{static.stderr[-2000:]}")
     selected = {"static": read_manifest(root)[1]}
     shutil.rmtree(stages, ignore_errors=True)
     sel = run_smart_test(root, index, "--manifest", "--no-narrow")
