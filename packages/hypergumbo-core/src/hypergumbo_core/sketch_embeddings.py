@@ -898,6 +898,42 @@ class ReadmeExtractionDebug:
         )
 
 
+def _readme_candidate_lines(content: str, max_lines: int = 80) -> list[tuple[int, str]]:
+    """The README lines the embedding scorer may choose from, as
+    ``(line index, text)``.
+
+    Callouts are blanked and a leading blockquote unquoted first, by the rule
+    the heuristic extractor shares (:mod:`hypergumbo_core.readme_prose`), so
+    the two extractors cannot disagree about which lines are candidates.
+    Then fenced code, badges, images and blank lines are dropped. Kept apart
+    from the scorer so it runs, and is tested, without numpy or a model.
+    """
+    from .readme_prose import description_lines
+
+    lines = description_lines(content.split("\n"))[:max_lines]
+
+    in_code_block = False
+    filtered_lines: list[tuple[int, str]] = []
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Track fenced code blocks
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        # Skip lines inside code blocks
+        if in_code_block:
+            continue
+
+        # Skip filterable lines (badges, empty, pure images)
+        if _is_readme_line_filterable(line):
+            continue
+
+        filtered_lines.append((idx, stripped))
+    return filtered_lines
+
+
 def extract_readme_description_embedding(
     readme_path: Path,
     max_lines: int = 80,
@@ -955,29 +991,7 @@ def extract_readme_description_embedding(
             )
         return None
 
-    lines = content.split("\n")[:max_lines]
-
-    # Track code block state for filtering
-    in_code_block = False
-    filtered_lines: list[tuple[int, str]] = []  # (original_idx, line)
-
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-
-        # Track fenced code blocks
-        if stripped.startswith("```"):
-            in_code_block = not in_code_block
-            continue
-
-        # Skip lines inside code blocks
-        if in_code_block:
-            continue
-
-        # Skip filterable lines (badges, empty, pure images)
-        if _is_readme_line_filterable(line):
-            continue
-
-        filtered_lines.append((idx, stripped))
+    filtered_lines = _readme_candidate_lines(content, max_lines)
 
     if not filtered_lines:
         if debug:

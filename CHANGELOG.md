@@ -120,6 +120,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Additional Files shows byte-identical files once**, naming the copies; contributing guides, licences and files that only list symbol names rank lower, and the README gets a real content share.
 - **The Tests line says what it counts**: functions reached from tests in the static call graph, and that more may be tested.
 - **A data model's framework is named once.**
+- **The description line never ends in a README callout**, whichever extractor found it; a tagline written as a blockquote is kept, and markup is not printed.
 
 #### Budget-tier files and compact views
 
