@@ -2319,6 +2319,15 @@ def _extract_config_hybrid(
     return combined
 
 
+def _is_config_heading(line: str) -> bool:
+    """Whether ``line`` is a semantic block's ``[path]`` heading. A quoted
+    line is prefixed ``  > `` and a heuristic line starts with a file name,
+    so a line that is nothing but a bracketed text is a heading, whether or
+    not the file name has a dot (``[Dockerfile]``, ``[Makefile]``)."""
+    text = line.strip()
+    return len(text) > 2 and text.startswith("[") and text.endswith("]")
+
+
 def _new_semantic_blocks(embedding_lines: list[str], known_terms: set[str]) -> list[str]:
     """The semantic lines that add something, a file's block at a time.
 
@@ -2334,15 +2343,13 @@ def _new_semantic_blocks(embedding_lines: list[str], known_terms: set[str]) -> l
     kept their quotes and separators: quotes that named no file, and blank
     lines piling up where whole blocks had gone.
     """
-    import re
-
     kept: list[str] = []
     block: list[str] = []
     for line in [*embedding_lines, ""]:
         if line.strip():
             block.append(line)
             continue
-        heading = block[:1] if block and re.fullmatch(r"\[.+\]", block[0].strip()) else []
+        heading = block[:1] if block and _is_config_heading(block[0]) else []
         quotes = [
             quote for quote in block[len(heading):]
             if sum(1 for term in known_terms if term in quote.lower()) <= 2
@@ -2480,10 +2487,7 @@ def _extract_config_info(
 
     # Check if output uses [filename] headers (embedding/hybrid modes)
     # If not, just join and truncate (heuristic mode)
-    has_file_headers = any(
-        line.startswith("[") and line.endswith("]") and "." in line[1:-1]
-        for line in lines
-    )
+    has_file_headers = any(_is_config_heading(line) for line in lines)
 
     if not has_file_headers:
         result = "\n".join(lines)
@@ -2505,7 +2509,7 @@ def _extract_config_info(
     current_lines: list[str] = []  # pragma: no cover - embedding output only
 
     for line in lines:  # pragma: no cover - embedding output only
-        if line.startswith("[") and line.endswith("]") and "." in line[1:-1]:
+        if _is_config_heading(line):
             if current_file and current_lines:
                 file_sections.append((current_file, current_lines))
             elif current_lines:
@@ -2523,7 +2527,7 @@ def _extract_config_info(
         return "\n".join(lines)[:max_chars]  # pragma: no cover
 
     # Second pass: allocate chars - preamble gets priority, rest shared among files
-    preamble_text = "\n".join(preamble_lines) if preamble_lines else ""  # pragma: no cover - embedding output only
+    preamble_text = "\n".join(preamble_lines).rstrip("\n")  # pragma: no cover - embedding output only
     remaining_chars = max_chars - len(preamble_text)  # pragma: no cover - embedding output only
     if preamble_text:  # pragma: no cover - embedding output only
         remaining_chars -= 2  # Account for separator newlines
@@ -2545,8 +2549,10 @@ def _extract_config_info(
         result_parts.append(preamble_text)
 
     for file_header, file_lines in file_sections:  # pragma: no cover - embedding output only
-        # Build this file's content
-        file_content = file_header + "\n" + "\n".join(file_lines)
+        # Build this file's content. The lines arrive with the blank line
+        # that separated this block from the next; this pass writes its own
+        # separator, and the two together were a doubled blank line.
+        file_content = (file_header + "\n" + "\n".join(file_lines)).rstrip("\n")
 
         # Truncate to per-file budget
         if len(file_content) > chars_per_file:  # pragma: no cover - large file edge case
