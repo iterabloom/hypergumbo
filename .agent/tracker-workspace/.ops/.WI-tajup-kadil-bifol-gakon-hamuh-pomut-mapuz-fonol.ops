@@ -27,3 +27,10 @@
   clock: 2  # 86ac
   nonce: 86ac  # 86ac
   message: "PARTIAL overlap noted on WI-ditom (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ditom's 'transforms string row -> AttributeError -> main catch-all exits 1 = violated' exit-code half is WI-tajup's main() exit-code collision; the loader shape-check half stays here."  # 86ac
+- op: discuss  # ca6b
+  at: '2026-11-14T05:05:56Z'  # ca6b
+  by: agent  # ca6b
+  actor: jgstern_agent  # ca6b
+  clock: 3  # ca6b
+  nonce: ca6b  # ca6b
+  message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). RELATED QUESTION for the owner, not filed separately. The help states 'Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one inconclusive, or the claims file failed validation'. The reader read the shared 2 as a defect for CI: a gate cannot tell a typo in the claims file from an analysis that could not decide. This item moves two more bad-input paths onto 2. Whether bad input and inconclusive keep sharing a code is a contract decision (the codes are documented); if they are to be split, it is cheaper to rule before this item is done than after."  # ca6b

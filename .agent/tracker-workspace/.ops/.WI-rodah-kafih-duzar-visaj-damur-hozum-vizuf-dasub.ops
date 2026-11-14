@@ -26,3 +26,26 @@
   clock: 2  # 1ef9
   nonce: 1ef9  # 1ef9
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. The footer is unchanged at sketch.py:6277 (cited as 6271). Repro: a single-file fixture with 121 functions, hypergumbo sketch -t 2000 --config-extraction heuristic, gives '(... +5 more, top score: 0.00)' followed by '(... and 111 more symbols across 0 other files)'. MECHANISM: The global footer's file-count term counts files with no selected symbol, not the files that hold the unselected candidates."  # 1ef9
+- op: discuss  # a55f
+  at: '2026-11-14T05:05:56Z'  # a55f
+  by: agent  # a55f
+  actor: jgstern_agent  # a55f
+  clock: 3  # a55f
+  nonce: a55f  # a55f
+  message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). SAME SECTION, sibling line. The per-file line '(... +N more, top score: X)' prints the highest centrality among the symbols NOT shown for that file, on a scale that is not normalised: 1.03 under ir.py on the self-run, 2.00 on ripgrep. The line says neither, and it sits under symbols starred as 'centrality >= 50% of max', so a reader took 'top score: 0.09' under a starred find_files for a contradiction. Proposed with this item's fix: label it as the highest hidden symbol and print it on the star's scale (share of the maximum)."  # a55f
+- op: update  # ebb7
+  at: '2026-11-14T09:47:52Z'  # ebb7
+  by: agent  # ebb7
+  actor: jgstern_agent  # ebb7
+  clock: 4  # ebb7
+  nonce: ebb7  # ebb7
+  set:  # ebb7
+    status: done  # ebb7
+    pr_ref: '#2183'  # ebb7
+- op: discuss  # edc5
+  at: '2026-11-14T09:47:52Z'  # edc5
+  by: agent  # edc5
+  actor: jgstern_agent  # edc5
+  clock: 5  # edc5
+  nonce: edc5  # edc5
+  message: "Closed with PR #2183. The filed footer was already gone (the section's last line counts only files that are not shown, since the fix for cut lists); re-run of the filed repro on the merged code, a single file of 121 functions with sketch -t 2000 --config-extraction heuristic: Key Symbols prints '(... +116 more, highest: 100% of max)' under the file and no 'across 0 other files' line. PR #2183 fixes the sibling line noted here: the per-file count now names the best HIDDEN symbol on the star's scale ('highest: 52% of max') in place of an unlabelled 'top score: 1.03'."  # edc5

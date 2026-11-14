@@ -21,3 +21,26 @@
     pr_ref:  # e896
     description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.  Re-checked with \"hypergumbo --help --all\" on dev d6a8a140e7.\n\nOBSERVED\n1. A section titled DEFAULT holds trust-backend, trust-catalogues, backend-agreement, cache-status, cache-clear, init-catalogs and catalog-inventory. cli.py groups subcommands with getattr(subaction, \"group\", \"default\"); these seven declare no group, and the fallback string is printed as the heading.\n2. Twenty-four usage and option lines read \"--path _PATH_FLAG\". The option is declared with dest=\"_path_flag\" and no metavar, so argparse prints the dest upper-cased.\n\nASK. Fix both, and add the check that would have caught them: every registered subcommand belongs to a named help group, and no usage or option line in the rendered help shows a name that begins with an underscore or equals a fallback sentinel. The check runs over the parser as built, so a subcommand or option added later is covered without editing the check.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nHere that means the gate is over the whole parser (every subcommand, every option), never a list of the seven commands and one flag seen today."  # e896
     fields: {}  # e896
+- op: discuss  # cc68
+  at: '2026-11-14T05:05:56Z'  # cc68
+  by: agent  # cc68
+  actor: jgstern_agent  # cc68
+  clock: 2  # cc68
+  nonce: cc68  # cc68
+  message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). SAME FAMILY, proposed as a widening of this item's check (say if it should be its own item). The rendered help carries 11 distinct tracker IDs in 15 places and two internal audit labels, none of which a user can look up: WI-sihok (line 294 of hypergumbo --help --all), WI-hular (673), dispatch:F2 (712), WI-zafab (723), dispatch:F7 and WI-gavub (727), WI-sufuh (804, 831), INV-fotav (935, 1003), WI-votan (1007, 1015, 1060), WI-bifob (1019), INV-pojib (1079), INV-faput (1081), INV-fibis (1089). ADR numbers (16 mentions) name a file under docs/adr and are a different case. The check asked for here (no internal name in rendered help) would also reject the tracker-ID pattern and the dispatch: labels; the CHANGELOG already has that rule."  # cc68
+- op: update  # bcc6
+  at: '2026-11-14T09:47:51Z'  # bcc6
+  by: agent  # bcc6
+  actor: jgstern_agent  # bcc6
+  clock: 3  # bcc6
+  nonce: bcc6  # bcc6
+  set:  # bcc6
+    status: done  # bcc6
+    pr_ref: '#2183'  # bcc6
+- op: discuss  # 664f
+  at: '2026-11-14T09:47:51Z'  # 664f
+  by: agent  # 664f
+  actor: jgstern_agent  # 664f
+  clock: 4  # 664f
+  nonce: 664f  # 664f
+  message: "Fixed in PR #2183. The seven ungrouped commands are in a named group (TRUST, CACHE & CATALOGUE COMMANDS) and the heading is looked up with no fallback; --path takes PATH; the eleven tracker IDs and two audit labels are out of the help strings. BEHAVIOUR: 'hypergumbo --help --all' on the merged code has 0 lines with _PATH_FLAG (24 before), no DEFAULT heading, and 0 tracker IDs (15 before). The check asked for: test_cli_help_user_facing_names.py walks the built parser and the rendered help (every subcommand in a named group; no option displays a name beginning with an underscore; no tracker ID), so a later subcommand or option is covered without editing it. The widening noted on this item (tracker IDs) is included."  # 664f

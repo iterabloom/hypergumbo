@@ -1,0 +1,23 @@
+- op: create  # bd88
+  at: '2026-11-14T09:40:07Z'  # bd88
+  by: agent  # bd88
+  actor: jgstern_agent  # bd88
+  clock: 1  # bd88
+  nonce: bd88  # bd88
+  data:  # bd88
+    kind: work_item  # bd88
+    title: "a lint pragma above a declaration is still returned as its one-line summary (eslint-disable, eslint max-len): 26 JavaScript symbols on twelve repositories"  # bd88
+    status: todo_hard  # bd88
+    priority: 4  # bd88
+    parent:  # bd88
+    tags:  # bd88
+    - outside_reader_review_20261113  # bd88
+    - dogfood  # bd88
+    - docstrings  # bd88
+    - analyzers  # bd88
+    isbefore: []  # bd88
+    duplicate_of: []  # bd88
+    not_duplicate_of: []  # bd88
+    pr_ref:  # bd88
+    description: "Residual of WI-vihoh-kohaj-tonih-hufal-gitah-zudad-makur-safar (a symbol's one-line summary taken from decoration), filed so that item can close on its filed rows.\n\nOBSERVED. On twelve repositories (count_docstrings.py and a marker count over the cached surveys in ~/hypergumbo_lab_notebook/outside_reader_review2_11142026), 26 JavaScript symbols have a tool directive as their summary: \"eslint max-len: 0\", \"eslint-disable no-console\", and the like. 24 more have \"Copyright ...\" (now passed over). After the fix for decoration, shebangs, modelines and licence lines, a lint pragma that is the first line of the comment above a declaration is still returned as what the declaration does.\n\nWHY IT WAS LEFT. The other cases have a shape that does not depend on a tool: no letters, a shebang on line one, \"-*- ... -*-\", a licence line. A directive is \"<tool-name> <arguments>\" and no syntax separates it from prose; a list of tool names (eslint, pylint, noqa, nolint, prettier-ignore, istanbul, shellcheck, go:generate, ts-ignore) covers today's tools and not the next one.\n\nASK. Decide between (a) a registry of directive prefixes, kept with the other catalogues so it can be extended without code, and (b) a structural test that accepts a line as a summary only when it reads as a sentence (for example at least two words that are not identifiers or numbers), measured for false rejections on a multi-language corpus first. Count before choosing: summaries per language that either rule would reject, and a sample of each read by hand.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. A fix keyed to one repository's paths or file names, or one that works for one language only where the defect is not specific to it, does not close this item.\nThe rule runs in the shared helper (analyze/base.extract_doc_comment), so it holds for every analyzer that uses it; a patch for JavaScript alone does not close this item."  # bd88
+    fields: {}  # bd88
