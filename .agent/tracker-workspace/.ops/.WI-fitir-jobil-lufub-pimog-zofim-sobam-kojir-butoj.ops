@@ -1,0 +1,21 @@
+- op: create  # 9c69
+  at: '2026-11-13T22:20:36Z'  # 9c69
+  by: agent  # 9c69
+  actor: jgstern_agent  # 9c69
+  clock: 1  # 9c69
+  nonce: 9c69  # 9c69
+  data:  # 9c69
+    kind: work_item  # 9c69
+    title: "test_run_behavior_map_tolerates_unreadable_file_end_to_end failed once in a full run: the opt-in scip-python backend ran and read the file the test denies"  # 9c69
+    status: todo_hard  # 9c69
+    priority: 3  # 9c69
+    parent:  # 9c69
+    tags:  # 9c69
+    - sketch  # 9c69
+    - test_flake  # 9c69
+    isbefore: []  # 9c69
+    duplicate_of: []  # 9c69
+    not_duplicate_of: []  # 9c69
+    pr_ref:  # 9c69
+    description: "Seen once, 2026-11-13, in a plain ./scripts/smart-test run on the branch of PR #2176 (827 test files, 2176 tests): 1 failed, the rest passed. The same test file run alone passed, and a second full run (24225 tests) passed.\n\nFAILED: packages/hypergumbo-core/tests/test_cli_run_behavior_map.py::test_run_behavior_map_tolerates_unreadable_file_end_to_end\n  assert len(content) == 1  ->  2\nThe second content node carried \"alternatives\" with origin [\"scip_python\"]: the scip-python backend had analysed the file the test makes unreadable. The test denies Path.read_text and Path.read_bytes with monkeypatch; a backend that reads the file in another process is not denied.\n\nNOT KNOWN: why the backend ran in that run and not in the other two. It is opt-in (hypergumbo_lang_scip_python.gate.resolve_scip_python_optin: flag, environment, repository config). My reading, not verified: another test in the same xdist worker leaves the opt-in set (environment variable or module state), so it depends on test order. Machine load was high in the failing run (two other hypergumbo processes), which may matter instead.\n\nASK. Find what turned the backend on (bisect the worker's test order from .ci/pytest-output.log of a failing run, or assert the opt-in is off at the start of this test and see which run trips it). Then either the leaking test restores what it sets, or this test pins the backend off. Also decide whether the fail-open guarantee the test protects (an unreadable file must not abort a run) is tested with the subprocess backends at all.\n\nGENERALITY. Any test that relies on monkeypatching file reads while a subprocess backend may be enabled."  # 9c69
+    fields: {}  # 9c69
