@@ -249,8 +249,9 @@
 
 # INV-mikag: a module-level statement of limits.py changes. Four modules read
 # what it defines and none of their functions calls a limits function, so the
-# call-edge slice lists the modules and not their tests. reads_lazily imports
-# limits inside a function.
+# call-edge slice lists the modules and not their tests (the 9.2.0 slice
+# reaches test_reads_attr through the module attribute read; 9.0.0 reaches
+# none of the four). reads_lazily imports limits inside a function.
 - name: constant-read-elsewhere
   oracle: mutate
   ops:

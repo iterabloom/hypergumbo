@@ -344,22 +344,30 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
 
     # INV-mikag: four modules read what limits.py defines (an attribute of
     # the module, an imported name, a value computed at import, a lazy import)
-    # and none of their functions calls into it. The slice (STATIC) selects
-    # none of their tests; the import closure puts all four in the manifest.
+    # and none of their functions calls into it. The slice (STATIC) leaves
+    # their tests out; the import closure puts all four in the manifest.
+    # WHICH ones the slice leaves out depends on the hypergumbo build that
+    # slices: 9.0.0 (the pipx build smart-test prefers) leaves out all four,
+    # 9.2.0 (this tree's build, which CI slices with) follows the module
+    # attribute read and leaves out three. So the reach assertion is that the
+    # slice misses some reader, not which.
     const = scores["constant-read-elsewhere"]
     readers = {f"{core}test_reads_attr.py", f"{core}test_reads_name.py",
                f"{core}test_reads_at_import.py", f"{core}test_reads_lazily.py"}
     assert readers <= set(const["must"])
-    assert not readers & set(const["selected"]["static"])
+    assert readers - set(const["selected"]["static"]), "the slice selects every reader"
     for stage in ("manifest", "union", "narrow"):
         assert readers <= set(const["selected"][stage]), stage
         assert set(const["must"]) <= set(const["selected"][stage]), stage
         assert not set(const["should_not"]) & set(const["selected"][stage]), stage
-    # A function body of the same file does not take the closure: the modules
-    # that only read the constant are left alone.
+    # A function body of the same file does not take the closure: nothing the
+    # slice left out among the modules that only read the constant is added.
+    # (The 9.2.0 slice selects test_reads_attr.py by itself; that is the
+    # slice's answer, and the manifest carries it.)
     body_limits = scores["body-edit-limits"]
     assert f"{core}test_limits.py" in body_limits["selected"]["manifest"]
-    assert not set(body_limits["should_not"]) & set(body_limits["selected"]["manifest"])
+    added = set(body_limits["selected"]["manifest"]) - set(body_limits["selected"]["static"])
+    assert not set(body_limits["should_not"]) & added
 
     # WI-kazig: a deleted module has no symbol for the slice to start from,
     # so the test still importing it was left out whenever another edit kept
