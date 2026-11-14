@@ -133,6 +133,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A budget-tier survey file fits its budget as written**, records the size it reached in `tier_tokens_used`, and no longer leaves budget unused while dropping nodes.
 - **Tiered and compact views compute `metrics` from their own selection**: real supply-chain tiers, repository figures under `metrics.repository`.
+- **A tier or compact view with room takes symbols no entry point reaches**, best first; a selection used to stop when the entry points' own component ran out.
 
 #### Run reporting and graph integrity
 

@@ -803,6 +803,9 @@ def select_by_connectivity(
        - Secondary: edges added (densifies graph)
        - Tertiary: centrality (importance fallback)
     4. Add best node, update frontier, repeat until budget exhausted
+    5. When the frontier is empty and budget is left, the most central
+       symbol not yet reached starts the next component (a graph is rarely
+       one component, and the seeds' own is not the whole repository)
 
     This produces connected output even when seeds are disconnected,
     by preferring "bridge" nodes that unify components.
@@ -927,6 +930,19 @@ def select_by_connectivity(
                 best_node = node_id
         return best_node
 
+    # Symbols no seed reaches, best first. A graph is rarely one component:
+    # Express assigns most of its API as ``res.send = function ...``, which
+    # no call edge ties to an entry point, and a selection that stopped when
+    # the seeds' own component was exhausted gave a 64k tier ten nodes and
+    # left forty first-party functions out with 94% of the budget unused.
+    # The order reads centrality and id only, never the budget, so the
+    # emitted list is still a prefix of the list at any larger budget.
+    unreached = iter(sorted(
+        bootstrap_pool, key=lambda s: (-centrality.get(s.id, 0), s.id)))
+
+    def _next_unreached() -> str | None:
+        return next((s.id for s in unreached if s.id not in selected_ids), None)
+
     if interleave:
         # The budget is pure TRUNCATION of one budget-independent stream —
         # next seed, best bridge, next seed, best bridge — so step t depends
@@ -992,7 +1008,12 @@ def select_by_connectivity(
                 progressed = True
             if not progressed:
                 # Both streams dry: no seeds left and no reachable frontier.
-                break
+                # What is left is in components no seed reaches; the best
+                # of it starts the next one (see _next_unreached).
+                restart = _next_unreached()
+                if restart is None:
+                    break
+                _admit(restart)
     else:
         for sid in seed_seq:
             if sid in symbol_by_id and sid not in selected_ids:
@@ -1005,10 +1026,11 @@ def select_by_connectivity(
             max_additional -= 1
 
         added = 0
-        while added < max_additional and frontier:
-            best_node = _best_frontier_node()
-            if best_node is None:  # pragma: no cover
-                # Defensive: frontier should always have scoreable nodes
+        while added < max_additional:
+            # The frontier runs out when everything the seeds reach is
+            # taken; the best unreached symbol starts the next component.
+            best_node = _best_frontier_node() if frontier else _next_unreached()
+            if best_node is None:
                 break
             _admit(best_node)
             added += 1
