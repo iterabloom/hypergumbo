@@ -85,6 +85,18 @@ HYBRID_LINES = [
 ]
 
 
+def _hybrid_returns(monkeypatch: pytest.MonkeyPatch, lines: list[str]) -> None:
+    """Make the hybrid extractor return ``lines`` on any machine.
+
+    Without sentence-transformers and numpy (the per-PR CI container has
+    neither) ``_extract_config_info`` answers a hybrid request with the
+    heuristic lines and never reaches the pass under test, so the stack is
+    reported present here; nothing below loads a model.
+    """
+    monkeypatch.setattr(sketch, "_embedding_extraction_available", lambda: True)
+    monkeypatch.setattr(sketch, "_extract_config_hybrid", lambda *_a, **_k: list(lines))
+
+
 def test_the_section_text_has_one_blank_line_between_files(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The lines are rebuilt once more before they are printed, a file at a
@@ -93,7 +105,7 @@ def test_the_section_text_has_one_blank_line_between_files(
     line in 8 of 17 sketches measured), and took only a name with a dot in
     it for a heading, so ``[Dockerfile]`` and ``[Makefile]`` were folded
     into the file above them."""
-    monkeypatch.setattr(sketch, "_extract_config_hybrid", lambda *_a, **_k: list(HYBRID_LINES))
+    _hybrid_returns(monkeypatch, HYBRID_LINES)
     text = _extract_config_info(tmp_path, mode=ConfigExtractionMode.HYBRID)
     assert "\n\n\n" not in text and not text.endswith("\n")
     assert text.split("\n") == [
@@ -118,7 +130,7 @@ def test_a_file_without_a_dot_in_its_name_gets_its_own_share(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With little room, every file keeps its heading: three sections, not
     two with the Dockerfile's lines counted against the file above."""
-    monkeypatch.setattr(sketch, "_extract_config_hybrid", lambda *_a, **_k: list(HYBRID_LINES))
+    _hybrid_returns(monkeypatch, HYBRID_LINES)
     text = _extract_config_info(tmp_path, max_chars=260, mode=ConfigExtractionMode.HYBRID)
     for heading in ("[Dockerfile]", "[ui/app/Makefile]", "[ui/app/elm.json]"):
         assert heading in text.split("\n")
