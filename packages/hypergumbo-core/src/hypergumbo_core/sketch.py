@@ -5087,6 +5087,96 @@ def _select_additional_files(
     return selected_files, candidate_files, symbols_per_file, name_to_in_degree
 
 
+#: With source, a listing gives way to code. Entry Points and Data Models keep
+#: 0.4 of their share, the factor the Source Files listing shrinks by (25% to
+#: 10%): 13% and 8% of what is left, and never less than a floor in tokens,
+#: so a small sketch still names its entry points. ``(percent, floor)``.
+_WITH_SOURCE_ENTRY_POINTS = (13, 2000)
+_WITH_SOURCE_DATA_MODELS = (8, 1500)
+
+
+def _listing_budget(share: int, remaining: int, with_source: bool,
+                    with_source_rule: tuple[int, int]) -> int:
+    """Tokens a listing section may use: its ``share`` of what is left, and
+    with source no more than the with-source percentage of what is left or
+    the floor, whichever is larger.
+
+    The with-source limit used to be the floor alone (2,000 tokens for Entry
+    Points, 1,500 for Data Models), on the premise that the sections were
+    fully shown by the time it bound. Measured on 20 repositories it bound
+    at an 8k budget on 14, and a 128k sketch showed the same 57 entry points
+    as an 8k one (11-90% of what there was). A limit that grows with the
+    budget lets a larger sketch show more, and the floor keeps a small one
+    where it was.
+    """
+    if not with_source:
+        return share
+    percent, floor = with_source_rule
+    return min(share, max(floor, remaining * percent // 100))
+
+
+def _largest_fitting(cost: Callable[[int], int], budget: int,
+                     low: int, high: int) -> int:
+    """The largest count in ``low..high`` whose rendered ``cost`` is within
+    ``budget``, and ``low`` when even that is over (a section is never
+    emptied by its budget).
+
+    A section's size used to be a count: its budget over a constant cost per
+    entry (35 tokens an entry point, 15 a data model). Real entries cost
+    13-30, so the same 57 entry points took 730 to 1,740 tokens and a
+    section said "... and N more" with half its budget unused. Rendering is
+    cheap, so the count is found by bisection on what the section costs.
+    """
+    high = max(low, high)
+    if cost(high) <= budget:
+        return high
+    while low < high:
+        mid = (low + high + 1) // 2
+        if cost(mid) <= budget:
+            low = mid
+        else:
+            high = mid - 1
+    return low
+
+
+def _content_plan(sizes: list[int], budget: int, floor: int) -> dict[int, int]:
+    """Which ranked files get source content, and how many tokens each.
+
+    ``sizes[i]`` is what file *i* (best first) costs printed whole. The file
+    at rank *r* (1-based) may use ``level / r`` tokens: a harmonic profile,
+    so a better-ranked file gets proportionally more depth. A file that
+    costs no more than that is printed whole; a longer one is cut to it,
+    and is left out while its allowance is under ``floor`` (an excerpt
+    shorter than that is not worth its heading). ``level`` is the highest
+    the budget pays for. Returns ``{index: tokens}``; a file not in the
+    plan is not printed.
+
+    Everything is monotone in ``level``, and ``level`` in the budget, so a
+    larger budget prints every file a smaller one printed, at no less
+    depth. The rule this replaces printed a file whole whenever it fit what
+    was LEFT of the budget: at a large budget the first files, however
+    long, were printed in full and used it up, and a 128k sketch printed
+    two files of 2,300 and 1,400 lines whole while dropping two files a 32k
+    sketch had excerpted.
+    """
+    def planned(level: int) -> dict[int, int]:
+        plan = {}
+        for index, size in enumerate(sizes):
+            allowance = level // (index + 1)
+            if allowance >= min(floor, size):
+                plan[index] = min(size, allowance)
+        return plan
+
+    low, high = 0, max((size * rank for rank, size in enumerate(sizes, 1)), default=0)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if sum(planned(mid).values()) <= budget:
+            low = mid
+        else:
+            high = mid - 1
+    return planned(low)
+
+
 def _content_shares(budget: int, count: int, floor: int) -> list[int]:
     """Harmonic shares of ``budget`` for the first N of ``count`` files.
 
@@ -7434,13 +7524,20 @@ def _generate_sketch_impl(
                 if sym:
                     entrypoint_files.add(sym.path)
 
-            # Entry points are high value, give them 33% of remaining (ADR-0005)
-            # Cap at 2000 tokens in with-source mode to prevent starving
-            # Source Files Content at large budgets (ADR-0005 amendment)
-            budget_for_eps = remaining_tokens // 3
-            if with_source:
-                budget_for_eps = min(budget_for_eps, 2000)
-            max_eps = max(5, budget_for_eps // tokens_per_symbol)
+            # Entry points are high value: 33% of remaining, less with
+            # source (ADR-0005, :func:`_listing_budget`). The number shown is
+            # the most that FIT the budget, measured on the rendered section.
+            budget_for_eps = _listing_budget(
+                remaining_tokens // 3, remaining_tokens, with_source,
+                _WITH_SOURCE_ENTRY_POINTS)
+
+            def _entry_points_cost(count: int) -> int:
+                return estimate_tokens(_format_entrypoints(
+                    entrypoints, symbols, repo_root, max_entries=count,
+                    exclude_tests=exclude_tests, edges=edges))
+
+            max_eps = _largest_fitting(
+                _entry_points_cost, budget_for_eps, 5, len(entrypoints))
 
             ep_section = _format_entrypoints(
                 entrypoints, symbols, repo_root, max_entries=max_eps,
@@ -7469,13 +7566,19 @@ def _generate_sketch_impl(
     if _section_ok("Data Models", remaining_tokens) and symbols:
         datamodels = detect_datamodels(symbols, edges)
         if datamodels:
-            # Data Models get 20% of remaining budget (ADR-0005)
-            # Cap at 1500 tokens in with-source mode to prevent starving
-            # Source Files Content at large budgets (ADR-0005 amendment)
-            budget_for_models = (remaining_tokens * 20) // 100
-            if with_source:  # pragma: no cover - requires datamodel detection with --with-source
-                budget_for_models = min(budget_for_models, 1500)
-            max_models = max(3, budget_for_models // 15)  # ~15 tokens per model (grouped format)
+            # Data Models get 20% of remaining budget, less with source
+            # (ADR-0005, :func:`_listing_budget`), and show the most that fit.
+            budget_for_models = _listing_budget(
+                (remaining_tokens * 20) // 100, remaining_tokens, with_source,
+                _WITH_SOURCE_DATA_MODELS)
+
+            def _data_models_cost(count: int) -> int:
+                return estimate_tokens(_format_datamodels(
+                    datamodels, symbols, repo_root, max_entries=count,
+                    exclude_tests=exclude_tests))
+
+            max_models = _largest_fitting(
+                _data_models_cost, budget_for_models, 3, len(datamodels))
 
             dm_section = _format_datamodels(
                 datamodels, symbols, repo_root, max_entries=max_models,
@@ -7732,7 +7835,6 @@ def _generate_sketch_impl(
                     reverse=True,
                 )
 
-            source_tokens_used = 0
             # ADR-0005: allocate 75% of remaining for Source Files Content section
             source_budget = (remaining_tokens * 75) // 100
 
@@ -7749,65 +7851,30 @@ def _generate_sketch_impl(
                 except (OSError, IOError):  # pragma: no cover - rare I/O errors
                     continue
 
-            # Harmonic shares for the first N eligible files, N the largest
-            # for which every share clears the floor (ADR-0005's "effective
-            # N"; :func:`_content_shares`). Shares determine truncation
-            # depth: higher-ranked files get more space. Files that fit
-            # entirely within remaining budget are included regardless of
-            # their share (the floor only gates truncation, not inclusion
-            # of small files).
-            #
-            # The shares used to be computed over EVERY eligible file. With
-            # hundreds of files the first share is the budget over six or
-            # seven, so at a small budget it fell under the floor and the
-            # section was empty: alertmanager at 8k printed 415 tokens of
-            # source, and none once the listings above it were sized right.
-            shares = _content_shares(
-                source_budget, len(eligible), MIN_SOURCE_TRUNCATION_TOKENS)
+            # Which files get content, and how much: a file whole when it
+            # costs no more than its rank's harmonic share, cut to that
+            # share otherwise (:func:`_content_plan`, ADR-0005).
+            rel_paths = [str(f.relative_to(repo_root)) for f, _content in eligible]
+            plan = _content_plan(
+                [_estimate_file_block_tokens(rel, content)
+                 for rel, (_f, content) in zip(rel_paths, eligible, strict=True)],
+                source_budget, MIN_SOURCE_TRUNCATION_TOKENS)
 
             for rank_idx, (src_file, content) in enumerate(eligible):
-                rel_path = src_file.relative_to(repo_root)
-                file_tokens = _estimate_file_block_tokens(str(rel_path), content)
-
-                budget_left = source_budget - source_tokens_used
-                if budget_left <= 0:  # pragma: no cover - defensive: budget exhausted
-                    break
-
-                if file_tokens <= budget_left:
-                    # File fits entirely within remaining budget — include in full
-                    source_content_lines.extend(
-                        _format_file_content_block(str(rel_path), content)
-                    )
-                    source_content_files_added.append(src_file)
-                    source_tokens_used += file_tokens
-                else:
-                    # File needs truncation — use harmonic share as target
-                    share = shares[rank_idx] if rank_idx < len(shares) else 0
-                    effective_share = min(share, budget_left)
-
-                    if effective_share < MIN_SOURCE_TRUNCATION_TOKENS:
-                        break
-
-                    truncation_target = max(
-                        effective_share - 50,  # Reserve for block overhead
-                        MIN_SOURCE_TRUNCATION_TOKENS,
-                    )
-                    truncated_content = truncate_to_tokens(content, truncation_target)
-                    if truncated_content != content:
-                        truncated_content += "\n\n[...truncated...]"
-
-                    truncated_tokens = _estimate_file_block_tokens(
-                        str(rel_path), truncated_content
-                    )
-
-                    if source_tokens_used + truncated_tokens <= source_budget:
-                        source_content_lines.extend(
-                            _format_file_content_block(str(rel_path), truncated_content)
-                        )
-                        source_content_files_added.append(src_file)
-                        source_tokens_used += truncated_tokens
-                    else:  # pragma: no cover - block overhead pushes over budget
-                        break
+                allowance = plan.get(rank_idx)
+                if allowance is None:
+                    continue
+                rel_path = rel_paths[rank_idx]
+                if _estimate_file_block_tokens(rel_path, content) > allowance:
+                    truncated = truncate_to_tokens(
+                        content,
+                        # Reserve for block overhead
+                        max(allowance - 50, MIN_SOURCE_TRUNCATION_TOKENS))
+                    if truncated != content:
+                        content = truncated + "\n\n[...truncated...]"
+                source_content_lines.extend(
+                    _format_file_content_block(rel_path, content))
+                source_content_files_added.append(src_file)
 
             if len(source_content_lines) > 2:  # More than just header
                 sections.append("\n".join(source_content_lines))
