@@ -1,0 +1,23 @@
+- op: create  # 59ec
+  at: '2026-11-14T09:39:50Z'  # 59ec
+  by: agent  # 59ec
+  actor: jgstern_agent  # 59ec
+  clock: 1  # 59ec
+  nonce: 59ec  # 59ec
+  data:  # 59ec
+    kind: work_item  # 59ec
+    title: "python: meta.parameters omits positional-only and keyword-only parameters, and the displayed signature drops the / marker"  # 59ec
+    status: todo_hard  # 59ec
+    priority: 3  # 59ec
+    parent:  # 59ec
+    tags:  # 59ec
+    - outside_reader_review_20261113  # 59ec
+    - dogfood  # 59ec
+    - python  # 59ec
+    - signatures  # 59ec
+    isbefore: []  # 59ec
+    duplicate_of: []  # 59ec
+    not_duplicate_of: []  # 59ec
+    pr_ref:  # 59ec
+    description: "Found 2026-11-14 while testing the annotation-display fix (WI-dujor-papop-fupus-sutuf-bajaz-sivaj-salir-nivur), on its branch.\n\nOBSERVED. A three-line file:\n  def g(a: int, /, b: str, *args: int, k: bool = False, **kw: int) -> None: pass\ngives\n  signature: (a: int, b: str, *args, k: bool=False, **kw) -> None\n  meta.parameters: [{name: b, type: str}, {name: *args, type: int}, {name: **kw, type: int}]\nThe positional-only parameter a and the keyword-only parameter k are in the signature and absent from meta.parameters. The displayed signature also drops the \"/\" marker, so a reads as an ordinary positional-or-keyword parameter.\n\nMECHANISM. py.py _extract_parameters_info walks args.args, args.vararg and args.kwarg. It never reads args.posonlyargs or args.kwonlyargs (nor kw_defaults). _format_function_signature does read both lists, which is why the two disagree.\n\nWHY IT MATTERS. Consumers are told to read meta[\"parameters\"] and not the display signature (ADR-0058). 14 sites in hypergumbo-core read it. Anything that counts or matches parameters from it (arity, receiver typing, taint parameter positions) sees a function with fewer parameters than it has, and positions shifted by the number of positional-only parameters before them. Which consumers are affected, and whether any edge or verdict changes, was not checked.\n\nASK. List every parameter in meta.parameters in declaration order, with its kind (positional-only, positional-or-keyword, var-positional, keyword-only, var-keyword), and keep the \"/\" and bare \"*\" markers in the display signature. Before changing the list's length or order, enumerate the consumers that index into it and check each. Sibling languages: ask the same of every analyzer that fills meta.parameters for a language with more than one parameter kind (keyword-only in Ruby and Swift labels, variadics in Go, Java, C#, defaults in Kotlin); this was not checked.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. A fix keyed to one repository's paths or file names, or one that works for one language only where the defect is not specific to it, does not close this item."  # 59ec
+    fields: {}  # 59ec

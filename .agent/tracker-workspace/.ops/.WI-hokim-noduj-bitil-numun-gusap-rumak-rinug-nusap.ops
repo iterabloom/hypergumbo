@@ -1,0 +1,23 @@
+- op: create  # 7d4a
+  at: '2026-11-14T09:39:56Z'  # 7d4a
+  by: agent  # 7d4a
+  actor: jgstern_agent  # 7d4a
+  clock: 1  # 7d4a
+  nonce: 7d4a  # 7d4a
+  data:  # 7d4a
+    kind: work_item  # 7d4a
+    title: "hypergumbo sketch prints its artifact summary on stdout after the sketch: home-directory cache paths end up in every redirected or pasted sketch"  # 7d4a
+    status: todo_hard  # 7d4a
+    priority: 3  # 7d4a
+    parent:  # 7d4a
+    tags:  # 7d4a
+    - outside_reader_review_20261113  # 7d4a
+    - dogfood  # 7d4a
+    - sketch  # 7d4a
+    - cli  # 7d4a
+    isbefore: []  # 7d4a
+    duplicate_of: []  # 7d4a
+    not_duplicate_of: []  # 7d4a
+    pr_ref:  # 7d4a
+    description: "Seen 2026-11-14 while measuring sketches of 20 repositories (~/hypergumbo_lab_notebook/outside_reader_review2_11142026): every file made with \"hypergumbo sketch REPO > file.md\" ends with lines that are not part of the sketch.\n\nOBSERVED. After the sketch, on STDOUT:\n  [hypergumbo sketch] Generated 1 artifact(s), Using 4 cached\n    [cached] /home/<user>/.cache/hypergumbo/<key>/results/<key>/<key>/survey.16k.json\n    ...\n    /home/<user>/.cache/hypergumbo/<key>/results/<key>/<key>/sketch.8000.withsource.md\n    Output: stdout\nThe outside reader's paste of a sketch carried the same block. A sketch is made to be redirected to a file or pasted into a model; the block puts the user's home directory and cache keys into it, and a consumer that reads stdout as the sketch gets text that is not Markdown about the repository.\n\nMECHANISM. cli.py cmd_sketch calls _print_output_summary(\"sketch\", ..., stdout_output=True) with no file argument, under the comment \"Output summary (always to stdout at the end)\". _print_output_summary defaults file to sys.stdout; other callers pass sys.stderr when their stdout is JSON. The representativeness table and the comparison-sketch paths of the same command already go to stderr.\n\nASK. Decide what stdout of a command that prints its result to stdout may carry. Proposed rule: stdout is the result and nothing else; the artifact summary goes to stderr for every command whose result is on stdout, with one test over the commands that take stdout_output=True. If the summary on stdout is relied on by anything (a script, a test, the README), say what before moving it. Not checked: which other commands print the summary after a text result on stdout (routes and slice --list-entries pass stdout_output=True).\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. A fix keyed to one repository's paths or file names, or one that works for one language only where the defect is not specific to it, does not close this item."  # 7d4a
+    fields: {}  # 7d4a

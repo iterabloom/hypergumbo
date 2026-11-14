@@ -22,3 +22,26 @@
     pr_ref:  # dc33
     description: "Source: an outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/49869475df136c86/eb6b68753d44e259. Every claim below was re-checked against those files and the code on dev d6a8a140e7.\n\nOBSERVED in the self-run sketch:\n- Key Symbols, 8k: json_field() (function) — ------------------------------------------------------------------\n- Key Symbols, 128k: repair_agent_perms() — !/bin/bash\nThe source of the first is a comment block that opens with a ruled line:\n  # ------------------------------------------------------------------\n  # json_field DOTPATH\n  #   Safe field extraction from JSON on stdin.\nThe 8k sketch has 16 Key Symbols slots; one went to this line.\n\nMECHANISM. analyze/base.populate_docstrings_from_tree attaches the comment preceding a declaration through extract_doc_comment, for every analyzer that does not set a docstring itself. Consumers that show one line take the first. A first line made only of rule characters, or the file's shebang reached because the function is the first declaration, carries no description. Whether the fault is fixed in extraction (drop decoration lines and never treat a shebang as documentation) or in the one-line summary (first line that has words) is the design question; fixing it in extraction serves every consumer of Symbol.docstring.\n\nASK. Define, in the shared helper, which comment lines are documentation: skip lines consisting only of repeated punctuation, skip a shebang and an encoding or licence-header line, and skip a line that only repeats the symbol's own name and arguments if a descriptive line follows. State the rule once and test it across comment syntaxes.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was seen. A fix keyed to this repo's paths or file names, or one that works only for Python, does not close this item.\nBanner comments are a convention in shell, C, C++, SQL, Lua, Fortran, assembly, Makefiles and many others (# ----, // ====, /* **** */, -- ----, ;; ----); the rule must be written over comment content after the language's comment markers are stripped, and must run for every analyzer that goes through extract_doc_comment. A patch inside the bash analyzer does not close this item. Acceptance: fixtures in at least four comment syntaxes, and a count over a multi-language corpus of symbols whose one-line summary has no letters, before and after."  # dc33
     fields: {}  # dc33
+- op: discuss  # 230c
+  at: '2026-11-14T05:05:56Z'  # 230c
+  by: agent  # 230c
+  actor: jgstern_agent  # 230c
+  clock: 2  # 230c
+  nonce: 230c  # 230c
+  message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). SEEN OFF THIS REPOSITORY, 5 of 20 at 128k: kserve find_repo_root() summarised as a row of '='; lazygit decoder and parser (Go structs, so not only shell) as rows of '-'; vite main() as a row of '-'; pm2 detectDE() as a row of '-' and foo() as '!/bin/bash'; nats-server check_file() as '!/bin/bash'. Still on the self-run after the first review's fixes: json_field() and detect_api_base() under scripts/lib/forgejo-api.sh at 32k."  # 230c
+- op: update  # e4b7
+  at: '2026-11-14T09:47:51Z'  # e4b7
+  by: agent  # e4b7
+  actor: jgstern_agent  # e4b7
+  clock: 3  # e4b7
+  nonce: e4b7  # e4b7
+  set:  # e4b7
+    status: done  # e4b7
+    pr_ref: '#2183'  # e4b7
+- op: discuss  # 34e1
+  at: '2026-11-14T09:47:51Z'  # 34e1
+  by: agent  # 34e1
+  actor: jgstern_agent  # 34e1
+  clock: 4  # 34e1
+  nonce: '34e1'  # 34e1
+  message: "Fixed in PR #2183. extract_doc_comment reads a comment's markers from the comment itself and returns the first line that documents: a line with no letter, a tag line, a shebang on line one, a modeline, an encoding or a licence line are passed over, and a line that only restates the declaration is passed over when a describing line follows. BEHAVIOUR: the dashed-line and shebang summaries seen on kserve, lazygit, vite, pm2 and nats-server (5 of 20) are 0 of 20 after; through the real analyzers a bash function under a ruled comment block gets 'Safe field extraction from JSON on stdin.', and a Go struct under a bare block opener gets its sentence. Tests: test_doc_comment_summary.py (13 comment syntaxes x 10 shapes) and test_doc_comment_summary_e2e.py (bash, Go, JavaScript, C). ACCEPTANCE COUNT (count_docstrings.py, the same twelve repositories re-surveyed): summaries with no letters, a shebang, an encoding line or a licence line, 113 of 14,518 before (Go, JavaScript, TypeScript, Elm, Rust, shell), 0 of 14,493 after. RESIDUAL filed: WI-bojuz-bovuj-ninip-nasok-mosud-dokuk-hidij-babit (a lint pragma as a summary). Evidence: ~/hypergumbo_lab_notebook/outside_reader_review2_11142026 (results.txt before, results_after.txt after; 20 repositories that are not hypergumbo, re-surveyed on the PR branch before its last two sketch commits, which were checked by direct calls). "  # 34e1

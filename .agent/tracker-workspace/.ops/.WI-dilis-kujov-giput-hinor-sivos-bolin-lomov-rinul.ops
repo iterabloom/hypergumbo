@@ -1,0 +1,23 @@
+- op: create  # c06c
+  at: '2026-11-14T09:40:01Z'  # c06c
+  by: agent  # c06c
+  actor: jgstern_agent  # c06c
+  clock: 1  # c06c
+  nonce: c06c  # c06c
+  data:  # c06c
+    kind: work_item  # c06c
+    title: "help: flag conventions still differ between commands (-x with three meanings, --json beside --format json, --out and --output on slice, rust-analyzer typed but rust_analyzer printed)"  # c06c
+    status: todo_hard  # c06c
+    priority: 4  # c06c
+    parent:  # c06c
+    tags:  # c06c
+    - outside_reader_review_20261113  # c06c
+    - dogfood  # c06c
+    - cli  # c06c
+    - help  # c06c
+    isbefore: []  # c06c
+    duplicate_of: []  # c06c
+    not_duplicate_of: []  # c06c
+    pr_ref:  # c06c
+    description: "Residual of WI-kurin-votum-golog-popar-mupot-basuv-fulan-ganup (one thing named two ways in the help), filed so that item can close on its filed four places. Each of these is a compatibility decision, so each is the owner's. Re-checked in the rendered help on 2026-11-14.\n\nOBSERVED\n1. One flag, three meanings. -x/--exclude-tests excludes test code on sketch, explain and symbols; on routes it is \"(deprecated; excluded by default)\"; on io-boundaries \"(default behavior, kept for backward compatibility)\". slice has --exclude-tests with no -x. io-boundaries has --include-tests for the opposite.\n2. Two ways to ask for JSON. io-boundaries and verify-claims take --json beside --format json (documented as a back-compat alias); the other commands with a format option take --format only; several commands have neither.\n3. Two flags for an output path on one command. slice has --out for the slice JSON and --output for the --files list.\n4. The backend is spelled rust-analyzer where a user types it (--backend, and now trust-backend) and rust_analyzer where hypergumbo prints it: \"hypergumbo catalog\" lists \"rust_analyzer\" and \"scip_python\" under \"Suggested for current repo\", and trust-backend --show prints \"rust_analyzer: no decision recorded\".\n\nASK. For each: rule on the one form, keep the other as a deprecated alias for a stated number of releases where one shipped, and state the rule in a check over the built parser (a flag that exists on more than one command means the same on each; one spelling for a value in what is typed and what is printed). The check in test_cli_help_one_name_per_thing.py covers spelling of typed names only.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. A fix keyed to one repository's paths or file names, or one that works for one language only where the defect is not specific to it, does not close this item."  # c06c
+    fields: {}  # c06c
