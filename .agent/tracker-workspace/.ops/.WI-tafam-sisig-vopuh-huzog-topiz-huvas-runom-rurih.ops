@@ -1,0 +1,23 @@
+- op: create  # 7f98
+  at: '2026-11-14T05:01:19Z'  # 7f98
+  by: agent  # 7f98
+  actor: jgstern_agent  # 7f98
+  clock: 1  # 7f98
+  nonce: 7f98  # 7f98
+  data:  # 7f98
+    kind: work_item  # 7f98
+    title: "Sketch Data Models ranks without reading visibility: private classes take slots while public models are cut (self-run 2, sqlalchemy 5, poetry 1)"  # 7f98
+    status: todo_hard  # 7f98
+    priority: 4  # 7f98
+    parent:  # 7f98
+    tags:  # 7f98
+    - outside_reader_review_20261113  # 7f98
+    - dogfood  # 7f98
+    - sketch  # 7f98
+    - ranking  # 7f98
+    isbefore: []  # 7f98
+    duplicate_of: []  # 7f98
+    not_duplicate_of: []  # 7f98
+    pr_ref:  # 7f98
+    description: "Source: a second outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, made after the fixes from the first review merged. Each claim was re-checked against those files and the code on dev fed15705d7, then measured on 20 repositories that are not hypergumbo (default sketch and --no-source, 8k/32k/128k). Scripts, the 120 sketches and results.txt: ~/hypergumbo_lab_notebook/outside_reader_review2_11142026.\n\nOBSERVED. The sketch Data Models section lists classes whose names mark them private: _PartialCfg and one other on the self-run (2 of the 77 names shown at 8k), 5 on sqlalchemy, 1 on poetry: 3 of the 7 repositories measured that have the section. Each takes a slot while public models are cut (self-run: \"... and 209 more data models in 133 other files\"; sqlalchemy shows 78 of 193 at 8k). At 8k the section is the largest of the self-run sketch (147 lines, 6,515 characters), at its ADR-0005 share.\n\nMECHANISM. datamodels.py does not read Symbol.visibility or is_exported (no reference to either in the file); the two private names on the self-run are _PartialCfg and _FringeEdge. Symbol.visibility exists and is computed in finalize (ir.py module docstring). How the models are ranked was not traced further.\n\nASK. Decide whether a non-public model ranks below a public one in this section, using Symbol.visibility and not the leading underscore, so the rule is the language's own notion of private. Measure the names shown before and after on the repositories above.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was first seen. A fix keyed to this repository's paths or file names, or one that works for one language only, does not close this item.\nVisibility is per language (underscore convention in Python, export in Go and TypeScript, pub in Rust, modifiers in Java and C#); the rule must read the computed visibility field. A test on a leading underscore does not close this item."  # 7f98
+    fields: {}  # 7f98
