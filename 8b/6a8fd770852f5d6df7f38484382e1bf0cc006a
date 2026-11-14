@@ -1,0 +1,16 @@
+Original commit body from 51f360afe496766ac65b428a80614ee4591afe4d:
+
+Two sketch/discovery items in one PR (owner 2026-11-13: one PR, one commit each, tested together).
+
+1. fix(discovery): a file git ignores and does not track is not analysed (ADR-0004 point 9, owner ruling "(a), P1").
+   The rule is git's own answer: ignored by the work tree's rules (git check-ignore --no-index --stdin, one call per directory level) and absent from HEAD. Applied by FileIndex.build, is_excluded / find_files, walks_into, the sketch readers that find a file by name or glob, the profile's framework detection and supply_chain's manifest walk. Disclosed on stderr, in the sketch Overview and in supply_chain_summary.vcs_ignored_skipped. Outside a git work tree, or when git fails, nothing is excluded.
+   Measured on a repository of 5 committed and 248 ignored, untracked files: before, 134 had graph nodes and a sketch printed the content of up to 107; after, 0 and 0, and each sketch equals a clean checkout's apart from the disclosure line.
+   Not covered (listed in ADR-0004 point 9; none prints file content): content rules' sibling-manifest evidence, detect_package_roots, the per-language dependency readers, verify-claims scope roots, the dead-code name-collision count.
+
+2. fix(sketch): Entry Points lists a route once and names its handler.
+   A route marker and the function serving it were both listed, and a handler_ref holding a symbol id was printed raw. Pairing is by identity only (handler_ref id, else the single dispatches_to edge). The tracker package's HTTP Routes go from 13 lines to 7.
+
+Tests: 66 cases in test_vcs_ignored_untracked.py, 15 tests added to test_sketch.py. Mutation controls: 53 for item 1 and 13 for item 2, each turning a test red.
+
+Addresses WI-jolov-saham-fatob-pujat-jilan-fojib-mahiz-gakuh
+Addresses WI-tukag-tajam-kihis-difaf-huhan-bafol-jobap-migab
