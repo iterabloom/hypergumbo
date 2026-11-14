@@ -1081,6 +1081,30 @@ def droppable_test_files(
             & informed_test_files(conn, repo_root, sources))
 
 
+def import_time_changed_sources(
+    base_sources: Mapping[str, Optional[str]], repo_root: Path,
+) -> tuple[str, ...]:
+    """Repo-relative coverable source files whose import-time code changed.
+
+    These are the files :func:`narrowing_blockers` refuses on, and for the
+    same reason they need a selector of their own: a module or class body
+    runs under no test's context, so no coverage row says which tests depend
+    on it, and the call-edge slice reaches a test only through a call. The
+    selector for them is the import graph
+    (:mod:`hypergumbo_core.import_closure`): every file that imports one of
+    these runs the changed code.
+
+    ``base_sources`` is what :func:`changed_blocks` takes. A deleted file
+    counts, since its module body is gone from under its importers. A new
+    file does not: nothing imported it at the base, and a file that starts
+    importing it has a changed module body of its own.
+    """
+    _changed, _new, import_time = _diff_blocks(base_sources)
+    prefix = f"{repo_root}/"
+    rels = {p[len(prefix):] if p.startswith(prefix) else p for p, _name in import_time}
+    return tuple(sorted(r for r in rels if not _is_test_path(r) and _is_coverable(r)))
+
+
 @dataclass(frozen=True)
 class Narrowing:
     """The outcome of one narrowing attempt.
