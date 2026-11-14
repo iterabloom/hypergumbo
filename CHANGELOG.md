@@ -210,6 +210,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Comments and docstrings in 506 files state the current code's rules instead of narrating its history**; core comments that contradicted the code are corrected, and three output strings drop stale history.
 - **The spec documents 63 `symbol_meta` keys.**
 - **The pip and python that scip-python launches itself are documented.**
+- **`--help` shows only names a user can use**: every command is under a named group, `--path` takes `PATH`, and tracker IDs are gone.
 
 ## [9.2.0] - 2026-10-20
 
