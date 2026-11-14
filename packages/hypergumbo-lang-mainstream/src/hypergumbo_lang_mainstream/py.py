@@ -1142,7 +1142,7 @@ def _extract_parameters_info(
         if exclude_self and i == 0 and arg.arg in ("self", "cls"):
             continue
         has_default = i >= defaults_offset
-        type_str = _format_annotation(arg.annotation) if arg.annotation else None
+        type_str = _display_annotation(arg.annotation) if arg.annotation else None
         params.append({
             "name": arg.arg,
             "type": type_str if type_str else None,
@@ -1151,7 +1151,7 @@ def _extract_parameters_info(
 
     # Handle *args
     if args.vararg:
-        type_str = _format_annotation(args.vararg.annotation) if args.vararg.annotation else None
+        type_str = _display_annotation(args.vararg.annotation) if args.vararg.annotation else None
         params.append({
             "name": f"*{args.vararg.arg}",
             "type": type_str if type_str else None,
@@ -1160,7 +1160,7 @@ def _extract_parameters_info(
 
     # Handle **kwargs
     if args.kwarg:
-        type_str = _format_annotation(args.kwarg.annotation) if args.kwarg.annotation else None
+        type_str = _display_annotation(args.kwarg.annotation) if args.kwarg.annotation else None
         params.append({
             "name": f"**{args.kwarg.arg}",
             "type": type_str if type_str else None,
@@ -1195,14 +1195,39 @@ def _format_annotation(node: ast.expr) -> str:
         value = _format_annotation(node.value)
         return f"{value}.{node.attr}"
     else:
-        return ""  # pragma: no cover - defensive fallback for unknown AST types
+        # Reached by ordinary annotations: a list (``Callable[[int], None]``),
+        # a unary minus (``Literal[-1]``), a call (``Annotated[int, f()]``), a
+        # starred name. Left as it is because this text is hashed into
+        # stable_id (see _display_annotation).
+        return ""
 
 
-def _format_arg(arg: ast.arg) -> str:
-    """Format a single function argument."""
+def _display_annotation(node: ast.expr) -> str:
+    """A type annotation as the source wrote it, for display and metadata.
+
+    ``ast.unparse`` writes every node a valid tree can hold, so the text has
+    no holes. :func:`_format_annotation` has a case for six node kinds and
+    returns ``""`` for the rest, which printed ``Callable[[int], None]`` as
+    ``Callable[, None]``, ``Literal[-1, 1]`` as ``Literal[, 1]`` and
+    ``Annotated[int, Field(gt=0)]`` as ``Annotated[int, ]``, in the displayed
+    signature and in ``meta["parameters"]`` alike.
+
+    That function is kept, unchanged, for ONE caller: the signature that is
+    hashed into a function's ``stable_id``. Its output, holes included, is an
+    input to identity, so correcting it there changes the id of every
+    function with such an annotation (an identity-scheme decision, not a
+    rendering fix). Everything a reader or a consumer sees comes from here.
+    """
+    return ast.unparse(node)
+
+
+def _format_arg(arg: ast.arg, display: bool = False) -> str:
+    """Format a single function argument (``display``: see
+    :func:`_display_annotation`)."""
     result = arg.arg
     if arg.annotation:
-        ann = _format_annotation(arg.annotation)
+        ann = (_display_annotation(arg.annotation) if display
+               else _format_annotation(arg.annotation))
         if ann:
             result += f": {ann}"
     return result
@@ -1264,11 +1289,11 @@ def _format_function_signature(
 
     # Positional-only args (before /)
     for arg in args.posonlyargs:
-        all_args.append(_format_arg(arg))
+        all_args.append(_format_arg(arg, display=render_defaults))
 
     # Regular args
     for i, arg in enumerate(args.args):
-        arg_str = _format_arg(arg)
+        arg_str = _format_arg(arg, display=render_defaults)
         # Check for default value
         num_defaults = len(args.defaults)
         num_args = len(args.args)
@@ -1287,7 +1312,7 @@ def _format_function_signature(
 
     # Keyword-only args
     for i, arg in enumerate(args.kwonlyargs):
-        arg_str = _format_arg(arg)
+        arg_str = _format_arg(arg, display=render_defaults)
         if i < len(args.kw_defaults) and args.kw_defaults[i] is not None:
             arg_str += (
                 "=" + _format_default(args.kw_defaults[i])
@@ -1305,7 +1330,8 @@ def _format_function_signature(
     # Add return type annotation if present
     ret_str = ""
     if node.returns:
-        ret_type = _format_annotation(node.returns)
+        ret_type = (_display_annotation(node.returns) if render_defaults
+                    else _format_annotation(node.returns))
         if ret_type:
             ret_str = f" -> {ret_type}"
     sig = args_str + ret_str
@@ -3585,7 +3611,7 @@ def _extract_file_analysis(
                 attr_start = member.lineno
                 attr_end = member.end_lineno or attr_start
                 attr_sig = (
-                    _format_annotation(attr_annotation)
+                    _display_annotation(attr_annotation)
                     if attr_annotation is not None else None
                 )
                 for attr in attr_names:
