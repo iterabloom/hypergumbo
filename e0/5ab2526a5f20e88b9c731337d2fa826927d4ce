@@ -1,0 +1,60 @@
+Original commit body from 8d13a79085be958304d1f5b632da8c7fa0b4dc0b:
+
+Second outside-reader review of a self-run sketch, checked claim by claim and
+then measured on 20 repositories that are not hypergumbo. One commit per item,
+tested together (owner ruling 2026-11-13).
+
+Evidence, scripts and both sets of 120 sketches:
+~/hypergumbo_lab_notebook/outside_reader_review2_11142026 (results.txt before,
+results_after.txt after, proto/results.txt for the options compared).
+
+## What a reader sees differently
+
+Default sketch (with source), 20 repositories, 8k / 32k / 128k:
+
+| | before | after |
+|---|---|---|
+| Entry points shown, median | 53% / 53% / 53% | 92% / 100% / 100% |
+| Entry points shown, minimum | 11% / 11% / 11% | 18% / 36% / 100% |
+| Data models shown (4 repositories with more than 100) | 29-66% / 34-80% / 34-80% | 31-63% / 71-100% / 100% |
+| Source files printed, median (minimum) | 3 (1) / 6.5 (2) / 13.5 (3) | 3 (2) / 11.5 (9) / 51 (26) |
+| A larger budget prints fewer source files | 5 repositories | none |
+| `Callable[, ` in a signature | 3 repositories | none |
+| Half-read manifest value (`license: { text =`) | 3 repositories | none |
+| Dashed-line or shebang "docstring" | 5 repositories | none |
+| Blockquote marker in the description line | 1 (+ this repository) | none |
+
+Survey tiers: express's 16k and 64k tiers go from 10 nodes to all 50;
+mini-redis's 64k tier from 215 to all 239; the other 18 are unchanged.
+
+ADR-0005: the owner ruled on 2026-11-14 that the with-source limit for Entry
+Points and Data Models grows with the budget (13% and 8% of what is left, never
+under 2,000 and 1,500 tokens), over the alternative of no with-source limit.
+
+## Commits
+
+- fix(sketch): one rule for which README text can be the description; a label over a code block is not description prose (WI-monuf)
+- fix(sketch): Configuration prints a manifest value whole or not at all (WI-fonob)
+- fix(sketch): a semantic Configuration quote keeps its file heading; one blank line between Configuration files (WI-vomab)
+- fix(sketch): rate a file's hidden Key Symbols on the star's scale (WI-rodah)
+- fix(analyze): a comment's summary is the first line that documents (WI-vihoh)
+- fix(cli): the help shows only names a user can use (WI-jozip)
+- fix(cli): the help says one thing one way, and takes either spelling (WI-kurin)
+- fix(python): a type annotation is displayed whole; identity is untouched (WI-dujor, display half)
+- fix(sketch): a larger budget shows more of every section, never less (WI-dahir; ADR-0005 and spec)
+- fix(compact): a selection with budget left takes unreached components (WI-lihid)
+- fix(datamodels): a private model ranks under every public one (WI-tafam)
+- test(ci): the citation gate's empty-selection control picks its file by measurement (it named sketch.py as uncited; the new tests' covers declarations cite it)
+
+## Not in this PR, and why
+
+- stable_id still hashes the old annotation text, holes included: changing it
+  is an identity-scheme decision (owner).
+- Entry-point rank saturation (WI-mapaj): the schema bounds rank_score at 1.0
+  and ADR-0039 ruling 3 moves the formulas unchanged, so it needs a ruling.
+- How Entry Points slots are shared between groups (WI-lumal): four rules
+  measured, none clearly best; table in the item.
+- A general rule for fixture directories (WI-fosuk), quoted repository text
+  (WI-vupun) and the 4k tier (WI-guhul): owner decisions.
+
+Addresses WI-monuf-jikar-tumip-zokab-loviz-mubos-sofuv-dorav, WI-fonob-nafud-dimiz-lunuj-punih-sikok-visij-filok, WI-vomab-dupiv-lobuz-himih-katuj-hulad-mizig-lupah, WI-rodah-kafih-duzar-visaj-damur-hozum-vizuf-dasub, WI-vihoh-kohaj-tonih-hufal-gitah-zudad-makur-safar, WI-jozip-zotot-higal-tipoh-dafah-hokuf-jafol-mofah, WI-kurin-votum-golog-popar-mupot-basuv-fulan-ganup, WI-dujor-papop-fupus-sutuf-bajaz-sivaj-salir-nivur, WI-dahir-vokov-pikib-tadig-gobik-dijom-jasib-turiv, WI-lihid-mosud-hifos-jihom-pigar-nahup-lisab-zasas, WI-tafam-sisig-vopuh-huzog-topiz-huvas-runom-rurih
