@@ -1,0 +1,23 @@
+- op: create  # 8739
+  at: '2026-11-14T05:01:01Z'  # 8739
+  by: agent  # 8739
+  actor: jgstern_agent  # 8739
+  clock: 1  # 8739
+  nonce: '8739'  # 8739
+  data:  # 8739
+    kind: work_item  # 8739
+    title: "Decide what a sketch owes its reader about quoted repository text: agent-instruction files (AGENTS.md) and other prose are printed into output meant for a language model, with no statement that it is untrusted data"  # 8739
+    status: todo_hard  # 8739
+    priority: 3  # 8739
+    parent:  # 8739
+    tags:  # 8739
+    - outside_reader_review_20261113  # 8739
+    - dogfood  # 8739
+    - sketch  # 8739
+    - security  # 8739
+    isbefore: []  # 8739
+    duplicate_of: []  # 8739
+    not_duplicate_of: []  # 8739
+    pr_ref:  # 8739
+    description: "Source: a second outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, made after the fixes from the first review merged. Each claim was re-checked against those files and the code on dev fed15705d7, then measured on 20 repositories that are not hypergumbo (default sketch and --no-source, 8k/32k/128k). Scripts, the 120 sketches and results.txt: ~/hypergumbo_lab_notebook/outside_reader_review2_11142026.\n\nQUESTION FOR THE OWNER. A sketch is written to be pasted into a language model. It quotes text from the repository it describes, and some of that text is written as instructions to a model. Sketching a repository someone else controls hands those instructions to the reader's model. Nothing in the sketch, the README or SECURITY.md states a position on this.\n\nOBSERVED.\n- At 128k the self-run sketch prints AGENTS.md (the third Additional File) in full, and lists CLAUDE.md and GEMINI.md among the first twelve. mitmproxy's 128k sketch prints its AGENTS.md. Those are the 2 of 21 repositories measured that print an agent-instruction file (matched: AGENTS.md, CLAUDE.md, GEMINI.md, copilot-instructions.md, .cursorrules).\n- Additional Files ranks a root-level Markdown file high whatever it is for, which is how AGENTS.md comes third and ALLOWED_WEBSITES.md sixth on the self-run (ranking: WI-rimip-buduh-dugol-sasod-lohag-rukov-lafab-monib).\n- What exists today: a quoted file is delimited by \"START of <path>\" and \"END of <path>\" lines and a code fence longer than any backtick run inside it (sketch.py, the file-content formatter), so quoted text cannot close its own fence. Docstring summaries in Entry Points, Key Symbols and Source Files are printed inline with no delimiter. README.md says every sketch \"quotes your source\" in the context of the secret scan. The sketch carries no line telling its reader that quoted text is data from the repository.\n- The instruction-file case is the visible one. A README, a docstring or a comment can carry the same text.\n\nASK. Rule on the position, then file what follows from it. Options seen: (a) say it and leave behaviour as it is: one line at the head of the sketch and a paragraph in SECURITY.md that quoted repository text is untrusted data; (b) (a) plus do not print the content of files addressed to coding agents, list them only; (c) (a) plus an option that omits all quoted prose. Whether inline docstring summaries need a delimiter is part of the same ruling. The care already taken for catalogues from an untrusted repository (trust-catalogues, ADR-0061) is the precedent the reader pointed at.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was first seen. A fix keyed to this repository's paths or file names, or one that works for one language only, does not close this item.\nA rule keyed to the file names above covers the instances and not the class; whatever is decided has to be stated for quoted text in general, with any file-name list as an addition."  # 8739
+    fields: {}  # 8739

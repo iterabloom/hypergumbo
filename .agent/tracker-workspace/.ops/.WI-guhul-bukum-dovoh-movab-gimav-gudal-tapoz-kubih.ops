@@ -1,0 +1,23 @@
+- op: create  # ee2c
+  at: '2026-11-14T05:01:13Z'  # ee2c
+  by: agent  # ee2c
+  actor: jgstern_agent  # ee2c
+  clock: 1  # ee2c
+  nonce: ee2c  # ee2c
+  data:  # ee2c
+    kind: work_item  # ee2c
+    title: "The 4k survey tier holds 2 to 11 nodes on 21 repositories after its fixed sections were slimmed: decide whether the smallest tier gets a leaner envelope, a floor, or stays as it is"  # ee2c
+    status: todo_hard  # ee2c
+    priority: 4  # ee2c
+    parent:  # ee2c
+    tags:  # ee2c
+    - outside_reader_review_20261113  # ee2c
+    - dogfood  # ee2c
+    - compact  # ee2c
+    - token_budget  # ee2c
+    isbefore: []  # ee2c
+    duplicate_of: []  # ee2c
+    not_duplicate_of: []  # ee2c
+    pr_ref:  # ee2c
+    description: "Source: a second outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, made after the fixes from the first review merged. Each claim was re-checked against those files and the code on dev fed15705d7, then measured on 20 repositories that are not hypergumbo (default sketch and --no-source, 8k/32k/128k). Scripts, the 120 sketches and results.txt: ~/hypergumbo_lab_notebook/outside_reader_review2_11142026.\n\nOBSERVED. After the fix that slimmed the fixed sections of a tier (WI-lavum-sikag-hadir-gojiz-tarij-nirob-kirom-totik, closed), every 4k tier measured is within its budget, and holds few nodes: hypergumbo 2 (one route and its handler; nodes are 785 of the file's 10,864 characters), killbill 3, podman 3, kserve 4, prometheus 5, vite 5, pm2 6, alertmanager 7, lazygit 7, mitmproxy 7, ripgrep 7, caddy 8, jedis 8, knex 8, sqlalchemy 8, httpx 9, nats-server 9, express 10, mini-redis 10, poetry 10, pydantic-core 11. The part of the file that is selection (nodes, edges, entry points) is 14% on hypergumbo and 17-61% on the other 20; the rest is profile, limits, reproducibility_context, features, supply_chain_summary and nodes_summary. The outside reader, shown the 4k file, read it as \"most of its budget is envelope\".\n\nQUESTION FOR THE OWNER. A 4k tier that names two to eleven symbols of a repository with thousands is honest about its budget and of little use as a map. Options: (a) leave it; (b) give the smallest tier a leaner envelope than the larger ones (which sections a reader of a 4k file needs is the decision); (c) do not write a tier that cannot hold some minimum of the repository, and say so on stderr; (d) change the default tier sizes. The sketch at 4k tokens exists for the same reader.\n\nASK. Rule on (a)-(d). If (b): state per section whether the smallest tier carries it, and measure nodes held at 4k on the same 21 repositories before and after.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was first seen. A fix keyed to this repository's paths or file names, or one that works for one language only, does not close this item.\nThe rule is on tier size and section, never on this repository's keys."  # ee2c
+    fields: {}  # ee2c

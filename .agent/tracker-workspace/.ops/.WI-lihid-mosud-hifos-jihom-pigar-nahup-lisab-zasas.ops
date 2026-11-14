@@ -1,0 +1,22 @@
+- op: create  # 4262
+  at: '2026-11-14T05:01:07Z'  # 4262
+  by: agent  # 4262
+  actor: jgstern_agent  # 4262
+  clock: 1  # 4262
+  nonce: '4262'  # 4262
+  data:  # 4262
+    kind: work_item  # 4262
+    title: "A budget tier with budget left omits eligible first-party nodes: express's 64k tier holds 10 nodes at 3.7k tokens and omits 40 lib/ functions, including the most central"  # 4262
+    status: todo_hard  # 4262
+    priority: 3  # 4262
+    parent:  # 4262
+    tags:  # 4262
+    - outside_reader_review_20261113  # 4262
+    - dogfood  # 4262
+    - compact  # 4262
+    isbefore: []  # 4262
+    duplicate_of: []  # 4262
+    not_duplicate_of: []  # 4262
+    pr_ref:  # 4262
+    description: "Source: a second outside reader (a fresh LLM session given only the help output and the cached files) reviewed a hypergumbo 9.2.0 self-run on 2026-11-13, cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, made after the fixes from the first review merged. Each claim was re-checked against those files and the code on dev fed15705d7, then measured on 20 repositories that are not hypergumbo (default sketch and --no-source, 8k/32k/128k). Scripts, the 120 sketches and results.txt: ~/hypergumbo_lab_notebook/outside_reader_review2_11142026.\n\nOBSERVED. express, survey.4k.json, survey.16k.json and survey.64k.json each hold the same 10 nodes and 11 edges, all in lib/response.js, at 3,653, 3,680 and 3,738 tokens used. nodes_summary of the 64k file: included count 10, centrality_sum 2.86, coverage 0.159; omitted count 40, all kind function, all tier 1, all under lib/, centrality_sum 15.12, max_centrality 1.27. So the 64k tier leaves 94% of its budget unused while omitting four fifths of the first-party functions, among them the most central ones. The other 19 repositories measured fill their 16k and 64k tiers (14.8k-16.0k and 58.2k-63.9k tokens used).\n\nMECHANISM. Not traced. My reading, unverified: format_tiered_behavior_map selects by connectivity from entry-point seeds (select_by_connectivity), so a function no seed reaches is never a candidate however much budget is left, and Express defines most of lib/ as assignments (res.send = function ...) that the call graph does not connect to a seed. WI-buvaf-dafal-banon-babiv-botut-rinih-jasod-pozid records that the tiered path uses different seeds and a different population from the compact default. On the self-run the same path puts the tracker's web server at the centre: the 4k tier is one route and its handler from hypergumbo_tracker/serve.py, and 13 of the 37 nodes at 16k are in that file, while the sketch of the same run centres on ir.py, analyze/base.py and discovery.py.\n\nASK. Find why the 40 functions are not selected. Then the rule: a tier with budget left and eligible first-party nodes omitted takes them, in rank order, after the connected selection; \"eligible\" is whatever the tier's population rule says and is stated once. Acceptance: on a corpus, no tier file has both unused budget above one node's cost and omitted tier-1 nodes of a selectable kind; express's 64k tier holds its lib/ functions.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. The hypergumbo self-run is only where the defect was first seen. A fix keyed to this repository's paths or file names, or one that works for one language only, does not close this item.\nStated on budget and population, so it holds for any repository whose call graph is sparse around its entry points (prototype assignment in JavaScript, registration by decorator, reflection). Not checked: how many corpus repositories have a tier in this state. Of the 20 measured, express is the clear case; mini-redis's 64k tier also stops at 58.2k tokens with 24 tier-1 nodes omitted (13 fields, 4 structs, 4 type aliases, 2 functions, 1 enum), which may be the population rule and not this defect."  # 4262
+    fields: {}  # 4262
