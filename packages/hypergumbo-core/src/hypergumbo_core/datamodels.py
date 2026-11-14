@@ -39,6 +39,12 @@ Centrality Boost:
 - Boost formula: min(0.15, log(1 + in_degree) / 20), with ``rank_score``
   capped at 1.0
 - This ranks "core" domain models higher than utility DTOs
+
+Visibility:
+- A model whose symbol is private (``Symbol.visibility``, the language's own
+  notion: a leading underscore in Python, ``private`` in Java, an unexported
+  name in Go) has its ``rank_score`` halved, which puts it under every public
+  model. A symbol with no computed visibility is not demoted.
 """
 from __future__ import annotations
 
@@ -293,6 +299,10 @@ def _detect_from_naming(symbols: List[Symbol]) -> List[DataModel]:
     return models
 
 
+#: Rank multiplier for a data model whose symbol is private.
+_PRIVATE_MODEL_RANK = 0.5
+
+
 def detect_datamodels(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -340,6 +350,7 @@ def detect_datamodels(
     for edge in edges:
         incoming_counts[edge.dst] = incoming_counts.get(edge.dst, 0) + 1
 
+    private = {s.id: s.visibility == "private" for s in symbols}
     for model in unique_models:
         model.rank_score = model.confidence
         in_degree = incoming_counts.get(model.symbol_id, 0)
@@ -348,6 +359,13 @@ def detect_datamodels(
             # capped at 0.15 so centrality never overwhelms the base signal.
             centrality_boost = min(0.15, math.log(1 + in_degree) / 20)
             model.rank_score = min(1.0, model.rank_score + centrality_boost)
+        # A private model is an implementation detail of its module. Halved,
+        # it ranks under every public model (the weakest detection is 0.70),
+        # so a list cut by rank shows the repository's vocabulary first.
+        # ``visibility`` is the language's own notion, computed in finalize;
+        # None means nobody computed it, which is not a claim of private.
+        if private.get(model.symbol_id):
+            model.rank_score *= _PRIVATE_MODEL_RANK
 
     # Sort by rank_score (importance), highest first.
     unique_models.sort(key=lambda m: m.rank_score, reverse=True)

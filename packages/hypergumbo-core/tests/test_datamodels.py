@@ -429,6 +429,30 @@ class TestDetectDatamodels:
         assert models[0].rank_score > 0.95
         assert models[0].rank_score > models[0].confidence
 
+    def test_a_private_model_ranks_under_every_public_one(self) -> None:
+        """The Data Models list is cut by rank. A private class with the
+        strongest detection and many references used to take a slot from a
+        public model: the rank never read visibility."""
+        private = _make_class_symbol(
+            "_PartialCfg", meta={"concepts": [{"concept": "model"}]})
+        private.visibility = "private"
+        weakest_public = _make_class_symbol("OrderEntity")  # naming convention, 0.70
+        weakest_public.visibility = "public"
+        edges = [_make_edge(f"src:{i}", private.id, idx=i) for i in range(50)]
+
+        models = detect_datamodels([private, weakest_public], edges)
+
+        assert [m.symbol_id for m in models] == [weakest_public.id, private.id]
+        assert models[1].confidence == 0.95  # detection reliability is untouched
+        assert models[1].rank_score < models[0].rank_score == 0.70
+
+    @pytest.mark.parametrize("visibility", [None, "public", "protected", "internal", "package"])
+    def test_only_private_is_demoted(self, visibility: str | None) -> None:
+        """No computed visibility is not a claim of private."""
+        sym = _make_class_symbol("UserModel", meta={"concepts": [{"concept": "model"}]})
+        sym.visibility = visibility
+        assert detect_datamodels([sym], [])[0].rank_score == 0.95
+
     def test_sorts_by_confidence(self) -> None:
         """Sorts results by confidence (highest first)."""
         high_conf = _make_class_symbol(

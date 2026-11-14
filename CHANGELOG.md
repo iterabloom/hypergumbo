@@ -128,6 +128,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A file's hidden Key Symbols are rated on the star's scale**: "highest: 52% of max" replaces an unlabelled "top score".
 - **A symbol's one-line summary is a line that describes it**: ruled lines, bare comment openers, shebangs and licence lines are passed over, in every comment syntax.
 - **A larger budget shows more entry points, data models and source files, never fewer**: the with-source limits grow with the budget, sections are sized by what they cost, and a long file is held to its rank's share.
+- **A private data model ranks under every public one**, by the language's own visibility.
 
 #### Budget-tier files and compact views
 
