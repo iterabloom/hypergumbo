@@ -27,9 +27,8 @@ HELPER = REPO_ROOT / "scripts" / "citation_gate_tests.py"
 # EVERY PATH BELOW IS ASSEMBLED FROM PARTS, and that is load-bearing rather
 # than fussy. Written out whole, this file would contain the very slash-path
 # literals it is testing for, the gate would correctly select THIS file as a
-# citer of bash.py and sketch.py, and two of the controls below -- "a file
-# nobody cites selects nothing" and "the selection is exactly the citation
-# test" -- would silently become assertions about their own text.
+# citer of bash.py and cli.py, and the controls below that assert what a
+# selection holds would silently become assertions about their own text.
 _MAINSTREAM = "hypergumbo_lang_mainstream"
 _CORE = "hypergumbo_core"
 
@@ -44,8 +43,6 @@ CITER = "/".join(
 CITATION_TEST = "/".join(
     ["packages", "hypergumbo-core", "tests", "test_module_key_axis.py"]
 )
-#: A source no slash-path literal in the tree names.
-UNCITED = "/".join(["packages", "hypergumbo-core", "src", _CORE, "sketch.py"])
 #: Cited by taint.py and by test_taint.py, which is the direct-citer arm.
 CITED_BY_A_TEST = "/".join(
     ["packages", "hypergumbo-core", "src", _CORE, "cli.py"]
@@ -95,6 +92,39 @@ def _shipped_sources() -> dict:
     return found
 
 
+def _scanned_files() -> list:
+    """Every file the helper reads for citations (its ``_scan_roots``)."""
+    return (
+        list(REPO_ROOT.glob("packages/*/src/**/*.py"))
+        + list(REPO_ROOT.glob("packages/*/tests/*.py"))
+        + list(REPO_ROOT.glob("tests/*.py"))
+        + list(REPO_ROOT.glob("scripts/*.py"))
+        + [p for p in REPO_ROOT.glob("scripts/*") if p.is_file() and not p.suffix]
+    )
+
+
+def _sources_nothing_can_cite() -> list:
+    """Shipped sources whose file NAME no other scanned file's text holds.
+
+    Every spelling of a citation keeps the basename whole, so a source whose
+    basename is written nowhere else has no citer, by measurement on the tree
+    as it stands. A source chosen by NAME cannot play this part: the control
+    named one module as uncited until four tests declared ``# covers:`` on
+    it, and then went red on a change that had nothing to do with the gate.
+    """
+    texts = {
+        path: path.read_text(encoding="utf-8", errors="ignore")
+        for path in _scanned_files()
+    }
+    uncited = []
+    for path in sorted(_shipped_sources().values()):
+        if path.name == "__init__.py":
+            continue
+        if not any(path.name in text for other, text in texts.items() if other != path):
+            uncited.append(path.relative_to(REPO_ROOT).as_posix())
+    return uncited
+
+
 class TestTheRotItselfIsNowCaught:
     """The bash.py citation that motivates the gate, run end to end."""
 
@@ -121,8 +151,16 @@ class TestTheRotItselfIsNowCaught:
 
 class TestItIsAnEdgeAndNotAWordMatch:
     def test_a_file_nobody_cites_selects_nothing(self) -> None:
-        """The non-vacuity control: the gate must be able to return empty."""
-        assert not run_helper([UNCITED])
+        """The non-vacuity control: the gate must be able to return empty.
+
+        Asked of every source nothing can cite, in one call. Reach: there are
+        such sources, and a cited one put through the same call is selected.
+        """
+        uncited = _sources_nothing_can_cite()
+        assert len(uncited) >= 10, uncited
+        assert CITED not in uncited and CITED_BY_A_TEST not in uncited
+        assert run_helper(uncited) == []
+        assert CITATION_TEST in run_helper([*uncited, CITED])
 
     def test_a_bare_basename_is_not_a_citation(self) -> None:
         """``bash.py`` appears in several test files with nothing to do with it.
