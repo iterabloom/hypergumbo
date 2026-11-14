@@ -123,7 +123,7 @@ def old(tmp_path: Path) -> Path:
 class TestAFreshIndex:
     def test_it_is_stamped_with_the_format(self, tmp_path: Path) -> None:
         open_index(tmp_path / "new.sqlite").close()
-        assert _user_version(tmp_path / "new.sqlite") == FORMAT == 2
+        assert _user_version(tmp_path / "new.sqlite") == FORMAT == 3
 
     def test_reopening_keeps_what_was_stored(self, tmp_path: Path) -> None:
         conn = open_index(tmp_path / "i.sqlite")
@@ -404,6 +404,24 @@ class TestTheQueriesAreIndexLookups:
         plan = self._plan(conn, selection_index._MEASURED, ())
         assert "SCAN tb" not in plan and "SCAN test_block" not in plan, plan
         assert "SEARCH tb" in plan, plan
+
+    def test_replacing_a_runs_edges_walks_each_tests_own_pairs(self, conn) -> None:
+        """A fold replaces edges inside the measured files only. Probing the
+        pair table once per measured block and test would be millions of
+        lookups on a run of a thousand files; scanning it is the format-1
+        cost."""
+        store_edges(conn, {"t/test_0.py::t": [("/s/m0.py", "f")]},
+                    measured=["/s/m0.py", "/s/m1.py"])
+        plan = self._plan(conn, selection_index._DELETE_MEASURED_PAIRS, ())
+        assert "SCAN test_block" not in plan, plan
+        assert "SEARCH test_block USING PRIMARY KEY (test=?)" in plan, plan
+
+    def test_latest_runs_never_read_the_pair_table(self, conn) -> None:
+        """One row per test and checkout is read, which is the size of the
+        answer; the pairs are not."""
+        plan = self._plan(conn, selection_index._LATEST_RUNS, ("/checkout",))
+        assert "test_block" not in plan, plan
+        assert "SEARCH t USING INTEGER PRIMARY KEY" in plan, plan
 
     def test_the_control_a_pair_table_scan_is_what_the_assertions_reject(
         self, conn,
