@@ -177,6 +177,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The selection index keeps test edges that a run did not measure.**
 - **Narrowing drops a test only after a run that measured every package**; local runs now do.
 - **A changed constant or class attribute selects every test that imports the file**, through other modules too; `--no-import-union` turns it off.
+- **`pathlib`'s pure path classes are catalogued as doing no I/O**, so using one no longer withholds a verdict.
 - **A code change also selects the tests recorded reading the changed file from disk**, which the import graph cannot see: a check that scans every analyzer now runs in the PR that edits one. `--no-read-union` turns it off.
 - **A failing run stops 15 seconds after its first failure**, locally and in per-PR CI, and the likeliest failures run first. A failed or killed run keeps the evidence it gathered on which tests read which files.
 - **One OpenMP thread per parallel worker**: a measured full-suite run fell from 46 to 35 minutes. Tests with an expensive shared setup build it once per session or run on one worker.

@@ -2564,6 +2564,28 @@ module_completeness:
     completeness: complete
     retrieved: "2026-09-06"
     notes: "Constructor rowed subprocess (starts the workers); map / apply / imap dispatch over the rowed multiprocessing.Queue / Pipe."
+  # 2026-11-14 - the pure path classes. pathlib documents them as "purely
+  # computational operations without I/O", and the probe agrees: on CPython
+  # 3.12 the 32 members of PurePath (22 public, the operators and __fspath__ /
+  # __bytes__ beside them) reach no file, environment or process call. The
+  # one os read is os.name, a constant, in __new__ (which flavour the bare
+  # PurePath is). PurePosixPath and PureWindowsPath add no method: each only
+  # binds the flavour module (posixpath / ntpath) whose join / split /
+  # splitroot / normcase do the string work. The filesystem surface is
+  # pathlib.Path's, at its own slot above; matching is exact, so these three
+  # entries vouch for nothing there.
+  - module: pathlib.PurePath
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "Path arithmetic only (parts, parent, with_suffix, relative_to, match, as_posix, as_uri); no filesystem call. The fs methods are pathlib.Path's."
+  - module: pathlib.PurePosixPath
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "PurePath with the posixpath flavour; adds no method."
+  - module: pathlib.PureWindowsPath
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "PurePath with the ntpath flavour; adds no method. is_reserved compares names against a fixed list."
 
 # WI-zidam (owner rulings 2026-10-22 and 2026-10-28): the COMMAND LINE.
 # The launcher chose it, as it chose stdin, so it mints untrusted_input. An
