@@ -2310,17 +2310,49 @@ def _extract_config_hybrid(
 
     # Add embedding lines that provide new information
     combined = heuristic_lines.copy()
-    if embedding_lines:
+    semantic = _new_semantic_blocks(embedding_lines, heuristic_terms)
+    if semantic:
         combined.append("")  # Separator
         combined.append("--- Additional context (semantic) ---")
-        for line in embedding_lines:
-            # Skip if line content is already covered by heuristics
-            line_lower = line.lower()
-            is_redundant = sum(1 for term in heuristic_terms if term in line_lower) > 2
-            if not is_redundant:
-                combined.append(line)
+        combined.extend(semantic)
 
     return combined
+
+
+def _new_semantic_blocks(embedding_lines: list[str], known_terms: set[str]) -> list[str]:
+    """The semantic lines that add something, a file's block at a time.
+
+    ``embedding_lines`` is a sequence of blocks separated by blank lines: a
+    ``[path]`` heading and the lines quoted from that file. A quoted line is
+    dropped when more than two of ``known_terms`` (the words the heuristic
+    lines already hold) occur in it. The test is on quoted lines only, and a
+    block is kept or dropped as a unit: a heading stays exactly when one of
+    its quotes does, and one blank line stands between two kept blocks.
+
+    Testing every line on its own dropped the headings, which repeat the
+    package name and ``pyproject.toml`` and so always looked redundant, and
+    kept their quotes and separators: quotes that named no file, and blank
+    lines piling up where whole blocks had gone.
+    """
+    import re
+
+    kept: list[str] = []
+    block: list[str] = []
+    for line in [*embedding_lines, ""]:
+        if line.strip():
+            block.append(line)
+            continue
+        heading = block[:1] if block and re.fullmatch(r"\[.+\]", block[0].strip()) else []
+        quotes = [
+            quote for quote in block[len(heading):]
+            if sum(1 for term in known_terms if term in quote.lower()) <= 2
+        ]
+        if quotes:
+            if kept:
+                kept.append("")
+            kept.extend(heading + quotes)
+        block = []
+    return kept
 
 
 # WI-fumap: track whether we've already warned about an embedding-mode
