@@ -18,8 +18,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Fewer wrong call edges**: same-named code stays apart; functions passed as values count as used.
 - **Every command agrees on what is test code**: ripgrep's dead-code candidates fall 817 → 383.
 - **`verify-claims` confirms only what it checked**: an unmodelled request handler, a zone with no sink, or a merged flow reaching another sink is inconclusive.
+- **Sketch uses its token budget better**: each section holds its share, a route or a duplicate file is shown once, and Additional Files is picked without an embedding model.
 - **Every pass that ran is reported**, and one that found nothing says why.
-- **Safer on your machine**: sketch no longer downloads models on first use, grammar builds use a private temp directory, and a secret scan that did not run says so.
+- **Safer on your machine**: files git ignores and does not track, such as a local `.env`, are not analysed; sketch no longer downloads models on first use; a secret scan that did not run says so.
 
 ### Breaking and contract changes
 
@@ -27,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`stable_id_scheme` v9 → v14**: BitBake, SCIP-only, `@hg:route`, some C/C++ external symbols and every async function get new `stable_id`s; all others are unchanged.
 - **`verify-claims` output 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` become `reached` / `refuted`; command-line arguments are `untrusted_input`, counted only when a claim sets `include_command_line: true`.
 - **io-boundaries schema 2.4 → 2.5**: Unix-domain sockets are IPC, not network (ADR-0050 §1): a server is `ipc_listen`, its reads and writes `ipc_recv` / `ipc_send`.
+- **Files git ignores and does not track are not analysed** (ADR-0004 point 9), ignored generated source included; committed files and `--trace-deps` dependencies are unaffected. The run names what it left out, also in `supply_chain_summary.vcs_ignored_skipped`. There is no opt-out.
 - **Route markers have `language: null`**; read `Symbol.host_language` (ADR-0031). Route ids are unchanged, and `dead-code-maybe` no longer lists markers.
 - **Taint: a child process's exit status is no longer a source** (ADR-0049).
 - **`confidence_source` drops `composite`**, which nothing produced.
@@ -44,8 +46,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 
 - **Sketch no longer downloads embedding models**: run `hypergumbo install-embeddings` first.
-- **Files git ignores and does not track are not analysed**; the output names them.
-- **Sketch Entry Points lists each route once**, naming its handler, never a symbol id.
 - **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
@@ -74,7 +74,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Calls bind only to the right kind of target**: a Go call on a value never binds a package function (cert-manager: 321 wrong binds go), nor a Rust method call a free function.
 - **JS/TS: a call through an external module stays external** (`path.join`, `expect` from `chai`): 2,595 wrong call sites go on express, knex and jotai.
 - **Java: a method an external base class supplies** (`err.getMessage()`, `repo.save()`) is a use of the type, not a call: jedis loses 958 wrong call sites.
-- **A Java call to a method its receiver's type lacks stays a full-weight unresolved call**; recording that the caller uses the type no longer demotes it.
+- **A Java call to a method the receiver's type does not declare stays an unresolved call at full weight**, even though the caller is now recorded as using the type.
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
 - **JS/TS: `new` of an imported class reaches the imported file's class**, not a same-named one elsewhere.
@@ -104,23 +104,27 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`document.cookie` is also `browser_storage_read`.**
 - **ObjC and Swift static-method rows match real calls**; dead rows are deleted.
 
-#### Dead code, tiers and sketch
+#### Dead code and supply-chain tiers
 
 - **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name: ripgrep test coverage rises 9.3% → 36.2%.
 - **Code called only from module level or a class body is live.**
 - **A dependency naming an in-tree package gets its tier** (ADR-0041 §1): on nest, 172 of 1,379 move from tier 3 to 1.
 - **A file the tier filter removes takes its edges with it**, instead of leaving them on a shared pathless placeholder.
-- **Sketch names a data model's framework once.**
-- **Sketch Key Symbols draws from more files as the budget grows**, and files admitted only for holding an entry point are capped.
-- **Sketch lists and prints byte-identical Additional Files once**, naming the copies beside the one shown.
-- **Sketch's Tests line says what it counts**: functions reached from tests in the static call graph, and that more may be tested.
-- **Sketch Entry Points lines locate entries that share a name**, and no longer repeat the name or path.
-- **Tiered and compact views compute `metrics` from their own selection**: real supply-chain tiers, repository figures under `metrics.repository`.
-- **Sketch Data Models and Key Symbols count each shown file's hidden entries under that file**, not as "other files".
-- **Sketch Source Files holds its budget share**: sized by entry cost; the closing line says what was left out.
-- **Sketch Additional Files ranks process files and symbol-name data files lower**, and gives the README a real content share.
-- **Sketch Key Symbols and Additional Files listings hold their budget shares**; small-budget `--with-source` sketches print source again.
+
+#### Sketch
+
+- **Each section holds its share of the budget**: Source Files, Key Symbols and Additional Files are sized by what their entries cost, so an oversized section no longer pushes later ones out; small-budget `--with-source` sketches print source again.
+- **Key Symbols draws from more files as the budget grows**, with a cap on files shown only because they hold an entry point.
+- **A cut list says what it left out, and where**: Data Models and Key Symbols count each shown file's hidden entries under that file; Source Files ends with the files it omitted.
+- **Entry Points lists a route once**, with its handler's name, never a symbol id; entries that share a name show their path, and no line repeats its name or path.
+- **Additional Files shows byte-identical files once**, naming the copies; contributing guides, licences and files that only list symbol names rank lower, and the README gets a real content share.
+- **The Tests line says what it counts**: functions reached from tests in the static call graph, and that more may be tested.
+- **A data model's framework is named once.**
+
+#### Budget-tier files and compact views
+
 - **A budget-tier survey file fits its budget as written**, records the size it reached in `tier_tokens_used`, and no longer leaves budget unused while dropping nodes.
+- **Tiered and compact views compute `metrics` from their own selection**: real supply-chain tiers, repository figures under `metrics.repository`.
 
 #### Run reporting and graph integrity
 
@@ -136,22 +140,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### hypergumbo's own files, installs and secret scans
 
 - **The example-repositories prompt no longer writes into the analysed repository**; hypergumbo's writes go through declared safety zones.
-- **`build-grammars` uses a private temp directory**, not shared `/tmp`.
 - **An interrupted survey never leaves a truncated `survey.json`.**
-- **gitleaks installs never follow a symlink** out of `~/.local/bin`.
-- **`install-gitleaks` installs gitleaks 8.30.0 only, checked against its published SHA-256.**
+- **Commands skip paths outside their zone** instead of crashing.
+- **Trust grants are private (0600) before they are written.**
+- **`build-grammars` uses a private temp directory**, not shared `/tmp`.
+- **`install-gitleaks` installs gitleaks 8.30.0 only**, checked against its published SHA-256, and never follows a symlink out of `~/.local/bin`.
+- **`add-extras` installs embeddings exactly as `install-embeddings` does.**
 - **`HF_HUB_OFFLINE=0` or `false` no longer lets analysis reach Hugging Face.**
+- **scip-python's own `pip list` never checks the package index for upgrades.**
 - **A secret scan that did not run says so** and is never cached as clean, including when gitleaks exits with an error; it ignores the analysed repository's gitleaks config.
 - **INI and `.properties` secrets print as `***`**, with no length or characters.
-- **Trust grants are private (0600) before they are written.**
-- **Commands skip paths outside their zone** instead of crashing.
-- **scip-python's own `pip list` never checks the package index for upgrades.**
-- **`add-extras` installs embeddings exactly as `install-embeddings` does.**
 
 #### hypergumbo's checks on itself
 
 - **The self-claims give verdicts again** (from 2026-11-03 all were inconclusive), with five new claims treating the analysed repository as a taint source.
-- **The per-PR catalogue check reads the twice-daily run's graph.**
+- **The per-PR catalogue check reads the same graph as the twice-daily run**, so a PR fails where that run would withhold its verdicts.
 - **The I/O allowlist matches traced runs of every subcommand**, and gates keep it so; it also sees descriptor writes, signals and environment writes.
 - **Every third-party library the shipped code imports is classified.**
 
@@ -159,7 +162,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Test selection and speed (`smart-test`)
 
-- **A change to comments or docstrings only runs the tests recorded reading that file**, locally and in CI, instead of everything that imports it. While more than a tenth of test files have no record it falls back to the import graph; a moved pragma counts as code (ADR-0010, ADR-0011).
+- **A change to comments or docstrings only runs the tests recorded reading that file**, locally and in CI, instead of everything that imports it (ADR-0010, ADR-0011). It falls back to the import graph while more than a tenth of test files have no record.
 - **Coverage narrowing is on by default and narrows the CI test list**; `--no-narrow` turns it off, and the twice-daily full suite is never narrowed. It refuses when import-time code changed and never drops a test file the change edits.
 - **A code change also selects the tests recorded reading the changed file from disk**, which the import graph cannot see: a check that scans every analyzer now runs in the PR that edits one. `--no-read-union` turns it off.
 - **A failing run stops 15 seconds after its first failure**, locally and in per-PR CI, and the likeliest failures run first. A failed or killed run keeps the evidence it gathered on which tests read which files.
@@ -184,7 +187,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Scripts
 
-- **`scripts/archaeology_heuristic.py`** scores how likely a comment or docstring narrates history rather than stating a rule. `--kind` picks comments, docstrings or both; `--min-words` (default 10) skips short blocks; weights are fitted to blind-labelled samples.
+- **`scripts/archaeology_heuristic.py`** scores how likely a comment or docstring narrates history rather than stating a rule (`--kind`, `--min-words`).
 - **`scripts/score-readability`** scores each Python function for how much a reader must hold in mind, flagging those over threshold.
 - **`scripts/show-site`** shows a reviewer the code around one I/O allowlist site, with its callers.
 - **`prose-only-files --code`** lists the files whose change is more than comments.
