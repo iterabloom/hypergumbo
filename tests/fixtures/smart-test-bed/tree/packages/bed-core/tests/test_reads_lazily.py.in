@@ -1,0 +1,5 @@
+from bedcore.reads_lazily import late
+
+
+def test_late():
+    assert late() == 5

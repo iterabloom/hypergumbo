@@ -1,0 +1,5 @@
+from bedcore.limits import ceiling
+
+
+def test_ceiling():
+    assert ceiling() == 4

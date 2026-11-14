@@ -300,7 +300,9 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     done = subprocess.run(
         [sys.executable, str(HARNESS), "run", "--json", str(out),
          "--edit", "body-edit-c", "--edit", "runtime-dispatch",
-         "--edit", "comment-marker", "--edit", "rename"],
+         "--edit", "comment-marker", "--edit", "rename",
+         "--edit", "constant-read-elsewhere", "--edit", "body-edit-limits",
+         "--edit", "delete-module-and-edit"],
         capture_output=True, text=True, cwd=REPO_ROOT)
     assert done.returncode == 0, done.stdout + done.stderr
     scores = {s["edit"]: s for s in json.loads(out.read_text())}
@@ -339,6 +341,35 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
         assert gate not in scores[edit]["selected"]["static"], edit
         assert gate in scores[edit]["selected"]["manifest"], edit
         assert gate in scores[edit]["selected"]["narrow"], edit
+
+    # INV-mikag: four modules read what limits.py defines (an attribute of
+    # the module, an imported name, a value computed at import, a lazy import)
+    # and none of their functions calls into it. The slice (STATIC) selects
+    # none of their tests; the import closure puts all four in the manifest.
+    const = scores["constant-read-elsewhere"]
+    readers = {f"{core}test_reads_attr.py", f"{core}test_reads_name.py",
+               f"{core}test_reads_at_import.py", f"{core}test_reads_lazily.py"}
+    assert readers <= set(const["must"])
+    assert not readers & set(const["selected"]["static"])
+    for stage in ("manifest", "union", "narrow"):
+        assert readers <= set(const["selected"][stage]), stage
+        assert set(const["must"]) <= set(const["selected"][stage]), stage
+        assert not set(const["should_not"]) & set(const["selected"][stage]), stage
+    # A function body of the same file does not take the closure: the modules
+    # that only read the constant are left alone.
+    body_limits = scores["body-edit-limits"]
+    assert f"{core}test_limits.py" in body_limits["selected"]["manifest"]
+    assert not set(body_limits["should_not"]) & set(body_limits["selected"]["manifest"])
+
+    # WI-kazig: a deleted module has no symbol for the slice to start from,
+    # so the test still importing it was left out whenever another edit kept
+    # the run targeted. A deleted file takes the import closure too.
+    gone = scores["delete-module-and-edit"]
+    assert gone["mode"] == "targeted"
+    assert f"{app}test_legacy.py" in gone["must"]
+    assert f"{app}test_legacy.py" not in gone["selected"]["static"]
+    for stage in ("manifest", "union", "narrow"):
+        assert f"{app}test_legacy.py" in gone["selected"][stage], stage
 
     # A text edit is scored by what breaks on the edited tree itself.
     assert f"{core}test_kinds_markers.py" in scores["comment-marker"]["must"]

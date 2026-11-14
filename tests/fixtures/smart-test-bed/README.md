@@ -33,4 +33,4 @@ scripts/smart-test-bed materialize /tmp/bed
   list a test you can name a reason for.
 
 `tests/test_smart_test_bed.py` checks that every path these files name exists,
-and runs three edits end to end.
+and runs seven edits end to end.
