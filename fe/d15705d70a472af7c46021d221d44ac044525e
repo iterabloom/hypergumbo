@@ -1,0 +1,3 @@
+Original commit body from a5cda7b4208bfde61a07d102963b666a3ccd1141:
+
+Changelog audit with emphasis on reader friendliness. Nothing was missing from either changelog since the last audit. The main Unreleased section is regrouped (sketch, supply-chain tiers and budget tiers are separate groups), the ignored-and-untracked rule moves to Breaking and contract changes, and the Summary names the sketch and ignored-file changes. Docs only; no test selects on it.
