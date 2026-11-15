@@ -1,0 +1,24 @@
+- op: create  # e85e
+  at: '2026-11-15T00:38:07Z'  # e85e
+  by: agent  # e85e
+  actor: jgstern_agent  # e85e
+  clock: 1  # e85e
+  nonce: e85e  # e85e
+  data:  # e85e
+    kind: invariant  # e85e
+    title: "smart-test leaves out the test of a module that calls a changed function at import: only a changed module or class body takes the import closure"  # e85e
+    status: violated  # e85e
+    priority: 3  # e85e
+    parent:  # e85e
+    tags:  # e85e
+    - smart_test  # e85e
+    - ci_infrastructure  # e85e
+    - test_selection  # e85e
+    isbefore: []  # e85e
+    duplicate_of: []  # e85e
+    not_duplicate_of: []  # e85e
+    pr_ref:  # e85e
+    description: "Found 2026-11-14 while fixing INV-mikag (the import-closure union). The bed scenario that shows it ships with that fix: tests/fixtures/smart-test-bed/edits.yaml, edit body-edit-limits.\n\nOBSERVED ON THE BED. bedcore/limits.py defines ceiling(). bedcore/reads_at_import.py does CEILING = ceiling() at module level and its function kept() returns CEILING. test_reads_at_import.py asserts kept() == 4. Edit: the BODY of ceiling() changes.\n- The mutation oracle (a raise as the first statement of ceiling) fails test_reads_at_import.py: importing reads_at_import calls ceiling. It is MUST-select.\n- scripts/smart-test-bed run --edit body-edit-limits: the manifest, the union and the narrowed run set each hold test_limits.py and the two text readers, and none holds test_reads_at_import.py. (Checked with hypergumbo 9.0.0 slicing, the pipx build smart-test prefers, and with 9.2.0 slicing, which CI uses: 9.2.0 also selects test_reads_attr.py; neither selects test_reads_at_import.py.)\n\nWHY. Three selectors could have reached it and none does. The call-edge slice lists reads_at_import.py for the call it makes, and reaches its test only through a call from the function the test imports (kept) into the changed file; kept reads a global. The import closure (INV-mikag) is taken only when a module or class body changed, and here a function body changed. The coverage record holds no row tying the test to ceiling: the call ran while the module was being imported, under no test's context.\n\nWHAT IS AFFECTED. A changed function that some module calls at import: a table builder (TABLE = _build()), a registration function called from module level, a decorator's own body (it runs when the decorated def is executed), a function a module-level dataclass or enum calls. This project registers analyzers, linkers and extractors by decorator, so the decorator functions are in this position. The tests exposed are those of a module that makes such a call and whose own functions do not call back into the changed file.\n\nHOW OFTEN. Not measured on real PRs. Widening the closure to every code change was measured for INV-mikag and costs 28 percent more selected test time over 90 PRs (median change at 88 percent of the suite), against 18 percent for import-time changes only (~/hypergumbo_lab_notebook/mikag_cost_11142026); the rule wanted here is narrower than that.\n\nDIRECTIONS, NOT A PRESCRIPTION. (a) Evidence: coverage records the lines run outside any test under the empty context. A fold could store which blocks ran there, and a change to such a block would take the import closure of its file. (b) Static: a function named in a call or decorator at module or class level of any file is import-time code; take the closure of its file when its body changes. Not transitive without a call graph. Measure the added selection before choosing.\n\nDONE WHEN. body-edit-limits scores no dropped MUST for manifest, union and narrow; the added selection over the last 90 source-changing PRs is reported."  # e85e
+    fields:  # e85e
+      statement: "When the body of a function changes and some module calls that function while it is being imported, every test file whose imports reach that module is in the selection PR CI runs."  # e85e
+      root_cause: "The import closure is taken only when a module or class body changed. A changed function body is left to the call-edge slice and the coverage record, and neither reaches the test of a module that called the function at import and kept the result: the slice needs a call from the function the test uses, and code that runs at import is recorded under no test."  # e85e

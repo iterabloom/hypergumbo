@@ -22,3 +22,19 @@
     fields:  # 9956
       statement: "An edge from a test to a source file stays in the selection index until a run that measured that source file shows the test no longer executes it."  # 9956
       root_cause: "selection_index.store_edges deletes every edge of each test in a run, while a targeted smart-test run measures only the packages that hold a changed source file; test ids are repo-relative and source paths absolute, so checkouts share test ids."  # 9956
+- op: update  # 6b90
+  at: '2026-11-14T20:57:39Z'  # 6b90
+  by: agent  # 6b90
+  actor: jgstern_agent  # 6b90
+  clock: 2  # 6b90
+  nonce: 6b90  # 6b90
+  set:  # 6b90
+    status: satisfied  # 6b90
+    pr_ref: '#2185'  # 6b90
+- op: discuss  # 1a75
+  at: '2026-11-14T20:57:39Z'  # 1a75
+  by: agent  # 1a75
+  actor: jgstern_agent  # 1a75
+  clock: 3  # 1a75
+  nonce: 1a75  # 1a75
+  message: "Fixed in PR #2185 (root cause, not a workaround). CAUSE: store_edges deleted every recorded edge of each test in a run while targeted runs measured only the packages holding a changed file, and narrowing read a missing row as evidence. FIX: index format 3 records each run (checkout, measured files, complete flag, which tests left rows); a fold replaces a test's edges only into files the run measured; narrowing drops a test file only if its latest run in this checkout was complete, measured every changed source and left rows for each test; targeted smart-test runs measure every package. BEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev (b373512b77) against a copy of the real index: one-line function-body edit to py.py, scripts/coverage-select narrow on the 267-file run set, exit 0, stderr reads narrow: 267 -> 267 file(s), dropped 0; kept 183 more whose latest run did not measure the change with every package measured; all 66 files wrongly dropped before are kept, test_an_import_is_not_a_call.py among them (before the fix: 183 dropped, 66 of them recorded executing py.py). After one complete run of the 267 files was folded into a scratch index (same tree as merged, git diff empty): 95 dropped, 0 of the 66, 0 of the 136 files whose own coverage contexts hold py.py lines. Production-path tests: test_selection_index_measured_scope.py (23) and the bed test test_a_targeted_run_measures_every_package_and_keeps_edges_into_them; seven mutation controls went red and were restored. COST: measuring every package on a targeted run, 780 s both ways on the core selection, 951 vs 993 s on the mainstream selection; fold 30 s before, 31 s after. NOT ASSERTED: edges already lost from the real index return only as tests are re-run; until a complete run records a test file here, narrowing keeps it. SIDE EFFECT: a worktree on older code cannot open a format-3 index, and its coverage selection, narrowing and fold switch themselves off until it is rebased. Evidence: ~/hypergumbo_lab_notebook/per_file_narrowing_check_11142026 (after_fix, after_merge). Format-2 index backed up as selection_index.sqlite.format-2.zst."  # 1a75
