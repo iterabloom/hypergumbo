@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **375** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 120 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **59336** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13310, of which 7626 are functions, methods or classes
-- **238680** edges, test code included, by type:
-  - calls: 134904
-  - contains: 55275
-  - imports: 20402
-  - instantiates: 13054
-  - references: 10937
-  - module_attr_ref: 2279
-  - other: 1829
+- **376** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **59506** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13335, of which 7642 are functions, methods or classes
+- **239400** edges, test code included, by type:
+  - calls: 135279
+  - contains: 55418
+  - imports: 20483
+  - instantiates: 13078
+  - references: 11005
+  - module_attr_ref: 2290
+  - other: 1847
 
 ## Package Architecture
 
@@ -654,6 +654,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.in_repo_catalogues`**: In-repo catalogue data: the operator's opt-in, and what git says ab...
 - **`hypergumbo_core.install_steps`**: Copy-paste install steps for the opt-in backends' external binaries.
+- **`hypergumbo_core.installed_env`**: What is installed changes rarely: read it once per environment.
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
 - **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
 - **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
@@ -1001,8 +1002,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: b373512b779c
-  commit_count: 9186
+  commit: 20ae258a0d61
+  commit_count: 9205
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
