@@ -67,3 +67,10 @@
   clock: 7  # 43c9
   nonce: 43c9  # 43c9
   message: "PRIORITY P3 -> P2 (owner-approved 2026-11-01). Reason: a false clean. The Go slice-alias write (s := []string{\"\"}; t := s; t[0] = os.Getenv(\"API_KEY\"); os.WriteFile(..., []byte(s[0]), ...)) is walk-refuted and removed, so verify-claims reports confirmed with no claim caveat (footer 'Flows REMOVED by the walk this run: 1'); the t[0] control gives violated. Whether to fix it or disclose it as an ADR-0017 §7b / WI-kabif alias limit is still open."  # 43c9
+- op: discuss  # a685
+  at: '2026-11-15T21:59:35Z'  # a685
+  by: agent  # a685
+  actor: jgstern_agent  # a685
+  clock: 8  # a685
+  nonce: a685  # a685
+  message: "OWNER RULING 2026-11-15 (plan: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md, PR 4, its own PR): the reproduced Go slice-alias case is a DEFECT, not a disclosed limit. Direction of the fix: withhold instead of refute, so the walk does not remove a flow through a name that has an alias it cannot model, and the claim reads inconclusive, not confirmed. To do first: re-read ADR-0017 section 7b, which states the alias trade and will need amending; then size the fix with the sweep this item describes (every walk that returns False re-derived by a second, independent reading). Not started."  # a685

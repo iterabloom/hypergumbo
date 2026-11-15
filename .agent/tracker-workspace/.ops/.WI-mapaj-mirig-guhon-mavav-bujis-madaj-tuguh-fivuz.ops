@@ -48,3 +48,10 @@
   clock: 5  # 3c7b
   nonce: 3c7b  # 3c7b
   message: "WHY PR #2183 DOES NOT TOUCH THIS. The ties come from the clamp at 1.0 and from the boost's own cap (0.25, reached at 11 effective edges). Removing either is not a local fix: docs/schema.json bounds Entrypoint.rank_score at 1.0, and ADR-0039 ruling 3 moves the ranking adjustments to rank_score 'unchanged in formula and magnitude'. A formula that keeps the base order of detection kinds under the bound (rank = base + (1 - base) x boost share) still ties at 1.0 once the boost is saturated. So this needs a ruling on the rank formula, then a measurement of the entry order on a corpus."  # 3c7b
+- op: discuss  # 4a27
+  at: '2026-11-15T21:56:49Z'  # 4a27
+  by: agent  # 4a27
+  actor: jgstern_agent  # 4a27
+  clock: 6  # 4a27
+  nonce: 4a27  # 4a27
+  message: "OWNER RULING 2026-11-15 (on my recommendation, plan: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md, PR 3). Leave rank_score, its 1.0 ceiling and the schema bound as they are. Change two things. (1) The tie-break: detection confidence first, then the keys used now (language weight, effective out-degree), so a manifest-declared script (0.99) comes before a framework route (0.95 or 0.90) and before a main found by convention (0.80). (2) The cap: when it cuts through a group of entries with equal score, deal the slots round-robin across source files, so every file with a tied entry gets one before any file gets a second. WHY NOT THE SCORE: removing the ceiling would not bring back a minority-language service, because the connectivity boost is already halved for a minority language, so its routes would score below every route of the larger language. ADR-0039 ruling 3 froze the score formula; the order among equal scores and the cap are outside it, and the ADR gets a sentence saying so. NOT BUILT, NOT MEASURED: entry order before and after on the 20 repositories of the second outside-reader review plus thc, and the bakeoff cases the code names (forgejo, DMD, gemini-cli) where a clone exists. WI-fosuk lands first in the same PR because it changes which entries this orders."  # 4a27

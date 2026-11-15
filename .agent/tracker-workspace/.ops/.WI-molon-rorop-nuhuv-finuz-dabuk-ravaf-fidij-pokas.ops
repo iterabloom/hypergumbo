@@ -100,3 +100,10 @@
   clock: 12  # 8fc2
   nonce: 8fc2  # 8fc2
   message: "[AGDA GRAMMAR INVESTIGATION 2026-11-15, owner-requested, dev 03068d3531; report ~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md section 2] One grammar, two revisions: PyPI tree-sitter-agda 1.3.3 (the only release on PyPI, checked today) and the later upstream commit that tree-sitter-language-pack 0.13.0 builds. Today's analyzer on agda-stdlib ab4fbd2 (1,247 files): files parsed through error recovery 747 under 1.3.3, 510 under the pack (all among the 747); declarations 21,563 vs 21,633; with the name found as a declaration on its start line 20,080 vs 20,161; source lines with a declaration in one arm only: 47 in 13 files (1.3.3), 118 in 52 files (pack); same position, different name 506 (the pack's deeper in 453). 32 saved probe files of INV-vokir, WI-molon and WI-bokud: 15 equal; in the other 17 the pack emits the names the source declares. Either way a damaged file is listed in limits.failed_files with partial_parse. Stable ids move under the swap, so it needs a scheme bump. RECOMMENDATION TO THE OWNER: switch to the pack's revision in the v15 bump PR, with WI-siniv (declare the pack in extended1). Not examined: the pack's 1.25 release line. No status change. This item's N, Nc and the 9 differing grid probes give the declared scope chains under the pack. The docstring at agda.py:65-69 still needs correcting either way."  # 8fc2
+- op: discuss  # 100e
+  at: '2026-11-15T21:27:44Z'  # 100e
+  by: agent  # 100e
+  actor: jgstern_agent  # 100e
+  clock: 13  # 100e
+  nonce: 100e  # 100e
+  message: "[OWNER RULING 2026-11-15] 'switch to the language pack's grammar, in PR 2'. Agda moves from the tree-sitter-agda 1.3.3 wheel to the revision tree-sitter-language-pack builds, in the v15 bump PR (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md), because stable ids move. WI-siniv-dovas-bodin-patip-dumug-sufov-mukal-sumas (extended1 declares the pack) rides with it as a prerequisite. The switch fixes this item's probes; the docstring at agda.py:65-69 is corrected in the same change."  # 100e
