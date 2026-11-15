@@ -1,0 +1,35 @@
+Original commit body from af9667e52027df80be983e50fbf311ec0707aa60:
+
+A changed constant could break a test that PR CI never ran. This adds the tests that import a file whose import-time code changed.
+
+## What was wrong
+
+- smart-test's static selector is a reverse slice from the symbols of the changed files. It lists a module that imports a changed file, and reaches a test of that module only through a call into the changed file.
+- A module that reads a constant of the changed file, an attribute of its module object, or a value it computed at import has no such call, so its tests were left out.
+- Confirmed on dev: with `STABLE_ID_SCHEME` changed in `schema.py`, the manifest held 252 test files and not `test_stable_shape_ids.py`, which fails. For `schema.py` alone, 93 test files import a module that imports it and were outside its slice.
+
+## What changes
+
+- **`hypergumbo_core/import_closure.py` (new, pure):** the import graph of the tree from source text, and the walk backwards over it. Every import statement counts, at module level or inside a function (owner ruling 2026-11-14), plus parent packages, literal `import_module`/`__import__`, and a test's `conftest.py` files. The body of `if TYPE_CHECKING:` does not.
+- **`coverage-select import-closure`:** for each changed source file whose import-time code changed (a module or class body, the same test narrowing refuses on), prints every test file whose imports reach it. A deleted source file counts.
+- **`smart-test`:** a new union step above the manifest seam and after narrowing, so merge CI runs the additions. `--no-import-union` turns it off; the manifest header gains `# Import-closure tests: N added`.
+- **Bed:** five modules and three scenarios. `constant-read-elsewhere`: the slice selects 1 of the 5 tests that must run, the manifest now all 5. `delete-module-and-edit`: the test still importing a deleted module is now selected. `body-edit-limits`: a function body does not take the closure.
+
+## Cost
+
+Measured before building, over the 90 PRs that changed package source between 10-30 and 11-14: 18% more selected test time; a median change goes from 52% to 68% of the suite's test time. Module-level imports alone would have cost 5%.
+
+## Not covered
+
+- An import whose name is computed at runtime (entry points, registries of dotted strings).
+- A changed function body that another module calls while being imported: `body-edit-limits` shows the test of that module still left out. Filed separately after merge.
+- The version-only `__init__.py` path writes its own short manifest and does not take the closure.
+
+## Tests
+
+- `test_import_closure.py`: 60+ cases over import forms, relative imports, conftest and helper resolution, cycles, deleted modules, the trigger, and the helper command end to end in a scratch git repo.
+- `test_smart_test_import_union.py`: the smart-test block executed against a stub helper (adds, counts only its own additions, never removes, survives a dead helper, off switch, position, header line).
+- `tests/test_smart_test_bed.py`: the three scenarios through the real smart-test.
+- Seven mutation controls went red and were restored: lazy imports ignored, parent packages dropped, `TYPE_CHECKING` counted, one-hop walk, conftest dropped, any changed block triggering, the union off by default.
+
+Addresses INV-mikag-zubud-mujar-vomuk-kapir-pojim-fahok-hulop. Also answers the under-selection case of WI-kazig-bavoj-nukuz-bunok-zumav-sotoh-jizom-sojoj.
