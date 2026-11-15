@@ -107,6 +107,8 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from .installed_env import kept_per_environment
+
 SCHEMA_VERSION = "0.21.0"
 # Breaking output changes bump MINOR and additions bump PATCH (spec "Breaking
 # output changes bump minor"; the one exception is noted in the module
@@ -244,7 +246,26 @@ def _detect_tree_sitter_versions() -> tuple[str | None, Dict[str, str]]:
     The hypergumbo behavior map is honest about absence: an empty
     ``grammars`` block means "no tree-sitter-* packages were found on the
     PYTHONPATH at run time" — not "this analysis didn't use any grammars".
+
+    READ ONCE PER ENVIRONMENT. Finding the grammars means parsing the
+    metadata of every installed distribution (33 ms for 260 of them, a third
+    of a run on a one-file repository), and the answer is a fact about the
+    environment, so it is kept by :func:`installed_env.kept_per_environment`
+    until a distribution is installed, upgraded or removed. The slot names
+    the two ``importlib.metadata`` functions read, so a stand-in for either
+    is never answered with the real environment's versions. Each caller gets
+    its own dictionary.
     """
+    version, grammars = kept_per_environment(
+        ("tree-sitter-versions", importlib.metadata.version,
+         importlib.metadata.distributions),
+        _read_tree_sitter_versions,
+    )
+    return version, dict(grammars)
+
+
+def _read_tree_sitter_versions() -> tuple[str | None, tuple[tuple[str, str], ...]]:
+    """The walk behind :func:`_detect_tree_sitter_versions`, as immutable pairs."""
     try:
         tree_sitter_version: str | None = importlib.metadata.version("tree-sitter")
     except importlib.metadata.PackageNotFoundError:  # pragma: no cover - tree-sitter is installed in dev/CI; defensive for non-tree-sitter installs
@@ -258,7 +279,7 @@ def _detect_tree_sitter_versions() -> tuple[str | None, Dict[str, str]]:
         if name.startswith("tree-sitter-") or name == "tree-sitter-language-pack":
             grammars[name] = dist.version
 
-    return tree_sitter_version, grammars
+    return tree_sitter_version, tuple(grammars.items())
 
 
 def build_reproducibility_context() -> Dict[str, Any]:

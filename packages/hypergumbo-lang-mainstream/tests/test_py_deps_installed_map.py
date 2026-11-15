@@ -29,14 +29,15 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core import installed_env
 from hypergumbo_lang_mainstream import py_deps
 
 
 @pytest.fixture(autouse=True)
 def _no_memo():
-    py_deps._DIST_MAP_MEMO = None
+    installed_env.forget_kept_answers()
     yield
-    py_deps._DIST_MAP_MEMO = None
+    installed_env.forget_kept_answers()
 
 
 @pytest.fixture
