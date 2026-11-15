@@ -35,3 +35,10 @@
   clock: 3  # d5e6
   nonce: d5e6  # d5e6
   message: "[REVIEW 2026-11-15: PARTLY DONE] 2026-11-15, dev e2b6ab8096. Display half reproduces as fixed (f8161537ab). Identity half live: `C.m(self, cb: Callable[[int], None])` and `C.m(self, cb: Callable[[bytes, str], None])` both get stable_id sha256:9dd356b6146f0eae; hashed text is `(Callable[, None])None`. Count on hypergumbo's own `packages/*/src` (402 files, 6998 defs, ast walk): 64 defs have an annotation that takes the fallback, 20 of them are hashed on the typed tier (the other 44 exceed the 60-char cut and take the untyped tier). Swapping the renderer for ast.unparse wholesale changes the hash input of 81 defs (3 move typed to untyped), because unparse also differs outside the holes. No other corpus counted. `_format_annotation` on `a().b` returns `.b`. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-dujor.md. No status or priority change made by this review."  # d5e6
+- op: discuss  # 170b
+  at: '2026-11-15T20:23:59Z'  # 170b
+  by: agent  # 170b
+  actor: jgstern_agent  # 170b
+  clock: 4  # 170b
+  nonce: 170b  # 170b
+  message: "[OWNER RULING 2026-11-15] Identity half: fill the holes only. The renderer is not replaced by ast.unparse. Measured at the ruling on hypergumbo's own source: 20 stable ids move with holes filled, 81 with the renderer replaced (stable_id_items_review_11152026/reports/WI-dujor.md). It changes hash input, so it lands with a scheme bump; planned in the v15 bump PR (stable_id_items_review_11152026/PLAN.md). Still owed by this item: the count on a corpus beyond this repo, and the same question for every other analyzer that renders types with an else-branch."  # 170b

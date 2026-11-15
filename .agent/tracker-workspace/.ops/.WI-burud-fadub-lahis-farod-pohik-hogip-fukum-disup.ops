@@ -107,3 +107,10 @@
   clock: 13  # 6f97
   nonce: 6f97  # 6f97
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096, two-arm fixture (Java `native add` + Rust `#[no_mangle] extern \"C\" fn Java_com_example_Native_add`; rust-analyzer 1.94.0). The jni-linker edge is identical in both arms: same endpoints, confidence 0.95. With the backend on, the Rust function is one merged node, origin ['rust','scip'], scip_symbol 'rust-analyzer cargo nativelib 0.1.0 Java_com_example_Native_add().' — the source-level name. jni.py reads no scip_symbol (confidence is 0.95 or 0.5, line 281); its depends_on lists rust_analyzer (line 321). Five-linker total is 2626 lines. The intra-crate Rust call edge is 0.85 without the backend, 0.95 ['rust','scip'] with it. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-burud.md. No status or priority change made by this review."  # 6f97
+- op: discuss  # ba2f
+  at: '2026-11-15T20:22:57Z'  # ba2f
+  by: agent  # ba2f
+  actor: jgstern_agent  # ba2f
+  clock: 14  # ba2f
+  nonce: ba2f  # ba2f
+  message: "[OWNER RULING 2026-11-15] Stays todo_soft, P4, someday: not declined, not scheduled. Evidence at the ruling: a two-arm run on a plain Rust JNI function gave the same edge and the same confidence (0.95) with and without the rust-analyzer backend (stable_id_items_review_11152026/reports/WI-burud.md). The description body still carries the superseded five-linker text."  # ba2f

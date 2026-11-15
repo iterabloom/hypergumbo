@@ -27,3 +27,10 @@
   clock: 2  # 3d64
   nonce: 3d64  # 3d64
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces: `pub const N: u32 = 1;` -> `rust:src/lib.rs:1-1:N:variable`. The arm is rust.py:1668, shared by `const_item` and `static_item`. Pinned tally unchanged: 150 paired, 135 agree, 15 `constant` vs `variable`. Token facts: the registry has both `constant` (symbol_kinds.py:231) and `const` (:233); the SCIP arm emits `constant` (scip/index.py:241), so only `constant` gives 0 disagreements. No mainstream analyzer emits either token for a const (C++/JS/TS/Kotlin emit `variable`; only julia and thrift emit `const`, tlaplus `constant`). SCIP maps statics to `variable`. Scheme bumps v11-v14 shipped since filing without this. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-zigup.md. No status or priority change made by this review."  # 3d64
+- op: discuss  # 3728
+  at: '2026-11-15T20:24:17Z'  # 3728
+  by: agent  # 3728
+  actor: jgstern_agent  # 3728
+  clock: 3  # 3728
+  nonce: '3728'  # 3728
+  message: "[OWNER RULING 2026-11-15] Every fix that moves an existing stable id shares ONE scheme bump, v14 to v15 (ADR-0035 section 6; no scheme after v9 has been released). This item's const-kind change therefore rides in that bump with the others and does not get a bump of its own, which the title still says. Plan: stable_id_items_review_11152026/PLAN.md."  # 3728

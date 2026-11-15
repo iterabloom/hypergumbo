@@ -93,3 +93,10 @@
   clock: 11  # 1e47
   nonce: '1e47'  # 1e47
   message: "OWNER RULING 2026-11-15: widened from 'an empty nested module body' to nested layout blocks in general. Title and description rewritten; the probe grid is at the top of the description. No status or priority change."  # 1e47
+- op: discuss  # 8fc2
+  at: '2026-11-15T21:14:28Z'  # 8fc2
+  by: agent  # 8fc2
+  actor: jgstern_agent  # 8fc2
+  clock: 12  # 8fc2
+  nonce: 8fc2  # 8fc2
+  message: "[AGDA GRAMMAR INVESTIGATION 2026-11-15, owner-requested, dev 03068d3531; report ~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md section 2] One grammar, two revisions: PyPI tree-sitter-agda 1.3.3 (the only release on PyPI, checked today) and the later upstream commit that tree-sitter-language-pack 0.13.0 builds. Today's analyzer on agda-stdlib ab4fbd2 (1,247 files): files parsed through error recovery 747 under 1.3.3, 510 under the pack (all among the 747); declarations 21,563 vs 21,633; with the name found as a declaration on its start line 20,080 vs 20,161; source lines with a declaration in one arm only: 47 in 13 files (1.3.3), 118 in 52 files (pack); same position, different name 506 (the pack's deeper in 453). 32 saved probe files of INV-vokir, WI-molon and WI-bokud: 15 equal; in the other 17 the pack emits the names the source declares. Either way a damaged file is listed in limits.failed_files with partial_parse. Stable ids move under the swap, so it needs a scheme bump. RECOMMENDATION TO THE OWNER: switch to the pack's revision in the v15 bump PR, with WI-siniv (declare the pack in extended1). Not examined: the pack's 1.25 release line. No status change. This item's N, Nc and the 9 differing grid probes give the declared scope chains under the pack. The docstring at agda.py:65-69 still needs correcting either way."  # 8fc2

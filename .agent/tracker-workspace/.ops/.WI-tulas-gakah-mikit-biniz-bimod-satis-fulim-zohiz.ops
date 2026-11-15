@@ -1,0 +1,22 @@
+- op: create  # 7412
+  at: '2026-11-15T21:14:35Z'  # 7412
+  by: agent  # 7412
+  actor: jgstern_agent  # 7412
+  clock: 1  # 7412
+  nonce: '7412'  # 7412
+  data:  # 7412
+    kind: work_item  # 7412
+    title: "python: a call through a nested class (A.B().go(), b = A.B(); b.go()) binds to external_symbol stand-ins although the class and method are in the repo"  # 7412
+    status: todo_hard  # 7412
+    priority: 3  # 7412
+    parent:  # 7412
+    tags:  # 7412
+    - python  # 7412
+    - call_graph  # 7412
+    - analysis_quality  # 7412
+    isbefore: []  # 7412
+    duplicate_of: []  # 7412
+    not_duplicate_of: []  # 7412
+    pr_ref:  # 7412
+    description: "FOUND by the WI-naviz investigation, 2026-11-15, dev 03068d3531. Split out because it is a defect of the Python call resolver, not of the qualified_name field WI-naviz is about.\n\nWHAT. A call through a nested class is not bound to the nested class or its method. Fixture (~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/naviz/py_fixture/pkg/m.py):\n\n    class A:\n        class B:\n            def go(self): return 1\n        def run(self): return A.B().go()\n    def top(): return A.B().go()\n    def via_name():\n        b = A.B()\n        return b.go()\n\nOBSERVED. From A.run, top and via_name the edges are calls -> python:external:0-0:B:external_symbol and calls -> python:external:0-0:go:external_symbol, both unresolved. From another file (from pkg.m import A; A.B().go()) the stand-ins are python:pkg.m.A:0-0:B and external go. A.B.C().deep() likewise. The class B and the method B.go exist as symbols in the same file.\n\nNOT A FIX. Giving the nested class its full chain in qualified_name (the WI-naviz prototype) changes none of these edges.\n\nDONE WHEN. The fixture's calls bind to the nested class (the constructor call) and to its method, from the same file and from an importing file; measured on one corpus repo with nested classes that no existing resolved edge changes target wrongly.\n\nRELATED. WI-naviz-* (the field). WI-hahud-* (a nested class registered bare in symbol_by_name clobbers a top-level view): same registry."  # 7412
+    fields: {}  # 7412

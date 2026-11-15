@@ -27,3 +27,48 @@
   clock: 2  # d585
   nonce: d585  # d585
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096, read-only check; smart-test and the replay not run. Code facts hold: `_ImportCollector` descends into functions; conftest.py:57 (fixture) -> `hypergumbo_core/__init__.py`:81 -> ir.py:972/2161 (in functions) -> catalog.py:788 (in a function) -> cli. The lab files exist and variants_out.txt holds the quoted figures. By a static call of import_closure on today's tree: 1423 test files (1414 at 2b669a5414); schema.py closure 1423 shipped, 314 under the variant; test_stable_shape_ids.py in both. On the bed tree the variant's closure of limits.py has 4 test files and lacks test_reads_lazily.py, as the item expects. ADR-0010:316 and the module docstring still say 18%. No commit to import_closure.py since 4a7fb7b6b0. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-nusil.md. No status or priority change made by this review."  # d585
+- op: discuss  # 4526
+  at: '2026-11-15T20:03:22Z'  # 4526
+  by: agent  # 4526
+  actor: jgstern_agent  # 4526
+  clock: 3  # 4526
+  nonce: '4526'  # 4526
+  message: "2026-11-15: this item is now part of the smart-test plan, ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md (section 'Beside the stages: the import-time rule', and owner decision 2 there). Correction to the RELATED line above, which says the faster selection 'may replace this': on the plan's analysis it does not. Selecting by statement cannot shrink an import-time change, because every test that loads a module runs its import-time statements, and a wall-clock budget alone would cut the 1,423 files by ranking rather than by a rule; this item supplies the rule. It is independent of the plan's stages. Still waiting for the owner's go; nothing started. Not measured: how many of the 16 replayed PRs over 60 test-seconds would fit with the narrowed closure."  # 4526
+- op: update  # 547c
+  at: '2026-11-15T20:25:39Z'  # 547c
+  by: human  # 547c
+  actor: jgstern  # 547c
+  clock: 4  # 547c
+  nonce: 547c  # 547c
+  set:  # 547c
+    status: todo_hard  # 547c
+- op: discuss  # 20bd
+  at: '2026-11-15T20:25:58Z'  # 20bd
+  by: human  # 20bd
+  actor: jgstern  # 20bd
+  clock: 5  # 20bd
+  nonce: 20bd  # 20bd
+  message: "i approve auto-pr without --gov"  # 20bd
+- op: discuss  # 43d8
+  at: '2026-11-15T20:27:58Z'  # 43d8
+  by: agent  # 43d8
+  actor: jgstern_agent  # 43d8
+  clock: 6  # 43d8
+  nonce: 43d8  # 43d8
+  message: "2026-11-15: owner said go (in session: 'WI-nusil has my go'; on this item: auto-pr without --gov approved). Starting now on a feature branch. Scope as the description lists: the collector learns whether the importing file is a source file; unit cases split; the bed gains a test file that imports lazily and its assertions state the dropped MUST; ADR-0010 and the module docstring get the measured figure; then the five DONE WHEN checks, each reported with its output. One addition to the lab variant, for the rule as worded ('imports that run when the file is imported'): a decorator or a parameter default of a function in a source module runs at import, so an import written there stays an edge. I will report whether that changes any edge on today's tree."  # 43d8
+- op: update  # 5aeb
+  at: '2026-11-15T21:14:28Z'  # 5aeb
+  by: agent  # 5aeb
+  actor: jgstern_agent  # 5aeb
+  clock: 7  # 5aeb
+  nonce: 5aeb  # 5aeb
+  set:  # 5aeb
+    status: done  # 5aeb
+    pr_ref: '2194'  # 5aeb
+- op: discuss  # bb41
+  at: '2026-11-15T21:14:28Z'  # bb41
+  by: agent  # bb41
+  actor: jgstern_agent  # bb41
+  clock: 8  # bb41
+  nonce: bb41  # bb41
+  message: "DONE in PR #2194 (dev 009dde0116, manifest 3c648fa193), on the owner's go of 2026-11-15. An import inside a function body is an edge only in a file outside the source roots; in a source module an import counts when it runs as the module loads (module level, class body, under try or if there, a decorator, a parameter default). EVIDENCE, each DONE WHEN: (1) repro: STABLE_ID_SCHEME edited in schema.py, scripts/smart-test --manifest exits 0 and the manifest holds packages/hypergumbo-core/tests/test_stable_shape_ids.py. (2) that manifest has 514 test files, 202 of them this branch's own selection; the shipped rule gave 1,414. schema.py's closure by a static call: 314 test files (1,423 before). (3) mikag_cost_11142026/real_cost.py re-run with the built module (the merge was a rebase, same file): selected test time 232,518 to 255,232 test seconds (+9.8%; was +25.3%), 44 of 90 PRs select more, median share of the suite 52% to 56%; that figure is in ADR-0010 and the module docstring. (4) the bed and the unit tests pass slicing with hypergumbo 9.0.0 and with the tree's 9.2.0 build (130 passed each); mutation controls: counting function-level imports everywhere gives 13 failures (12 unit cases and the bed), counting them nowhere gives 53 (52 unit cases and the bed). (5) ADR-0010 states the known miss, and tests/test_smart_test_bed.py asserts it (test_reads_lazily.py is MUST and not in the manifest). The graph equals the lab variant's on the tree of 2026-11-15 (0 of 1,912 files differ; 236 edges fewer than shipped, in 78 source files), so the decorator and parameter-default cases change no edge here. NOT MEASURED: how many test files of this repository reach some change only through a function-level import in a source module. Evidence files: ~/hypergumbo_lab_notebook/nusil_11152026/."  # bb41
