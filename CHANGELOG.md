@@ -195,6 +195,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Hypothesis property tests no longer fail on a slow, loaded machine.**
 - **Linker-requirement tests no longer parse the whole checkout**: nine tests, a minute each.
 - **The producer-set tests scan the analyzers once**, in one worker, not in each of six.
+- **A sketch budget test builds forty large files without 3,600 functions**: 10 s to 1 s.
 - **A sketch test no longer leaks its redirected temp directory**, and two measurement scripts restore the globals they rebind.
 
 #### CI gates
