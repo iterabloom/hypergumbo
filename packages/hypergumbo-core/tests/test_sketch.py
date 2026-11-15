@@ -6544,6 +6544,8 @@ gem "puma"
         from hypergumbo_core.sketch import (
             _extract_config_info,
             ConfigExtractionMode,
+        )
+        from hypergumbo_core.sketch_embeddings import (
             ANSWER_PATTERNS,
             BIG_PICTURE_QUESTIONS,
         )
