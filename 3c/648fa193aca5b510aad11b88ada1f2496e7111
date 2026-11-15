@@ -1,0 +1,17 @@
+Original commit body from 9f5fbaa6e48740aac31ea415f14335c463d6e1f6:
+
+smart-test's import closure no longer follows an import written inside a function body of a source module. It still follows one in a test file, a conftest.py or a test helper.
+
+Why: the root conftest.py imports hypergumbo_core.analyze.registry inside a fixture, which runs hypergumbo_core/__init__.py; that imports ir, ir imports catalog inside a function, and catalog imports cli inside a function. With those two counted, every test file loaded everything cli imports, and one changed constant in schema.py selected all 1,423 test files.
+
+Measured on this branch:
+- 236 import edges fewer, in 78 source files. The graph equals the lab variant measured on 2026-11-14 (0 files differ).
+- schema.py's closure: 314 test files (was 1,423); it still holds test_stable_shape_ids.py.
+- The repro of the original defect (STABLE_ID_SCHEME edited, smart-test --manifest): 514 test files in the manifest, of which 202 are this branch's own; test_stable_shape_ids.py is in it. The shipped rule gave 1,414.
+- Replay over the 90 PRs that changed package source between 2026-10-30 and 2026-11-14: selected test time +9.8% over the manifests (was +25.3%), 44 of 90 select more, median share of the suite 56% (was 68%).
+- Mutation controls: counting function-level imports everywhere turns 12 unit cases and the bed red; counting them nowhere turns 51 unit cases and the bed red.
+- The bed and the unit tests pass slicing with hypergumbo 9.0.0 and with this tree's 9.2.0 build.
+
+What it gives up: a test that reaches the changed file only through a function-level import in a source module is no longer added. The bed holds that shape (bedcore/reads_lazily.py); tests/test_smart_test_bed.py now asserts the miss and ADR-0010 states it. How many test files of this repository are in that position for some change was not measured. The twice-daily full suite runs them.
+
+Addresses WI-nusil-dihag-lukup-mapar-ronag-dumoh-ritah-nirok
