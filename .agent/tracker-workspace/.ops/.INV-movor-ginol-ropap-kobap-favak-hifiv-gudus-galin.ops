@@ -72,3 +72,10 @@
   clock: 8  # 7cea
   nonce: 7cea  # 7cea
   message: "REOPENED as violated (owner-approved 2026-11-01). Live at dev 100b6fbb6e, `hypergumbo survey` on ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/fx_modan: every .svelte/.vue path carries two file-kind Symbols: src/App.svelte -> javascript: + svelte:, src/App.vue -> javascript: + vue:, src/Kid.vue -> vue: + javascript:, and src/Child.svelte -> javascript: + vue: (a vue:-language id on a .svelte file). This contradicts the statement 'one file-kind Symbol per path'. The 2026-05-19 js_module fix for .ts paths still holds; this is a different producer pair (the javascript analyzer and the SFC analyzers both emit a file node). Also recorded on WI-modan point 5."  # 7cea
+- op: discuss  # cbe5
+  at: '2026-11-15T19:25:52Z'  # cbe5
+  by: agent  # cbe5
+  actor: jgstern_agent  # cbe5
+  clock: 9  # cbe5
+  nonce: cbe5  # cbe5
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096, fixture run. js_module/.ts limb: not occurring (main.ts, widget.ts, util.js carry one file node each; no node has origin js-module-linker; fix 4549106aec). WI-babuk limb: not occurring (one `javascript:src/util.js` node). SFC limb: live when components use each other: in that fixture 4 of 4 .svelte/.vue paths carry two file nodes; in a second fixture of two SFC files with no component use each carried one (`javascript:` + `svelte:`/`vue:`), including `vue:src/Child.svelte:1-1:file:file` from vue-component-linker. The statement's 5 htrac-frontend paths no longer exist (removed 86cb7d3a37). cli.py:7244-7247 is now cli.py:13159-13169. Self-analysis: one path with 3 kind=file nodes, toml script entries on packages/hypergumbo-tracker/pyproject.toml (WI-dofif, wont_do). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-movor.md. No status or priority change made by this review."  # cbe5

@@ -26,3 +26,10 @@
   clock: 2  # 5422
   nonce: '5422'  # 5422
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: fixture with class Shape(r) (property, overloaded Scale, static member, member val), interface IFoo (abstract member) and Bar implementing IFoo emits only Geo:module, helper:function and the file node; calls from member bodies to helper are dropped. Interface and implementing types are not emitted either. MECHANISM: F# declaration and enclosing-symbol walks cover only function_or_value_defn. SHARES MECHANISM WITH: WI-losaf."  # 5422
+- op: discuss  # f863
+  at: '2026-11-15T19:25:54Z'  # f863
+  by: agent  # f863
+  actor: jgstern_agent  # f863
+  clock: 3  # f863
+  nonce: f863  # f863
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): probe `type Shape(r) = member Area / Scale(k) / Scale(k, j)` emits no Shape node and no member node. Wider fixture (static member, `member val`, `new()`, abstract member in interface IFoo, `interface IFoo with` in Bar, record `with member`) emits module, `helper`, record `P`, field `P.X` only; its three member bodies that call `helper`, and one in the probe, emit no calls edge. Enclosing walk still tests `function_or_value_defn` only (fsharp.py L592, L304). A class-level `let inner` IS emitted as `Shape.inner` with its calls, contained by the module since Shape has no node. Gate cases `fsharp` / `fsharp-nested` hold no member. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tamib.md. No status or priority change made by this review."  # f863

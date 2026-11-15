@@ -33,3 +33,10 @@
   nonce: 6ddb  # 6ddb
   set:  # 6ddb
     title: "php: class constants ignore their visibility modifier: private/protected consts get visibility=public, is_exported=True, and a public-visibility stable_id"  # 6ddb
+- op: discuss  # 3644
+  at: '2026-11-15T19:25:53Z'  # 3644
+  by: agent  # 3644
+  actor: jgstern_agent  # 3644
+  clock: 4  # 3644
+  nonce: '3644'  # 3644
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces. `private const`, `protected const`, `final public const`, an interface const and an enum's `private const` all come out `visibility=public`, `is_exported=True`, `visibility_signal=default`; `private $hidden` comes out private / False. The const branch is php.py:1285-1310 (`[], True` at :1298, `visibility_from_modifiers([])` at :1300). tree-sitter-php gives `const_declaration` a `visibility_modifier` child (and `final_modifier`), and the existing `_extract_modifiers_php` already returns `['private']` for it. The docstring sentence to update is php.py:64-67. The cited INV-kubus does not resolve; INV-kubup is the is_exported item (satisfied). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-dajur.md. No status or priority change made by this review."  # 3644

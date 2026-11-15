@@ -25,3 +25,10 @@
   clock: 2  # 9cb2
   nonce: 9cb2  # 9cb2
   message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: filed two-contract fixture /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_A/rafin/t.sol (A and B each with event Transfer, helper(), and f/g calling helper(); emit Transfer). Observed: calls A.f -> solidity:t.sol:14-14:B.helper:method (ast_call_direct); references A.f -> solidity:t.sol:13-13:B.Transfer:event; B.g -> B.helper / B.Transfer correct. Note: Run via hypergumbo survey, not analyze_solidity directly; same edges as filed. Member-access fallback, modifiers, overloads not checked. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 9cb2
+- op: discuss  # 99ad
+  at: '2026-11-15T19:25:54Z'  # 99ad
+  by: agent  # 99ad
+  actor: jgstern_agent  # 99ad
+  clock: 3  # 99ad
+  nonce: 99ad  # 99ad
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0, stable-id v14): filed fixture still emits `A.f -> B.helper` (calls, ast_call_direct) and `A.f -> B.Transfer` (references, event_emit). Code sites now at solidity.py L675 (call), L745-748 (member-access fallback), L782 (emit); short-name registration at L380. Newly measured on a second fixture: `this.helper()` in A -> B.helper; inherited `inh()` in `A is Base` -> B.inh (unrelated contract), not Base.inh; `b.other()` with `B b` -> C.other at confidence 0.6; a modifier invocation (`function f() public only`) emits no edge. Not checked: overloads across contracts, cross-file same-name contracts, corpus measurement. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-rafin/. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-rafin.md. No status or priority change made by this review."  # 99ad

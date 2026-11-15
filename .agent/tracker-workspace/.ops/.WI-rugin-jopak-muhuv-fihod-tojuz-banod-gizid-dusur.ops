@@ -41,3 +41,10 @@
   clock: 4  # 25b8
   nonce: 25b8  # 25b8
   message: "Re-scoped 2026-10-25 (owner-approved fold): point 3 (members of a class declared with a qualified name, class X::Impl, stay unqualified) is the same mechanism as INV-tohuj (_get_enclosing_class, cpp.py:1448, reads only a direct type_identifier) and is now owned there, with the self-bind and pimpl-forward consequences. This item keeps points 1-2 (in-class constructor; member template)."  # 25b8
+- op: discuss  # 5b8d
+  at: '2026-11-15T19:25:54Z'  # 5b8d
+  by: agent  # 5b8d
+  actor: jgstern_agent  # 5b8d
+  clock: 5  # 5b8d
+  nonce: 5b8d  # 5b8d
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Points 1-2 reproduce. Fixture: in-class `S()` -> `function S`; member template `get` -> `function get`; template `over(M*)` -> `function over` beside `method T::over`; out-of-class `O::O`, `O::get` are methods. Rule: `_extract_function_name`, cpp.py:697-698 (`identifier` leaf -> function). The struct does get `contains` edges to these functions. sherpa-onnx d7526c8, keyword-spotter-transducer-impl.h run alone as .hpp: template `InitKeywords`@319 is `function`; L336 self-binds in `analyze_cpp` (no edge in the survey); L300/L314 -> L283; and L77 `InitKeywords()` in the in-class constructor binds the template@319, not the zero-argument overload@294. `_get_enclosing_class` is at cpp.py:1458. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-rugin.md. No status or priority change made by this review."  # 5b8d

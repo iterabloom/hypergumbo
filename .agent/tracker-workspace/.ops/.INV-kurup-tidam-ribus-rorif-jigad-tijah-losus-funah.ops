@@ -171,3 +171,10 @@
   clock: 21  # 982f
   nonce: 982f  # 982f
   message: "STAGE 10 DONE for what is actionable now (2026-10-24): WI-lusoh #1832, WI-pusan #1833, WI-popak #1834, WI-dipim #1836 (all closed with live repros on merged dev). This META stays VIOLATED. Its remaining limbs are each tracked or gated: WI-zihij (six producers emit non-id dsts that render as <unknown>; the check promotes to error after); INV-dulah's pony/robot kind-slot holes (behind WI-talos); the id-construction linker's three-hop reach; the full Ruling-1 name-slot round-trip (name slot == sanitized Symbol.name, not filed). Next: stage 11."  # 982f
+- op: discuss  # 5d75
+  at: '2026-11-15T19:25:52Z'  # 5d75
+  by: agent  # 5d75
+  actor: jgstern_agent  # 5d75
+  clock: 22  # 5d75
+  nonce: 5d75  # 5d75
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Still violated. Fixture run: 6 id_format errors from INV-dulah's three producers (robot `test_case`, JSX route marker `route`, BitBake `python_task`, 2 each) and 4 `<unknown>`-path warnings from cmake `links` and starlark `calls` (WI-zihij, todo_hard; check still a warning). `scripts/check-id-construction` exits 0 on the same tree: the linter does not check kind-slot == Symbol.kind. WI-vodin, WI-popak-gugoz, WI-dipim, WI-lusoh, WI-pusan are done. The 2026-06-02 markdown/gitignore mechanisms produce 0 violations under --include-docs. No name-slot == sanitized(name) check exists (spec_validator.py:2040-2056) and no item is filed for it. test_doc_family_id_parity.py KIND_SLOT_HOLES holds robot only. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-kurup.md. No status or priority change made by this review."  # 5d75
