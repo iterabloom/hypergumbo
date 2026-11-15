@@ -54,9 +54,12 @@ every family.
 
 from __future__ import annotations
 
+import copy
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
@@ -351,6 +354,57 @@ def reject_unknown_keys(
     )
 
 
+#: Documents already parsed in this process, keyed by (which parser, the
+#: TEXT parsed), most recently used last. See :func:`parse_yaml_once`.
+_PARSED_YAML: "OrderedDict[tuple[str, str], Any]" = OrderedDict()
+_PARSED_YAML_MAX = 256
+_PARSED_YAML_LOCK = threading.Lock()
+
+
+def parse_yaml_once(parser: str, content: str, parse: Callable[[], Any]) -> Any:
+    """What ``parse()`` makes of ``content``, parsed once per process.
+
+    WHY. The shipped catalogues are read again and again within one run:
+    ``load_catalog`` parses its file on every call, and one ``verify-claims``
+    makes about forty such calls for fifteen files, then reads the library
+    signatures, the dataflow patterns and the catalogue tiers the same way.
+    PyYAML's parser is pure Python: 0.26 s for the fifteen I/O catalogues on
+    an idle machine, and 30% of the test time of the forty slowest test files
+    (87,522 documents).
+
+    THE RULES THAT MAKE KEEPING THE RESULT SAFE.
+
+    * The key is the whole text (and ``parser``, the name of the parser, since
+      two parsers may read one text differently). An edited file is a
+      different key and is parsed again: nothing has to notice the edit, and
+      a path is never a key.
+    * Every caller gets its own deep copy (3 ms for the fifteen catalogues),
+      so a caller that changes what it was handed changes nobody else's.
+    * A text ``parse`` refuses is not kept. It is refused again on every
+      call, by that call's ``parse``, so the message names that call's file.
+    * At most ``_PARSED_YAML_MAX`` texts are kept, the least recently used
+      going first, so a process that loads many distinct files stays bounded.
+    """
+    key = (parser, content)
+    with _PARSED_YAML_LOCK:
+        if key in _PARSED_YAML:
+            _PARSED_YAML.move_to_end(key)
+            return copy.deepcopy(_PARSED_YAML[key])
+    document = parse()
+    with _PARSED_YAML_LOCK:
+        _PARSED_YAML[key] = document
+        _PARSED_YAML.move_to_end(key)
+        while len(_PARSED_YAML) > _PARSED_YAML_MAX:
+            _PARSED_YAML.popitem(last=False)
+    return copy.deepcopy(document)
+
+
+def safe_load_once(content: str) -> Any:
+    """``yaml.safe_load(content)``, parsed once per process per text
+    (:func:`parse_yaml_once`). A ``yaml.YAMLError`` propagates every time."""
+    return parse_yaml_once("safe", content, lambda: yaml.safe_load(content))
+
+
 def read_catalogue_yaml(
     path: Path,
     *,
@@ -367,7 +421,7 @@ def read_catalogue_yaml(
     shape and leaves the shape to the real load.
     """
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = safe_load_once(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise error(f"could not parse {what} {path}: {exc}") from exc
     if not mapping:

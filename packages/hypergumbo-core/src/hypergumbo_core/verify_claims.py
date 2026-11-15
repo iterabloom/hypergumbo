@@ -2463,7 +2463,7 @@ def catalogue_tiers(
     succeeded or already failed loudly).
     """
     from .in_repo_catalogues import git_state, is_inside
-    from .yaml_catalogs import declares_builtin, declares_community
+    from .yaml_catalogs import declares_builtin, declares_community, safe_load_once
 
     out: dict[str, list[dict[str, str]]] = {tier: [] for tier in CATALOGUE_TIERS}
     seen: set[tuple[str, str]] = set()
@@ -2473,7 +2473,7 @@ def catalogue_tiers(
             continue
         seen.add(key)
         try:
-            data = yaml.safe_load(Path(item.path).read_text(encoding="utf-8"))
+            data = safe_load_once(Path(item.path).read_text(encoding="utf-8"))
         except (OSError, yaml.YAMLError):  # pragma: no cover - see docstring
             data = None
         entry = {"family": item.family, "path": str(item.path)}
