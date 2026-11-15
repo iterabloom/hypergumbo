@@ -71,8 +71,12 @@ be a second, version-drifting source the §3 single-source constraint forbids).
 """
 from __future__ import annotations
 
+import os
 import re
+import sys
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Mapping
 
 from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.supply_chain import DependencyManifest
@@ -196,24 +200,75 @@ def _normalize_dist_name(name: str) -> str:
     return _PEP503_NORMALIZE_RE.sub("-", name).lower()
 
 
-def _build_dist_to_import_map() -> dict[str, set[str]]:
+#: The inverted distribution map and the environment it was built from
+#: (:func:`_environment_key`). See :func:`_build_dist_to_import_map`.
+_DIST_MAP_MEMO: "tuple[tuple[Any, ...], Mapping[str, frozenset[str]]] | None" = None
+
+
+def _environment_key(resolver: Any) -> tuple[Any, ...]:
+    """What the installed-distribution map depends on.
+
+    ``resolver`` is ``packages_distributions`` itself, so a stand-in for it is
+    a different key. The rest is, for each ``sys.path`` entry, the metadata
+    directories in it (``*.dist-info``, ``*.egg-info``) with their
+    modification times: those directories are what ``importlib.metadata``
+    reads, and installing, upgrading, reinstalling or removing a distribution
+    adds, removes or rewrites one. An entry that cannot be listed (it does
+    not exist, or is a zip) is in the key as such, so creating it later
+    rebuilds the map.
+
+    NOT the entry's own modification time: a search-path entry is often a
+    working directory (the repository root under pytest), which changes
+    whenever anything writes a file there.
+    """
+    entries: list[tuple[str, tuple[tuple[str, int], ...] | None]] = []
+    for entry in sys.path:
+        try:
+            with os.scandir(entry or ".") as listing:
+                found = sorted(
+                    (item.name, item.stat().st_mtime_ns) for item in listing
+                    if item.name.endswith((".dist-info", ".egg-info"))
+                )
+        except OSError:
+            entries.append((entry, None))
+            continue
+        entries.append((entry, tuple(found)))
+    return (resolver, tuple(entries))
+
+
+def _build_dist_to_import_map() -> Mapping[str, frozenset[str]]:
     """Invert ``importlib.metadata.packages_distributions()``.
 
     ``packages_distributions()`` returns ``{import_name: [dist_names]}``
     for installed distributions. We invert to ``{normalized_dist_name:
     {import_name, ...}}`` so a single PyPI dist (which can install
     multiple top-level import packages) maps to all of them.
+
+    BUILT ONCE PER ENVIRONMENT. The call reads the metadata of every
+    installed distribution (0.36 s for 250 of them on an idle machine, 0.86 s
+    a call in a loaded test run) and ``parse_python_dependencies`` reaches it
+    twice per run. Checking the key costs about a millisecond. The inverted map
+    is kept for as long as :func:`_environment_key` says the environment is
+    the one it was built from, and it is read-only, so no caller can change
+    what the next one gets.
     """
-    out: dict[str, set[str]] = {}
+    global _DIST_MAP_MEMO
     try:
         from importlib.metadata import packages_distributions
-        mapping = packages_distributions()
-    except (ImportError, AttributeError):  # pragma: no cover  # Py <3.10 lacks the API
-        return out
-    for import_name, dists in mapping.items():
+    except ImportError:  # pragma: no cover  # Py <3.10 lacks the API
+        return MappingProxyType({})
+    key = _environment_key(packages_distributions)
+    memo = _DIST_MAP_MEMO
+    if memo is not None and memo[0] == key:
+        return memo[1]
+    out: dict[str, set[str]] = {}
+    for import_name, dists in packages_distributions().items():
         for dist in dists:
             out.setdefault(_normalize_dist_name(dist), set()).add(import_name)
-    return out
+    built: Mapping[str, frozenset[str]] = MappingProxyType(
+        {dist: frozenset(names) for dist, names in out.items()})
+    _DIST_MAP_MEMO = (key, built)
+    return built
 
 
 def _resolve_import_names(dist_names: set[str]) -> set[str]:
