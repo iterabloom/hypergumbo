@@ -1618,13 +1618,25 @@ class TestSectionsHoldTheirBudgets:
         No file fits whole, so the top-ranked ones are cut to their shares.
         The shares used to be spread over all forty files, the first fell
         under the 500-token floor, the section was empty, and the sketch was
-        809 tokens of its 3,000."""
+        809 tokens of its 3,000.
+
+        A file's size is what matters here, not what is in it, so each is
+        four functions and 110 lines of comment, in paragraphs of five (an
+        excerpt is cut at a paragraph break): forty files of ninety
+        functions each took the pipeline 10 s to analyse (18 s in a loaded
+        run), for an assertion about a budget."""
         for f in range(40):
+            notes = "".join(
+                f"# note {i} on module {f}: a line of commentary to give the file some size, "
+                f"and then a little more of it\n" + ("\n" if i % 5 == 4 else "")
+                for i in range(110))
             body = "".join(
                 f"def module{f}_step_{i}(value: int) -> int:\n"
-                f"    # step {i} of module {f}: a line of commentary to give the file some size\n"
-                f"    return value + {i}\n\n\n" for i in range(90))
-            (tmp_path / f"module_{f:02d}.py").write_text(f'"""Module {f}."""\n\n\n{body}')
+                f"    return value + {i}\n\n\n" for i in range(4))
+            (tmp_path / f"module_{f:02d}.py").write_text(
+                f'"""Module {f}."""\n\n{notes}\n\n{body}')
+        sizes = [len(p.read_text()) // 4 for p in tmp_path.glob("module_*.py")]
+        assert len(sizes) == 40 and min(sizes) >= 2500  # reach: none fits its share
         sketch = generate_sketch(tmp_path, max_tokens=3000, with_source=True)
         assert "## Source Files Content" in sketch
         content = sketch.split("## Source Files Content", 1)[1].split("\n## ", 1)[0]
