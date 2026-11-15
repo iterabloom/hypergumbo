@@ -345,21 +345,31 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
     # INV-mikag: four modules read what limits.py defines (an attribute of
     # the module, an imported name, a value computed at import, a lazy import)
     # and none of their functions calls into it. The slice (STATIC) leaves
-    # their tests out; the import closure puts all four in the manifest.
+    # their tests out; the import closure puts in the manifest the tests of
+    # the three that import limits when they load, and test_imports_late,
+    # which imports one of those three inside its test function (an import
+    # in a function body is an edge in a test file).
     # WHICH ones the slice leaves out depends on the hypergumbo build that
-    # slices: 9.0.0 (the pipx build smart-test prefers) leaves out all four,
-    # 9.2.0 (this tree's build, which CI slices with) follows the module
-    # attribute read and leaves out three. So the reach assertion is that the
-    # slice misses some reader, not which.
+    # slices: 9.0.0 (the pipx build smart-test prefers) leaves out all of
+    # them, 9.2.0 (this tree's build, which CI slices with) follows the module
+    # attribute read. So the reach assertion is that the slice misses some
+    # reader, not which.
     const = scores["constant-read-elsewhere"]
     readers = {f"{core}test_reads_attr.py", f"{core}test_reads_name.py",
-               f"{core}test_reads_at_import.py", f"{core}test_reads_lazily.py"}
-    assert readers <= set(const["must"])
+               f"{core}test_reads_at_import.py", f"{core}test_imports_late.py"}
+    # THE KNOWN MISS. reads_lazily.py is a SOURCE module that imports limits
+    # inside a function, and an import there is not an edge (counting those
+    # put cli's whole closure under every test file of the real tree). Its
+    # test fails when the constant changes and the manifest does not hold it.
+    lazy_source = f"{core}test_reads_lazily.py"
+    assert readers | {lazy_source} <= set(const["must"])
     assert readers - set(const["selected"]["static"]), "the slice selects every reader"
     for stage in ("manifest", "union", "narrow"):
         assert readers <= set(const["selected"][stage]), stage
-        assert set(const["must"]) <= set(const["selected"][stage]), stage
+        assert set(const["must"]) - {lazy_source} <= set(const["selected"][stage]), stage
         assert not set(const["should_not"]) & set(const["selected"][stage]), stage
+    assert lazy_source not in set(const["selected"]["static"])
+    assert lazy_source not in set(const["selected"]["manifest"])
     # A function body of the same file does not take the closure: nothing the
     # slice left out among the modules that only read the constant is added.
     # (The 9.2.0 slice selects test_reads_attr.py by itself; that is the

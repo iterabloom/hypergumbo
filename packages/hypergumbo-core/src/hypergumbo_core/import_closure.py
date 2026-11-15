@@ -19,18 +19,29 @@ it and :meth:`ImportGraph.dependents` walks them backwards. smart-test asks
 this for each source file whose import-time code changed and adds the test
 files in the answer to the manifest (``coverage-select import-closure``).
 
-WHICH IMPORTS COUNT (owner ruling, 2026-11-14: module-level AND function-level).
-Every ``import`` and ``from ... import`` statement anywhere in a file: at
-module level, in a function or class body, under ``try`` or ``if``. A lazy
-import inside a function runs the imported file's module body the first time
-the function is called, and a test that calls it depends on that body exactly
-as a test of a module-level importer does. Counted with them:
+WHICH IMPORTS COUNT. An ``import`` or ``from ... import`` statement that runs
+when its file is imported: at module level or in a class body, under ``try``
+or ``if`` there, and in a decorator or a parameter default of a ``def``.
+
+An import inside a function BODY counts only in a file outside the source
+roots: a test, a ``conftest.py``, a test helper. A test that imports a module
+inside its own test function, or a fixture that does, loads that module when
+it runs. In a source module (a file under ``packages/<pkg>/src``) it does not
+count. The root ``conftest.py`` imports ``hypergumbo_core.analyze.registry``
+inside a fixture; that runs ``hypergumbo_core/__init__.py``, which imports
+``ir`` at module level; ``ir`` imports ``catalog`` inside a function and
+``catalog`` imports ``cli`` inside a function. With those two counted, every
+test file loaded everything ``cli`` imports, and one changed constant in
+``schema.py`` selected all 1,423 test files. Without them it selects 314,
+the test of the case above among them.
+
+Counted with them:
 
 * the packages above an imported module (``import a.b.c`` runs
   ``a/__init__.py`` and ``a/b/__init__.py``);
 * a name in ``from pkg import name`` when ``pkg.name`` is a module;
 * ``importlib.import_module("a.b")`` and ``__import__("a.b")`` with a literal
-  absolute name;
+  absolute name, where an import statement would count;
 * for a file outside the source roots (a test, a test helper): the
   ``conftest.py`` files of its directory and the directories above it, which
   pytest loads for it, and a sibling module imported by bare name.
@@ -40,6 +51,13 @@ does). An import whose name is computed at runtime: an entry point, a registry
 of dotted strings, ``import_module(prefix + name)``. A test that reaches a
 file only that way is not in the answer. The coverage record is the evidence
 for those (the tests seen executing a function of the file).
+
+A KNOWN MISS, by the rule above. A test that reaches the changed file only
+through a function-level import in a source module (test -> ``reader.py``,
+whose function imports the changed file) is not in the answer. When such a
+test reads a changed constant it is not selected for the pull request; the
+twice-daily full suite is what runs it. The smart-test bed holds the shape
+(``bedcore/reads_lazily.py``) and its test asserts the miss.
 
 MODULE NAMES come from the layout smart-test selects over: a file under
 ``packages/<pkg>/src/`` is the module its path below ``src`` spells. Any other
@@ -51,10 +69,13 @@ or runs git. The caller (``scripts/coverage-select``) lists and reads the
 tree. A file that does not parse contributes no edges: it cannot be imported
 either.
 
-COST, measured before this was built, over the 90 pull requests that changed
-package source between 2026-10-30 and 2026-11-14: taking the closure for
-import-time changes adds 18% to the selected test time (module-level imports
-alone, 5%). Taking it for every code change would add 28% and put a median
+COST, replayed with this module over the 90 pull requests that changed
+package source between 2026-10-30 and 2026-11-14 (each one's own manifest plus
+the closure of its import-time changes, on the tree of 2026-11-15): 9.8% more
+selected test time, 44 of the 90 select more, and the median pull request goes
+from 52% to 56% of the suite's test time. Counting function-level imports in
+source modules too cost 25.3% and a median of 68%; module-level imports alone,
+everywhere, 5.3%. Taking the closure for every code change would put a median
 change at 88% of the suite, so the trigger is the import-time change and
 nothing wider: a changed function body is found by the call-edge slice and by
 the coverage record.
@@ -94,11 +115,39 @@ def _is_type_checking(test: ast.expr) -> bool:
         isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
 
 
-class _ImportCollector(ast.NodeVisitor):
-    """Collect ``(level, module, names)`` for every import that can run."""
+def _runs_at_definition(
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> Iterator[ast.expr]:
+    """The expressions of a ``def`` or ``lambda`` evaluated where it is written:
+    decorators and parameter defaults. The body runs only when it is called."""
+    if not isinstance(node, ast.Lambda):
+        yield from node.decorator_list
+    yield from node.args.defaults
+    yield from (default for default in node.args.kw_defaults if default is not None)
 
-    def __init__(self) -> None:
+
+class _ImportCollector(ast.NodeVisitor):
+    """Collect ``(level, module, names)`` for every import that counts.
+
+    ``function_bodies`` says whether an import inside a function body counts:
+    yes for a file outside the source roots, no for a source module (module
+    docstring, WHICH IMPORTS COUNT).
+    """
+
+    def __init__(self, *, function_bodies: bool) -> None:
+        self.function_bodies = function_bodies
         self.found: list[tuple[int, str, tuple[str, ...]]] = []
+
+    def _visit_callable(
+            self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> None:
+        if self.function_bodies:
+            self.generic_visit(node)
+            return
+        for expr in _runs_at_definition(node):
+            self.visit(expr)
+
+    visit_FunctionDef = _visit_callable
+    visit_AsyncFunctionDef = _visit_callable
+    visit_Lambda = _visit_callable
 
     def visit_If(self, node: ast.If) -> None:
         if _is_type_checking(node.test):
@@ -184,9 +233,9 @@ def _imports_of(path: str, source: str, resolver: _Resolver) -> frozenset[str]:
         tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return frozenset()
-    collector = _ImportCollector()
-    collector.visit(tree)
     own = module_name(path)
+    collector = _ImportCollector(function_bodies=own is None)
+    collector.visit(tree)
     is_package = PurePosixPath(path).stem == _INIT
     # A file outside the source roots resolves its relative imports from where
     # it stands; _Resolver.file_of reads a dotted name as a path too.

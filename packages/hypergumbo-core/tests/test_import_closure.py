@@ -8,8 +8,14 @@ constant changed in ``schema.py`` and the selection lacked the test that
 fails.
 
 Every case builds a small tree as text. ``_loads`` asks the one question the
-selector asks: does importing (or calling into) ``importer`` run ``target``'s
-module body, through any number of files.
+selector asks: does importing ``importer`` run ``target``'s module body,
+through any number of files.
+
+An import inside a function is an edge only in a file outside the source
+roots (a test, a conftest.py, a helper). In a source module it is not: the
+root conftest.py reaches ``cli`` through two such imports, and counting them
+put ``cli``'s whole closure under every test file. The cases below pin both
+halves, and the chain that has to stay.
 """
 from __future__ import annotations
 
@@ -44,12 +50,11 @@ CONSTANT = {f"{SRC}/pkg/__init__.py": "", f"{SRC}/pkg/limits.py": "CAP = 4\n"}
 
 
 @pytest.mark.parametrize("reader", [
-    # The four shapes the call-edge slice misses.
+    # Three shapes the call-edge slice misses.
     "from pkg import limits\n\ndef doubled():\n    return limits.CAP * 2\n",
     "from pkg.limits import CAP\n\ndef tripled():\n    return CAP * 3\n",
     "from pkg.limits import ceiling\nCEILING = ceiling()\n\ndef kept():\n    return CEILING\n",
-    "def late():\n    from pkg import limits\n    return limits.CAP\n",
-    # And every other way of writing the import.
+    # And every other way of writing an import that runs when the module loads.
     "import pkg.limits\n",
     "import pkg.limits as lim\n",
     "from . import limits\n",
@@ -58,8 +63,14 @@ CONSTANT = {f"{SRC}/pkg/__init__.py": "", f"{SRC}/pkg/limits.py": "CAP = 4\n"}
     "try:\n    from pkg.limits import CAP\nexcept ImportError:\n    CAP = 0\n",
     "import os\nif os.name:\n    from pkg import limits\n",
     "import importlib\nlim = importlib.import_module('pkg.limits')\n",
-    "from importlib import import_module\n\ndef f():\n    return import_module('pkg.limits')\n",
     "lim = __import__('pkg.limits')\n",
+    "LIMS = [__import__(name) for name in ('pkg.limits',)] and __import__('pkg.limits')\n",
+    # A decorator and a parameter default run when the def statement does.
+    "def f(lim=__import__('pkg.limits')):\n    return lim\n",
+    "async def f(*, plain, lim=__import__('pkg.limits')):\n    return lim\n",
+    "import importlib\n\n@importlib.import_module('pkg.limits').deco\ndef f():\n    return 1\n",
+    "class K:\n    def m(self, lim=__import__('pkg.limits')):\n        return lim\n",
+    "f = lambda lim=__import__('pkg.limits'): lim\n",
     "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    pass\nelse:\n    from pkg import limits\n",
 ])
 def test_a_test_of_a_module_that_reads_the_changed_file_is_a_dependent(reader: str) -> None:
@@ -93,6 +104,78 @@ def test_what_does_not_load_the_file(reader: str) -> None:
     assert _loads(sources, f"{TESTS}/test_reader.py", f"{SRC}/pkg/reader.py")
 
 
+#: Imports that run only when the function is called.
+LAZY = [
+    "def late():\n    from pkg import limits\n    return limits.CAP\n",
+    "async def late():\n    import pkg.limits\n",
+    "class K:\n    def m(self):\n        from pkg.limits import CAP\n        return CAP\n",
+    "def outer():\n    def inner():\n        from pkg import limits\n    return inner\n",
+    "def outer():\n    class Local:\n        from pkg import limits\n    return Local\n",
+    "from importlib import import_module\n\ndef f():\n    return import_module('pkg.limits')\n",
+    "late = lambda: __import__('pkg.limits')\n",
+    "def f():\n    if True:\n        try:\n            import pkg.limits\n        except ImportError:\n            pass\n",
+]
+
+
+@pytest.mark.parametrize("reader", LAZY)
+def test_an_import_inside_a_function_of_a_source_module_is_not_an_edge(reader: str) -> None:
+    sources = {**CONSTANT, f"{SRC}/pkg/reader.py": reader,
+               f"{TESTS}/test_reader.py": "from pkg.reader import anything\n"}
+    graph = build(sources)
+    assert f"{SRC}/pkg/limits.py" not in graph.imports[f"{SRC}/pkg/reader.py"]
+    assert f"{TESTS}/test_reader.py" not in graph.dependents([f"{SRC}/pkg/limits.py"])
+    # Reach: the reader parses, and its test still depends on the reader.
+    assert _loads(sources, f"{TESTS}/test_reader.py", f"{SRC}/pkg/reader.py")
+
+
+@pytest.mark.parametrize("reader", LAZY)
+@pytest.mark.parametrize("where", [
+    f"{TESTS}/test_reader.py", f"{TESTS}/conftest.py", "conftest.py",
+    f"{TESTS}/helpers.py", "tests/test_root.py", "scripts/tool.py",
+])
+def test_an_import_inside_a_function_outside_the_source_roots_is_an_edge(
+        reader: str, where: str) -> None:
+    sources = {**CONSTANT, where: reader}
+    assert f"{SRC}/pkg/limits.py" in build(sources).imports[where]
+
+
+def test_a_lazy_import_in_a_test_reaches_what_its_target_loads_at_import() -> None:
+    """The half that stays: test -> (in a function) reader -> (module level) limits."""
+    sources = {**CONSTANT,
+               f"{SRC}/pkg/reader.py": "from pkg.limits import CAP\n",
+               f"{SRC}/pkg/lazy_reader.py": "def late():\n    from pkg.limits import CAP\n",
+               f"{TESTS}/test_late.py": "def test_it():\n    from pkg.reader import CAP\n",
+               f"{TESTS}/test_two_hops.py": "def test_it():\n    from pkg.lazy_reader import late\n"}
+    hit = build(sources).dependents([f"{SRC}/pkg/limits.py"])
+    assert f"{TESTS}/test_late.py" in hit
+    # The second lazy hop is in a source module, so the chain stops there.
+    assert f"{TESTS}/test_two_hops.py" not in hit
+
+
+def test_the_conftest_chain_stops_at_the_first_lazy_import_of_a_source_module() -> None:
+    """The shape that put ``cli``'s closure under every test: a conftest fixture
+    imports ``pkg.sub.registry`` in its body, which runs ``pkg/__init__.py``,
+    which imports ``ir`` at module level; ``ir`` imports ``catalog`` inside a
+    function. Every test loads ``__init__`` and ``ir``; none loads ``catalog``
+    by that route."""
+    sources = {
+        "conftest.py": ("import pytest\n\n\n@pytest.fixture\ndef registry():\n"
+                        "    from pkg.sub import registry\n    return registry\n"),
+        f"{SRC}/pkg/__init__.py": "from pkg import ir\n",
+        f"{SRC}/pkg/ir.py": "def kinds():\n    from pkg import catalog\n    return catalog.KINDS\n",
+        f"{SRC}/pkg/catalog.py": "KINDS = ()\n",
+        f"{SRC}/pkg/sub/__init__.py": "", f"{SRC}/pkg/sub/registry.py": "",
+        f"{TESTS}/test_plain.py": "x = 1\n",
+        f"{TESTS}/test_catalog.py": "from pkg import catalog\n",
+    }
+    graph = build(sources)
+    plain = f"{TESTS}/test_plain.py"
+    for loaded in ("pkg/__init__.py", "pkg/ir.py", "pkg/sub/__init__.py", "pkg/sub/registry.py"):
+        assert plain in graph.dependents([f"{SRC}/{loaded}"]), loaded
+    assert plain not in graph.dependents([f"{SRC}/pkg/catalog.py"])
+    assert f"{TESTS}/test_catalog.py" in graph.dependents([f"{SRC}/pkg/catalog.py"])
+
+
 def test_importing_a_module_runs_the_packages_above_it() -> None:
     sources = {f"{SRC}/a/__init__.py": "FLAG = 1\n", f"{SRC}/a/b/__init__.py": "",
                f"{SRC}/a/b/c.py": "", f"{TESTS}/test_c.py": "import a.b.c\n",
@@ -123,7 +206,7 @@ def test_relative_imports_resolve_from_the_importing_module() -> None:
 
 def test_the_walk_goes_through_any_number_of_files_and_survives_a_cycle() -> None:
     sources = {f"{SRC}/m0.py": "import m3\n", f"{SRC}/m1.py": "import m0\n",
-               f"{SRC}/m2.py": "def f():\n    import m1\n", f"{SRC}/m3.py": "import m2\n",
+               f"{SRC}/m2.py": "class K:\n    import m1\n", f"{SRC}/m3.py": "import m2\n",
                f"{TESTS}/test_far.py": "import m3\n"}
     hit = build(sources).dependents([f"{SRC}/m0.py"])
     assert hit == {f"{SRC}/m0.py", f"{SRC}/m1.py", f"{SRC}/m2.py", f"{SRC}/m3.py",
@@ -264,6 +347,8 @@ def repo(tmp_path: Path) -> Path:
     _write(root, f"{tests}/test_limits.py", "from pkg.limits import ceiling\n")
     _write(root, f"{tests}/test_reads_name.py", "from pkg.reads_name import tripled\n")
     _write(root, f"{tests}/test_reads_lazily.py", "from pkg.reads_lazily import late\n")
+    _write(root, f"{tests}/test_imports_late.py",
+           "def test_tripled():\n    from pkg.reads_name import tripled\n    assert tripled() == 12\n")
     _write(root, f"{tests}/test_unrelated.py", "from pkg.unrelated import X\n")
     _write(root, f"{tests}/helper.py", "from pkg.limits import CAP\n")
     _write(root, ".gitignore", "changed.txt\nindex.sqlite*\n")
@@ -274,8 +359,10 @@ def repo(tmp_path: Path) -> Path:
 
 
 LIMITS = "packages/core/src/pkg/limits.py"
-READERS = ["packages/core/tests/test_limits.py", "packages/core/tests/test_reads_lazily.py",
+READERS = ["packages/core/tests/test_imports_late.py", "packages/core/tests/test_limits.py",
            "packages/core/tests/test_reads_name.py"]
+#: Reaches limits.py only through a function-level import in a source module.
+LAZY_SOURCE_READER = "packages/core/tests/test_reads_lazily.py"
 
 
 def test_the_helper_prints_the_tests_that_load_the_changed_file(repo: Path) -> None:
@@ -285,6 +372,9 @@ def test_the_helper_prints_the_tests_that_load_the_changed_file(repo: Path) -> N
     got, said = _helper(repo, [LIMITS, "README.md"])
     # helper.py loads the file and is not a test file; test_unrelated has no path.
     assert got == sorted([*READERS, "packages/core/tests/test_new_reader.py"])
+    # The known miss, stated: reads_lazily.py imports limits inside a function.
+    assert LAZY_SOURCE_READER not in got
+    assert (repo / LAZY_SOURCE_READER).is_file()
     assert "1 file(s) with changed import-time code are loaded by 4 test file(s)" in said
     assert LIMITS not in said
     _, verbose = _helper(repo, [LIMITS], "--verbose")

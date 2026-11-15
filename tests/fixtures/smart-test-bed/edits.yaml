@@ -251,7 +251,11 @@
 # what it defines and none of their functions calls a limits function, so the
 # call-edge slice lists the modules and not their tests (the 9.2.0 slice
 # reaches test_reads_attr through the module attribute read; 9.0.0 reaches
-# none of the four). reads_lazily imports limits inside a function.
+# none of the four). The import closure adds the tests of the three that
+# import limits at module level, and test_imports_late, which imports one of
+# them inside its test function. reads_lazily imports limits inside a
+# function of a SOURCE module: the closure does not follow that, so
+# test_reads_lazily is a MUST the manifest does not hold (the known miss).
 - name: constant-read-elsewhere
   oracle: mutate
   ops:
