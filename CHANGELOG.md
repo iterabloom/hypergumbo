@@ -48,6 +48,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Sketch no longer downloads embedding models**: run `hypergumbo install-embeddings` first.
 - **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
+- **Sketch no longer re-encodes its 180 fixed config probes on every run**: about a second faster, same output.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
 - **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.
@@ -188,6 +189,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Three tests now reach the cases they name**: file order, the depth cap and the tier drop.
 - **Hypothesis property tests no longer fail on a slow, loaded machine.**
+- **Linker-requirement tests no longer parse the whole checkout**: nine tests, a minute each.
 - **A sketch test no longer leaks its redirected temp directory**, and two measurement scripts restore the globals they rebind.
 
 #### CI gates

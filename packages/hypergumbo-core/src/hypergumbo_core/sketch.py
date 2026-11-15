@@ -503,244 +503,15 @@ class SketchProgress:
 # Probe system for embedding-based config extraction:
 # 1. ANSWER_PATTERNS: Example config lines that contain factual metadata
 # 2. BIG_PICTURE_QUESTIONS: Open-ended questions for architectural context
+# 3. NEGATIVE_PATTERNS: Content that is not config, scored against
 #
 # Similarity is computed as top-k mean across all probes (k=3). This requires
 # multiple probes to "agree" on relevance, reducing sensitivity to spurious
 # single-probe matches while preserving signal for underrepresented languages.
-
-# Conceptual answer patterns - what config metadata IS (not syntax examples)
-# The embedding model generalizes these concepts across language syntaxes.
-ANSWER_PATTERNS = [
-    # Project identity
-    "project name declaration",
-    "package name",
-    "module name",
-    "application name",
-
-    # Versioning
-    "version number",
-    "semantic version",
-    "edition or language version",
-    "minimum required version",
-
-    # Dependencies
-    "dependency declaration",
-    "package dependency",
-    "library dependency",
-    "dev dependency",
-    "build dependency",
-    "optional dependency",
-
-    # Licensing
-    "license identifier",
-    "SPDX license expression",
-    "open source license",
-
-    # Build configuration
-    "build system configuration",
-    "build target",
-    "compilation settings",
-    "entry point",
-    "main module",
-    "script definition",
-    "command definition",
-
-    # Runtime configuration
-    "environment variable",
-    "configuration option",
-    "feature flag",
-    "runtime setting",
-
-    # Repository and authorship
-    "repository URL",
-    "homepage URL",
-    "author name",
-    "maintainer",
-    "contributors list",
-
-    # Documentation
-    "project description",
-    "readme file",
-
-    # Discovery
-    "package keywords",
-    "package categories",
-    "package tags",
-
-    # Exports and binaries
-    "binary executable",
-    "library exports",
-    "public API",
-]
-
-# Open-ended questions for big-picture/architectural context
-# There are no license questions: ANSWER_PATTERNS already captures compact
-# license declarations (e.g., 'license = "MIT"') without matching verbose
-# LICENSE file boilerplate.
-BIG_PICTURE_QUESTIONS = [
-    # Machine learning and AI
-    "What ML framework does this use?",
-    "Does this use PyTorch?",
-    "Does this use TensorFlow?",
-    "Does this use JAX?",
-    "Does this use scikit-learn?",
-    "Does this use Hugging Face Transformers?",
-    "What model architecture does this implement?",
-    "Does this support GPU acceleration?",
-    "Does this support TPU?",
-    "Does this use CUDA?",
-    "What quantization methods are supported?",
-    "Does this use ONNX?",
-    "What inference runtime does this use?",
-
-    # Version and release info
-    "What version is this project?",
-    "What is the current version number?",
-    "When was the last release?",
-    "What version of Node.js does this require?",
-    "What Python version is required?",
-    "What is the minimum supported version?",
-
-    # Database and storage
-    "What database does this project use?",
-    "Does this use PostgreSQL?",
-    "Does this use MySQL?",
-    "Does this use MongoDB?",
-    "Does this use Redis?",
-    "Does this use SQLite?",
-    "What ORM does this use?",
-    "How does this store data?",
-
-    # Web frameworks and HTTP
-    "What web framework does this use?",
-    "Is this built with Express?",
-    "Is this built with FastAPI?",
-    "Is this built with Django?",
-    "Is this built with Flask?",
-    "Is this built with Rails?",
-    "Is this built with Spring?",
-    "Is this a REST API?",
-    "Does this use GraphQL?",
-
-    # Frontend frameworks
-    "What frontend framework does this use?",
-    "Is this built with React?",
-    "Is this built with Vue?",
-    "Is this built with Angular?",
-    "Is this built with Svelte?",
-    "Does this use TypeScript?",
-    "What CSS framework does this use?",
-
-    # Testing
-    "What testing framework does this use?",
-    "Does this use Jest?",
-    "Does this use pytest?",
-    "Does this use JUnit?",
-    "How do I run the tests?",
-    "What is the test coverage?",
-
-    # Build and tooling
-    "What build system does this use?",
-    "Does this use webpack?",
-    "Does this use Vite?",
-    "Does this use Maven?",
-    "Does this use Gradle?",
-    "Does this use Cargo?",
-    "How do I build this project?",
-
-    # Package management
-    "What package manager does this use?",
-    "Does this use npm or yarn?",
-    "Does this use pnpm?",
-    "Does this use pip?",
-    "What are the main dependencies?",
-    "What are the dev dependencies?",
-
-    # Language and runtime
-    "What programming language is this?",
-    "What runtime does this require?",
-    "Is this a TypeScript project?",
-    "Is this a Python project?",
-    "Is this a Go project?",
-    "Is this a Rust project?",
-    "Is this a Java project?",
-
-    # Project identity
-    "What is this project called?",
-    "What is the project name?",
-    "Who maintains this project?",
-    "What organization owns this?",
-    "Who are the contributors?",
-
-    # Deployment and infrastructure
-    "How do I deploy this?",
-    "Does this use Docker?",
-    "Does this use Kubernetes?",
-    "What cloud platform does this target?",
-    "Is this serverless?",
-    "Does this run on AWS?",
-    "Does this run on GCP?",
-    "Does this run on Azure?",
-    "Does this use Terraform?",
-    "Does this use Helm?",
-    "What container registry does this use?",
-    "Does this use GitHub Actions?",
-    "Does this use GitLab CI?",
-    "What infrastructure as code tool is used?",
-
-    # API and protocols
-    "What API does this expose?",
-    "Does this use WebSockets?",
-    "Does this use gRPC?",
-    "What ports does this use?",
-
-    # Miscellaneous metadata
-    "What is the project description?",
-    "What problem does this solve?",
-    "Is this a library or application?",
-    "Is this a CLI tool?",
-    "Is this production ready?",
-
-    # Architecture and design (harder, open-ended)
-    "What is the overall architecture of this project?",
-    "How is the codebase organized?",
-    "What design patterns does this use?",
-    "How do the components communicate?",
-    "What is the data flow through the system?",
-    "How does authentication work?",
-    "How does authorization work?",
-    "What are the main modules or services?",
-    "Is this a monolith or microservices?",
-    "How is state managed?",
-
-    # Scale and complexity
-    "How large is this codebase?",
-    "How many services does this have?",
-    "What are the performance characteristics?",
-    "How does this handle concurrency?",
-    "What are the scaling considerations?",
-
-    # Integration and external systems
-    "What external services does this integrate with?",
-    "What third-party APIs does this call?",
-    "How does this communicate with other systems?",
-    "What message queues or event buses are used?",
-    "What caching strategy is used?",
-
-    # Security and reliability
-    "How are secrets managed?",
-    "What security measures are in place?",
-    "How are errors handled?",
-    "What logging and monitoring is used?",
-    "How is configuration managed across environments?",
-
-    # Development workflow
-    "How do I set up the development environment?",
-    "What are the contribution guidelines?",
-    "How is code review done?",
-    "What CI/CD pipeline is used?",
-    "How are database migrations handled?",
-]
+#
+# The three lists and their embeddings live in sketch_embeddings
+# (PROBE_SETS, probe_embeddings): the texts are fixed, so the embeddings are
+# computed once by scripts/compute_probe_embeddings.py and shipped.
 
 
 # Config files to extract project metadata from
@@ -1916,6 +1687,7 @@ def _extract_config_embedding(
             EmbeddingsUnavailable,
             _load_embedding_model,
             _warn_embeddings_unavailable,
+            probe_embeddings,
         )
         import numpy as np
     except ImportError:  # pragma: no cover
@@ -1947,20 +1719,6 @@ def _extract_config_embedding(
         _warn_embeddings_unavailable(exc)
         return _extract_config_heuristic(repo_root)[:max_lines]
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
-
-    # Compute normalized embeddings for both probes
-    # Using max-to-any-pattern approach (not centroid) for better exact matching
-    _t_probes = _time.time()
-    # Probe 1: Answer patterns (factual metadata lines)
-    answer_embeddings = model.encode(ANSWER_PATTERNS, convert_to_numpy=True)
-    answer_norms = np.linalg.norm(answer_embeddings, axis=1, keepdims=True)
-    normalized_answer_patterns = answer_embeddings / (answer_norms + 1e-8)
-
-    # Probe 2: Big-picture questions (architectural context)
-    question_embeddings = model.encode(BIG_PICTURE_QUESTIONS, convert_to_numpy=True)
-    question_norms = np.linalg.norm(question_embeddings, axis=1, keepdims=True)
-    normalized_question_patterns = question_embeddings / (question_norms + 1e-8)
-    _vlog(f"Probe embeddings ({len(ANSWER_PATTERNS)}+{len(BIG_PICTURE_QUESTIONS)}) in {_time.time() - _t_probes:.1f}s")
 
     # === PASS 1a: Collect chunks from all files (no embedding yet) ===
     # Structure: list of (source, center_idx, chunk_text, file_lines)
@@ -2029,6 +1787,15 @@ def _extract_config_embedding(
     all_norms = np.linalg.norm(all_embeddings, axis=1, keepdims=True)
     all_normalized = all_embeddings / (all_norms + 1e-8)
 
+    # The probes: answer patterns (factual metadata lines), big-picture
+    # questions (architectural context) and, below, negative patterns. Their
+    # texts are fixed, so their embeddings are shipped and not encoded here
+    # (probe_embeddings encodes them only for a model the shipped rows do not
+    # belong to). Max-to-any-pattern, not a centroid, for exact matching.
+    _dim = all_normalized.shape[1]
+    normalized_answer_patterns = probe_embeddings("answer", model, _dim)
+    normalized_question_patterns = probe_embeddings("bigpic", model, _dim)
+
     # Compute similarity to all probes for all chunks at once
     # Shape: (num_all_chunks, num_answer_patterns)
     answer_sim_matrix = np.dot(all_normalized, normalized_answer_patterns.T)
@@ -2048,10 +1815,7 @@ def _extract_config_embedding(
     else:
         all_similarities = np.mean(combined_sim_matrix, axis=1)  # pragma: no cover
     # Negative probe scoring: penalize chunks matching non-config content
-    from .sketch_embeddings import NEGATIVE_PATTERNS
-    negative_embeddings = model.encode(NEGATIVE_PATTERNS, convert_to_numpy=True)
-    neg_norms = np.linalg.norm(negative_embeddings, axis=1, keepdims=True)
-    neg_normalized = negative_embeddings / (neg_norms + 1e-8)
+    neg_normalized = probe_embeddings("negative", model, _dim)
     neg_sim_matrix = np.dot(all_normalized, neg_normalized.T)
     max_neg_sim = np.max(neg_sim_matrix, axis=1)
     negative_weight = 0.3

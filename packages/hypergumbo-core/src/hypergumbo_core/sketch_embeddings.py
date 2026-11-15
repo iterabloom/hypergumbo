@@ -77,7 +77,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 if TYPE_CHECKING:
     import numpy as np
@@ -707,64 +707,76 @@ README_DESCRIPTION_PROBES = [
     "Use (Project Name) to (primary job) in (context)—for example, (example use case).",
 ]
 
-# Cache for probe embeddings (decoded from pre-computed base64)
-_README_PROBE_EMBEDDINGS: "np.ndarray | None" = None
-_ANSWER_PROBE_EMBEDDINGS: "np.ndarray | None" = None
-_BIGPIC_PROBE_EMBEDDINGS: "np.ndarray | None" = None
+#: The probe sets whose embeddings ship in ``_embedding_data``: name ->
+#: (the probe texts, the attribute that holds their base64 array). The texts
+#: live here and nowhere else; ``scripts/compute_probe_embeddings.py`` reads
+#: this table.
+PROBE_SETS: dict[str, tuple[list[str], str]] = {
+    "readme": (README_DESCRIPTION_PROBES, "README_PROBES_B64"),
+    "answer": (ANSWER_PATTERNS, "ANSWER_PROBES_B64"),
+    "bigpic": (BIG_PICTURE_QUESTIONS, "BIGPIC_PROBES_B64"),
+    "negative": (NEGATIVE_PATTERNS, "NEGATIVE_PROBES_B64"),
+}
+
+# Decoded shipped arrays, kept for the life of the process (None: the shipped
+# array is not of today's texts and model).
+_SHIPPED_PROBES: "dict[str, np.ndarray | None]" = {}
 
 
-def _get_readme_probe_embeddings() -> "np.ndarray":
-    """Get pre-computed probe embeddings for README description extraction.
+def probe_digest(model_name: str, probes: Sequence[str]) -> str:
+    """Identify what a shipped array was computed from: the model's name and
+    the probe texts, in order."""
+    import hashlib
 
-    Uses base64-encoded float16 embeddings from _embedding_data.py,
-    avoiding the ~2-3s startup cost of computing embeddings at runtime.
+    digest = hashlib.sha256(model_name.encode("utf-8"))
+    for probe in probes:
+        digest.update(b"\x00")
+        digest.update(probe.encode("utf-8"))
+    return digest.hexdigest()
 
-    Returns:
-        Normalized probe embeddings array of shape (19, 768).
+
+def _shipped_probe_embeddings(name: str) -> "np.ndarray | None":
+    """The shipped array of a probe set, or ``None`` when it does not belong
+    to today's texts and model.
+
+    ``_embedding_data.PROBE_DIGESTS`` records, per array, the digest of the
+    model name and probe texts it was computed from. A probe list edited
+    without re-running ``scripts/compute_probe_embeddings.py``, a changed
+    ``_EMBEDDING_MODEL``, or a data file from before the digests existed gives
+    ``None``, and the caller encodes the probes with the model.
     """
-    global _README_PROBE_EMBEDDINGS
+    if name not in _SHIPPED_PROBES:
+        from . import _embedding_data as data
 
-    if _README_PROBE_EMBEDDINGS is None:
-        from ._embedding_data import README_PROBES_B64
-        _README_PROBE_EMBEDDINGS = _decode_probe_embeddings(
-            README_PROBES_B64, len(README_DESCRIPTION_PROBES)
+        probes, attr = PROBE_SETS[name]
+        recorded = getattr(data, "PROBE_DIGESTS", {}).get(name)
+        fresh = recorded == probe_digest(_EMBEDDING_MODEL, probes)
+        _SHIPPED_PROBES[name] = (
+            _decode_probe_embeddings(getattr(data, attr), len(probes)) if fresh else None
         )
+    return _SHIPPED_PROBES[name]
 
-    return _README_PROBE_EMBEDDINGS
 
+def probe_embeddings(name: str, model: Any, dim: int) -> "np.ndarray":
+    """Unit-length embeddings of a probe set, one row per probe, ``dim`` wide.
 
-def _get_answer_probe_embeddings() -> "np.ndarray":
-    """Get pre-computed probe embeddings for config answer patterns.
-
-    Returns:
-        Normalized probe embeddings array of shape (41, 768).
+    The probe texts never change between calls, so their embeddings are
+    computed once by ``scripts/compute_probe_embeddings.py`` and shipped.
+    ``dim`` is the width of what ``model`` just produced for the caller's own
+    texts: the shipped rows are used when they are of today's texts and model
+    (:func:`_shipped_probe_embeddings`) and of that width. Anything else, a
+    stale array or a model that is not the shipped one, has the model encode
+    the probes here, which costs time (180 texts for the config extraction)
+    and gives the same kind of answer.
     """
-    global _ANSWER_PROBE_EMBEDDINGS
+    shipped = _shipped_probe_embeddings(name)
+    if shipped is not None and shipped.shape[1] == dim:
+        return shipped
+    import numpy as np
 
-    if _ANSWER_PROBE_EMBEDDINGS is None:
-        from ._embedding_data import ANSWER_PROBES_B64
-        _ANSWER_PROBE_EMBEDDINGS = _decode_probe_embeddings(
-            ANSWER_PROBES_B64, len(ANSWER_PATTERNS)
-        )
-
-    return _ANSWER_PROBE_EMBEDDINGS
-
-
-def _get_bigpic_probe_embeddings() -> "np.ndarray":
-    """Get pre-computed probe embeddings for big picture questions.
-
-    Returns:
-        Normalized probe embeddings array of shape (127, 768).
-    """
-    global _BIGPIC_PROBE_EMBEDDINGS
-
-    if _BIGPIC_PROBE_EMBEDDINGS is None:
-        from ._embedding_data import BIGPIC_PROBES_B64
-        _BIGPIC_PROBE_EMBEDDINGS = _decode_probe_embeddings(
-            BIGPIC_PROBES_B64, len(BIG_PICTURE_QUESTIONS)
-        )
-
-    return _BIGPIC_PROBE_EMBEDDINGS
+    live = model.encode(PROBE_SETS[name][0], convert_to_numpy=True)
+    norms = np.linalg.norm(live, axis=1, keepdims=True)
+    return live / (norms + 1e-8)
 
 
 def _is_readme_line_filterable(line: str) -> bool:
@@ -1043,8 +1055,7 @@ def extract_readme_description_embedding(
             )
         return None
 
-    # Load model and get pre-computed probe embeddings. An unavailable model
-    # answers with the SAME shape the _has_sentence_transformers() guard above
+    # Load the model. An unavailable model answers with the SAME shape the _has_sentence_transformers() guard above
     # returns, so there is exactly one definition of "no description could be
     # extracted" (INV-rupid).
     try:
@@ -1058,16 +1069,16 @@ def extract_readme_description_embedding(
                 lines_processed=len(filtered_lines),
             )
         return None
-    probe_embeddings = _get_readme_probe_embeddings()
 
     # Embed all filtered lines
     line_texts = [line for _, line in filtered_lines]
     line_embeddings = model.encode(line_texts, convert_to_numpy=True)
     line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
     normalized_lines = line_embeddings / (line_norms + 1e-8)
+    readme_probes = probe_embeddings("readme", model, normalized_lines.shape[1])
 
     # Compute pairwise cosine similarities: (num_lines, num_probes)
-    similarities = np.dot(normalized_lines, probe_embeddings.T)
+    similarities = np.dot(normalized_lines, readme_probes.T)
 
     # Score each line as mean of top-k similarities with probes
     top_k = min(top_k_probes, len(README_DESCRIPTION_PROBES))
