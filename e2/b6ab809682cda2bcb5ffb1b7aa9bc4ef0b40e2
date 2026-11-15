@@ -1,0 +1,19 @@
+Original commit body from da4061b18b0bb4b633fc5a63f8932fd0b49446cf:
+
+The selection index (the sqlite coverage map) now records, for each test and function, which statements of the function the test ran. Requested by the owner as "today's rows plus a small line bitmap per test and function".
+
+Two commits:
+
+1. **feat(selection): a block's statements are numbered by the tree its digest hashes.** `block_hash` gains `Block.statements` and `statement_owner`. A statement's name is its position among the block's own statements (nested blocks left out), which is exactly the tree the digest is taken from, so a comment, a blank line, a reflow or code added above moves no number.
+
+2. **feat(selection): the index records which statements of a block each test ran.** Format 4: `test_block.statements`, a bitmap with one bit per statement. Keyed by statement and not by line offset because the digest ignores comments and blank lines, and an offset record would go stale under those edits while its digest still matched.
+   - Three states kept apart: no record, recorded and empty (an import-time block), recorded with statements.
+   - A fold that sees a block's digest change drops that block's records (the pairs stay); a reader checks the stored digest against the source before reading one.
+   - A format-2 or format-3 file gains the column where it stands: schema only, no row rewritten.
+   - Readers: `selection_index.tests_of_line`, `statement_records`, `record_counts`; `coverage-select line-tests FILE:LINE [--json]` and `coverage-select line-records`.
+
+Test selection does not read the records yet.
+
+Measured on this repository: one run of 1,612 tests folded into a copy of the real index and compared with coverage's own per-test lines: 302,958 records, 2,182,731 statements, none missing and no bit without an executed line. Fold time 13.1 s -> 14.6 s. About 1.5 bytes of bitmap per record; about +7 MB for all 4.33 million pairs.
+
+Each commit message names its tests and mutation controls.
