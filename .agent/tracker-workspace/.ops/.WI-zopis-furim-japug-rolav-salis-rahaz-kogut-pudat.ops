@@ -66,3 +66,20 @@
   clock: 7  # 7182
   nonce: '7182'  # 7182
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096: not built. `hypergumbo intra|cfg|ddg` are not subcommands; two `verify-claims` runs leave only survey.json, survey.{4k,16k,64k}.json and survey.slices/ in the cache. The builder is now `_build_ddg_for_verify_claims` (cli.py:6679) over `ddg_build.build_repo_ddg`, called only from `cmd_verify_claims`. Registered DDG languages: c, go, java, javascript, python, rust, typescript (the text says Python-only). Cache file names are survey*.json, not hypergumbo.results*.json; `run` is a deprecated alias of `survey`. Self-analysis has 45,067 Python function/method symbols (text: ~2700). `function_summaries` is YAML-declared; `infer_summary` has no production caller (taint.py:5301). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-zopis.md. No status or priority change made by this review."  # 7182
+- op: update  # a9b6
+  at: '2026-11-15T19:57:56Z'  # a9b6
+  by: agent  # a9b6
+  actor: jgstern_agent  # a9b6
+  clock: 8  # a9b6
+  nonce: a9b6  # a9b6
+  set:  # a9b6
+    status: wont_do  # a9b6
+  add:  # a9b6
+    tags: [someday]  # a9b6
+- op: discuss  # a1db
+  at: '2026-11-15T19:57:56Z'  # a1db
+  by: agent  # a1db
+  actor: jgstern_agent  # a1db
+  clock: 9  # a1db
+  nonce: a1db  # a1db
+  message: "OWNER RULING 2026-11-15, verbatim: \"decline for now (later)\". Parked: wont_do + someday. Not \"never\". WHY: no measurement shows how much of a verify-claims run is spent building the per-function graphs, so the speed gain is unpriced; nobody has asked for the cfg / ddg print commands; the file would be invalidated by any source edit, so it helps only when claims are re-run on an unchanged tree; and it is efficiency work, which the owner parked on 2026-08-17. The proposal text is intact for a re-open, with these corrections from the 2026-11-15 review: the DDG path covers seven languages (c, go, java, javascript, python, rust, typescript), not Python only; today's self-analysis has 45,067 Python function and method symbols (6,998 under src), not about 2,700; the cache files are survey*.json; the builder is _build_ddg_for_verify_claims over ddg_build.build_repo_ddg. RE-OPEN TRIGGER: a measured verify-claims run in which building these graphs is most of the wall time AND a workflow that re-runs claims on an unchanged tree; or a named consumer for per-function graph output. If re-opened, take the timing first."  # a1db

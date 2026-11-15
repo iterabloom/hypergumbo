@@ -48,3 +48,12 @@
   clock: 5  # 5b8d
   nonce: 5b8d  # 5b8d
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Points 1-2 reproduce. Fixture: in-class `S()` -> `function S`; member template `get` -> `function get`; template `over(M*)` -> `function over` beside `method T::over`; out-of-class `O::O`, `O::get` are methods. Rule: `_extract_function_name`, cpp.py:697-698 (`identifier` leaf -> function). The struct does get `contains` edges to these functions. sherpa-onnx d7526c8, keyword-spotter-transducer-impl.h run alone as .hpp: template `InitKeywords`@319 is `function`; L336 self-binds in `analyze_cpp` (no edge in the survey); L300/L314 -> L283; and L77 `InitKeywords()` in the in-class constructor binds the template@319, not the zero-argument overload@294. `_get_enclosing_class` is at cpp.py:1458. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-rugin.md. No status or priority change made by this review."  # 5b8d
+- op: update  # 7e47
+  at: '2026-11-15T19:49:51Z'  # 7e47
+  by: agent  # 7e47
+  actor: jgstern_agent  # 7e47
+  clock: 6  # 7e47
+  nonce: '7e47'  # 7e47
+  set: {}  # 7e47
+  add:  # 7e47
+    isbefore: [WI-jidot-jabag-bihun-pimib-jufug-jidub-tukis-nakav]  # 7e47

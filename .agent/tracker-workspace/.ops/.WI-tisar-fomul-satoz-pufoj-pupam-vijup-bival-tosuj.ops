@@ -88,3 +88,10 @@
   clock: 10  # 715c
   nonce: 715c  # 715c
   message: "DOCUMENT verdict (owner-ratified 2026-07-15), shipped in the docs PR merged to dev as 37e0252d5b (commit bc366977, 'docs: document 3 intentional identity/tier legibility divergences'). Predicate re-verified live on hg-self-v5 (39,831 nodes): stable_id populated 39,792/39,831 and shape_id 33,054/39,831, BOTH surfacing as sha256:<16hex>; bare-hash overlap = 0 (disjoint value-spaces, no uniqueness collapse). Disposition rationale: the sha256: prefix names the hash ALGORITHM, not the identity axis; the two are discriminated by field name + the top-level stable_id_scheme/shape_id_scheme descriptors. The 'other hashed IDs carry a self-identifying prefix' argument does not transfer: fingerprint's hgfp2: is a VERSION tag (fingerprint.py:79 — evolves v1->v2->v3 so consumers can cache-key), and edges' edge:/edgekey: are NAMESPACE tags (shared lookup space with nodes/entrypoints, cf. entrypoints.py:273); stable_id/shape_id need neither (scheme is top-level, always field-qualified). Reformatting to add in-value prefixes would churn all ~40k/33k serialized identity values (cross-version join breakage) + a scheme bump, for a legibility nicety already recoverable from the schema — rejected on cost/benefit. Documented in ir.py Symbol docstring + the schema stable_id/shape_id descriptions with a consumer caution: do NOT join on bare hash values across the two axes."  # 715c
+- op: discuss  # 40ff
+  at: '2026-11-15T19:57:56Z'  # 40ff
+  by: agent  # 40ff
+  actor: jgstern_agent  # 40ff
+  clock: 11  # 40ff
+  nonce: 40ff  # 40ff
+  message: "SUPERSEDED for the value format of stable_id and shape_id (owner ruling 2026-11-15): WI-talos-duhuj-gafut-lamop-majuj-gotif-janaj-zazih's 2026-07-29 decision to give each identity value its own versioned prefix stands over this item's 2026-07-15 \"document, do not prefix\" verdict. The text this item shipped (ir.py:606-616 and two passages of docs/schema.json) describes what is emitted today and stays until WI-talos-duhuj-gafut-lamop-majuj-gotif-janaj-zazih ships; that PR replaces it. This item's status is unchanged: what it shipped was done."  # 40ff
