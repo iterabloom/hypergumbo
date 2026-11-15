@@ -50,7 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
 - **Sketch no longer re-encodes its 180 fixed config probes on every run**: about a second faster, same output.
 - **A catalogue file is parsed once per process**, not on every load: `verify-claims` parsed fifteen files about forty times.
-- **The installed-package list is read once per run**, not twice per Python dependency manifest.
+- **Installed packages are read once per environment**, not on every run: a small run takes a third less.
 - **A run forces garbage collection only on a very large graph**: four collections a run freed nothing on six repositories.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
