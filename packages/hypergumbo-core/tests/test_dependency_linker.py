@@ -759,13 +759,11 @@ def _bare_import(dst: str) -> Edge:
                        origin="test", origin_run_id="test")
 
 
-def test_import_requirement_counts_only_linkable_imports():
+def test_import_requirement_counts_only_linkable_imports(tmp_path):
     """WI-juzaj: the import_edges requirement counts only the third-party
     Rust/Python imports link_dependencies can use, so a repo whose imports are
     Elixir/JS (or stdlib-only Python) does not trigger a partial-requirement
     warning about Cargo.toml/pyproject.toml."""
-    from pathlib import Path
-
     from hypergumbo_core.linkers.dependency import _count_import_edges
     from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -781,7 +779,7 @@ def test_import_requirement_counts_only_linkable_imports():
         Edge.create(src="f", dst="python:click:0-0:x:unresolved", edge_type="calls",
                     line=1, origin="test", origin_run_id="test"),
     ]
-    ctx = LinkerContext(repo_root=Path("."), edges=edges)
+    ctx = LinkerContext(repo_root=tmp_path, edges=edges)
     assert _count_import_edges(ctx) == 2
 
 
@@ -805,13 +803,11 @@ def _code_sym(sym_id: str, kind: str, path: str, language: str,
     )
 
 
-def test_import_requirement_skips_resolved_first_party_python_imports():
+def test_import_requirement_skips_resolved_first_party_python_imports(tmp_path):
     """INV-nuraf: an import the analyzer resolved to an in-repo symbol is the
     repo's own code, which no pyproject.toml declares, so it is not counted.
     The dst ids are the exact shapes the Python analyzer emits for
     ``from pkg import b`` / ``import pkg.a`` / ``from pkg.b import fb``."""
-    from pathlib import Path
-
     from hypergumbo_core.linkers.dependency import _count_import_edges
     from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -831,7 +827,7 @@ def test_import_requirement_skips_resolved_first_party_python_imports():
         Edge.create(src=a_file, dst=b_func, edge_type="imports", line=1,
                     origin="test", origin_run_id="test"),
     ]
-    ctx = LinkerContext(repo_root=Path("."), symbols=symbols, edges=edges)
+    ctx = LinkerContext(repo_root=tmp_path, symbols=symbols, edges=edges)
     assert _count_import_edges(ctx) == 0
 
     # The third-party control still counts alongside them.
@@ -839,13 +835,11 @@ def test_import_requirement_skips_resolved_first_party_python_imports():
     assert _count_import_edges(ctx) == 1
 
 
-def test_import_requirement_skips_first_party_rust_modules_and_own_crate():
+def test_import_requirement_skips_first_party_rust_modules_and_own_crate(tmp_path):
     """INV-nuraf analogue: Rust import dsts are never resolved to in-repo ids,
     so a crate's own modules (``use util::helper`` beside ``mod util;``,
     ``use net::tcp`` for ``src/net/mod.rs``) and its own crate name (an
     integration test's ``use my_crate::x``) are recognised by name instead."""
-    from pathlib import Path
-
     from hypergumbo_core.linkers.dependency import _count_import_edges
     from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -874,22 +868,24 @@ def test_import_requirement_skips_first_party_rust_modules_and_own_crate():
         _bare_import("rust:main::x:0-0:module:module"),
         _bare_import("rust:mod::x:0-0:module:module"),
     ]
-    ctx = LinkerContext(repo_root=Path("."), symbols=symbols, edges=edges)
+    ctx = LinkerContext(repo_root=tmp_path, symbols=symbols, edges=edges)
     assert _count_import_edges(ctx) == 3
 
 
-def test_import_requirement_unmet_on_first_party_only_python_repo():
+def test_import_requirement_unmet_on_first_party_only_python_repo(tmp_path):
     """INV-nuraf production path: check_linker_requirements (what the
     partial-requirement warning reads) reports 0 third-party imports for a repo
-    whose only imports are between its own modules."""
-    from pathlib import Path
+    whose only imports are between its own modules.
 
+    ``repo_root`` is an empty directory: every linker's requirement counters
+    run here, and the subprocess-CLI one parses each Python file under the
+    root (61 s when the root was the checkout)."""
     from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
     a_file = "python:pkg/a.py:1-1:file:file"
     b_file = "python:pkg/b.py:1-1:file:file"
     ctx = LinkerContext(
-        repo_root=Path("."),
+        repo_root=tmp_path,
         symbols=[_code_sym(a_file, "file", "pkg/a.py", "python"),
                  _code_sym(b_file, "file", "pkg/b.py", "python")],
         edges=[Edge.create(src=a_file, dst=b_file, edge_type="imports", line=1,
