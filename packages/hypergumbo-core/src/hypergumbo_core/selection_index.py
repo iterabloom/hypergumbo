@@ -15,7 +15,7 @@ each run in as it happens closes that: the moment you run the new test, the
 index learns the new blocks. This is the same reason pytest-testmon maintains
 its database per-run instead of from a profiling pass.
 
-THE FOUR SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
+THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
 
 1. **Replace, do not union, per test, inside what the run measured.**
    Re-indexing a test REPLACES its edges. Union would keep an edge to a block
@@ -62,6 +62,27 @@ THE FOUR SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    tests run again: the state the lost edges left is distrusted by
    construction, not repaired by a guess.
 
+5. **A pair also records WHICH statements of the block the test ran, and
+   that record is about the block as it was.** A pair says a test reached a
+   function. It cannot say whether one line of the function is run by any
+   test other than those a change affects, which a run that leaves tests out
+   must know before it claims the tree's coverage. So each pair carries a
+   bitmap, bit *i* for the block's statement number *i*
+   (:mod:`~hypergumbo_core.block_hash` numbers statements by the tree the
+   digest hashes, so an edit the digest ignores moves no number). Three
+   states, never merged: NO RECORD (``NULL``: the pair predates format 4, or
+   its record was dropped), RECORDED AND EMPTY (the pair exists because the
+   file was imported; the test ran none of the block's statements itself) and
+   recorded with statements. A record numbers the statements of the code it
+   was made from, so when a fold stores a DIFFERENT digest for a block it
+   drops the records of that block's pairs first; the tests in the fold then
+   get new ones and the others keep their pair with no record. A reader
+   compares the stored digest with the source in front of it before reading a
+   record (:func:`tests_of_line`), which covers an edit no fold has seen yet.
+   Nothing in test selection reads the records yet: they are read by
+   :func:`tests_of_line` and :func:`statement_records`
+   (``coverage-select line-tests`` / ``line-records``).
+
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
 B", until every test has run since B appeared. So this selector is sound as of
@@ -98,7 +119,9 @@ directories that are gone (``_forget_dead_checkouts``). A missing source file
 of the checkout itself keeps its rows: it is a file the change deleted.
 
 STORAGE. Each test, source file and block is stored ONCE and numbered; the
-``test -> block`` pairs are two integers each, in a ``WITHOUT ROWID`` table with
+``test -> block`` pairs are two integers each, plus the statement bitmap
+(a few bytes: one bit per statement of the block, cut after the last one
+run), in a ``WITHOUT ROWID`` table with
 a second index by block. Spelling the three names out per pair (a pytest node
 id, an absolute path, a block name: about 236 bytes, held again in the
 primary-key index) is what made this repository's index 3.8 GB for 4.5 million
@@ -108,7 +131,8 @@ a format it does not know (:class:`IndexFormatError`), because a file read with
 the wrong schema looks like an EMPTY index, and to narrowing an empty index
 says "no test runs this code". Callers read and write through the functions
 here (:func:`store_edges`, :func:`stored_edges`, :func:`touching_tests`,
-:func:`measured_tests`), never through the tables.
+:func:`measured_tests`, :func:`statement_records`, :func:`tests_of_line`),
+never through the tables.
 """
 from __future__ import annotations
 
@@ -119,7 +143,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping, Optional, Sequence
 
-from hypergumbo_core.block_hash import blocks_for_source, line_owner
+from hypergumbo_core.block_hash import (
+    Block,
+    blocks_for_source,
+    line_owner,
+    statement_owner,
+)
 
 #: ``(path, block name)`` — the join key. Deliberately not line-based.
 BlockKey = tuple[str, str]
@@ -130,11 +159,14 @@ BlockKey = tuple[str, str]
 #: Format 3 is format 2 plus the run tables (``run``, ``run_file``,
 #: ``test_run``): it adds tables and changes none, so a format-2 file is
 #: opened in place and no test in it has a recorded run.
-FORMAT = 3
+#: Format 4 is format 3 plus ``test_block.statements`` (semantic 5 of the
+#: module docstring): one nullable column, added where the file stands, and
+#: every pair already in the file has no record.
+FORMAT = 4
 
 #: Formats :func:`open_index` brings up to :data:`FORMAT` by creating the
-#: tables they lack.
-_OPENED_IN_PLACE = frozenset({0, 2, FORMAT})
+#: tables, and the column, they lack.
+_OPENED_IN_PLACE = frozenset({0, 2, 3, FORMAT})
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS file (
@@ -153,8 +185,9 @@ CREATE TABLE IF NOT EXISTS test (
     test_id TEXT NOT NULL UNIQUE
 );
 CREATE TABLE IF NOT EXISTS test_block (
-    test  INTEGER NOT NULL,
-    block INTEGER NOT NULL,
+    test       INTEGER NOT NULL,
+    block      INTEGER NOT NULL,
+    statements BLOB,
     PRIMARY KEY (test, block)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS test_block_by_block ON test_block (block, test);
@@ -222,6 +255,28 @@ _DELETE_MEASURED_PAIRS = (
     "AND +block IN (SELECT id FROM temp.scope_block)"
 )
 
+#: Each test paired with one block, and its statement record (NULL = none).
+#: ``?, ?`` = the file's path, the block.
+_RECORDS_OF_BLOCK = (
+    "SELECT t.test_id, tb.statements FROM file f "
+    "JOIN block b ON b.file = f.id "
+    "JOIN test_block tb ON tb.block = b.id "
+    "JOIN test t ON t.id = tb.test "
+    "WHERE f.path = ? AND b.name = ?"
+)
+
+#: Forget what every test ran INSIDE one block; the pairs stay. ``?`` = the
+#: block's number.
+_DROP_RECORDS_OF_BLOCK = "UPDATE test_block SET statements = NULL WHERE block = ?"
+
+#: Pairs; pairs with a record; pairs whose record names a statement; bytes of
+#: bitmap. The one query here that reads every pair, and says so in its plan.
+_RECORD_COUNTS = (
+    "SELECT COUNT(*), COUNT(statements), "
+    "COALESCE(SUM(LENGTH(statements) > 0), 0), "
+    "COALESCE(SUM(LENGTH(statements)), 0) FROM test_block"
+)
+
 #: Every test's latest run in one checkout. ``?`` = the checkout.
 _LATEST_RUNS = (
     "SELECT t.test_id, tr.run, tr.rows FROM run r "
@@ -287,7 +342,8 @@ def open_index(path: Path) -> sqlite3.Connection:
     """Open the index database, creating or converting it as needed.
 
     A format-1 file is converted first (:func:`convert_format_1`). A format-2
-    file gains the run tables where it stands. A file stamped with a format
+    file gains the run tables where it stands, and a format-2 or format-3
+    file the statement-record column. A file stamped with a format
     this code does not know raises :class:`IndexFormatError` and is left
     alone: creating this format's empty tables beside another format's data
     would make every lookup miss.
@@ -307,6 +363,11 @@ def open_index(path: Path) -> sqlite3.Connection:
             f"{path} holds selection-index format {found}; "
             f"this code reads format {FORMAT}")
     conn.executescript(_SCHEMA)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(test_block)")}
+    if "statements" not in columns:
+        # An earlier format's table. A nullable column is added to the schema
+        # alone: no row is rewritten, and every pair reads as "no record".
+        conn.execute("ALTER TABLE test_block ADD COLUMN statements BLOB")
     conn.execute(f"PRAGMA user_version = {FORMAT}")
     conn.commit()
     return conn
@@ -464,6 +525,7 @@ def store_edges(
     *,
     digests: Optional[Mapping[str, Mapping[str, str]]] = None,
     measured: Optional[Iterable[str]] = None,
+    statements: Optional[Mapping[str, Mapping[BlockKey, bytes]]] = None,
 ) -> None:
     """Replace each test's edges into the measured files; record ``digests``.
 
@@ -479,6 +541,14 @@ def store_edges(
     test executed. A block that appears only in ``edges`` is stored with an
     empty digest.
 
+    ``statements`` maps a test id to ``{key: bitmap}``: which statements of
+    that block the test ran (:func:`_bitmap`; semantic 5 of the module
+    docstring). A pair it does not name is stored with NO record, which is
+    not the same as an empty one. A block whose stored digest is REPLACED by a
+    different one here has the records of all its pairs dropped first: they
+    number the statements of code that is no longer there. The pairs this
+    call writes get their new records afterwards.
+
     Does not commit: :func:`update_from_run` stores a run's edges, its
     unmeasured tests, its run record and the full-run marker in one
     transaction.
@@ -491,6 +561,14 @@ def store_edges(
     file_ids = _numbered(
         cur, "INSERT OR IGNORE INTO file (path) VALUES (?)",
         "SELECT id FROM file WHERE path = ?", scope)
+    moved = [
+        (block_id,)
+        for path, per_name in digests.items()
+        for block_id, name, stored in cur.execute(
+            "SELECT id, name, digest FROM block WHERE file = ?",
+            (file_ids[path],)).fetchall()
+        if stored and name in per_name and per_name[name] != stored]
+    cur.executemany(_DROP_RECORDS_OF_BLOCK, moved)
     cur.executemany(
         "INSERT INTO block (file, name, digest) VALUES (?, ?, ?) "
         "ON CONFLICT (file, name) DO UPDATE SET digest = excluded.digest",
@@ -513,10 +591,15 @@ def store_edges(
     _fill_temp(cur, "scope_block", scope_blocks)
     _fill_temp(cur, "scope_test", test_ids.values())
     cur.execute(_DELETE_MEASURED_PAIRS)
+    records = statements or {}
+    pairs: list[tuple[int, int, Optional[bytes]]] = [
+        (test_ids[test_id], block_ids[key], records.get(test_id, {}).get(key))
+        for test_id, per_test in edges.items() for key in set(per_test)]
+    pairs.sort(key=lambda pair: (pair[0], pair[1]))
     cur.executemany(
-        "INSERT OR IGNORE INTO test_block (test, block) VALUES (?, ?)",
-        sorted((test_ids[test_id], block_ids[key])
-               for test_id, per_test in edges.items() for key in set(per_test)))
+        "INSERT INTO test_block (test, block, statements) VALUES (?, ?, ?) "
+        "ON CONFLICT (test, block) DO UPDATE SET statements = excluded.statements",
+        pairs)
 
 
 def stored_edges(conn: sqlite3.Connection) -> Iterator[tuple[str, str, str]]:
@@ -540,6 +623,192 @@ def touching_tests(
     return frozenset(
         r[0] for path in sorted(set(paths))
         for r in conn.execute(_TOUCHING, (path,)))
+
+
+def _int_bitmap(value: int) -> bytes:
+    """An integer with bit *i* set for ordinal *i*, as a bitmap: bit *i* of
+    byte *i // 8*, lowest bit first (coverage's own ``numbits`` layout). As
+    long as the highest ordinal needs and no longer, so zero is ``b""``."""
+    return value.to_bytes((value.bit_length() + 7) // 8, "little")
+
+
+def _bitmap(ordinals: Iterable[int]) -> bytes:
+    """Statement ordinals as a bitmap (:func:`_int_bitmap`)."""
+    value = 0
+    for ordinal in ordinals:
+        value |= 1 << ordinal
+    return _int_bitmap(value)
+
+
+def _ordinals(bitmap: Optional[bytes]) -> Optional[frozenset[int]]:
+    """The ordinals a bitmap holds; ``None`` (no record) stays ``None``."""
+    if bitmap is None:
+        return None
+    return frozenset(_numbits_to_linenos(bitmap))
+
+
+def statement_records(
+    conn: sqlite3.Connection, path: str, block: str,
+) -> dict[str, Optional[frozenset[int]]]:
+    """For each test paired with ``block`` of ``path``: the ordinals of the
+    statements it ran, or ``None`` when the pair has no record.
+
+    The ordinals number the block AS STORED (its digest in the index). A
+    caller holding source must check that digest first, which is what
+    :func:`tests_of_line` does.
+    """
+    return {test_id: _ordinals(bitmap)
+            for test_id, bitmap in conn.execute(_RECORDS_OF_BLOCK, (path, block))}
+
+
+@dataclass(frozen=True)
+class RecordCounts:
+    """How much of the index has statement records (:func:`record_counts`)."""
+
+    #: ``test -> block`` pairs in the index.
+    pairs: int
+    #: Pairs with a record, empty or not.
+    recorded: int
+    #: Pairs whose record names at least one statement.
+    with_statements: int
+    #: Bytes of bitmap stored.
+    bitmap_bytes: int
+
+    def describe(self) -> str:
+        """One line per count, for ``coverage-select line-records``."""
+        share = f" ({self.recorded * 100 // self.pairs}%)" if self.pairs else ""
+        return "\n".join((
+            f"test -> block pairs:            {self.pairs:,}",
+            f"  with a statement record:      {self.recorded:,}{share}",
+            f"    naming at least one:        {self.with_statements:,}",
+            f"    empty (import-time blocks): {self.recorded - self.with_statements:,}",
+            f"  with no record:               {self.pairs - self.recorded:,}",
+            f"bitmap bytes:                   {self.bitmap_bytes:,}",
+        ))
+
+
+def record_counts(conn: sqlite3.Connection) -> RecordCounts:
+    """Count pairs and records. Reads every pair: a report, not a lookup."""
+    pairs, recorded, with_statements, size = conn.execute(_RECORD_COUNTS).fetchone()
+    return RecordCounts(int(pairs), int(recorded), int(with_statements), int(size))
+
+
+#: What each :class:`LineTests` status other than ``recorded`` means, in the
+#: words ``describe`` prints.
+_LINE_STATUS_MEANING = {
+    "import_time": "runs when the file is imported, under no test; "
+                   "tests observed running anything in the file:",
+    "block_changed": "its code has changed since the index last saw it; "
+                     "no record applies until its tests run again",
+    "block_new": "the index has never seen this block",
+    "no_statement": "not a statement (blank, comment, def/class header, "
+                    "or past the end of the file)",
+    "unknown_file": "the index holds nothing about this file",
+    "unreadable": "the file is missing or does not parse",
+}
+
+
+@dataclass(frozen=True)
+class LineTests:
+    """What the index knows about who ran one line (:func:`tests_of_line`).
+
+    ``status`` is one of:
+
+    - ``recorded``: the line is statement ``statement`` of ``block``, whose
+      code is what the index last saw; the three sets below are the answer;
+    - ``import_time``: the line runs when the file is imported, under no
+      test; ``ran`` is every test observed running anything in the file;
+    - ``block_changed``: ``block`` has been edited since the index last saw
+      it, so its records number other statements and none is read;
+    - ``block_new``: the index has never seen ``block``;
+    - ``no_statement``: the line is blank, a comment, or the header of a
+      ``def``/``class`` (see ``block_hash``), or is past the end of the file;
+    - ``unknown_file``: the index has no block of this file;
+    - ``unreadable``: the file is missing or does not parse.
+    """
+
+    path: str
+    line: int
+    status: str
+    block: Optional[str] = None
+    statement: Optional[int] = None
+    #: Tests whose record shows the statement ran.
+    ran: frozenset[str] = frozenset()
+    #: Tests with a record for the block that did NOT run the statement.
+    reached_without: frozenset[str] = frozenset()
+    #: Tests paired with the block that have no record: they may have.
+    unrecorded: frozenset[str] = frozenset()
+
+    def as_dict(self) -> dict[str, object]:
+        """Plain data, test ids sorted, for ``--json``."""
+        return {
+            "path": self.path, "line": self.line, "status": self.status,
+            "block": self.block, "statement": self.statement,
+            "ran": sorted(self.ran),
+            "reached_without": sorted(self.reached_without),
+            "unrecorded": sorted(self.unrecorded),
+        }
+
+    def describe(self) -> str:
+        """The answer as text, for ``coverage-select line-tests``."""
+        where = f"{self.path}:{self.line}"
+        if self.block is not None:
+            where += f"  statement {self.statement} of {self.block}"
+        if self.status != "recorded":
+            lines = [f"{where}: {_LINE_STATUS_MEANING[self.status]}"]
+            lines += [f"  {test}" for test in sorted(self.ran)]
+            return "\n".join(lines)
+        lines = [where]
+        for label, tests in (
+            ("ran it", self.ran),
+            ("reached the block without running it", self.reached_without),
+            ("reached the block, no statement record", self.unrecorded),
+        ):
+            lines.append(f"{label}: {len(tests)} test(s)")
+            lines += [f"  {test}" for test in sorted(tests)]
+        return "\n".join(lines)
+
+
+def tests_of_line(
+    conn: sqlite3.Connection, path: str, line: int, *, source: Optional[str] = None,
+) -> LineTests:
+    """Which tests ran line ``line`` of ``path``, as far as the index knows.
+
+    The line is resolved against the file as it is NOW (or ``source``, when
+    given): which block, which statement of it, and whether that block's
+    digest is still the one the index holds. Only then is a record read, so a
+    record is never applied to code it was not made from, and an edit the
+    digest ignores (a comment, code added above) changes no answer.
+    """
+    try:
+        text = Path(path).read_text() if source is None else source
+        blocks = blocks_for_source(path, text)
+    except (OSError, SyntaxError, ValueError):
+        return LineTests(path, line, "unreadable")
+    found = statement_owner(blocks).get(line)
+    if found is None:
+        return LineTests(path, line, "no_statement")
+    name, ordinal = found
+    block: Block = next(b for b in blocks if b.name == name)
+    stored = dict(conn.execute(
+        "SELECT b.name, b.digest FROM file f JOIN block b ON b.file = f.id "
+        "WHERE f.path = ?", (path,)))
+    if not stored:
+        return LineTests(path, line, "unknown_file", name, ordinal)
+    if name not in stored:
+        return LineTests(path, line, "block_new", name, ordinal)
+    if stored[name] != block.digest:
+        return LineTests(path, line, "block_changed", name, ordinal)
+    records = statement_records(conn, path, name)
+    if block.import_time:
+        return LineTests(path, line, "import_time", name, ordinal,
+                         ran=frozenset(records))
+    return LineTests(
+        path, line, "recorded", name, ordinal,
+        ran=frozenset(t for t, got in records.items() if got is not None and ordinal in got),
+        reached_without=frozenset(
+            t for t, got in records.items() if got is not None and ordinal not in got),
+        unrecorded=frozenset(t for t, got in records.items() if got is None))
 
 
 def _strip_phase(context: str) -> str:
@@ -624,6 +893,7 @@ def update_from_run(
         src.close()
 
     owners: dict[str, dict[int, str]] = {}
+    statement_owners: dict[str, dict[int, tuple[str, int]]] = {}
     digests: dict[str, dict[str, str]] = {}
 
     def owner_for(path: str) -> dict[int, str]:
@@ -633,14 +903,20 @@ def update_from_run(
             except (OSError, SyntaxError):  # pragma: no cover - removed source
                 blocks = []
             owners[path] = line_owner(blocks)
+            statement_owners[path] = statement_owner(blocks)
             digests[path] = {b.name: b.digest for b in blocks}
         return owners[path]
 
     edges: dict[str, set[BlockKey]] = {}
+    # Which statements of each block each test ran, as an integer with bit i
+    # set for ordinal i. The phases of one test (setup, run, teardown) are
+    # separate contexts and are OR-ed into one record.
+    ran: dict[str, dict[BlockKey, int]] = {}
     import_blocks: dict[str, set[str]] = {}
     for context, path, numbits in rows:
         own = owner_for(path)
-        names = {own[n] for n in _numbits_to_linenos(numbits) if n in own}
+        linenos = list(_numbits_to_linenos(numbits))
+        names = {own[n] for n in linenos if n in own}
         if not names:
             continue
         if context == "":
@@ -648,6 +924,16 @@ def update_from_run(
         else:
             test_id = normalize_test_id(_strip_phase(context), repo_root)
             edges.setdefault(test_id, set()).update((path, n) for n in names)
+            statement_of = statement_owners[path]
+            in_this_phase: dict[BlockKey, int] = {}
+            for n in linenos:
+                found = statement_of.get(n)
+                if found is not None:
+                    key = (path, found[0])
+                    in_this_phase[key] = in_this_phase.get(key, 0) | (1 << found[1])
+            per_test = ran.setdefault(test_id, {})
+            for key, bits in in_this_phase.items():
+                per_test[key] = per_test.get(key, 0) | bits
 
     # Import-time blocks run whenever the file is imported, so they belong to
     # every test that executes anything in that file. See §2 of the module
@@ -656,9 +942,19 @@ def update_from_run(
         for path in {p for p, _ in keys}:
             keys.update((path, n) for n in import_blocks.get(path, ()))
 
+    # Every pair of this run gets a record. A pair with no statement of its
+    # own under the test (an import-time block attached just above, or a
+    # block of which only a nested def's header ran) gets an EMPTY one: the
+    # run did measure it, and the test ran none of its statements.
+    statements = {
+        test_id: {
+            key: _int_bitmap(ran.get(test_id, {}).get(key, 0)) for key in keys}
+        for test_id, keys in edges.items()}
+
     # REPLACE per test, only for tests that appear in THIS run, and only
     # inside the files this run measured.
-    store_edges(conn, edges, digests=digests, measured=measured)
+    store_edges(conn, edges, digests=digests, measured=measured,
+                statements=statements)
     cur = conn.cursor()
     # Producing edges is positive evidence at ANY coverage scope, so clearing
     # is always safe.

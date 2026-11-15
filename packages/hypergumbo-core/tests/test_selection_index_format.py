@@ -123,7 +123,7 @@ def old(tmp_path: Path) -> Path:
 class TestAFreshIndex:
     def test_it_is_stamped_with_the_format(self, tmp_path: Path) -> None:
         open_index(tmp_path / "new.sqlite").close()
-        assert _user_version(tmp_path / "new.sqlite") == FORMAT == 3
+        assert _user_version(tmp_path / "new.sqlite") == FORMAT == 4
 
     def test_reopening_keeps_what_was_stored(self, tmp_path: Path) -> None:
         conn = open_index(tmp_path / "i.sqlite")
