@@ -25,6 +25,10 @@ catches broadly and exits 0 — see `main`.
     import-closure  print the test files whose imports reach a source file
                     whose import-time code changed
     report  print the accrued shadow evidence and its verdict
+    stale-pick  print the newest older graph a fresh slice can be compared with
+    stale-record  store what a fresh walk and a walk on an older graph named
+    stale-report  print the accrued stale-graph evidence and its verdict
+    run-record  store what one test run ran against and which tests failed
     line-tests  print which tests the index records running FILE:LINE
     line-records  print how many pairs of the index have statement records
 """
@@ -36,6 +40,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
@@ -53,7 +58,10 @@ from hypergumbo_core.selection_index import (
     update_from_run,
 )
 from hypergumbo_core.selection_log import (
-    append_observation, evaluate, load_observations,
+    append_observation, append_run_record, append_stale_graph_observation,
+    evaluate, evaluate_stale_graph, load_observations, newest_older_graph,
+    register_graph, sliceable_sources, sliced_test_files, stale_graph_row,
+    store_snapshot,
 )
 from hypergumbo_core.selection_shadow import (
     compare, failed_tests_from_junit, ran_tests_from_junit,
@@ -74,6 +82,21 @@ DEFAULT_LOG = Path(
     os.environ.get("HG_SELECTION_LOG",
                    Path.home() / "hypergumbo_lab_notebook" / "selection_observations.jsonl")
 )
+
+
+_NOTEBOOK = Path.home() / "hypergumbo_lab_notebook"
+
+#: The stale-graph shadow's observations, the graphs it can compare against,
+#: and the run records. Out-of-repo and append-only, like DEFAULT_LOG.
+DEFAULT_STALE_LOG = Path(os.environ.get(
+    "HG_STALE_GRAPH_LOG", _NOTEBOOK / "stale_graph_observations.jsonl"))
+DEFAULT_GRAPHS = Path(os.environ.get(
+    "HG_SLICE_GRAPHS", _NOTEBOOK / "slice_graphs.jsonl"))
+DEFAULT_RUNS = Path(os.environ.get("HG_RUN_RECORDS", _NOTEBOOK / "run_records.jsonl"))
+
+#: Untracked files that count as part of a change: the surfaces smart-test's
+#: own change detection reads (INV-kinin). Pending tracker ops never do.
+_CHANGE_SURFACE = re.compile(r"^(packages/|tests/|scripts/|\.githooks/|\.agent/hooks/)")
 
 
 def _lines(path: str | None) -> list[str]:
@@ -454,6 +477,123 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _git(root: Path, *argv: str, ok: tuple[int, ...] = (0,)) -> bytes | None:
+    """stdout of one git command in ``root``; None when it did not succeed."""
+    done = subprocess.run(["git", "-C", str(root), *argv],  # noqa: S603, S607
+                          capture_output=True)
+    return done.stdout if done.returncode in ok else None
+
+
+def _git_lines(root: Path, *argv: str) -> list[str]:
+    out = _git(root, *argv)
+    return [ln for ln in (out or b"").decode("utf-8", "replace").splitlines() if ln]
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _head(root: Path) -> str:
+    return "".join(_git_lines(root, "rev-parse", "HEAD")) or "unknown"
+
+
+def _uncommitted(root: Path) -> tuple[list[str], list[str]]:
+    """(tracked files that differ from HEAD, untracked files that are part of
+    a change). Tracker ``.ops`` files are pending almost always and are no
+    part of what a test run is about."""
+    tracked = [f for f in _git_lines(root, "diff", "--name-only", "HEAD")
+               if not f.endswith(".ops")]
+    untracked = [f for f in _git_lines(root, "ls-files", "--others", "--exclude-standard")
+                 if _CHANGE_SURFACE.match(f) and not f.endswith(".ops")]
+    return tracked, untracked
+
+
+def cmd_stale_pick(args: argparse.Namespace) -> int:
+    row = newest_older_graph(Path(args.graphs), args.fresh_survey)
+    if row is not None:
+        print(row["survey"])
+    return 0
+
+
+def cmd_stale_record(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    head = _head(root)
+    tracked, untracked = _uncommitted(root)
+    graph = None
+    if args.older_survey:
+        graph = dict(newest_older_graph(Path(args.graphs), args.fresh_survey or "") or {})
+        if graph.get("survey") != args.older_survey:
+            graph = {"survey": args.older_survey}
+        count = _git_lines(root, "rev-list", "--count", f"{graph.get('head')}..{head}")
+        graph["age_commits"] = int(count[0]) if count else None
+    row = stale_graph_row(
+        fresh=sliced_test_files(_lines(args.fresh_out), str(root)),
+        stale=(sliced_test_files(_lines(args.stale_out), str(root))
+               if args.older_survey else None),
+        edited_tests=sliced_test_files(changed, str(root)),
+        head=head, at=_now(),
+        changed_source=sliceable_sources(changed),
+        graph=graph, why_no_comparison=args.why,
+        fresh_seconds=args.fresh_seconds, stale_seconds=args.stale_seconds,
+    )
+    append_stale_graph_observation(Path(args.stale_log), row)
+    if args.fresh_survey:
+        register_graph(Path(args.graphs), survey=args.fresh_survey, head=head,
+                       dirty=bool(tracked or untracked), at=_now())
+    lost = row["fresh_only_unedited"]
+    if row["stale"] is None:
+        print(f"[coverage-select] stale-graph shadow: no comparison ({args.why})",
+              file=sys.stderr)
+    elif lost:
+        print(f"[coverage-select] STALE GRAPH LOST {len(lost)} TEST FILE(S) the fresh "
+              f"walk names and this change did not edit: {', '.join(lost[:5])}",
+              file=sys.stderr)
+    else:
+        print(f"[coverage-select] stale-graph shadow: a graph {graph['age_commits']} "
+              f"commit(s) old named every unedited test file the fresh walk named "
+              f"({len(row['fresh'])} fresh, {len(row['stale'])} stale)", file=sys.stderr)
+    return 0
+
+
+def cmd_stale_report(args: argparse.Namespace) -> int:
+    """Print the accrued stale-graph evidence and its verdict."""
+    ev = evaluate_stale_graph(load_observations(Path(args.stale_log)))
+    print(f"[coverage-select] stale-graph evidence from {args.stale_log}")
+    print(ev.summary())
+    return 0
+
+
+def cmd_run_record(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    head = _head(root)
+    base = "".join(_git_lines(root, "merge-base", "HEAD", args.base_branch)) or "unknown"
+    tracked, untracked = _uncommitted(root)
+    committed = [f for f in _git_lines(root, "diff", "--name-only", f"{base}..HEAD")
+                 if not f.endswith(".ops")]
+    patch = b""
+    if tracked:
+        patch += _git(root, "diff", "--binary", "HEAD", "--", *tracked) or b""
+    for path in untracked:
+        # rc 1 is git's "the two differ", which a new file always does.
+        patch += _git(root, "diff", "--binary", "--no-index", "--", "/dev/null", path,
+                      ok=(0, 1)) or b""
+    snapshot = store_snapshot(Path(args.runs).with_suffix(".d"), patch) if patch else None
+    ran = failed = None
+    if args.junit and Path(args.junit).exists():
+        ran = ran_tests_from_junit(Path(args.junit), root)
+        failed = failed_tests_from_junit(Path(args.junit), root)
+    append_run_record(
+        Path(args.runs), at=_now(), kind=args.kind, head=head, base=base,
+        changed_files=sorted({*committed, *tracked, *untracked}),
+        snapshot=snapshot,
+        ran_files=None if ran is None else {t.split("::")[0] for t in ran},
+        tests_ran=None if ran is None else len(ran),
+        failed=failed, exit_code=args.exit,
+    )
+    return 0
+
+
 def cmd_line_tests(args: argparse.Namespace) -> int:
     """Print what the index records about who ran one line
     (``selection_index.tests_of_line``). ``FILE`` is resolved against the
@@ -481,6 +621,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--junit", default=None)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--log", default=str(DEFAULT_LOG))
+    parser.add_argument("--stale-log", default=str(DEFAULT_STALE_LOG))
+    parser.add_argument("--graphs", default=str(DEFAULT_GRAPHS))
+    parser.add_argument("--runs", default=str(DEFAULT_RUNS))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     up = sub.add_parser("update")
@@ -545,6 +688,34 @@ def main(argv: list[str] | None = None) -> int:
 
     rp = sub.add_parser("report")
     rp.set_defaults(func=cmd_report)
+
+    sp = sub.add_parser("stale-pick")
+    sp.add_argument("--fresh-survey", required=True)
+    sp.set_defaults(func=cmd_stale_pick)
+
+    sr = sub.add_parser("stale-record")
+    sr.add_argument("--changed-files", default=None)
+    sr.add_argument("--fresh-out", required=True,
+                    help="the fresh slice's output file")
+    sr.add_argument("--fresh-survey", default=None,
+                    help="the survey the fresh slice wrote; registered as a graph")
+    sr.add_argument("--older-survey", default=None)
+    sr.add_argument("--stale-out", default=None,
+                    help="the output of the same slice on --older-survey")
+    sr.add_argument("--fresh-seconds", type=float, default=None)
+    sr.add_argument("--stale-seconds", type=float, default=None)
+    sr.add_argument("--why", default=None,
+                    help="why no comparison was made, when none was")
+    sr.set_defaults(func=cmd_stale_record)
+
+    sub.add_parser("stale-report").set_defaults(func=cmd_stale_report)
+
+    rr = sub.add_parser("run-record")
+    rr.add_argument("--kind", required=True,
+                    help="how the tests were chosen: selected, explicit or full")
+    rr.add_argument("--exit", type=int, default=None)
+    rr.add_argument("--base-branch", default="origin/dev")
+    rr.set_defaults(func=cmd_run_record)
 
     lt = sub.add_parser("line-tests")
     lt.add_argument("where", metavar="FILE:LINE")

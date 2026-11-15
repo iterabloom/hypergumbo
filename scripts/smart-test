@@ -41,6 +41,8 @@
 #   ./scripts/smart-test --no-narrow  # Keep the tests coverage narrowing would drop
 #   ./scripts/smart-test --no-read-union  # Leave out tests added for reading a changed file by path
 #   ./scripts/smart-test --no-import-union  # Leave out tests added for importing a file whose import-time code changed
+#   ./scripts/smart-test --no-stale-shadow  # Do not also walk an older stored graph for comparison
+#   ./scripts/smart-test --no-run-record    # Do not append this run to the run records
 #   ./scripts/smart-test --background # Kick off full suite in background
 #
 # TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
@@ -145,6 +147,10 @@ trap _cleanup_lock EXIT
 # Signal that we're running through smart-test (ADR-0010)
 # This prevents infinite recursion when the pytest wrapper calls smart-test
 # and smart-test subsequently calls pytest.
+# A smart-test started BY a test of smart-test inherits the variable. It is
+# remembered here so that such a run leaves nothing in the developer's own
+# evidence logs (the two recorders below).
+STARTED_UNDER_SMART_TEST="${SMART_TEST_ACTIVE:-}"
 export SMART_TEST_ACTIVE=1
 
 # Manifest location (committed with PR for CI validation)
@@ -215,6 +221,24 @@ SELECT_READERS=true
 # body does not trigger it. Opt out per run with --no-import-union.
 SELECT_IMPORTERS=true
 
+# TWO RECORDERS. Neither changes which tests run; both only append to a log
+# beside the selection index (selection_log.py says what each row holds).
+#
+# STALE-GRAPH SHADOW. The reverse slice analyses the whole repository first,
+# which is nearly all of the time selection takes; walking a graph that is
+# already on disk takes seconds. Whether a graph recorded at an OLDER tree
+# names the same test files is a question only evidence answers, so every time
+# a fresh slice is computed the same walk is also run on the newest older
+# graph and both answers are stored. Opt out with --no-stale-shadow.
+STALE_SHADOW=true
+#
+# RUN RECORDS. Every run that reaches pytest stores which commit and change it
+# ran against, which test files ran and which tests did not pass, so that a
+# selector written later can be replayed against failures that really
+# happened. Explicit-path runs are recorded too: they are most of the runs made
+# while a change is being written. Opt out with --no-run-record.
+RUN_RECORDS=true
+
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
 #
 #   1. CI IS THE GATE. This selector is an accelerator whose whole safety story
@@ -261,6 +285,8 @@ for arg in "$@"; do
         --no-prose-rule) SELECT_PROSE=false ;;
         --no-read-union) SELECT_READERS=false ;;
         --no-import-union) SELECT_IMPORTERS=false ;;
+        --no-stale-shadow) STALE_SHADOW=false ;;
+        --no-run-record) RUN_RECORDS=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -283,6 +309,13 @@ done
 # shadow/union guards run before it and can be placed earlier because no flag
 # turns those ON. `--narrow` does, so a guard above the parse loop would be
 # overridden by the flag it exists to override.
+if [[ -n "${CI:-}" ]] || [[ -n "$STARTED_UNDER_SMART_TEST" ]] || [[ "$TARGET_MODE" == "true" ]]; then
+    # The recorders write a developer's evidence. CI has no such log to keep,
+    # a smart-test run by a test is not a developer's run, and a run against
+    # another repository (target mode) is not about this one.
+    STALE_SHADOW=false
+    RUN_RECORDS=false
+fi
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
     # The prose-only rule's evidence is recorded on a developer's machine;
@@ -1064,6 +1097,23 @@ run_pytest() {
             "$SCRIPT_DIR/test-leaderboard" ingest "$JUNIT_XML" 2>/dev/null || true
         fi
 
+        # THE RUN RECORD (see RUN_RECORDS above). Here because every run that
+        # reaches pytest passes through this function, red or green. A --raw
+        # run replaces this shell with pytest and leaves none. ${…:-} because
+        # tests drive this function alone, and then nothing is recorded.
+        if [[ "${RUN_RECORDS:-false}" == "true" ]]; then
+            local run_kind="selected"
+            if [[ "${HAS_EXPLICIT_TESTS:-false}" == "true" ]]; then
+                run_kind="explicit"
+            elif [[ -n "${FULL_SUITE_PYTEST_TARGETS:-}" ]] && [[ "$test_targets" == "$FULL_SUITE_PYTEST_TARGETS" ]]; then
+                run_kind="full"
+            fi
+            "${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/coverage-select" \
+                --repo-root "${REPO_ROOT:-$PWD}" --junit "$JUNIT_XML" run-record \
+                --kind "$run_kind" --exit "$exit_code" \
+                --base-branch "${BASE_BRANCH:-origin/dev}" || true
+        fi
+
         # A RED RUN STILL LEAVES ITS READ RECORD. The caller folds the
         # selection index after a green run. A red one ends the script at
         # this return (set -e), so a long run with one failing test used to
@@ -1330,6 +1380,49 @@ fi
 # ones select?" Its variables are deliberately global -- the code after the
 # seam reads them -- and the main flow calls it exactly once, right after its
 # closing brace.
+# === STALE-GRAPH SHADOW ===
+# Runs the walk the fresh slice just made on the newest OLDER graph, and stores
+# both answers (see STALE_SHADOW above). It reports and acts on nothing, and it
+# must never fail the run it rides on: every step degrades to a stored reason.
+#
+# The fresh graph is found as the one survey.json written under the cache since
+# $STALE_MARK was created. None means the slice answered from a cached survey
+# (the tree did not change since an earlier run); more than one means another
+# analysis finished meanwhile and the two cannot be told apart. Either way no
+# comparison is made, and the row says which.
+stale_graph_shadow() {
+    local helper="$TOOLS_ROOT/scripts/coverage-select"
+    local cache_base="${XDG_CACHE_HOME:-$HOME/.cache}/hypergumbo"
+    local written count fresh_survey="" older="" why="" stale_out stale_seconds=""
+    written=$(find "$cache_base" -mindepth 5 -maxdepth 5 -name survey.json -newer "$STALE_MARK" 2>/dev/null || true)
+    count=$(printf '%s\n' "$written" | sed '/^$/d' | wc -l | tr -d ' ')
+    stale_out=$(mktemp)
+    if [[ "$count" -ne 1 ]]; then
+        why="the fresh slice left $count new surveys in the cache; exactly 1 identifies its graph (0: it answered from a cached survey)"
+    else
+        fresh_survey="$written"
+        older=$("$helper" --repo-root "$REPO_ROOT" stale-pick --fresh-survey "$fresh_survey" 2>/dev/null || true)
+        if [[ -z "$older" ]]; then
+            why="no older graph from this analyzer build is registered and still on disk"
+        else
+            local stale_start=$SECONDS
+            if $STABLE_HG slice --files "$CHANGED_FILE_LIST" --input "$older" --output "$stale_out" 2>/dev/null; then
+                stale_seconds=$((SECONDS - stale_start))
+            else
+                why="the slice on the older graph failed"
+                older=""
+            fi
+        fi
+    fi
+    "$helper" --repo-root "$REPO_ROOT" stale-record \
+        --changed-files <(echo "$CHANGED_FILES") --fresh-out "$SLICE_OUTPUT" \
+        --fresh-seconds "$SLICE_DURATION_S" \
+        ${fresh_survey:+--fresh-survey "$fresh_survey"} \
+        ${older:+--older-survey "$older" --stale-out "$stale_out" --stale-seconds "$stale_seconds"} \
+        ${why:+--why "$why"} || true
+    rm -f "$stale_out"
+}
+
 select_static() {
 # Write changed files to temp file for slice query.
 # WI-zufij: `hypergumbo slice --files` only reaches packages/*/src/** (see the
@@ -1375,6 +1468,7 @@ fi
 # can record them on either fallback path. The diagnostic string carries the
 # probed flag too, so a fallback report shows the command actually run.
 SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST ${SLICE_MINIMAL[@]+${SLICE_MINIMAL[@]}} --output $SLICE_OUTPUT"
+STALE_MARK=$(mktemp)
 SLICE_START_S=$SECONDS
 # WI-tolil: `set -euo pipefail` would abort the WHOLE script HERE on a non-zero
 # slice exit — before SLICE_EXIT is captured and before the slice-failure
@@ -1407,6 +1501,11 @@ if [[ $SLICE_EXIT -ne 0 ]]; then
         "$SLICE_DURATION_S" "$SLICE_OUTPUT" "$SLICE_STDERR" "$CHANGED_FILE_LIST"
     run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
+
+if [[ "$STALE_SHADOW" == "true" ]] && [[ -s "$CHANGED_FILE_LIST" ]]; then
+    stale_graph_shadow || true
+fi
+rm -f "$STALE_MARK"
 
 # Filter to only test files in package directories
 # Convert absolute paths to relative (slice may output absolute paths)
