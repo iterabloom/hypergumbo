@@ -42,11 +42,20 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
+import pytest
+
 import hypergumbo_core.cli  # linkers register by import side-effect
 from hypergumbo_core.analyze.all_analyzers import get_analyzers
 from hypergumbo_core.catalog import get_default_catalog
 from hypergumbo_core.linkers.inherited_calls import _MRO_WALKERS
 from hypergumbo_core.producer_coherence import FileEmits, scan_file_emits
+
+# Every test here runs on ONE xdist worker (smart-test and CI pass
+# --dist=loadgroup; see dist_args_for_run in scripts/smart-test). The scans
+# below read every analyzer module and are kept per process: the edge-type
+# scan alone takes 7 s, and handed out test by test it was repeated in each
+# of six workers.
+pytestmark = pytest.mark.xdist_group("test_depends_on_producer_sets")
 
 
 @lru_cache(maxsize=1)
@@ -82,6 +91,42 @@ _IDENTITY_HELPERS: frozenset[str] = frozenset({
 })
 
 
+@lru_cache(maxsize=1)
+def _analyzer_module_facts() -> tuple[tuple[frozenset[str], frozenset[str], tuple[str, ...]], ...]:
+    """(data tokens, called names, pass ids) for every analyzer module.
+
+    One parse and one walk per module, kept for the process: the scanners
+    below are each called by several tests with different arguments, and
+    used to parse and walk all 119 modules on every call (2.2 s and 1.5 s).
+
+    *Data tokens* are what :func:`_pass_ids_writing` matches: every string
+    constant, and every keyword-argument name except those of the stable_id
+    helpers. *Called names* are what :func:`_pass_ids_calling` matches: for
+    each call, the function's own name (``f(...)`` or ``x.f(...)``) and, for
+    ``x.f(...)`` on a plain name, ``x`` as well.
+    """
+    out = []
+    for source, names in _analyzer_sources():
+        tokens: set[str] = set()
+        called: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                tokens.add(node.value)
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name):
+                called.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                called.add(func.attr)
+                if isinstance(func.value, ast.Name):
+                    called.add(func.value.id)
+            if not (isinstance(func, ast.Name) and func.id in _IDENTITY_HELPERS):
+                tokens.update(keyword.arg for keyword in node.keywords if keyword.arg)
+        out.append((frozenset(tokens), frozenset(called), names))
+    return tuple(out)
+
+
 def _pass_ids_writing(*tokens: str) -> set[str]:
     """Analyzer pass ids whose module names any of ``tokens`` as data.
 
@@ -92,24 +137,7 @@ def _pass_ids_writing(*tokens: str) -> set[str]:
     """
     wanted = set(tokens)
     found: set[str] = set()
-    for source, names in _analyzer_sources():
-        tree = ast.parse(source)
-        seen = {
-            node.value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Constant) and isinstance(node.value, str)
-        }
-        seen |= {
-            keyword.arg
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and not (
-                isinstance(node.func, ast.Name)
-                and node.func.id in _IDENTITY_HELPERS
-            )
-            for keyword in node.keywords
-            if keyword.arg
-        }
+    for seen, _called, names in _analyzer_module_facts():
         if seen & wanted:
             found.update(names)
     return found
@@ -578,21 +606,9 @@ def _pass_ids_calling(*callee_names: str) -> set[str]:
     """
     wanted = set(callee_names)
     found: set[str] = set()
-    for source, names in _analyzer_sources():
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            name = (
-                func.id if isinstance(func, ast.Name)
-                else func.attr if isinstance(func, ast.Attribute) else None
-            )
-            if name in wanted or (
-                isinstance(func, ast.Attribute)
-                and isinstance(func.value, ast.Name)
-                and func.value.id in wanted
-            ):
-                found.update(names)
+    for _seen, called, names in _analyzer_module_facts():
+        if called & wanted:
+            found.update(names)
     return found
 
 

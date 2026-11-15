@@ -194,6 +194,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Three tests now reach the cases they name**: file order, the depth cap and the tier drop.
 - **Hypothesis property tests no longer fail on a slow, loaded machine.**
 - **Linker-requirement tests no longer parse the whole checkout**: nine tests, a minute each.
+- **The producer-set tests scan the analyzers once**, in one worker, not in each of six.
 - **A sketch test no longer leaks its redirected temp directory**, and two measurement scripts restore the globals they rebind.
 
 #### CI gates
