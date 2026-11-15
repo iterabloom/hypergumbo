@@ -20,11 +20,23 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import gzip
+
 from hypergumbo_core.selection_log import (
     DEFAULT_MIN_COMMITS,
+    STALE_GRAPH_MIN_COMMITS,
     append_observation,
+    append_run_record,
+    append_stale_graph_observation,
     evaluate,
+    evaluate_stale_graph,
     load_observations,
+    newest_older_graph,
+    register_graph,
+    sliceable_sources,
+    sliced_test_files,
+    stale_graph_row,
+    store_snapshot,
 )
 from hypergumbo_core.selection_index import Selection
 from hypergumbo_core.selection_shadow import compare
@@ -190,3 +202,204 @@ def test_end_to_end_append_then_evaluate(tmp_path: Path) -> None:
     assert ev.observations == 2
     assert ev.verdict == "disqualified", ev.summary()
     assert ev.dangerous == (("c2", "b.py::t9"),)
+
+
+def _survey(tmp_path, state: str, build: str = "buildA") -> str:
+    """A survey file where the cache would keep it: <state>/<build>/survey.json."""
+    path = tmp_path / "cache" / "repo" / "results" / state / build / "survey.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}")
+    return str(path)
+
+
+class TestGraphRegistry:
+    """Which older graph a fresh slice is compared with. A wrong pick compares
+    the tree with itself, or two analyzers, and either would read as agreement
+    or as a loss that the stored graph did not cause."""
+
+    def test_the_newest_other_graph_is_picked(self, tmp_path) -> None:
+        reg = tmp_path / "graphs.jsonl"
+        old, mid, fresh = (_survey(tmp_path, s) for s in ("s1", "s2", "s3"))
+        register_graph(reg, survey=old, head="aaa", dirty=False, at="t1")
+        register_graph(reg, survey=mid, head="bbb", dirty=True, at="t2")
+        picked = newest_older_graph(reg, fresh)
+        assert picked == {"survey": mid, "head": "bbb", "dirty": True, "at": "t2"}
+
+    def test_the_fresh_graph_is_never_its_own_older_graph(self, tmp_path) -> None:
+        reg = tmp_path / "graphs.jsonl"
+        old, fresh = _survey(tmp_path, "s1"), _survey(tmp_path, "s2")
+        register_graph(reg, survey=old, head="aaa", dirty=False, at="t1")
+        register_graph(reg, survey=fresh, head="bbb", dirty=False, at="t2")
+        assert newest_older_graph(reg, fresh)["survey"] == old
+
+    def test_a_graph_from_another_analyzer_build_is_not_picked(self, tmp_path) -> None:
+        reg = tmp_path / "graphs.jsonl"
+        same = _survey(tmp_path, "s1", "buildA")
+        other = _survey(tmp_path, "s2", "buildB")
+        register_graph(reg, survey=same, head="aaa", dirty=False, at="t1")
+        register_graph(reg, survey=other, head="bbb", dirty=False, at="t2")
+        assert newest_older_graph(reg, _survey(tmp_path, "s3", "buildA"))["survey"] == same
+
+    def test_an_evicted_graph_is_not_picked(self, tmp_path) -> None:
+        reg = tmp_path / "graphs.jsonl"
+        kept, gone = _survey(tmp_path, "s1"), _survey(tmp_path, "s2")
+        register_graph(reg, survey=kept, head="aaa", dirty=False, at="t1")
+        register_graph(reg, survey=gone, head="bbb", dirty=False, at="t2")
+        Path(gone).unlink()
+        assert newest_older_graph(reg, _survey(tmp_path, "s3"))["survey"] == kept
+
+    def test_nothing_registered_is_no_graph(self, tmp_path) -> None:
+        assert newest_older_graph(tmp_path / "absent.jsonl", _survey(tmp_path, "s1")) is None
+
+    def test_a_row_without_a_survey_is_skipped(self, tmp_path) -> None:
+        reg = tmp_path / "graphs.jsonl"
+        reg.write_text(json.dumps({"head": "aaa"}) + "\n")
+        assert newest_older_graph(reg, _survey(tmp_path, "s1")) is None
+
+
+class TestSliceOutput:
+    """Both walks are read by one rule; a rule that read them differently
+    would manufacture a difference between identical answers."""
+
+    def test_test_files_are_kept_and_made_repo_relative(self) -> None:
+        lines = [
+            "/repo/packages/core/tests/test_a.py",
+            "packages/core/tests/BRANCHES_test_b.py",
+            "/repo/packages/core/src/core/a.py",
+            "/repo/packages/core/tests/helper.py",
+            "",
+            "/elsewhere/packages/x/tests/test_c.py",
+        ]
+        assert sliced_test_files(lines, "/repo/") == {
+            "packages/core/tests/test_a.py",
+            "packages/core/tests/BRANCHES_test_b.py",
+            "/elsewhere/packages/x/tests/test_c.py",
+        }
+
+    def test_only_package_source_seeds_the_slice(self) -> None:
+        assert sliceable_sources([
+            "packages/core/src/core/a.py", "packages/core/tests/test_a.py",
+            "scripts/smart-test", "docs/x.md", "packages/core/src/core/data.yaml",
+        ]) == {"packages/core/src/core/a.py"}
+
+
+class TestStaleGraphRow:
+    def test_a_fresh_only_file_the_change_edited_is_not_a_loss(self) -> None:
+        row = stale_graph_row(
+            fresh=["t/test_a.py", "t/test_new.py", "t/test_lost.py"],
+            stale=["t/test_a.py", "t/test_extra.py"],
+            edited_tests=["t/test_new.py"], head="abc", at="now",
+            changed_source=["p/src/b.py", "p/src/a.py"],
+            graph={"survey": "s", "age_commits": 2},
+            fresh_seconds=300.0, stale_seconds=5.0,
+        )
+        assert row["fresh_only"] == ["t/test_lost.py", "t/test_new.py"]
+        assert row["fresh_only_unedited"] == ["t/test_lost.py"]
+        assert row["stale_only"] == ["t/test_extra.py"]
+        assert row["changed_source"] == ["p/src/a.py", "p/src/b.py"]
+        assert row["graph"] == {"survey": "s", "age_commits": 2}
+        assert (row["fresh_seconds"], row["stale_seconds"]) == (300.0, 5.0)
+
+    def test_no_comparison_is_null_not_empty(self) -> None:
+        """A stale walk that named nothing and a stale walk that never ran must
+        not look alike: the second is no evidence at all."""
+        none = stale_graph_row(fresh=["t/test_a.py"], stale=None, edited_tests=[],
+                               head="abc", at="now", why_no_comparison="no older graph")
+        empty = stale_graph_row(fresh=["t/test_a.py"], stale=[], edited_tests=[],
+                                head="abc", at="now")
+        assert none["stale"] is None and none["fresh_only_unedited"] is None
+        assert none["why_no_comparison"] == "no older graph"
+        assert empty["stale"] == [] and empty["fresh_only_unedited"] == ["t/test_a.py"]
+
+
+class TestStaleGraphVerdict:
+    def _row(self, head: str, lost=()) -> dict:
+        return stale_graph_row(fresh=["t/test_a.py", *lost], stale=["t/test_a.py"],
+                               edited_tests=[], head=head, at="now")
+
+    def test_one_lost_test_file_disqualifies_whatever_else_agreed(self, tmp_path) -> None:
+        log = tmp_path / "stale.jsonl"
+        for n in range(STALE_GRAPH_MIN_COMMITS):
+            append_stale_graph_observation(log, self._row(f"c{n}"))
+        append_stale_graph_observation(log, self._row("bad", lost=["t/test_lost.py"]))
+        ev = evaluate_stale_graph(load_observations(log))
+        assert ev.verdict == "disqualified"
+        assert ev.lost == (("bad", "t/test_lost.py"),)
+        assert "bad" in ev.summary() and "t/test_lost.py" in ev.summary()
+
+    def test_the_floor_counts_distinct_commits_that_were_compared(self) -> None:
+        """Repeats on one commit and rows without a comparison add nothing."""
+        rows = [self._row("same")] * 40
+        rows += [stale_graph_row(fresh=["t/test_a.py"], stale=None, edited_tests=[],
+                                 head=f"n{n}", at="now", why_no_comparison="x")
+                 for n in range(40)]
+        ev = evaluate_stale_graph(rows)
+        assert (ev.observations, ev.compared, ev.commits) == (80, 40, 1)
+        assert ev.verdict == "insufficient"
+
+    def test_enough_agreeing_commits_meet_the_floor(self) -> None:
+        rows = [self._row(f"c{n}") for n in range(STALE_GRAPH_MIN_COMMITS)]
+        ev = evaluate_stale_graph(rows)
+        assert ev.verdict == "met"
+        assert "MET" in ev.summary()
+
+    def test_a_compared_row_without_a_commit_is_not_a_commit(self) -> None:
+        row = self._row("")
+        ev = evaluate_stale_graph([row])
+        assert (ev.compared, ev.commits) == (1, 0)
+
+
+class TestRunRecords:
+    def test_a_record_holds_the_run_as_it_was(self, tmp_path) -> None:
+        log = tmp_path / "runs.jsonl"
+        append_run_record(
+            log, at="now", kind="explicit", head="abc", base="000",
+            changed_files=["b.py", "a.py"], snapshot="d1g",
+            ran_files={"t/test_b.py", "t/test_a.py"}, tests_ran=7,
+            failed={"t/test_b.py::test_y", "t/test_a.py::test_x"}, exit_code=1,
+        )
+        (row,) = load_observations(log)
+        assert row == {
+            "at": "now", "kind": "explicit", "head": "abc", "base": "000",
+            "changed_files": ["a.py", "b.py"], "snapshot": "d1g",
+            "ran_files": ["t/test_a.py", "t/test_b.py"], "tests_ran": 7,
+            "failed": ["t/test_a.py::test_x", "t/test_b.py::test_y"], "exit": 1,
+        }
+
+    def test_no_junit_is_null_not_nothing_failed(self, tmp_path) -> None:
+        log = tmp_path / "runs.jsonl"
+        append_run_record(log, at="now", kind="selected", head="abc", base="000",
+                          changed_files=[], snapshot=None, ran_files=None,
+                          tests_ran=None, failed=None, exit_code=None)
+        append_run_record(log, at="now", kind="selected", head="abc", base="000",
+                          changed_files=[], snapshot=None, ran_files=[],
+                          tests_ran=0, failed=[], exit_code=5)
+        blind, looked = load_observations(log)
+        assert blind["failed"] is None and blind["ran_files"] is None
+        assert looked["failed"] == [] and looked["ran_files"] == []
+
+    def test_a_second_record_does_not_replace_the_first(self, tmp_path) -> None:
+        log = tmp_path / "deep" / "runs.jsonl"
+        for head in ("aaa", "bbb"):
+            append_run_record(log, at="now", kind="full", head=head, base="000",
+                              changed_files=[], snapshot=None, ran_files=[],
+                              tests_ran=0, failed=[], exit_code=0)
+        assert [r["head"] for r in load_observations(log)] == ["aaa", "bbb"]
+
+
+class TestSnapshots:
+    def test_a_snapshot_can_be_read_back_by_its_digest(self, tmp_path) -> None:
+        patch = b"diff --git a/x b/x\n+new line\n"
+        digest = store_snapshot(tmp_path / "snap", patch)
+        assert len(digest) == 64
+        with gzip.open(tmp_path / "snap" / f"{digest}.patch.gz", "rb") as fh:
+            assert fh.read() == patch
+
+    def test_the_same_change_is_stored_once(self, tmp_path) -> None:
+        first = store_snapshot(tmp_path / "snap", b"same")
+        stored = tmp_path / "snap" / f"{first}.patch.gz"
+        stamp = stored.stat().st_mtime_ns
+        assert store_snapshot(tmp_path / "snap", b"same") == first
+        assert stored.stat().st_mtime_ns == stamp
+        assert store_snapshot(tmp_path / "snap", b"other") != first
+        assert len(list((tmp_path / "snap").iterdir())) == 2
