@@ -183,6 +183,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The selection index records which statements of a function each test ran**; `coverage-select line-tests FILE:LINE` lists them.
 - **Narrowing drops a test only after a run that measured every package**; local runs now do.
 - **A changed constant or class attribute selects every test that imports the file**, through other modules too; `--no-import-union` turns it off.
+- **That import closure skips imports inside functions of source modules.**
 - **`pathlib`'s pure path classes are catalogued as doing no I/O**, so using one no longer withholds a verdict.
 - **The `types` module is catalogued as doing no I/O.**
 - **A code change also selects the tests recorded reading the changed file from disk**, which the import graph cannot see: a check that scans every analyzer now runs in the PR that edits one. `--no-read-union` turns it off.

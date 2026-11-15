@@ -1,0 +1,4 @@
+def test_tripled_late():
+    from bedcore.reads_name import tripled
+
+    assert tripled() == 12

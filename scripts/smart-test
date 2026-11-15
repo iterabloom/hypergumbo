@@ -207,8 +207,10 @@ SELECT_READERS=true
 # in schema.py, 252 test files selected, and the test that fails was not
 # among them. When a source file's IMPORT-TIME code changes (a module or class
 # body), every test file whose imports reach that file is added, through any
-# number of files, lazy imports inside functions included (owner ruling,
-# 2026-11-14). It only adds, and it is part of the MANIFEST selection: the
+# number of files. An import inside a function body counts in a test file, a
+# conftest.py or a test helper, and not in a source module (owner, 2026-11-15:
+# counting those put cli's whole closure under every test file).
+# It only adds, and it is part of the MANIFEST selection: the
 # failure it exists for is a PR whose own CI was green. A changed function
 # body does not trigger it. Opt out per run with --no-import-union.
 SELECT_IMPORTERS=true
