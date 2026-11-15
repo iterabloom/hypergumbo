@@ -53,10 +53,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-import yaml
-
 from .axis_meta_keys import is_access_mode_not_applicable
-from .yaml_catalogs import reject_unknown_keys
+from .yaml_catalogs import reject_unknown_keys, safe_load_once
 
 if TYPE_CHECKING:
     from .ir import Edge
@@ -194,7 +192,7 @@ def load_dataflow_config(yaml_path: Path) -> DataflowConfig:
         ValueError: If the YAML is missing the required 'language' field.
     """
     with open(yaml_path) as f:
-        data = yaml.safe_load(f) or {}
+        data = safe_load_once(f.read()) or {}
 
     language = data.get("language")
     if not language:
@@ -280,7 +278,7 @@ def _with_community_library_patterns(
     for path in sorted(_DATAFLOW_DIR.glob("*.yaml")):
         if path.stem == language:
             continue
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = safe_load_once(path.read_text(encoding="utf-8")) or {}
         if data.get("language") != language or not declares_community(data):
             continue
         extra.extend(data.get("library_patterns") or [])

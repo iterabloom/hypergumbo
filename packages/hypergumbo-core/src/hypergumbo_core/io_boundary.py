@@ -197,6 +197,7 @@ from .yaml_catalogs import (
     PROVENANCE_COMMUNITY,
     CatalogueError,
     declares_community,
+    parse_yaml_once,
     reject_unknown_keys,
 )
 
@@ -2030,7 +2031,20 @@ def load_yaml_strict(content: str, *, origin: str) -> Any:
 
     ``origin`` is carried into the message so a refusal names the file a
     reader has to open; a duplicate-key error with no path is a refusal they
-    cannot act on. It rides on a per-call SUBCLASS rather than on the loader
+    cannot act on.
+
+    One text is parsed once per process and each caller gets its own copy
+    (:func:`yaml_catalogs.parse_yaml_once` has the rules). A refused text is
+    not kept, so it is refused again on every call with that call's
+    ``origin``.
+    """
+    return parse_yaml_once("strict", content, lambda: _parse_yaml_strict(content, origin))
+
+
+def _parse_yaml_strict(content: str, origin: str) -> Any:
+    """Parse one YAML text, refusing a duplicated mapping key.
+
+    ``origin`` rides on a per-call SUBCLASS rather than on the loader
     instance because ``yaml.load`` owns the instance's lifecycle — reaching in
     to set an attribute would mean also owning ``dispose()``, and a loader
     leaked on an exception path is a worse trade than one throwaway class.
