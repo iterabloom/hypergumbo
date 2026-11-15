@@ -1108,8 +1108,26 @@ class IoBoundaryCatalog:
     module_completeness: dict[str, str] = field(
         default_factory=dict,
     )
+    # THE THREE INDICES BELOW ARE DERIVED FROM ``primitives``, BUILT BY THE
+    # FIRST LOOKUP (:meth:`_ensure_indices`), AND THIS OBJECT'S OWN.
+    #
+    # Built lazily because most catalogues are never read: ``load_catalog``
+    # constructs eleven on the way to the one it returns (the shipped file,
+    # each overlay, a ``dataclasses.replace`` per restored field), and
+    # indexing in ``__post_init__`` indexed the Python catalogue's 758 rows
+    # eleven times per load, half of the load's time.
+    #
+    # Its own because ``dataclasses.replace`` passes every init field of the
+    # old object to the new one, these dictionaries included: building in
+    # place then rebuilt the ORIGINAL's index from the copy's rows
+    # (``replace(c, primitives=[])`` left ``c.lookup`` finding nothing).
+    # ``__post_init__`` therefore gives each object fresh dictionaries.
+    #
+    # ``compare=False``: they say nothing ``primitives`` does not, and with
+    # them compared a catalogue that has been read would differ from an
+    # equal one that has not.
     _by_qualified: dict[str, IoPrimitive] = field(
-        default_factory=dict, repr=False,
+        default_factory=dict, repr=False, compare=False,
     )
     # Every row for a qualified name, not just the first. ``_by_qualified``
     # keeps one row per name and that is correct for the single-boundary
@@ -1120,18 +1138,36 @@ class IoBoundaryCatalog:
     # discrimination cannot recover a row the index never kept, so this
     # index keeps both and lets :func:`select_by_mode` choose.
     _by_qualified_all: dict[str, list[IoPrimitive]] = field(
-        default_factory=dict, repr=False,
+        default_factory=dict, repr=False, compare=False,
     )
     _by_short: dict[str, list[IoPrimitive]] = field(
-        default_factory=dict, repr=False,
+        default_factory=dict, repr=False, compare=False,
+    )
+    # Not an init field, so ``dataclasses.replace`` cannot carry it over: a
+    # new object always starts with nothing built.
+    _indices_built: bool = field(
+        default=False, init=False, repr=False, compare=False,
     )
 
     def __post_init__(self) -> None:
-        """Build lookup indices."""
-        self._rebuild_indices()
+        """Give this object its own, empty, not-yet-built indices."""
+        self._by_qualified = {}
+        self._by_qualified_all = {}
+        self._by_short = {}
+        self._indices_built = False
+
+    def _ensure_indices(self) -> None:
+        """Build the indices if nothing has yet. Every reader calls this."""
+        if not self._indices_built:
+            self._rebuild_indices()
 
     def _rebuild_indices(self) -> None:
-        """Rebuild the qualified-name and short-name lookup dicts."""
+        """Rebuild the qualified-name and short-name lookup dicts.
+
+        Run by the first lookup. A caller that edits ``primitives`` in place
+        AFTER a lookup must call it again; nothing in the tree does.
+        """
+        self._indices_built = True
         self._by_qualified.clear()
         self._by_qualified_all.clear()
         self._by_short.clear()
@@ -1178,11 +1214,17 @@ class IoBoundaryCatalog:
         returns ``None``. The raw spelling is tried first so an exact hit
         costs nothing.
         """
+        self._ensure_indices()
         hits = self._by_qualified_all.get(name)
         if hits:
             return list(hits)
         return list(self._by_qualified_all.get(
             normalize_module_separators(name), []))
+
+    def _short_rows(self, name: str) -> list[IoPrimitive]:
+        """Every row whose own (unqualified) name is ``name``; a fresh list."""
+        self._ensure_indices()
+        return list(self._by_short.get(name, []))
 
     def lookup(self, name: str) -> Optional[IoPrimitive]:
         """Look up a primitive by qualified or short name.
@@ -1193,7 +1235,7 @@ class IoBoundaryCatalog:
         rows = self._qualified_rows(name)
         if rows:
             return rows[0]
-        hits = self._by_short.get(name)
+        hits = self._short_rows(name)
         return hits[0] if hits else None
 
     def lookup_all(self, name: str) -> list[IoPrimitive]:
@@ -1208,7 +1250,7 @@ class IoBoundaryCatalog:
         rows = self._qualified_rows(name)
         if rows:
             return rows
-        return list(self._by_short.get(name, []))
+        return self._short_rows(name)
 
     def all_boundaries_for(self, qualified_name: str) -> set[str]:
         """Every boundary this catalogue declares for one primitive.
@@ -1328,7 +1370,7 @@ class IoBoundaryCatalog:
         # this consumer's own narrowing -- the mode and target-kind seams --
         # and the short-name refusal below.
         arm, hits = named_lookup_arm(
-            self._qualified_rows(name), self._by_short.get(name) or [],
+            self._qualified_rows(name), self._short_rows(name),
             module_hint, call_construct=call_construct,
             language=self.language,
         )
