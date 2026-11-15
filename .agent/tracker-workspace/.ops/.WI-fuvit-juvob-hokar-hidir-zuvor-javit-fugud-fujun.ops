@@ -33,3 +33,10 @@
   nonce: c132  # c132
   set:  # c132
     title: "solidity: struct and enum declarations (top-level and in-contract) emit no symbol; struct fields are contained by the contract/file by span fallback"  # c132
+- op: discuss  # 183c
+  at: '2026-11-15T19:25:53Z'  # 183c
+  by: agent  # 183c
+  actor: jgstern_agent  # 183c
+  clock: 4  # 183c
+  nonce: 183c  # 183c
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): fixture with file-level `struct TopLevel` / `enum TopMode` and in-contract `struct RoyaltyInfo` / `enum Mode` emits fields `TopLevel.a`, `RoyaltyInfo.receiver`, `RoyaltyInfo.royaltyFraction` and no struct or enum node; containment is `span_overlap` to the file / contract. Real openzeppelin `ERC2981.sol` (single file) still yields `solidity:external:0-0:RoyaltyInfo:external_symbol` as target of the two `RoyaltyInfo(...)` constructor calls (lines 102, 130). solidity.py symbol arms (L453-549) have no struct_declaration or enum_declaration arm; `struct` and `enum` are in `_KIND_STABLE_ID_FACTORIES` (base.py L1851-1852). Enum members: no node. Not checked: the \"12 fields\" count. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-fuvit.md. No status or priority change made by this review."  # 183c

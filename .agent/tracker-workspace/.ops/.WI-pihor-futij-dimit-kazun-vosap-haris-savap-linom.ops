@@ -19,3 +19,10 @@
     pr_ref:  # a715
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _DIRECTIVE_RE (blade.py:66) requires \\s*\\) right after the first quoted argument, so @yield('title', 'Default'), @component('alert', [...]) and @extends('layouts.app', [...]) emit nothing (no extends edge). The unrecorded component's @endcomponent then pops the outer component (blade.py:108-113), so later blocks get the wrong stable_id scope. The docstring means to exclude only the inline two-argument @section. r26, v10, b01."  # a715
     fields: {}  # a715
+- op: discuss  # 3617
+  at: '2026-11-15T19:25:54Z'  # 3617
+  by: agent  # 3617
+  actor: jgstern_agent  # 3617
+  clock: 2  # 3617
+  nonce: '3617'  # 3617
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): reproduced through `hypergumbo run` on a two-file fixture. `@extends('layouts.app', [...])` gives no extends edge, `@yield('title', 'Default')` and `@component('alert', [...])` give no node; the one-argument control gives all three. `@yield('after')` between the inner and outer `@endcomponent` carries the stable_id of scope `[]` in the two-argument file and of scope `['outer']` in the control (checked against `scoped_stable_id`). Citations blade.py:66 and :108-113 are exact; blade.py last changed 2026-10-13. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-pihor. Corpus impact still not measured. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-pihor.md. No status or priority change made by this review."  # 3617

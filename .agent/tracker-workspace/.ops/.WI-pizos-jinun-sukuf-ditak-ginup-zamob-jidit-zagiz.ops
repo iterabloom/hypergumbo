@@ -29,3 +29,19 @@
   clock: 2  # ddf0
   nonce: ddf0  # ddf0
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: CURRENT. Review 2026-11-01 at dev 9ae4abe13f. Patching sketch_embeddings._load_embedding_model with a fake encoder and calling sketch._extract_config_embedding twice on a 2-file fixture gives encode batches [41, 127, 5, 12, 41, 127, 5, 12]. ANSWER_PATTERNS and BIG_PICTURE_QUESTIONS are encoded live at sketch.py:1867/1872, and NEGATIVE_PATTERNS at about 1964. _get_answer_probe_embeddings and _get_bigpic_probe_embeddings have no caller in src, tests or scripts. sketch.py and sketch_embeddings.py keep equal but separate copies of the lists (41 and 127 entries). MECHANISM: Precomputed probe embeddings are generated and shipped, but the consumer encodes the probe lists live; the getters have no caller. SHARES MECHANISM WITH: WI-fidan."  # ddf0
+- op: update  # d9be
+  at: '2026-11-15T04:40:46Z'  # d9be
+  by: agent  # d9be
+  actor: jgstern_agent  # d9be
+  clock: 3  # d9be
+  nonce: d9be  # d9be
+  set:  # d9be
+    status: done  # d9be
+    pr_ref: '2188'  # d9be
+- op: discuss  # 5b6e
+  at: '2026-11-15T04:40:46Z'  # 5b6e
+  by: agent  # 5b6e
+  actor: jgstern_agent  # 5b6e
+  clock: 4  # 5b6e
+  nonce: 5b6e  # 5b6e
+  message: "DONE in PR #2188 (dev 1bf655d034, commit perf(sketch): the config extraction reads the shipped probe embeddings). The item offered two fixes; the first was taken: sketch_embeddings.probe_embeddings(name, model, dim) is the one reader of all four shipped arrays, guarded by a sha256 digest of the model name and the probe texts (PROBE_DIGESTS in _embedding_data) and by the row width; when either guard fails the model encodes the probes as before. FILED REPRO RE-RUN on dev 1bf655d034 (fake encoder patched over _load_embedding_model, _extract_config_embedding called twice on a 2-file fixture, discovery stubbed): with a 768-wide fake the encode batches are [6, 6], the repository's own chunks only; the item recorded [41, 127, 5, 12, 41, 127, 5, 12]. With a 64-wide fake the batches are [6, 41, 127, 12, 6, 41, 127, 12]: by design, 768-wide shipped rows cannot be scored against a 64-wide model. The two getters without a caller are removed (grep over packages, scripts and tests: 0 hits). The duplicate lists in sketch.py are removed (ANSWER_PATTERNS and BIG_PICTURE_QUESTIONS are assigned only in sketch_embeddings.py). REAL MODEL: stored vs encoded-now cosine 1.000000 for every probe of all four sets; _extract_config_embedding on 21 real repositories returns the same 548 lines in the same order before and after, 103.7 s to 85.9 s for the 21 calls (~/hypergumbo_lab_notebook/slow_tests_11142026: probe_check_out.txt, config_before.json, config_after.json). Pinned by packages/hypergumbo-core/tests/test_probe_embeddings.py (12 cases); mutation controls: digest check always true, 3 fail; width check dropped, 2 fail. NOT DONE and not part of this item: _discover_config_files_embedding still encodes the known config file names for the repository's languages on every call; no embedding of them is shipped."  # 5b6e

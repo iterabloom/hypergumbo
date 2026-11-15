@@ -49,3 +49,10 @@
   clock: 5  # 007a
   nonce: 007a  # 007a
   message: "Related, filed 2026-11-01 as WI-vimof: ERROR or MISSING nodes appear in 571 of 1264 agda-stdlib files under 1.3.3 and 508 under the language pack. This item and WI-molon are two named shapes; the rest is uncharacterized. Classifying them bears on the pending grammar-swap decision."  # 007a
+- op: discuss  # dd9f
+  at: '2026-11-15T19:25:52Z'  # dd9f
+  by: agent  # dd9f
+  actor: jgstern_agent  # dd9f
+  clock: 6  # dd9f
+  nonce: dd9f  # dd9f
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096, tree-sitter-agda 1.3.3: probes 1-3 and the 11-01 additions all reproduce through `hypergumbo run` (fixtures ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/INV-vokir). First corpus measure, parse only, local agda-stdlib clone ab4fbd25bb (1247 files): the split shape occurs 9 times in 9 files under 1.3.3 (7 function signatures), 0 under language-pack 0.13.0; `Data/Nat/Primality.agda:35 recompute-nonTrivial` confirmed lost end to end. The shape leaves no ERROR node and no MISSING node visible through `.children`, only a hidden `(MISSING _dedent)` and `root.has_error`; 4 of the 9 files are therefore outside WI-vimof's 571-file count. WI-siniv still open. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-vokir.md. No status or priority change made by this review."  # dd9f

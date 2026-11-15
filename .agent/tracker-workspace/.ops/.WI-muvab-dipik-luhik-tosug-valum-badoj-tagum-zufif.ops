@@ -19,3 +19,10 @@
     pr_ref:  # 6056
     description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- swift.py: Two function-local `struct Inner { init(x: Int) {} ; deinit {} ; func go() {} }`, one in `func f` and one in `func g` of one file, share their constructor AND deinit stable_ids, while their struct and `go` ids differ -- evidence: `analyze_swift` on a scratch repo printed\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 6056
     fields: {}  # 6056
+- op: discuss  # bce8
+  at: '2026-11-15T19:25:53Z'  # bce8
+  by: agent  # bce8
+  actor: jgstern_agent  # bce8
+  clock: 2  # bce8
+  nonce: bce8  # bce8
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces. `analyze_swift` on two function-local `struct Inner { init(x: Int) {}; deinit {}; func go() {} }` (in `f` and `g`): both inits `sha256:15a05d39b08dc2a9`, both deinits `sha256:1340cad2708b809c`; struct and `go` ids differ. `_swift_lifecycle_symbol` (swift.py:1661) hashes `_get_swift_type_ancestors`, not `_swift_scope`. In `hypergumbo run` output the tie is split by `split_within_file_stable_id_collisions` (`:occ:1`), so no shared id is emitted, but deleting f's `Inner` moves g's `Inner.init` 365fa579… -> 15a05d39… and `Inner.deinit` ca92d0f5… -> 1340cad2…, while g's `Inner`/`go` ids stay. The description's evidence text is cut off after \"printed\". Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-muvab. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-muvab.md. No status or priority change made by this review."  # bce8

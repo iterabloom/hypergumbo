@@ -86,3 +86,10 @@
   nonce: 9b05  # 9b05
   set:  # 9b05
     description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: the declarations now read stableid-v13 / shapeid-v3 / repofp-v2 / symbol-fp-v2. Emitted values: stable_id sha256:<16hex>, shape_id sha256:<16hex>, repo_fingerprint sha256:<64hex> (config_fingerprint and run_signature also sha256:); fingerprint hgfp2:. No hgstableid/hgshapeid/hgrepofp prefix exists in src. The collision complaint holds. Stale parts: the owner plan's 'v9 = relabel, v10 = bitbake' numbering was used up by WI-tusad (v9) and WI-banod (v10), so the relabel is now v14 and the prefixes need new numbers. The undeclared-SCIP-scheme concern from 2026-09-18 is now declared: v11 (INV-kutid) names scip_stable_id in the spec history. (Original text below; the review entry in the thread has the evidence.)"  # 9b05
+- op: discuss  # a347
+  at: '2026-11-15T19:25:54Z'  # a347
+  by: agent  # a347
+  actor: jgstern_agent  # a347
+  clock: 11  # a347
+  nonce: a347  # a347
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Behaviour unchanged: stable_id and shape_id emit `sha256:<16hex>`, repo_fingerprint `sha256:<64hex>` (so does analysis_runs[].pass_version), fingerprint `hgfp2:`. No `hgstableid`/`hgshapeid`/`hgrepofp` prefix and no digest-compatibility field in packages/*/src, the spec or the changelog. stable_id scheme is v14 (WI-ruful, 2026-11-12), so the relabel number in the 11-01 header is taken; v10-v14 are all unreleased (tag v9.2.0 carries v9). Constants: schema.py:149/161/168/173; validator pattern spec_validator.py:1951. 75 test files match the `sha256:` prefix. ir.py:606-616 still carries WI-tisar's 2026-07-15 text that stable_id/shape_id need no in-value discriminator. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-talos.md. No status or priority change made by this review."  # a347

@@ -28,3 +28,10 @@
   clock: 2  # f4ce
   nonce: f4ce  # f4ce
   message: "PR #2183 fixes the display and metadata half and leaves this item OPEN for the identity half. DONE: the displayed signature, meta.parameters types and a class attribute's signature come from ast.unparse (Callable[[int, str], None], Literal[-1, 1], Annotated[int, max(1, 2)]); 'Callable[, ' in the 20-repository run is 0 after (3 repositories before); stable_id and id of the fixture functions are byte-identical before and after. NOT DONE, OWNER DECISION: the signature hashed into stable_id still comes from _format_annotation with its holes; test_py_annotation_rendering.py pins that text. Options: correct it inside unreleased v14, or as a later bump, or leave it. A count of affected functions on a corpus has not been made. base_classes with a call-expression base stays [''] by design (WI-pusan). Found while testing, filed: WI-tirob-jabav-mosis-kiluh-farih-dimoj-hisah-huliz (meta.parameters omits positional-only and keyword-only parameters)."  # f4ce
+- op: discuss  # d5e6
+  at: '2026-11-15T19:25:53Z'  # d5e6
+  by: agent  # d5e6
+  actor: jgstern_agent  # d5e6
+  clock: 3  # d5e6
+  nonce: d5e6  # d5e6
+  message: "[REVIEW 2026-11-15: PARTLY DONE] 2026-11-15, dev e2b6ab8096. Display half reproduces as fixed (f8161537ab). Identity half live: `C.m(self, cb: Callable[[int], None])` and `C.m(self, cb: Callable[[bytes, str], None])` both get stable_id sha256:9dd356b6146f0eae; hashed text is `(Callable[, None])None`. Count on hypergumbo's own `packages/*/src` (402 files, 6998 defs, ast walk): 64 defs have an annotation that takes the fallback, 20 of them are hashed on the typed tier (the other 44 exceed the 60-char cut and take the untyped tier). Swapping the renderer for ast.unparse wholesale changes the hash input of 81 defs (3 move typed to untyped), because unparse also differs outside the holes. No other corpus counted. `_format_annotation` on `a().b` returns `.b`. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-dujor.md. No status or priority change made by this review."  # d5e6

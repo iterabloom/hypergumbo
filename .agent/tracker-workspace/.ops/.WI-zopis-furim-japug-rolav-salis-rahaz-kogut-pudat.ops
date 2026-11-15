@@ -59,3 +59,10 @@
   clock: 6  # 67fc
   nonce: 67fc  # 67fc
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 67fc
+- op: discuss  # 7182
+  at: '2026-11-15T19:25:54Z'  # 7182
+  by: agent  # 7182
+  actor: jgstern_agent  # 7182
+  clock: 7  # 7182
+  nonce: '7182'  # 7182
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096: not built. `hypergumbo intra|cfg|ddg` are not subcommands; two `verify-claims` runs leave only survey.json, survey.{4k,16k,64k}.json and survey.slices/ in the cache. The builder is now `_build_ddg_for_verify_claims` (cli.py:6679) over `ddg_build.build_repo_ddg`, called only from `cmd_verify_claims`. Registered DDG languages: c, go, java, javascript, python, rust, typescript (the text says Python-only). Cache file names are survey*.json, not hypergumbo.results*.json; `run` is a deprecated alias of `survey`. Self-analysis has 45,067 Python function/method symbols (text: ~2700). `function_summaries` is YAML-declared; `infer_summary` has no production caller (taint.py:5301). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-zopis.md. No status or priority change made by this review."  # 7182

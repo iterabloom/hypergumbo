@@ -25,3 +25,10 @@
   clock: 2  # b66f
   nonce: b66f  # b66f
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. The item repro rtl/a.v emits only module a plus the file node, with no task/function/net symbols. test_stable_id_floor_gate.py:1542 still lists verilog in FLAT_LANGUAGES ('only modules and interfaces are emitted'). MECHANISM: verilog extraction stops at module/interface declarations."  # b66f
+- op: discuss  # 18c3
+  at: '2026-11-15T19:25:52Z'  # 18c3
+  by: agent  # 18c3
+  actor: jgstern_agent  # 18c3
+  clock: 3  # 18c3
+  nonce: 18c3  # 18c3
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): the item's `rtl/a.v` still emits only `module a` + file node. verilog.py symbol arms: `module_declaration` (L158), `interface_declaration` (L185); edges: `module_instantiation` only (L262). The installed tree-sitter-verilog grammar yields `task_declaration`, `function_declaration`, `net_declaration` nodes for the repro. A task enable `run;` and a call `f(1)` in an `initial` block emit no edge, resolved or unresolved. `FLAT_LANGUAGES[\"verilog\"]` is at test_stable_id_floor_gate.py L1538. Separate defect seen, outside this item: single-port and empty-port instantiations emit no `instantiates` edge (grammar node is `checker_instantiation`). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-bodug.md. No status or priority change made by this review."  # 18c3

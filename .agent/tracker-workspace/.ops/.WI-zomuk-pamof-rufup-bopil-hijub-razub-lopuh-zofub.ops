@@ -26,3 +26,10 @@
   clock: 2  # 0b63
   nonce: 0b63  # 0b63
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. Not built: `hypergumbo diff` -> \"'diff' is not a valid subcommand\" and no diff appears in `hypergumbo --help`. Blockers still open: WI-situf (isbefore this item) and WI-sazap (--reproducible mode). Related but distinct: WI-vufad (committed survey plus git line-diff), which names this item as its polished renderer. Premise unchanged. MECHANISM: no structural survey diff; blocked on digest (WI-situf) and --reproducible (WI-sazap). SHARES MECHANISM WITH: WI-situf, WI-sazap, WI-vufad."  # 0b63
+- op: discuss  # 4b24
+  at: '2026-11-15T19:25:54Z'  # 4b24
+  by: agent  # 4b24
+  actor: jgstern_agent  # 4b24
+  clock: 3  # 4b24
+  nonce: 4b24  # 4b24
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096: unchanged since the 2026-11-01 review. `hypergumbo diff a.json b.json` -> \"'diff' is not a valid subcommand\", exit 2; no diff, digest or --reproducible in `hypergumbo --help`; 0 hits for survey_diff, canonical_digest, content_digest, reproducible in cli.py. Blockers still open: WI-situf (todo_soft, isbefore this item), WI-sazap (todo_soft P2). WI-pifaj is done. \"aijo\" has 0 occurrences in docs/, CHANGELOG.md, packages/*/src and scripts/. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-zomuk.md. No status or priority change made by this review."  # 4b24

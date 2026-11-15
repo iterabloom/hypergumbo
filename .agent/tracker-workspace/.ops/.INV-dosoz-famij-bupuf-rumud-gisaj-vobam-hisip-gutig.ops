@@ -36,3 +36,10 @@
   clock: 3  # 1c56
   nonce: 1c56  # 1c56
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: CURRENT (wrong binds reproduce). Symbols X@2, X@4, X.run@2, X.run@4, B, B.go, A.top but A::C / A::C.go. Edges: A.top {X.run} -> X.run@4 (Ruby: A::X@2); Z.go {A::X.run} -> X.run@4 (wrong); analyzer `extends Q < A::B::X -> X@2` (wrong) PLUS a linker-added `extends Q -> X@4`, so the survey shows TWO parents for one class. _get_enclosing_class_or_module (ruby.py:361) reads the direct name node; _lexical_nesting (:2458) feeds only _nested_candidates (:2479). ruby.py's 3 commits since 10-25 touch none of the three functions. ROOT-CAUSE GROUPS: owner/container read from the name node, not lexical position (with INV-tohuj, WI-sipoj; fixed precedent WI-gikuk/WI-kosar); the second extends edge is the inheritance-linker re-resolution of WI-ligin. Status unchanged."  # 1c56
+- op: discuss  # 078e
+  at: '2026-11-15T19:25:52Z'  # 078e
+  by: agent  # 078e
+  actor: jgstern_agent  # 078e
+  clock: 4  # 078e
+  nonce: 078e  # 078e
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096. Reproduces. Names: `X`@2, `X`@4, `X.run`@2, `X.run`@4; compact `A::C` keeps its path. Wrong binds on the wider fixture: `A.top {X.run}` and `Z.go {A::X.run}` -> `X.run`@4; `extends Q < A::B::X` -> `X`@2 (analyzer) plus `X`@4 (inheritance-linker). Swapping declaration order flips which sites are wrong (`B.go {X.run}` -> A::X), so calls take the last-registered namesake and analyzer `extends` the first. `qualified_name` (`A::X`, `A::B::X::run`) and `stable_id` already differ per class; only `name` and the `symbol_by_name` keys (ruby.py:2343, :2390, :2232, :2280) collide. `_get_enclosing_class_or_module` :361, `_lexical_nesting` :2458, `_nested_candidates` :2479, unchanged. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-dosoz.md. No status or priority change made by this review."  # 078e

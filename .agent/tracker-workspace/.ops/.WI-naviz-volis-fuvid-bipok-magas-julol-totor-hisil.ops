@@ -25,3 +25,10 @@
   clock: 2  # 1e0c
   nonce: 1e0c  # 1e0c
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f (fx_naviz: class A: class B: def go). Survey emits method 'B.go' with qualified_name 'B.go' and class B with qualified_name 'B'. The py.py:3542-3543 comment still calls the scope qualification separate work. A.B().go() calls from A.run and top resolve only to external_symbol go/B, so the call-resolution effect this item says to measure first is live. Premise holds. Changing name/qualified_name to the full chain would trigger WI-fazid's latent split('.')[0] bug. MECHANISM: python qualified_name is set to the emitted name (innermost class + member), not the full __qualname__ scope chain. SHARES MECHANISM WITH: WI-fazid."  # 1e0c
+- op: discuss  # b515
+  at: '2026-11-15T19:25:53Z'  # b515
+  by: agent  # b515
+  actor: jgstern_agent  # b515
+  clock: 3  # b515
+  nonce: b515  # b515
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Reproduces: `class A: class B: def go` gives class `B` (qualified_name `B`) and method `B.go` (qualified_name `B.go`); a doubly nested class is `C`. `A.B().go()` from a method and from a top-level function resolves to external_symbol `go` and `B` only. New fact: class-attribute fields already carry the full chain (`B.x` has qualified_name `A.B.x`, py.py:3620-3642), so one nested class emits two conventions. Two `B.go` methods under different outer classes share name and qualified_name and differ in stable_id. The py.py comment is now at 3551-3556 with different wording. `caller_symbol.name.split(\".\")[0]` is at py.py:7522 and 7560 (WI-fazid, open). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-naviz.md. No status or priority change made by this review."  # b515
