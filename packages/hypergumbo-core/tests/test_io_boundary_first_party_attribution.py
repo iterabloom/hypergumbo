@@ -235,7 +235,7 @@ class TestEveryDataflowCapableLanguage:
             f"so a newly wired language cannot skip this rule silently."
         )
         catalog = load_catalog(language)
-        hits = catalog._by_short.get(name)
+        hits = catalog._short_rows(name)
         assert hits, (
             f"{language}: {name!r} is not in the catalogue, so this fixture cannot "
             f"exercise the rule — the control would pass for the wrong reason."

@@ -22,6 +22,11 @@ The indices are now built by the first lookup. What is pinned:
   ORIGINAL's index too (``replace(c, primitives=[])`` made ``c.lookup``
   return nothing);
 * equality does not depend on whether a catalogue has been read.
+
+The index dictionaries are private and empty until the first lookup: read
+them through ``lookup`` / ``lookup_all`` / ``_short_rows``, never directly
+(``test_io_boundary_first_party_attribution.py`` read ``_by_short`` and saw
+nothing).
 """
 
 from __future__ import annotations
