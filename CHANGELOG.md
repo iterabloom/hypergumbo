@@ -180,6 +180,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A change to comments or docstrings only runs the tests recorded reading that file**, locally and in CI, instead of everything that imports it (ADR-0010, ADR-0011). It falls back to the import graph while more than a tenth of test files have no record.
 - **Coverage narrowing is on by default and narrows the CI test list**; `--no-narrow` turns it off, and the twice-daily full suite is never narrowed. It refuses when import-time code changed and never drops a test file the change edits.
 - **The selection index keeps test edges that a run did not measure.**
+- **The selection index records which statements of a function each test ran**; `coverage-select line-tests FILE:LINE` lists them.
 - **Narrowing drops a test only after a run that measured every package**; local runs now do.
 - **A changed constant or class attribute selects every test that imports the file**, through other modules too; `--no-import-union` turns it off.
 - **`pathlib`'s pure path classes are catalogued as doing no I/O**, so using one no longer withholds a verdict.

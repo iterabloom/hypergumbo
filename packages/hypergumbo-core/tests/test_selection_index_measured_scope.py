@@ -388,6 +388,6 @@ def test_a_format_2_index_gains_the_run_tables_and_informs_nothing(tmp_path: Pat
     conn.close()
 
     conn = open_index(path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == FORMAT == 3
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == FORMAT == 4
     assert touching_tests(conn, ["/r/a.py"]) == {ONE}
     assert informed_test_files(conn, Path("/r"), ["/r/a.py"]) == frozenset()
