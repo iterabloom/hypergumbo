@@ -2221,6 +2221,85 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 # ---------------------------------------------------------------------------
 
 
+class StableFooter(Footer):
+    """A footer that is rebuilt when what it shows changes, and only then.
+
+    Textual's ``Footer`` removes and re-creates all of its key widgets each
+    time the screen announces that the active bindings may have changed, and
+    the screen announces that on every focus change. With this app's 21 shown
+    keys that was four rebuilds during start-up (half of the start-up time)
+    and one or two more for each later focus change, nearly always into the
+    same 21 keys.
+
+    The footer's content is a function of the shown bindings: for each, the
+    binding itself (key, action, description, group), the key as displayed,
+    whether it is enabled, and its tooltip. :meth:`_shown` computes that
+    value and :meth:`compose` records it each time the footer is actually
+    built. :meth:`bindings_changed` then asks for a rebuild unless
+
+    * one is already on its way (it reads the bindings when it runs, so it
+      will show whatever this announcement is about), or
+    * the footer was last built from an equal value.
+
+    The record is made at BUILD time on purpose. Textual ignores an
+    announcement while the terminal window is unfocused, so recording at
+    announcement time would mark as shown something that never was, and the
+    next announcement would be skipped with a stale footer on screen.
+
+    ``bindings_changed`` restates the five lines of Textual 7.5's method (the
+    package pins ``textual~=7.5``) with the two skips added, and
+    ``_bindings_ready`` is Textual's own flag; ``test_tui_stable_footer.py``
+    fails if an upgrade changes how either behaves.
+    """
+
+    #: What the footer was last built from; ``None`` before the first build.
+    _built_from: tuple[Any, ...] | None = None
+    #: A rebuild has been asked for and has not read the bindings yet.
+    _rebuild_pending: bool = False
+
+    def _shown(self, screen: Any) -> tuple[Any, ...]:
+        """Everything :meth:`Footer.compose` reads from the active bindings."""
+        active = screen.active_bindings
+        shown: list[Any] = [
+            (binding, self.app.get_key_display(binding), enabled, tooltip)
+            for (_node, binding, enabled, tooltip) in active.values()
+            if binding.show
+        ]
+        if self.show_command_palette and self.app.ENABLE_COMMAND_PALETTE:
+            palette = active.get(self.app.COMMAND_PALETTE_BINDING)
+            if palette is not None:
+                _node, binding, enabled, _tooltip = palette
+                shown.append(
+                    ("palette", binding, self.app.get_key_display(binding), enabled)
+                )
+        return tuple(shown)
+
+    def compose(self) -> ComposeResult:
+        # From here on an announcement is compared with ``_built_from``.
+        # Until here a rebuild that has started (it first removes the old
+        # keys, and other messages run meanwhile) still counts as on its way.
+        self._rebuild_pending = False
+        if self._bindings_ready:
+            self._built_from = self._shown(self.screen)
+        yield from super().compose()
+
+    async def recompose(self) -> None:
+        try:
+            await super().recompose()
+        finally:
+            self._rebuild_pending = False
+
+    def bindings_changed(self, screen: Any) -> None:
+        self._bindings_ready = True
+        if not screen.app.app_focus:
+            return
+        if not (self.is_attached and screen is self.screen):
+            return
+        if self._rebuild_pending or self._shown(screen) == self._built_from:
+            return
+        self._rebuild_pending = self.call_after_refresh(self.recompose)
+
+
 class ItemTable(DataTable[Any]):
     """The standard/wide item list: a DataTable that reports row clicks so
     the app can keep a multi-selection.
@@ -2568,7 +2647,7 @@ class TrackerApp(App[None]):
                 )
         yield Static("", id="chain-summary-bar")
         yield Static("", id="status-filter-bar")
-        yield Footer()
+        yield StableFooter()
 
     def on_mount(self) -> None:
         """Initialize layout on mount, loading persisted preferences."""
