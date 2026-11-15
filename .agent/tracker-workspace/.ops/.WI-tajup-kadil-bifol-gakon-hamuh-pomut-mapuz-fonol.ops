@@ -34,3 +34,10 @@
   clock: 3  # ca6b
   nonce: ca6b  # ca6b
   message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). RELATED QUESTION for the owner, not filed separately. The help states 'Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one inconclusive, or the claims file failed validation'. The reader read the shared 2 as a defect for CI: a gate cannot tell a typo in the claims file from an analysis that could not decide. This item moves two more bad-input paths onto 2. Whether bad input and inconclusive keep sharing a code is a contract decision (the codes are documented); if they are to be split, it is cheaper to rule before this item is done than after."  # ca6b
+- op: discuss  # f3d9
+  at: '2026-11-15T21:59:34Z'  # f3d9
+  by: agent  # f3d9
+  actor: jgstern_agent  # f3d9
+  clock: 4  # f3d9
+  nonce: f3d9  # f3d9
+  message: "OWNER RULING 2026-11-15 on the question raised in this thread on 11-14 (plan: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md, PR 3, before the release): SPLIT the shared code. Bad input exits 2 (a missing or invalid claims file, a missing --input map: the two paths this item moves off 1 land there); inconclusive moves from 2 to 3. So the contract becomes 0 = all confirmed, 1 = at least one violated, 2 = bad input, 3 = at least one inconclusive. Help text and spec change with it. To check while building: every reader of verify-claims' exit code in this repository (scripts, gates, tests, docs)."  # f3d9

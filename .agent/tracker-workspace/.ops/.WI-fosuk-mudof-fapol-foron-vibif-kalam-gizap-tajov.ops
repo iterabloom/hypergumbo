@@ -40,3 +40,10 @@
   clock: 4  # bff9
   nonce: bff9  # bff9
   message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). NEW EVIDENCE beyond profile.languages. The recorded aardvark_dns crate supplies 25 of the 168 nodes and 25 of the 95 entry points of survey.64k.json, and 28 of the 181 entry points of the full survey. Its three Rust files are the only tracked .rs files with a test attribute, so the 'cargo test' on the sketch Tests line comes from it alone. The main() of recorded/sample_project/pkg/app.py is the sixth CLI entry in the sketch and the crate's main.rs the eleventh. The reader's proposed fix, classify recorded/, is the instance; by the owner's 11-13 ruling the fix has to be a rule that does not name the directory. Sibling filed: WI-lumal-gukuf-hojor-lidot-rodub-zuvom-vupif-vibif (example scripts taking entry-point slots on sqlalchemy, pm2 and express)."  # bff9
+- op: discuss  # 937e
+  at: '2026-11-15T21:56:49Z'  # 937e
+  by: agent  # 937e
+  actor: jgstern_agent  # 937e
+  clock: 5  # 937e
+  nonce: 937e  # 937e
+  message: "OWNER RULING 2026-11-15: this item goes in PR 3 of the plan at ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md (after the stable-id bump PR, before the release), as the first commit among the entry-point items, ahead of WI-mapaj-mirig-guhon-mavav-bujis-madaj-tuguh-fivuz. Not in the bump PR: its rule is not designed yet, and the bump PR has to stay attributable to id changes. Still to do, unchanged: a rule that names no directory (owner, 11-13), a measurement of what else it reclassifies, acceptance on two outside repositories in two languages. Measured on dev 4eb555b680: every test file imports paths.py and selection/filters.py, so an import-time change there selects the whole suite in CI."  # 937e

@@ -34,3 +34,18 @@
   clock: 3  # 3728
   nonce: '3728'  # 3728
   message: "[OWNER RULING 2026-11-15] Every fix that moves an existing stable id shares ONE scheme bump, v14 to v15 (ADR-0035 section 6; no scheme after v9 has been released). This item's const-kind change therefore rides in that bump with the others and does not get a bump of its own, which the title still says. Plan: stable_id_items_review_11152026/PLAN.md."  # 3728
+- op: update  # bc03
+  at: '2026-11-15T21:27:44Z'  # bc03
+  by: agent  # bc03
+  actor: jgstern_agent  # bc03
+  clock: 4  # bc03
+  nonce: bc03  # bc03
+  set:  # bc03
+    title: "rust: module-level const is emitted as kind variable, not the registry's const kind"  # bc03
+- op: discuss  # 1435
+  at: '2026-11-15T21:27:44Z'  # 1435
+  by: agent  # 1435
+  actor: jgstern_agent  # 1435
+  clock: 5  # 1435
+  nonce: '1435'  # 1435
+  message: "[OWNER RULING 2026-11-15] Title: the clause '(needs its own stable-id scheme bump)' is dropped at the owner's word ('yes'). It contradicted the ruling of the same day that every id-moving fix shares the one bump to v15. The change still moves stable ids and still needs a bump; it rides the v15 bump PR."  # 1435
