@@ -16,6 +16,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 - **The TUI list keeps its scroll position** when you mark items, toggle a column, reorder or switch edit mode, instead of jumping back to the top.
 - **TUI preferences are per user**, in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`: in the checkout, `git clean` deleted them and two accounts overwrote each other's. An existing file is carried over once.
 - **TUI tests no longer click a stale button region on a slow run**; a click that misses fails the test.
+- **The TUI footer is rebuilt only when its keys change**, not on every focus change; the app starts in about two thirds of the time.
 
 ### Documentation
 
