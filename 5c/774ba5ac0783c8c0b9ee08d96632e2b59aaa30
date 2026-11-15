@@ -1,0 +1,23 @@
+Original commit body from 694c435de8f7b8822d8cb4f7cc263b6c030984d9:
+
+Second round on the slow test files: what was slow after the five fixed costs of the previous PR. One commit each; evidence in ~/hypergumbo_lab_notebook/slow_tests_11142026.
+
+1. **perf(tracker): the TUI footer is rebuilt only when its keys change.** Textual rebuilds every footer key on each focus change; TrackerApp shows 21 and built them four times while starting. `StableFooter` skips a rebuild when what it would show is what it shows. App start 0.24 s -> 0.16 s; test_tui.py alone 64.3 s -> 47.6 s.
+
+2. **perf(run): the installed grammar versions are read once per environment.** Every run parsed the metadata of every installed distribution to list tree-sitter grammars: 33 ms of a 103 ms run on a one-file repository. New `hypergumbo_core.installed_env` keeps such answers until a distribution is installed, upgraded or removed; `py_deps` uses the same store. A minimal run: 0.103 s -> 0.069 s.
+
+3. **test: the producer-set tests scan the analyzer modules once.** One xdist group, and one walk per module for both scanners. Sum of the file's test durations: about 60 s -> about 9 s.
+
+4. **test(sketch): the no-file-fits-whole fixture is large without being costly.** Forty files of 2,500 tokens made of comment, not of ninety functions each. 9.9 s -> 0.99 s; red under the rule it was written against.
+
+5. **perf(catalogues): a catalogue's lookup indices are built on first use.** `load_catalog` constructed eleven catalogue objects per load and indexed all rows in each. Also fixes `dataclasses.replace(catalogue, ...)` clearing the original's index (shared dictionaries). `load_catalog("python")` 7.0 ms -> 3.6 ms.
+
+A sixth commit points one test at the catalogue's reader method: it read the private index dictionary directly, which is now empty until the first lookup (found by the whole-manifest run before this PR).
+
+Each commit message names its tests and mutation controls (each red, then restored).
+
+Measured and not built: config-file discovery encodes 5 to 10 known names per sketch (0.03 to 0.04 s); shipping their embeddings would add 127 KB and a regeneration step.
+
+Whole manifest (1,421 test files) with numpy, sentence-transformers and torch absent, as in CI: core 20,661 passed, the rest 18,074 passed, changed files at 100% coverage.
+
+Not measured here: the forty-file total with all five (taken on dev after merge).
