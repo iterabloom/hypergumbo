@@ -50,6 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
 - **Sketch no longer re-encodes its 180 fixed config probes on every run**: about a second faster, same output.
 - **A catalogue file is parsed once per process**, not on every load: `verify-claims` parsed fifteen files about forty times.
+- **The installed-package list is read once per run**, not twice per Python dependency manifest.
 - **Catalogue loaders reject unread keys**, naming them.
 - **Community catalogue overlays cannot mark a call as not I/O**, and their `trusted` sinks are withheld (ADR-0061 rulings 1–2). A catalogue named on the command line counts as your own.
 - **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.
@@ -180,6 +181,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Narrowing drops a test only after a run that measured every package**; local runs now do.
 - **A changed constant or class attribute selects every test that imports the file**, through other modules too; `--no-import-union` turns it off.
 - **`pathlib`'s pure path classes are catalogued as doing no I/O**, so using one no longer withholds a verdict.
+- **The `types` module is catalogued as doing no I/O.**
 - **A code change also selects the tests recorded reading the changed file from disk**, which the import graph cannot see: a check that scans every analyzer now runs in the PR that edits one. `--no-read-union` turns it off.
 - **A failing run stops 15 seconds after its first failure**, locally and in per-PR CI, and the likeliest failures run first. A failed or killed run keeps the evidence it gathered on which tests read which files.
 - **One OpenMP thread per parallel worker**: a measured full-suite run fell from 46 to 35 minutes. Tests with an expensive shared setup build it once per session or run on one worker.
