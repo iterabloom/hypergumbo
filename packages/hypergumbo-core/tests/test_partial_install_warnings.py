@@ -1181,7 +1181,16 @@ class TestFirstPartyRequirementCounts:
     registered linker) rather than mocked diagnostics, so the cgo counters
     themselves are exercised. Linkers register when ``hypergumbo_core.cli``
     imports their modules, hence the import in ``_ctx``.
+
+    The context's ``repo_root`` is an EMPTY directory. Some requirement
+    counters read the tree under it (the subprocess-CLI linker parses every
+    Python file there), and these tests are about the symbols handed in: with
+    ``Path(".")`` each call parsed the whole checkout, 48 s a test.
     """
+
+    @pytest.fixture(autouse=True)
+    def _empty_root(self, tmp_path: Path) -> None:
+        self._root = tmp_path
 
     @staticmethod
     def _sym(lang: str, name: str, path: str, tier: int) -> "Symbol":
@@ -1213,7 +1222,7 @@ class TestFirstPartyRequirementCounts:
         from hypergumbo_core.linkers.registry import LinkerContext
 
         return LinkerContext(
-            repo_root=Path("."),
+            repo_root=self._root,
             symbols=symbols,
             edges=edges or [],
             detected_languages={"go", "c"},
@@ -1282,7 +1291,14 @@ class TestRequirementLanguages:
     Diagnostics carry registered names (``jni-linker``), so a table keyed by
     short names (``jni`` / ``swift_objc`` / ``dependency``) would match
     nothing and neither would run.
+
+    ``repo_root`` is an empty directory, for the reason
+    ``TestFirstPartyRequirementCounts`` gives.
     """
+
+    @pytest.fixture(autouse=True)
+    def _empty_root(self, tmp_path: Path) -> None:
+        self._root = tmp_path
 
     @staticmethod
     def _sym(lang: str, name: str, kind: str = "function", **extra) -> "Symbol":
@@ -1299,13 +1315,12 @@ class TestRequirementLanguages:
             **extra,
         )
 
-    @staticmethod
-    def _ctx(symbols: list, languages: set, frameworks: set | None = None):
+    def _ctx(self, symbols: list, languages: set, frameworks: set | None = None):
         import hypergumbo_core.cli  # registers the linkers (import side effect)
         from hypergumbo_core.linkers.registry import LinkerContext
 
         return LinkerContext(
-            repo_root=Path("."),
+            repo_root=self._root,
             symbols=symbols,
             edges=[],
             detected_languages=languages,
