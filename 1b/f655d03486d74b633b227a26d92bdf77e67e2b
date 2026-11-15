@@ -1,0 +1,19 @@
+Original commit body from 9763010945eb4b71378add2bb9fcf24e7266b103:
+
+Five fixed costs, measured on the 40 slowest test files (72% of the suite's test time: 3,435 tests, 4,032 test-seconds). One commit each; evidence in ~/hypergumbo_lab_notebook/slow_tests_11142026.
+
+1. **test: linker-requirement tests no longer parse the whole checkout.** Nine tests built `LinkerContext(repo_root=Path("."))` and ran the real requirement checks, which parse every Python file under the root (48 s a call). They get an empty directory. test_partial_install_warnings.py 412 -> 24 test-seconds, test_dependency_linker.py 63 -> 2.
+
+2. **perf(sketch): the config extraction reads the shipped probe embeddings.** `_extract_config_embedding` encoded 180 fixed probe texts with the model on every call while their shipped embeddings had no reader. `sketch_embeddings.probe_embeddings` is now the one reader for all four probe sets, guarded by a digest of the model name and the texts and by the row width; otherwise the model encodes them as before. The duplicate lists in sketch.py are gone. 21 real repositories: the same 548 lines in the same order, 103.7 -> 85.9 s. Addresses WI-pizos-jinun-sukuf-ditak-ginup-zamob-jidit-zagiz.
+
+3. **perf(catalogues): a catalogue file is parsed once per process.** `yaml_catalogs.parse_yaml_once` keeps what was parsed, keyed by parser and whole text, a deep copy per caller, a refused text never kept, 256 texts at most. Used by `load_yaml_strict`, `read_catalogue_yaml`, the dataflow readers and `catalogue_tiers`. Six test files (853 tests): 505 -> 82 test-seconds.
+
+4. **perf(python): the installed-distribution map is built once per environment.** `py_deps._build_dist_to_import_map` keeps the inverted `packages_distributions()` map until the resolver, `sys.path` or a `*.dist-info` / `*.egg-info` directory changes. 0.36 s a call -> about 1 ms after the first. Adds a `types` completeness entry to the Python I/O catalogue (the claims-coverage gate named it).
+
+5. **perf(run): a garbage collection is forced only on a very large graph.** The four `gc.collect()` calls per run freed 0 MB on six repositories up to 394,052 symbols and edges, at 0.17 to 1.6 s each. They now run only at 500,000 or more.
+
+Each commit message names its tests and its mutation controls (each red, then restored).
+
+Not measured: the 40-file total after all five together (to be measured on dev after merge); a repository above 394,052 symbols and edges; the test files outside those 40.
+
+The manifest is the whole suite (1,418 test files): cli.py, io_boundary.py and yaml_catalogs.py have import-time changes and are imported under every test.
