@@ -1,0 +1,21 @@
+- op: create  # 9891
+  at: '2026-11-15T19:47:36Z'  # 9891
+  by: agent  # 9891
+  actor: jgstern_agent  # 9891
+  clock: 1  # 9891
+  nonce: '9891'  # 9891
+  data:  # 9891
+    kind: work_item  # 9891
+    title: "No check that a node id's name slot equals the sanitized Symbol.name (ADR-0036 Ruling 1 round-trip): the ADR records it as not landed and nothing tracks it"  # 9891
+    status: todo_hard  # 9891
+    priority: 3  # 9891
+    parent:  # 9891
+    tags:  # 9891
+    - id_format  # 9891
+    - identity  # 9891
+    isbefore: []  # 9891
+    duplicate_of: []  # 9891
+    not_duplicate_of: []  # 9891
+    pr_ref:  # 9891
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nGAP. ADR-0036's status line reads: \"the Ruling-2 round-trip and the name-slot non-empty check are ERROR since\nWI-popak, 2026-10-24; Ruling 3 is enforced as amended by WI-dipim; the full Ruling-1 name-slot round-trip is NOT\nlanded\". spec_validator.py:2040-2056 checks that the name slot is non-empty and that the kind slot matches; no\ncheck compares the id's name slot with sanitize(Symbol.name). The umbrella INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah relies on that check existing\nand no open item asks for it (searched the tracker for \"name slot\" / \"name-slot\" on 2026-11-15: 33 items, none is\nthis check).\n\nASK. Measure first: count, on the bakeoff corpus surveys already on disk, how many nodes have a name slot that\ndiffers from the sanitized Symbol.name, by producer. Then add the check to spec_validator as advisory, and promote\nit to error at 0, the way WI-popak did for the kind slot.\n\nCONTEXT. ADR-0036 Ruling 1 makes the id's name slot deliberately lossy (':' becomes '.'), with meta callee_name as\nthe lossless home; the check is \"slot == sanitized(name)\", not \"slot == name\". WI-dodom (open) is one known\nviolator family: a JavaScript symbol named from an event-string key keeps a colon in its name slot.\n\nACCEPTANCE. The check exists, its count on the corpus is recorded on this item, and ADR-0036's status line says\nwhat is enforced.\n\nNOT CHECKED: the count. This item was filed from the ADR's own statement and a reading of the validator, not from a\nmeasurement."  # 9891
+    fields: {}  # 9891

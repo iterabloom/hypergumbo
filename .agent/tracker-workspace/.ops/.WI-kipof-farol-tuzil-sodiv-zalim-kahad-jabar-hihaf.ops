@@ -1,0 +1,22 @@
+- op: create  # f201
+  at: '2026-11-15T19:47:47Z'  # f201
+  by: agent  # f201
+  actor: jgstern_agent  # f201
+  clock: 1  # f201
+  nonce: f201  # f201
+  data:  # f201
+    kind: work_item  # f201
+    title: "swift: constructing a function-local type binds the init of a same-name type local to ANOTHER function (symbol_by_name keeps the last Inner.init)"  # f201
+    status: todo_hard  # f201
+    priority: 3  # f201
+    parent:  # f201
+    tags:  # f201
+    - analysis_quality  # f201
+    - swift  # f201
+    - call_graph  # f201
+    isbefore: []  # f201
+    duplicate_of: []  # f201
+    not_duplicate_of: []  # f201
+    pr_ref:  # f201
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. Two functions each declare a local `struct Inner` with an init. A construction `Inner(x: 1)` inside the\nfirst function is bound to the second function's `Inner.init`.\n\nREPRO. ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/swift/src/a.swift:\n\n    func f() {\n        struct Inner { init(x: Int) {} ; func go() {} }\n        _ = Inner(x: 1)\n    }\n    func g() {\n        struct Inner { init(x: Int) {} ; func go() {} }\n        _ = Inner(x: 2)\n    }\n\n`hypergumbo run` gives two calls edges, f -> Inner.init at line 6 and g -> Inner.init at line 6. The init declared\nat line 2 has no caller.\n\nCAUSE, by reading. swift.py registers each symbol under its emitted name in one per-file dict\n(analysis.symbol_by_name[full_name] = symbol, e.g. :1175, :1646, :1656); both inits are named `Inner.init`, so the\nlater one replaces the earlier and every lookup returns it. The types themselves get distinct ids.\n\nRELATED, not the same. WI-muvab-dipik-luhik-tosug-valum-badoj-tagum-zufif: the two inits also tie on stable_id (a different consequence of the same naming).\nWI-joror-hizal-dutap-jajub-sodij-jijuj-lamil-dozuf: three other construction shapes (generic, Outer.Inner(...), inherited init).\n\nFIX DIRECTION. Resolve a construction against the types visible from the call site's enclosing scope (innermost\nfirst), not against a file-wide name.\n\nACCEPTANCE. On the fixture, f's construction binds the init at line 2 and g's the init at line 6; a top-level type\nwith a same-name function-local type elsewhere binds to the top-level one from outside that function.\n\nNOT CHECKED: classes and enums in the same position; methods (`Inner.go`) called on the constructed value; corpus\ncounts."  # f201
+    fields: {}  # f201

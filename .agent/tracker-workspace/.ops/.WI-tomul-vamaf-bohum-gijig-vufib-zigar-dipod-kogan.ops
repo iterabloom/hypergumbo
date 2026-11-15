@@ -1,0 +1,22 @@
+- op: create  # 5aea
+  at: '2026-11-15T19:48:21Z'  # 5aea
+  by: agent  # 5aea
+  actor: jgstern_agent  # 5aea
+  clock: 1  # 5aea
+  nonce: 5aea  # 5aea
+  data:  # 5aea
+    kind: work_item  # 5aea
+    title: "vue: the analyzer's component-import edge carries an origin_run_id that matches no AnalysisRun, so every Vue file with a component import fails validation (dangling provenance)"  # 5aea
+    status: todo_hard  # 5aea
+    priority: 2  # 5aea
+    parent:  # 5aea
+    tags:  # 5aea
+    - analysis_quality  # 5aea
+    - vue  # 5aea
+    - provenance  # 5aea
+    isbefore: []  # 5aea
+    duplicate_of: []  # 5aea
+    not_duplicate_of: []  # 5aea
+    pr_ref:  # 5aea
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0. Not one of the eight findings listed in the review; seen while re-running the\nduplicate-file-node fixture.\n\nDEFECT. REPRO, ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/vue/src (two files):\n\n    App.vue   <template><Kid /></template>\n              <script>\n              import Kid from \"./Kid.vue\";\n              export default { components: { Kid } };\n              </script>\n    Kid.vue   <template><p>k</p></template>\n              <script>\n              export default { name: \"Kid\" };\n              </script>\n\n`hypergumbo run` reports one validation violation, severity error, validator_class cross_field:\n\"Edge ... names origin_run_id 'uuid:...' with no matching AnalysisRun (dangling provenance FK)\". The edge is\n`vue:App.vue:1-1:file:file imports -> vue:./Kid.vue:0-0:Kid:external_symbol`, origin ['vue']. The `vue` pass has\nan AnalysisRun in analysis_runs with a different execution_id.\n\nCAUSE, by reading. hypergumbo_lang_common/vue.py:225 creates the pass's run (`AnalysisRun.create(pass_id=PASS_ID,\n...)`), and a helper at :588 mints its own id, `execution_id = f\"uuid:{uuid.uuid4()}\"`, which the edge built at\n:618 uses as origin_run_id. That second id belongs to no run.\n\nEFFECT. The provenance join from this edge to its pass fails, and the survey of any Vue project with a component\nimport carries a validator error.\n\nFIX DIRECTION. Pass the run's execution_id into the helper instead of minting one. Then sweep by mechanism: grep\nevery analyzer and linker for a uuid4() that is not inside AnalysisRun.create.\n\nACCEPTANCE. The fixture's validation_report has 0 violations; a test builds a Vue component import and asserts the\nedge's origin_run_id is the `vue` run's execution_id; the sweep's result is recorded here.\n\nRELATED: WI-modan-tizob-bilag-fanas-simip-guzuz-homoj-rimut (the same edge's target is a phantom external_symbol although Kid.vue is in the repository).\nEarlier items of this family, all done: WI-mosil, WI-higap, WI-kojig (empty or mismatched origin_run_id).\nNOT CHECKED: svelte.py and astro.py (svelte.py takes execution_id as a parameter; not traced to its source)."  # 5aea
+    fields: {}  # 5aea

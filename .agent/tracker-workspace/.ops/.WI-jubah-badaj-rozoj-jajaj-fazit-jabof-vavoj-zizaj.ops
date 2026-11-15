@@ -1,0 +1,21 @@
+- op: create  # 6d03
+  at: '2026-11-15T19:47:42Z'  # 6d03
+  by: agent  # 6d03
+  actor: jgstern_agent  # 6d03
+  clock: 1  # 6d03
+  nonce: 6d03  # 6d03
+  data:  # 6d03
+    kind: work_item  # 6d03
+    title: "verilog: an instantiation with zero or one port, a positional port, .* or an instance array emits no instantiates edge (the grammar calls it checker_instantiation or udp_instantiation)"  # 6d03
+    status: todo_hard  # 6d03
+    priority: 3  # 6d03
+    parent:  # 6d03
+    tags:  # 6d03
+    - analysis_quality  # 6d03
+    - verilog  # 6d03
+    isbefore: []  # 6d03
+    duplicate_of: []  # 6d03
+    not_duplicate_of: []  # 6d03
+    pr_ref:  # 6d03
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. verilog.py:262 matches the node type `module_instantiation` only. tree-sitter-verilog 1.0.3 gives that type\nto an instantiation with two or more NAMED ports (and to parameterised ones); the other forms parse as different\nnode types and produce no edge:\n\n    a u_a(.x(w));        checker_instantiation     no edge\n    a u_b();             checker_instantiation     no edge\n    a u_c(w);            checker_instantiation     no edge\n    a u_h(.*);           checker_instantiation     no edge\n    a u_g[3:0](.x(w));   checker_instantiation     no edge   (reviewer's run)\n    a u_f(w, z);         udp_instantiation         no edge   (reviewer's run)\n    c u_e(.x(w), .y(z)); module_instantiation      instantiates d -> c\n    a #(.P(1)) u_d(.x(w)); module_instantiation    edge                 (reviewer's run)\n\nREPRO. ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/verilog/src/d.v (modules a, b, c, d; b instantiates a four ways, d instantiates c with two\nnamed ports). `hypergumbo run` emits exactly one instantiates edge, d -> c. The four instantiations of `a` in `b`\nemit nothing, so `a` has no incoming edge and `b` no outgoing one.\n\nEFFECT. A module instantiated only through one-port or positional forms looks unused, and its parent looks like a\nleaf. Single-port named instantiation is ordinary Verilog.\n\nFIX DIRECTION. Treat checker_instantiation and udp_instantiation whose first identifier names a module declared in\nthe repository as a module instantiation (the grammar cannot tell them apart without the declaration; the analyzer\ncan). Keep a real checker or UDP instance, where the name is declared as one, out.\n\nACCEPTANCE. On the fixture, b has four instantiates edges to a and d has one to c; a fixture with a declared\n`checker` and a declared `primitive` shows no module edge for their instances.\n\nOutside WI-bodug-jikot-tuvak-vupum-hifop-kabit-damaj-gamir (tasks, functions and nets emit no symbol), which is about symbols, not instantiation edges.\nNOT CHECKED: corpus counts; SystemVerilog interface instances."  # 6d03
+    fields: {}  # 6d03

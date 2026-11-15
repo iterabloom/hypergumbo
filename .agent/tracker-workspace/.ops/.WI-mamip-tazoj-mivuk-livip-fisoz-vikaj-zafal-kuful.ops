@@ -1,0 +1,22 @@
+- op: create  # c246
+  at: '2026-11-15T19:47:30Z'  # c246
+  by: agent  # c246
+  actor: jgstern_agent  # c246
+  clock: 1  # c246
+  nonce: c246  # c246
+  data:  # c246
+    kind: work_item  # c246
+    title: "scripts/check-id-construction passes a producer that hands the id factory a role word: it checks id grammar, not that the kind slot equals Symbol.kind"  # c246
+    status: todo_hard  # c246
+    priority: 3  # c246
+    parent:  # c246
+    tags:  # c246
+    - id_format  # c246
+    - identity  # c246
+    - developer_experience  # c246
+    isbefore: []  # c246
+    duplicate_of: []  # c246
+    not_duplicate_of: []  # c246
+    pr_ref:  # c246
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. scripts/check-id-construction (WI-vodin, pre-commit at .githooks/pre-commit:433) exits 0 on today's tree\nwhile four producers emit a Symbol.id whose kind slot differs from Symbol.kind (INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil: robot test_case/test,\nJSX route/function, BitBake python_task/task, json_config export_entry/export). The runtime validator reports them\n(id_format, \"kind-slot ... does not match Symbol.kind\"), but only on a repository that contains such files, which\nis the gap the linter was written to close (its own header says so).\n\nWHY IT MISSES THEM. The linter checks the GRAMMAR of every expression that can reach Symbol(id=...) or\nEdge(id=...). robot.py and json_config.py are grammatical: they call the factory and pass it a role word as its\n`kind` argument, then build the Symbol with a different `kind`.\n\nASK. In the same static pass, when a Symbol(...) construction and the id factory call that feeds its id= are in one\nfunction, compare the two kind arguments when both are string literals or the same name, and report a mismatch.\nDecide and state what happens when one side is not statically known (report nothing, or report \"cannot verify\").\n\nREPRO. `scripts/check-id-construction; echo $?` prints 0. Fixture ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/v_dulah (package.json with an\n`exports` map): `hypergumbo run --include-docs` gives json:package.json:1-1:.:export_entry on a kind=export Symbol\nwith 2 id_format errors.\n\nACCEPTANCE. The linter exits 1 naming robot.py and json_config.py on today's tree (and whichever of the JSX and\nBitBake sites it can see statically), and exits 0 once INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil's limbs are fixed.\n\nNOT CHECKED: how many of the four sites are visible to a one-function static comparison (JSX and BitBake build the\nid by hand rather than through the factory)."  # c246
+    fields: {}  # c246

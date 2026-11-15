@@ -321,3 +321,21 @@
   clock: 39  # 3f9b
   nonce: 3f9b  # 3f9b
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096, scheme v14. Fixture re-run: robot `robot:tests.robot:2-6:My Test:test_case` kind=test (robot.py:319/333); JSX `javascript:app.jsx:6-6:Users:route` kind=function (js_ts.py:4734); BitBake `bitbake:recipes/bar.bb:0-0:do_patchit:python_task` kind=task (bitbake.py:337/355); 2 id_format errors each. Pony: 0 violations, `actor`/`primitive` registered, WI-higik and WI-totam done. FOURTH PRODUCER not in the statement: package.json `exports` gives `json:package.json:1-1:.:export_entry` with kind=export (json_config.py:571, :632), 2 errors per id. BitBake `inherit` still yields two `<unknown>`-slot nodes (WI-misus/WI-zihij family). Self-analysis extract: 0 mismatches in 66,060 nodes; it contains none of these producers. Fleet count not run. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-dulah.md. No status or priority change made by this review."  # 3f9b
+- op: update  # 747d
+  at: '2026-11-15T19:47:29Z'  # 747d
+  by: agent  # 747d
+  actor: jgstern_agent  # 747d
+  clock: 40  # 747d
+  nonce: 747d  # 747d
+  set:  # 747d
+    title: "node.id kind slot disagrees with Symbol.kind for robot test_case, JSX route markers (INV-lubij), BitBake python_task and json_config export_entry; WI-banod T1 FIXED (v10), pony actor/primitive moved to vocabulary (WI-higik/WI-totam)"  # 747d
+    fields:  # 747d
+      statement: "node.id is documented as 'lang:path:span:name:kind' and its kind slot must equal Symbol.kind (ADR-0036). RE-SCOPED 2026-10-25: the stable_id = node id limb (WI-banod T1) is FIXED (ad925ef6d5, scheme v10), and the scheme gate it waited on has lapsed (v10-v14 are unreleased on dev; the last release, v9.2.0, carries v9). Pony 'actor'/'primitive' round-trip correctly (WI-higik and WI-totam are done), not this item. LIVE LIMBS, each re-run 2026-11-15 at dev e2b6ab8096: (1) robot passes kind 'test_case' while building a kind='test' Symbol (robot.py:319/333); (2) JSX <Route> markers are hand-built with kind 'route' on a kind=function symbol (js_ts.py:4734; INV-lubij); (3) BitBake python tasks carry 'python_task' on a kind=task Symbol (bitbake.py:337/355); (4) ADDED 2026-11-15 by owner ruling: json_config builds a kind='export' Symbol for a package.json `exports` entry with kind slot 'export_entry', e.g. json:package.json:1-1:.:export_entry (json_config.py:571, :632). Each fires 2 id_format errors per id. OPEN QUESTION: located BitBake symbols use the 0-0 span slot (bitbake.py:70-78) though ADR-0036 Ruling 3 reserves 0-0 for synthetic nodes. CLOSE CONDITION: a fleet-wide measurement (including the owed 28-survey lang-slot count), not a per-family 0."  # 747d
+      root_cause: "A producer passes a ROLE word as the kind slot of node.id (robot 'test_case' on kind=test, JSX route marker 'route' on kind=function, BitBake 'python_task' on kind=task, json_config 'export_entry' on kind=export) instead of deriving the slot from Symbol.kind via make_symbol_id / make_route_symbol. robot and json_config do it THROUGH the factory, by handing it the role word as its kind argument, so scripts/check-id-construction (which checks grammar) passes. The earlier 'NPM/Rust/route emitters ... colons' mechanism is drained (WI-banod, scheme v10)."  # 747d
+- op: discuss  # 2cbe
+  at: '2026-11-15T19:47:29Z'  # 2cbe
+  by: agent  # 2cbe
+  actor: jgstern_agent  # 2cbe
+  clock: 41  # 2cbe
+  nonce: 2cbe  # 2cbe
+  message: "OWNER RULING 2026-11-15: the json_config `export_entry` producer joins this item as live limb (4). Title, statement and root_cause updated; line citations and the scheme range brought to today's values in the same edit. Repro for limb 4: a package.json with an `exports` map, `hypergumbo run --include-docs`, gives json:package.json:1-1:.:export_entry on a Symbol of kind export and the validator message \"kind-slot 'export_entry' does not match Symbol.kind 'export'\" (fixture ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/v_dulah). No status change."  # 2cbe
