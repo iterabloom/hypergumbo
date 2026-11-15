@@ -657,6 +657,37 @@ def _get_subparsers_by_group(
     return result
 
 
+#: A run whose graph has fewer symbols and edges than this forces no garbage
+#: collection. See :func:`_collect_if_large`.
+_FORCED_GC_MIN_GRAPH = 500_000
+
+
+def _collect_if_large(graph_size: int) -> None:
+    """Force a full garbage collection, on a large graph only.
+
+    ``run_survey`` forces a collection after writing each budget tier and
+    once before the final write, to hand memory back early on very large
+    repositories. A full collection walks every tracked object in the
+    PROCESS, so what it costs depends on the process and not on the run.
+
+    MEASURED (2026-11-14, six repositories, 1,048 to 117,488 symbols; the
+    largest has 394,052 symbols and edges and takes 12 minutes): every one of
+    the four collections of every run freed 0 MB and found at most 472
+    objects, because the symbol and edge lists are released by reference
+    counting the moment they are deleted. Each cost 0.17 to 0.34 s on the
+    five smaller repositories and 1.4 to 1.6 s on the largest; inside a test
+    worker with a large heap, 0.36 s, which was 30% of the test time of the
+    forty slowest test files.
+
+    So below ``_FORCED_GC_MIN_GRAPH`` symbols and edges nothing is forced.
+    The threshold sits above the largest graph measured: no benefit was seen
+    up to there, and nothing larger was measured, so a larger run behaves as
+    it did before.
+    """
+    if graph_size >= _FORCED_GC_MIN_GRAPH:
+        gc.collect()
+
+
 def _log_memory(label: str) -> None:  # pragma: no cover
     """Log current memory usage if HG_MEMORY_DEBUG is set.
 
@@ -13532,9 +13563,9 @@ def run_survey(
                 else:
                     user_out_open_json_dump(budget_path, tiered_map)
                 generated_files.append(budget_path)
-                # Free memory between tiers (helps with large repos like tensorflow)
+                # Free memory between tiers (for very large repositories)
                 del tiered_map
-                gc.collect()
+                _collect_if_large(len(all_symbols) + len(all_edges))
             except ValueError:
                 # Skip invalid tier specs silently
                 pass
@@ -13609,13 +13640,15 @@ def run_survey(
     )
 
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
-    # All data is now in behavior_map as dicts. On a large repo this can free
-    # several GB of memory before the final write.
+    # All data is now in behavior_map as dicts. The deletions release the
+    # lists by reference counting; the collection after them is for cycles,
+    # and is forced on a very large graph only (_collect_if_large).
+    _graph_size = len(all_symbols) + len(all_edges)
     del all_symbols
     del all_edges
     del ranked_symbols
     del _fin_ctx  # holds refs to symbols/edges/usage_contexts via the carrier
-    gc.collect()
+    _collect_if_large(_graph_size)
     _log_memory("after cleanup")
 
     run_status.phase("Writing output")
