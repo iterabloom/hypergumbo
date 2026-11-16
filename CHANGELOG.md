@@ -151,6 +151,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Wolfram `.m`-only packages are analysed.**
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**
+- **The `export` symbol kind's description names its two real producers.**
 
 #### hypergumbo's own files, installs and secret scans
 
