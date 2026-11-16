@@ -477,8 +477,13 @@ Parsers emit to `AnalysisIR`:
 class Symbol:
     # Field order below mirrors ir.py. Every field of the dataclass is listed;
     # a pinning test (test_spec_ir_contract.py) fails if this block drifts.
-    id: str                    # location-based identifier (grammar: ADR-0036;
-                               # constructed only via the ADR-0034 factories)
+    id: NodeId                 # location-based identifier (grammar: ADR-0036;
+                               # constructed only via the ADR-0034 factories).
+                               # NodeId is a typing.NewType over str (ir.py):
+                               # plain str at run time and on the wire, distinct
+                               # to mypy; UsageContext.symbol_ref is one too.
+                               # Edge.src/dst stay str (a dst may be an
+                               # unresolved reference outside the grammar)
     name: str
     kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
     language: Optional[str]    # None for ADR-0031 Class B synthetic stand-ins
