@@ -1173,10 +1173,14 @@ void caller() {
 
         result = analyze_cpp(tmp_path)
 
+        # The class edge, and one to the constructor the two arguments
+        # select (construction.py reaches it alone).
         inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
-        assert len(inst_edges) == 1
-        assert "Config" in inst_edges[0].dst
-        assert inst_edges[0].evidence_type == "stack_construction"
+        assert sorted(e.dst.rsplit(":", 2)[-2:][1] for e in inst_edges) == [
+            "class", "method",
+        ]
+        assert all("Config" in e.dst for e in inst_edges)
+        assert {e.evidence_type for e in inst_edges} == {"stack_construction"}
 
     def test_brace_initialization(self, tmp_path: Path) -> None:
         """``Widget w{};`` should create an instantiates edge."""
