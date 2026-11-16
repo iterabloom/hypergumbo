@@ -100,16 +100,11 @@ _KIND_ARGUMENT_OF_FACTORY: dict[str, int] = {
 }
 
 #: ``(repo-relative path, id kind word, Symbol kind) -> why it stands``.
-KNOWN_KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {
-    (
-        "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/twig.py",
-        "function_call", "call_site",
-    ): (
-        "the word is also the kind input of make_doc_stable_id, so correcting "
-        "it changes the stable id of every twig function call (measured: 2 of "
-        "2 on a two-call fixture); it goes with the next stable-id scheme bump"
-    ),
-}
+#: Empty: robot's ``test_case`` and twig's ``function_call``, the two words
+#: that fed a stable id, were corrected with the v15 stable-id scheme. A
+#: future mismatch whose correction must wait for a scheme bump is declared
+#: here the same way.
+KNOWN_KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {}
 
 #: The constructors whose ``id=`` slot this rule governs, and the grammar each
 #: one answers to. An ``Edge.id`` is ``edge:sha256:<16hex>``, a content digest,

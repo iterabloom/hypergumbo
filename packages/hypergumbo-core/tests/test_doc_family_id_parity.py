@@ -65,8 +65,9 @@ being merely unfixed**: the ``kind`` argument to ``make_doc_symbol_ids`` feeds
 ``stable_id`` — an existing computed identity value, which under the
 scheme-bump principle requires a scheme bump. ANY bump will do: the fix waits
 on no other item, and the next bump is to include it (robot's ``test_case``
-word went with the v15 scheme). Recording them as strict xfails means the bump
-that corrects the word XPASSes and forces promotion.
+and twig's ``function_call`` went with the v15 scheme). Recording them as
+strict xfails means the bump that corrects the word XPASSes and forces
+promotion.
 """
 from __future__ import annotations
 
@@ -276,8 +277,8 @@ CASE_FILES: dict[str, tuple[str, str]] = {
           <input name="{{ name }}">
         {% endmacro %}
     """),
-    # A function call in an output directive, in a case of its own so that the
-    # hole it records does not excuse the other twig kinds above.
+    # A function call in an output directive, in a case of its own so that a
+    # hole it records cannot excuse the other twig kinds above.
     "twig-call": ("link.twig", """\
         <a href="{{ path('home') }}">home</a>
         {{ dump(items) }}
@@ -322,16 +323,9 @@ CANONICAL_GRAMMAR_HOLES: dict[str, str] = {}
 # Each is a producer writing a word into the kind-slot that is not the
 # record's own registered kind, and whose correction needs a stable_id scheme
 # bump (see the module docstring):
-KIND_SLOT_HOLES: dict[str, str] = {
-    "twig-call": (
-        "twig.py passes kind='function_call' to make_doc_symbol_ids while the "
-        "Symbol it builds carries kind='call_site' (the fold of audit-findings "
-        "0010 changed Symbol.kind and left the id word). The argument feeds "
-        "make_doc_stable_id, so correcting the word moves the stable id of "
-        "every twig function call (measured 2026-11-15 on these two calls: 2 "
-        "of 2). It goes with the next scheme bump."
-    ),
-}
+# Empty: robot's ``test_case`` and twig's ``function_call`` were corrected
+# with the v15 stable-id scheme.
+KIND_SLOT_HOLES: dict[str, str] = {}
 
 
 def _cases(holes: dict[str, str]) -> list:

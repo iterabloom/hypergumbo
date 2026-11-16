@@ -251,6 +251,35 @@ Hello, {{ user.name }}!
                 f"non-canonical stable_id: {sym.stable_id!r} (kind={sym.kind})"
             )
 
+    def test_every_id_names_the_symbols_own_kind(self, tmp_path: Path) -> None:
+        """ADR-0036 Ruling 2: the id's kind word IS ``Symbol.kind``, for every
+        kind twig emits, and the stable id hashes that same word.
+
+        A call site was minted with the word ``function_call`` on a
+        ``kind="call_site"`` Symbol, and ``make_doc_symbol_ids`` feeds one word
+        to both ids, so the stable id hashed it too. Every directive below is
+        at the top level, so each stable id is hashed with an empty scope.
+        """
+        from hypergumbo_core.analyze.base import make_doc_stable_id
+
+        make_twig_file(tmp_path, "page.twig", """{% block title %}T{% endblock %}
+{% macro field(name) %}x{% endmacro %}
+{% for item in items %}x{% endfor %}
+{% if user %}x{% endif %}
+{{ dump(items) }}
+{{ path('home') }}""")
+        result = analyze_twig(tmp_path)
+        kinds = sorted(s.kind for s in result.symbols)
+        assert kinds == [
+            "block", "call_site", "call_site", "conditional", "for_loop", "macro",
+        ], kinds
+        for symbol in result.symbols:
+            _head, _span, id_name, id_kind = symbol.id.rsplit(":", 3)
+            assert id_kind == symbol.kind, symbol.id
+            assert symbol.stable_id == make_doc_stable_id(
+                "twig", symbol.path, symbol.kind, id_name, 0, 0,
+            ), (symbol.kind, symbol.name)
+
     def test_span_info(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")
         result = analyze_twig(tmp_path)
