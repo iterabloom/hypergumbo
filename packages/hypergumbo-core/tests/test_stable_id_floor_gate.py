@@ -1277,6 +1277,14 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "  record R : Set where\n    field\n      x : Nat\n",
         nested="  module C where\n    v : Nat\n    v = zero\n"
                "  record R : Set where\n    field\n      x : Nat\n"),
+    # An anonymous module (``module _ (X : Set) where``) is not a declaration:
+    # its contents belong to the enclosing module. Two of them tied on the name
+    # ``_`` and were split by order, so deleting the first moved the second's id.
+    "agda-anonymous": SiblingCase(
+        "src/Anon.agda", "module Anon where\n\n",
+        "module _ (X : Set) where\n  f : Set\n  f = X\n\n",
+        "module _ (Y : Set) where\n  g : Set\n  g = Y\n\n"
+        "module Outer where\n  module _ {Z : Set} where\n    h : Set\n    h = Z\n"),
     "fsharp-nested": SiblingCase(
         "src/Nested.fs", "module Nested\n\n",
         "module A =\n    let mutable x = 1\n    let run y = y\n"
