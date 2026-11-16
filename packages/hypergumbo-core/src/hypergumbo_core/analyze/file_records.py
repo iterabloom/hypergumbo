@@ -98,6 +98,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from ..ir import Edge, Span, Symbol, UsageContext
+from ..discovery import is_excluded
 from ..paths import normalize_path
 from ..taxonomy import get_language
 from .base import make_file_id
@@ -313,7 +314,10 @@ def file_reference_dst(
     resolves. Only ``./`` and ``../`` specifiers are relative; a bare or
     aliased one (``@/components/X.vue``, ``$lib/X.svelte``) is configuration
     this function does not read, and gets None, as does a path naming no
-    existing file. The caller keeps its placeholder dst for those.
+    existing file, and a file that exists and that discovery leaves out of the
+    run (git ignores it and does not track it, or a default exclude covers
+    it): the disk is not the analysed tree. The caller keeps its placeholder
+    dst for those.
 
     The id's language is the TARGET's own (``taxonomy.get_language``), else
     ``importer_lang`` for a format the taxonomy does not list: the analyzers
@@ -330,5 +334,8 @@ def file_reference_dst(
         return None
     target = Path(os.path.normpath(importer_file.parent / import_path))
     if not target.is_file():
+        return None
+    repo_root = importer_file.parents[len(Path(importer_rel_path).parts) - 1]
+    if is_excluded(target, repo_root):
         return None
     return make_file_id(get_language(target) or importer_lang, rel)
