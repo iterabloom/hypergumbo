@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **378** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **61538** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13842, of which 7936 are functions, methods or classes
-- **247282** edges, test code included, by type:
-  - calls: 139691
-  - contains: 57398
-  - imports: 21143
-  - instantiates: 13286
-  - references: 11550
-  - module_attr_ref: 2343
-  - other: 1871
+- **379** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 122 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **61660** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13873, of which 7956 are functions, methods or classes
+- **247848** edges, test code included, by type:
+  - calls: 139966
+  - contains: 57514
+  - imports: 21240
+  - instantiates: 13311
+  - references: 11580
+  - module_attr_ref: 2347
+  - other: 1890
 
 ## Package Architecture
 
@@ -641,6 +641,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.dataflow_scope`**: Published data-flow coverage scope for taint output — INV-karud cla...
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.ddg_build`**: Repo-level DDG construction: walk a repo, build a CFG per function,...
+- **`hypergumbo_core.declared_test_inputs`**: Test-input directories a repository declares in ``.hypergumbo.toml`...
 - **`hypergumbo_core.discovery`**: File discovery: excludes, installed-dependency detection, locales, ...
 - **`hypergumbo_core.edge_types`**: Canonical registry of edge types in hypergumbo's behavior map.
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
@@ -1004,8 +1005,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 8c1a76f22893
-  commit_count: 9322
-  hypergumbo: 9.2.0
+  commit: d0447014af2e
+  commit_count: 9343
+  hypergumbo: 10.0.0
   python: 3.12.3
 -->
