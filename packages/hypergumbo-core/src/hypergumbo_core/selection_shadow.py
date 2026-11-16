@@ -66,12 +66,37 @@ def _resolve_classname(classname: str, repo_root: Path) -> Optional[str]:
     actual ``.py`` file. Returns None when nothing resolves, so the caller can
     count it rather than silently inventing a path.
     """
+    if not classname:
+        return None
     parts = classname.split(".")
     for cut in range(len(parts), 0, -1):
         candidate = Path(*parts[:cut]).with_suffix(".py")
         if (repo_root / candidate).exists():
             return str(candidate)
     return None
+
+
+def _case_node_id(
+    classname: str, name: str, repo_root: Path,
+) -> tuple[Optional[str], bool]:
+    """``(node id, it is a test)`` for one junit ``<testcase>``, from its two
+    attributes; id None when no file on disk answers to it.
+
+    A MODULE THAT NEVER IMPORTED IS REPORTED DIFFERENTLY. pytest writes a
+    module skipped or broken at import with an EMPTY classname and the module's
+    dotted path as the name. Its id is the file alone, and it is not a test:
+    nothing in it ran. Reading such an entry as an ordinary one raised on the
+    empty classname, on any machine where one optional import is missing, and
+    the caller lost the whole run's observation.
+    """
+    if not classname:
+        return _resolve_classname(name, repo_root), False
+    path = _resolve_classname(classname, repo_root)
+    if path is None:
+        return None, True
+    module_parts = len(Path(path).with_suffix("").parts)
+    classes = classname.split(".")[module_parts:]
+    return "::".join([path, *classes, name]), True
 
 
 def ran_tests_from_junit(junit_path: Path, repo_root: Path) -> set[str]:
@@ -90,14 +115,10 @@ def ran_tests_from_junit(junit_path: Path, repo_root: Path) -> set[str]:
     root = ET.parse(junit_path).getroot()  # noqa: S314  # nosec B314
     out: set[str] = set()
     for case in root.iter("testcase"):
-        classname = case.get("classname") or ""
-        name = case.get("name") or ""
-        path = _resolve_classname(classname, repo_root)
-        if path is None:
-            continue
-        module_parts = len(Path(path).with_suffix("").parts)
-        classes = classname.split(".")[module_parts:]
-        out.add("::".join([path, *classes, name]))
+        node, is_test = _case_node_id(
+            case.get("classname") or "", case.get("name") or "", repo_root)
+        if node is not None and is_test:
+            out.add(node)
     return out
 
 
@@ -118,13 +139,10 @@ def failed_tests_from_junit(junit_path: Path, repo_root: Path) -> set[str]:
     for case in root.iter("testcase"):
         if not any(child.tag in ("failure", "error") for child in case):
             continue
-        classname = case.get("classname") or ""
-        path = _resolve_classname(classname, repo_root)
-        if path is None:
-            continue
-        module_parts = len(Path(path).with_suffix("").parts)
-        classes = classname.split(".")[module_parts:]
-        out.add("::".join([path, *classes, case.get("name") or ""]))
+        node, _ = _case_node_id(
+            case.get("classname") or "", case.get("name") or "", repo_root)
+        if node is not None:
+            out.add(node)
     return out
 
 
