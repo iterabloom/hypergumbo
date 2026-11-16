@@ -2,6 +2,7 @@
 """Tests for Blade template analyzer."""
 from pathlib import Path
 
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_lang_extended1.blade import analyze_blade
 
 
@@ -64,3 +65,150 @@ class TestAnalyzeBlade:
         (tmp_path / "page.blade.php").write_text('@section("content")\n@endsection')
         result = analyze_blade(tmp_path)
         assert any(s.name == "content" for s in result.symbols)
+
+
+def _sid(kind: str, name: str, scope: tuple[str, ...], path: str = "t.blade.php") -> str:
+    """The stable id a symbol nested in ``scope`` must carry."""
+    return scoped_stable_id(kind=kind, lang="blade", path=path, name=name, scope=list(scope))
+
+
+def _at(result, line: int, kind: str, name: str):
+    """The one symbol of ``kind`` and ``name`` on ``line``."""
+    found = [s for s in result.symbols
+             if s.span.start_line == line and s.kind == kind and s.name == name]
+    assert len(found) == 1, (line, kind, name, [(s.span.start_line, s.kind, s.name)
+                                                for s in result.symbols])
+    return found[0]
+
+
+def _extends(result) -> list[tuple[int, str]]:
+    return [(e.line, (e.meta or {}).get("template")) for e in result.edges
+            if e.edge_type == "extends"]
+
+
+class TestDirectiveArguments:
+    """A directive with more than its name still counts (WI-pihor)."""
+
+    def test_second_argument_keeps_the_directive(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "@extends('layouts.app', ['title' => 'Home'])\n"
+            "<title>@yield('title', 'Default')</title>\n"
+            "@section('content')\n"
+            "  @component('outer')\n"
+            "    @component('alert', ['type' => 'danger'])\n"
+            "      @yield('inside')\n"
+            "    @endcomponent\n"
+            "    @yield('after')\n"
+            "  @endcomponent\n"
+            "@endsection\n"
+            "@yield('tail')\n")
+        result = analyze_blade(tmp_path)
+        assert _extends(result) == [(1, "layouts.app")]
+        assert _at(result, 2, "yield", "title").stable_id == _sid("yield", "title", ())
+        assert _at(result, 5, "component", "alert").stable_id == _sid(
+            "component", "alert", ("content", "outer"))
+        assert _at(result, 6, "yield", "inside").stable_id == _sid(
+            "yield", "inside", ("content", "outer", "alert"))
+        # the inner @endcomponent closes the inner component, not the outer one
+        assert _at(result, 8, "yield", "after").stable_id == _sid(
+            "yield", "after", ("content", "outer"))
+        assert _at(result, 11, "yield", "tail").stable_id == _sid("yield", "tail", ())
+
+    def test_arguments_across_lines(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "@component('outer')\n"
+            "  @component('alert', [\n"
+            "      'msg' => fn($a) => strtoupper(\"(\" . $a),\n"
+            "  ])\n"
+            "    @yield('inside')\n"
+            "  @endcomponent\n"
+            "  @yield('after')\n"
+            "@endcomponent\n"
+            "@extends(\n  'layouts.multi'\n)\n")
+        result = analyze_blade(tmp_path)
+        assert _at(result, 5, "yield", "inside").stable_id == _sid(
+            "yield", "inside", ("outer", "alert"))
+        assert _at(result, 7, "yield", "after").stable_id == _sid("yield", "after", ("outer",))
+        assert _extends(result) == [(9, "layouts.multi")]
+
+    def test_inline_section_is_not_a_block(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "@section('main')\n"
+            "  @section('title', 'Home')\n"
+            "  @section($name, 'v')\n"
+            "  @yield('in_main')\n"
+            "@endsection\n")
+        result = analyze_blade(tmp_path)
+        assert not any(s.name == "title" for s in result.symbols)
+        assert _at(result, 4, "yield", "in_main").stable_id == _sid(
+            "yield", "in_main", ("main",))
+
+    def test_dynamic_block_closer_pops_its_own_block(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "@section('main')\n"
+            "  @component($componentName)\n"
+            "    @yield('inside_dynamic')\n"
+            "  @endcomponent\n"
+            "  @yield('after_dynamic')\n"
+            "  @section($dynamicSection)\n"
+            "    @yield('in_dyn_section')\n"
+            "  @endsection\n"
+            "  @yield('after_dyn_section')\n"
+            "@endsection\n")
+        result = analyze_blade(tmp_path)
+        for line, name in ((3, "inside_dynamic"), (5, "after_dynamic"),
+                           (7, "in_dyn_section"), (9, "after_dyn_section")):
+            assert _at(result, line, "yield", name).stable_id == _sid("yield", name, ("main",))
+        assert [s.name for s in result.symbols] == [
+            "main", "inside_dynamic", "after_dynamic", "in_dyn_section", "after_dyn_section"]
+
+
+class TestNonDirectives:
+    """Comments, escapes, @verbatim and PHP blocks hold no directives."""
+
+    def test_text_that_blade_does_not_compile(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "{{-- @section('commented') --}}\n"
+            "@yield('first')\n"
+            "@@yield('escaped')\n"
+            "<a href=\"mailto:x@yield('email')\">m</a>\n"
+            "@verbatim\n  @section('verb')\n@endverbatim\n"
+            "@php\n  $s = \"@section('php')\";\n@endphp\n"
+            "<?php echo '@section(\"raw\")'; ?>\n"
+            "@php($x = '@yield(\"inline_php\")')\n"
+            "@yield('last')\n")
+        result = analyze_blade(tmp_path)
+        assert [(s.span.start_line, s.name) for s in result.symbols] == [
+            (2, "first"), (13, "last")]
+        assert _at(result, 13, "yield", "last").stable_id == _sid("yield", "last", ())
+
+    def test_unterminated_regions_hold_nothing_back(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "{{-- note\n@yield('a')\n@verbatim\n@yield('b')\n@php\n@yield('c')\n<?php\n")
+        result = analyze_blade(tmp_path)
+        assert [s.name for s in result.symbols] == ["a", "b", "c"]
+
+
+class TestMalformedBlade:
+    """Malformed templates still yield their symbols."""
+
+    def test_stray_closers_and_unclosed_section(self, tmp_path: Path) -> None:
+        (tmp_path / "t.blade.php").write_text(
+            "@section('a')\n"
+            "  @yield('in_a')\n"
+            "@endcomponent\n"
+            "  @yield('still_in_a')\n"
+            "@endsection\n"
+            "@endsection\n"
+            "@section('unclosed')\n"
+            "  @yield('to_eof')\n"
+            "@component('open'\n"
+            "@yield('after_bad_args')\n")
+        result = analyze_blade(tmp_path)
+        assert _at(result, 4, "yield", "still_in_a").stable_id == _sid(
+            "yield", "still_in_a", ("a",))
+        assert _at(result, 8, "yield", "to_eof").stable_id == _sid(
+            "yield", "to_eof", ("unclosed",))
+        # an argument list that never closes is no directive
+        assert _at(result, 10, "yield", "after_bad_args").stable_id == _sid(
+            "yield", "after_bad_args", ("unclosed",))
