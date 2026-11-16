@@ -1458,6 +1458,13 @@ PARENT_CASES: dict[str, SiblingCase] = {
     "toml-parents": _two(
         "rs/Cargo.toml", "[package]\nname = \"two\"\n", "[dependencies]\n", "[dev-dependencies]\n",
         "serde = \"1\"\n"),
+    # A task, a function and a net repeat under each module, and a net under
+    # each module's labelled generate block.
+    "verilog-parents": _two(
+        "rtl/two.sv", "", "module a;\n", "module b;\n",
+        "  task run; begin end endtask\n  function integer f; input x; f = x; endfunction\n"
+        "  wire w, z;\n  generate if (1) begin : g\n    wire w;\n  end endgenerate\n",
+        "endmodule\n", "endmodule\n"),
     "vhdl-parents": _two(
         "rtl/two.vhd", "library ieee;\nentity a is\nend entity a;\nentity b is\nend entity b;\n",
         "architecture rtl of a is\n", "architecture rtl of b is\n",
@@ -1535,7 +1542,6 @@ FLAT_LANGUAGES: dict[str, str] = {
            "are not emitted",
     "v": "no declaration nests; a method's owner is its receiver, written in the "
          "declaration itself (the v fixture deletes a same-name method of another receiver)",
-    "verilog": "only modules and interfaces are emitted",
     "xml": "Android components and permissions are named by their full name, and a Maven "
            "dependency sits under the one project (its groupId is a discriminant, fixture "
            "xml-maven)",
