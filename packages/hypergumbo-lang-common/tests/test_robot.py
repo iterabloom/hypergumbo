@@ -195,7 +195,7 @@ My Test
         )
         assert call_edge is not None
         assert call_edge.edge_type == "calls"
-        assert "My Test" in call_edge.src or "test_case" in call_edge.src
+        assert re.search(r":My Test:test$", call_edge.src), call_edge.src
 
     def test_unresolved_keyword_has_low_confidence(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """
@@ -319,6 +319,42 @@ Valid Login
                 f"{symbol.kind} {symbol.name!r} has non-canonical "
                 f"stable_id={symbol.stable_id!r}"
             )
+
+    def test_every_id_names_the_symbols_own_kind(self, tmp_path: Path) -> None:
+        """ADR-0036 Ruling 2: the id's kind word IS ``Symbol.kind``, for every
+        kind robot emits, and the stable id hashes that same word.
+
+        A test case was minted with the role word ``test_case`` on a
+        ``kind="test"`` Symbol, and ``make_doc_symbol_ids`` feeds one word to
+        both ids, so the stable id hashed the role word too.
+        """
+        from hypergumbo_core.analyze.base import make_doc_stable_id
+
+        make_robot_file(tmp_path, "suite.robot", """
+*** Settings ***
+Library    SeleniumLibrary
+Resource   common.resource
+
+*** Variables ***
+${BASE_URL}    https://example.com
+
+*** Test Cases ***
+Valid Login
+    Open Login Page
+
+*** Keywords ***
+Open Login Page
+    No Operation
+""")
+        result = analyze_robot(tmp_path)
+        kinds = {s.kind for s in result.symbols}
+        assert kinds == {"library", "resource", "variable", "test", "keyword"}, kinds
+        for symbol in result.symbols:
+            _head, _span, id_name, id_kind = symbol.id.rsplit(":", 3)
+            assert id_kind == symbol.kind, symbol.id
+            assert symbol.stable_id == make_doc_stable_id(
+                "robot", symbol.path, symbol.kind, id_name, 0, 0,
+            ), (symbol.kind, symbol.name)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """

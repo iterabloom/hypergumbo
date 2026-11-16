@@ -314,9 +314,12 @@ class _RobotExtractor:
 
         # node.id and canonical stable_id are minted together from one arg set
         # (make_doc_symbol_ids) so they can never drift (INV-dulah). node.id
-        # carries the start_line, disambiguating same-name siblings.
+        # carries the start_line, disambiguating same-name siblings. The kind
+        # word is the Symbol's own kind, ``test`` (ADR-0036 Ruling 2); it also
+        # feeds the stable id, which hashed the role word ``test_case`` before
+        # the v15 stable-id scheme.
         symbol_id, stable_id = make_doc_symbol_ids(
-            "robot", rel_path, "test_case", name,
+            "robot", rel_path, "test", name,
             span.start_line, span.end_line,
         )
 
