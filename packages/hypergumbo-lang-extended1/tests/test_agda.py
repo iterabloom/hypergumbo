@@ -982,3 +982,55 @@ class TestAgdaWhereBlocks:
                 kind="function", lang="agda", path="M.agda",
                 name=name, qualified_name=chain, arity=None,
             ), name
+
+
+_ANONYMOUS = (
+    "module Anon where\n\n"
+    "module _ (X : Set) where\n  f : Set\n  f = X\n\n"
+    "module _ where\n  g : Set₁\n  g = Set\n\n"
+    "module Outer where\n  module _ {Y : Set} (y : Y) where\n    h : Set\n    h = Y\n\n"
+    "    module _ (Z : Set) where\n      deep : Set\n      deep = Z\n\n"
+    "record R (A : Set) : Set₁ where\n  field\n    carrier : Set\n"
+    "  module _ (B : Set) where\n    inRec : Set\n    inRec = B\n\n"
+    "private\n  module _ (P : Set) where\n    priv : Set\n    priv = P\n\n"
+    "module _ (Q : Set) where\n  private\n    hid : Set\n    hid = Q\n"
+)
+
+
+class TestAgdaAnonymousModules:
+    """WI-bokud: ``module _ <telescope> where`` is a scoping device, not a
+    declaration. Agda puts its contents in the enclosing module (each taking
+    the telescope as extra parameters), so it emits no symbol and adds nothing
+    to a chain. It was emitted as a module named ``_`` (``Outer._`` nested),
+    two of which tied on that name and were split by order: deleting the first
+    moved the second's stable id."""
+
+    def test_no_anonymous_module_is_a_symbol(self, tmp_path: Path) -> None:
+        """Deleting the first of two then moves no id: there is no ``_`` tie
+        left to split by order (the floor gate's ``agda-anonymous`` case checks
+        that through the full pipeline, where a module's id is minted)."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Anon.agda", _ANONYMOUS)
+        modules = [s.name for s in analyze_agda(tmp_path).symbols if s.kind == "module"]
+        assert sorted(modules) == ["Anon", "Outer"]
+
+    @pytest.mark.parametrize("name, chain", [
+        pytest.param("f", "f", id="with-parameters"),
+        pytest.param("g", "g", id="without-parameters"),
+        pytest.param("Outer.h", "Outer.h", id="inside-a-named-module"),
+        pytest.param("Outer.deep", "Outer.deep", id="nested-in-an-anonymous-module"),
+        pytest.param("R.inRec", "R.inRec", id="inside-a-record"),
+        pytest.param("priv", "priv", id="inside-a-private-block"),
+        pytest.param("hid", "hid", id="holding-a-private-block"),
+    ])
+    def test_members_belong_to_the_enclosing_module(
+        self, tmp_path: Path, name: str, chain: str,
+    ) -> None:
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "Anon.agda", _ANONYMOUS)
+        assert _declared(analyze_agda(tmp_path), "function", name).stable_id == declared_arity_stable_id(
+            kind="function", lang="agda", path="Anon.agda",
+            name=name.rsplit(".", 1)[-1], qualified_name=chain, arity=None,
+        )

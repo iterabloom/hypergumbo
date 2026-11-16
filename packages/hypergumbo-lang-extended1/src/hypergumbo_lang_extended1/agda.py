@@ -68,11 +68,21 @@ reported in ``limits.failed_files`` with a ``partial_parse`` reason.
 Scope and identity (INV-kagib, WI-tusad)
 ----------------------------------------
 A declaration's scope chain is the named blocks it sits in, outermost first:
-nested ``module M where`` blocks (an anonymous ``module _`` adds nothing), the
-``data`` type a constructor belongs to, the ``record`` a field belongs to, and,
-for a function bound in a ``where`` block, the function whose clause holds it.
-``private`` / ``postulate`` / ``mutual`` / ``abstract`` blocks are transparent,
-and the file's own ``module X where`` header encloses nothing in the grammar.
+nested ``module M where`` blocks, the ``data`` type a constructor belongs to,
+the ``record`` a field belongs to, and, for a function bound in a ``where``
+block, the function whose clause holds it. ``private`` / ``postulate`` /
+``mutual`` / ``abstract`` blocks are transparent, and the file's own
+``module X where`` header encloses nothing in the grammar.
+
+An anonymous module (``module _ (X : Set) where``, ``module _ where``) is
+transparent too, and is not a symbol (WI-bokud). It is a scoping device, not a
+declaration: Agda puts its contents in the enclosing module, each taking the
+telescope as extra parameters, so ``f`` in a ``module _`` inside ``module A``
+is ``A.f`` and is looked up as ``A.f``. The rule holds with or without
+parameters, nested in another anonymous module, inside a named module or a
+record, and inside or around a ``private`` block. Emitted as a module named
+``_`` (``A._`` when nested), two of them tied on that name and were split by
+order, so deleting the first moved the second's stable_id.
 
 Every declaration is emitted. Before, a per-file set of seen names kept only
 the first symbol of any name, so ``run`` in ``module B`` was dropped when
@@ -370,7 +380,10 @@ def _extract_symbols_from_file(
                     name = node_text(qid, source).strip()
                 else:  # pragma: no cover - fallback when no qid
                     name = node_text(name_node, source).strip()
-                add_symbol(node, name, "module")
+                # ``module _ ... where`` declares nothing (WI-bokud): its
+                # contents belong to the enclosing module. See the docstring.
+                if name != "_":
+                    add_symbol(node, name, "module")
 
         elif node.type == "function":
             # Function declaration (type signature or pattern clause)
