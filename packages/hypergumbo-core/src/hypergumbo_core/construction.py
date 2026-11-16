@@ -39,7 +39,8 @@ symbols, which the predicate accepts, but the containment linker does not root
 a ``constructor`` at its class, so java and dart get no pairs yet.
 
 C++ (``cpp``) lands ``C x(1);`` on the class too, and constructs a ``struct``
-or a ``union`` the same way, so for it those kinds are construction targets
+the same way, so for it both kinds are construction targets (its analyzer
+emits no symbol for a ``union``, so there is no ``union`` to land on)
 (``_CONSTRUCTED_TYPES_BY_LANGUAGE``); its constructor is the member named
 after its class (``is_initializer``). When the argument count chose one
 constructor the analyzer also draws an ``instantiates`` edge straight to it
@@ -78,11 +79,11 @@ def _node(node: Any, key: str) -> Any:
 
 
 #: The type kinds a construction can land on, by the constructed type's
-#: language. C++ constructs a ``struct`` or a ``union`` exactly as it does a
-#: ``class``; every other language keeps ``class`` alone, so this table changes
+#: language. C++ constructs a ``struct`` exactly as it does a ``class`` (a
+#: ``union`` has no symbol to land on); every other language keeps ``class`` alone, so this table changes
 #: nothing for it.
 _CONSTRUCTED_KINDS: frozenset[str] = frozenset({"class"})
-_CPP_CONSTRUCTED_KINDS: frozenset[str] = frozenset({"class", "struct", "union"})
+_CPP_CONSTRUCTED_KINDS: frozenset[str] = frozenset({"class", "struct"})
 _CONSTRUCTED_TYPES_BY_LANGUAGE: dict[str, frozenset[str]] = {
     "cpp": _CPP_CONSTRUCTED_KINDS,
 }
