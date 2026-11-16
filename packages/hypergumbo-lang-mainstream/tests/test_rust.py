@@ -2363,7 +2363,7 @@ struct PrivStruct {}
 
 
 class TestNormalizeRustSignature:
-    """Tests for Rust signature normalization (ADR-0014 §3)."""
+    """Tests for Rust signature normalization (spec §6 typed tier)."""
 
     def test_basic_function(self) -> None:
         from hypergumbo_lang_mainstream.rust import normalize_rust_signature

@@ -772,8 +772,9 @@ ADR-0015 metadata pattern. **Recommended.**
   any future multi-value field's axis declaration.
 - **Pattern precedent**: ADR-0015 (Dataflow Access Modes) — `meta` field
   for relationship metadata rather than edge-type proliferation.
-- **Schema mechanics**: ADR-0014 (Generalized Symbol Identity) — schema
-  bump protocol applicable here.
+- **Schema mechanics**: `docs/hypergumbo-spec.md` §6 "Identity and provenance
+  scheme versioning" (the scheme-bump rule ADR-0014 used) — bump protocol
+  applicable here.
 - **Likely follow-up**: `Symbol.kind` taxonomy audit (separate ADR);
   `evidence_type` boundary ADR (Open Question #2).
 - **Bug references**: silent miscategorization at `ranking.py::filter_edges_for_ranking`,

@@ -895,7 +895,7 @@ class TestObjCParentBaseClasses:
 
 
 class TestObjCStableShapeId:
-    """Tests for stable_id and shape_id in Objective-C (ADR-0014 §1-2)."""
+    """Tests for stable_id and shape_id in Objective-C (spec §6; ADR-0035 §1)."""
 
     def test_class_has_stable_and_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.objc import analyze_objc

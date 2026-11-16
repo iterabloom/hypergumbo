@@ -401,7 +401,7 @@ class TestMakeRouteSymbol:
 
 
 class TestMakeRouteStableId:
-    """Tests for make_route_stable_id — ADR-0014 §4 route identity."""
+    """Tests for make_route_stable_id — ADR-0035 §3 route identity."""
 
     def test_different_paths_produce_different_ids(self) -> None:
         """GET /users and GET /posts must NOT collide."""
@@ -589,7 +589,7 @@ class TestWidenRouteStableIds:
 
 
 class TestMakeEntryStableId:
-    """Tests for make_entry_stable_id — ADR-0014 §4 entry-point identity."""
+    """Tests for make_entry_stable_id — ADR-0035 §3 entry-point identity."""
 
     def test_different_names_produce_different_ids(self) -> None:
         """Two @vertex functions with different names must NOT collide."""
@@ -669,7 +669,7 @@ class TestMakeProtocolStableId:
 
 
 class TestMakeTypedStableId:
-    """Tests for make_typed_stable_id — ADR-0014 §3 typed-tier identity."""
+    """Tests for make_typed_stable_id — spec §6 typed tier typed-tier identity."""
 
     def test_returns_sha256_format(self) -> None:
         """Result uses sha256:{16-hex} format."""

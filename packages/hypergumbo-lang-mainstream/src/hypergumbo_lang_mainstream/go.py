@@ -602,7 +602,7 @@ def normalize_go_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Go signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Go signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_go
     return normalize_signature_go(signature, type_params)
 
@@ -1711,7 +1711,7 @@ def _extract_symbols_from_file(
                 signature = _extract_go_signature(node, source)
                 modifiers = _go_visibility_modifiers(func_name)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
@@ -1777,7 +1777,7 @@ def _extract_symbols_from_file(
                 signature = _extract_go_signature(node, source)
                 modifiers = _go_visibility_modifiers(full_name)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
@@ -5910,7 +5910,7 @@ def _extract_go_routes(
     - Group prefix composition (variable): api := r.Group("/api"); api.GET("/users", h) → /api/users
     - Mount points: r.Mount("/api/v1", apiRoutes()) → route_mount symbol + edge
 
-    Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0014.
+    Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0035 §3.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     Also detects closure wrapper patterns: when a route handler argument

@@ -2773,7 +2773,7 @@ class TestExpressRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_express_get_route_detected(self, tmp_path: Path) -> None:
-        """Express app.get() route handler has sha256-based stable_id (ADR-0014 §4)."""
+        """Express app.get() route handler has sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -2801,7 +2801,7 @@ app.get('/users', function getUsers(req, res) {
         assert handler.meta.get("route_path") == "/users"
 
     def test_express_post_route_detected(self, tmp_path: Path) -> None:
-        """Express app.post() route handler has sha256-based stable_id (ADR-0014 §4)."""
+        """Express app.post() route handler has sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -2825,7 +2825,7 @@ app.post('/users', function createUser(req, res) {
         assert route_handlers[0].meta.get("route_path") == "/users"
 
     def test_express_router_route_detected(self, tmp_path: Path) -> None:
-        """Express router routes have unique sha256-based stable_ids (ADR-0014 §4)."""
+        """Express router routes have unique sha256-based stable_ids (ADR-0035 §3)."""
         from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -3302,7 +3302,7 @@ class TestNestJSRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_nestjs_get_decorator(self, tmp_path: Path) -> None:
-        """NestJS @Get() decorator should set sha256-based stable_id (ADR-0014 §4)."""
+        """NestJS @Get() decorator should set sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -3327,7 +3327,7 @@ export class UsersController {
         assert route_handlers[0].name == "UsersController.findAll"
 
     def test_nestjs_post_decorator(self, tmp_path: Path) -> None:
-        """NestJS @Post() decorator should set sha256-based stable_id (ADR-0014 §4)."""
+        """NestJS @Post() decorator should set sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -7859,7 +7859,7 @@ class TestCrossPackageGuardAllPaths:
 
 
 class TestNormalizeJstsSignature:
-    """Tests for JS/TS signature normalization (ADR-0014 §3)."""
+    """Tests for JS/TS signature normalization (spec §6 typed tier)."""
 
     def test_typescript_typed(self) -> None:
         from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
@@ -9124,7 +9124,7 @@ type UserOrNull = User | null;
 
 
 class TestJsTsShapeId:
-    """Tests for shape_id computation in JS/TS (ADR-0014 §1)."""
+    """Tests for shape_id computation in JS/TS (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript

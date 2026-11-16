@@ -204,7 +204,7 @@ def normalize_dart_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Dart signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Dart signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_types_first
     return normalize_signature_types_first(signature, type_params)
 
@@ -422,7 +422,7 @@ def _extract_symbols_from_file(
             if scope_node is not None else full_name
         )
 
-        # Typed stable_id (ADR-0014 §3). Dart writes ``async`` / ``async*`` on
+        # Typed stable_id (spec §6 typed tier). Dart writes ``async`` / ``async*`` on
         # the function BODY, which ``def_node`` is when the symbol has one.
         is_async = def_node is not None and declares_async(def_node)
         stable_id = None

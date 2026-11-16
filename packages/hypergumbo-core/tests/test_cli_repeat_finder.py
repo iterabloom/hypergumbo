@@ -6,7 +6,7 @@ structural clones (same control-flow/nesting skeleton, differing only in names
 and literals; spec §337/§342). This activates shape_id's one non-redundant
 capability over ``fingerprint`` (ADR-0035 §1): clustering structural clones as
 candidate copy-paste / extract-helper refactoring leads. Within-language only
-(ADR-0014; the language key enforces it).
+(spec §6 shape_id; the language key enforces it).
 
 Default filtering keeps signal dense: trivial clusters (representative
 cyclomatic_complexity below ``--min-complexity``, default 2) are dropped, and

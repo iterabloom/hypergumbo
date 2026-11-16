@@ -14,8 +14,8 @@ mainstream code languages (php, ruby, scala, kotlin, cpp, groovy, objc, c,
 bash, lua, perl, powershell, sql, jupyter), nor anything in the `extended1` /
 `common` packages. An empty `KNOWN_HOLES` therefore means "every *gated* cell
 is a hard lock", not "the fleet is at parity" — the same distinction the spec
-draws when it reports identity coverage as "~41 of ~70" rather than as done
-(`docs/hypergumbo-spec.md:365`, delegating to ADR-0014's census). The boundary
+draws when it reports `shape_id` coverage as 43 of 117 registered languages
+rather than as done (`docs/hypergumbo-spec.md` §6, `shape_id` Coverage). The boundary
 is historical: it is 7 analyzers someone picked, not a tier any ADR argues
 for, and `UNGATED_CODE_LANGUAGES` below names what it excludes so the omission
 cannot be mistaken for a claim. `WI-dorop` records three measured
@@ -164,8 +164,9 @@ _MIN_SYMBOLS = 3
 # number in it is accurate.
 #
 # The spec already has a house convention for this situation: it does not claim
-# complete identity coverage, it says "~41 of ~70" and delegates to ADR-0014's
-# live census (docs/hypergumbo-spec.md:365). The three maps below are the same
+# complete identity coverage, it counts the analyzer modules that set a
+# shape_id and names the languages that carry none (docs/hypergumbo-spec.md
+# §6, shape_id Coverage). The three maps below are the same
 # convention applied to emission parity — every mainstream analyzer is
 # accounted for as gated, an admitted gap, or out of construct scope, and
 # `test_matrix_scope_is_declared_and_exhaustive` fails when a new one appears
@@ -320,13 +321,12 @@ COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
     # past every standing test and was caught only by a point-in-time DEEP
     # bakeoff — the exact "a sweep claimed parity, nothing kept it honest"
     # failure mode this gate exists to prevent. It locks callable shape_id
-    # emission for the eight core (mainstream) analyzers, whose coverage
-    # ADR-0014's status line asserts is complete. SCOPE BOUNDARY: shape_id is
-    # spec-🟨-optional with coverage deliberately scoped to ~41/70 analyzers
-    # (spec §6, line ~365), so this column guards MAINSTREAM analyzers against
-    # regression — it is NOT a full-fleet parity claim. The niche extended1/
-    # common gaps (solidity, wgsl) are documented "without"-bucket coverage work
-    # (WI-lutob), not cells here (they are not in FIXTURE_ANALYZER).
+    # emission for the eight core (mainstream) analyzers, which the spec's
+    # shape_id census lists as wired. SCOPE BOUNDARY: shape_id is
+    # spec-🟨-optional and set by 42 analyzer modules (spec §6, shape_id
+    # Coverage), so this column guards MAINSTREAM analyzers against
+    # regression — it is NOT a full-fleet parity claim. Analyzers outside
+    # FIXTURE_ANALYZER are not cells here.
     "shape_id": lambda res: any(s.shape_id for s in _callables(res)),
 }
 

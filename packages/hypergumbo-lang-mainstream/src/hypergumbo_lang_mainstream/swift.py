@@ -1025,7 +1025,7 @@ def normalize_swift_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Swift signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Swift signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(signature, type_params, return_sep="->")
 
@@ -1124,7 +1124,7 @@ def _extract_symbols_from_file(
                     analysis.method_return_types.setdefault(full_name, _ret_type)
                 modifiers = _extract_modifiers_swift(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_swift_signature(signature)
                 # INV-fabih: the full type/function chain, not the nearest
                 # owner (``full_name``) two nested owners share.

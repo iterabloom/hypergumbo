@@ -39,7 +39,7 @@ def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
 def test_stable_id_survives_body_edits(tmp_path: Path) -> None:
     """stable_id survives BODY edits (INV-bazij).
 
-    Per ADR-0014 (as amended): stable_id is "structural identity within a
+    Per ADR-0035 §1: stable_id is "structural identity within a
     (qualified_name, module_path) scope" — it survives BODY edits but NOT
     rename or move. Two functions with the same name, same module path,
     same signature, but different body content must share stable_id.

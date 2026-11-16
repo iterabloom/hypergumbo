@@ -152,7 +152,7 @@ class TestCSharpSymbolExtraction:
         """C#'s ``analyze()`` override bypasses the base-class shape_id
         auto-stamp loop, so it must stamp shape_ids itself: body-bearing
         symbols (method / class / …) carry a well-formed shape_id — the
-        structural-clone key (ADR-0014 §1) — computed from the tracked CST
+        structural-clone key (spec §6 shape_id) — computed from the tracked CST
         node, never ``None`` (history: WI-lutob)."""
         result = analyze_csharp(csharp_repo)
         body_bearing = [
@@ -2298,7 +2298,7 @@ public class Config {
 
 
 class TestNormalizeCSharpSignature:
-    """Tests for C# signature normalization (ADR-0014 §3)."""
+    """Tests for C# signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature

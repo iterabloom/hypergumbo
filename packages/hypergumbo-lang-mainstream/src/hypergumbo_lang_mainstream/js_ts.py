@@ -1622,7 +1622,7 @@ def normalize_jsts_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a JS/TS signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a JS/TS signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(signature, type_params, return_sep=":")
 
@@ -4777,7 +4777,7 @@ def _extract_symbols(
                 )
                 signature = _extract_jsts_signature(node, source)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_jsts_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
@@ -4850,7 +4850,7 @@ def _extract_symbols(
                         )
                         signature = _extract_jsts_signature(value_node, source)
 
-                        # Typed stable_id (ADR-0014 §3)
+                        # Typed stable_id (spec §6 typed tier)
                         norm_sig = normalize_jsts_signature(signature)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
@@ -5127,7 +5127,7 @@ def _extract_symbols(
 
                 signature = _extract_jsts_signature(node, source)
 
-                # Typed stable_id for non-route methods (ADR-0014 §3)
+                # Typed stable_id for non-route methods (spec §6 typed tier)
                 if stable_id is None:
                     norm_sig = normalize_jsts_signature(signature)
                     if norm_sig:
@@ -5233,7 +5233,7 @@ def _extract_symbols(
                         )
                         signature = _extract_jsts_signature(child, source)
 
-                        # Typed stable_id (ADR-0014 §3)
+                        # Typed stable_id (spec §6 typed tier)
                         norm_sig = normalize_jsts_signature(signature)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,

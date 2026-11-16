@@ -302,7 +302,7 @@ analyzer(s).
 1. **Mostly file-scoped**: Python is method-scoped; all others use a single file-level dict (potential for false positives)
 2. **Only first-party types**: External library types (Pydantic, SQLAlchemy) won't resolve
 3. **No inheritance awareness**: `SubClass` parameters won't resolve `ParentClass.method()`
-4. **Generics stripped**: `List<T>` → `List` (adequate for method resolution but insufficient for typed `stable_id`; see ADR-0014)
+4. **Generics stripped**: `List<T>` → `List` (adequate for method resolution but insufficient for typed `stable_id`; see the typed tier in `docs/hypergumbo-spec.md` §6)
 
 ### Future Work
 
@@ -316,8 +316,8 @@ analyzer(s).
 8. **Return-Type Registry Pre-Pass — Phase 5 (follow-on): cross-linker integration**: type_hierarchy.py fallback for ambiguous receiver types in the registry; dataflow.py refinement for chained method-call `access_mode` annotations. Optional, only after Phases 1–4 are validated against deep-bakeoff metrics.
 9. **Consider method-scoped tracking for non-Python analyzers** (if false positives become a problem)
 10. **Add Rust type tracking** (medium effort, good value for trait-based dispatch) — superseded by Phase 3 above; this entry is kept for the constructor/parameter portion which is a prerequisite for Phase 3.
-11. **Preserve generic type parameters** (needed for ADR-0014 typed `stable_id` tier; currently stripped)
-12. **Extract visibility modifiers** (needed for ADR-0014 typed `stable_id` tier; not currently tracked)
+11. **Preserve generic type parameters** (needed for the typed `stable_id` tier, spec §6; currently stripped)
+12. **Extract visibility modifiers** (needed for the typed `stable_id` tier, spec §6; not currently tracked)
 
 ## Implementation Pattern
 
@@ -370,7 +370,7 @@ def _extract_edges(...):
 - PR #486: Java, Kotlin, TypeScript parameter type inference
 - PR #488: C# and Dart parameter type inference
 - gRPC stub pattern: The original motivation for constructor-based tracking
-- ADR-0014: Generalized Symbol Identity — typed `stable_id` tier depends on this infrastructure
+- ADR-0035 and `docs/hypergumbo-spec.md` §6 "Identity field semantics" (where the rules of ADR-0014, Generalized Symbol Identity, now live) — the typed `stable_id` tier depends on this infrastructure
 - ADR-0015: Dataflow access modes — same two-tier YAML+Python design pattern (`dataflow.yaml` + `dataflow.py`) is the precedent for the proposed `signatures.yaml` + `signatures.py` split.
 - INV-dihos: original tracker item — "Go receiver-type inference must follow method-call return types". Scope expanded to all eight statically-typed analyzers in the agent reply 2026-04-07.
 - WI-hukoh: forward-dataflow option (2)/(3) decision — both items concern "edge metadata at link time vs node-state at BFS time" tradeoffs and share the same dest-type-resolution machinery.

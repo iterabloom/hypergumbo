@@ -284,7 +284,7 @@ def normalize_rust_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Rust signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Rust signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(
         signature, type_params, return_sep="->", skip_self=True,
@@ -1503,7 +1503,7 @@ def _extract_symbols_from_file(
 
                 modifiers = _extract_modifiers_rust(node, source)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_rust_signature(signature)
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),

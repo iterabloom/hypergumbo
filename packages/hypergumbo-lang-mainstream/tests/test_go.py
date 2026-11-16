@@ -760,7 +760,7 @@ func postData(c *fiber.Ctx) error { return nil }
         assert "postData" in route_names
 
     def test_route_has_stable_id(self, tmp_path: Path) -> None:
-        """Route symbols have sha256-based stable_id (ADR-0014 §4)."""
+        """Route symbols have sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -840,7 +840,7 @@ func main() {
         assert len(routes) == 1
         assert (routes[0].meta or {}).get("handler_name") == "submitHandler"
         assert (routes[0].meta or {}).get("framework_role") == "route"
-        assert len(routes[0].stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
+        assert len(routes[0].stable_id) == 23  # sha256 hex digest (ADR-0035 §3)
 
     def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
         """No routes detected in code without web framework patterns."""
@@ -1666,7 +1666,7 @@ func main() {
         assert routes[0].meta["route_path"] == "/api"
 
     def test_handlefunc_stable_id(self, tmp_path: Path) -> None:
-        """Gorilla mux HandleFunc routes have sha256-based stable_id (ADR-0014 §4)."""
+        """Gorilla mux HandleFunc routes have sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -1688,7 +1688,7 @@ func handler() {}
         assert routes[0].stable_id == make_route_stable_id("ANY", "/test")
 
     def test_builder_chain_stable_id_with_method(self, tmp_path: Path) -> None:
-        """Builder chain with .Methods("GET") has sha256-based stable_id (ADR-0014 §4)."""
+        """Builder chain with .Methods("GET") has sha256-based stable_id (ADR-0035 §3)."""
         from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -1711,7 +1711,7 @@ func handler() {}
         assert routes[0].meta["http_method"] == "GET"
 
     def test_route_stable_id_no_collision(self, tmp_path: Path) -> None:
-        """Different routes with same HTTP method must have different stable_ids (ADR-0014)."""
+        """Different routes with same HTTP method must have different stable_ids (ADR-0035 §3)."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
@@ -1968,7 +1968,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
         assert mount.meta is not None
         assert mount.meta["mount_prefix"] == "/api/v1"
         assert mount.meta["handler_ref"] == "apiRoutes"
-        # Mount stable_id uses hash-based format (ADR-0014 Phase 0)
+        # Mount stable_id uses hash-based format (ADR-0035 §3)
         assert mount.stable_id is not None
         # make_route_stable_id returns raw hex digest
         assert len(mount.stable_id) == 23  # SHA-256 hex length
@@ -5540,7 +5540,7 @@ func (f *Foo) unexportedMethod() {}
 
 
 class TestNormalizeGoSignature:
-    """Tests for Go signature normalization (ADR-0014 §3)."""
+    """Tests for Go signature normalization (spec §6 typed tier)."""
 
     def test_basic_function(self) -> None:
         from hypergumbo_lang_mainstream.go import normalize_go_signature
@@ -7409,7 +7409,7 @@ func main() {
 
 
 class TestGoShapeId:
-    """Tests for shape_id computation in Go (ADR-0014 §1)."""
+    """Tests for shape_id computation in Go (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.go import analyze_go

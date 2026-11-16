@@ -22,7 +22,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0011](0011-scoped-coverage-and-green-baseline.md) | Scoped Coverage and Green Baseline Tracking | Implemented | |
 | [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Partially superseded by ADR-0057 (§Step 3); Step 1 implemented; Step 2 design target | |
 | [0013](0013-structured-tracker.md) | Structured Tracker | Accepted | 2026-02-13 |
-| [0014](0014-generalized-symbol-identity.md) | Generalized Symbol Identity (stable_id / shape_id) | Accepted — partially superseded by ADR-0035 (see amendment table) | 2026-02-20 |
+| [0014](0014-generalized-symbol-identity.md) | Generalized Symbol Identity (stable_id / shape_id) | Superseded by ADR-0035 (2026-11-15); stub, its other rules are in the spec and `vendor-sync.md` | 2026-02-20 |
 | [0015](0015-dataflow-access-modes.md) | Dataflow Access Modes on Edges | Accepted — partially superseded by ADR-0038 (emission guidance only) | 2026-03-15 |
 | [0016](0016-io-boundary-analysis.md) | I/O Boundary Analysis and Security Claim Verification | Accepted | 2026-03-18 |
 | [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Partially superseded by ADR-0037, ADR-0038 | 2026-03-22 |

@@ -288,7 +288,7 @@ function Caller {
 
 
 class TestPowerShellStableId:
-    """Tests for stable_id in PowerShell (ADR-0014 §2)."""
+    """Tests for stable_id in PowerShell (ADR-0035 §1)."""
 
     def test_function_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.powershell import analyze_powershell
@@ -303,7 +303,7 @@ class TestPowerShellStableId:
 
 
 class TestPowerShellShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.powershell import analyze_powershell

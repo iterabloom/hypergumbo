@@ -317,7 +317,7 @@ end.
         result = analyze_pascal(tmp_path)
         func = next((s for s in result.symbols if s.name == "MyFunc"), None)
         assert func is not None
-        # id is location-based; stable_id is signature-based hash (ADR-0014 §2)
+        # id is location-based; stable_id is signature-based hash (ADR-0035 §1)
         assert "pascal:" in func.id
         assert "test.pas" in func.id
         assert "MyFunc" in func.id

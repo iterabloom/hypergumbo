@@ -812,7 +812,7 @@ def normalize_kotlin_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Kotlin signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Kotlin signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(signature, type_params, return_sep=":")
 
@@ -1242,7 +1242,7 @@ def _extract_symbols_from_file(
                 signature = _extract_kotlin_signature(node, source)
                 modifiers = _extract_modifiers(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_kotlin_signature(signature)
                 # INV-fabih: the full class/object/function chain, not the
                 # nearest owner (``full_name``) two nested owners share.

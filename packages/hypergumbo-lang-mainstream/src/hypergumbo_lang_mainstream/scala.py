@@ -1051,7 +1051,7 @@ def normalize_scala_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Scala signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Scala signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(signature, type_params, return_sep=":")
 
@@ -1184,7 +1184,7 @@ def _extract_symbols_from_file(
                 annotations = _extract_annotations_scala(node, source)
                 meta = {"decorators": annotations} if annotations else None
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_scala_signature(signature)
                 # INV-fabih: the FULL owner chain, not the nearest owner
                 # (``full_name``), which two nested same-name owners share.
@@ -1248,7 +1248,7 @@ def _extract_symbols_from_file(
                 annotations = _extract_annotations_scala(node, source)
                 meta = {"decorators": annotations} if annotations else None
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_scala_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),

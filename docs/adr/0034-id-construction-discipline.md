@@ -5,7 +5,7 @@
 - Date: 2026-06-01
 - Supersedes: —
 - Superseded by: Partially superseded by ADR-0037 (Out-of-scope `:unresolved` blessing), ADR-0036 (reviewer-checklist item 5 correction); core factory-discipline decision in force
-- Related: ADR-0014 (Typed stable_id factories — the family of `make_*_stable_id` factories whose discipline this ADR generalizes to `Symbol.id` construction), ADR-0033 (Spec-vs-Data Validator Stage — the runtime enforcement substrate; this ADR's policy is enforced by ADR-0033's `id_format` validator class), ADR-0031 (Symbol.language reshape — its Class B "synthetic stand-in" classification clarifies which language string belongs in the canonical ID's first segment for linker-emitted Symbols); tracker items INV-sadiv (218 call_site nodes emitted with ad-hoc `<path>::<role>::<line>` IDs — closed by this ADR's six-site migration), INV-dulah (META: ID-format escapes), INV-hunup (META: stable_id multiplicity — out of scope here, addressed by Phase 6 PR1).
+- Related: ADR-0035 (stable_id identity contract, which superseded ADR-0014; with `docs/hypergumbo-spec.md` §6 the home of the `make_*_stable_id` factory family whose discipline this ADR generalizes to `Symbol.id` construction), ADR-0033 (Spec-vs-Data Validator Stage — the runtime enforcement substrate; this ADR's policy is enforced by ADR-0033's `id_format` validator class), ADR-0031 (Symbol.language reshape — its Class B "synthetic stand-in" classification clarifies which language string belongs in the canonical ID's first segment for linker-emitted Symbols); tracker items INV-sadiv (218 call_site nodes emitted with ad-hoc `<path>::<role>::<line>` IDs — closed by this ADR's six-site migration), INV-dulah (META: ID-format escapes), INV-hunup (META: stable_id multiplicity — out of scope here, addressed by Phase 6 PR1).
 
 ## Context
 
@@ -155,7 +155,7 @@ The checklist above remains the documented manual gate for judgement calls the l
 
 ## References
 
-- ADR-0014 (Typed stable_id factories) — the parallel discipline for `Symbol.stable_id`.
+- ADR-0035 and `docs/hypergumbo-spec.md` §6 (the `make_*_stable_id` factories; formerly ADR-0014) — the parallel discipline for `Symbol.stable_id`.
 - ADR-0031 §"Class B synthetic stand-ins" — clarifies the language-string choice for linker-emitted Symbols.
 - ADR-0033 §"Validator classes" — the four-class catalog this ADR's `id_format` class extends to five.
 - Lab notebook `id-construction-discipline-05312026.md` — the original posture document.

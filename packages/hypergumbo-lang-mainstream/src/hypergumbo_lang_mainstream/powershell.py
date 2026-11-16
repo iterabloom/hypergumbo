@@ -271,7 +271,7 @@ def _extract_powershell_symbols(
     """Extract symbols from a parsed PowerShell file (pass 1).
 
     Optionally populates *node_for_symbol* to enable base-class shape_id
-    auto-wiring (ADR-0014 §1).
+    auto-wiring (spec §6 shape_id).
     """
     # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path``
     # is the repo-relative path here — the ``extract_symbols_from_file`` override

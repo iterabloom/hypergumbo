@@ -356,7 +356,7 @@ def normalize_groovy_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Groovy signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Groovy signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_types_first
     return normalize_signature_types_first(
         signature, type_params, skip_void_return=False, return_sep=":",
@@ -662,7 +662,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         {"decorators": annotations} if annotations else None
                     )
 
-                    # Typed stable_id (ADR-0014 §3)
+                    # Typed stable_id (spec §6 typed tier)
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "method", norm_sig, visibility_from_modifiers(modifiers),
@@ -709,7 +709,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     signature = _extract_groovy_signature(node, source)
                     modifiers = _extract_modifiers_groovy(node)
 
-                    # Typed stable_id (ADR-0014 §3)
+                    # Typed stable_id (spec §6 typed tier)
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "function", norm_sig, visibility_from_modifiers(modifiers),

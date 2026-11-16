@@ -154,7 +154,7 @@ def test_edge_rct_critical_fields_present() -> None:
     """Edge fields the RCT pins exist with the expected types.
 
     These are the fields the RCT corpus, the monkey-patches, or the
-    `stable_id` derivation (ADR-0014) depend on. Adding new fields is
+    `stable_id` derivation (ADR-0035) depend on. Adding new fields is
     fine; renaming or removing these breaks the variants or the stable
     ID derivation.
     """

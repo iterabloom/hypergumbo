@@ -952,7 +952,7 @@ case class CaseClass(x: Int)
 
 
 class TestNormalizeScalaSignature:
-    """Tests for Scala signature normalization (ADR-0014 §3)."""
+    """Tests for Scala signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.scala import normalize_scala_signature
@@ -1267,7 +1267,7 @@ class TestScalaFunctionReferences:
 
 
 class TestScalaShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.scala import analyze_scala

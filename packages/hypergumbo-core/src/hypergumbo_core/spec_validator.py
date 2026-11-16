@@ -1945,8 +1945,7 @@ def _check_edge_id_format(edges: Iterable[Any]) -> list[ValidationViolation]:
 # Canonical pattern: ``sha256:`` literal prefix + 16 lowercase hex chars.
 # Total length 23. The 16-char window comes from
 # ``_short_sha256`` (analyze/base.py:_short_sha256), which truncates the
-# 64-char hexdigest to 16 chars for footprint reasons documented at
-# ADR-0014 §4.
+# 64-char hexdigest to 16 chars.
 
 _CANONICAL_STABLE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{16}$")
 

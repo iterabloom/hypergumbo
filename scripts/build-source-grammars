@@ -39,7 +39,8 @@ VENDOR_ROOT="$REPO_ROOT/packages/hypergumbo-core/src/hypergumbo_core/vendor"
 # Pinning is preserved in vendor/tree-sitter-<name>/UPSTREAM. Updating a
 # grammar version means re-syncing the vendor directory per
 # docs/grammars/vendor-sync.md and bumping SHAPE_ID_SCHEME if shape_id
-# values change (ADR-0014 §6).
+# values change (docs/grammars/vendor-sync.md, "shape_id and grammar
+# versions").
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do

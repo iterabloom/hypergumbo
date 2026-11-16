@@ -724,7 +724,7 @@ final class Sealed {}
 
 
 class TestNormalizeSwiftSignature:
-    """Tests for Swift signature normalization (ADR-0014 §3)."""
+    """Tests for Swift signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.swift import normalize_swift_signature

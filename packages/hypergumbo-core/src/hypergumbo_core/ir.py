@@ -598,7 +598,7 @@ class Symbol:
             always a list after ``__post_init__``.
         origin_run_id: Unique execution ID of the analysis run
         stable_id: Structural-identity hash within a (qualified_name,
-            module_path) scope (ADR-0014; INV-bazij). Survives BODY edits;
+            module_path) scope (ADR-0035 §1; INV-bazij). Survives BODY edits;
             does NOT survive rename or move — those are identity-changing
             operations, because name + qualified_name are hash inputs.
             Without them, same-shaped symbols in one scope collide (e.g.
@@ -616,7 +616,7 @@ class Symbol:
             values across the stable_id/shape_id axes.
         shape_id: Structural *skeleton* hash — the parse subtree with
             identifiers, literals, comments, and punctuation STRIPPED
-            (ADR-0014 §1 compute_shape_id), so two symbols with the same
+            (spec §6 ``shape_id``; compute_shape_id), so two symbols with the same
             code shape but different names/values collide. Compared
             within-language only (Python uses an ast-based variant).
             Contrast ``fingerprint``, which KEEPS identifiers/literals —
@@ -2042,7 +2042,7 @@ def create_boundary_nodes(
       ``stable_id`` and ``display_label`` (ADR-0032 typed sibling
       field) derived from its dedupe key, so
       consumers (sketch / slice / cross-run diff) can group and
-      compare boundary nodes the same way ADR-0014 stable_ids work for
+      compare boundary nodes the same way stable_ids (ADR-0035) work for
       first-party symbols.
     * **Path-slot identity for every kind.** Every external, file-id
       pseudo-ids included, keeps its full path-slot identity in the

@@ -365,7 +365,7 @@ def normalize_python_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Python signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Python signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(
         signature, type_params, return_sep="->", skip_self=True,
@@ -2278,7 +2278,7 @@ def python_callable_stable_id(
 ) -> str:
     """The Python producer's stable_id for a ``def`` (function or method).
 
-    Typed tier first (ADR-0014 §3): ``make_typed_stable_id`` over the
+    Typed tier first (spec §6 typed tier): ``make_typed_stable_id`` over the
     normalized signature (parameter names, then annotations, ``self`` dropped),
     the visibility the name convention gives, and the decorator names. The
     untyped tier (:func:`_compute_stable_id`: parameter count and flags) is the

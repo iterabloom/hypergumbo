@@ -5174,7 +5174,7 @@ class TestRubyHashFunctionReferences:
 
 
 class TestRubyStableShapeId:
-    """Tests for stable_id and shape_id in Ruby (ADR-0014 §1-2)."""
+    """Tests for stable_id and shape_id in Ruby (spec §6; ADR-0035 §1)."""
 
     def test_method_has_stable_and_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.ruby import analyze_ruby

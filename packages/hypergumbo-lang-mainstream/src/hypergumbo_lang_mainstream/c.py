@@ -584,7 +584,7 @@ def _extract_symbols(
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     Optionally populates *node_for_symbol* to enable base-class shape_id
-    auto-wiring (ADR-0014 §1).
+    auto-wiring (spec §6 shape_id).
 
     ``file_stable_id`` is the file-identity anchor for this file's symbols
     (``CAnalyzer._file_anchor(rel_path)``, derived from the repo-relative
@@ -2069,7 +2069,7 @@ class CAnalyzer(TreeSitterAnalyzer):
                             **(_by_id[_sym_id].meta or {}),
                             "non_local_store_lines": _stores,
                         }
-            # Auto-compute shape_id for symbols with nodes (ADR-0014 §1)
+            # Auto-compute shape_id for symbols with nodes (spec §6 shape_id)
             if analysis.node_for_symbol:
                 sym_by_id = {s.id: s for s in analysis.symbols}
                 for sym_id, ts_node in analysis.node_for_symbol.items():

@@ -1051,7 +1051,7 @@ abstract class AbsClass {}
 
 
 class TestNormalizeGroovySignature:
-    """Tests for Groovy signature normalization (ADR-0014 §3)."""
+    """Tests for Groovy signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
@@ -1339,7 +1339,7 @@ class TestGroovyParamTypeInference:
 
 
 class TestGroovyShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_method_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
