@@ -14,7 +14,7 @@ a launch to a boundary that mints no taint STILL CLASSIFIES IT, so without a
 shadow the call becomes an examined negative and ``verify-claims`` returns a
 green tick over live ingress. ADR-0016's table shows the same shape in the
 outbound direction: a correct row that classifies a call without a shadow can
-turn an ``inconclusive`` rc 2 claim into ``confirmed`` rc 0 -- a false
+turn an ``inconclusive`` rc 4 claim into ``confirmed`` rc 0 -- a false
 all-clear. A disclosure boundary without its shadow is strictly
 worse than leaving the false source in place, so the middle row of the table
 below is the one that matters.

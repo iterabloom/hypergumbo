@@ -26,18 +26,25 @@ Exit codes, in precedence order — the first that applies wins:
 
 | code | condition |
 |---:|---|
+| `2` | **bad input**, before any verdict: a claims file that is missing, unreadable or fails validation, a `--input` map that is missing or not a usable behavior map, a catalogue that does not load, a bad argument |
 | `1` | any `violated` |
-| `2` | any `inconclusive` (and no violation), **or the claims file failed validation** |
+| `4` | any `inconclusive` (and no violation) |
 | `3` | any `confirmed_with_caveats` (and none of the above) |
 | `0` | everything `confirmed`, no caveats |
+
+Bad input never combines with a verdict: the run stops before any claim is
+checked.
+
+**Exit 4 is not a pass: the claim was not checked.** It is the one most often
+mistaken for success in a shell pipeline.
 
 **A gate written `verify-claims … || exit 1` fails on exit 3.** That is
 deliberate and fail-closed. If you want caveated verdicts to pass, accept `3`
 explicitly — do not widen the gate to "anything non-zero is fine", which would
-also swallow `1` and `2`.
+also swallow `1`, `2` and `4`.
 
-`2` is the one most often mistaken for success in a shell pipeline. It means
-the tool did not check your claim.
+A crash inside hypergumbo itself (`hypergumbo: internal error: …`, "This is a
+bug") exits `1`, the same code as `violated`.
 
 ## The caveat vocabulary
 

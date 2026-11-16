@@ -820,9 +820,11 @@ def _sites_map(root: Path) -> tuple[dict, dict]:
 #: (label, argv, group, extra env, predicate patches). Groups: cold (fresh XDG),
 #: warm (results cache prepared), evict (a second, two-hour-old entry and tiny
 #: caps), mutate (HOME in scratch, subprocess + urlopen stubbed).
-#: verify-claims exits 2 when a claim is not confirmed, and ``--check`` exits 1
-#: for "not installed": answers, not failures to run.
-EXPECTED_RC = {"verify-claims": ("0", "2")}
+#: verify-claims exits 4 when a claim is inconclusive, and ``--check`` exits 1
+#: for "not installed": answers, not failures to run. verify-claims' 2 is BAD
+#: INPUT -- a run that stopped before any claim was checked -- so it is not one
+#: of them.
+EXPECTED_RC = {"verify-claims": ("0", "4")}
 CHECK_RC = ("0", "1")
 
 

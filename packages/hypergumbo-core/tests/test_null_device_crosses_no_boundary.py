@@ -166,7 +166,7 @@ def test_a_discarding_call_is_still_EXAMINED_by_the_catalogue():
     gate also reads — answers BOTH questions with "no", and the gate then
     reports "calls into 1 module(s) that the I/O catalog could not classify
     (redirect)". That turns the false ``violated`` (rc 1) into an
-    ``inconclusive`` (rc 2): a wrong finding traded for a withheld verdict,
+    ``inconclusive`` (rc 4): a wrong finding traded for a withheld verdict,
     which is the INV-tabaf family, not a fix.
 
     We know EXACTLY what ``> /dev/null`` is. That is why we can say it crosses

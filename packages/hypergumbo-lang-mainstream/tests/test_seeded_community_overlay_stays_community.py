@@ -75,7 +75,7 @@ def test_with_an_empty_home_the_call_is_not_examined(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rc, verdict, _err = _verify(tmp_path, monkeypatch, tmp_path / "empty")
-    assert (rc, verdict) == (2, "inconclusive")
+    assert (rc, verdict) == (4, "inconclusive")
 
 
 def test_a_seeded_community_copy_does_not_license_a_clean_verdict(
@@ -85,7 +85,7 @@ def test_a_seeded_community_copy_does_not_license_a_clean_verdict(
     and the run must name them and say how to vouch."""
     config = _seeded_home(tmp_path, monkeypatch)
     rc, verdict, err = _verify(tmp_path, monkeypatch, config)
-    assert (rc, verdict) == (2, "inconclusive")
+    assert (rc, verdict) == (4, "inconclusive")
     assert "python-http-clients.yaml" in err
     assert "delete its `provenance: community` line" in err
 

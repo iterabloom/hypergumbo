@@ -1755,13 +1755,15 @@ class TaintCatalogError(CatalogueError):
 
     This is the single umbrella for taint-catalog load failures —
     malformed YAML, a non-mapping document, a wrong-typed top-level section
-    (``sources``/``sinks``/``transforms``), or an invalid ``start_at`` value.
-    The CLI maps it to exit code 2 (inconclusive): a broken taint
+    (``sources``/``sinks``/``transforms``), a row or field of the wrong type
+    (:func:`_shape_error`), or an invalid ``start_at`` value.
+    The CLI maps it to exit code 2 (bad input): a broken taint
     configuration means verification could not proceed, which must never be
-    reported as a confirmed (exit 0) or violated (exit 1) verdict
-    (INV-nufob / ADR-0033 Phase 3). The loaders raise this rather than a raw
-    ``yaml.YAMLError`` / ``AttributeError`` / ``ValueError``, which would
-    escape the CLI as an uncaught traceback.
+    reported as a confirmed (exit 0) or violated (exit 1) verdict, nor as an
+    analysis that could not decide (exit 4) (INV-nufob / ADR-0033 Phase 3;
+    WI-tajup). The loaders raise this rather than a raw
+    ``yaml.YAMLError`` / ``AttributeError`` / ``TypeError`` / ``ValueError``,
+    which would reach the CLI's internal-error net and exit 1.
     """
 
 
@@ -1829,6 +1831,61 @@ def _reject_unknown_catalog_keys(
     )
 
 
+def _shape_error(
+    path: Path, where: str, described: str, value: Any,
+) -> TaintCatalogError:
+    """The refusal for a row or field whose TYPE the loader cannot read.
+
+    WHY (WI-tajup). Each shape these checks refuse crashed the loader -- a
+    string ``transforms:`` row (``AttributeError``), a scalar where a name
+    list belongs (``TypeError``: not iterable), a list where a label or module
+    name belongs (``TypeError``: unhashable) -- and the crash reached
+    ``cli.main``'s internal-error net, which exits 1, the code
+    ``verify-claims`` uses for ``violated``. ``where`` is the dotted path to
+    the value (``transforms[0].functions.python``), so the message names what
+    to fix, not the line of Python that tripped over it.
+
+    NOT CHECKED HERE: a non-mapping row inside ``sources.<lang>`` or
+    ``sinks.<lang>`` is still skipped in silence, as it always has been; that
+    is a dropped row, not a crash (WI-ditom).
+    """
+    return TaintCatalogError(
+        f"taint catalog {path}: '{where}' must be {described}, got "
+        f"{type(value).__name__}: {value!r}."
+    )
+
+
+def _scalar_field(
+    value: Any, expected: type, described: str, path: Path, where: str,
+) -> Any:
+    """``value`` if it is null or an ``expected`` (a ``bool`` is not an
+    ``int`` here), else :func:`_shape_error`. Null passes through as the
+    loaders have always read it."""
+    if value is None or (
+        isinstance(value, expected)
+        and not (expected is int and isinstance(value, bool))
+    ):
+        return value
+    raise _shape_error(path, where, described, value)
+
+
+def _list_field(
+    value: Any, item: type, described_item: str, path: Path, where: str,
+) -> list[Any]:
+    """``value`` if it is a list whose members are each an ``item``, else
+    :func:`_shape_error` naming the list or the first wrong member. ``item``
+    ``object`` checks the list alone. Null is refused: iterating it crashed."""
+    if not isinstance(value, list):
+        raise _shape_error(path, where, "a list", value)
+    if item is not object:
+        for index, member in enumerate(value):
+            if member is None:
+                raise _shape_error(
+                    path, f"{where}[{index}]", described_item, member)
+            _scalar_field(member, item, described_item, path, f"{where}[{index}]")
+    return value
+
+
 def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
     """Load a single taint source YAML file.
 
@@ -1836,19 +1893,33 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
     """
     data = _safe_load_catalog_yaml(path, "sources", dict)
     _reject_unknown_catalog_keys(data, _SOURCE_FILE_KEYS, path, "top-level")
-    label = data.get("taint_label", "unknown")
+    label = _scalar_field(
+        data.get("taint_label", "unknown"), str, "a string", path, "taint_label")
     sources_by_lang: dict[str, list[TaintSource]] = {}
 
-    for lang, entries in data.get("sources", {}).items():
+    for lang, entries in (data.get("sources") or {}).items():
         lang_sources: list[TaintSource] = []
-        for entry in entries:
+        rows = _list_field(entries, object, "", path, f"sources.{lang}")
+        for index, entry in enumerate(rows):
             if not isinstance(entry, dict):
                 continue
+            where = f"sources.{lang}[{index}]"
             _reject_unknown_catalog_keys(
                 entry, _SOURCE_ENTRY_KEYS, path, f"sources.{lang} entry")
-            module = entry.get("module", "")
-            return_tainted = entry.get("return_tainted", True)
-            arg_tainted = tuple(entry.get("argument_tainted", []))
+            module = _scalar_field(
+                entry.get("module", ""), str, "a string", path, f"{where}.module")
+            return_tainted = _scalar_field(
+                entry.get("return_tainted", True), bool, "true or false", path,
+                f"{where}.return_tainted")
+            arg_tainted = tuple(_list_field(
+                entry.get("argument_tainted", []), int, "an integer", path,
+                f"{where}.argument_tainted"))
+            functions = _list_field(
+                entry.get("functions", []), str, "a string", path,
+                f"{where}.functions")
+            methods = _list_field(
+                entry.get("methods", []), str, "a string", path,
+                f"{where}.methods")
             start_at = entry.get("start_at", "caller")
             if start_at not in {"caller", "callee"}:
                 raise TaintCatalogError(
@@ -1856,7 +1927,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                     f"must be 'caller' or 'callee'."
                 )
 
-            for func_name in entry.get("functions", []):
+            for func_name in functions:
                 lang_sources.append(TaintSource(
                     taint_label=label,
                     module=module,
@@ -1866,7 +1937,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                     argument_tainted=arg_tainted,
                     start_at=start_at,
                 ))
-            for method_name in entry.get("methods", []):
+            for method_name in methods:
                 lang_sources.append(TaintSource(
                     taint_label=label,
                     module=module,
@@ -1888,20 +1959,30 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
     """
     data = _safe_load_catalog_yaml(path, "sinks", dict)
     _reject_unknown_catalog_keys(data, _SINK_FILE_KEYS, path, "top-level")
-    zone = data.get("zone", "unknown")
-    trust_level = data.get("trust_level", "unknown")
+    zone = _scalar_field(data.get("zone", "unknown"), str, "a string", path, "zone")
+    trust_level = _scalar_field(
+        data.get("trust_level", "unknown"), str, "a string", path, "trust_level")
     sinks_by_lang: dict[str, list[TaintSink]] = {}
 
-    for lang, entries in data.get("sinks", {}).items():
+    for lang, entries in (data.get("sinks") or {}).items():
         lang_sinks: list[TaintSink] = []
-        for entry in entries:
+        rows = _list_field(entries, object, "", path, f"sinks.{lang}")
+        for index, entry in enumerate(rows):
             if not isinstance(entry, dict):
                 continue
+            where = f"sinks.{lang}[{index}]"
             _reject_unknown_catalog_keys(
                 entry, _SINK_ENTRY_KEYS, path, f"sinks.{lang} entry")
-            module = entry.get("module", "")
+            module = _scalar_field(
+                entry.get("module", ""), str, "a string", path, f"{where}.module")
+            functions = _list_field(
+                entry.get("functions", []), str, "a string", path,
+                f"{where}.functions")
+            methods = _list_field(
+                entry.get("methods", []), str, "a string", path,
+                f"{where}.methods")
 
-            for func_name in entry.get("functions", []):
+            for func_name in functions:
                 lang_sinks.append(TaintSink(
                     zone=zone,
                     trust_level=trust_level,
@@ -1909,7 +1990,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
                     name=func_name,
                     kind=KIND_FUNCTION,
                 ))
-            for method_name in entry.get("methods", []):
+            for method_name in methods:
                 lang_sinks.append(TaintSink(
                     zone=zone,
                     trust_level=trust_level,
@@ -1931,16 +2012,31 @@ def _load_sanitizer_yaml(path: Path) -> dict[str, list[TaintSanitizer]]:
     _reject_unknown_catalog_keys(data, _SANITIZER_FILE_KEYS, path, "top-level")
     sanitizers_by_lang: dict[str, list[TaintSanitizer]] = {}
 
-    for transform in data.get("transforms", []):
-        if isinstance(transform, dict):
-            _reject_unknown_catalog_keys(
-                transform, _SANITIZER_ENTRY_KEYS, path, "transforms entry")
-        input_taint = transform.get("input_taint", "unknown")
-        output_taint = transform.get("output_taint", "unknown")
+    for index, transform in enumerate(data.get("transforms") or []):
+        where = f"transforms[{index}]"
+        if not isinstance(transform, dict):
+            raise _shape_error(path, where, "a mapping", transform)
+        _reject_unknown_catalog_keys(
+            transform, _SANITIZER_ENTRY_KEYS, path, "transforms entry")
+        input_taint = _scalar_field(
+            transform.get("input_taint", "unknown"), str, "a string", path,
+            f"{where}.input_taint")
+        output_taint = _scalar_field(
+            transform.get("output_taint", "unknown"), str, "a string", path,
+            f"{where}.output_taint")
+        functions = transform.get("functions", {})
+        if functions is None:
+            functions = {}
+        if not isinstance(functions, dict):
+            raise _shape_error(
+                path, f"{where}.functions", "a mapping of language to names",
+                functions)
 
-        for lang, func_names in transform.get("functions", {}).items():
+        for lang, func_names in functions.items():
             lang_sans = sanitizers_by_lang.setdefault(lang, [])
-            for func_name in func_names:
+            for func_name in _list_field(
+                func_names, str, "a string", path, f"{where}.functions.{lang}",
+            ):
                 lang_sans.append(TaintSanitizer(
                     input_taint=input_taint,
                     output_taint=output_taint,

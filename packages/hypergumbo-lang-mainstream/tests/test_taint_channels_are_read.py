@@ -92,7 +92,7 @@ def test_a_sanitizer_in_your_channel_clears_it_and_says_whose_word_it_was(
     (verdict,) = doc["verdicts"]
     # The sanitizer removed the flow and is credited by name; the verdict is
     # not clean only because nothing classifies ``crm`` itself.
-    assert (rc, verdict["verdict"]) == (2, "inconclusive")
+    assert (rc, verdict["verdict"]) == (4, "inconclusive")
     assert verdict["sanitized_flows"] == 1
     assert [(c["kind"], c["entries"]) for c in verdict["caveats"]] == [
         ("user_supplied_sanitizer", ["crm.scrub"]),

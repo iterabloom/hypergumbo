@@ -59,8 +59,11 @@ if ! "$PY_BIN" -c "import hypergumbo_core" 2>/dev/null; then
 fi
 
 echo "check-self-claims: analysing hypergumbo with hypergumbo ..." >&2
-# verify-claims exits 1 for violated / 2 for inconclusive. Both are expected
-# states here — the snapshot decides pass/fail, not the exit code.
+# verify-claims exits 1 for violated / 3 for caveated / 4 for inconclusive. All
+# are expected states here — the snapshot decides pass/fail, not the exit code.
+# Its exit 2 is BAD INPUT (e.g. the claims file failed validation): it writes no
+# JSON, so the parse check below fails the gate as infrastructure, not as a
+# claim regression.
 # --minimal: decline the side outputs this gate never reads (budget-tier
 # previews, per-handler slices, sketch pre-computation). MEASURED, cold, both
 # arms confirmed by the "No cached results found" line, on two throwaway

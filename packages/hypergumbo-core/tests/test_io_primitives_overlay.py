@@ -408,7 +408,7 @@ class TestPrecedence:
         ``confirmed`` about the calls it could not classify: this exact
         overlay — zero primitive rows, one entry — is enough to turn a fixture
         that opens ``telnetlib.Telnet`` and writes ``os.environ["API_KEY"]``
-        into it from ``inconclusive`` (rc 2) into ``confirmed`` (rc 0).
+        into it from ``inconclusive`` (rc 4) into ``confirmed`` (rc 0).
 
         The grant is deliberate. Overlays are where third-party goes and the
         user is the authority on their own dependencies; without it a
