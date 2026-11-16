@@ -67,6 +67,8 @@ The ranking adjustments move, unchanged in formula and magnitude, to a separate 
 
 Entrypoint sorting (`entrypoints.py::MIN_ENTRYPOINT_CONFIDENCE`) and `MIN_ENTRYPOINT_CONFIDENCE` filtering re-key from `confidence` to `rank_score`. **The ruling explicitly requires the ranking signal survive relocation unchanged**: these adjustments encode hard-won bakeoff fixes — the forgejo Go-export demotion, the DMD test-`main()` penalty, the gemini-cli telemetry-export carve-out are named in the code comments — and regressing them is out of scope. `rank_score` initializes from detection confidence and accumulates the same adjustments the confidence field accumulates today; only the field name changes for the ranking consumer. Edges/entrypoints whose producers have not yet separated continue publishing `confidence_source=composite` until their migration PR lands.
 
+The order among entrypoints of equal `rank_score` and the entrypoint cap's choice among them are not part of the formula this ruling freezes: equal scores order by detection `confidence`, then language weight, then effective out-degree, and a cap that cuts through a group of equal scores deals its slots round-robin across source files.
+
 `rank_score` is a numeric field (not axis-governed vocabulary); `confidence_source` carries the bounded-enum axis declaration per ADR-0024.
 
 ### 4. `quality.score` / `quality.reason` are deleted via a one-version deprecation window

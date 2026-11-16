@@ -13377,7 +13377,7 @@ def run_survey(
     candidates = detect_entrypoint_candidates(all_symbols, all_edges)
     behavior_map["entrypoints"] = [
         ep.to_dict()
-        for ep in apply_rank_floor_and_cap(candidates, len(all_symbols))
+        for ep in apply_rank_floor_and_cap(candidates, all_symbols)
     ]
     # Every request handler BEFORE the rank floor and the size cap that
     # ``entrypoints`` applies (WI-vumig). ``entrypoints`` is a ranked

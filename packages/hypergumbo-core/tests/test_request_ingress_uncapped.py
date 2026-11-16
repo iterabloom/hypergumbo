@@ -76,7 +76,7 @@ def test_the_capped_list_is_the_candidates_floored_and_capped() -> None:
     nodes = [_handler(i) for i in range(BASE_ENTRYPOINT_CAP + 10)] + [_export(0)]
     cands = detect_entrypoint_candidates(nodes, [])
     assert [e.symbol_id for e in detect_entrypoints(nodes, [])] == [
-        e.symbol_id for e in apply_rank_floor_and_cap(cands, len(nodes))
+        e.symbol_id for e in apply_rank_floor_and_cap(cands, nodes)
     ]
 
 

@@ -65,6 +65,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Internal renames, with no output change**: taint's target and mode gates, the pass-silence states.
 - **Stable ids, shape ids and repo fingerprints get mypy NewTypes**, with no output change.
 - **A Rust module-level `const` is now kind `const`, not `variable`.**
+- **Tied entry points order by detection confidence; the cap spreads ties across files.**
 
 ### Removed
 
