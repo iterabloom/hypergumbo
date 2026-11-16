@@ -1644,8 +1644,13 @@ def make_export_stable_id(language: str, path: str, name: str) -> str:
 
     Identity formula: ``sha256("export:{language}:{path}:{name}")[:16]``.
     Exports are file-scoped, so ``(path, name)`` is the natural identity.
-    Bash function exports, Python ``__all__`` entries, and JS named
-    exports all use this shape.
+
+    Two producers emit this kind (``producer_coherence.find_emitted_symbol_kinds``
+    lists them): bash, one Symbol per exported VARIABLE per file (``export -f``
+    of a function emits none), and json_config, one per ``package.json``
+    ``exports`` entry. A Python ``__all__`` entry, an ES named export and a
+    Rust ``pub use`` emit no ``export`` Symbol; js_ts's ``kind="export"`` is a
+    ``UsageContext``, which has no stable id.
     """
     return _short_sha256(f"export:{language}:{path}:{name}")
 
@@ -2167,8 +2172,8 @@ def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
     """ADR-0035 §3 SITE occurrence-indexing: disambiguate within-file collisions.
 
     Within one file, two emitted Symbols sharing a ``stable_id`` are distinct code
-    SITES (repeated SQL/HTTP call sites, repeated shell ``export``s, repeated
-    markdown links, manifest script entries, …). The producers do not populate an
+    SITES (repeated SQL/HTTP call sites, repeated markdown links, manifest
+    script entries, …). The producers do not populate an
     occurrence index, so they collide until this pass. It groups by
     ``(path, stable_id)`` and, for each colliding group, re-mints the 2nd-and-later
     members (ordered deterministically by span/id) with a ``:occ:<n>`` suffix

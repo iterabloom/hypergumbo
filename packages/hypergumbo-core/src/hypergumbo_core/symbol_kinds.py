@@ -361,7 +361,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("keyword", AXIS_LANGUAGE_CONSTRUCT,
                    "Keyword-shaped construct (configuration languages)."),
     SymbolKindSpec("export", AXIS_LANGUAGE_CONSTRUCT,
-                   "Export declaration (JS / TS / TOML / Rust)."),
+                   "Export declaration: a shell variable marked for export "
+                   "(bash) or a `package.json` `exports` entry (JSON)."),
     SymbolKindSpec("import", AXIS_LANGUAGE_CONSTRUCT,
                    "Top-level wasm-bindgen FFI import declaration. Reclassified "
                    "DEPRECATE-NO-FOLD → CANONICAL on 2026-05-07 by the indirection-"
