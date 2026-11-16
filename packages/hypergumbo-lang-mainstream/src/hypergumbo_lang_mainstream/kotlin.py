@@ -154,6 +154,21 @@ before that brace (``_close_brace_repair``) and keeps whichever tree has fewer
 errors; positions are unchanged, so node text still comes from the original
 bytes. The shape is legal Kotlin, though rare outside test strings.
 
+Signature text and the typed stable_id. A function's signature is
+``(name: Type, ...): Return`` with every type written as its source text,
+whatever node kind it is (``_KT_TYPE_SLOT_NODES``: a parenthesized type,
+``dynamic`` and a definitely-non-null ``T & Any`` included) and a vararg
+parameter written ``vararg name: Type``. ``normalize_kotlin_signature`` hashes
+that text through the shared names-first normalizer (names dropped, FQN
+prefixes stripped; Kotlin passes no type parameters, so generic names are
+hashed as written) with two Kotlin additions: ``vararg`` is kept in front of
+the parameter's type, and an extension function's receiver is written in
+front, ``String.()Int``. ``suspend`` is not in the text; it is the
+``:async`` slot of ``make_typed_stable_id``. A class property hashes its
+declared type as written, of any kind, preceded by ``Receiver.`` when it is
+an extension property. A renderer that skipped a type kind made two
+declarations that differ only in that type share one id.
+
 Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,
 ``internal``, or ``protected``. Extension functions are unconditionally
@@ -760,6 +775,63 @@ def _kotlin_property_scope(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover - every node is under source_file
 
 
+#: Every node kind tree-sitter-kotlin 1.1.0 puts in a TYPE SLOT: a
+#: parameter's type, a return type, an extension receiver, a property's
+#: declared type. ``dynamic`` (Kotlin/JS) is an anonymous token, not a named
+#: node. Annotations and ``suspend`` sit INSIDE these (a ``type_modifiers``
+#: child), so the node's text carries them. The renderers read only the first
+#: three until the PR 2 scheme bump and dropped the other three, with their
+#: parameter, from the text a stable_id hashes.
+_KT_TYPE_SLOT_NODES: Final[frozenset[str]] = frozenset({
+    "user_type", "nullable_type", "function_type",
+    "parenthesized_type", "non_nullable_type", "dynamic",
+})
+
+#: How a ``vararg`` parameter is written in the signature text, in front of
+#: its name as in the source (``vararg x: Int``).
+_KT_VARARG_PREFIX: Final[str] = "vararg "
+
+
+def _kt_is_vararg(parameter_modifiers: "tree_sitter.Node") -> bool:
+    """True when a ``parameter_modifiers`` node carries ``vararg``.
+
+    The grammar puts a parameter's modifiers in a SIBLING node that precedes
+    the ``parameter`` inside ``function_value_parameters``, not inside it.
+    """
+    return any(
+        kw.type == "vararg"
+        for mod in parameter_modifiers.children
+        if mod.type == "parameter_modifier"
+        for kw in mod.children
+    )
+
+
+def _kt_receiver_type_node(decl: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The extension receiver's type node of a function or property, or ``None``.
+
+    ``fun String?.f()`` and ``val List<T>.p`` write the receiver as a type node
+    directly followed by a ``.`` token, ahead of the declared name; any of
+    the type kinds can take that place (``fun ((Int) -> Unit).f()``,
+    ``fun dynamic.f()``). Modifiers and type parameters may precede it.
+    """
+    for child in decl.children:
+        if child.type in ("identifier", "variable_declaration", "function_value_parameters"):
+            return None
+        if child.type in _KT_TYPE_SLOT_NODES:
+            nxt = child.next_sibling
+            if nxt is not None and nxt.type == ".":
+                return child
+    return None  # pragma: no cover - defensive: a declaration with no name node
+
+
+def _kt_declared_type_text(holder: "tree_sitter.Node", source: bytes) -> str | None:
+    """Source text of the first type node directly under ``holder``, or ``None``."""
+    for child in holder.children:
+        if child.type in _KT_TYPE_SLOT_NODES:
+            return node_text(child, source)
+    return None
+
+
 def _extract_kotlin_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -768,6 +840,14 @@ def _extract_kotlin_signature(
     Returns signature like:
     - "(x: Int, y: Int): Int" for regular functions
     - "(message: String)" for Unit (void) functions
+    - "(vararg xs: Int)" for a vararg parameter
+
+    Every type node kind (``_KT_TYPE_SLOT_NODES``) is written as its source
+    text; a parameter or return type of a kind with no branch used to vanish.
+    The extension receiver is not part of this text (it is in
+    ``meta.extension_receiver`` and in the hashed text, see
+    ``normalize_kotlin_signature``). Default values, ``crossinline`` /
+    ``noinline`` and parameter annotations are not written.
 
     Args:
         node: The function_declaration node.
@@ -784,19 +864,24 @@ def _extract_kotlin_signature(
     for child in node.children:
         if child.type == "function_value_parameters":
             found_params = True
+            vararg = False
             for subchild in child.children:
-                if subchild.type == "parameter":
+                if subchild.type == "parameter_modifiers":
+                    vararg = _kt_is_vararg(subchild)
+                elif subchild.type == "parameter":
                     param_name = None
                     param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
                             param_name = node_text(pc, source)
-                        elif pc.type in ("user_type", "nullable_type", "function_type"):
+                        elif pc.type in _KT_TYPE_SLOT_NODES:
                             param_type = node_text(pc, source)
                     if param_name and param_type:
-                        params.append(f"{param_name}: {param_type}")
+                        prefix = _KT_VARARG_PREFIX if vararg else ""
+                        params.append(f"{prefix}{param_name}: {param_type}")
+                    vararg = False
         # Return type comes after function_value_parameters and before function_body
-        elif found_params and child.type in ("user_type", "nullable_type", "function_type"):
+        elif found_params and child.type in _KT_TYPE_SLOT_NODES:
             return_type = node_text(child, source)
 
     params_str = ", ".join(params)
@@ -808,13 +893,61 @@ def _extract_kotlin_signature(
     return signature
 
 
+def _kt_close_paren(signature: str) -> int:
+    """Index of the ``)`` that closes the parameter list opened at index 0."""
+    depth = 0
+    for i, ch in enumerate(signature):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1  # pragma: no cover - only called on a text the shared normalizer parsed
+
+
 def normalize_kotlin_signature(
     signature: str | None,
     type_params: list[str] | None = None,
+    *,
+    receiver: str | None = None,
 ) -> str | None:
-    """Normalize a Kotlin signature for typed stable_id (spec §6 typed tier)."""
-    from hypergumbo_core.analyze.base import normalize_signature_names_first
-    return normalize_signature_names_first(signature, type_params, return_sep=":")
+    """Normalize a Kotlin signature for typed stable_id (spec §6 typed tier).
+
+    The shared names-first normalizer keeps each parameter's text after its
+    first ``:``, so it would drop the ``vararg`` written before the name.
+    When a parameter is a vararg, each parameter is normalized on its own by
+    that same normalizer and the vararg one is written ``vararg <Type>``:
+    ``(a: Int, vararg b: kotlin.String)`` -> ``(Int,vararg String)``. A
+    signature with no vararg parameter takes the shared result unchanged.
+
+    ``receiver`` is an extension function's receiver type, written in front
+    as Kotlin writes a receiver function type (``String.()Int``), FQN prefix
+    stripped like a parameter type. A receiver-less text starts with ``(``,
+    so the two cannot meet.
+    """
+    from hypergumbo_core.analyze.base import normalize_signature_names_first, split_params_top_level
+    norm = normalize_signature_names_first(signature, type_params, return_sep=":")
+    if norm is None or signature is None:
+        return None
+    close = _kt_close_paren(signature)
+    params = split_params_top_level(signature[1:close])
+    if any(p.startswith(_KT_VARARG_PREFIX) for p in params):
+        types: list[str] = []
+        for p in params:
+            is_vararg = p.startswith(_KT_VARARG_PREFIX)
+            if is_vararg:
+                p = p[len(_KT_VARARG_PREFIX):]
+            one = normalize_signature_names_first(f"({p})", type_params, return_sep=":")
+            types.append((_KT_VARARG_PREFIX if is_vararg else "") + (one or "()")[1:-1])
+        tail = normalize_signature_names_first(
+            "()" + signature[close + 1:], type_params, return_sep=":",
+        )
+        norm = f"({','.join(types)}){(tail or '()')[2:]}"
+    if receiver:
+        from hypergumbo_core.analyze.base import strip_fqn_prefix
+        norm = f"{strip_fqn_prefix(receiver.strip())}.{norm}"
+    return norm
 
 
 def _extract_kotlin_return_type_name(signature: str | None) -> str | None:
@@ -1242,8 +1375,16 @@ def _extract_symbols_from_file(
                 signature = _extract_kotlin_signature(node, source)
                 modifiers = _extract_modifiers(node)
 
-                # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_kotlin_signature(signature)
+                # Typed stable_id (spec §6 typed tier). An extension
+                # function's receiver is hashed in front of its parameters.
+                receiver_node = _kt_receiver_type_node(node)
+                norm_sig = normalize_kotlin_signature(
+                    signature,
+                    receiver=(
+                        node_text(receiver_node, source)
+                        if receiver_node is not None else None
+                    ),
+                )
                 # INV-fabih: the full class/object/function chain, not the
                 # nearest owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
@@ -1527,10 +1668,14 @@ def _extract_symbols_from_file(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                type_node = find_child_by_type(var_decl, "user_type")
-                prop_type = (
-                    node_text(type_node, source) if type_node is not None else None
-                )
+                # Every type node kind, as written (a field's hashed type is
+                # not normalized); an extension property's receiver goes in
+                # front of it, joined by ``.`` as the declaration writes it.
+                prop_type = _kt_declared_type_text(var_decl, source)
+                prop_receiver = _kt_receiver_type_node(node)
+                hashed_type = prop_type or ""
+                if prop_receiver is not None:
+                    hashed_type = f"{node_text(prop_receiver, source)}.{hashed_type}"
                 prop_modifiers = _extract_modifiers(node)
                 prop_annotations = _extract_annotations(node, source)
                 prop_meta: dict[str, object] | None = None
@@ -1541,7 +1686,7 @@ def _extract_symbols_from_file(
                 if scope == "field":
                     full_name = f"{enclosing_class}.{prop_name}"
                     stable_id = make_typed_stable_id(
-                        "field", prop_type or "",
+                        "field", hashed_type,
                         visibility_from_modifiers(prop_modifiers),
                         name=prop_name,
                         qualified_name=".".join((*_kotlin_scope(node, source), prop_name)),
