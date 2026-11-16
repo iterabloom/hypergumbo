@@ -52,3 +52,10 @@
   clock: 5  # 20cb
   nonce: 20cb  # 20cb
   message: "PR #2200, 2026-11-16: a SUBSET is done and the item stays open. StableId, ShapeId and RepoFingerprint are NewTypes over str in ir.py, each wrapped once where it is minted (analyze/base.py `_short_sha256`, `mint_scip_stable_id`, `mint_shape_id`; ir.py `_canonical_external_stable_id`; repo_fingerprint.py `compute_repo_fingerprint_field`); a test (test_id_newtypes.py) holds the list of mint sites. No emitted value changed (fixture 157 nodes and meson 23,602 nodes equal in both arms). The axis checker and the schema generator were taught to read a NewType field. mypy strict 466 before and after; the baseline file says 477 and was not lowered. Sizing for the rest (pr2/tapak_sizing.md): NodeId, EdgeId, RunId, EdgeKey, SymbolFingerprint = 476 mypy errors, 74 hand-built node ids, 14 linker sites that set Symbol.fingerprint to a bare 16-hex hash. LIMIT: the mint-site test reads the plain name, so an aliased import of StableId evades it. The re-scope to a subset was my call; the owner's to overrule."  # 20cb
+- op: discuss  # 6888
+  at: '2026-11-16T15:45:58Z'  # 6888
+  by: agent  # 6888
+  actor: jgstern_agent  # 6888
+  clock: 6  # 6888
+  nonce: '6888'  # 6888
+  message: "OWNER RULING 2026-11-16: NodeId alone gets the NewType treatment, as its own PR after the release (after PR 3 and the release, beside PR 4 = WI-buzup). The other four types named here (EdgeId, RunId, EdgeKey, SymbolFingerprint) stay filed on this item, unscheduled. No status change."  # 6888
