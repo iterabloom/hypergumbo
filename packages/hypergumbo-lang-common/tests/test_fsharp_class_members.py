@@ -713,18 +713,16 @@ let helper x = x
         assert ("T.Go", "helper") in _calls(result)
         assert ("Later.Go", "helper") in _calls(result)
 
-    def test_members_and_types_are_not_call_targets(self, tmp_path: Path) -> None:
-        """Receiver-blind: ``x.Scale 2.0`` says nothing of ``x``'s type, and a
+    def test_member_is_not_matched_by_its_name_alone(self, tmp_path: Path) -> None:
+        """Members stay out of the name-keyed resolver, like record fields: a
         registered ``Shape.Scale`` would suffix-match every ``Scale`` call in
-        the repository. So, like record fields, they stay out of the
-        resolver; the call resolves as it did before (here: not at all)."""
+        the repository. ``x`` and ``y`` have no stated type here, so nothing
+        is drawn (``test_fsharp_member_calls.py`` holds the decided forms)."""
         result = _analyze(tmp_path, """module Demo
 type Shape(r: float) =
     member this.Scale(k: float) = r * k
-    static member Make (r: float) = Shape(r)
-let run (x: Shape) = x.Scale 2.0
-let build () = Shape.Make 1.0
-let direct () = Shape(1.0)
+let run x = x.Scale 2.0
+let bare y = Scale y
 """)
         assert _calls(result) == set()
 
