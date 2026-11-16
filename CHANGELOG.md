@@ -104,6 +104,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Verilog instantiations with one port, positional ports, `.*` or none emit edges.**
 - **C++ in-class constructors and member templates are methods of their class.**
 - **C++ `new` lands on the constructor its argument count selects.**
+- **C++ members of `class Outer::Impl` and unions belong to their class.**
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`.
 - **Python `stable_id` reads whole annotations: `Literal[-1]` and `Literal[-2]` no longer collide.**

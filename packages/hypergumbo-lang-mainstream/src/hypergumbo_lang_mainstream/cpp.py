@@ -71,6 +71,16 @@ Call-edge details:
   constructor ``C() {}`` is ``C::C`` as an out-of-class ``C::C() {}`` is, and
   ``template <class T> void f(T) {}`` is ``C::f`` (WI-rugin). A ``friend``
   defined there is a free function.
+- **Qualified class names** (INV-tohuj): a class, struct or enum DEFINED under
+  a qualified name -- the pimpl idiom's ``class OnlineStream::Impl { .. }`` --
+  is named as declared, template arguments dropped (``_cpp_type_name``), with
+  its fields and enumerators; its members are ``OnlineStream::Impl::m``, the
+  name an out-of-line ``void OnlineStream::Impl::m() {}`` already has, and a
+  bare call in its body binds its own member. A union owns its members
+  (``U::U``, ``U::um``). An explicit receiver whose declared type names a
+  class nested in the caller's class (``unique_ptr<Impl> impl_`` in
+  ``OnlineStream``) is that nested class (``_cpp_nested_class``), so the
+  pimpl forward ``impl_->Run()`` reaches ``OnlineStream::Impl::Run``.
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
   ``_CPP_STL_METHODS`` (``v.clear()``) is not resolved against project
@@ -342,7 +352,72 @@ def _cpp_scope_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
     declaration and a member of a top-level class, ``A/Inner::go`` for a
     member of a nested one.
     """
-    return nested_member_qualified_name(c_family_scope_chain(node, source), name, "::")
+    return nested_member_qualified_name(_cpp_scope_chain(node, source), name, "::")
+
+
+#: Specifiers that are classes for member ownership: a union's constructor
+#: and member functions are its members as a class's are.
+_CPP_CLASS_SPECIFIERS = frozenset({
+    "class_specifier", "struct_specifier", "union_specifier",
+})
+#: The body that makes a specifier a DEFINITION, per specifier type.
+_CPP_TYPE_BODIES = frozenset({"field_declaration_list", "enumerator_list"})
+
+
+def _cpp_strip_template_args(text: str) -> str:
+    """``A<T>::B`` -> ``A::B``: template arguments (nested ones too),
+    whitespace and a leading global ``::`` dropped."""
+    previous = None
+    while previous != text:
+        previous, text = text, re.sub(r"<[^<>]*>", "", text)
+    return "".join(text.split()).lstrip(":")
+
+
+def _cpp_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name a class / struct / union / enum specifier declares, or None.
+
+    A plain ``type_identifier`` is the name as written. A DEFINITION may name
+    its type with a ``qualified_identifier`` instead -- the out-of-line
+    definition of a nested type, ``class OnlineStream::Impl { .. }`` (the
+    pimpl idiom), ``enum class E::Color { .. }`` -- and is then named as
+    declared, template arguments dropped (``template <class T> struct
+    A<T>::B`` is ``A::B``) (INV-tohuj). A qualified name with no body
+    (``friend class A::B;``) declares nothing and gives None.
+    """
+    name_node = _find_child_by_type(node, "type_identifier")
+    if name_node is not None:
+        return _node_text(name_node, source)
+    qualified = _find_child_by_type(node, "qualified_identifier")
+    if qualified is None or not any(c.type in _CPP_TYPE_BODIES for c in node.children):
+        return None
+    return _cpp_strip_template_args(_node_text(qualified, source))
+
+
+def _cpp_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """``c_family_scope_chain`` for C++, with each enclosing class declared
+    under a qualified name contributing every part of it (``A::B`` is ``A``,
+    ``B``), so a member of ``class A::B`` has the chain an in-body member of
+    a nested ``B`` in ``A`` has. Every other scope is read as
+    ``c_family_scope_chain`` reads it."""
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in _CPP_CLASS_SPECIFIERS:
+            name = _cpp_type_name(current, source)
+            if name is not None:
+                chain.extend(reversed(name.split("::")))
+        elif current.type == "namespace_definition":
+            ns = next(
+                (c for c in current.children if c.type in (
+                    "namespace_identifier", "nested_namespace_specifier", "identifier",
+                )),
+                None,
+            )
+            if ns is not None:
+                chain.append(_node_text(ns, source))
+        current = current.parent
+    chain.reverse()
+    return chain
 
 
 def _emit_cpp_pure_virtual(
@@ -1059,9 +1134,9 @@ def _extract_symbols_from_tree(
 
         # Class declaration
         if node.type == "class_specifier":
-            name_node = _find_child_by_type(node, "type_identifier")
-            if name_node:
-                name = _node_text(name_node, source)
+            class_name = _cpp_type_name(node, source)
+            if class_name is not None:
+                name = class_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1082,7 +1157,7 @@ def _extract_symbols_from_tree(
                     # WI-pivap: the namespace-qualified name lets the core
                     # inheritance linker check a qualified base's qualifier
                     # (``std::exception`` is not ``mylib::exception``).
-                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
+                    qualified_name="::".join([*_cpp_scope_chain(node, source), name]),
                     modifiers=class_modifiers,
                     language="cpp",
                     path=str(file_path),
@@ -1121,9 +1196,9 @@ def _extract_symbols_from_tree(
         # forward declarations like ``struct Foo;``)
         elif node.type == "struct_specifier":
             has_body = any(c.type == "field_declaration_list" for c in node.children)
-            name_node = _find_child_by_type(node, "type_identifier") if has_body else None
-            if name_node:
-                name = _node_text(name_node, source)
+            struct_name = _cpp_type_name(node, source) if has_body else None
+            if struct_name is not None:
+                name = struct_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1135,7 +1210,7 @@ def _extract_symbols_from_tree(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
                     name=name,
                     kind="struct",
-                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
+                    qualified_name="::".join([*_cpp_scope_chain(node, source), name]),
                     language="cpp",
                     path=str(file_path),
                     span=Span(
@@ -1178,10 +1253,12 @@ def _extract_symbols_from_tree(
             # fills the slot with a zero-width MISSING type_identifier. Read as
             # a name it would yield a nameless enum id and owner-less `::kA`
             # fields.
-            if name_node is not None and name_node.is_missing:
-                name_node = None
-            if name_node:
-                name = _node_text(name_node, source)
+            enum_name = (
+                None if name_node is not None and name_node.is_missing
+                else _cpp_type_name(node, source) if has_body else None
+            )
+            if enum_name:
+                name = enum_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1500,13 +1577,19 @@ def _try_instantiation_edge(
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> str | None:
-    """Walk up the AST to find the enclosing class/struct name."""
+    """Walk up the AST to find the enclosing class / struct / union name.
+
+    A class declared under a qualified name (``class OnlineStream::Impl``) is
+    named as declared (``_cpp_type_name``), so its members are
+    ``OnlineStream::Impl::m`` -- the name an out-of-line definition of the
+    same member already has -- and a union owns its members (INV-tohuj).
+    """
     parent = node.parent
     while parent is not None:
-        if parent.type in ("class_specifier", "struct_specifier"):
-            name_node = _find_child_by_type(parent, "type_identifier")
-            if name_node:
-                return _node_text(name_node, source)
+        if parent.type in _CPP_CLASS_SPECIFIERS:
+            name = _cpp_type_name(parent, source)
+            if name is not None:
+                return name
         parent = parent.parent
     return None
 
@@ -1739,8 +1822,38 @@ def _cpp_owner_class(
     if enclosing is not None:
         return enclosing
     if function is not None and function.kind == "method" and "::" in function.name:
-        return function.name.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        # The whole qualifier: ``OnlineStream::Impl`` for
+        # ``OnlineStream::Impl::Out``; ``_cpp_class_key`` reads it against the
+        # classes the run knows, longest suffix first (``ns::Tts`` -> ``Tts``).
+        return function.name.rsplit("::", 1)[0]
     return None
+
+
+def _cpp_class_key(owner: str, known: Any) -> Optional[str]:
+    """The longest ``::``-suffix of ``owner`` that ``known`` holds, or None:
+    ``ns::Tts`` is the class ``Tts`` when no class is named ``ns::Tts``."""
+    parts = owner.split("::")
+    for start in range(len(parts)):
+        key = "::".join(parts[start:])
+        if key in known:
+            return key
+    return None
+
+
+def _cpp_nested_class(
+    type_name: str, owner: Optional[str], global_symbols: dict[str, Symbol],
+) -> str:
+    """``type_name`` as C++ looks it up from a member of ``owner``: a class
+    nested in the owner (or an owner of the owner) first, then the name as
+    written. ``unique_ptr<Impl> impl_`` in ``OnlineStream`` is
+    ``OnlineStream::Impl`` when the run defines that class (INV-tohuj)."""
+    if owner:
+        parts = owner.split("::")
+        for end in range(len(parts), 0, -1):
+            nested = global_symbols.get("::".join([*parts[:end], type_name]))
+            if nested is not None and nested.kind in ("class", "struct"):
+                return nested.name
+    return type_name
 
 
 def _cpp_receiver_class(
@@ -1765,7 +1878,8 @@ def _cpp_receiver_class(
     declared = _cpp_declared_type_node(call, source, name, parameters=True)
     if declared is not None:
         return _cpp_class_of_type(declared, source, arrow=arrow)
-    return field_types.get(owner_class, {}).get(name) if owner_class else None
+    key = _cpp_class_key(owner_class, field_types) if owner_class else None
+    return field_types[key].get(name) if key is not None else None
 
 
 def _cpp_stream_target_kind(
@@ -2184,14 +2298,20 @@ def _extract_edges_from_tree(
                         # project class that does not declare it, an
                         # unresolved edge the inherited_calls linker walks
                         # the bases from (receiver_type_hint).
+                        _owner = (
+                            _cpp_owner_class(node, source, current_function)
+                            if explicit else None
+                        )
                         _receiver_class = (
                             _cpp_receiver_class(
-                                node, source,
-                                _cpp_owner_class(node, source, current_function),
-                                field_type_registry or {},
+                                node, source, _owner, field_type_registry or {},
                             )
                             if explicit else None
                         )
+                        if _receiver_class:
+                            _receiver_class = _cpp_nested_class(
+                                _receiver_class, _owner, global_symbols,
+                            )
                         _member = (
                             global_symbols.get(f"{_receiver_class}::{short_name}")
                             if _receiver_class else None
