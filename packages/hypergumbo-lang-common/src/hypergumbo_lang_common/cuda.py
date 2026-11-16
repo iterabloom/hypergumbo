@@ -418,7 +418,7 @@ def _extract_cuda_edges(
                         "cuda", caller.id, called_name, start_line, PASS_ID, run_id,
                     )
                     if launch_meta is not None:
-                        if edge.meta is None:
+                        if edge.meta is None:  # pragma: no cover - make_unresolved_edge always sets callee_name
                             edge.meta = {}
                         for key, value in launch_meta.items():
                             write_meta_key(edge.meta, key, value)
