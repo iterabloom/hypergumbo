@@ -105,6 +105,17 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      on the type for ``T(...)``, and is an unresolved edge for ``.init``.
      A type the run does not declare (an extension of ``OperationQueue``)
      takes only an exact binding, since its own inits are unseen.
+   - The type a construction names is found by Swift's lexical scoping
+     (WI-kipof): the innermost block, type body or file around the call that
+     declares it in this file (``T`` for ``T(...)``, ``T.init`` and a
+     superclass; ``T.U`` through ``T``'s body), before any name-keyed
+     registry, which keeps one ``T`` per name. A LOCAL type -- declared in a
+     function, closure or accessor -- is visible only inside that body: no
+     registry or resolver answer outside it is a local type, and with the
+     type unknown no local type's init is a candidate. Not done this way:
+     a call on a VALUE of a local type (``v.go()``), a static member
+     (``Local.make()``) and a local function, which still resolve by the
+     name-keyed registries.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Swift-specific extraction
@@ -212,6 +223,24 @@ _SWIFT_BLOCK_NODES: frozenset[str] = frozenset({
     "statements", "if_statement", "while_statement", "for_statement",
     "catch_block", "switch_entry",
 })
+
+#: WI-kipof: the bodies that make a type declared in them LOCAL -- visible
+#: only inside that body. Every scope with a body (a protocol requirement has
+#: none, and nothing is declared in it).
+_SWIFT_LOCAL_BODY_NODES: frozenset[str] = _SWIFT_SCOPE_NODES - {"protocol_function_declaration"}
+
+
+def _swift_is_local_declaration(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` is declared inside a function, closure, initialiser,
+    deinitialiser, subscript or accessor, at any depth (WI-kipof): Swift makes
+    such a type visible inside that body only."""
+    current = node.parent
+    while current is not None:
+        if current.type in _SWIFT_LOCAL_BODY_NODES:
+            return True
+        current = current.parent
+    return False
+
 
 #: WI-sogof: the kinds a bare call ``T(...)`` CONSTRUCTS -- every nominal type
 #: kind (a protocol's ``init`` requirement is never constructed by name, so
@@ -2331,6 +2360,7 @@ def _extract_edges_from_file(
     file_symbols: "list[Symbol] | None" = None,
     initializers: dict[str, list[Symbol]] | None = None,
     type_decls: dict[str, list[Symbol]] | None = None,
+    local_types: "set[str] | frozenset[str] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2346,7 +2376,10 @@ def _extract_edges_from_file(
     ``initializers`` (WI-sogof): every ``init`` symbol of the run by its owner's
     last name segment, and ``type_decls`` every nominal type symbol by name --
     the construction chooser's candidates, and the declarations that tell
-    same-named types' inits apart.
+    same-named types' inits apart. ``local_types`` (WI-kipof): the ids of every
+    type of the run declared inside a function, closure or accessor -- never
+    visible by name outside it, so never a construction's type unless this
+    file's lexical lookup reaches it.
     """
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per qualified name, and overloads share one.
@@ -2363,6 +2396,8 @@ def _extract_edges_from_file(
         initializers = {}
     if type_decls is None:
         type_decls = {}
+    if local_types is None:
+        local_types = frozenset()
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("swift", str(file_path))
@@ -2606,6 +2641,9 @@ def _extract_edges_from_file(
         #   each extension of ``Application``; a test target may declare a
         #   ``Foo`` per file). An init in an extension
         #   cannot be told apart that way and stays a candidate.
+        # * When it is not, an init in the body of a LOCAL type is not a
+        #   candidate: its type is visible only where the lexical lookup
+        #   would have found it (WI-kipof).
         # * A delegating ``self.init`` never runs the init it is in.
         # * An exact binding outranks one that needs defaults, as in Swift
         #   (``_swift_init_binding``). A type the run does not DECLARE (an
@@ -2623,8 +2661,15 @@ def _extract_edges_from_file(
         for init in initializers.get(short, ()):
             if init is delegating_from or not _swift_owner_matches(init, owner):
                 continue
-            declared_in = _swift_declaring_type(init, type_decls) if built is not None else None
+            declared_in = (
+                _swift_declaring_type(init, type_decls)
+                if built is not None or local_types else None
+            )
             if declared_in is not None and built is not None and declared_in.id != built.id:
+                continue
+            # WI-kipof: with the type unknown, a LOCAL type's init is out of
+            # scope -- the lexical lookup would have named that type.
+            if declared_in is not None and built is None and declared_in.id in local_types:
                 continue
             binding = _swift_init_binding(init, args)
             if binding is not None:
@@ -2641,8 +2686,10 @@ def _extract_edges_from_file(
         # the enclosing type (no symbol inside an extension: a name lookup
         # there could be a different type of that name), ``super.init`` the
         # class's superclass (Swift writes it first), ``T.init`` /
-        # ``Outer.T.init`` the type named. A receiver that is a declared
-        # variable (a metatype value) or any other expression names nothing.
+        # ``Outer.T.init`` the type named -- with its symbol when this file
+        # declares it where the call can see it (WI-kipof). A receiver that is
+        # a declared variable (a metatype value) or any other expression
+        # names nothing.
         receiver = _swift_nav_receiver(call, source)
         if receiver is None:  # pragma: no cover - a .init call has a receiver
             return None, None
@@ -2657,14 +2704,20 @@ def _extract_edges_from_file(
             while decl is not None and decl.type != "class_declaration":
                 decl = decl.parent
             bases = _extract_base_classes_swift(decl, source) if decl is not None else []
-            return (bases[0] if bases else None), None
+            # WI-kipof: the superclass as the class's declaration sees it.
+            return (
+                (bases[0], _lexical_type(bases[0], decl)) if bases and decl is not None
+                else (None, None)
+            )
         segments = spelled.split(".")
         if (
             receiver.type in ("simple_identifier", "navigation_expression")
             and all(_swift_is_type_spelling(seg) for seg in segments)
             and segments[0] not in declared_names
         ):
-            return spelled, None
+            # WI-kipof: ``T.init`` / ``T.U.init`` names the type its position
+            # sees, when this file declares one there.
+            return spelled, _lexical_type(spelled, call)
         return None, None
 
     def _constructed(
@@ -2687,7 +2740,60 @@ def _extract_edges_from_file(
         base = score if score is not None else 1.0
         return choice.symbol, base * choice.confidence, True
 
+    # WI-kipof: this file's nominal types by name, then by the node that
+    # HOLDS each declaration (a block, a type body, the file), and each type's
+    # own body -- Swift's lexical scopes for a type name. Filled by the
+    # binding walk below, read by the call walk after it.
+    _types_in: dict[str, dict[_ScopeKey, list[Symbol]]] = {}
+    _type_body: dict[str, _ScopeKey] = {}
+
+    def _lexical_type(spelled: str, at: "tree_sitter.Node") -> Symbol | None:
+        # WI-kipof: the type ``spelled`` (``T`` or ``T.U``) names at ``at``:
+        # the innermost enclosing block, type body or file of THIS file that
+        # declares ``T`` (the last of several there, as a redeclaration under
+        # ``#if`` leaves one), then each ``U`` declared in the body of the
+        # type before it. ``None`` when this file declares no visible ``T``.
+        head, *rest = spelled.split(".")
+        found: Symbol | None = None
+        scopes = _types_in.get(head, {})
+        cur = at.parent
+        while cur is not None and found is None:
+            hits = scopes.get((cur.type, cur.start_byte, cur.end_byte))
+            found = hits[-1] if hits else None
+            cur = cur.parent
+        for seg in rest:
+            body = _type_body.get(found.id) if found is not None else None
+            hits = _types_in.get(seg, {}).get(body) if body is not None else None
+            found = hits[-1] if hits else None
+        return found
+
+    def _visible_global_type(sym: Symbol | None, name: str) -> Symbol | None:
+        # WI-kipof: a name lookup's answer, unless it is a LOCAL type -- which
+        # the lexical lookup did not reach, so it is out of scope here. Then the
+        # last registered TOP-LEVEL type of that name (the registry's own
+        # last-writer rule, among the types a bare name reaches from any
+        # file; a nested type is not one), else nothing.
+        if sym is None or sym.id not in local_types:
+            return sym
+        visible = [
+            t for t in type_decls.get(name, ())
+            if t.id not in local_types and (t.qualified_name or t.name) == t.name
+        ]
+        return visible[-1] if visible else None
+
     for node in iter_tree(tree.root_node):
+        if node.type == "class_declaration" and node.parent is not None:
+            _decl = symbol_declared_by(node, decl_index)
+            _body = find_child_by_type(node, "class_body") or find_child_by_type(
+                node, "enum_class_body",
+            )
+            if _decl is not None and _decl.kind in _SWIFT_CONSTRUCTIBLE_KINDS:
+                _holder = node.parent
+                _types_in.setdefault(_decl.name, {}).setdefault(
+                    (_holder.type, _holder.start_byte, _holder.end_byte), [],
+                ).append(_decl)
+                if _body is not None:
+                    _type_body[_decl.id] = (_body.type, _body.start_byte, _body.end_byte)
         if node.type == "property_declaration":
             # WI-silos: one clause at a time (``let a = X(), b = y()``), and a
             # clause whose pattern the reader does not name (a tuple) still
@@ -3015,7 +3121,18 @@ def _extract_edges_from_file(
                         ))
                         resolved = True
 
-                    if not resolved and callee_name in local_symbols:
+                    # WI-kipof: a bare ``T(...)`` names the type its position
+                    # sees -- the innermost block, type body or file of this
+                    # file declaring ``T`` -- before any name-keyed registry,
+                    # which keeps one ``T`` per name. A type local to a
+                    # function the call is not in is out of scope.
+                    _local_callee: Symbol | None = None
+                    if not resolved:
+                        _local_callee = local_symbols.get(callee_name)
+                        if _local_callee is not None and _local_callee.id in local_types:
+                            _local_callee = None
+                        _local_callee = _lexical_type(callee_name, node) or _local_callee
+                    if _local_callee is not None:
                         # Swift keys ``local_symbols`` by full name (``Type.method``),
                         # so a bare short name resolves here only to a same-file
                         # top-level FUNCTION — never a class-member method (those go
@@ -3023,7 +3140,7 @@ def _extract_edges_from_file(
                         # A free-function bind is legitimate (callable bare), so no
                         # magnet gate is needed on this branch.
                         callee, _score, _ambiguous = _constructed(
-                            local_symbols[callee_name], node, None,
+                            _local_callee, node, None,
                         )
                         _meta: dict[str, str] = {"call_construct": "function"}
                         if _ambiguous:
@@ -3050,7 +3167,8 @@ def _extract_edges_from_file(
                         # evidence is a magnet — defer to Site-1 (enclosing_class).
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                        _sym = lookup_result.symbol
+                        # WI-kipof: never another function's local type.
+                        _sym = _visible_global_type(lookup_result.symbol, callee_name)
                         _defer = (_sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, _enclosing_type,
@@ -3655,13 +3773,26 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         #: ... and every nominal TYPE, by name, so an init can be traced to the
         #: declaration whose body holds it (``_swift_declaring_type``).
         self._type_decls: dict[str, list[Symbol]] = {}
+        #: WI-kipof: the ids of the run's LOCAL types (declared in a function,
+        #: closure or accessor), which no name lookup outside that body may
+        #: answer with. Filled in Pass 1, where the declaration nodes are.
+        self._local_types: set[str] = set()
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
         """Extract functions, classes, structs, protocols, enums from a Swift file."""
-        return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        for sym in analysis.symbols:
+            node = analysis.node_for_symbol.get(sym.id)
+            if (
+                sym.kind in _SWIFT_CONSTRUCTIBLE_KINDS
+                and node is not None
+                and _swift_is_local_declaration(node)
+            ):
+                self._local_types.add(sym.id)
+        return analysis
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -3712,6 +3843,7 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
             file_symbols=self.file_symbols(local_symbols),
             initializers=self._initializers,
             type_decls=self._type_decls,
+            local_types=self._local_types,
         )
 
     def extract_usage_contexts_from_file(
@@ -3740,6 +3872,7 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         self._arg_label_sets = {}
         self._initializers = {}
         self._type_decls = {}
+        self._local_types = set()
         return symbols, edges, usage_contexts
 
 
