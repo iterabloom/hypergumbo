@@ -33,6 +33,19 @@ This analyzer uses tree-sitter to parse C# files and extract:
   destructors (``method``, ``Type.~Type``) and events declared with
   ``add`` / ``remove`` accessors (``event``) (WI-binap)
 - Field declarations, one ``field`` symbol per declarator (WI-jusus)
+- The signature of a method, constructor, indexer and operator
+  (``_format_csharp_params``) writes each parameter's modifiers (``ref``,
+  ``out``, ``in``, ``this``, ``scoped``, ``readonly``), its type as written
+  whatever node kind spells it (a tuple, ``A::B``, ``delegate*<int, void>``,
+  ``scoped Span<int>``) and its name, a ``params`` array (which the grammar
+  puts in the parameter list, not in a ``parameter`` node) and ``__arglist``;
+  the method's return type is its ``returns`` field, whatever its kind. This
+  text is hashed into the typed stable_id (``normalize_csharp_signature``,
+  the types-first family's rule applied one type at a time, keeping the
+  modifiers and tuple types its FQN strip would lose), so ``F(ref int x)``
+  and ``F(int x)`` do not share an id. Before, only seven type node kinds
+  were written and the rest of the parameter, or the return type, was
+  dropped.
 - Enum members, each a ``field`` symbol named ``Enum.Member`` (WI-duguk)
 - Function call relationships (including chained field type resolution)
 - ``decorated_by`` edges from C# attributes
@@ -353,68 +366,54 @@ def _extract_csharp_signature(
     Returns:
         The signature string, or None if extraction fails.
     """
-    params_node = None
-    return_type = None
-
-    # Find parameter_list and return type
-    # The return type is a type node (predefined_type, generic_name, etc.)
-    # NOT a plain identifier (that's the method name)
-
-    # Collect identifiers before parameter_list to distinguish return type
-    # from method name.  In C# method_declaration children:
-    #   [modifiers] return_type method_name parameter_list block
-    # Custom return types (e.g. ServiceClient) are plain identifier nodes,
-    # so if there are 2+ identifiers before the parameter_list, the first
-    # is the return type.
-    pre_params_identifiers: list[str] = []
-
-    for child in node.children:
-        if child.type == "parameter_list":
-            params_node = child
-        # Return type is a type node, not identifier
-        elif child.type in _CSHARP_SIGNATURE_TYPE_NODES:
-            return_type = _extract_type_text(child, source)
-        # Track identifiers before parameter_list for custom return type detection
-        elif child.type == "identifier" and params_node is None:
-            pre_params_identifiers.append(node_text(child, source))
-
-    # If no type_node return type was found but there are 2+ identifiers
-    # before the parameter_list, the first identifier is the return type
-    if return_type is None and len(pre_params_identifiers) >= 2:
-        return_type = pre_params_identifiers[0]
-
+    params_node = node.child_by_field_name("parameters")
     if params_node is None:
-        return None  # pragma: no cover
+        return None  # pragma: no cover - a method and a constructor declare parameters
 
     signature = _format_csharp_params(params_node, source)
 
-    # Add return type for methods (not constructors), but omit void
-    if not is_constructor and return_type and return_type != "void":
-        signature += f" {return_type}"
+    # The declared return type, whatever node kind spells it (a tuple, an
+    # alias-qualified name and a function pointer included); ``void`` and a
+    # constructor's absent one are omitted.
+    returns = None if is_constructor else node.child_by_field_name("returns")
+    if returns is not None:
+        return_type = node_text(returns, source)
+        if return_type != "void":
+            signature += f" {return_type}"
 
     return signature
 
 
 def _format_csharp_params(params_node: "tree_sitter.Node", source: bytes) -> str:
-    """``(int x, Foo y)`` for a ``parameter_list`` or an indexer's
-    ``bracketed_parameter_list``: each parameter as ``type name``."""
+    """``(int x, ref Foo y)`` for a ``parameter_list`` or an indexer's
+    ``bracketed_parameter_list``: each parameter as its modifiers, its type
+    and its name, the type as written whatever node kind spells it.
+
+    A ``params`` array is not a ``parameter`` node: the grammar puts its
+    ``params`` token, its ``type`` and its ``name`` in the list itself, so it
+    is written from those. ``__arglist`` is a parameter with a name and no
+    type. A default value is not written.
+    """
     params: list[str] = []
     for child in params_node.children:
         if child.type == "parameter":
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                # Type nodes (not plain identifier for type - those are param names)
-                if subchild.type in _CSHARP_SIGNATURE_TYPE_NODES:
-                    param_type = _extract_type_text(subchild, source)
-                # For custom types, identifier IS the type if param_type not set
-                elif subchild.type == "identifier":
-                    if param_type is None:
-                        param_type = node_text(subchild, source)
-                    else:
-                        param_name = node_text(subchild, source)
-            if param_type and param_name:
-                params.append(f"{param_type} {param_name}")
+            type_node = child.child_by_field_name("type")
+            name_node = child.child_by_field_name("name")
+            if name_node is None:
+                continue  # pragma: no cover - the grammar names every parameter
+            words = [node_text(m, source) for m in child.children if m.type == "modifier"]
+            if type_node is not None:
+                words.append(node_text(type_node, source))
+            words.append(node_text(name_node, source))
+            params.append(" ".join(words))
+        elif child.type == "params":
+            array_type = params_node.child_by_field_name("type")
+            array_name = params_node.child_by_field_name("name")
+            if array_type is None or array_name is None:
+                continue  # pragma: no cover - the grammar requires both
+            params.append(
+                f"params {node_text(array_type, source)} {node_text(array_name, source)}"
+            )
     return f"({', '.join(params)})"
 
 
@@ -482,13 +481,110 @@ def _csharp_body_member(
     return kind, name, signature
 
 
+#: The parameter modifiers ``_format_csharp_params`` writes before a type.
+_CSHARP_PARAMETER_MODIFIERS: frozenset[str] = frozenset({
+    "this", "scoped", "ref", "out", "in", "readonly", "params",
+})
+
+
+def _closing_paren(text: str) -> int:
+    """Index of the ``)`` that closes the ``(`` opening ``text``, else -1."""
+    if not text.startswith("("):
+        return -1
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _is_csharp_tuple_type(text: str) -> bool:
+    """True when ``text`` is a tuple type, ``(int, string)``: it opens with a
+    parenthesis that closes at its end (a nullable or array tuple,
+    ``(int, int)?`` / ``(int, int)[]``, does not)."""
+    close = _closing_paren(text)
+    return close > 0 and close == len(text) - 1
+
+
+def _normalize_csharp_type(
+    text: str, type_params: list[str] | None, *, parameter: bool,
+) -> str:
+    """One parameter (``ref Foo x``) or return type (``Foo``), normalized.
+
+    The types-first family's rule (``normalize_signature_types_first``,
+    shared with Java, Dart and Groovy) is applied to the type itself. Two C#
+    forms are kept out of it, because its FQN strip, which keeps what follows
+    the last dot of a type's head, would lose them: a parameter's modifiers
+    (``ref System.Int32 x`` would hash as ``Int32``) are taken off first and
+    put back, and a tuple type is kept whole (``(int, System.String)`` would
+    hash as ``String)``), its element types being the arguments of a
+    ``ValueTuple``, which the family keeps as written in a generic.
+    """
+    from hypergumbo_core.analyze.base import (
+        normalize_generic_params,
+        normalize_signature_types_first,
+    )
+
+    modifiers: list[str] = []
+    if parameter:
+        # A modifier comes off only while a type and a name remain after it:
+        # ``scoped`` is a contextual keyword, so ``scoped x`` is a parameter of
+        # type ``scoped``.
+        head, _, rest = text.partition(" ")
+        while head in _CSHARP_PARAMETER_MODIFIERS and len(rest.split()) >= 2:
+            modifiers.append(head)
+            text = rest
+            head, _, rest = text.partition(" ")
+        words = text.rsplit(None, 1)
+        type_text = words[0]
+    else:
+        type_text = text
+    if _is_csharp_tuple_type(type_text):
+        written = normalize_generic_params(type_text, type_params or [])
+    else:
+        shared = normalize_signature_types_first(
+            f"({text})" if parameter else f"() {text}", type_params,
+            skip_void_return=False,
+        )
+        assert shared is not None  # the text opens with its own parameter list
+        written = shared[1:-1] if parameter else shared[2:]
+    return " ".join([*modifiers, written])
+
+
 def normalize_csharp_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a C# signature for typed stable_id (spec §6 typed tier)."""
-    from hypergumbo_core.analyze.base import normalize_signature_types_first
-    return normalize_signature_types_first(signature, type_params)
+    """Normalize a C# signature for typed stable_id (spec §6 typed tier).
+
+    ``(Type name, ...) Return`` becomes ``(Type,...)Return`` by the
+    types-first family's rule: names dropped, the head of a qualified type
+    stripped to its simple name, declared type parameters by position,
+    ``void`` omitted. Each parameter and the return type are normalized one
+    at a time (``_normalize_csharp_type``), which writes the same text as the
+    family's function does for the whole signature, and keeps the parameter
+    modifiers and tuple types that function's FQN strip would lose.
+    """
+    if not signature:
+        return None
+    close = _closing_paren(signature)
+    if close < 0:
+        return None
+    from hypergumbo_core.analyze.base import split_params_top_level
+
+    params = [
+        _normalize_csharp_type(p, type_params, parameter=True)
+        for p in split_params_top_level(signature[1:close]) if p
+    ]
+    normalized = f"({','.join(params)})"
+    returned = signature[close + 1:].strip()
+    if returned and returned.lower() != "void":
+        normalized += _normalize_csharp_type(returned, type_params, parameter=False)
+    return normalized
 
 
 _CSHARP_ASYNC_WRAPPER_TYPES = ("Task", "ValueTask", "IAsyncEnumerable")
