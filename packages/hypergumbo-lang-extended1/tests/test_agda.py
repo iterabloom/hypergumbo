@@ -834,3 +834,151 @@ class TestAgdaPrimitives:
                 kind="function", lang="agda", path="P.agda",
                 name=name, qualified_name=chain, arity=None,
             )
+
+
+def _scoped(result, path: str) -> dict[tuple[str, str], object]:
+    """``{(kind, name): symbol}`` of one file's declarations (the file symbol aside)."""
+    out = {}
+    for s in result.symbols:
+        if s.kind != "file" and s.path == path:
+            assert (s.kind, s.name) not in out, (s.kind, s.name)
+            out[(s.kind, s.name)] = s
+    return out
+
+
+_HEAD = "module T where\n\n"
+_C_NONEMPTY = "module A where\n  module C where\n    c : Set\n    c = Set\n"
+_RUN_IN_A = "\n  run : Set\n  run = Set\n"
+_B = "\nmodule B where\n  f : Set\n  f = Set\n"
+
+
+class TestAgdaNestedLayoutBlocks:
+    """WI-molon: layout blocks nested in a module keep every scope chain. Under
+    tree-sitter-agda 1.3.3 a nested module, record or data block lost the
+    enclosing module or attached later code to the wrong block. Rows are the
+    item's probe grid (``module T where`` then the shape); each expects every
+    declaration, named as Agda names it, hashing the chain in the third
+    column (None for modules, whose id is the name's)."""
+
+    @pytest.mark.parametrize("body, expected", [
+        pytest.param(_C_NONEMPTY, [
+            ("module", "A", None), ("module", "A.C", None),
+            ("function", "A.C.c", "A.C.c"),
+        ], id="non-empty-nested-module-last"),
+        pytest.param(_C_NONEMPTY + _RUN_IN_A, [
+            ("module", "A", None), ("module", "A.C", None),
+            ("function", "A.C.c", "A.C.c"), ("function", "A.run", "A.run"),
+        ], id="non-empty-nested-module-then-sibling"),
+        pytest.param(_C_NONEMPTY + "    d : Set\n    d = Set\n" + _RUN_IN_A, [
+            ("module", "A", None), ("module", "A.C", None),
+            ("function", "A.C.c", "A.C.c"), ("function", "A.C.d", "A.C.d"),
+            ("function", "A.run", "A.run"),
+        ], id="nested-module-three-declarations-then-sibling"),
+        pytest.param("module A where\n  module C where\n" + _RUN_IN_A, [
+            ("module", "A", None), ("module", "A.C", None),
+            ("function", "A.run", "A.run"),
+        ], id="empty-nested-module-then-sibling"),
+        pytest.param("module A where\n  module C where\n" + _RUN_IN_A + _B, [
+            ("module", "A", None), ("module", "A.C", None), ("module", "B", None),
+            ("function", "A.run", "A.run"), ("function", "B.f", "B.f"),
+        ], id="empty-nested-module-then-top-level-module"),
+        pytest.param("module A where\n  run : Set\n  run = Set\n\n  module C where\n" + _B, [
+            ("module", "A", None), ("module", "A.C", None), ("module", "B", None),
+            ("function", "A.run", "A.run"), ("function", "B.f", "B.f"),
+        ], id="empty-nested-module-last-in-module-then-top-level"),
+        pytest.param(_C_NONEMPTY + _B, [
+            ("module", "A", None), ("module", "A.C", None), ("module", "B", None),
+            ("function", "A.C.c", "A.C.c"), ("function", "B.f", "B.f"),
+        ], id="nested-module-then-top-level-module"),
+        pytest.param(
+            "module A where\n  run : Set\n  run = Set\n\n"
+            "  module C where\n    c : Set\n    c = Set\n" + _B, [
+                ("module", "A", None), ("module", "A.C", None), ("module", "B", None),
+                ("function", "A.run", "A.run"), ("function", "A.C.c", "A.C.c"),
+                ("function", "B.f", "B.f"),
+            ], id="sibling-then-nested-module-then-top-level"),
+        pytest.param(
+            "module A where\n  record R : Set where\n    field\n      x : Set\n" + _RUN_IN_A, [
+                ("module", "A", None), ("record", "A.R", "A.R"),
+                ("field", "A.R.x", "A.R.x"), ("function", "A.run", "A.run"),
+            ], id="nested-record-then-sibling"),
+        pytest.param(
+            "module A where\n  data D : Set where\n    k1 : D\n    k2 : D\n"
+            "\n  run : D\n  run = k1\n" + _B, [
+                ("module", "A", None), ("data", "A.D", "A.D"),
+                ("function", "A.k1", "A.D.k1"), ("function", "A.k2", "A.D.k2"),
+                ("function", "A.run", "A.run"), ("module", "B", None),
+                ("function", "B.f", "B.f"),
+            ], id="nested-data-then-sibling-then-top-level"),
+    ])
+    def test_every_declaration_keeps_its_chain(
+        self, tmp_path: Path, body: str, expected: list,
+    ) -> None:
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "T.agda", _HEAD + body)
+        got = _scoped(analyze_agda(tmp_path), "T.agda")
+        assert set(got) == {("module", "T")} | {(k, n) for k, n, _c in expected}
+        for kind, name, chain in expected:
+            if chain is not None:
+                assert got[(kind, name)].stable_id == declared_arity_stable_id(
+                    kind=kind, lang="agda", path="T.agda",
+                    name=name.rsplit(".", 1)[-1], qualified_name=chain, arity=None,
+                ), (kind, name)
+
+    def test_the_filed_shape_and_its_where_blocks(self, tmp_path: Path) -> None:
+        """The item's N.agda: an empty nested module, then a top-level module
+        whose two functions each own a ``where`` block."""
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "N.agda", (
+            "module N where\n\nmodule A where\n  module C where\n\n"
+            "  run : Set\n  run = Set\n\nmodule B where\n  f : Set\n  f = g\n"
+            "    where\n      g : Set\n      g = Set\n  h : Set\n  h = k\n"
+            "    where\n      k : Set\n      k = Set\n"
+        ))
+        got = _scoped(analyze_agda(tmp_path), "N.agda")
+        assert {n for k, n in got if k == "module"} == {"N", "A", "A.C", "B"}
+        for name, chain in (("A.run", "A.run"), ("B.f", "B.f"), ("B.h", "B.h"),
+                            ("g", "B.f/g"), ("k", "B.h/k")):
+            assert got[("function", name)].stable_id == declared_arity_stable_id(
+                kind="function", lang="agda", path="N.agda",
+                name=name.rsplit(".", 1)[-1], qualified_name=chain, arity=None,
+            ), name
+
+
+class TestAgdaWhereBlocks:
+    """Every ``where`` block nests under the clause that owns it, later ones
+    included (the docstring said the grammar nested only the first; WI-molon's
+    probes contradicted it). Under 1.3.3 a block after a layout-scanner failure
+    was not nested."""
+
+    @pytest.mark.parametrize("source, owned", [
+        pytest.param(
+            "module W where\n\ndata Nat : Set where\n  zero : Nat\n  suc : Nat -> Nat\n\n"
+            "f : Nat -> Nat\nf x = g x\n  where\n    g : Nat -> Nat\n    g y = y\n\n"
+            "h : Nat -> Nat\nh x = k x\n  where\n    k : Nat -> Nat\n    k y = y\n",
+            [("g", "f/g"), ("k", "h/k")], id="two-functions"),
+        pytest.param(
+            "module Cl where\n\ndata Nat : Set where\n  zero : Nat\n  suc : Nat -> Nat\n\n"
+            "run : Nat -> Nat\nrun zero = go zero\n  where\n    go : Nat -> Nat\n"
+            "    go y = y\nrun (suc n) = go2 n\n  where\n    go2 : Nat -> Nat\n    go2 y = y\n",
+            [("go", "run/go"), ("go2", "run/go2")], id="two-clauses-of-one-function"),
+        pytest.param(
+            "module Where where\n\npostulate N : Set\n\n"
+            "run : N -> N\nrun x = go x\n  where\n    go : N -> N\n    go y = y\n\n"
+            "walk : N -> N\nwalk x = step x\n  where\n    step : N -> N\n    step y = y\n",
+            [("go", "run/go"), ("step", "walk/step")], id="after-a-one-line-postulate"),
+    ])
+    def test_each_where_block_is_owned_by_its_clause(
+        self, tmp_path: Path, source: str, owned: list,
+    ) -> None:
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        make_agda_file(tmp_path, "M.agda", source)
+        result = analyze_agda(tmp_path)
+        for name, chain in owned:
+            assert _declared(result, "function", name).stable_id == declared_arity_stable_id(
+                kind="function", lang="agda", path="M.agda",
+                name=name, qualified_name=chain, arity=None,
+            ), name
