@@ -109,9 +109,10 @@ def test_default_arguments_and_variadic_templates(tmp_path: Path) -> None:
     assert set(go) == {3, 5}
     # Run() and Run(1, 2, 3): only the variadic template takes them.
     assert set(_targets(result, 8)) == {("Var::Run", 12, None)}
-    # Run(1): both take one argument; C++ prefers the non-template on an
-    # equal match, which arity alone cannot see: an honest ambiguous record.
-    assert [q for _, _, q in _targets(result, 9)] == ["ambiguous"]
+    # Run(1): both take one argument. The non-template Run(int) is the pick
+    # (_prefer_non_template), and the record stays ambiguous: argument
+    # types are unread, so the variadic template is still a candidate.
+    assert _targets(result, 9) == [("Var::Run", 10, "ambiguous")]
 
 
 def test_free_function_and_free_template_choose_by_arity(tmp_path: Path) -> None:
@@ -151,50 +152,62 @@ def test_new_lands_on_the_constructor_its_arguments_select(tmp_path: Path) -> No
         assert _targets(result, line, "instantiates") == [("Tc::Tc", ctor_line, None)], line
 
 
+TWO_ORDERS = (
+    "  Two(int x) {}\n  template <typename T> Two(T* p) {}\n",
+    "  template <typename T> Two(T* p) {}\n  Two(int x) {}\n",
+)
+
+
 def test_new_among_same_arity_constructors_lands_on_the_class(tmp_path: Path) -> None:
-    """Two one-parameter constructors: ``new Two(1)`` cannot be told apart by
-    arity. The construction is certainly of ``Two``, so the edge lands on the
-    class, from which the walk reaches both, not on the last one defined."""
-    (tmp_path / "a.cpp").write_text("""\
-struct Two {
-  Two(int x) {}
-  template <typename T> Two(T* p) {}
-};
-void user() { Two* t = new Two(1); }
-""")
-    result = analyze_cpp(tmp_path)
-    by_id = {s.id: s for s in result.symbols}
-    edges = [
-        e for e in result.edges
-        if e.edge_type == "instantiates" and e.line == 5 and e.dst in by_id
-    ]
-    assert {by_id[e.dst].kind for e in edges} == {"struct"}
-    assert all((e.meta or {}).get("resolution_quality") is None for e in edges)
+    """``Two(int)`` and ``template <class T> Two(T*)`` both take one argument:
+    ``new Two(1)`` cannot be told apart by arity. The construction is
+    certainly of ``Two``, so the edge lands on the class, from which the walk
+    reaches both constructors -- in either definition order, and although
+    the non-template is the pick."""
+    for n, body in enumerate(TWO_ORDERS):
+        root = tmp_path / str(n)
+        root.mkdir()
+        (root / "a.cpp").write_text(
+            "struct Two {\n" + body + "};\nvoid user() { Two* t = new Two(1); }\n"
+        )
+        result = analyze_cpp(root)
+        by_id = {s.id: s for s in result.symbols}
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates" and e.line == 5 and e.dst in by_id
+        ]
+        assert {by_id[e.dst].kind for e in edges} == {"struct"}, n
+        assert all((e.meta or {}).get("resolution_quality") is None for e in edges)
 
 
 def test_an_ambiguous_new_of_a_class_without_a_symbol_stays_ambiguous(
     tmp_path: Path,
 ) -> None:
     """The class is defined in a header outside the tree; only its
-    out-of-line constructors are: the edge keeps the name's pick, marked
-    ambiguous."""
-    (tmp_path / "a.cpp").write_text("""\
-#include "two.h"
-Two::Two(int x) {}
-template <typename T> Two::Two(T* p) {}
-void user() {}
-void make() {}
-void use() { Two* t = new Two(1); }
-""")
-    result = analyze_cpp(tmp_path)
-    by_id = {s.id: s for s in result.symbols}
-    edges = [
-        e for e in result.edges
-        if e.edge_type == "instantiates" and e.line == 6 and e.dst in by_id
-        and by_id[e.dst].kind == "method"
-    ]
-    assert [(e.meta or {}).get("resolution_quality") for e in edges] == ["ambiguous"]
-    assert edges[0].confidence < 0.95
+    out-of-line constructors are. The edge goes to the pick -- the
+    non-template ``Two(int)``, in either order -- and stays ambiguous."""
+    lines = (
+        "Two::Two(int x) {}\ntemplate <typename T> Two::Two(T* p) {}\n",
+        "template <typename T> Two::Two(T* p) {}\nTwo::Two(int x) {}\n",
+    )
+    for n, body in enumerate(lines):
+        root = tmp_path / str(n)
+        root.mkdir()
+        (root / "a.cpp").write_text(
+            '#include "two.h"\n' + body + "void use() { Two* t = new Two(1); }\n"
+        )
+        result = analyze_cpp(root)
+        by_id = {s.id: s for s in result.symbols}
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates" and e.line == 4 and e.dst in by_id
+            and by_id[e.dst].kind == "method"
+        ]
+        assert [(e.meta or {}).get("resolution_quality") for e in edges] == ["ambiguous"]
+        assert edges[0].confidence < 0.95
+        pick = by_id[edges[0].dst]
+        assert "template" not in body.splitlines()[pick.span.start_line - 2], n
+
 
 CONSTRUCTIONS = """\
 #include <memory>
