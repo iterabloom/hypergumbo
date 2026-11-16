@@ -789,7 +789,7 @@ class TestTreeSitterAnalyzerReparse:
 
 
 # ---------------------------------------------------------------------------
-# shape_id computation tests (ADR-0014 §1)
+# shape_id computation tests (spec §6 shape_id)
 # ---------------------------------------------------------------------------
 
 
@@ -1023,7 +1023,7 @@ class TestShapeIdAutoComputation:
 
 
 # ---------------------------------------------------------------------------
-# ArityFlags and classify_parameter_flags tests (ADR-0014 §2)
+# ArityFlags and classify_parameter_flags tests (ADR-0035 §1)
 # ---------------------------------------------------------------------------
 
 
@@ -1147,7 +1147,7 @@ class TestClassifyParameterFlags:
 
 
 # ---------------------------------------------------------------------------
-# compute_stable_id tests (ADR-0014 §2)
+# compute_stable_id tests (ADR-0035 §1)
 # ---------------------------------------------------------------------------
 
 

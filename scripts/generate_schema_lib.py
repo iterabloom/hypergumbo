@@ -518,8 +518,8 @@ def _symbol_spec() -> ClassSpec:
             "stable_id": {
                 "description": (
                     "Structural identity hash within a (qualified_name, "
-                    "module_path) scope (ADR-0014 as amended by Phase 6 / "
-                    "INV-bazij): survives body edits, NOT rename or move. "
+                    "module_path) scope (ADR-0035 §1; INV-bazij): survives "
+                    "body edits, NOT rename or move. "
                     "Serialized as sha256:<16hex> and shares this exact "
                     "surface with shape_id; the two are discriminated by "
                     "field name (and the top-level stable_id_scheme / "
@@ -531,7 +531,7 @@ def _symbol_spec() -> ClassSpec:
             "shape_id": {"description": (
                 "Structural *skeleton* hash — the parse subtree with "
                 "identifiers, literals, comments, and punctuation "
-                "STRIPPED (ADR-0014 §1), so same-shape / different-name "
+                "STRIPPED (spec §6 shape_id), so same-shape / different-name "
                 "symbols collide. Within-language only. Contrast "
                 "fingerprint, which KEEPS identifiers/literals; shape_id "
                 "is a strict coarsening of it. Serialized as sha256:<16hex>, "

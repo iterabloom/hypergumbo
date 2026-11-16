@@ -9178,8 +9178,8 @@ def _cluster_repeats(
 
     Returns ``(production_clusters, test_clusters)``, each ranked by descending
     duplication burden (then ``shape_id`` for a stable order). Grouping is by
-    ``(language, shape_id)``: the language key enforces the ADR-0014
-    within-language contract, since shape_id algorithms differ per language and
+    ``(language, shape_id)``: the language key enforces the within-language
+    contract (spec §6 shape_id), since shape_id algorithms differ per language and
     a hash is only comparable within one. A group of >=2 members is a clone
     cluster. Excluded from the universe: non-callable kinds, synthetic linker
     stand-ins (``protocol_origin`` — placeholder targets, not real
@@ -9318,7 +9318,7 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
     identifiers and literals; spec §337/§342). This activates ``shape_id``'s one
     non-redundant capability over ``fingerprint`` (ADR-0035 §1) — clustering
     structural clones — surfacing candidate copy-paste / extract-helper
-    refactoring leads. Within-language only (ADR-0014; enforced by the language
+    refactoring leads. Within-language only (spec §6 shape_id; enforced by the language
     key).
 
     Default filtering keeps the signal dense: trivial clusters (representative

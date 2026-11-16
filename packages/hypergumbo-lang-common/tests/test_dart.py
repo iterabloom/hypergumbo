@@ -1208,7 +1208,7 @@ void publicFunc() {}
 
 
 class TestNormalizeDartSignature:
-    """Tests for Dart signature normalization (ADR-0014 §3)."""
+    """Tests for Dart signature normalization (spec §6 typed tier)."""
 
     def test_basic_function(self) -> None:
         from hypergumbo_lang_common.dart import normalize_dart_signature

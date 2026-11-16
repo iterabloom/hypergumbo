@@ -486,7 +486,7 @@ def normalize_csharp_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a C# signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a C# signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_types_first
     return normalize_signature_types_first(signature, type_params)
 
@@ -1215,7 +1215,7 @@ def _extract_symbols_from_file(
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
                 modifiers = _extract_modifiers(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_csharp_signature(signature)
                 # INV-fabih: the full namespace/type chain, not the nearest
                 # owner (``full_name``) two nested owners share.
@@ -1271,7 +1271,7 @@ def _extract_symbols_from_file(
                 signature = _extract_csharp_signature(node, source, is_constructor=True)
                 modifiers = _extract_modifiers(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_csharp_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
@@ -2316,7 +2316,7 @@ def _stamp_shape_ids(
     docstrings) from ``analysis.node_for_symbol`` after extraction, but
     ``CSharpAnalyzer.analyze()`` reimplements the pipeline and never runs that
     loop — without this every body-bearing C# symbol would have
-    ``shape_id=None`` and no structural-clone key (ADR-0014 §1). This replays just the shape_id half over the C# analysis's
+    ``shape_id=None`` and no structural-clone key (spec §6 shape_id). This replays just the shape_id half over the C# analysis's
     already-populated ``node_for_symbol`` (docstrings are handled in the C#
     extraction path). Never clobbers an existing value.
     """

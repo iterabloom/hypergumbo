@@ -369,7 +369,7 @@ sub answer {
 
 
 class TestPerlStableId:
-    """Tests for stable_id in Perl (ADR-0014 §2)."""
+    """Tests for stable_id in Perl (ADR-0035 §1)."""
 
     def test_subroutine_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.perl import analyze_perl
@@ -382,7 +382,7 @@ class TestPerlStableId:
 
 
 class TestPerlShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_subroutine_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.perl import analyze_perl

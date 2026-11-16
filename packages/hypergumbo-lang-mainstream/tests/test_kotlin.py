@@ -1961,7 +1961,7 @@ abstract class AbsClass {}
 
 
 class TestNormalizeKotlinSignature:
-    """Tests for Kotlin signature normalization (ADR-0014 §3)."""
+    """Tests for Kotlin signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.kotlin import normalize_kotlin_signature
@@ -2401,7 +2401,7 @@ class TestKotlinCallableReferences:
 
 
 class TestKotlinShapeId:
-    """Tests for shape_id computation in Kotlin (ADR-0014 §1)."""
+    """Tests for shape_id computation in Kotlin (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin

@@ -356,7 +356,7 @@ On 4 sampled repos (alertmanager, buildkit, apollo-server, wasmtime, ~188k total
 ## Relationship to other ADRs and work items
 
 - **ADR-0012 (Pass Unification)**: dataflow classification piggybacks on existing analyzer passes. Tier 1 annotation runs inside the base class orchestrator's Pass 2 loop; it is not a separate pass.
-- **ADR-0014 (Symbol Identity)**: `channel` fields on edges complement `stable_id` on symbols — together they identify what shared state is being accessed and by whom.
+- **ADR-0035 (stable_id identity contract; supersedes ADR-0014, Symbol Identity)**: `channel` fields on edges complement `stable_id` on symbols — together they identify what shared state is being accessed and by whom.
 - **PlazaFlow work items**: the Yjs/CRDT linker (WI-zusig), annotation convention (WI-logok), and Tauri event direction (WI-vovaj) all become special cases of dataflow-annotated edges. The annotation convention (`@hg:publishes` / `@hg:subscribes`) maps directly to `access_mode: write` / `access_mode: read` with an explicit `channel`.
 - **Test isolation analysis**: the shared mutable state detection enabled by this ADR directly addresses the Textual Pilot test interaction failures observed in hypergumbo's own test suite — module-level globals that are written by one test and read by another can be enumerated by querying for symbols with both `write` and `read` edges from different test scopes.
 - **WI-saful**: shipped "option 1" forward-slice admission rule (writer source + one-hop downstream read + graceful degradation). See §6.

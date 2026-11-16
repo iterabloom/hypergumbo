@@ -260,7 +260,7 @@ def _extract_sql_symbols(
     """Extract symbols from SQL AST tree (pass 1).
 
     Optionally populates *node_for_symbol* to enable base-class shape_id
-    auto-wiring (ADR-0014 §1).
+    auto-wiring (spec §6 shape_id).
     """
     # File-identity anchor for this file's symbols (WI-bokab). ``rel_path``
     # is the repo-relative path threaded down from ``extract_symbols_from_file``.

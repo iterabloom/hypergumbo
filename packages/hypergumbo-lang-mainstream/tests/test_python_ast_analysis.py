@@ -1654,7 +1654,7 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
 def test_containing_module_differentiates_stable_id(tmp_path: Path) -> None:
     """Methods with identical signatures in different classes must get different stable_ids.
 
-    ADR-0014 §5: containing_stable_id is included in the hash formula so
+    ADR-0035 §1: containing_stable_id is included in the hash formula so
     Foo.process(x) and Bar.process(x) produce distinct stable_id values
     when their containing classes have different stable_ids (e.g. different
     decorators). Classes with identical structure produce the same stable_id
@@ -2604,7 +2604,7 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     method_by_name = {m["name"]: m for m in methods}
 
     # Methods named get/post in a View class should be marked as HTTP handlers
-    # stable_id is now sha256-based (ADR-0014 §4), not bare HTTP method strings
+    # stable_id is now sha256-based (ADR-0035 §3), not bare HTTP method strings
     assert "UserView.get" in method_by_name
     assert "UserView.post" in method_by_name
     get_sid = method_by_name["UserView.get"]["stable_id"]
@@ -2665,7 +2665,7 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
 
 
 def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
-    """Different Django URL routes must have different stable_ids (ADR-0014 §4)."""
+    """Different Django URL routes must have different stable_ids (ADR-0035 §3)."""
     urls_file = tmp_path / "urls.py"
     urls_file.write_text(
         "from django.urls import path\n"
@@ -3983,7 +3983,7 @@ class TestPythonSignatureExtraction:
         stable_ids do not churn with the display width (WI-hopiz). That identity
         signature truncates (no closing paren), so ``normalize_python_signature``
         returns None and the analyzer falls back to the untyped
-        ``_compute_stable_id`` (ADR-0014 §2).
+        ``_compute_stable_id`` (ADR-0035 §1).
         """
         py_file = tmp_path / "test.py"
         py_file.write_text(
@@ -6820,7 +6820,7 @@ class _PrivateClass:
 
 
 class TestNormalizePythonSignature:
-    """Tests for Python signature normalization (ADR-0014 §3)."""
+    """Tests for Python signature normalization (spec §6 typed tier)."""
 
     def test_basic_function(self) -> None:
         from hypergumbo_lang_mainstream.py import normalize_python_signature

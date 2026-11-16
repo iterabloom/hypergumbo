@@ -3618,7 +3618,7 @@ public class Callback {
 
 
 class TestNormalizeJavaSignature:
-    """Tests for Java signature normalization (ADR-0014 §3)."""
+    """Tests for Java signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.java import normalize_java_signature
@@ -4822,7 +4822,7 @@ public class App {
 
 
 class TestJavaShapeId:
-    """Tests for shape_id computation in Java (ADR-0014 §1)."""
+    """Tests for shape_id computation in Java (spec §6 shape_id)."""
 
     def test_method_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.java import analyze_java

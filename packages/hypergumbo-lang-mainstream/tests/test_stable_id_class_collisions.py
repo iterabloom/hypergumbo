@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Property tests: stable_id distinguishes symbols within and across compilation units.
 
-The contract (stable_id v6, ADR-0035; ADR-0014):
+The contract (stable_id v6, ADR-0035):
 
 * **Survives BODY edits** — same name, same shape, different body content
   produces the same stable_id. The class hash carries no member set
@@ -208,7 +208,7 @@ class TestSurvivesRenamesAndMoves:
     def test_class_rename_changes_stable_id(self, tmp_path: Path) -> None:
         """Renaming a class changes its stable_id.
 
-        Per ADR-0014, stable_id is "structural identity within a
+        Per ADR-0035 §1, stable_id is "structural identity within a
         (qualified_name, module_path) scope" — it survives BODY changes but
         NOT rename or move. Shape-only hash inputs (which would survive a
         rename) give every same-shape symbol in a file one stable_id, e.g. all
@@ -271,7 +271,7 @@ class TestSemanticIdentitySplitsByName:
 
     "Same shape means same identity" makes stable_id useless: every
     zero-parameter function or test in a file would share one. Name is part
-    of the hash inputs (ADR-0014). (history: INV-bazij)
+    of the hash inputs (ADR-0035 §1). (history: INV-bazij)
     """
 
     def test_two_truly_identical_classes_now_split_by_name(self, tmp_path: Path) -> None:

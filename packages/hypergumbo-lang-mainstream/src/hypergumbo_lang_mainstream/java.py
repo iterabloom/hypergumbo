@@ -461,7 +461,7 @@ def normalize_java_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Java signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Java signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_types_first
     return normalize_signature_types_first(signature, type_params)
 
@@ -2084,7 +2084,7 @@ def _extract_symbols(
                         if inferred:
                             meta["inferred_return_type"] = inferred
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
@@ -2144,7 +2144,7 @@ def _extract_symbols(
                 # Extract modifiers for constructors too
                 modifiers = _extract_modifiers(node, source)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),

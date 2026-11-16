@@ -279,7 +279,7 @@ class FileAnalysis:
         symbol_by_name: Quick lookup by symbol name for edge resolution
         import_aliases: Mapping of import alias → import path (Go, etc.)
         node_for_symbol: Mapping of symbol ID → tree-sitter node for
-            automatic shape_id computation (ADR-0014 §1). Analyzers that
+            automatic shape_id computation (spec §6 shape_id). Analyzers that
             populate this get shape_id computed by the base class.
     """
 
@@ -346,7 +346,7 @@ class FileAnalysis:
 
 @dataclass(frozen=True)
 class ArityFlags:
-    """Parameter arity classification for stable_id computation (ADR-0014 §2).
+    """Parameter arity classification for stable_id computation (ADR-0035 §1).
 
     Captures the structural shape of a function's parameter list without
     recording names or types, so two functions with the same *interface
@@ -1258,7 +1258,7 @@ def defer_unresolved_tie(lookup_result: Any) -> bool:
 def make_route_stable_id(method: str, path: str) -> str:
     """Compute a collision-free stable_id for route symbols.
 
-    Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0014 §4
+    Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0035 §3
     (INV-hunup). Hashing the path with the method keeps same-method routes
     from colliding, and the output has the canonical ``sha256:<16hex>``
     shape the other ``make_*_stable_id`` factories use. The result is
@@ -1432,8 +1432,8 @@ def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str
 def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
     """Compute a collision-free stable_id for entry-point symbols.
 
-    Uses ``_short_sha256("entry:{entry_type}:{name}:{path}")`` per ADR-0014
-    §4 (INV-hunup). Used for symbols like WGSL shader stages (@vertex,
+    Uses ``_short_sha256("entry:{entry_type}:{name}:{path}")`` per ADR-0035
+    §3 (INV-hunup). Used for symbols like WGSL shader stages (@vertex,
     @fragment, @compute); hashing the name with the entry type keeps
     same-type entry points from colliding. The output has the canonical
     ``sha256:<16hex>`` shape, so consumers can match it against the
@@ -1830,7 +1830,7 @@ def _declaration_kind_stable_id(sym: Symbol) -> str:
 
 
 # Mapping from Symbol.kind to the factory function used by
-# populate_kind_stable_ids (the table ADR-0014 §5b records). A kind NOT present
+# populate_kind_stable_ids (the table the spec records, §6 backstop). A kind NOT present
 # here falls to the backstop FLOOR (:func:`floor_stable_id_key`, ADR-0035 §1):
 # the same ``{kind}:{language}:{path}:{name}`` shape, but stamped only when the
 # key is unique in its file. A kind earns a row here only when its identity is
@@ -1924,7 +1924,7 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     ``_KIND_STABLE_ID_FACTORIES`` (``file``, ``module``, ``dependency``,
     ``variable``, ``export``, ``project``, ``interface``, ``type``; the
     container kinds ``class`` / ``struct`` / ``enum`` / ``trait`` /
-    ``protocol`` / ``contract``; ``template``; ADR-0014 §5b) takes its table
+    ``protocol`` / ``contract``; ``template``; spec §6 backstop) takes its table
     formula. Two same-name members of one table kind in a file share the key
     and are split later by :func:`split_within_file_stable_id_collisions`.
 
@@ -2231,7 +2231,7 @@ def widen_route_stable_ids(symbols: list[Symbol]) -> int:
     """Fold file identity into LOGICAL ``route`` ids (ADR-0035 §3, WI-gokiv).
 
     :func:`make_route_stable_id` keys a route on ``route:{method}:{path}`` only —
-    file-blind by the ADR-0014 §4 contract. Unwidened, the same ``(method,
+    file-blind by the ADR-0035 §3 contract. Unwidened, the same ``(method,
     path)`` declared in different files (an express repo's many example apps) or
     different LANGUAGES (gin-Go and express-JS both minting ``route:GET:/``)
     would share one stable_id though the registrations are semantically
@@ -2281,7 +2281,7 @@ def make_typed_stable_id(
 ) -> str:
     """Compute a typed-tier stable_id from a normalized signature.
 
-    Formula (ADR-0014 §3, with the ADR-0035 §1 ``name`` / ``qualified_name``
+    Formula (spec §6 typed tier, with the ADR-0035 §1 ``name`` / ``qualified_name``
     slots)::
 
         sha256({kind}:{normalized_signature}:{visibility}:{decorators}
@@ -2602,7 +2602,7 @@ def populate_docstrings_from_tree(
 
 
 # ---------------------------------------------------------------------------
-# Signature normalization utilities (ADR-0014 §3)
+# Signature normalization utilities (spec §6 typed tier)
 # ---------------------------------------------------------------------------
 
 
@@ -4288,7 +4288,7 @@ class TreeSitterAnalyzer:
         """
         return symbols, edges, usage_contexts
 
-    # -- shape_id computation (ADR-0014 §1) ---------------------------------
+    # -- shape_id computation (spec §6 shape_id) -----------------------------
 
     _SHAPE_SKIP_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"comment", "line_comment", "block_comment", "ERROR", "MISSING"}
@@ -4302,11 +4302,21 @@ class TreeSitterAnalyzer:
         resulting S-expression.  This captures the structural "shape" of code
         independent of naming and formatting.
 
-        Filtering strategy (ADR-0014 §1):
+        Filtering strategy (spec §6 shape_id):
         - Anonymous nodes (punctuation like ``{``, ``;``, ``(``) are skipped
         - Comment, ERROR, and MISSING nodes are skipped
         - Named leaf nodes (identifiers, literals) emit only their type name
         - Named non-leaf nodes emit ``(type child1 child2 ...)`` structure
+
+        Python does not use this walker. ``py.py`` hashes Python's ``ast``
+        instead, which gives a skeleton with no formatting noise and no
+        wrapper nodes, and a different hash for the same code. The
+        divergence is intended and costs nothing: a ``shape_id`` is only
+        compared with another of the same language (``repeat-finder``
+        groups by ``(language, shape_id)``), so the two implementations
+        never meet. This walker hashes the grammar's CST, so its value is
+        stable only for a given grammar version (spec §6, "Identity and
+        provenance scheme versioning").
 
         Returns:
             Shape hash in ``sha256:{16-hex-chars}`` format matching
@@ -4368,7 +4378,7 @@ class TreeSitterAnalyzer:
 
         return " ".join(parts)
 
-    # -- Parameter classification (ADR-0014 §2) ----------------------------
+    # -- Parameter classification (ADR-0035 §1) ----------------------------
 
     # Node types that indicate variadic positional params, by grammar.
     # Languages may add to this set via _VARARGS_NODE_TYPES class attribute.
@@ -4451,7 +4461,7 @@ class TreeSitterAnalyzer:
             has_kwargs=has_kwargs,
         )
 
-    # -- stable_id computation (ADR-0014 §2) ---------------------------------
+    # -- stable_id computation (ADR-0035 §1) ---------------------------------
 
     # Node types for decorator/annotation wrappers, by grammar.
     _DECORATOR_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
@@ -4784,7 +4794,7 @@ class TreeSitterAnalyzer:
                 )
                 analysis.symbols.insert(0, file_sym)
 
-            # Auto-compute shape_id and docstring for symbols with nodes (ADR-0014 §1)
+            # Auto-compute shape_id and docstring for symbols with nodes (spec §6 shape_id)
             if analysis.node_for_symbol:
                 sym_by_id = {s.id: s for s in analysis.symbols}
                 for sym_id, ts_node in analysis.node_for_symbol.items():

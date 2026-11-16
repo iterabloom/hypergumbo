@@ -530,7 +530,7 @@ def normalize_php_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a PHP signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a PHP signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_php
     return normalize_signature_php(signature, type_params)
 
@@ -1121,7 +1121,7 @@ def _extract_symbols(
                 signature = _extract_php_signature(node, source)
                 modifiers = _extract_modifiers_php(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_php_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
@@ -1222,7 +1222,7 @@ def _extract_symbols(
                 signature = _extract_php_signature(node, source)
                 modifiers = _extract_modifiers_php(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_php_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),

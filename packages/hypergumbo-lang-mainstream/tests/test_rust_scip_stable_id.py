@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014).
+"""Tests for the SCIP → rust.py stable_id mapping helper (WI-bajuz; typed tier, spec §6).
 
 Two contracts are pinned here, and they must not be confused (INV-dolud):
 

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014 §3).
+"""SCIP → rust.py stable_id mapping helper (WI-bajuz; typed tier, spec §6).
 
-ADR-0014 §3 governs this helper as amended by ADR-0035 §1: ``name`` and
-``qualified_name`` became mandatory stable_id inputs at v5, and the
-file anchor at v7. The amendment is what makes the input list below
-six items rather than the original three.
+The typed tier (spec §6, ADR-0035 §1) governs this helper: ``name`` and
+``qualified_name`` are mandatory stable_id inputs (since v5), and so is
+the file anchor (since v7), which is why the input list below has six
+items.
 
 How It Works
 ------------

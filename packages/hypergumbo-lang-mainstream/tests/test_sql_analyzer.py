@@ -290,7 +290,7 @@ $$ LANGUAGE plpgsql;
 
 
 class TestSqlStableId:
-    """Tests for stable_id in SQL (ADR-0014 §2)."""
+    """Tests for stable_id in SQL (ADR-0035 §1)."""
 
     def test_table_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.sql import analyze_sql_files
@@ -305,7 +305,7 @@ class TestSqlStableId:
 
 
 class TestSqlShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_table_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.sql import analyze_sql_files
