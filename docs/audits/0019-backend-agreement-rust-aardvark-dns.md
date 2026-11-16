@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Axis** | backend agreement (ADR-0057 §5, §10 — the only evidence that may change an arbitration default or license an `authoritative_for` declaration) |
-| **Date** | 2026-10-30 |
+| **Date** | 2026-11-16 |
 | **Artifact** | `aardvark-dns-4444d90fee-two-arm-recorded.json` |
 | **Instrument** | `hypergumbo backend-agreement` (`hypergumbo_core.backend_agreement`) |
 | **Outcome** | Measurement, not a verdict: agreement says a value is uncontested, not that it is right. |
@@ -12,7 +12,7 @@
 ```yaml
 kind: backend_agreement
 artifact: aardvark-dns-4444d90fee-two-arm-recorded.json
-date: 2026-10-30
+date: 2026-11-16
 languages:
   - language: rust
     producers: [rust, rust_analyzer]
@@ -30,6 +30,7 @@ languages:
 
 | kind | paired | `rust` only | `rust_analyzer` only |
 |---|---|---|---|
+| `const` | 15 | 0 | 0 |
 | `enum` | 3 | 0 | 0 |
 | `field` | 38 | 0 | 0 |
 | `function` | 52 | 0 | 0 |
@@ -38,7 +39,7 @@ languages:
 | `struct` | 10 | 0 | 0 |
 | `trait` | 1 | 0 | 0 |
 | `type_alias` | 2 | 0 | 0 |
-| `variable` | 17 | 0 | 1 |
+| `variable` | 2 | 0 | 1 |
 
 ### Per-attribute agreement on paired records
 
@@ -46,7 +47,7 @@ languages:
 |---|---|---|---|---|---|
 | `docstring` | 0 | 0 | 63 | 0 | — |
 | `is_exported` | 0 | 0 | 150 | 0 | — |
-| `kind` | 135 | 15 | 0 | 0 | `variable` ← `constant` x15 |
+| `kind` | 150 | 0 | 0 | 0 | — |
 | `modifiers` | 0 | 0 | 36 | 0 | — |
 | `name` | 85 | 65 | 0 | 0 | `AardvarkError::from` ← `from` x3; `Opts::config` ← `config` x1; `Opts::port` ← `port` x1; `Opts::filter_search_domain` ← `filter_search_domain` x1; `Opts::subcmd` ← `subcmd` x1; `SubCommand::Run` ← `Run` x1; `SubCommand::Version` ← `Version` x1; `AardvarkError::Message` ← `Message` x1 |
 | `qualified_name` | 0 | 0 | 150 | 0 | — |
@@ -72,7 +73,7 @@ Corroborated edges (two distinct pathways, ADR-0057 §13): 94. Superseded extern
 Written by the agent on 2026-09-19 from the tables above; the numbers are the instrument's, this section is a reading of them and is preserved verbatim by `scripts/regenerate-backend-agreement-table`. Nothing here changes a default: ADR-0057 §5 is changed by citing this table in a later decision, not by this document.
 
 - **Pairing.** All 150 pairs are two-sided; nothing is `rust`-only. The 19 `rust_analyzer`-only records are the 18 module namespaces and one `static` declared inside a function body, which the tree-sitter arm emits no Symbol for by its module-level rule. (The two `type` aliases were rust_analyzer-only too until WI-bamar gave them `type_alias` Symbols on 2026-10-22: 148 pairs became 150.) An `authoritative_for` claim is only meaningful on paired records, so the SCIP arm's coverage advantage here is a *pairing* fact, not an agreement one.
-- **`kind`: 135 agree, 15 disagree, every disagreement `variable` ← `constant`.** The alternative is right (a Rust `const` is a constant) and the carried value is a producer gap in `rust.py` (module-level `const` emitted as `variable`). Fix the producer (§7), not the default. WI-bamar landed the type-alias half only: the kind is hashed into `stable_id`, so moving `const` to the registry's constant kind changes every Rust const's stable_id and must ride a scheme bump of its own; until then this row reads 135 / 15.
+- **`kind`: 150 agree, 0 disagree (2026-11-16).** Until stable-id v15 this row read 135 / 15, every disagreement `variable` ← `constant`: `rust.py` emitted a module-level `const` as `variable` (a producer gap, fixed at the producer per §7, not by a default). `rust.py` now emits the registry's `const` kind for it, and the Rust SCIP translation refines SCIP's language-agnostic `constant` to the same `const`, so the 15 const items pair as `const` on both arms (the new `const` pairing row). Statics are `variable` on both arms, as before. The kind is hashed into `stable_id`, so the change rode the v15 scheme bump.
 - **`name`: 83 agree, 65 disagree, every one `Type::member` ← `member`** (38 fields, 27 methods). Both forms are true; the anchors' `name_key` folds them for pairing and incumbent-first keeps the qualified form as the scalar. Whether `name` should carry the leaf and `qualified_name` the qualified form is a vocabulary question for the owner, not a precedence exception.
 - **`is_exported`: 150 one-sided to `rust`, nothing contested.** Only the syntax arm observes exportedness (`"pub" in modifiers`); the SCIP translation assigns the field nowhere and now DECLARES that (`observes=()`), so the `Symbol.is_exported` default it would otherwise contribute on all 169 records is not a candidate (INV-huboz). **This row has been wrong twice, both times in the direction of claiming more than the evidence.** It first read `null ← false` ×41, which was this instrument reading a nested attribute from the top level (WI-pofih) — the carried value was always `true`. Corrected, it read 107 agree / 41 disagree, which counted a dataclass default as a measurement: 41 phantom contests and 107 phantom agreements. What is true is that one producer measured this attribute and the other never looked.
 - **`span`: 2 agree, 148 disagree, by construction** — the §10 role split (item vs identifier token); the two that agree are single-token items. Not a disagreement about the declaration.

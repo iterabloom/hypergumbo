@@ -85,7 +85,8 @@ Re-record (3 s) rather than edit: create the crate above, run
    ``type_alias`` Symbols (WI-bamar).
    :data:`AARDVARK_DNS_PAIRING` pins it, and
    :data:`AARDVARK_DNS_AGREEMENT_TALLY` pins that the paired records agree on
-   ``kind`` 135 times out of 150. ADR-0057 §3 cites 138 of 169 from a
+   ``kind`` 150 times out of 150 (135 until stable-id v15 moved Rust's
+   ``const`` items off ``variable``). ADR-0057 §3 cites 138 of 169 from a
    scratch-script measurement; the number the committed rule gives on the
    committed input is the one the merge pass (WI-kokiz) must reproduce.
 
@@ -230,17 +231,17 @@ AARDVARK_DNS_PAIRING: Final[dict[str, int]] = {
 #: On the 150 paired records, how often the two arms say the same ``kind``.
 #: (Named without the word "kind": the axis-drift collector reads any
 #: identifier containing it as a Symbol.kind value set, and these are counters.)
-#: (The SCIP arm reads the producer's declared kind; WI-gapup.) The 15
-#: disagreements are every ``const`` item: SCIP declares ``Constant`` and the
-#: importer maps it to the registry's ``constant``; the tree-sitter arm emits
-#: ``variable`` for module-level ``const`` and ``static`` alike. The SCIP side
-#: is the more precise one, so the contest is left to arbitration rather than
-#: shaped away. Statics agree (``variable`` on both).
+#: (The SCIP arm reads the producer's declared kind; WI-gapup.) They agree on
+#: all 150. The 15 ``const`` items are ``const`` on both arms: rust.py emits the
+#: registry's ``const`` kind for a module-level ``const`` and the Rust SCIP
+#: translation refines SCIP's ``Constant`` (generic ``constant``) to the same
+#: kind. Until stable-id v15 these 15 were the only disagreement (``variable``
+#: from rust.py vs ``constant``). Statics agree (``variable`` on both).
 AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
     "paired": 150,
-    "agree": 135,
-    "disagree": 15,
-    "disagree_constant_vs_variable": 15,
+    "agree": 150,
+    "disagree": 0,
+    "const_on_both": 15,
     # The provenance slot on the 150 merged records (WI-binis): ``span`` is
     # contested (token vs item) on all but the 2 unit enum variants, whose
     # tree-sitter span IS the bare name; ``stable_id`` is contested (moniker
@@ -308,8 +309,8 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
 # records are the 18 namespaces and the one `static` the tree-sitter arm emits
 # nothing for.
 AARDVARK_DNS_PAIRED_PER_CATEGORY = {
-    "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10, "trait": 1,
-    "type_alias": 2, "variable": 17,
+    "const": 15, "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10,
+    "trait": 1, "type_alias": 2, "variable": 2,
 }
 AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "variable": 1}
 # Per attribute over the 150 paired records: (agree, disagree, rust only, rust_analyzer only).
@@ -330,7 +331,7 @@ AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "variable": 1}
 AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 63, 0),
     "is_exported": (0, 0, 150, 0),
-    "kind": (135, 15, 0, 0),
+    "kind": (150, 0, 0, 0),
     "modifiers": (0, 0, 36, 0),
     "name": (85, 65, 0, 0),
     "qualified_name": (0, 0, 150, 0),

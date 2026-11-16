@@ -353,6 +353,18 @@ class TestKeySymbolPolicy:
         assert "variable" in EXCLUDED_KINDS
 
 
+    def test_const_is_a_key_kind_and_not_excluded(self):
+        """``const`` (Rust module-level ``const`` since stable-id v15; Julia,
+        Thrift, Cap'n Proto) is a key declaration kind like ``variable``, so a
+        Rust const kept its place in sketch's ranked population when it stopped
+        being ``variable``. It is NOT on the denylist: adding it there would
+        have dropped Julia / Thrift / Cap'n Proto consts from compact."""
+        assert "const" in KEY_SYMBOL_KINDS
+        assert is_key_symbol(_sym("LIMIT", kind="const"))
+        assert "const" not in EXCLUDED_KINDS
+        assert not is_excluded_kind("const", None, language="rust")
+
+
 class TestProductionEdges:
     """Edges ORIGINATING in a test file are dropped before centrality.
 

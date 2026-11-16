@@ -513,3 +513,52 @@ def test_body_references_are_attributed_to_the_enclosing_method_not_the_namespac
     by_id = {s.id: s for s in symbols}
     assert [(by_id[e.src].name, by_id[e.dst].name) for e in edges] == [("increment", "helper")]
     assert by_id[next(e.src for e in edges)].span.end_line == 14  # token span, unchanged
+
+
+def test_a_rust_constant_is_the_registry_const_kind_and_edges_reach_it() -> None:
+    """rust-analyzer declares a ``const`` item ``Constant``; the language-
+    agnostic SCIP map reads that as ``constant``, and the Rust translation
+    refines it to ``const``, the kind rust.py emits for the same item, so
+    the two Rust arms agree. The id carries the refined kind and a reference
+    to the const still resolves to it. A ``static`` (``StaticVariable``)
+    stays ``variable`` on both arms."""
+    kinds = scip_pb2.SymbolInformation
+    const = _rust_symbol("LIMIT.")
+    static = _rust_symbol("COUNTER.")
+    func = _rust_symbol("run().")
+    doc = scip_pb2.Document(
+        language="Rust", relative_path="src/lib.rs",
+        symbols=[
+            scip_pb2.SymbolInformation(symbol=const, kind=kinds.Constant),
+            scip_pb2.SymbolInformation(symbol=static, kind=kinds.StaticVariable),
+            scip_pb2.SymbolInformation(symbol=func, kind=kinds.Function),
+        ],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=const, symbol_roles=DEFINITION_ROLE, range=[0, 10, 15]),
+            scip_pb2.Occurrence(symbol=static, symbol_roles=DEFINITION_ROLE, range=[1, 11, 18]),
+            scip_pb2.Occurrence(
+                symbol=func, symbol_roles=DEFINITION_ROLE,
+                range=[3, 7, 10], enclosing_range=[3, 0, 5, 1],
+            ),
+            scip_pb2.Occurrence(symbol=const, symbol_roles=0, range=[4, 4, 9]),
+        ],
+    )
+    symbols, edges = translate_scip_to_hg(_index_bytes(doc), lambda _p: None)
+    by_name = {s.name: s for s in symbols}
+    assert (by_name["LIMIT"].kind, by_name["COUNTER"].kind) == ("const", "variable")
+    assert by_name["LIMIT"].id == "rust:src/lib.rs:1-1:LIMIT:const"
+    by_id = {s.id: s for s in symbols}
+    assert [(by_id[e.src].name, by_id[e.dst].name) for e in edges] == [("run", "LIMIT")]
+
+
+def test_the_const_refinement_leaves_other_languages_constant() -> None:
+    """The refinement is Rust's: a non-Rust ``Constant`` in the same index
+    keeps the language-agnostic ``constant``."""
+    sym = "scip-python python pkg 0.1 mod/LIMIT."
+    doc = scip_pb2.Document(
+        language="Python", relative_path="mod.py",
+        symbols=[scip_pb2.SymbolInformation(symbol=sym, kind=scip_pb2.SymbolInformation.Constant)],
+        occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 5])],
+    )
+    symbols, _ = translate_scip_to_hg(_index_bytes(doc), lambda _p: None)
+    assert [(s.language, s.kind) for s in symbols] == [("python", "constant")]

@@ -1055,6 +1055,28 @@ class TestSpanBasedContainment:
         assert contains[0].dst == var.id
         assert contains[0].evidence_type == "span_overlap"
 
+    def test_span_containment_file_contains_const(self) -> None:
+        """A module-level ``const`` (Rust, Julia, Thrift, Cap'n Proto) is a
+        member of its file exactly like a ``variable``: without ``const`` in
+        CONTAINABLE_KINDS a Rust const, which was ``variable`` until stable-id
+        v15, would lose the ``contains`` edge it had."""
+        f = _sym(
+            "rust:src/lib.rs:1-20:src/lib.rs:file",
+            "src/lib.rs", "file", language="rust", path="src/lib.rs", start=1, end=20,
+        )
+        const = _sym(
+            "rust:src/lib.rs:3-3:LIMIT:const",
+            "LIMIT", "const", language="rust", path="src/lib.rs", start=3, end=3,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, const], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert [(e.src, e.dst, e.evidence_type) for e in contains] == [
+            (f.id, const.id, "span_overlap"),
+        ]
+
     def test_dotted_function_name_without_container_roots_at_file(self) -> None:
         """A dotted function name (JS route-handler idiom) whose prefix names
         no container gets no naming edge to a made-up owner, but the file that

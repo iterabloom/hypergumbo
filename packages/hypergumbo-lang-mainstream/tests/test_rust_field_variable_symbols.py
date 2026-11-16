@@ -7,13 +7,20 @@ double gate strip — emits:
 
 * ``kind="field"`` per NAMED struct field (tuple structs have positional fields,
   no names, so no field symbols), and
-* ``kind="variable"`` per module-level ``const``/``static`` (top-level or inside
-  a ``mod`` block; function-body locals and impl-associated consts are excluded,
+* one symbol per module-level ``const``/``static`` (top-level or inside a ``mod``
+  block; function-body locals and impl-/trait-associated consts are excluded,
   mirroring the module-level-only contract of the other variable emitters).
+  A ``static`` is ``kind="variable"``; a ``const`` is the registry's ``const``
+  kind, which is a stable_id input (stable-id scheme v15).
 """
 
 from pathlib import Path
 
+from hypergumbo_core.analyze.base import (
+    make_file_stable_id,
+    make_typed_stable_id,
+    visibility_from_modifiers,
+)
 from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -28,6 +35,14 @@ def _fields(result):
 
 def _vars(result):
     return [s for s in result.symbols if s.kind == "variable"]
+
+
+def _consts(result):
+    return [s for s in result.symbols if s.kind == "const"]
+
+
+def _named(result, name):
+    return [s for s in result.symbols if s.name == name]
 
 
 class TestRustStructFields:
@@ -82,50 +97,103 @@ pub struct B { x: i32 }
 
 
 class TestRustModuleVariables:
-    def test_const_and_static_emit_variable(self, tmp_path: Path) -> None:
+    def test_const_is_const_and_static_is_variable(self, tmp_path: Path) -> None:
         _write(tmp_path, """
 const MAX: i32 = 5;
 static GREETING: &str = "hi";
 """)
         result = analyze_rust(tmp_path)
-        names = {v.name for v in _vars(result)}
-        assert {"MAX", "GREETING"} <= names, names
-        mx = next(v for v in _vars(result) if v.name == "MAX")
+        [mx] = _named(result, "MAX")
+        [gr] = _named(result, "GREETING")
+        assert mx.kind == "const" and gr.kind == "variable"
         assert mx.language == "rust"
         assert _CANONICAL_STABLE_ID_PATTERN.match(mx.stable_id), mx.stable_id
         assert mx.signature == "i32", mx.signature
-        assert mx.id.rsplit(":", 1)[-1] == "variable", mx.id
+        assert mx.id.rsplit(":", 1)[-1] == "const", mx.id
+        assert gr.id.rsplit(":", 1)[-1] == "variable", gr.id
+
+    def test_pub_module_const_is_one_const_symbol(self, tmp_path: Path) -> None:
+        """The item's acceptance: ``pub const N: u32 = 1;`` at module level is
+        exactly one Symbol, of the registry's ``const`` kind."""
+        _write(tmp_path, "pub const N: u32 = 1;\n")
+        result = analyze_rust(tmp_path)
+        assert [(s.kind, s.is_exported) for s in _named(result, "N")] == [("const", True)]
+
+    def test_const_kind_is_hashed_into_the_stable_id(self, tmp_path: Path) -> None:
+        """The kind is a stable_id input: the const's id is the typed id
+        computed with ``const``, not with ``variable``."""
+        _write(tmp_path, "pub const N: u32 = 1;\n")
+        [n] = _named(analyze_rust(tmp_path), "N")
+
+        def typed(kind: str) -> str:
+            return make_typed_stable_id(
+                kind, "u32", visibility_from_modifiers(n.modifiers),
+                name="N", qualified_name="N",
+                file_stable_id=make_file_stable_id("rust", "m.rs"),
+            )
+
+        assert n.qualified_name == "N"
+        assert n.stable_id == typed("const")
+        assert n.stable_id != typed("variable")
+
+    def test_static_and_static_mut_stay_variable(self, tmp_path: Path) -> None:
+        _write(tmp_path, """
+pub static S: u32 = 3;
+static mut M: u32 = 4;
+""")
+        result = analyze_rust(tmp_path)
+        assert {(s.name, s.kind) for s in _vars(result)} == {("S", "variable"), ("M", "variable")}
+        assert _consts(result) == []
 
     def test_const_exportedness(self, tmp_path: Path) -> None:
         _write(tmp_path, """
 pub const SHOWN: i32 = 1;
 const HIDDEN: i32 = 2;
+pub(crate) const CRATE: i32 = 3;
 """)
         result = analyze_rust(tmp_path)
-        by = {v.name: v for v in _vars(result)}
+        by = {v.name: v for v in _consts(result)}
         assert by["SHOWN"].is_exported is True
         assert by["HIDDEN"].is_exported is False
+        # ``"pub" in modifiers``, unchanged by the kind: ``pub(crate)`` is not ``pub``.
+        assert by["CRATE"].is_exported is False
 
     def test_mod_level_const_emitted(self, tmp_path: Path) -> None:
         _write(tmp_path, """
 mod config {
     pub const TIMEOUT: i32 = 30;
+    pub static NAME: &str = "n";
+    pub mod deeper {
+        pub const DEEP: i32 = 1;
+    }
 }
 """)
         result = analyze_rust(tmp_path)
-        assert any(v.name == "TIMEOUT" for v in _vars(result))
+        assert {s.name for s in _consts(result)} == {"TIMEOUT", "DEEP"}
+        assert [s.name for s in _vars(result)] == ["NAME"]
+
+    def test_anonymous_const_is_const(self, tmp_path: Path) -> None:
+        """``const _: T = ..;`` is a const item with no usable name; it is
+        emitted as before (name ``_``), under the const kind."""
+        _write(tmp_path, "const _: () = ();\n")
+        assert [s.kind for s in _named(analyze_rust(tmp_path), "_")] == ["const"]
+
+    def test_const_fn_is_a_function(self, tmp_path: Path) -> None:
+        _write(tmp_path, "pub const fn cfn() -> u32 { 1 }\n")
+        assert [s.kind for s in _named(analyze_rust(tmp_path), "cfn")] == ["function"]
 
     def test_function_local_const_not_emitted(self, tmp_path: Path) -> None:
         _write(tmp_path, """
 fn run() -> i32 {
     const LOCAL: i32 = 9;
-    LOCAL
+    static LOCAL_S: i32 = 1;
+    LOCAL + LOCAL_S
 }
 """)
         result = analyze_rust(tmp_path)
-        assert not any(v.name == "LOCAL" for v in _vars(result))
+        assert _named(result, "LOCAL") == [] and _named(result, "LOCAL_S") == []
 
-    def test_impl_associated_const_not_a_module_variable(self, tmp_path: Path) -> None:
+    def test_impl_associated_const_not_a_module_symbol(self, tmp_path: Path) -> None:
         # An impl-associated const is a type member, not a module-level binding.
         _write(tmp_path, """
 pub struct S;
@@ -133,5 +201,14 @@ impl S {
     const ASSOC: i32 = 7;
 }
 """)
+        assert _named(analyze_rust(tmp_path), "ASSOC") == []
+
+    def test_trait_const_not_a_module_symbol(self, tmp_path: Path) -> None:
+        _write(tmp_path, """
+pub trait Tr {
+    const REQ: u32;
+    const DEF: u32 = 6;
+}
+""")
         result = analyze_rust(tmp_path)
-        assert not any(v.name == "ASSOC" for v in _vars(result))
+        assert _named(result, "REQ") == [] and _named(result, "DEF") == []

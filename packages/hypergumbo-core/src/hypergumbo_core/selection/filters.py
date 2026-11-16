@@ -205,6 +205,10 @@ def is_test_path(path: str) -> bool:
 # - Agda: data (algebraic data types)
 # - Fortran/COBOL: program, subroutine
 # - VHDL: entity, architecture, component
+# - Rust / Julia / Thrift / Cap'n Proto: const (a Rust module-level ``const``
+#   was ``variable`` until stable-id v15 and keeps its place here; ``const`` is
+#   deliberately NOT in ``EXCLUDED_KINDS``, which would drop the other
+#   languages' consts from compact)
 # - Other: struct, enum, trait, interface, protocol, object
 #
 # Every member is a language-construct kind in the symbol-kind registry
@@ -229,6 +233,8 @@ KEY_SYMBOL_KINDS = frozenset({
     "binding", "derivation", "input",
     # Terraform/HCL
     "resource", "data", "variable", "output", "provider", "local",
+    # Rust / Julia / Thrift / Cap'n Proto const declarations
+    "const",
     # Elixir/Erlang
     "macro",
     # Elm

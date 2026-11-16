@@ -6,7 +6,7 @@ How It Works
 ``rust-analyzer scip`` emits a Protobuf-encoded ``scip.Index`` file
 describing every defined symbol, every reference, and every
 relationship in a Rust workspace. This module wraps the hypergumbo-core
-SCIP shim (``hypergumbo_core.scip.*``) with three things the generic
+SCIP shim (``hypergumbo_core.scip.*``) with four things the generic
 shim cannot do on its own:
 
 1. **Stable-ID parity with rust.py.** The core shim fills
@@ -46,7 +46,19 @@ shim cannot do on its own:
    falling back to a locally-constructed ``AnalysisRun`` when the caller
    supplies none (WI-higap).
 
-3. **Symbol resolution, and the deliberate dropping of external edges.**
+3. **Rust kind refinement.** The core shim's ``SymbolInformation.kind``
+   map is language-agnostic, so rust-analyzer's ``Constant`` lands as the
+   registry's generic ``constant``. For a Rust record that is exactly a
+   ``const`` item (associated, trait and function-body consts included;
+   statics are ``StaticVariable`` and stay ``variable``), and rust.py emits
+   the registry's Rust-specific ``const`` kind for it.
+   :func:`refine_rust_kinds` rewrites ``constant`` to ``const`` on Rust
+   records (and the kind suffix of their ``Symbol.id``, which edges are
+   resolved against afterwards), so the two Rust arms agree on the kind of
+   every paired const. Non-Rust records keep ``constant``. The SCIP
+   ``stable_id`` is a hash of path and moniker and does not contain the kind.
+
+4. **Symbol resolution, and the deliberate dropping of external edges.**
    The translate builds a ``MonikerResolver`` (``hypergumbo_core.scip.
    resolve``) over each Symbol's ``meta['scip_symbol']`` and passes it to
    both edge builders as ``resolve_symbol=``. It is keyed per Document, not
@@ -88,6 +100,7 @@ does abort the translate.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Callable, Iterable, List, Optional
 
 from hypergumbo_core.ir import Edge, Symbol
@@ -175,6 +188,30 @@ def reassign_rust_stable_ids(
     return reassigned
 
 
+#: Language-agnostic SCIP kind -> the registry kind rust.py emits for the
+#: same Rust construct (module docstring, point 3).
+_RUST_KIND_REFINEMENT = {"constant": "const"}
+
+
+def refine_rust_kinds(symbols: Iterable[Symbol]) -> List[Symbol]:
+    """Return *symbols* with Rust ``constant`` records re-kinded ``const``.
+
+    The rewritten record's ``id`` gets the new kind as its last segment, so it
+    stays the ``make_symbol_id`` of its own fields; every other field is kept.
+    Must run before edges are resolved, so they reach the re-minted id.
+    Inputs are not mutated.
+    """
+    out: List[Symbol] = []
+    for sym in symbols:
+        kind = _RUST_KIND_REFINEMENT.get(sym.kind) if sym.language == "rust" else None
+        if kind is not None:
+            # ``make_symbol_id`` ends ``:{kind}``; swap only that suffix.
+            stem, _sep, _old_kind = sym.id.rpartition(":")
+            sym = dataclasses.replace(sym, kind=kind, id=f"{stem}:{kind}")
+        out.append(sym)
+    return out
+
+
 def translate_scip_to_hg(
     scip_bytes: bytes,
     source_reader: SourceReader,
@@ -187,9 +224,11 @@ def translate_scip_to_hg(
     ``log`` receives one line when edge endpoints were refused as ambiguous
     (INV-sipod; :class:`~hypergumbo_core.scip.resolve.MonikerResolver`).
 
-    The three core SCIP shim passes and the parity pass run in order:
+    The three core SCIP shim passes, the kind refinement and the parity
+    pass run in order:
 
-    1. :func:`scip_index_to_symbols` to build the Symbol list.
+    1. :func:`scip_index_to_symbols` to build the Symbol list, then
+       :func:`refine_rust_kinds` (Rust ``constant`` -> ``const``).
     2. :func:`reassign_rust_stable_ids` to overwrite Rust function
        ``stable_id`` fields with rust.py-compatible values.
     3. :func:`scip_index_to_edges` for Relationship-derived edges.
@@ -206,7 +245,7 @@ def translate_scip_to_hg(
     index = scip_pb2.Index()
     index.ParseFromString(scip_bytes)
     symbols = reassign_rust_stable_ids(
-        scip_index_to_symbols(index), source_reader,
+        refine_rust_kinds(scip_index_to_symbols(index)), source_reader,
     )
     # If no run_id is supplied (a library caller), create a local run so
     # Edge.__post_init__ enforcement passes. Its id is a well-formed UUID that
