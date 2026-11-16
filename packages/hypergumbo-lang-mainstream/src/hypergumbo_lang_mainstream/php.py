@@ -12,6 +12,20 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
   qualified name of the ``use`` it came through, so the inheritance linker
   checks that name rather than any in-repo type with the same short name
 - Method declarations (symbols)
+- The signature of a function and a method (``_extract_php_signature``),
+  which is also the text hashed into the typed stable_id
+  (``normalize_php_signature``): every parameter node, a variadic
+  ``int ...$xs`` and a constructor's promoted ``private int $x`` included,
+  as ``[type ][&][...]$name`` with its type's source text whatever the
+  node kind (``A&B``, ``(A&B)|null``), the return type the same way
+  (``never`` included; ``void`` omitted), and a leading ``&`` for
+  ``function &f()``. Before, only ``simple_parameter`` and four type
+  kinds were written: the rest of a parameter list or the return type was
+  dropped, and two declarations differing only there shared one id. A
+  promoted parameter's visibility and ``readonly`` are not written (they
+  declare a property, not the parameter's type); neither are attributes
+  and default values. Property and class-constant types are not hashed
+  (their stable_id has an empty signature slot).
 - Properties and class constants (``field``, whose stable_id is the ADR-0035
   producer formula, ``make_typed_stable_id`` over the namespace/type chain;
   WI-tusad: they rode the backstop floor key) and global constants
@@ -476,6 +490,40 @@ def _get_enclosing_function_php(
     return None  # pragma: no cover - defensive
 
 
+# The node kinds of a PHP parameter (``formal_parameters`` children). A
+# ``variadic_parameter`` (``int ...$xs``) and a ``property_promotion_parameter``
+# (``private int $x`` in a constructor) were dropped whole: only
+# ``simple_parameter`` had a branch.
+_PHP_PARAMETER_NODE_TYPES: frozenset[str] = frozenset({
+    "simple_parameter", "variadic_parameter", "property_promotion_parameter",
+})
+
+
+def _php_parameter_text(param: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """One parameter as ``[type ][&][...]$name``, or None if it names nothing.
+
+    The type is the text of the ``type`` field whatever its node kind (an
+    intersection ``A&B`` and a DNF ``(A&B)|null`` were dropped). A
+    by-reference ``&`` and a variadic ``...`` are written before the name: a
+    simple or variadic parameter has its ``&`` in a ``reference_modifier``
+    field, a promoted one inside its ``name`` field (``by_ref``), whose text is
+    then ``&$x``. A promoted parameter's visibility and ``readonly`` are not
+    written: they declare the property, not the parameter's type. Attributes
+    and the default value are not written either.
+    """
+    name_node = param.child_by_field_name("name")
+    if name_node is None:  # pragma: no cover - defensive: a parameter names a variable
+        return None
+    marks = "&" if param.child_by_field_name("reference_modifier") is not None else ""
+    if param.type == "variadic_parameter":
+        marks += "..."
+    name = marks + node_text(name_node, source)
+    type_node = param.child_by_field_name("type")
+    if type_node is None:
+        return name
+    return f"{node_text(type_node, source)} {name}"
+
+
 def _extract_php_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -484,6 +532,14 @@ def _extract_php_signature(
     Returns signature like:
     - "(int $x, int $y): int" for typed functions
     - "(string $msg)" for void functions
+    - "&(array &$a, int ...$xs): A&B" for a function returning by reference
+
+    Every parameter kind (``_PHP_PARAMETER_NODE_TYPES``) is written by
+    ``_php_parameter_text``, and the return type is the text of the
+    ``return_type`` field whatever its kind (``never`` is a ``bottom_type``;
+    ``A&B`` and ``(A&B)|null`` were dropped too). ``void`` is omitted. A
+    function or method declared ``function &f()`` returns by reference: its
+    signature starts with ``&``, which ``normalize_php_signature`` keeps.
 
     Args:
         node: The function_definition or method_declaration node.
@@ -493,49 +549,93 @@ def _extract_php_signature(
         The signature string, or None if extraction fails.
     """
     params: list[str] = []
-    return_type = None
-    found_params = False
+    params_node = node.child_by_field_name("parameters")
+    if params_node is not None:
+        for child in params_node.children:
+            if child.type in _PHP_PARAMETER_NODE_TYPES:
+                text = _php_parameter_text(child, source)
+                if text:
+                    params.append(text)
 
-    # Iterate through children to find parameters and return type
-    for child in node.children:
-        if child.type == "formal_parameters":
-            found_params = True
-            for subchild in child.children:
-                if subchild.type == "simple_parameter":
-                    param_type = None
-                    param_name = None
-                    for pc in subchild.children:
-                        if pc.type in ("primitive_type", "named_type", "nullable_type",
-                                        "optional_type", "union_type"):
-                            param_type = node_text(pc, source)
-                        elif pc.type == "variable_name":
-                            param_name = node_text(pc, source)
-                    if param_name:
-                        if param_type:
-                            params.append(f"{param_type} {param_name}")
-                        else:
-                            params.append(param_name)
-        # Return type comes after formal_parameters
-        elif found_params and child.type in ("primitive_type", "named_type", "nullable_type",
-                                              "optional_type", "union_type"):
-            return_type = node_text(child, source)
+    signature = f"({', '.join(params)})"
 
-    params_str = ", ".join(params)
-    signature = f"({params_str})"
+    return_node = node.child_by_field_name("return_type")
+    if return_node is not None:
+        return_type = node_text(return_node, source)
+        if return_type != "void":
+            signature += f": {return_type}"
 
-    if return_type and return_type != "void":
-        signature += f": {return_type}"
-
+    if any(child.type == "reference_modifier" for child in node.children):
+        signature = "&" + signature
     return signature
+
+
+def _php_closing_paren(signature: str) -> int:
+    """Index of the parenthesis closing the one that opens ``signature``, or -1."""
+    depth = 0
+    for i, ch in enumerate(signature):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _normalize_php_parameter(param: str, type_params: list[str] | None) -> str:
+    """One parameter by the PHP rule, with a variadic ``...`` kept.
+
+    The rule hashes what stands before the ``$`` (the type, with a ``&``) and
+    runs it through the shared FQN strip, which cuts a type at its last dot:
+    ``int ...`` would hash as the empty string. A variadic parameter is
+    therefore normalized without its ``...``, which is put back after the
+    normalized type (``int ...$xs`` -> ``int...``, ``&...$xs`` -> ``&...``,
+    an untyped ``...$xs`` -> ``...``).
+    """
+    from hypergumbo_core.analyze.base import normalize_signature_php
+    variadic = "...$" in param
+    if variadic:
+        param = param.replace("...$", "$", 1)
+        if param.startswith("$"):
+            return "..."
+    normalized = normalize_signature_php(f"({param})", type_params)
+    assert normalized is not None  # a parenthesized text always normalizes
+    inner = normalized[1:-1]
+    return inner + "..." if variadic else inner
 
 
 def normalize_php_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a PHP signature for typed stable_id (spec §6 typed tier)."""
-    from hypergumbo_core.analyze.base import normalize_signature_php
-    return normalize_signature_php(signature, type_params)
+    """Normalize a PHP signature for typed stable_id (spec §6 typed tier).
+
+    The PHP rule in ``analyze/base.py`` (``normalize_signature_php``: the type
+    before each ``$``, names of typed parameters dropped, ``void`` omitted,
+    ``(Type,Type)Return``) applied to one parameter at a time
+    (``_normalize_php_parameter``) and to the return type, which writes the
+    same text as the rule does for the whole of a signature with no variadic
+    parameter, and keeps the variadic ``...`` its FQN strip would lose. A
+    leading by-reference ``&`` (``function &f()``) is kept in front:
+    ``&(int $x): int`` -> ``&(int)int``.
+    """
+    if not signature:
+        return None
+    by_ref = ""
+    if signature.startswith("&"):
+        by_ref, signature = "&", signature[1:]
+    close = _php_closing_paren(signature) if signature.startswith("(") else -1
+    if close < 0:
+        return None
+    from hypergumbo_core.analyze.base import normalize_signature_php, split_params_top_level
+    params = [
+        _normalize_php_parameter(p, type_params)
+        for p in split_params_top_level(signature[1:close]) if p
+    ]
+    returned = normalize_signature_php("()" + signature[close + 1:], type_params)
+    assert returned is not None  # "()" always closes
+    return f"{by_ref}({','.join(params)}){returned[2:]}"
 
 
 # PHP's simple backslash escapes. A single-quoted literal has only two
