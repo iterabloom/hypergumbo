@@ -41,3 +41,18 @@
   clock: 4  # f3d9
   nonce: f3d9  # f3d9
   message: "OWNER RULING 2026-11-15 on the question raised in this thread on 11-14 (plan: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md, PR 3, before the release): SPLIT the shared code. Bad input exits 2 (a missing or invalid claims file, a missing --input map: the two paths this item moves off 1 land there); inconclusive moves from 2 to 3. So the contract becomes 0 = all confirmed, 1 = at least one violated, 2 = bad input, 3 = at least one inconclusive. Help text and spec change with it. To check while building: every reader of verify-claims' exit code in this repository (scripts, gates, tests, docs)."  # f3d9
+- op: update  # 31ed
+  at: '2026-11-16T19:01:10Z'  # 31ed
+  by: agent  # 31ed
+  actor: jgstern_agent  # 31ed
+  clock: 5  # 31ed
+  nonce: 31ed  # 31ed
+  set:  # 31ed
+    status: done  # 31ed
+- op: discuss  # 4185
+  at: '2026-11-16T19:01:10Z'  # 4185
+  by: agent  # 4185
+  actor: jgstern_agent  # 4185
+  clock: 6  # 4185
+  nonce: '4185'  # 4185
+  message: "DONE in PR #2203 (dev c9295d38c6, commit 657aa54a5a). OWNER RULINGS: 2026-11-15 split the shared code; 2026-11-16 option C on the numbers, because confirmed_with_caveats already exits 3 in released versions: 0 = every claim confirmed, 1 = at least one violated, 2 = bad input (before any verdict), 3 = at least one confirmed_with_caveats (unchanged), 4 = at least one inconclusive (was 2). Mixed verdicts: violated, then inconclusive, then caveats. THIS ITEM'S FILED REPRO, RE-RUN BY ME ON BOTH ARMS (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr3/repro/out_base.txt, out_fixed.txt): `hypergumbo verify-claims repo --claims /nonexistent.yaml` prints 'Error: Claims file not found' and exits 1 before, 2 on the PR's code; a missing --input map ('Error: Input file not found') exits 1 before, 2 after; a claim with no constraint (inconclusive) exits 2 before, 4 after. ALSO MOVED TO 2 (each crashed into the internal-error net and exited 1 before): an unreadable claims file; a claim field of the wrong type (list boundary / source_taint / prohibited_sink_zone, string max_chains); a --input that is a directory or whose nodes / edges / entrypoints are not lists of objects; a taint catalogue row or field of the wrong type, named by path. NEW REFUSALS that loaded before: must_not_exist: \"no\" (was read as true, exit 0), max_chains: true, a non-list request_ingress, a taint source / sink name YAML reads as a non-string, argument_tainted: [yes]. A 35-case probe: every bad-input case exits 2. Readers in this repository: scripts/check-allowlist-commands counts a run on 0 or 4 (was 0 or 2). NOT ASSERTED / LEFT OPEN, filed as WI-nidun-rimoz-kufih-nitub-tovil-sazur-kofal-tumig: a wrong-typed field inside an --input record, a genuine internal error and a broken pipe still exit 1; `claims: []` exits 0; other commands' missing --input."  # 4185
