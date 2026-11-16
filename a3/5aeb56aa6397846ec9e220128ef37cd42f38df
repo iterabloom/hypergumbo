@@ -1,0 +1,26 @@
+Original commit body from 4d14c6abff0a27a49cc483ed3e380f8e089d03ad:
+
+Stable-id scheme v15: the one bump that carries every id-moving fix from the 2026-11-15 review of the stable-id items, plus the type holes in the hashed signature of nine analyzers (owner ruling 2026-11-16), plus versioned id labels.
+
+What changes for a consumer
+- `stable_id_scheme` is `hypergumbo-stableid-v15`; `shape_id_scheme` and `repo_fingerprint_scheme` are bumped with it. Every stable id, shape id and repo fingerprint value now starts with a label derived from its scheme constant (`hgstableid15:`, `hgshapeid4:`, `hgrepofp3:`) in place of `sha256:`. The digests behind the label are not recomputed by the relabel.
+- Ids minted from a rust-analyzer (SCIP) index carry their own scheme (`hypergumbo-scip-stableid-v1`, label `hgscipid1:`, top-level `scip_stable_id_scheme`).
+- `pass_version`, `config_fingerprint` and `run_signature` keep `sha256:`.
+- The digests of some declared symbols change in sixteen analyzers. A consumer holding v14 ids of those languages must re-key them. The spec's v14 -> v15 history row lists every rule and the measured share per language.
+
+What moved, measured (branch head vs dev on 27 trees; declared symbols paired by source position, digests compared with the label stripped; moved / declared symbols of that language, file nodes not counted)
+- Python 70 / 55,790 = 0.13% (sqlalchemy); Rust 45 / 4,149 = 1.08% (ripgrep); Go 62 / 1,587 = 3.91% (compose-go); PHP 287 / 4,307 = 6.66% (koel); Kotlin 618 / 10,612 = 5.82% (okhttp); Java 1,579 / 21,512 = 7.34% (jedis); Swift 1,281 / 10,813 = 11.85% (swift-composable-architecture); C++ 1,218 / 5,963 = 20.43% (sherpa-onnx csrc), 413 / 18,625 = 2.22% (whisper.cpp); C# 26 / 912 = 2.85%; Scala 4,144 / 7,219 = 57.40% (cats core), 4,252 / 24,973 = 17.03% (lila modules); Dart 224 / 921 = 24.32%; Groovy 250 / 1,876 = 13.33% (clover); Handlebars 81 / 2,102 = 3.85% (vault ui); Robot 173 / 1,474 = 11.74% (harbor tests); Agda 725 / 21,563 = 3.36% (agda-stdlib; 1,171 removed, 1,085 of them `_` modules; 149 added). Twig: fixture only.
+- New symbols, no id moved: C++ `class X::Impl` definitions and their fields (1,195 on sherpa-onnx csrc); Solidity structs, enums and enum values (168 on openzeppelin; 130 fields renamed under the same id).
+- 0 moved in the same trees: Blade, JavaScript, TypeScript, Vue, reStructuredText, C, CUDA, Starlark, GLSL, JSON, Ruby, CMake, Make, TOML, WGSL, Bash, XML, LaTeX, Dockerfile, Haskell, Objective-C.
+- The relabel moved no digest: every moved count above equals the count measured before the labels were added.
+
+Not in this PR (each one named, to be filed)
+- Scala methods, functions, fields and objects carry no `qualified_name`.
+- Swift argument labels are not hashed.
+- No analyzer passes type parameters to the signature normalizer, although the spec says generic parameters are renamed by position.
+- `strip_fqn_prefix` and `split_params_top_level` still lose information for some nested forms (listed per language in the residuals).
+- Handlebars block names with a hyphen or a dot are truncated at it.
+- The Agda language-pack grammar loses 13 signatures in agda-stdlib in files it parses with no error node.
+- NewTypes cover StableId, ShapeId and RepoFingerprint only (NodeId, EdgeId, RunId, EdgeKey, SymbolFingerprint are not typed).
+
+Tests: the whole suite on the branch head (explicit file lists, every tests directory) is green; each package was reviewed with a mutation control.
