@@ -3552,13 +3552,15 @@ def _extract_file_analysis(
             # (enclosing classes + functions) into the IDENTITY only, so two same-named classes
             # in distinct scopes (e.g. function-local ``class Args`` in distinct functions, or a
             # ``class Mock`` inside methods of distinct classes) do not collapse. The
-            # ``qualified_name`` FIELD stays the bare name; scope-qualifying it is a separate
-            # change with its own call-resolution effects.
+            # ``qualified_name`` FIELD carries the same chain (``A.B``, ``outer.Local``):
+            # the in-module qualname, as a nested function (``outer.inner``) and a class
+            # attribute (``A.B.x``) already do. No module path: that is ADR-0051's axis.
+            # ``name`` stays the bare class name.
             class_scoped_name = ".".join(_enclosing_scope_chain(node) + [node.name])
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
-                qualified_name=node.name,
+                qualified_name=class_scoped_name,
                 kind="class",
                 language="python",
                 path=str(py_file),
@@ -3669,7 +3671,11 @@ def _extract_file_analysis(
                     # own identity.
                     # The method's qualified name threads through
                     # name/qualified_name so two same-signature test methods in
-                    # one class don't collide (INV-bazij).
+                    # one class don't collide (INV-bazij). The hash takes the
+                    # NEAREST-class form (``B.go``); the enclosing chain is
+                    # already in it through the class's own id. The Symbol's
+                    # ``qualified_name`` field carries the whole chain
+                    # (``A.B.go``) and is not a hash input.
                     stable_id = python_callable_stable_id(
                         item, "method", symbol.stable_id or "",
                         _python_visibility_modifiers(method_name),
@@ -3729,7 +3735,7 @@ def _extract_file_analysis(
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
-                        qualified_name=method_name,  # WI-fagab (ADR-0032 sibling field)
+                        qualified_name=f"{class_scoped_name}.{item.name}",
                         kind="method",
                         language="python",
                         path=str(py_file),
