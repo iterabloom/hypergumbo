@@ -42,11 +42,19 @@ Analysis proceeds in two passes for cross-file resolution:
   anchor), and each class body's own statements (under the innermost class,
   found by AST node id -- WI-muzav-nugak). A class body runs when the class is
   defined, so ``f = models.CharField(...)`` is a call site like any other
-- Resolve callees using local symbols first, then imports. Methods sit in the
-  local table under their QUALIFIED name (``Class.method``) only: a bare-name
-  call cannot reach a method (a class body is not an enclosing scope), and a
-  bare key would bind ``open(...)`` / ``list(...)`` to same-named methods and
-  overwrite same-named module functions (WI-barip)
+- Resolve callees using local symbols first, then imports. The local table
+  (``FileAnalysis.symbol_by_name``) and the run-wide ``(module, name)`` table
+  built from it key every declaration by its FULL SCOPE CHAIN: ``f`` / ``A``
+  at module level, ``A.B`` and ``A.B.go`` for a nested class and its method,
+  ``outer.Local`` / ``outer.inner`` for a class or function declared in a
+  function. A key without a dot is therefore a module-level binding, which is
+  all a bare name can mean outside a function: a bare-name call cannot reach a
+  method or a class nested in a class (a class body is not an enclosing
+  scope), and a bare key for them would bind ``open(...)`` / ``list(...)`` to
+  same-named methods and let a nested ``Outer.LoginView`` answer for a
+  module-level ``LoginView`` (WI-barip, WI-hahud). Inside a function, the
+  function's own nested defs and local classes are its frame's bindings
+  (``_lexical_def``); a member is reached from its class (``_class_member``)
 - Detect ``self.method()`` calls from the OWN body of the class ``self``
   denotes, found by POSITION per code block -- the innermost frame binding
   ``self`` must be a non-static method (``_self_receiver_class_id`` over
@@ -166,6 +174,14 @@ Flask add_url_rule() and FastAPI add_api_route() produce only the first
    ``dispatches_to`` edges from route entities to handler symbols. These are
    first-class nodes in the IR representing the route itself.
 
+The handler reference of a registration (``symbol_ref``, and the marker's
+``handler_ref``) is resolved in the registering file by Python's scoping rule
+(``_resolve_local_ref``): the root name is a def or class of an enclosing
+function of the call, else a module-level binding, and a dotted reference
+(``Outer.LoginView``) is walked member by member. A reference rooted at an
+import (``views.LoginView``) is not a declaration of this file and gets no
+``symbol_ref``, whatever local class shares its last segment.
+
 Both are derived from the same extraction pass (_extract_django_usage_contexts,
 _extract_flask_usage_contexts, _extract_starlette_usage_contexts). Route symbols
 are created from the UsageContext metadata at the callsite. This avoids duplicating
@@ -232,7 +248,7 @@ import warnings
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, Sequence, TypeVar
 
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
@@ -375,6 +391,118 @@ def normalize_python_signature(
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
     """Generate location-based ID in format {lang}:{file}:{start}-{end}:{name}:{kind}."""
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"
+
+
+def _class_key(class_symbol: Symbol) -> str:
+    """The key a class takes in the name registries: its full in-module chain.
+
+    ``A`` for a module-level class, ``A.B`` for a class nested in ``A``,
+    ``outer.Local`` for one declared in a function: the chain
+    ``qualified_name`` carries. ``Symbol.name`` cannot be the key: for a
+    nested class it is the innermost name alone, so ``A.B`` and ``Z.B`` would
+    share one entry and the later registration would answer every reference
+    to either, and a bare ``B`` -- which Python can only bind at module level
+    or in an enclosing function -- would reach a class it cannot name.
+    ``Symbol.name`` itself is left as it is: it is an input of ``stable_id``.
+    """
+    return class_symbol.qualified_name or class_symbol.name
+
+
+def _class_member(
+    owner: Symbol,
+    attr: str,
+    local_symbols: dict[str, Symbol],
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
+) -> Symbol | None:
+    """What class ``owner``'s OWN body binds ``attr`` to: a method, a nested
+    class or a class attribute, or ``None``.
+
+    One hop of a dotted name (``A.B``, ``A.B.go``): the member is registered
+    under the owner's chain plus its own name (:func:`_class_key`). Read from
+    this file's registry when the owner is declared here, else from the
+    run-wide ``(path, key)`` index, so a class imported from another module
+    walks the same way. Inherited members are not found: the inherited-calls
+    linker owns the MRO.
+    """
+    key = f"{_class_key(owner)}.{attr}"
+    found = local_symbols.get(key)
+    if found is not None and found.path == owner.path:
+        return found
+    if sym_by_path_name is not None:
+        return sym_by_path_name.get((owner.path, key))
+    return None
+
+
+def _is_class(symbol: Symbol | None) -> bool:
+    """Whether a resolved callee is a class: calling it constructs it."""
+    return symbol is not None and symbol.kind == "class"
+
+
+def _dotted_parts(expr: ast.AST) -> list[str] | None:
+    """``A.B.C`` as ``["A", "B", "C"]``; ``None`` when the expression is not
+    a Name or an attribute chain rooted at one."""
+    parts: list[str] = []
+    current = expr
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    parts.reverse()
+    return parts
+
+
+#: ``scopes_at(node)``: the registry prefixes of the scopes whose own defs a
+#: bare name at ``node`` can reach, innermost first -- each enclosing FUNCTION
+#: (``outer``, ``A.method``), and the enclosing class body when ``node`` is a
+#: statement of that body. The module itself is not listed: it is the bare key.
+_ScopesAt = Callable[[ast.AST], Sequence[str]]
+
+
+def _resolve_local_ref(
+    expr: ast.AST,
+    at: ast.AST,
+    symbol_by_name: dict[str, Symbol],
+    scopes_at: _ScopesAt | None = None,
+) -> Symbol | None:
+    """The declaration of THIS file a route registration's handler expression
+    names (``index``, ``LoginView``, ``Outer.LoginView``), or ``None``.
+
+    Python's rule, read off the chain-keyed registry: the ROOT name is a def
+    or class of an enclosing function of the registration (``scopes_at``),
+    else a module-level binding; each further segment is a member of the
+    class the walk has reached. So a class nested in another class, or local
+    to some other function, is never what a bare name means, and
+    ``views.LoginView`` -- rooted at an import, which this file does not
+    declare -- is never answered by a local ``LoginView``.
+    """
+    parts = _dotted_parts(expr)
+    if parts is None:
+        return None
+    current: Symbol | None = None
+    for prefix in (scopes_at(at) if scopes_at is not None else ()):
+        current = symbol_by_name.get(f"{prefix}.{parts[0]}")
+        if current is not None:
+            break
+    if current is None:
+        current = symbol_by_name.get(parts[0])
+    for attr in parts[1:]:
+        if current is None or current.kind != "class":
+            return None
+        current = symbol_by_name.get(f"{_class_key(current)}.{attr}")
+    return current
+
+
+def _local_ref_id(
+    expr: ast.AST,
+    at: ast.AST,
+    symbol_by_name: dict[str, Symbol],
+    scopes_at: _ScopesAt | None,
+) -> str | None:
+    """:func:`_resolve_local_ref`, as the symbol id a UsageContext carries."""
+    found = _resolve_local_ref(expr, at, symbol_by_name, scopes_at)
+    return found.id if found is not None else None
 
 
 def _emit_module_level_assign_symbols(
@@ -643,7 +771,7 @@ def _chain_receiver_class_from_return_types(
         return None
     cls = root_class
     for attr in chain_attrs[:-1]:
-        member = sym_by_path_name.get((cls.path, f"{cls.name}.{attr}"))
+        member = _class_member(cls, attr, local_symbols, sym_by_path_name)
         if member is None or member.kind not in ("method", "function"):
             return None
         ret_name = _declared_return_type_name(member)
@@ -1448,6 +1576,7 @@ def _extract_django_usage_contexts(
     local_constants: dict[str, str] | None = None,
     imports: dict[str, tuple[str, str]] | None = None,
     repo_root: Path | None = None,
+    scopes_at: _ScopesAt | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Django URL patterns.
 
@@ -1466,6 +1595,9 @@ def _extract_django_usage_contexts(
         local_constants: Module-level string constant assignments
         imports: Imported names for cross-file constant resolution
         repo_root: Repository root for cross-file constant resolution
+        scopes_at: The function scopes enclosing a registration, for the
+            view reference (:func:`_resolve_local_ref`); ``None`` resolves
+            every reference at module level.
 
     Returns:
         List of UsageContext records for Django URL patterns.
@@ -1509,14 +1641,14 @@ def _extract_django_usage_contexts(
         if len(node.args) >= 2:
             second_arg = node.args[1]
             if isinstance(second_arg, ast.Attribute):
-                # views.user_list -> check if we can resolve it
+                # views.user_list -> a view of this file only when the chain
+                # is rooted at one of its classes (Views.user_list)
                 view_name = second_arg.attr
+                view_ref = _local_ref_id(second_arg, node, symbol_by_name, scopes_at)
             elif isinstance(second_arg, ast.Name):
                 # user_list -> check if it's defined locally
                 view_name = second_arg.id
-                # Try to resolve to a local symbol
-                if view_name in symbol_by_name:
-                    view_ref = symbol_by_name[view_name].id
+                view_ref = _local_ref_id(second_arg, node, symbol_by_name, scopes_at)
             elif isinstance(second_arg, ast.Call):
                 # views.LoginView.as_view() -> "LoginView"
                 # TemplateView.as_view(template_name='...') -> "TemplateView"
@@ -1525,16 +1657,17 @@ def _extract_django_usage_contexts(
                     is_class_based = True
                     # Extract the class name from the as_view() call
                     if isinstance(call_func.value, ast.Attribute):
-                        # views.LoginView.as_view() -> LoginView
+                        # views.LoginView.as_view() -> LoginView. A class of
+                        # this file only when the whole chain walks to one
+                        # (Outer.LoginView), never by its last segment.
                         view_name = call_func.value.attr
-                        # Try to resolve to a local symbol (class)
-                        if view_name in symbol_by_name:
-                            view_ref = symbol_by_name[view_name].id
                     elif isinstance(call_func.value, ast.Name):
                         # LoginView.as_view() -> LoginView
                         view_name = call_func.value.id
-                        if view_name in symbol_by_name:
-                            view_ref = symbol_by_name[view_name].id
+                    if view_name is not None:
+                        view_ref = _local_ref_id(
+                            call_func.value, node, symbol_by_name, scopes_at,
+                        )
 
         # Build metadata with args info
         args_values = []
@@ -1822,6 +1955,7 @@ def _extract_flask_usage_contexts(
     local_constants: dict[str, str] | None = None,
     imports: dict[str, tuple[str, str]] | None = None,
     repo_root: Path | None = None,
+    scopes_at: _ScopesAt | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Flask/FastAPI call-based route registration.
 
@@ -1853,6 +1987,9 @@ def _extract_flask_usage_contexts(
         local_constants: Module-level string constant assignments
         imports: Imported names for cross-file constant resolution
         repo_root: Repository root for cross-file constant resolution
+        scopes_at: The function scopes enclosing a registration, for the
+            handler reference (:func:`_resolve_local_ref`) -- an app factory
+            registers the views and resources it declares in its own body.
 
     Returns:
         List of UsageContext records for Flask URL patterns.
@@ -1889,9 +2026,9 @@ def _extract_flask_usage_contexts(
                 resource_name = resource_arg.attr
             if resource_name is None:
                 continue
-            resource_ref = None
-            if resource_name in symbol_by_name:
-                resource_ref = symbol_by_name[resource_name].id
+            resource_ref = _local_ref_id(
+                resource_arg, node, symbol_by_name, scopes_at,
+            )
             # Second arg onwards are URL paths
             for path_arg in node.args[1:]:
                 if isinstance(path_arg, ast.Constant) and isinstance(path_arg.value, str):
@@ -1951,10 +2088,12 @@ def _extract_flask_usage_contexts(
             if kw.arg == "view_func":
                 if isinstance(kw.value, ast.Name):
                     view_name = kw.value.id
-                    if view_name in symbol_by_name:
-                        view_ref = symbol_by_name[view_name].id
                 elif isinstance(kw.value, ast.Attribute):
                     view_name = kw.value.attr
+                if view_name is not None:
+                    view_ref = _local_ref_id(
+                        kw.value, node, symbol_by_name, scopes_at,
+                    )
                 break
 
         # If not found in kwargs, check positional args.
@@ -1965,10 +2104,12 @@ def _extract_flask_usage_contexts(
             handler_arg = node.args[handler_arg_idx]
             if isinstance(handler_arg, ast.Name):
                 view_name = handler_arg.id
-                if view_name in symbol_by_name:
-                    view_ref = symbol_by_name[view_name].id
             elif isinstance(handler_arg, ast.Attribute):
                 view_name = handler_arg.attr
+            if view_name is not None:
+                view_ref = _local_ref_id(
+                    handler_arg, node, symbol_by_name, scopes_at,
+                )
 
         # Extract methods if specified
         methods = None
@@ -2045,6 +2186,7 @@ def _extract_starlette_usage_contexts(
     file_path: str,
     symbol_by_name: dict[str, Symbol],
     imports: dict[str, tuple[str, str]] | None = None,
+    scopes_at: _ScopesAt | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Starlette ``Route`` / ``WebSocketRoute``.
 
@@ -2115,10 +2257,12 @@ def _extract_starlette_usage_contexts(
             handler_arg = node.args[1]
             if isinstance(handler_arg, ast.Name):
                 view_name = handler_arg.id
-                if view_name in symbol_by_name:
-                    view_ref = symbol_by_name[view_name].id
             elif isinstance(handler_arg, ast.Attribute):
                 view_name = handler_arg.attr
+            if view_name is not None:
+                view_ref = _local_ref_id(
+                    handler_arg, node, symbol_by_name, scopes_at,
+                )
 
         # Methods: kwarg for Route; synthetic ["WS"] for WebSocketRoute.
         methods: list[str] | None = None
@@ -2445,6 +2589,14 @@ class FileAnalysis:
     """
 
     symbols: list[Symbol]
+    # The file's name registry. Every declaration is keyed by its FULL scope
+    # chain: ``f`` / ``A`` / ``X`` for a module-level function, class or
+    # variable, ``A.B`` and ``A.B.go`` for a nested class and its method,
+    # ``A.B.x`` for its attribute, ``outer.Local`` / ``outer.inner`` for a
+    # class or function declared in a function. So a key without a dot is a
+    # module-level binding, the only thing a bare name can mean outside a
+    # function, and a dotted name is resolved by walking it from its root
+    # (``_class_member``). ``"<module>"`` is the file symbol.
     symbol_by_name: dict[str, Symbol]
     # Maps imported name -> (module_name, original_name)
     imports: dict[str, tuple[str, str]] = field(default_factory=dict)
@@ -2494,6 +2646,12 @@ class FileAnalysis:
     # table ``self.x()`` resolves against once the class ``self`` denotes is
     # known by position.
     methods_by_class_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
+    # Function/method Symbol.id -> {class name -> Symbol} for the classes
+    # declared directly in that function's body. With ``nested_by_parent_id``
+    # (nested functions) these are the defs a function's frame binds, so a
+    # bare name inside the function reaches its local class and a bare name
+    # anywhere else does not.
+    local_classes_by_func_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
 
 
 _PYTHON_PROJECT_MANIFESTS = frozenset({"pyproject.toml", "setup.py", "setup.cfg"})
@@ -3469,6 +3627,24 @@ def _extract_file_analysis(
     # nested class's enclosing class by POSITION (its parent AST node).
     methods_by_class_id: dict[str, dict[str, Symbol]] = {}
     class_symbol_by_node_id: dict[int, Symbol] = {}
+    # ``(id of the enclosing FunctionDef node, class name, class Symbol)`` for
+    # every class whose nearest enclosing scope is a function: the bindings
+    # that function's frame adds for a bare name (``local_classes_by_func_id``).
+    local_class_defs: list[tuple[int, str, Symbol]] = []
+
+    def _nearest_scope_node(
+        node: ast.AST,
+    ) -> ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None:
+        """The function or class whose body directly holds ``node`` (through
+        any ``if`` / ``try`` / ``with``), or ``None`` at module level."""
+        current = parent_map.get(id(node))
+        while current is not None:
+            if isinstance(
+                current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                return current
+            current = parent_map.get(id(current))
+        return None
 
     def _enclosing_function_chain(node: ast.AST) -> list[str]:
         """Return the names of enclosing FunctionDef ancestors, outermost-first.
@@ -3578,7 +3754,14 @@ def _extract_file_analysis(
                 is_exported=class_is_exported,
             )
             symbols.append(symbol)
-            symbol_by_name[node.name] = symbol
+            # Registered under its FULL chain (``A.B``, ``outer.Local``), so a
+            # bare key is always a module-level binding: Python reaches a
+            # nested class only through its owner and a function-local class
+            # only inside that function (:func:`_class_key`).
+            symbol_by_name[class_scoped_name] = symbol
+            _class_scope = _nearest_scope_node(node)
+            if isinstance(_class_scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                local_class_defs.append((id(_class_scope), node.name, symbol))
             # WI-kutal: a class nested directly in a class body is that body's
             # attribute, so ``self.<Nested>()`` reaches it.
             class_symbol_by_node_id[id(node)] = symbol
@@ -3644,7 +3827,7 @@ def _extract_file_analysis(
                         qualified_name=attr_qualified,
                     )
                     symbols.append(field_sym)
-                    symbol_by_name[attr_full] = field_sym
+                    symbol_by_name[attr_qualified] = field_sym
 
             # Extract methods inside the class
             for item in node.body:
@@ -3773,16 +3956,17 @@ def _extract_file_analysis(
                         ),
                     )
                     symbols.append(method_symbol)
-                    # Keyed by the QUALIFIED name (``Class.method``), never the
-                    # bare one (WI-barip). A bare-name call ``open(...)`` reads
+                    # Keyed by the class's chain plus the method name
+                    # (``Class.method``, ``A.B.go``), never the bare name
+                    # (WI-barip). A bare-name call ``open(...)`` reads
                     # this table (Case 1), and Python scoping cannot reach a
                     # method from a function body -- a class body is not an
                     # enclosing scope -- so a bare key would bind builtins and
                     # module functions to same-named methods and overwrite a
                     # same-named module function outright. ``self.method()`` reads
-                    # ``methods_by_class_id`` (WI-kutal); the getter and
-                    # decorator lookups read this qualified key.
-                    symbol_by_name[method_symbol.name] = method_symbol
+                    # ``methods_by_class_id`` (WI-kutal); member lookups read
+                    # this key (:func:`_class_member`).
+                    symbol_by_name[f"{class_scoped_name}.{item.name}"] = method_symbol
                     # Also register the method under its AST node id
                     # (collision-immune, mirroring the FunctionDef path below;
                     # WI-jafat). Caller resolution in _extract_edges (the
@@ -3921,14 +4105,15 @@ def _extract_file_analysis(
                     is_exported=func_is_exported,
                 )
                 symbols.append(symbol)
-                # Only top-level functions get registered in the flat
-                # symbol_by_name dict (which feeds call resolution for
-                # bare-name calls at module-level). Nested functions resolve
-                # through the per-parent inner_scope map (INV-mofav) to
-                # prevent sibling collisions when two parents each define a
-                # nested helper of the same short name.
-                if not is_nested:
-                    symbol_by_name[node.name] = symbol
+                # Registered under its full scope chain, like a class: a
+                # module-level function under its bare name, a nested one
+                # under ``outer.inner``, a ``def`` inside a class body's
+                # ``if`` / ``try`` under ``Class.name``. Only the first is
+                # reachable by a bare name from module code; a bare-name
+                # call inside a function finds a nested helper through the
+                # per-parent inner_scope map (INV-mofav), so two parents
+                # that each define a helper of one short name stay apart.
+                symbol_by_name[scoped_id_name] = symbol
                 func_symbol_by_node_id[id(node)] = symbol
 
     # Extract usage contexts for call-based frameworks.
@@ -3943,11 +4128,28 @@ def _extract_file_analysis(
     route_local_constants, route_imports = _collect_module_constants(
         tree, repo_root, py_file,
     )
+    def _scopes_at(node: ast.AST) -> list[str]:
+        """Registry prefixes of the scopes a bare name at ``node`` reaches
+        before the module (:data:`_ScopesAt`)."""
+        prefixes: list[str] = []
+        scope = _nearest_scope_node(node)
+        innermost = True
+        while scope is not None:
+            # A class body is a scope for its own statements only.
+            if innermost or not isinstance(scope, ast.ClassDef):
+                prefixes.append(
+                    ".".join(_enclosing_scope_chain(scope) + [scope.name])
+                )
+            innermost = False
+            scope = _nearest_scope_node(scope)
+        return prefixes
+
     django_contexts = _extract_django_usage_contexts(
         tree, str(py_file), symbol_by_name,
         local_constants=route_local_constants,
         imports=route_imports,
         repo_root=repo_root,
+        scopes_at=_scopes_at,
     )
     usage_contexts.extend(django_contexts)
     # router_prefixes already computed above (before the symbol extraction loop)
@@ -3956,11 +4158,13 @@ def _extract_file_analysis(
         local_constants=route_local_constants,
         imports=route_imports,
         repo_root=repo_root,
+        scopes_at=_scopes_at,
     )
     usage_contexts.extend(flask_contexts)
     starlette_contexts = _extract_starlette_usage_contexts(
         tree, str(py_file), symbol_by_name,
         imports=route_imports,
+        scopes_at=_scopes_at,
     )
     usage_contexts.extend(starlette_contexts)
 
@@ -4107,6 +4311,18 @@ def _extract_file_analysis(
             if _fn_sym is not None:
                 local_names_by_func_id[_fn_sym.id] = _collect_scope_local_names(_fn_node)
 
+    # A class declared in a function body is that function's local binding:
+    # a bare name reaches it there and in the functions nested in it, and
+    # nowhere else. Later source position wins, as for a class body.
+    local_classes_by_func_id: dict[str, dict[str, Symbol]] = {}
+    for _fn_node_id, _cls_name, _cls_sym in local_class_defs:
+        _owner_fn = func_symbol_by_node_id.get(_fn_node_id)
+        if _owner_fn is not None:
+            _put_class_body_def(
+                local_classes_by_func_id.setdefault(_owner_fn.id, {}),
+                _cls_name, _cls_sym,
+            )
+
     return FileAnalysis(
         symbols=symbols,
         symbol_by_name=symbol_by_name,
@@ -4122,6 +4338,7 @@ def _extract_file_analysis(
         local_names_by_func_id=local_names_by_func_id,
         method_to_enclosing_class_id=method_to_enclosing_class_id,
         methods_by_class_id=methods_by_class_id,
+        local_classes_by_func_id=local_classes_by_func_id,
     ), None
 
 
@@ -4175,7 +4392,11 @@ def _collect_attr_carriers(block_nodes: list[ast.AST]) -> dict[int, str]:
 def _build_property_getter_index(
     symbols: list[Symbol],
 ) -> dict[tuple[str, str], Symbol]:
-    """Index ``@property`` getters by ``(path, qualified_name)``, first-getter-wins.
+    """Index ``@property`` getters by ``(path, registry key)``, first-getter-wins.
+
+    The key is the method's full chain (``A.B.val``), the one
+    :func:`_resolve_property_getter` asks with, so the getters of two
+    same-named classes nested in different owners stay apart.
 
     Built from the per-file symbols BEFORE the name-keyed registries
     (``symbol_by_name`` / the ``(path, qualified)`` index) collapse a getter and
@@ -4192,7 +4413,7 @@ def _build_property_getter_index(
             continue
         for dec in (sym.meta or {}).get("decorators", []):
             if isinstance(dec, dict) and dec.get("name") == "property":
-                index.setdefault((sym.path, sym.name), sym)
+                index.setdefault((sym.path, sym.qualified_name or sym.name), sym)
                 break
     return index
 
@@ -4219,7 +4440,7 @@ def _resolve_property_getter(
     a missing member returns None, so only a genuine getter invocation (which IS
     a call) emits a ``calls`` edge.
     """
-    qualified_name = f"{class_symbol.name}.{attr_name}"
+    qualified_name = f"{_class_key(class_symbol)}.{attr_name}"
     # WI-sizut: the dedicated getter index (built pre-collapse) is authoritative
     # — it survives a same-qualified-name @x.setter/@x.deleter that would
     # otherwise mask the getter out of the name-keyed indexes below.
@@ -4614,6 +4835,8 @@ def _collect_class_field_maps(
     resolver: "SymbolResolver | None",
     class_name_counts: dict[str, int],
     interprocedural_param_types: dict[tuple[str, int], str] | None = None,
+    *,
+    class_symbol_by_node_id: dict[int, Symbol],
 ) -> tuple[
     dict[str, dict[str, Symbol]],
     dict[str, frozenset[str]],
@@ -4688,14 +4911,10 @@ def _collect_class_field_maps(
         # matching correction -- the argument the caller writes at 0 is the
         # parameter ``__init__`` declares at 1, after ``self``.
         #
-        # The class symbol is validated the same way it is before the
-        # ``meta["fields"]`` attachment below: ``local_symbols`` is last-write-
-        # wins, so a same-named method or function can shadow the class, and
-        # asking the index with a non-class id would silently read another
-        # symbol's argument types.
-        _init_owner = local_symbols.get(node.name)
-        if _init_owner is not None and _init_owner.kind != "class":
-            _init_owner = None
+        # The class symbol is found by POSITION (``class_symbol_by_node_id``),
+        # not by name: a nested class is not registered under its bare name,
+        # and a same-named class elsewhere in the file is a different class.
+        _init_owner = class_symbol_by_node_id.get(id(node))
         init_external_types = _extract_external_param_types(
             init_method, init_param_types, _init_owner, position_offset=1,
         )
@@ -4781,18 +5000,13 @@ def _collect_class_field_maps(
             # {field: type_short_name} to the class symbol's meta["fields"] so
             # inherited_calls._walk_parents_for_field can resolve a
             # self.field.method() where ``field`` is declared on a PARENT.
-            # ``local_symbols`` IS the file's ``symbol_by_name``, so this mutates
-            # the same Symbol object emitted in the node list (shared reference).
+            # The Symbol is the one emitted in the node list (shared
+            # reference), found by position, so this mutates it.
             # Only ADDS the "fields" key — a class's existing base_classes /
             # decorators meta survives. ``_ft.name`` is the type's full name,
             # matching the linker's ``class_ids_by_name`` keys.
-            _cls_sym = local_symbols.get(node.name)
-            # Only attach to a genuine class symbol: a same-name method/function
-            # that shadows the class in the last-write-wins ``local_symbols`` must
-            # not receive a spurious (inert) fields key. The same-name-CLASS
-            # clobber (two classes, one short name → recall loss, not a wrong
-            # edge) is not handled here; it would need id-keyed lookup.
-            if _cls_sym is None or _cls_sym.kind != "class":  # pragma: no cover
+            _cls_sym = class_symbol_by_node_id.get(id(node))
+            if _cls_sym is None:  # pragma: no cover - every ClassDef has a symbol
                 continue
             if _cls_sym.meta is None:
                 _cls_sym.meta = {}
@@ -5300,10 +5514,10 @@ def _collect_django_property_managers(
         for node in ast.walk(analysis.tree):
             if not isinstance(node, ast.ClassDef):
                 continue
-            sym = analysis.symbol_by_name.get(node.name)
+            sym = analysis.class_symbol_by_node_id.get(id(node))
             # The same twin guard as the index's own per-file pass.
             if (
-                sym is None or sym.kind != "class" or counts.get(node.name, 0) != 1
+                sym is None or counts.get(node.name, 0) != 1
                 or sym.id not in index.model_ids
             ):
                 continue
@@ -5413,11 +5627,11 @@ def _collect_django_setup_fields(
         for node in ast.walk(analysis.tree):
             if not isinstance(node, ast.ClassDef):
                 continue
-            sym = analysis.symbol_by_name.get(node.name)
-            # A same-short-name class in one file is last-write-wins in
-            # ``symbol_by_name``, so its map could be the wrong twin's --
-            # refused exactly as WI-supat refuses the receiver-type id.
-            if sym is None or sym.kind != "class" or counts.get(node.name, 0) > 1:
+            sym = analysis.class_symbol_by_node_id.get(id(node))
+            # The field maps are keyed by SHORT class name, so for a
+            # same-short-name class in one file the map could be the wrong
+            # twin's -- refused exactly as WI-supat refuses the receiver-type id.
+            if sym is None or counts.get(node.name, 0) > 1:
                 continue
             setups = [
                 m for m in node.body
@@ -5508,8 +5722,8 @@ def _index_django_relations_in_file(
     expand) register nothing.
 
     A class whose short name occurs twice in its file is skipped, exactly as
-    the class field maps skip it: ``symbol_by_name`` is last-write-wins and
-    the id could be the wrong twin's.
+    the class field maps skip it: a bare or string reference to that name
+    (``_class_named``) could mean either twin.
     """
     counts = _class_name_counts(tree)
     local_symbols = analysis.symbol_by_name
@@ -5558,8 +5772,8 @@ def _index_django_relations_in_file(
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
-        owner = local_symbols.get(node.name)
-        if owner is None or owner.kind != "class" or counts.get(node.name, 0) != 1:
+        owner = analysis.class_symbol_by_node_id.get(id(node))
+        if owner is None or counts.get(node.name, 0) != 1:
             continue
         index.class_by_id[owner.id] = owner
         methods = {
@@ -5976,6 +6190,7 @@ def _extract_edges(
     local_names_by_func_id: dict[str, frozenset[str]] | None = None,
     method_to_enclosing_class_id: dict[str, str] | None = None,
     methods_by_class_id: dict[str, dict[str, Symbol]] | None = None,
+    local_classes_by_func_id: dict[str, dict[str, Symbol]] | None = None,
     module_to_file_id: dict[str, str] | None = None,
     property_getter_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     interprocedural_param_types: dict[tuple[str, int], str] | None = None,
@@ -6044,6 +6259,18 @@ def _extract_edges(
         method_to_enclosing_class_id = {}
     if methods_by_class_id is None:  # pragma: no cover
         methods_by_class_id = {}
+    # The defs each function's frame binds: its nested functions (INV-mofav)
+    # and the classes declared in its body. One table for the LEGB stack, so
+    # a bare name inside a function reaches its local class the way it
+    # reaches a nested helper; ``nested_by_parent_id`` alone stays the
+    # closure-factory input, which is about returned FUNCTIONS only.
+    frame_defs_by_func_id: dict[str, dict[str, Symbol]] = {
+        _fid: dict(_defs) for _fid, _defs in nested_by_parent_id.items()
+    }
+    for _fid, _classes in (local_classes_by_func_id or {}).items():
+        _frame = frame_defs_by_func_id.setdefault(_fid, {})
+        for _cname, _csym in _classes.items():
+            _put_class_body_def(_frame, _cname, _csym)
     # WI-kutal: the function/method Symbols by id, for the owner of the frame
     # that binds ``self`` (see :func:`_self_receiver_class_id`).
     _func_symbol_by_id: dict[str, Symbol] = {
@@ -6102,11 +6329,9 @@ def _extract_edges(
         """
         name = name_node.id
         # INV-mofav: enclosing-function scope wins over module scope, mirroring
-        # Python's LEGB rule for bare names (step 1-2). Without this, a bare-name
+        # Python's LEGB rule for bare names. Without this, a bare-name
         # reference to a nested helper resolves to a same-named top-level Symbol.
-        symbol = stack.lookup_immediate(name) if stack else None
-        if symbol is None:
-            symbol = local_symbols.get(name)
+        symbol = _lexical_def(name, stack, local_symbols)
         if not symbol and name in imports:
             mod_name, original_name = imports[name]
             symbol = _lookup_symbol_by_module(
@@ -6114,7 +6339,7 @@ def _extract_edges(
             )
         # Last-resort enclosing-scope lookup for a bare
         # reference to a helper defined in a grandparent enclosing function.
-        # Additive — fires only when unresolved above; returns only functions.
+        # Additive — fires only when unresolved above.
         if symbol is None and stack is not None:
             symbol = stack.lookup_enclosing(name)
         if symbol and symbol.kind in ("function", "method"):
@@ -7217,7 +7442,7 @@ def _extract_edges(
             # WI-barip: a decorator defined earlier in the SAME class body
             # (``def deco(f)`` then ``@deco``) is reached: the class body's
             # namespace is live while it executes. Methods are keyed by
-            # qualified name, so it is asked for as ``Class.deco`` first.
+            # their class's chain, so it is asked for as ``Class.deco`` first.
             symbol = (
                 local_symbols.get(f"{owner_class}.{name}") if owner_class else None
             ) or local_symbols.get(name)
@@ -7237,10 +7462,12 @@ def _extract_edges(
                 attr_name = decorator.attr
 
                 # Check if receiver is a local class (e.g., @Registry.register):
-                # methods are keyed by qualified name (WI-barip).
-                symbol = local_symbols.get(f"{receiver_name}.{attr_name}")
-                if symbol:
-                    return symbol
+                # the member of that class's own body (WI-barip).
+                receiver = local_symbols.get(receiver_name)
+                if receiver is not None and receiver.kind == "class":
+                    symbol = _class_member(receiver, attr_name, local_symbols)
+                    if symbol:
+                        return symbol
 
                 # Check if receiver is an imported module (with suffix matching)
                 if receiver_name in module_imports:
@@ -7259,7 +7486,10 @@ def _extract_edges(
         for decorator in decorator_list:
             decorator_symbol = _resolve_decorator_target(
                 decorator,
-                decorated_symbol.name.rsplit(".", 1)[0]
+                # The owning class's registry key (``A.B`` for a method of a
+                # nested class), the prefix its body's defs are keyed under.
+                (decorated_symbol.qualified_name or decorated_symbol.name)
+                .rsplit(".", 1)[0]
                 if decorated_symbol.kind == "method" else None,
             )
 
@@ -7393,6 +7623,7 @@ def _extract_edges(
         class_maps = _collect_class_field_maps(
             tree, local_symbols, imports, global_symbols, module_imports,
             resolver, class_name_counts, interprocedural_param_types,
+            class_symbol_by_node_id=class_symbol_by_node_id,
         )
     class_field_types, class_own_field_names, class_external_field_types = class_maps
 
@@ -7469,7 +7700,7 @@ def _extract_edges(
         )
         if fn_symbol is not None:
             frames = _build_scope_stack(
-                fn_symbol.id, enclosing_func_id, nested_by_parent_id,
+                fn_symbol.id, enclosing_func_id, frame_defs_by_func_id,
                 local_names_by_func_id, _value_names_by_func_id,
             ).frames
             shadow |= (
@@ -7479,7 +7710,16 @@ def _extract_edges(
             )
         stack = ScopeStack(frames=[*frames, Scope(
             owner_id=class_symbol.id,
-            bindings={},
+            # The body's own nested classes: a statement of the body reaches
+            # them by bare name (``b = B()`` beside ``class B``), which no
+            # function inside the class does.
+            bindings={
+                _name: NestedDef(_member)
+                for _name, _member in methods_by_class_id.get(
+                    class_symbol.id, {},
+                ).items()
+                if _member.kind == "class"
+            },
             local_names=frozenset(found.bound - found.nonlocals),
             value_names=frozenset(
                 (found.stored | _collect_statement_binding_names(list(node.body)))
@@ -7535,7 +7775,7 @@ def _extract_edges(
                 # resolution uses the materialized LEGB stack.
                 inner_scope = nested_by_parent_id.get(caller_symbol.id)
                 stack = _build_scope_stack(
-                    caller_symbol.id, enclosing_func_id, nested_by_parent_id,
+                    caller_symbol.id, enclosing_func_id, frame_defs_by_func_id,
                     local_names_by_func_id, _value_names_by_func_id,
                 )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
@@ -7960,7 +8200,8 @@ def _build_scope_stack(
     Walks ``enclosing_func_id`` from the caller outward to the outermost
     enclosing function, then builds one :class:`Scope` frame per link
     (outermost-first, caller last). Each frame's bindings are the enclosing
-    function's nested helpers (``nested_by_parent_id``) wrapped as
+    function's nested helpers and local classes (``nested_by_parent_id`` here
+    is the caller's merged frame-def table) wrapped as
     :class:`NestedDef` — the only Binding variant produced here — and its
     ``local_names`` carry that function's locally-bound names (for LEGB
     shadowing). A top-level caller yields a single-frame stack, so
@@ -7994,6 +8235,25 @@ def _build_scope_stack(
         for fid in chain
     ]
     return ScopeStack(frames=frames)
+
+
+def _lexical_def(
+    name: str, stack: ScopeStack | None, local_symbols: dict[str, Symbol],
+) -> Symbol | None:
+    """What a bare name is bound to by a ``def`` / ``class`` (or a module-level
+    assignment) where it is used.
+
+    The caller's own frame first -- its nested defs and local classes
+    (INV-mofav) -- then the module: a registry key without a dot
+    (:class:`FileAnalysis`). A class body is not an enclosing scope, so a
+    method or a class nested in a class is never the answer; it is reached
+    through its owner (:func:`_class_member`). Imports are the caller's next
+    question, and the defs of the functions further out its last
+    (:meth:`ScopeStack.lookup_enclosing`, kept a last resort on purpose: it
+    never re-targets a name the module or an import already answers).
+    """
+    found = stack.lookup_immediate(name) if stack is not None else None
+    return found if found is not None else local_symbols.get(name)
 
 
 def _put_class_body_def(
@@ -9104,7 +9364,7 @@ def _django_lineage_overrides(
 
 
 def _class_directly_extends_django_model(
-    class_short_name: str,
+    class_key: str,
     local_symbols: dict[str, Symbol],
 ) -> bool:
     """WI-sozoj: True iff the named class DIRECTLY subclasses django ``models.Model``.
@@ -9119,11 +9379,12 @@ def _class_directly_extends_django_model(
     (``django_orm_dispatch``) owns the transitive / short-name-collision case for
     its orthogonal ``dispatches_to`` concern; io classification stays narrow here.
 
-    Reads ``base_classes`` off the file-global class symbol (the same metadata
-    the inheritance linker consumes); returns False for an unknown name, a
+    ``class_key`` is the class's registry key (:func:`_class_key`). Reads
+    ``base_classes`` off that class symbol (the same metadata the inheritance
+    linker consumes); returns False for an unknown name, a
     non-class symbol, or a class without base metadata.
     """
-    sym = local_symbols.get(class_short_name)
+    sym = local_symbols.get(class_key)
     if sym is None or sym.kind != "class" or not sym.meta:
         return False
     bases = sym.meta.get("base_classes") or []
@@ -9409,10 +9670,8 @@ def _process_call(
     # Case 1: Simple name calls - helper() or ClassName()
     if isinstance(func, ast.Name):
         callee_name = func.id
-        # INV-mofav: enclosing-function scope wins over module scope (step 1-2).
-        callee_symbol = stack.lookup_immediate(callee_name) if stack else None
-        if callee_symbol is None:
-            callee_symbol = local_symbols.get(callee_name)
+        # INV-mofav: enclosing-function scope wins over module scope.
+        callee_symbol = _lexical_def(callee_name, stack, local_symbols)
         # WI-gulot: a module-level `f = g` function alias resolves as a variable;
         # chase it to the aliased function so the call reaches the real body
         # (else it dead-ends at the 0-out-degree variable node).
@@ -9435,12 +9694,12 @@ def _process_call(
                 is_instantiation = True
 
         # Last-resort enclosing-scope lookup — resolves a
-        # bare call to a helper defined in a GRANDPARENT (or higher) enclosing
-        # function that the flat immediate frame missed. It fires only when
-        # nothing above resolved, and returns only nested FUNCTIONS (never a
-        # class), so is_instantiation stays False.
+        # bare call to a helper or a local class defined in a GRANDPARENT (or
+        # higher) enclosing function that the flat immediate frame missed. It
+        # fires only when nothing above resolved.
         if callee_symbol is None and stack is not None:
             callee_symbol = stack.lookup_enclosing(callee_name)
+            is_instantiation = _is_class(callee_symbol)
 
     # Case 2: Attribute calls - self.method(), module.ClassName(), variable.method()
     elif isinstance(func, ast.Attribute):
@@ -9477,15 +9736,13 @@ def _process_call(
 
             # Case 2c: variable.method() - use type inference
             elif receiver_name in var_types:
-                class_symbol = var_types[receiver_name]
-                # Look for ClassName.method in local symbols
-                qualified_name = f"{class_symbol.name}.{attr_name}"
-                callee_symbol = local_symbols.get(qualified_name)
-                # If not found locally, try global symbols via index
-                if not callee_symbol and sym_by_path_name is not None:
-                    callee_symbol = sym_by_path_name.get(
-                        (class_symbol.path, qualified_name)
-                    )
+                # The member of the class's own body, in this file or, through
+                # the run-wide index, in the file that declares it.
+                callee_symbol = _class_member(
+                    var_types[receiver_name], attr_name, local_symbols,
+                    sym_by_path_name,
+                )
+                is_instantiation = _is_class(callee_symbol)
 
             # Case 2d: Imported class method calls - Item.model_validate()
             # When Item is imported via "from app.models import Item"
@@ -9495,12 +9752,14 @@ def _process_call(
                     global_symbols, module_name, original_name, resolver=resolver
                 )
                 if class_symbol and class_symbol.kind == "class":
-                    # Look for ClassName.method (class method/static method)
-                    qualified_name = f"{original_name}.{attr_name}"
+                    # Look for ClassName.method (class method/static method),
+                    # or a class nested in it (``A.B()`` after
+                    # ``from m import A``).
                     if sym_by_path_name is not None:
-                        callee_symbol = sym_by_path_name.get(
-                            (class_symbol.path, qualified_name)
+                        callee_symbol = _class_member(
+                            class_symbol, attr_name, {}, sym_by_path_name,
                         )
+                        is_instantiation = _is_class(callee_symbol)
 
                 # Case 2e: Imported submodule calls - crud.create_user()
                 # When crud is imported via "from app import crud" (crud is a module)
@@ -9521,13 +9780,11 @@ def _process_call(
         ):
             field_name = func.value.attr
             if f"self.{field_name}" in var_types:
-                class_symbol = var_types[f"self.{field_name}"]
-                qualified_name = f"{class_symbol.name}.{attr_name}"
-                callee_symbol = local_symbols.get(qualified_name)
-                if not callee_symbol and sym_by_path_name is not None:
-                    callee_symbol = sym_by_path_name.get(
-                        (class_symbol.path, qualified_name)
-                    )
+                callee_symbol = _class_member(
+                    var_types[f"self.{field_name}"], attr_name, local_symbols,
+                    sym_by_path_name,
+                )
+                is_instantiation = _is_class(callee_symbol)
 
         # Case 2g: a fully dotted module call -- ``import pkg.sub.deep`` then
         # ``pkg.sub.deep.deep_fn()`` (WI-lovun). ``import pkg.sub.deep`` binds
@@ -10003,7 +10260,7 @@ def _process_call(
                     ):
                         unresolved_meta["receiver_type_id"] = _rt.id
                 elif receiver_name not in _caller_locals:
-                    _recv_sym = local_symbols.get(receiver_name)
+                    _recv_sym = _lexical_def(receiver_name, stack, local_symbols)
                     if _recv_sym is not None and _recv_sym.kind == "class":
                         unresolved_meta["receiver_type_hint"] = receiver_name
                         if _receiver_type_id_trustworthy(
@@ -10051,7 +10308,13 @@ def _process_call(
                     and _is_django_model_instance(
                         func.value,
                         django_oracle,
-                        unresolved_meta.get("enclosing_class"),
+                        # The class's registry key (``A.B`` for a nested
+                        # model), not its short name: the fallback reads the
+                        # file registry.
+                        caller_symbol.qualified_name.rsplit(".", 1)[0]
+                        if "enclosing_class" in unresolved_meta
+                        and caller_symbol.qualified_name
+                        else None,
                         local_symbols,
                     )
                     and not _django_lineage_overrides(
@@ -10512,6 +10775,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         local_names_by_func_id=file_analysis.local_names_by_func_id,
         method_to_enclosing_class_id=file_analysis.method_to_enclosing_class_id,
         methods_by_class_id=file_analysis.methods_by_class_id,
+        local_classes_by_func_id=file_analysis.local_classes_by_func_id,
         property_getter_by_path_name=_build_property_getter_index(
             file_analysis.symbols
         ),
@@ -10600,9 +10864,16 @@ def analyze_python(
             package_name = module_name.rsplit(".__init__", 1)[0]
             if package_name != module_name:
                 keys.append(package_name)
-        for symbol in analysis.symbols:
+        # The file's own registry, module-qualified: every declaration under
+        # its full scope chain (``A.B``, ``A.B.go``), so ``(module, "B")`` is
+        # a module-level ``B`` and never a class nested somewhere in the
+        # module. The file symbol keeps its path name. Route markers are not
+        # declarations and are not registered.
+        for name, symbol in analysis.symbol_by_name.items():
+            if name == "<module>":
+                name = symbol.name
             for key in keys:
-                global_symbols[(key, symbol.name)] = symbol
+                global_symbols[(key, name)] = symbol
 
     # Process re-exports from __init__.py files
     # When __init__.py does "from .submodule import helper", add an alias
@@ -10760,11 +11031,18 @@ def analyze_python(
             _cm_analysis.tree, _cm_analysis.symbol_by_name, _cm_analysis.imports,
             global_symbols, _cm_analysis.module_imports, resolver, _cm_counts,
             interprocedural_param_types,
+            class_symbol_by_node_id=_cm_analysis.class_symbol_by_node_id,
         )
         _class_maps_by_file[_cm_file] = _cm_maps
+        # The maps are keyed by SHORT class name; a name the file declares
+        # once names one class, nested or not, found among the file's class
+        # symbols (the registry keys a nested class by its chain).
+        _cm_by_short = {
+            _c.name: _c for _c in _cm_analysis.class_symbol_by_node_id.values()
+        }
         for _cm_name in set(_cm_maps[0]) | set(_cm_maps[2]):
-            _cm_sym = _cm_analysis.symbol_by_name.get(_cm_name)
-            if _cm_sym is None or _cm_sym.kind != "class" or _cm_counts.get(_cm_name, 0) > 1:
+            _cm_sym = _cm_by_short.get(_cm_name)
+            if _cm_sym is None or _cm_counts.get(_cm_name, 0) > 1:
                 continue
             if _cm_name in _cm_maps[0]:
                 _field_types_by_class_id[_cm_sym.id] = _cm_maps[0][_cm_name]
@@ -10819,6 +11097,7 @@ def analyze_python(
             local_names_by_func_id=analysis.local_names_by_func_id,
             method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
             methods_by_class_id=analysis.methods_by_class_id,
+            local_classes_by_func_id=analysis.local_classes_by_func_id,
             module_to_file_id=module_to_file_id,
             interprocedural_param_types=interprocedural_param_types,
             class_maps=_class_maps_by_file.get(py_file),
