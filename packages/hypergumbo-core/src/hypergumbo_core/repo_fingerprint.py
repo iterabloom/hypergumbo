@@ -97,6 +97,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+from .ir import RepoFingerprint
 from .safety_zones import repo_inspect_git
 from pathlib import Path
 
@@ -287,7 +288,7 @@ def compute_repo_fingerprint(repo_root: Path) -> str:
     return _compute_non_git_fingerprint(repo_root)
 
 
-def compute_repo_fingerprint_field(repo_root: Path) -> str:
+def compute_repo_fingerprint_field(repo_root: Path) -> RepoFingerprint:
     """Render the AnalysisRun ``repo_fingerprint`` FIELD value (WI-bosog).
 
     The bare :func:`compute_repo_fingerprint` digest doubles as a filesystem
@@ -303,4 +304,4 @@ def compute_repo_fingerprint_field(repo_root: Path) -> str:
     ``sha256:<64hex>`` (the ``pass_version`` rendering convention). Governed by
     ``schema.REPO_FINGERPRINT_SCHEME`` (bumped to v2 when the prefix landed).
     """
-    return "sha256:" + compute_repo_fingerprint(repo_root)
+    return RepoFingerprint("sha256:" + compute_repo_fingerprint(repo_root))

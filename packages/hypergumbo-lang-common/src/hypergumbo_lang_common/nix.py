@@ -54,7 +54,7 @@ import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -357,7 +357,7 @@ def _extract_nix_symbols(
     symbol_registry: dict[str, Symbol] = {}
     stem = Path(rel_path).stem
 
-    def scoped_id(kind: str, name: str, node: "tree_sitter.Node") -> str:
+    def scoped_id(kind: str, name: str, node: "tree_sitter.Node") -> StableId:
         return declared_arity_stable_id(
             kind=kind, lang="nix", path=rel_path, name=name,
             qualified_name=_attr_chain(node, source, stem), arity=None,

@@ -694,3 +694,31 @@ def test_unresolvable_or_non_newtype_imports_are_not_str_like(tmp_path: Path):
         },
     )
     assert find_field_drift(root, core_files=["src/pkg/core.py"]) == []
+
+
+def test_the_live_newtype_fields_are_still_scanned():
+    """Non-vacuity on the live tree: the three NewType-typed fields are seen.
+
+    ``Symbol.stable_id`` / ``shape_id`` and ``AnalysisRun.repo_fingerprint``
+    are typed ``Optional[StableId]`` / ``Optional[ShapeId]`` /
+    ``Optional[RepoFingerprint]``. If the walker stopped treating those
+    names as ``str``, ``test_live_tree_passes`` would still pass, with the
+    three fields silently out of scope.
+    """
+    from hypergumbo_core.multi_value_field_axis import (
+        _iter_dataclass_str_fields,
+    )
+
+    path = REPO_ROOT / "packages/hypergumbo-core/src/hypergumbo_core/ir.py"
+    seen = {
+        (cls, field): line
+        for cls, field, _lineno, line in _iter_dataclass_str_fields(path)
+    }
+    for key, newtype in (
+        (("Symbol", "stable_id"), "StableId"),
+        (("Symbol", "shape_id"), "ShapeId"),
+        (("AnalysisRun", "repo_fingerprint"), "RepoFingerprint"),
+    ):
+        assert key in seen, key
+        assert f"Optional[{newtype}]" in seen[key]
+        assert "# axis: identity" in seen[key]

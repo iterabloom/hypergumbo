@@ -74,7 +74,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -301,7 +301,7 @@ def _callable_identity(
     source: bytes,
     file_path: str,
     package: str,
-) -> tuple[str, Optional[dict[str, object]]]:
+) -> tuple[StableId, Optional[dict[str, object]]]:
     """``(stable_id, meta)`` of a callable def form; see the module docstring.
 
     ``after_name`` is the form's nodes after the name: method qualifiers,

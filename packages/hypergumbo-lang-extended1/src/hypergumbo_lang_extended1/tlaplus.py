@@ -75,7 +75,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -203,7 +203,7 @@ def _extract_symbols_from_file(
         meta: dict[str, Any] | None = None,
         signature: Optional[str] = None,
     ) -> None:
-        stable_id: Optional[str] = None
+        stable_id: Optional[StableId] = None
         if kind in _TLA_PRODUCER_KINDS:
             stable_id = declared_arity_stable_id(
                 kind=kind, lang="tlaplus", path=file_path, name=name,

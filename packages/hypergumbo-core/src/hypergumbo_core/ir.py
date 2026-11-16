@@ -113,10 +113,35 @@ import types
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Final, List, Literal, Optional
+from typing import Any, Callable, Dict, Final, List, Literal, NewType, Optional
 
 from . import __version__
 from .axis_meta_keys import per_call_site_keys
+
+StableId = NewType("StableId", str)
+"""A ``Symbol.stable_id`` value (ADR-0035): ``sha256:<16hex>`` today.
+
+The identifier NewTypes (WI-tapak). Each is a plain ``str`` at run time:
+``StableId(x)`` returns ``x`` itself, so no value, hash or output byte
+depends on them. To mypy each is a distinct subtype of ``str``: a plain
+``str`` reaching a ``StableId`` slot is an error, while reading one as a
+``str`` (f-strings, ``.split``, JSON) needs nothing. A value is wrapped
+ONCE, where it is minted (the hash-and-prefix site), and every function
+that only passes it on takes and returns the NewType, so the type
+checker, not a grep, finds a hand-built id. The minting sites:
+``_short_sha256`` (analyze/base.py) for every tree-sitter and SCIP
+stable id, ``_canonical_external_stable_id`` (this module) for external
+stand-ins; ``mint_shape_id`` (analyze/base.py) for every shape id;
+``compute_repo_fingerprint_field`` (repo_fingerprint.py) for the repo
+fingerprint. Values read back from JSON arrive as ``Any`` and are
+assignable without a wrap.
+"""
+
+ShapeId = NewType("ShapeId", str)
+"""A ``Symbol.shape_id`` value (spec §6): ``sha256:<16hex>`` today. See StableId."""
+
+RepoFingerprint = NewType("RepoFingerprint", str)
+"""An ``AnalysisRun.repo_fingerprint`` value. See StableId."""
 
 VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "delete"})
 """ADR-0015 access mode vocabulary for dataflow edges.
@@ -385,7 +410,7 @@ class AnalysisRun:
     pass_id: str  # axis: pass-id
     version: str  # axis: identity
     run_signature: str = ""  # axis: identity
-    repo_fingerprint: Optional[str] = None  # axis: identity
+    repo_fingerprint: Optional[RepoFingerprint] = None  # axis: identity
     toolchain: Dict[str, str] = field(default_factory=dict)
     # PRODUCER-IDENTITY fingerprint, NOT runtime CLI config (INV-lidul).
     # Every production producer keys this on its
@@ -468,7 +493,7 @@ class AnalysisRun:
         version: str,
         config_fingerprint: Optional[str] = None,
         toolchain: Optional[Dict[str, str]] = None,
-        repo_fingerprint: Optional[str] = None,
+        repo_fingerprint: Optional[RepoFingerprint] = None,
         pass_version: str = "",
     ) -> "AnalysisRun":
         """Create a new AnalysisRun with a unique execution_id.
@@ -746,8 +771,8 @@ class Symbol:
     span: Optional[Span]
     origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
-    stable_id: Optional[str] = None  # axis: identity
-    shape_id: Optional[str] = None  # axis: identity
+    stable_id: Optional[StableId] = None  # axis: identity
+    shape_id: Optional[ShapeId] = None  # axis: identity
     fingerprint: Optional[str] = None  # axis: identity
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
@@ -1763,7 +1788,7 @@ def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
 
 def _canonical_external_stable_id(
     language: str, path: str, name: str,
-) -> str:
+) -> StableId:
     """Stable cross-run identity for a boundary Symbol.
 
     Identity is a function of the dedupe key ``(language, path, name)``
@@ -1774,7 +1799,7 @@ def _canonical_external_stable_id(
     the same stable_id for the same logical boundary.
     """
     payload = f"external:{language}:{path}:{name}"
-    return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+    return StableId(f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}")
 
 
 def _span_token_index(parts: list[str]) -> Optional[int]:

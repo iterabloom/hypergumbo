@@ -145,7 +145,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..analyze.base import _short_sha256, make_symbol_id
-from ..ir import Span, Symbol
+from ..ir import Span, StableId, Symbol
 from ._generated import scip_pb2
 from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
 
@@ -279,7 +279,7 @@ def _kind_from_chain(descriptors: "tuple[Any, ...]") -> str:
     return _KIND_MAP[leaf.kind]
 
 
-def scip_stable_id(relative_path: str, moniker: str) -> str:
+def scip_stable_id(relative_path: str, moniker: str) -> StableId:
     """The ``stable_id`` of a SCIP Definition (module docstring, "Identity").
 
     ``relative_path`` is the defining ``Document.relative_path`` (repo-

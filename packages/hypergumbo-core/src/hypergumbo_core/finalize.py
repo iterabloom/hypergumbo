@@ -73,7 +73,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from .arbitration import BUILTIN_POLICY, ArbitrationPolicy
 from .arbitration import SUPERSEDED_STUB_RANK_FACTOR as SUPERSEDED_STUB_RANK_FACTOR  # re-export: the §14 level
@@ -102,7 +102,7 @@ from .spec_validator import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from .ir import Edge, Symbol, UsageContext
+    from .ir import Edge, RepoFingerprint, Symbol, UsageContext
     from .limits import Limits
 
 
@@ -227,7 +227,8 @@ class FinalizeContext:
     repo_root: Path
     pass_metadata: PassMetadataLookup
     violations: list[ValidationViolation] = field(default_factory=list)
-    repo_fingerprint: str = ""  # set by sub-step 4; surfaced by _freeze
+    # set by sub-step 4; surfaced by _freeze. "" is the not-yet-stamped marker.
+    repo_fingerprint: RepoFingerprint | Literal[""] = ""
     #: ADR-0057 §5 (WI-hukuf): the resolved arbitration policy; sub-step 7a
     #: reads its supersession factor and producer order.
     arbitration_policy: "ArbitrationPolicy" = field(default_factory=lambda: BUILTIN_POLICY)
@@ -240,7 +241,7 @@ class FinalizedMap:
     behavior_map: dict[str, Any]
     nodes: tuple[dict[str, Any], ...]
     edges: tuple[dict[str, Any], ...]
-    repo_fingerprint: str
+    repo_fingerprint: RepoFingerprint | Literal[""]
     validation_report: dict[str, Any]
 
 

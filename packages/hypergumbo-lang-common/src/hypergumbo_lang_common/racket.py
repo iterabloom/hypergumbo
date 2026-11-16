@@ -50,7 +50,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -135,7 +135,7 @@ _MODULE_FORMS = frozenset({"module", "module+", "module*"})
 def _racket_stable_id(
     node: "tree_sitter.Node", kind: str, name: str, rel_path: str,
     arity: Optional[DeclaredArity] = None,
-) -> str:
+) -> StableId:
     """The ADR-0035 producer id of a Racket definition: its enclosing
     ``module`` / ``module+`` / ``module*`` names as the scope chain, a
     function's lambda list as its arity (see the module docstring)."""

@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -171,7 +171,7 @@ def _extract_symbols_from_file(
     """
     symbols: list[Symbol] = []
 
-    def variable_id(name: str, owner: Optional[str]) -> str:
+    def variable_id(name: str, owner: Optional[str]) -> StableId:
         return declared_arity_stable_id(
             kind="variable", lang="circom", path=file_path, name=name,
             qualified_name=f"{owner}/{name}" if owner else name, arity=None,

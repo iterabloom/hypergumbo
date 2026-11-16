@@ -160,8 +160,8 @@ from ..discovery import find_files
 from ..taxonomy import get_language
 from ..paths import normalize_path
 from ..ir import (
-    PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
-    compute_config_fingerprint, compute_pass_version, make_pass_id,
+    PASS_VERSION, AnalysisRun, Edge, ExternalRef, ShapeId, Span, StableId,
+    Symbol, UsageContext, compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
 
 # EXPLICIT re-export (the ``X as X`` form), not a plain import: ``--strict``
@@ -1255,7 +1255,7 @@ def defer_unresolved_tie(lookup_result: Any) -> bool:
         getattr(c, "kind", None) == "method" for c in candidates
     )
 
-def make_route_stable_id(method: str, path: str) -> str:
+def make_route_stable_id(method: str, path: str) -> StableId:
     """Compute a collision-free stable_id for route symbols.
 
     Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0035 §3
@@ -1405,7 +1405,7 @@ def make_route_symbol(
     )
 
 
-def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str:
+def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> StableId:
     """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (WI-napoh).
 
     Identity formula: ``sha256("site:{protocol_origin}:{rel_path}:{target}")[:16]``.
@@ -1429,7 +1429,7 @@ def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str
     return _short_sha256(f"site:{protocol_origin}:{rel_path}:{target}")
 
 
-def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
+def make_entry_stable_id(entry_type: str, name: str, path: str) -> StableId:
     """Compute a collision-free stable_id for entry-point symbols.
 
     Uses ``_short_sha256("entry:{entry_type}:{name}:{path}")`` per ADR-0035
@@ -1455,9 +1455,27 @@ def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
     return _short_sha256(f"entry:{entry_type}:{name}:{path}")
 
 
-def _short_sha256(payload: str) -> str:
-    """Return the canonical ``sha256:{16-hex}`` form used by `_compute_stable_id`."""
-    return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+def _short_sha256(payload: str) -> StableId:
+    """Return the canonical ``sha256:{16-hex}`` form used by `_compute_stable_id`.
+
+    The ONE place a tree-sitter or SCIP stable id is minted (the
+    ``StableId`` wrap; see ``hypergumbo_core.ir.StableId``): every
+    ``make_*_stable_id`` factory, ``assemble_stable_id`` and
+    ``scip_stable_id`` reach it.
+    """
+    return StableId(f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}")
+
+
+def mint_shape_id(structure: str) -> ShapeId:
+    """Return the ``sha256:{16-hex}`` shape id of a structural skeleton.
+
+    The ONE place a ``Symbol.shape_id`` is minted (the ``ShapeId`` wrap):
+    the tree-sitter walker (:meth:`TreeSitterAnalyzer.compute_shape_id`)
+    and Python's ``ast``-based ``_compute_shape_id`` /
+    ``_compute_value_shape_id`` each build their skeleton string and hash
+    it here, so the hash, its truncation and its prefix live once.
+    """
+    return ShapeId(f"sha256:{hashlib.sha256(structure.encode()).hexdigest()[:16]}")
 
 
 def assemble_stable_id(
@@ -1471,7 +1489,7 @@ def assemble_stable_id(
     occurrence_index: int = 0,
     *,
     is_async: bool = False,
-) -> str:
+) -> StableId:
     """The single untyped-tier stable_id hash formula (ADR-0035 §1).
 
     ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
@@ -1590,7 +1608,7 @@ def enclosing_declared_symbol(
     return None
 
 
-def make_file_stable_id(language: str, path: str) -> str:
+def make_file_stable_id(language: str, path: str) -> StableId:
     """Stable identity for ``kind="file"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("file:{language}:{path}")[:16]``. Path is the
@@ -1602,7 +1620,7 @@ def make_file_stable_id(language: str, path: str) -> str:
     return _short_sha256(f"file:{language}:{path}")
 
 
-def make_module_stable_id(language: str, path: str, name: str) -> str:
+def make_module_stable_id(language: str, path: str, name: str) -> StableId:
     """Stable identity for ``kind="module"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("module:{language}:{path}:{name}")[:16]``. The
@@ -1614,7 +1632,7 @@ def make_module_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"module:{language}:{path}:{name}")
 
 
-def make_dependency_stable_id(language: str, path: str, name: str) -> str:
+def make_dependency_stable_id(language: str, path: str, name: str) -> StableId:
     """ADR-0035 §4: stable identity for ``kind="dependency"`` Symbols — one node per
     manifest declaration.
 
@@ -1628,7 +1646,7 @@ def make_dependency_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"dependency:{language}:{path}:{name}")
 
 
-def make_variable_stable_id(language: str, path: str, name: str) -> str:
+def make_variable_stable_id(language: str, path: str, name: str) -> StableId:
     """Stable identity for ``kind="variable"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("variable:{language}:{path}:{name}")[:16]``.
@@ -1639,7 +1657,7 @@ def make_variable_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"variable:{language}:{path}:{name}")
 
 
-def make_export_stable_id(language: str, path: str, name: str) -> str:
+def make_export_stable_id(language: str, path: str, name: str) -> StableId:
     """Stable identity for ``kind="export"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("export:{language}:{path}:{name}")[:16]``.
@@ -1658,7 +1676,7 @@ def make_export_stable_id(language: str, path: str, name: str) -> str:
 def make_doc_stable_id(
     language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
     scope: "Sequence[str]" = (),
-) -> str:
+) -> StableId:
     """Stable identity for documentation / config noise-node Symbols (id-format:F2).
 
     Identity formula:
@@ -1690,7 +1708,7 @@ def make_doc_stable_id(
 def make_doc_symbol_ids(
     language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
     scope: "Sequence[str]" = (),
-) -> tuple[str, str]:
+) -> tuple[str, StableId]:
     """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
     together, from one argument set (INV-dulah).
 
@@ -1730,7 +1748,7 @@ def make_doc_symbol_ids(
     return symbol_id, stable_id
 
 
-def make_project_stable_id(name: str) -> str:
+def make_project_stable_id(name: str) -> StableId:
     """Stable identity for ``kind="project"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("project:{name}")[:16]``. Projects are
@@ -1739,7 +1757,7 @@ def make_project_stable_id(name: str) -> str:
     return _short_sha256(f"project:{name}")
 
 
-def make_interface_stable_id(language: str, path: str, name: str) -> str:
+def make_interface_stable_id(language: str, path: str, name: str) -> StableId:
     """Stable identity for ``kind="interface"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("interface:{language}:{path}:{name}")[:16]``. The declaring file
@@ -1751,7 +1769,7 @@ def make_interface_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"interface:{language}:{path}:{name}")
 
 
-def make_type_stable_id(language: str, path: str, name: str) -> str:
+def make_type_stable_id(language: str, path: str, name: str) -> StableId:
     """Stable identity for ``kind="type"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("type:{language}:{path}:{name}")[:16]``. The declaring file
@@ -1762,7 +1780,7 @@ def make_type_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"type:{language}:{path}:{name}")
 
 
-def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -> str:
+def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -> StableId:
     """Stable identity for container/declaration Symbol kinds (WI-rihob).
 
     Identity formula: ``sha256("{kind}:{language}:{path}:{name}")[:16]`` — the
@@ -1790,7 +1808,7 @@ def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -
     return _short_sha256(f"{kind}:{language}:{path}:{name}")
 
 
-def make_protocol_stable_id(category: str, *parts: str) -> str:
+def make_protocol_stable_id(category: str, *parts: str) -> StableId:
     """Canonical-shape stable_id for protocol linker stand-ins (INV-hunup).
 
     Identity formula: ``sha256("{category}:{parts joined by colon}")[:16]``.
@@ -1824,7 +1842,7 @@ def make_protocol_stable_id(category: str, *parts: str) -> str:
     return _short_sha256(key)
 
 
-def _declaration_kind_stable_id(sym: Symbol) -> str:
+def _declaration_kind_stable_id(sym: Symbol) -> StableId:
     """Backstop factory for container/declaration kinds (WI-rihob)."""
     return make_declaration_stable_id(sym.kind, sym.language, sym.path, sym.name)
 
@@ -1871,7 +1889,7 @@ def floor_stable_id_key(
     language: Optional[str],
     path: Optional[str],
     name: Optional[str],
-) -> Optional[str]:
+) -> Optional[StableId]:
     """The backstop FLOOR key for a symbol, or ``None`` when the floor does not
     apply (ADR-0035 §1, WI-motiz).
 
@@ -1942,7 +1960,7 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     Leaving the group ``None`` keeps it out of the split pass by construction
     (that pass skips ``None``).
     """
-    floor_groups: dict[tuple[str, str], list[Symbol]] = {}
+    floor_groups: dict[tuple[str, StableId], list[Symbol]] = {}
     held: set[tuple[str, str]] = set()
     for sym in symbols:
         if sym.stable_id is None:
@@ -1961,7 +1979,7 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
 
 def make_synthetic_symbol_identity(
     sym: Symbol, occurrence: int = 0,
-) -> tuple[str, str, str]:
+) -> tuple[StableId, str, str]:
     """Chokepoint resolver: derive ``(stable_id, display_label, fingerprint)``
     for a Class-B synthetic stand-in Symbol from its already-set fields
     (synthetic:F2).
@@ -2278,7 +2296,7 @@ def make_typed_stable_id(
     qualified_name: str,
     file_stable_id: str = "",
     is_async: bool = False,
-) -> str:
+) -> StableId:
     """Compute a typed-tier stable_id from a normalized signature.
 
     Formula (spec §6 typed tier, with the ADR-0035 §1 ``name`` / ``qualified_name``
@@ -4419,7 +4437,7 @@ class TreeSitterAnalyzer:
         {"comment", "line_comment", "block_comment", "ERROR", "MISSING"}
     )
 
-    def compute_shape_id(self, node: "tree_sitter.Node") -> str:
+    def compute_shape_id(self, node: "tree_sitter.Node") -> ShapeId:
         """Compute shape_id by hashing the structural skeleton of a CST subtree.
 
         Walks the tree-sitter concrete syntax tree non-recursively, strips
@@ -4447,9 +4465,7 @@ class TreeSitterAnalyzer:
             Shape hash in ``sha256:{16-hex-chars}`` format matching
             the Python analyzer's convention.
         """
-        structure = self._cst_structure(node)
-        hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
-        return f"sha256:{hash_val}"
+        return mint_shape_id(self._cst_structure(node))
 
     def _cst_structure(self, node: "tree_sitter.Node") -> str:
         """Build an S-expression skeleton of a CST subtree.
@@ -4604,7 +4620,7 @@ class TreeSitterAnalyzer:
         "function_parameters",   # Rust
     })
 
-    def _file_anchor(self, rel_path: str) -> str:
+    def _file_anchor(self, rel_path: str) -> StableId:
         """The file-identity value folded into ``containing_stable_id`` for this
         analyzer's file-resident symbols (WI-bokab).
 
@@ -4627,7 +4643,7 @@ class TreeSitterAnalyzer:
         qualified_name: str = "",
         occurrence_index: int = 0,
         file_stable_id: str = "",
-    ) -> str:
+    ) -> StableId:
         """Compute an untyped-tier stable_id for a function/class/method node.
 
         Delegates to :func:`assemble_stable_id` — the single untyped-tier

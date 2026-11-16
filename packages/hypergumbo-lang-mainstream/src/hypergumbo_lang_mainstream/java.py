@@ -194,7 +194,8 @@ from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, ge
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol,
+    make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
@@ -1592,7 +1593,7 @@ def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
 def _java_type_stable_id(
     kind: str, name: str, ancestors: list[str], hash_scope: list[str],
     file_path: Path, repo_root: Optional[Path],
-) -> Optional[str]:
+) -> Optional[StableId]:
     """A Java type's stable_id (INV-fabih; see :func:`_java_hash_scope`).
 
     A class, interface or enum outside any method body keeps the backstop's

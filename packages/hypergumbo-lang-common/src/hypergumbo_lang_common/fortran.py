@@ -70,7 +70,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -402,7 +402,7 @@ def _fortran_parameters(
 def _fortran_stable_id(
     kind: str, rel_path: str, name: str, node: "tree_sitter.Node", source: bytes,
     meta: Optional[dict[str, Any]],
-) -> str:
+) -> StableId:
     """The ADR-0035 producer stable_id: unit chain plus declared dummy arguments."""
     return declared_arity_stable_id(
         kind=kind, lang="fortran", path=rel_path, name=name,

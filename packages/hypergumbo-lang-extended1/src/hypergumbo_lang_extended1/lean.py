@@ -82,7 +82,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -291,7 +291,7 @@ def _extract_symbols_from_file(
         helper don't aggregate their whole subtree. ``chain_tail`` replaces the
         name in the scope chain (an unnamed instance's type application).
         """
-        stable_id: Optional[str] = None
+        stable_id: Optional[StableId] = None
         if kind in _LEAN_TABLE_KINDS:
             # INV-fabih: named with its namespaces like every other
             # declaration, so the backstop's table formula over the name

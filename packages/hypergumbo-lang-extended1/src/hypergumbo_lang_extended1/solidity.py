@@ -136,7 +136,7 @@ from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -761,7 +761,7 @@ def _extract_symbols_from_tree(
         # receive their table value from the backstop; ``library``, no table
         # kind, mints its producer id here rather than falling to the floor
         # key.
-        callable_stable_id: Optional[str] = None
+        callable_stable_id: Optional[StableId] = None
         if kind == "library":
             callable_stable_id = scoped_stable_id(
                 kind=kind, lang="solidity", path=file_path, name=name,

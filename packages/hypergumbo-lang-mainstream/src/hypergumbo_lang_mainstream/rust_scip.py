@@ -86,6 +86,8 @@ from hypergumbo_lang_mainstream.rust import (
 if TYPE_CHECKING:
     import tree_sitter
 
+    from hypergumbo_core.ir import StableId
+
 
 def _parse_rust_source(source: bytes) -> Optional["tree_sitter.Tree"]:
     """Parse Rust source, returning None when tree-sitter-rust is unavailable."""
@@ -104,7 +106,7 @@ def compute_rust_stable_id_from_source(
     start_line: int,
     end_line: int,
     rel_path: str = "",
-) -> Optional[str]:
+) -> Optional[StableId]:
     """Derive rust.py-compatible stable_id for the function at the given span.
 
     Arguments are 1-based inclusive line numbers, matching the convention

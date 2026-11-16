@@ -91,7 +91,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_php_file, find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
@@ -361,7 +361,7 @@ def _php_member_symbol(
     modifiers: list[str],
     exported: bool,
     run: AnalysisRun,
-    stable_id: Optional[str] = None,
+    stable_id: Optional[StableId] = None,
 ) -> Symbol:
     """Build a ``field`` / ``variable`` Symbol for a PHP property or constant,
     spanning the individual property/const ``element`` node (so ``$a, $b`` in one

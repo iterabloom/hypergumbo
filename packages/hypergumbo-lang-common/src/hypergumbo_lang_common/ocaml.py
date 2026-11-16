@@ -76,7 +76,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -299,7 +299,7 @@ def _extract_symbols_from_tree(
         signature: Optional[str] = None,
         cc_node: "Optional[tree_sitter.Node]" = None,
         meta: Optional[dict[str, object]] = None,
-        stable_id: Optional[str] = None,
+        stable_id: Optional[StableId] = None,
     ) -> None:
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1

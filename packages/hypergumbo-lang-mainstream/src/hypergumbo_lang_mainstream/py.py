@@ -262,7 +262,6 @@ Why This Design
 """
 import ast
 import builtins
-import hashlib
 import warnings
 from collections import Counter
 from dataclasses import dataclass, field
@@ -272,11 +271,12 @@ from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, Sequence, Type
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, ShapeId, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     assemble_stable_id,
     make_file_stable_id,
+    mint_shape_id,
     make_route_symbol,
     make_typed_stable_id,
     visibility_from_modifiers,
@@ -2424,7 +2424,7 @@ def _compute_stable_id(
     name: str = "",
     qualified_name: str = "",
     occurrence_index: int = 0,
-) -> str:
+) -> StableId:
     """Compute a v6 stable_id for a Python function/class/method AST node.
 
     Delegates to the shared :func:`assemble_stable_id` (ADR-0035 §1), so the Python AST path
@@ -2486,7 +2486,7 @@ def python_callable_stable_id(
     *,
     name: str,
     qualified_name: str,
-) -> str:
+) -> StableId:
     """The Python producer's stable_id for a ``def`` (function or method).
 
     Typed tier first (spec §6 typed tier): ``make_typed_stable_id`` over the
@@ -2532,7 +2532,7 @@ def _ast_structure(node: ast.AST) -> str:
 def _compute_shape_id(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
     kind: str,
-) -> str:
+) -> ShapeId:
     """Compute shape_id based on AST structure (ignores variable names/literals).
 
     ``sha256(kind:NodeType(ast_structure))`` where the body structure is a
@@ -2550,12 +2550,10 @@ def _compute_shape_id(
     ``fingerprint`` (clustering structural clones, spec §337/§342).
     """
     body_parts = [_ast_structure(stmt) for stmt in node.body]
-    structure = f"{kind}:{type(node).__name__}({','.join(body_parts)})"
-    hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
-    return f"sha256:{hash_val}"
+    return mint_shape_id(f"{kind}:{type(node).__name__}({','.join(body_parts)})")
 
 
-def _compute_value_shape_id(node: ast.AST, kind: str) -> str:
+def _compute_value_shape_id(node: ast.AST, kind: str) -> ShapeId:
     """Compute shape_id for a body-less value symbol — variable or field (WI-luzut).
 
     ``_compute_shape_id`` hashes a node's ``.body`` (control-flow skeleton), but
@@ -2571,9 +2569,7 @@ def _compute_value_shape_id(node: ast.AST, kind: str) -> str:
     assignments still share a shape_id — the structural-clone signal
     ``shape_id`` exists to provide (WI-vogij; spec §337/§342).
     """
-    structure = f"{kind}:{_ast_structure(node)}"
-    hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
-    return f"sha256:{hash_val}"
+    return mint_shape_id(f"{kind}:{_ast_structure(node)}")
 
 
 PASS_ID = make_pass_id("python")

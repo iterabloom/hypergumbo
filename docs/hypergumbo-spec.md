@@ -487,8 +487,11 @@ class Symbol:
                                # input). Values are pass IDs, not a separate
                                # synthesis axis — ADR-0044.
     origin_run_id: str         # references AnalysisRun.execution_id
-    stable_id: Optional[str]   # semantic identity hash (signature-based)
-    shape_id: Optional[str]    # structural SKELETON hash — identifiers and
+    stable_id: Optional[StableId]  # semantic identity hash (signature-based);
+                               # StableId, ShapeId and RepoFingerprint are
+                               # typing.NewType over str (ir.py): plain str at
+                               # run time and on the wire, distinct to mypy
+    shape_id: Optional[ShapeId]  # structural SKELETON hash — identifiers and
                                # literals stripped; a strict coarsening of
                                # fingerprint. The clone-detection key.
     fingerprint: Optional[str] # structural CONTENT hash: shape PLUS identifiers and
@@ -556,7 +559,7 @@ class Symbol:
 class AnalysisRun:
     execution_id: str          # unique per run (uuid or hash of run_signature + started_at + repo_fingerprint)
     run_signature: str         # deterministic: hash of (pass_id, version, config_fingerprint, toolchain)
-    repo_fingerprint: str      # hash of (git_head + dirty_files) or hash of (file_list + content_hashes)
+    repo_fingerprint: Optional[RepoFingerprint]  # hash of (git_head + dirty_files) or hash of (file_list + content_hashes)
     pass_id: str               # e.g., "python" (serialized as "pass" in JSON output).
                                # INV-morag PR 2: legacy "-v1" / "-ts-v1" suffix removed.
                                # Pass identity is now a stable opaque name; backend

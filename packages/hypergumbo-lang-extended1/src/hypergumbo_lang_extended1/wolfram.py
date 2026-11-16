@@ -93,7 +93,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -279,7 +279,7 @@ def _extract_symbols_from_file(
         signature: Optional[str] = None,
     ) -> None:
         """Add one symbol; a variable only on its first assignment."""
-        stable_id: Optional[str] = None
+        stable_id: Optional[StableId] = None
         if kind == "variable":
             if name in seen_variables:
                 return

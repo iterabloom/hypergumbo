@@ -91,7 +91,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.analyze.edge_target import in_tree_file_id
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
@@ -200,7 +200,7 @@ def _make_gd_symbol(
     run_id: str,
     signature: Optional[str] = None,
     complexity: bool = False,
-    stable_id: Optional[str] = None,
+    stable_id: Optional[StableId] = None,
 ) -> Symbol:
     """Create a Symbol from a tree-sitter node.
 
