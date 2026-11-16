@@ -284,6 +284,11 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         # Get or create the canonical file symbol for the target
         target_file_sym = get_or_create_file_symbol(rel_resolved, src_lang)
 
+        # The analyzer resolves a relative import itself and ends its edge on
+        # this node already; a second edge would only restate it.
+        if target_file_sym.id == edge.dst:
+            continue
+
         # Also get or create the canonical file symbol for the source .vue file
         if src_path.endswith(".vue"):
             get_or_create_file_symbol(src_path, src_lang)

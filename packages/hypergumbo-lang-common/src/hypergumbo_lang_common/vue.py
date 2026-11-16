@@ -32,8 +32,11 @@ Edges Extracted
 ---------------
 - **imports**: from the .vue file to each component its template uses
   (capitalized tags, or hyphenated tags that are not HTML or Vue
-  built-ins); resolved to the imported ``.vue`` path when the script
-  imports it, otherwise an unresolved dangling component target
+  built-ins). When the script imports it by a relative path
+  (``./Kid.vue``) and that file is in the tree, the edge ends on the
+  file's node (``file_reference_dst``); an aliased (``@/...``) or missing
+  path keeps ``vue:<path>:0-0:<Name>:component`` for the Vue component
+  linker; a tag with no import is an unresolved dangling component target
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 
@@ -74,6 +77,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.file_records import file_reference_dst
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -612,10 +616,13 @@ class VueAnalyzer(TreeSitterAnalyzer):
             # is a 5-part dangling component id so the relationship keeps
             # representation in the graph. See WI-vobiv for dst-id discipline.
             if import_path:
+                # A relative import of a file in the tree ends on that
+                # file's node; an aliased or missing one keeps the dangling
+                # component id for the Vue component linker to resolve.
                 component_name_from_path = Path(import_path).stem or tag_name
-                formatted_dst = (
-                    f"vue:{import_path}:0-0:{component_name_from_path}:component"
-                )
+                formatted_dst = file_reference_dst(
+                    "vue", path, rel_path.as_posix(), import_path,
+                ) or f"vue:{import_path}:0-0:{component_name_from_path}:component"
             else:
                 formatted_dst = f"vue:component:{tag_name}:0-0:{tag_name}:component"
             edge = Edge.create(

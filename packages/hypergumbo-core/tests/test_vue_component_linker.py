@@ -638,3 +638,21 @@ class TestOneFileNodePerPath:
         (minted,) = result.symbols
         assert minted.id == "astro:Hero.astro:1-1:file:file"
         assert minted.language == "astro"
+
+    def test_an_import_the_analyzer_already_resolved_gets_no_second_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "App.vue").write_text("<template><Kid/></template>")
+        (tmp_path / "Kid.vue").write_text("<template><p/></template>")
+        app = self._file("vue", "App.vue")
+        kid = self._file("vue", "Kid.vue")
+        resolved = Edge.create(
+            src=app.id, dst=kid.id, edge_type="imports", line=1, origin="vue",
+            origin_run_id="test-run", evidence_type="import",
+            meta={"import_path": "./Kid.vue", "source_path": "App.vue"},
+        )
+        result = link_vue_components(LinkerContext(
+            repo_root=tmp_path, symbols=[app, kid], edges=[resolved],
+        ))
+        assert result.symbols == [] and result.edges == []
+

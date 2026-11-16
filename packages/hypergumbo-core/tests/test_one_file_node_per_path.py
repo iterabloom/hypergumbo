@@ -147,3 +147,67 @@ def test_script_members_keep_the_script_analyzers_stable_ids(
     }
     assert piped == alone
     assert all(alone.values())
+
+
+def test_a_component_import_ends_on_the_imported_files_node(
+    survey: tuple[Path, dict],
+) -> None:
+    """The template analyzers resolve ``./Child.svelte`` / ``./VChild.vue``
+    themselves: no stand-in for a file that is in the tree (WI-modan)."""
+    _, data = survey
+    per_path = _file_nodes(data)
+    for importer, child, language in (
+        ("src/App.svelte", "src/Child.svelte", "svelte"),
+        ("src/App.vue", "src/VChild.vue", "vue"),
+    ):
+        (edge,) = [
+            e for e in data["edges"]
+            if e["type"] == "imports" and e["src"] == per_path[importer][0]["id"]
+            and e["dst"] == per_path[child][0]["id"]
+        ]
+        # One edge says both passes found it: the template analyzer and the
+        # linker that resolved the script's import statement.
+        assert language in edge["origin"] and "js-module-linker" in edge["origin"]
+        assert edge["is_resolved"] is True
+        assert edge["meta"]["component_name"] in ("Child", "VChild")
+    # No component analyzer's edge ends on a stand-in for an in-tree file.
+    stand_ins = [
+        n["id"] for n in data["nodes"]
+        if n["kind"] == "external_symbol" and n["id"].split(":")[0] in ("svelte", "vue")
+    ]
+    assert stand_ins == []
+
+
+def test_a_reference_does_not_re_slot_the_imported_files_node(
+    survey: tuple[Path, dict],
+) -> None:
+    """``Child.svelte`` and ``VChild.vue`` are only referred to; each keeps the
+    one node, and the stable id, the script analyzer gave it."""
+    from hypergumbo_core.analyze.base import make_file_stable_id
+
+    _, data = survey
+    per_path = _file_nodes(data)
+    for path in ("src/Child.svelte", "src/VChild.vue"):
+        (node,) = per_path[path]
+        assert node["id"] == f"javascript:{path}:1-1:file:file"
+        assert node["stable_id"] == make_file_stable_id("javascript", path)
+
+
+def test_the_scripts_import_placeholder_is_still_demoted(
+    survey: tuple[Path, dict],
+) -> None:
+    """Folding the template analyzer's edge with the linker's must keep the
+    linker's statement of which placeholder it resolved (ADR-0057 14.1)."""
+    _, data = survey
+    by_id = {e["id"]: e for e in data["edges"]}
+    stubs = [
+        e for e in data["edges"]
+        if e["type"] == "imports" and e["dst"].endswith(":0-0:module:external_symbol")
+        and ("Child.svelte" in e["dst"] or "VChild.vue" in e["dst"])
+    ]
+    assert len(stubs) == 2
+    for stub in stubs:
+        resolved = by_id[stub["meta"]["superseded_by"]]
+        assert resolved["src"] == stub["src"] and resolved["is_resolved"] is True
+        assert resolved["dst"].endswith(":1-1:file:file")
+
