@@ -102,6 +102,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A JSX `<Route>` marker is named for its route**, so a reference to the component reaches the component.
 - **A Python nested class and its methods carry their enclosing classes in `qualified_name`** (`Outer.Meta`, not `Meta`).
 - **A Python bare name never binds a nested or function-local class**: a route's handler is the view its name can reach.
+- **A Python call through a nested class reaches it**: `Outer.Inner().go()` binds the class and its method, also from another module.
 
 #### Request handlers and taint (`verify-claims`)
 
