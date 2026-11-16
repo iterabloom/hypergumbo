@@ -11,14 +11,16 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Computed properties and subscripts, whose stable_id is the ADR-0035
   producer formula (``make_typed_stable_id`` over the type or, for a
   subscript, the parameter types; WI-tusad)
-- Every stable_id except an initialiser's or a deinitialiser's hashes the
-  FULL chain of enclosing types and functions (``_swift_scope``), so two
-  nested ``class Inner`` in different outer types do not tie, and deleting
-  one outer type does not move the other's ids; types mint
-  ``overload_arity.scoped_table_stable_id`` (INV-fabih). An ``init`` /
-  ``deinit`` id hashes only the
-  enclosing TYPE chain (``_get_swift_type_ancestors``), so two function-local
-  types of one name in one file tie on it
+- Every stable_id hashes the FULL chain of enclosing types and functions
+  (``_swift_scope``), so two nested ``class Inner`` in different outer types
+  do not tie, and deleting one outer type does not move the other's ids;
+  types mint ``overload_arity.scoped_table_stable_id`` (INV-fabih). An
+  ``init`` / ``deinit`` is scoped as a method of its type is, so the inits of
+  two function-local ``struct Inner`` in ``f`` and ``g`` differ (they hashed
+  the type chain alone until scheme v15). The chain names types and
+  ``func`` declarations only: two same-named local types in one function
+  (two blocks, two overloads of it), or in a closure, a computed property,
+  an ``init`` or a subscript of one type, still share a chain
 - Initialisers (``constructor``, ``Type.init``, with ``meta["arg_labels"]`` and
   ``meta["parameters"]``) and deinitialisers (``method``, ``Type.deinit``)
 - Enum cases and protocol requirements as ``field`` / member symbols
@@ -454,9 +456,11 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     shared by two nested ``class Inner`` in ``A`` and ``B``, a bare type name
     by every same-named type, and a type-only chain by two function-local
     ``struct Inner``. The emitted ``qualified_name`` stays the type chain
-    (:func:`_make_swift_qualified_name`). ``_swift_lifecycle_symbol`` still
-    hashes only the type chain, so two function-local ``struct Inner`` in one
-    file share their ``init`` / ``deinit`` ids.
+    (:func:`_make_swift_qualified_name`). An ``init`` / ``deinit`` hashes this
+    chain too (:func:`_swift_lifecycle_symbol`). Only types and ``func``
+    declarations are labels: a closure, an accessor, an ``init``, a
+    subscript or a block adds nothing, so two same-named types local to two
+    of those in one owner still share a chain.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type not in _SWIFT_ID_SCOPE_NODES:
@@ -1674,6 +1678,12 @@ def _swift_lifecycle_symbol(
     ``deinit`` is ``kind="method"`` named ``Type.deinit``: the registry has no
     destructor kind, and C++ / C# emit theirs as ``method`` (WI-binap). A
     declaration error recovery left outside any type is not emitted.
+
+    The stable_id hashes :func:`_swift_scope` -- the enclosing types AND
+    functions -- as a method of the same type does; the emitted
+    ``qualified_name`` stays the type chain. Outside every function the two
+    chains are equal, so only a function-local type's lifecycle ids differ
+    from the type-chain formula.
     """
     enclosing_type = _get_enclosing_type(node, source)
     if not enclosing_type:
@@ -1704,10 +1714,14 @@ def _swift_lifecycle_symbol(
         ),
         origin=PASS_ID,
         origin_run_id=run_id,
+        # INV-fabih: the full type/function chain, as every other member
+        # hashes. The type chain alone (``qualified``) is shared by two
+        # ``struct Inner`` local to different functions, and by a local type
+        # and a top-level one of its name.
         stable_id=make_typed_stable_id(
             kind, normalize_swift_signature(signature) or "",
             visibility_from_modifiers(modifiers),
-            name=member, qualified_name=qualified,
+            name=member, qualified_name=_swift_chain(node, source, member),
             file_stable_id=file_stable_id,
             is_async=declares_async(node),
         ),
