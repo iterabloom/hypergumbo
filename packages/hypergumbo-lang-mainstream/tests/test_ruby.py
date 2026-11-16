@@ -315,13 +315,19 @@ end
         assert len(extends_edges) == 0
 
     def test_qualified_name_matches_simple_name(self, tmp_path: Path) -> None:
-        """Edge created when qualified superclass matches a simple class name."""
+        """Edge created when a qualified superclass names a class nested in a
+        module block, whose own ``Symbol.name`` is the simple name. (A
+        top-level ``Base`` is a different class from ``SomeModule::Base`` and
+        is not matched by its last segment; see
+        test_ruby_nested_declaration_registry.py.)"""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
-class Base
-  def save
+module SomeModule
+  class Base
+    def save
+    end
   end
 end
 
@@ -340,7 +346,7 @@ end
         assert user.meta is not None
         assert user.meta.get("base_classes") == ["SomeModule::Base"]
 
-        # Edge should be created (SomeModule::Base matches Base via last segment)
+        # Edge should be created (SomeModule::Base is the block-nested Base)
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
         assert len(extends_edges) == 1
         assert extends_edges[0].src == user.id

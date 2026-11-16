@@ -84,6 +84,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Java call to a method the receiver's type does not declare stays an unresolved call at full weight**, even though the caller is now recorded as using the type.
 - **A function used as a value is not dead code**, in Go, JS/TS, Rust, C and C++, dispatch tables included.
 - **Same-named classes in different packages stay apart** in Java, Kotlin and Ruby.
+- **Ruby constants resolve by full path, not by last segment.**
 - **JS/TS: `new` of an imported class reaches the imported file's class**, not a same-named one elsewhere.
 - **A method is attributed to its own type, as are the calls in its body, and a bare call inside it resolves within that type**: C# records, Groovy enums, PHP traits and enums, Kotlin classes, Scala classes declared after their companion object.
 - **A Solidity call or emit resolves in its own contract, then its bases**, never in another contract of the file.
