@@ -629,8 +629,19 @@ CASES: dict[str, SiblingCase] = {
         "  integer function area_i(x)\n    integer :: x\n    area_i = x\n  end function area_i\n",
         "  real function area_r(x)\n    real :: x\n    area_r = x\n  end function area_r\n"
         "  subroutine helper()\n  end subroutine helper\nend module demo\n"),
+    # Members: an earlier overload, an abstract slot beside its default, an
+    # additional constructor, one member under two interfaces. The same-name
+    # function in two modules is deleted in "fsharp-nested".
     "fsharp": SiblingCase(
-        "src/Demo.fs", "module Demo\n\n", "module A =\n    let run x = x\n\n",
+        "src/Demo.fs", "module Demo\n\ntype Shape(r: float) =\n",
+        "    member this.Scale(k: float) = r * k\n",
+        "    member this.Scale(k: float, j: float) = r * k * j\n"
+        "    abstract member Describe : unit -> string\n"
+        "    default this.Describe() = \"shape\"\n"
+        "    new() = Shape(1.0)\n"
+        "    interface IA with\n        member this.Go() = 1\n"
+        "    interface IB with\n        member this.Go() = 2\n\n"
+        "module A =\n    let run x = x\n\n"
         "module B =\n    let run x y = x + y\n\nlet helper x = x\n"),
     "gdscript": SiblingCase(
         "src/demo.gd", "extends Node\n", "class A:\n\tfunc run():\n\t\treturn 1\n\n",
@@ -1257,9 +1268,12 @@ SCOPE_CASES: dict[str, SiblingCase] = {
                "  record R : Set where\n    field\n      x : Nat\n"),
     "fsharp-nested": SiblingCase(
         "src/Nested.fs", "module Nested\n\n",
-        "module A =\n    let mutable x = 1\n\n",
-        "module B =\n    let mutable x = 1\n",
-        nested="    let mutable x = 1\n"),
+        "module A =\n    let mutable x = 1\n    let run y = y\n"
+        "    type Inner() =\n        member this.Go() = 1\n\n",
+        "module B =\n    let mutable x = 1\n    let run y = y\n"
+        "    type Inner() =\n        member this.Go() = 1\n",
+        nested="    let mutable x = 1\n    let run y = y\n"
+               "    type Inner() =\n        member this.Go() = 1\n"),
     # -- related defects ------------------------------------------------------
     "twig-nested": SiblingCase(
         "templates/nested.twig", "",
