@@ -8,6 +8,17 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
 - Method declarations (inside classes and enums; an enum's are named
   ``Color.label``, WI-nomah)
 - Top-level function definitions (def keyword)
+- The signature of a method or function (``_extract_groovy_signature``)
+  writes each parameter as ``Type name``, the type as its source text
+  whatever node kind spells it (a primitive, a qualified ``java.util.List``,
+  a generic, an array, with dimensions written after the name), a varargs
+  parameter as ``Type... name``, and the return type. This text is hashed
+  into the typed stable_id (``normalize_groovy_signature``: the types-first
+  rule, a varargs parameter hashed as its array type). Before, a primitive
+  or qualified parameter type was dropped and the parameter NAME hashed in
+  its place, such a return type was dropped, and a varargs parameter was
+  dropped whole. Untyped parameters (``def f(x)``) do not parse in
+  tree-sitter-groovy 0.1.2 and are not written.
 - Identity over the FULL type chain (``_groovy_scope``; INV-fabih): methods
   hashed their emitted nearest-owner name (``Inner.go``) and types the
   backstop's bare-name table key, so two nested ``class Inner`` tied; types
@@ -66,6 +77,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -310,6 +322,53 @@ def _get_enclosing_function_groovy(
     return None  # pragma: no cover - defensive
 
 
+def _groovy_parameter_text(
+    param: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """One parameter of a ``formal_parameters`` list as ``Type name``.
+
+    The type is the source text of the parameter's ``type`` field whatever
+    its node kind (``type_identifier``, ``scoped_type_identifier``,
+    ``generic_type``, ``array_type``, ``integral_type``,
+    ``floating_point_type``, ``boolean_type``), with any dimensions written
+    after the name (``String a[]`` is ``String[] a``). A varargs parameter
+    (``spread_parameter``, which has no fields: its type is its first
+    named child that is not ``modifiers``, and its declarator follows the
+    ``...``) is written ``Type... name``. Modifiers (``final``) and annotations are not written:
+    neither changes the type or the overload set. A default value is not
+    written. A receiver parameter (``C this``) and a parameter the grammar
+    could not parse (an ``ERROR`` node: an untyped ``x`` in ``f(x)``) give
+    ``None``.
+    """
+    if param.type == "formal_parameter":
+        type_node = param.child_by_field_name("type")
+        name_node = param.child_by_field_name("name")
+        name = node_text(name_node, source) if name_node is not None else ""
+        if not name:
+            # A recovered parameter whose name is MISSING (``f(String x, y)``
+            # parses ``y`` as a type with an empty name): left out as before.
+            return None
+        if type_node is None:  # pragma: no cover - the grammar requires a type
+            return name
+        type_text = node_text(type_node, source)
+        dims = param.child_by_field_name("dimensions")
+        if dims is not None:
+            type_text += node_text(dims, source)
+        return f"{type_text} {name}"
+    if param.type == "spread_parameter":
+        spread_type = next(
+            (c for c in param.named_children if c.type != "modifiers"), None,
+        )
+        declarator = find_child_by_type(param, "variable_declarator")
+        spread_name = (
+            declarator.child_by_field_name("name") if declarator is not None else None
+        )
+        if spread_type is None or spread_name is None:
+            return None  # pragma: no cover - the grammar requires both
+        return f"{node_text(spread_type, source)}... {node_text(spread_name, source)}"
+    return None
+
+
 def _extract_groovy_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -317,47 +376,66 @@ def _extract_groovy_signature(
 
     Returns signature in format: (Type param, Type param2): ReturnType
     Omits void return types.
+
+    Every parameter is written by ``_groovy_parameter_text`` and the return
+    type is the source text of the declaration's ``type`` field whatever its
+    node kind, with any dimensions written after the parameter list
+    (``String f()[]`` returns ``String[]``). A ``def`` method of a class has a
+    ``def`` type; a script-level ``def f()`` has the ``def`` keyword and no
+    type, so it writes no return type. This text is hashed into the typed
+    stable_id (``normalize_groovy_signature``): a type left out here is one the
+    id cannot see. Before, only ``type_identifier``, ``array_type`` and
+    ``generic_type`` were written; a primitive or qualified parameter was
+    written as its name alone, such a return type and a varargs parameter
+    were dropped.
     """
     params: list[str] = []
-    return_type: Optional[str] = None
+    params_node = node.child_by_field_name("parameters")
+    if params_node is not None:
+        for param in params_node.named_children:
+            text = _groovy_parameter_text(param, source)
+            if text is not None:
+                params.append(text)
 
-    # Look for formal_parameters node
-    for child in node.children:
-        if child.type == "formal_parameters":
-            for param in child.children:
-                if param.type == "formal_parameter":
-                    param_type = None
-                    param_name = None
-                    for pc in param.children:
-                        if pc.type in ("type_identifier", "primitive_type",
-                                       "array_type", "generic_type"):
-                            param_type = node_text(pc, source)
-                        elif pc.type == "identifier":
-                            param_name = node_text(pc, source)
-                    if param_type and param_name:
-                        params.append(f"{param_type} {param_name}")
-                    elif param_name:  # pragma: no cover - dynamic typing
-                        params.append(param_name)
-        elif child.type in ("type_identifier", "primitive_type", "void_type",
-                            "array_type", "generic_type"):
-            # Return type appears before the method name
-            return_type = node_text(child, source)
+    signature = f"({', '.join(params)})"
 
-    params_str = ", ".join(params)
-    signature = f"({params_str})"
-
-    if return_type and return_type != "void":
+    type_node = node.child_by_field_name("type")
+    if type_node is not None and type_node.type != "void_type":
+        return_type = node_text(type_node, source)
+        dims = node.child_by_field_name("dimensions")
+        if dims is not None:
+            return_type += node_text(dims, source)
         signature += f": {return_type}"
 
     return signature
+
+
+#: ``Type... name`` followed by the next parameter or the list's end: how
+#: ``_groovy_parameter_text`` writes a varargs parameter.
+_GROOVY_VARARGS_RE = re.compile(r"\.\.\.(\s+[A-Za-z_$][\w$]*)(?=\s*[,)])")
 
 
 def normalize_groovy_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Groovy signature for typed stable_id (spec §6 typed tier)."""
+    """Normalize a Groovy signature for typed stable_id (spec §6 typed tier).
+
+    The types-first family's rule (``normalize_signature_types_first``,
+    shared with Java, C# and Dart): names dropped, a qualified type's head
+    stripped to its simple name, generic arguments as written, the return
+    type after ``:``. One Groovy step comes first: a varargs parameter
+    ``T... xs`` is written ``T[] xs``, the type Groovy (like Java) gives it,
+    so ``f(T... x)`` and ``f(T[] x)``, one method, hash as one, while
+    ``f(Object o)`` and ``f(Object... os)``, a legal overload pair, hash
+    apart (the shared rule alone erases the marker, hashing both as
+    ``(Object)``). Only a ``...`` followed by a parameter name and then
+    ``,`` or ``)`` is rewritten; a signature without one reaches the shared
+    rule unchanged.
+    """
     from hypergumbo_core.analyze.base import normalize_signature_types_first
+    if signature and "..." in signature:
+        signature = _GROOVY_VARARGS_RE.sub(r"[]\1", signature)
     return normalize_signature_types_first(
         signature, type_params, skip_void_return=False, return_sep=":",
     )
