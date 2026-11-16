@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py
-"""A Python type annotation is shown whole, and identity does not move.
+"""A Python type annotation is shown whole, and hashed whole.
 
-``_format_annotation`` has a case for six AST node kinds and returns ``""``
-for any other, so ``Callable[[int], None]`` was displayed, and recorded in
-``meta["parameters"]``, as ``Callable[, None]``. The displayed signature,
-the parameter metadata and a class attribute's signature now come from
+``_format_annotation`` has a case for six AST node kinds and, called bare,
+returns ``""`` for any other, so ``Callable[[int], None]`` was displayed, and
+recorded in ``meta["parameters"]``, as ``Callable[, None]``. The displayed
+signature, the parameter metadata and a class attribute's signature come from
 ``ast.unparse``.
 
-The same function still renders the signature that is hashed into
-``stable_id``, holes included: correcting THAT text changes the id of every
-function with such an annotation, which is an identity-scheme decision. The
-last test pins the hashed text so the decision cannot be taken by accident.
+The signature hashed into ``stable_id`` keeps the six-case rendering but has
+its holes filled (``fill_holes=True``: a node kind with no case is written by
+``ast.unparse``), so two functions that differ only inside such an annotation
+no longer share an id. A function whose annotations use only the six kinds
+hashes the same text as before; the last tests pin both halves.
 """
 
 from __future__ import annotations
@@ -94,15 +95,105 @@ def test_star_args_and_keyword_only_parameters_are_whole_too(tmp_path: Path) -> 
         ("**kw", "Callable[[], None]")]
 
 
-def test_the_text_hashed_into_stable_id_is_unchanged() -> None:
-    """The hashed signature keeps the old rendering, holes and all. If this
-    fails, a function's stable_id has changed: that needs a scheme-version
-    decision, not an edit to this expectation."""
-    node = ast.parse(
+def test_the_hashed_text_has_its_holes_filled() -> None:
+    """The text hashed into stable_id writes every annotation node: a kind
+    with no case of its own is written by ``ast.unparse``; the six-case
+    rendering is kept everywhere else (``...`` still reads ``Ellipsis``
+    outside a hole)."""
+    node = ast.parse("def f(cb: Callable[[int], None]) -> Literal[-1]: ...").body[0]
+    assert isinstance(node, ast.FunctionDef)
+    assert _format_function_signature(node) == "(cb: Callable[[int], None]) -> Literal[-1]"
+    # A filled text is longer, and the 60-character cut still applies: past
+    # it the signature does not normalize and the untyped tier is used.
+    long = ast.parse(
         "def f(cb: Callable[[int, str], None], lit: Literal[-1, 1]) -> Callable[[int], str]: ...",
     ).body[0]
-    assert isinstance(node, ast.FunctionDef)
-    assert _format_function_signature(node) == (
-        "(cb: Callable[, None], lit: Literal[, 1]) -> Callable[, str]")
-    assert _format_function_signature(node, max_len=240, render_defaults=True) == (
+    assert isinstance(long, ast.FunctionDef)
+    assert _format_function_signature(long) == (
+        "(cb: Callable[[int, str], None], lit: Literal[-1, 1]) -> Ca…")
+    assert _format_function_signature(long, max_len=240, render_defaults=True) == (
         "(cb: Callable[[int, str], None], lit: Literal[-1, 1]) -> Callable[[int], str]")
+
+
+# Annotation source -> the hashed rendering with the holes filled. Every AST
+# node kind an annotation can hold that the six cases do not cover.
+FILLED = {
+    "Callable[[int, str], None]": "Callable[[int, str], None]",  # List
+    "Callable[[], None]": "Callable[[], None]",  # empty List
+    "Literal[-1, 1]": "Literal[-1, 1]",  # UnaryOp
+    "Literal[1 + 2]": "Literal[1 + 2]",  # BinOp other than |
+    "Annotated[int, Field(gt=0)]": "Annotated[int, Field(gt=0)]",  # Call
+    "tuple[*Ts]": "tuple[*Ts]",  # Starred in a Tuple slice
+    "tuple[*tuple[int, ...]]": "tuple[*tuple[int, ...]]",  # Starred
+    "Annotated[int, lambda v: v]": "Annotated[int, lambda v: v]",  # Lambda
+    "Annotated[int, {'a': 1}]": "Annotated[int, {'a': 1}]",  # Dict
+    "Annotated[int, {1, 2}]": "Annotated[int, {1, 2}]",  # Set
+    "Annotated[str, f'x{y}']": "Annotated[str, f'x{y}']",  # JoinedStr
+    "Annotated[int, x > 0]": "Annotated[int, x > 0]",  # Compare
+    "Annotated[int, a and b]": "Annotated[int, a and b]",  # BoolOp
+    "Annotated[int, [i for i in y]]": "Annotated[int, [i for i in y]]",  # ListComp
+    "x[1:2]": "x[1:2]",  # Slice
+    "a().b": "a().b",  # Call under an Attribute
+    "f()[int]": "f()[int]",  # Call under a Subscript
+    "int if X else str": "int if X else str",  # IfExp (was dropped whole)
+    "Callable[[Callable[..., T]], T]": "Callable[[Callable[..., T]], T]",
+}
+# Annotations with no hole: the hashed text is the six-case text, unchanged,
+# including its deliberate or historical rewrites.
+UNCHANGED = {
+    "int": "int",
+    "typing.Optional[int]": "typing.Optional[int]",
+    "dict[str, list[int]]": "dict[str, list[int]]",
+    "str | None": "str | None",
+    "'Forward'": "'Forward'",
+    "None": "None",
+    "Literal[1]": "Literal[1]",
+    "Callable[..., int]": "Callable[Ellipsis, int]",
+    "tuple[()]": "tuple[]",
+}
+
+
+def _hashed(annotation: str) -> str:
+    node = ast.parse(f"def f(p: {annotation}) -> {annotation}: ...").body[0]
+    assert isinstance(node, ast.FunctionDef)
+    return _format_function_signature(node, max_len=10_000)
+
+
+@pytest.mark.parametrize(("annotation", "filled"), FILLED.items())
+def test_every_annotation_node_is_hashed(annotation: str, filled: str) -> None:
+    assert _format_annotation(ast.parse(annotation, mode="eval").body) != filled
+    assert _hashed(annotation) == f"(p: {filled}) -> {filled}"
+
+
+@pytest.mark.parametrize(("annotation", "kept"), UNCHANGED.items())
+def test_an_annotation_with_no_hole_hashes_as_before(annotation: str, kept: str) -> None:
+    assert _format_annotation(ast.parse(annotation, mode="eval").body) == kept
+    assert _hashed(annotation) == f"(p: {kept}) -> {kept}"
+
+
+def test_holes_are_filled_for_the_hash_only(tmp_path: Path) -> None:
+    """The other readers of the six-case renderer keep its bare form: a base
+    class written as a call is still ``""`` in ``base_classes`` (WI-pusan)."""
+    (tmp_path / "m.py").write_text(
+        "from collections import namedtuple\n\n"
+        "class P(namedtuple('P', 'x y')):\n    pass\n")
+    p = {s.name: s for s in analyze_python(tmp_path).symbols}["P"]
+    assert p.meta["base_classes"] == [""]  # type: ignore[attr-defined]
+
+
+def _method_id(tmp_path: Path, annotation: str) -> str:
+    (tmp_path / "m.py").write_text(
+        "from typing import Callable, Literal\n\n"
+        f"class C:\n    def m(self, cb: {annotation}) -> None:\n        pass\n")
+    m = {s.name: s for s in analyze_python(tmp_path).symbols}["C.m"]
+    return m.stable_id  # type: ignore[attr-defined,no-any-return]
+
+
+@pytest.mark.parametrize(("left", "right"), [
+    ("Callable[[int], None]", "Callable[[bytes, str], None]"),
+    ("Literal[-1]", "Literal[-2]"),
+])
+def test_two_methods_that_differ_inside_a_hole_have_two_ids(
+    tmp_path: Path, left: str, right: str,
+) -> None:
+    assert _method_id(tmp_path, left) != _method_id(tmp_path, right)

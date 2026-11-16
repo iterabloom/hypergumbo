@@ -1335,35 +1335,52 @@ def _extract_parameters_info(
     return params
 
 
-def _format_annotation(node: ast.expr) -> str:
-    """Format a type annotation node to a readable string."""
+def _format_annotation(node: ast.expr, fill_holes: bool = False) -> str:
+    """Format a type annotation node to a readable string.
+
+    Six node kinds have a case: Name, Constant (``repr``, so ``...`` reads
+    ``Ellipsis``), Subscript, Tuple (its elements comma-joined, no parens),
+    ``X | Y`` and Attribute. Any other kind -- a list (``Callable[[int],
+    None]``), a unary minus (``Literal[-1]``), a call (``Annotated[int,
+    f()]``), a starred name, a slice, a lambda, a dict or set, an f-string,
+    a conditional, any other operator -- is a HOLE.
+
+    ``fill_holes=False`` (the default) writes a hole as ``""``. Its callers
+    are base classes (a call-expression base reads ``""``, kept by WI-pusan),
+    decorator names and decorator-argument values, which read the empty
+    result as "not a plain name" and are left as they were.
+
+    ``fill_holes=True`` writes the hole's whole sub-tree with ``ast.unparse``
+    and keeps the six cases everywhere else. This is the text hashed into a
+    function's ``stable_id`` (``_format_function_signature``'s default call):
+    an annotation with no hole renders byte-for-byte as before, and two
+    annotations that differ only inside a hole no longer render alike.
+    """
     if isinstance(node, ast.Name):
         return node.id
     elif isinstance(node, ast.Constant):
         return repr(node.value)
     elif isinstance(node, ast.Subscript):
         # e.g., List[int], Dict[str, int]
-        base = _format_annotation(node.value)
-        slice_val = _format_annotation(node.slice)
+        base = _format_annotation(node.value, fill_holes)
+        slice_val = _format_annotation(node.slice, fill_holes)
         return f"{base}[{slice_val}]"
     elif isinstance(node, ast.Tuple):
         # e.g., (int, str) for Dict keys
-        elts = [_format_annotation(e) for e in node.elts]
+        elts = [_format_annotation(e, fill_holes) for e in node.elts]
         return ", ".join(elts)
     elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         # Union types: X | Y
-        left = _format_annotation(node.left)
-        right = _format_annotation(node.right)
+        left = _format_annotation(node.left, fill_holes)
+        right = _format_annotation(node.right, fill_holes)
         return f"{left} | {right}"
     elif isinstance(node, ast.Attribute):
         # e.g., typing.Optional
-        value = _format_annotation(node.value)
+        value = _format_annotation(node.value, fill_holes)
         return f"{value}.{node.attr}"
+    elif fill_holes:
+        return ast.unparse(node)
     else:
-        # Reached by ordinary annotations: a list (``Callable[[int], None]``),
-        # a unary minus (``Literal[-1]``), a call (``Annotated[int, f()]``), a
-        # starred name. Left as it is because this text is hashed into
-        # stable_id (see _display_annotation).
         return ""
 
 
@@ -1377,11 +1394,12 @@ def _display_annotation(node: ast.expr) -> str:
     ``Annotated[int, Field(gt=0)]`` as ``Annotated[int, ]``, in the displayed
     signature and in ``meta["parameters"]`` alike.
 
-    That function is kept, unchanged, for ONE caller: the signature that is
-    hashed into a function's ``stable_id``. Its output, holes included, is an
-    input to identity, so correcting it there changes the id of every
-    function with such an annotation (an identity-scheme decision, not a
-    rendering fix). Everything a reader or a consumer sees comes from here.
+    The signature hashed into a function's ``stable_id`` does not come from
+    here: it keeps the six-case rendering, with its holes filled
+    (``_format_annotation(..., fill_holes=True)``), so the identity of a
+    function whose annotations had no hole did not move when the holes were
+    filled (a stable-id scheme bump). Everything a reader or a consumer sees
+    comes from here.
     """
     return ast.unparse(node)
 
@@ -1392,7 +1410,7 @@ def _format_arg(arg: ast.arg, display: bool = False) -> str:
     result = arg.arg
     if arg.annotation:
         ann = (_display_annotation(arg.annotation) if display
-               else _format_annotation(arg.annotation))
+               else _format_annotation(arg.annotation, fill_holes=True))
         if ann:
             result += f": {ann}"
     return result
@@ -1435,7 +1453,10 @@ def _format_function_signature(
       churns Python identities. Defaults render as a bare ``=…`` and the
       over-length cut is deliberately blind (it drops the closing paren, so
       ``normalize_python_signature`` returns ``None`` and the symbol falls back
-      to the untyped stable_id — an established behavior).
+      to the untyped stable_id — an established behavior). Annotations are
+      the six-case rendering with holes filled
+      (``_format_annotation(..., fill_holes=True)``); ``*args`` / ``**kwargs``
+      are written by name alone, without their annotations.
     * **display ``Symbol.signature``** — called with ``render_defaults=True`` and
       a wide ``max_len``. Renders real default values and, when still over
       length, truncates the parameter list while PRESERVING the return type
@@ -1496,7 +1517,7 @@ def _format_function_signature(
     ret_str = ""
     if node.returns:
         ret_type = (_display_annotation(node.returns) if render_defaults
-                    else _format_annotation(node.returns))
+                    else _format_annotation(node.returns, fill_holes=True))
         if ret_type:
             ret_str = f" -> {ret_type}"
     sig = args_str + ret_str
