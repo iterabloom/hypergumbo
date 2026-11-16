@@ -94,6 +94,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Solidity call or emit resolves in its own contract, then its bases**, never in another contract of the file.
 - **Java and Dart constructions reach the constructor**, which now belongs to its class.
 - **A Swift construction reaches the type its scope sees**, not another function's local type.
+- **Swift `stable_id` reads every type**: `some P`, `any P`, `inout` and `Int...` no longer vanish.
 - **Java interface methods without `public` count as exported**, as the language makes them.
 - **PHP `private` and `protected` class constants are no longer reported public.**
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
