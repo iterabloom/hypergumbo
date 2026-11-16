@@ -59,13 +59,14 @@ code path:
 
 **The hole sets.** Every entry below was MEASURED by running this pipeline over
 these fixtures, never inferred from reading a producer. ``KIND_SLOT_HOLES``
-carries the genuine residuals, which are **stable_id-scheme-gated rather than
-merely unfixed**: the ``kind`` argument to ``make_doc_symbol_ids`` feeds
+carries the genuine residuals, which **need a stable_id scheme bump rather than
+being merely unfixed**: the ``kind`` argument to ``make_doc_symbol_ids`` feeds
 ``make_doc_stable_id``, so correcting a wrong kind word changes that symbol's
 ``stable_id`` — an existing computed identity value, which under the
-scheme-bump principle requires a scheme bump, sequenced behind WI-talos v9/v10.
-Recording them as strict xfails means the eventual scheme bump XPASSes and
-forces promotion.
+scheme-bump principle requires a scheme bump. ANY bump will do: the fix waits
+on no other item, and the next bump is to include it (INV-dulah limb 1 carries
+the robot one). Recording them as strict xfails means the bump that corrects
+the word XPASSes and forces promotion.
 """
 from __future__ import annotations
 
@@ -313,8 +314,8 @@ CANONICAL_GRAMMAR_HOLES: dict[str, str] = {}
 # (case) -> strict-xfail reason for a MEASURED kind-slot hole.
 #
 # Each is a producer writing a word into the kind-slot that is not the
-# record's own registered kind, blocked on the identity-scheme sequencing
-# rather than on effort (see the module docstring):
+# record's own registered kind, and whose correction needs a stable_id scheme
+# bump (see the module docstring):
 KIND_SLOT_HOLES: dict[str, str] = {
     "robot": (
         "robot.py passes kind='test_case' to make_doc_symbol_ids while the "
@@ -322,8 +323,8 @@ KIND_SLOT_HOLES: dict[str, str] = {
         "mismatches Symbol.kind and names an unregistered kind. Recorded as a "
         "pre-existing property of this invariant since 2026-06-22. The kind "
         "argument feeds make_doc_stable_id, so correcting the word churns "
-        "these symbols' stable_id — scheme-gated behind WI-talos v9/v10, the "
-        "same gate WI-banod T1 waits on."
+        "these symbols' stable_id: the fix needs a scheme bump, any one, and "
+        "INV-dulah limb 1 carries it."
     ),
 }
 
