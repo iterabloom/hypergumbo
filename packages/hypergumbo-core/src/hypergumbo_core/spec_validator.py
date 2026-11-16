@@ -75,9 +75,16 @@ Besides ``violations`` and ``violations_by_class``, the
 ``validation_report`` that ``build_validation_report`` emits carries a
 ``wired_checks`` manifest (``_WIRED_CHECKS``: each predicate wired into
 ``validate_ir`` and the class it feeds, so a class count of 0 means "these
-named checks found nothing", not "no defects") and ``stable_id_stats``
+named checks found nothing", not "no defects"), ``stable_id_stats``
 (``compute_stable_id_stats``: the ALL-Symbols stable_id population,
-collision rate, None cohort and backstop floor cohort).
+collision rate, None cohort and backstop floor cohort) and
+``name_slot_stats`` (``compute_name_slot_stats``: how many node ids have a
+name slot that is not the sanitized ``Symbol.name``, ADR-0036 Ruling 1, by
+producer). The last two are measurements, not checks: they emit no
+``ValidationViolation`` and are not in ``_WIRED_CHECKS``. The name-slot
+round-trip is measured rather than checked because its mismatches number in
+the thousands on a JavaScript repository; the count by producer is what each
+family is driven to zero against before it becomes a check.
 
 One output shape
 ----------------
@@ -139,9 +146,13 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
 
 from .receiver_blind_magnets import find_harmful_magnets
-from .ir import CONFIDENCE_SOURCE_CORROBORATED, VALID_CONFIDENCE_SOURCES
+from .ir import (
+    CONFIDENCE_SOURCE_CORROBORATED,
+    VALID_CONFIDENCE_SOURCES,
+    sanitize_id_name_segment,
+)
 
-VALIDATION_REPORT_SCHEMA_VERSION = "0.4"  # 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
+VALIDATION_REPORT_SCHEMA_VERSION = "0.5"  # 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
 # and in `ValidationViolation.severity` / `validator_class` axis annotations.
@@ -2235,6 +2246,104 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
 
 # ----------------------------------------------------------------------
+# Name-slot round-trip measurement (ADR-0036 Ruling 1)
+# ----------------------------------------------------------------------
+#
+# Ruling 1: the id's name slot is ``sanitize_id_name_segment(Symbol.name)``.
+# Producers that mint ids outside ``make_symbol_id`` still break it by the
+# thousand (a JavaScript anonymous callback's slot carries an ``@<col>``
+# suffix its name does not), so a violation per node would bury the report.
+# The round-trip is therefore a per-run STATISTIC in
+# ``validation_report.name_slot_stats`` -- no ValidationViolation, no entry in
+# ``_WIRED_CHECKS`` -- until its count reaches zero and it can become a check.
+
+#: How many producers ``name_slot_stats.by_producer`` lists; the rest are
+#: counted in ``producers_cut``, never dropped silently.
+_NAME_SLOT_PRODUCER_CAP = 20
+
+
+def _name_slot_producer(sym: Any) -> str:
+    """The originating pass id (``origin``'s first element), else the language."""
+    origin = getattr(sym, "origin", None)
+    if isinstance(origin, list):
+        origin = origin[0] if origin else None
+    if isinstance(origin, str) and origin:
+        return origin
+    language = getattr(sym, "language", None)
+    return language if isinstance(language, str) and language else "<none>"
+
+
+def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
+    """ADR-0036 Ruling 1 round-trip, measured: name slot == sanitized name.
+
+    The id is parsed from the right as Ruling 1 prescribes: the name slot is
+    the second-to-last ``:``-separated token. An id with fewer than five slots
+    is not parsed (``not_parsed``; ``_check_id_format`` reports it). A raw
+    colon in a name shifts the right-anchored slots, so the slot read is the
+    name's last fragment and the node counts as a mismatch.
+
+    One rule exempts a node: the file pseudo-symbol
+    (``analyze.file_records.is_file_pseudo_symbol``), whose id grammar fixes
+    the name slot to the literal ``file`` (Ruling 3's ``1-1:file:file``) while
+    ``Symbol.name`` holds the path. No other sentinel defines a name slot.
+
+    ``by_producer`` groups the mismatches by the node's originating pass id
+    (its language when ``origin`` is empty): mismatches, ids checked for that
+    producer, and the lexicographically smallest mismatching id with its name.
+    Ordered by mismatches descending, then producer name, and capped at
+    ``_NAME_SLOT_PRODUCER_CAP`` entries with the remainder in
+    ``producers_cut``. Nothing depends on the order of ``symbols``.
+    """
+    from .analyze.file_records import is_file_pseudo_symbol
+
+    checked = 0
+    exempt = 0
+    not_parsed = 0
+    checked_by: dict[str, int] = {}
+    mismatched_by: dict[str, int] = {}
+    example_by: dict[str, tuple[str, str]] = {}
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        if not isinstance(sym_id, str):
+            continue
+        if sym_id.count(":") < 4:
+            not_parsed += 1
+            continue
+        if is_file_pseudo_symbol(sym):
+            exempt += 1
+            continue
+        checked += 1
+        producer = _name_slot_producer(sym)
+        checked_by[producer] = checked_by.get(producer, 0) + 1
+        name = getattr(sym, "name", None)
+        name = name if isinstance(name, str) else ""
+        if sym_id.rsplit(":", 2)[1] == sanitize_id_name_segment(name):
+            continue
+        mismatched_by[producer] = mismatched_by.get(producer, 0) + 1
+        example = example_by.get(producer)
+        if example is None or (sym_id, name) < example:
+            example_by[producer] = (sym_id, name)
+    ranked = sorted(mismatched_by, key=lambda p: (-mismatched_by[p], p))
+    return {
+        "ids_checked": checked,
+        "exempt_file_nodes": exempt,
+        "not_parsed": not_parsed,
+        "mismatched": sum(mismatched_by.values()),
+        "by_producer": [
+            {
+                "producer": p,
+                "mismatched": mismatched_by[p],
+                "checked": checked_by[p],
+                "example_id": example_by[p][0],
+                "example_name": example_by[p][1],
+            }
+            for p in ranked[:_NAME_SLOT_PRODUCER_CAP]
+        ],
+        "producers_cut": max(0, len(ranked) - _NAME_SLOT_PRODUCER_CAP),
+    }
+
+
+# ----------------------------------------------------------------------
 # origin_run_id referential-integrity FK predicate (WI-moriz, WI-mosil)
 # ----------------------------------------------------------------------
 #
@@ -2461,6 +2570,7 @@ def build_validation_report(
     violations: list[ValidationViolation],
     *,
     stable_id_stats: Optional[dict[str, Any]] = None,
+    name_slot_stats: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Construct the ``validation_report`` section for the artifact dict.
 
@@ -2480,6 +2590,11 @@ def build_validation_report(
     it is ALWAYS present, independent of whether the collision umbrella
     fired. ``None`` on bare calls (unit tests); the production finalize
     path always supplies it.
+
+    ``name_slot_stats`` (ADR-0036 Ruling 1, schema_version 0.5): the
+    name-slot round-trip measured over every node id, by producer (from
+    ``compute_name_slot_stats``). A statistic, not violations; ``None`` on
+    bare calls like ``stable_id_stats``.
     """
     by_class: dict[str, int] = dict.fromkeys(_VALIDATOR_CLASSES, 0)
     for v in violations:
@@ -2491,6 +2606,7 @@ def build_validation_report(
         "violations_by_class": by_class,
         "wired_checks": [dict(c) for c in _WIRED_CHECKS],
         "stable_id_stats": stable_id_stats,
+        "name_slot_stats": name_slot_stats,
     }
 
 

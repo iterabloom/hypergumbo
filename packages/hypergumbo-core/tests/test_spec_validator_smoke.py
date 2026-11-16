@@ -59,6 +59,7 @@ def test_build_validation_report_empty_is_clean() -> None:
     # ADR-0035 §5: stats are None on a bare call (no symbols supplied);
     # the production finalize path always supplies them.
     assert report["stable_id_stats"] is None
+    assert report["name_slot_stats"] is None
 
 
 def test_build_validation_report_counts_by_class() -> None:
