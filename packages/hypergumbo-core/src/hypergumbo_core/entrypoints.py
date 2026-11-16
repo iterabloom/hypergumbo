@@ -74,6 +74,16 @@ Connectivity Boost (concept-based only):
 - Entrypoints are sorted by final RANK_SCORE (highest first). `confidence`
   is pure detection reliability and carries only the base; the penalties and
   the boost live on `rank_score`, which is what ordering uses (ADR-0039).
+- `rank_score` clamps at 1.0, so connected entries tie there. Entries of
+  EQUAL rank_score order by detection `confidence` (a manifest-declared
+  script, 0.99, before a framework route, 0.95 / 0.90, before a convention
+  main, 0.80), then language weight, then effective out-degree, then path,
+  start line, name and symbol id: a total order, so neither detection order
+  nor the hash seed decides it. An entry without a numeric `confidence`
+  raises (``_detection_confidence``) instead of sorting as 0 or 1. Ruling 3
+  of ADR-0039 froze the score formula, not this order. Without the
+  confidence key a [project.scripts] command (language toml, weight near
+  zero) ranked under every saturated Python main.
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
   double-counting; TEST_FUNCTION entries, symbols in test files and
   ``boost_suppressed_ids`` (build wrappers, and demoted library exports that
@@ -130,15 +140,26 @@ Post-Processing Filters (INV-mahap):
   high-confidence entries (e.g., microservice gateways). When it applies,
   ``_diversity_cap`` first gives each kind up to 40% of the cap, then fills
   any slots still empty from the overflow.
+- Where a cut (a kind's quota, the cap, the fill) falls inside a group of
+  EQUAL rank_score, ``_take_dealing_ties`` deals that group's slots
+  round-robin across source files: every file with a tied entry gets one
+  before any file gets a second. A cut by rank order alone gave every tied
+  slot to the files whose entries sorted first, so a minority-language
+  service (an Express ``/scan`` beside eighty saturated Flask routes) lost
+  all of them: its routes reach 1.0 too, and language weight sorted them
+  last. Raising the ceiling would not help, because the connectivity boost
+  is halved for a minority language. An entry of a lower score than the
+  group is still cut: a route that stops at 0.99 does not join a group at
+  1.0.
 """
 from __future__ import annotations
 
 import hashlib
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Callable, List, Mapping, Optional, Sequence
 
 import re
 
@@ -2063,17 +2084,30 @@ def detect_entrypoint_candidates(
 
     # Sort by rank_score (highest first) for better --entry auto behavior.
     # ADR-0039 ruling 3: rank_score is the base confidence plus the
-    # penalties/demotions/boosts; the detection ``confidence`` stays at the
-    # construction base and is not a sort key.
-    # Tiebreakers (in order):
-    # 1. Language dominance: prefer entrypoints from the dominant language.
-    #    In a C-heavy repo, C main() ranks above Python script even if
-    #    the Python script has higher connectivity.
-    # 2. Effective out-degree: when two entrypoints from the same language
-    #    tie on rank_score, prefer the one with higher transitive reach.
+    # penalties/demotions/boosts. The score clamps at 1.0, so connected
+    # entries tie there, and the order among EQUAL scores is the tie-break
+    # (outside the frozen formula):
+    # 1. Detection confidence: a manifest-declared script (0.99) before a
+    #    framework route (0.95 / 0.90) before a convention main (0.80).
+    # 2. Language dominance: in a C-heavy repo, C main() ranks above a
+    #    Python script even if the script has higher connectivity.
+    # 3. Effective out-degree: the higher transitive reach first.
+    # 4. A total order on the symbol (path, start line, name, symbol id), so
+    #    the order depends neither on detection order nor on the hash seed.
+    # Two stable sorts: the total order ascending first, then the ranking
+    # keys descending, which keeps the first order among their ties.
+    def _symbol_order(ep: Entrypoint) -> tuple[str, int, str, str]:
+        sym = symbol_lookup.get(ep.symbol_id)
+        if sym is None:  # pragma: no cover - defensive: entrypoints are built from nodes
+            return ("", 0, "", ep.symbol_id)
+        line = sym.span.start_line if sym.span is not None else 0
+        return (sym.path or "", line, sym.name, ep.symbol_id)
+
+    unique_entrypoints.sort(key=_symbol_order)
     unique_entrypoints.sort(
         key=lambda ep: (
             ep.rank_score,
+            _detection_confidence(ep),
             _language_weight(ep.symbol_id),
             _effective_out_degree(ep.symbol_id),
         ),
@@ -2083,16 +2117,37 @@ def detect_entrypoint_candidates(
     return unique_entrypoints
 
 
+def _detection_confidence(ep: Entrypoint) -> float:
+    """``ep.confidence`` as a sort key, refusing an entry that has none.
+
+    Every detector sets a literal confidence, so a missing one (``None``,
+    NaN, or anything that is not a number) is a defect upstream. Ordering it
+    as 0 or as 1 would put it silently last or first among its ties, so it
+    raises instead, naming the entry.
+    """
+    # Read as ``object``: the field is typed float, and this guards the
+    # value an untyped caller may have left in it.
+    conf: object = ep.confidence
+    if not isinstance(conf, (int, float)) or math.isnan(conf):
+        raise ValueError(
+            f"entry point {ep.symbol_id!r} ({ep.label!r}) has no detection "
+            f"confidence ({conf!r}); entry points of equal rank_score are "
+            "ordered by it"
+        )
+    return float(conf)
+
+
 def apply_rank_floor_and_cap(
     candidates: List[Entrypoint],
-    node_count: int,
+    nodes: Sequence[Symbol],
 ) -> List[Entrypoint]:
     """The ranked overview: ``candidates`` floored, then capped.
 
     Takes :func:`detect_entrypoint_candidates`'s list (sorted best first) and
-    ``len(nodes)`` of the same graph. Builds new lists and mutates nothing,
-    so the caller can derive ``request_ingress`` from the same candidates
-    afterwards.
+    the nodes of the same graph: their number sizes the cap, and their paths
+    are the source files the cap deals tied slots across
+    (:func:`_diversity_cap`). Builds new lists and mutates nothing, so the
+    caller can derive ``request_ingress`` from the same candidates afterwards.
     """
     # Filter out entries below the minimum RANKING threshold (ADR-0039 ruling 3:
     # keyed on rank_score, not confidence). After all adjustments (test
@@ -2108,9 +2163,14 @@ def apply_rank_floor_and_cap(
     # The cap scales with repo size: small repos get 50, large repos up to 500.
     # This ensures large codebases with hundreds of controllers don't lose
     # most of their entrypoints to a fixed cap.
-    cap = compute_entrypoint_cap(node_count)
+    cap = compute_entrypoint_cap(len(nodes))
     if len(kept) > cap:
-        kept = _diversity_cap(kept, cap)
+        kept_ids = {ep.symbol_id for ep in kept}
+        files = {
+            node.id: node.path for node in nodes
+            if node.id in kept_ids and node.path
+        }
+        kept = _diversity_cap(kept, cap, files)
 
     return kept
 
@@ -2128,7 +2188,7 @@ def detect_entrypoints(
     ``request_ingress`` (:func:`request_ingress_entries`).
     """
     return apply_rank_floor_and_cap(
-        detect_entrypoint_candidates(nodes, edges), len(nodes),
+        detect_entrypoint_candidates(nodes, edges), nodes,
     )
 
 
@@ -2162,6 +2222,7 @@ _MAX_KIND_FRACTION: float = 0.4
 def _diversity_cap(
     entrypoints: list[Entrypoint],
     cap: int,
+    files: Optional[Mapping[str, str]] = None,
 ) -> list[Entrypoint]:
     """Apply per-kind diversity capping to entrypoints.
 
@@ -2170,32 +2231,87 @@ def _diversity_cap(
     When a kind exceeds its quota, remaining entrypoints of that kind are
     deferred to fill any remaining slots after all kinds have had their share.
 
+    The cap cuts in three places: a kind's quota, the cap itself on the
+    entries within quota, and the fill from the deferred ones. Each cut is
+    :func:`_take_dealing_ties`: entries of a higher score than the cut are
+    kept as they are, and when the cut falls inside a group of EQUAL
+    rank_score, that group's slots are dealt round-robin across source files.
+    At a quota cut the group is the kind's own tied entries, so a quota is
+    never exceeded; at the fill, a file's tied entries already kept count
+    as slots it has been dealt, so a file the quota left out comes first.
+
     Args:
         entrypoints: Sorted list of entrypoints (best first).
         cap: Maximum total entrypoints to return.
+        files: ``symbol_id`` -> source file. An entry not in it (or all of
+            them, when it is None) is a file of its own.
 
     Returns:
-        Capped list with per-kind diversity guarantee.
+        Capped list with per-kind diversity guarantee: the entries within
+        quota in their input order, then the fill in its input order.
     """
     max_per_kind = max(1, int(cap * _MAX_KIND_FRACTION))
-    kind_counts: dict[EntrypointKind, int] = {}
-    result: list[Entrypoint] = []
-    overflow: list[Entrypoint] = []
+    known = files or {}
 
-    for ep in entrypoints:
-        count = kind_counts.get(ep.kind, 0)
-        if count < max_per_kind:
-            result.append(ep)
-            kind_counts[ep.kind] = count + 1
-        else:
-            overflow.append(ep)
+    def file_of(ep: Entrypoint) -> str:
+        # A NUL prefix cannot occur in a path, so an entry without a known
+        # file never shares a group with a real one.
+        return known.get(ep.symbol_id) or f"\0{ep.symbol_id}"
 
-        if len(result) >= cap:
-            return result[:cap]
+    by_kind: dict[EntrypointKind, list[int]] = defaultdict(list)
+    for i, ep in enumerate(entrypoints):
+        by_kind[ep.kind].append(i)
+    within_quota: set[int] = set()
+    for indexes in by_kind.values():
+        kind_eps = [entrypoints[i] for i in indexes]
+        chosen = _take_dealing_ties(kind_eps, max_per_kind, file_of)
+        within_quota.update(indexes[j] for j in chosen)
+
+    eligible = [ep for i, ep in enumerate(entrypoints) if i in within_quota]
+    if len(eligible) >= cap:
+        return [eligible[j] for j in _take_dealing_ties(eligible, cap, file_of)]
 
     # Fill remaining slots from overflow (kinds that exceeded their quota)
-    remaining = cap - len(result)
-    if remaining > 0 and overflow:
-        result.extend(overflow[:remaining])
+    overflow = [ep for i, ep in enumerate(entrypoints) if i not in within_quota]
+    dealt: Counter[tuple[Optional[float], str]] = Counter(
+        (ep.rank_score, file_of(ep)) for ep in eligible
+    )
+    fill = _take_dealing_ties(overflow, cap - len(eligible), file_of, dealt)
+    return eligible + [overflow[j] for j in fill]
 
-    return result
+
+def _take_dealing_ties(
+    entrypoints: Sequence[Entrypoint],
+    n: int,
+    file_of: Callable[[Entrypoint], str],
+    dealt: Optional[Counter[tuple[Optional[float], str]]] = None,
+) -> list[int]:
+    """Indexes of the ``n`` entries a cut keeps from a best-first list.
+
+    Every entry of a higher ``rank_score`` than the ``n``-th is kept. The
+    entries of the ``n``-th entry's score compete for the slots left (all of
+    them fit unless the cut falls inside that group, so without a tie across
+    the cut this is the first ``n``): they are dealt one per source file in turn,
+    files in the order of their best entry, then a second per file, and so
+    on. ``dealt`` counts the slots each (score, file) already holds from an
+    earlier cut; a file's k-th entry here is its ``dealt + k``-th slot.
+    Returned in list order.
+    """
+    if n >= len(entrypoints):
+        return list(range(len(entrypoints)))
+    if n <= 0:
+        return []
+    cut_score = entrypoints[n - 1].rank_score
+    group = [i for i, ep in enumerate(entrypoints) if ep.rank_score == cut_score]
+    above = list(range(group[0]))
+    file_rank: dict[str, int] = {}
+    seen: Counter[str] = Counter()
+    turns: list[tuple[int, int, int]] = []
+    prior = dealt or Counter()
+    for i in group:
+        f = file_of(entrypoints[i])
+        file_rank.setdefault(f, len(file_rank))
+        turns.append((prior[(cut_score, f)] + seen[f], file_rank[f], i))
+        seen[f] += 1
+    turns.sort()
+    return above + sorted(i for _t, _f, i in turns[: n - len(above)])
