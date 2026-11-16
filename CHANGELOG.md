@@ -257,6 +257,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`scripts/show-site`** shows the code around one I/O allowlist site, with its callers.
 - **`prose-only-files --code`** lists the files whose change is more than comments.
 - **`bakeoff-broad cohort --dry-run` lists the cohort** instead of crashing.
+- **`release-check` upgrades seven audited packages to their fixed versions** before auditing.
 
 ### Documentation
 
