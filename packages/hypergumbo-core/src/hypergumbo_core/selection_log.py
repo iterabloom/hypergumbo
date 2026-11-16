@@ -72,14 +72,20 @@ from hypergumbo_core.selection_shadow import ShadowReport
 DEFAULT_MIN_COMMITS = 30
 
 
+def _append(log_path: Path, row: dict[str, object]) -> None:
+    """Append one row as a JSON line. Never rewrites earlier lines."""
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+
 def append_observation(
     log_path: Path, report: ShadowReport, *, sha: str,
 ) -> None:
-    """Append one observation as a JSON line. Never rewrites earlier lines."""
-    log_path = Path(log_path)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    """Append one selection-shadow observation."""
     dangerous = report.dangerous_misses
-    row = {
+    row: dict[str, object] = {
         "sha": sha,
         "informative": report.informative,
         "trustworthy": report.trustworthy,
@@ -94,8 +100,7 @@ def append_observation(
         "new_blocks": report.new_blocks,
         "unmeasured": report.unmeasured,
     }
-    with log_path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _append(log_path, row)
 
 
 def load_observations(log_path: Path) -> list[dict[str, object]]:
@@ -200,13 +205,6 @@ def evaluate(observations: Iterable[dict[str, object]]) -> Evidence:
 #: fresh one, with no unedited test file missing, before a stored graph may
 #: select. The same floor as the coverage shadow, for the same reason.
 STALE_GRAPH_MIN_COMMITS = 30
-
-
-def _append(log_path: Path, row: dict[str, object]) -> None:
-    log_path = Path(log_path)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
 
 
 def register_graph(
