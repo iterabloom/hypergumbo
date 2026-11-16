@@ -64,9 +64,9 @@ being merely unfixed**: the ``kind`` argument to ``make_doc_symbol_ids`` feeds
 ``make_doc_stable_id``, so correcting a wrong kind word changes that symbol's
 ``stable_id`` — an existing computed identity value, which under the
 scheme-bump principle requires a scheme bump. ANY bump will do: the fix waits
-on no other item, and the next bump is to include it (INV-dulah limb 1 carries
-the robot one). Recording them as strict xfails means the bump that corrects
-the word XPASSes and forces promotion.
+on no other item, and the next bump is to include it (robot's ``test_case``
+word went with the v15 scheme). Recording them as strict xfails means the bump
+that corrects the word XPASSes and forces promotion.
 """
 from __future__ import annotations
 
@@ -199,9 +199,8 @@ CASE_FILES: dict[str, tuple[str, str]] = {
         git+https://github.com/psf/black.git@main
         -e ./local-package
     """),
-    # Carries a `*** Test Cases ***` block deliberately: robot passes
-    # kind="test_case" while building a kind="test" Symbol, which is the robot
-    # entry in KIND_SLOT_HOLES.
+    # Carries a `*** Test Cases ***` block deliberately: robot once minted its
+    # test ids with the role word `test_case` on a kind="test" Symbol.
     "robot": ("tests.robot", """\
         *** Settings ***
         Library    OperatingSystem
@@ -324,22 +323,13 @@ CANONICAL_GRAMMAR_HOLES: dict[str, str] = {}
 # record's own registered kind, and whose correction needs a stable_id scheme
 # bump (see the module docstring):
 KIND_SLOT_HOLES: dict[str, str] = {
-    "robot": (
-        "robot.py passes kind='test_case' to make_doc_symbol_ids while the "
-        "Symbol it builds carries kind='test', so the id kind-slot both "
-        "mismatches Symbol.kind and names an unregistered kind. Recorded as a "
-        "pre-existing property of this invariant since 2026-06-22. The kind "
-        "argument feeds make_doc_stable_id, so correcting the word churns "
-        "these symbols' stable_id: the fix needs a scheme bump, any one, and "
-        "INV-dulah limb 1 carries it."
-    ),
     "twig-call": (
         "twig.py passes kind='function_call' to make_doc_symbol_ids while the "
         "Symbol it builds carries kind='call_site' (the fold of audit-findings "
-        "0010 changed Symbol.kind and left the id word). robot's shape and "
-        "reason: the argument feeds make_doc_stable_id, so correcting the word "
-        "moves the stable id of every twig function call (measured 2026-11-15 on "
-        "these two calls: 2 of 2). It goes with the same scheme bump."
+        "0010 changed Symbol.kind and left the id word). The argument feeds "
+        "make_doc_stable_id, so correcting the word moves the stable id of "
+        "every twig function call (measured 2026-11-15 on these two calls: 2 "
+        "of 2). It goes with the next scheme bump."
     ),
 }
 

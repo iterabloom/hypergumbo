@@ -1808,15 +1808,7 @@ def test_flat_languages_each_carry_a_reason() -> None:
 
 #: ``(language, id kind slot, Symbol.kind) -> why it stands``. Exact: a cell the
 #: corpus no longer produces fails the gate as much as a new one.
-KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {
-    ("robot", "test_case", "test"): (
-        "robot.py hands 'test_case' to make_doc_symbol_ids, which mints the "
-        "node id AND the stable id from it, so correcting the word moves every "
-        "robot test's stable id: it goes with the next scheme bump (INV-dulah "
-        "limb 1). The twig function call has the same shape and reason; this "
-        "corpus's twig fixture holds no call, test_doc_family_id_parity's does."
-    ),
-}
+KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {}
 
 
 def kind_slot_offenders(records: Iterable[Any]) -> set[tuple[str, str, str]]:

@@ -443,21 +443,38 @@ class TestTheKindSlotAgainstTheSymbolsKind:
             assert params[index] == "kind", (name, params)
 
     def test_the_declared_holes_are_live_and_are_the_only_ones(self) -> None:
-        """robot's and twig's words feed their stable ids (both mint the id
-        and the stable id from one ``make_doc_symbol_ids`` call), so correcting
-        them needs a scheme bump and they are declared until then. Declared
-        means: reported the moment the declaration is removed, and an entry
-        nothing matches is refused."""
+        """A mismatch whose word feeds a stable id needs a scheme bump to
+        correct, and is declared until then. Declared means: reported the
+        moment the declaration is removed, and an entry nothing matches is
+        refused. So with no declarations the live tree reports exactly the
+        declared holes, one finding each."""
         from hypergumbo_core.check_id_construction import KNOWN_KIND_SLOT_HOLES
 
         repo_root = Path(__file__).resolve().parents[3]
         undeclared = find_id_construction_drift(repo_root, known_kind_slot_holes={})
-        assert len(undeclared) == len(KNOWN_KIND_SLOT_HOLES) == 2, undeclared
-        robot, twig = sorted(undeclared)
-        assert "robot.py" in robot and "'test_case'" in robot and "'test'" in robot
-        assert "twig.py" in twig and "'function_call'" in twig and "'call_site'" in twig
-        for rel, _id_kind, _symbol_kind in KNOWN_KIND_SLOT_HOLES:
+        assert len(undeclared) == len(KNOWN_KIND_SLOT_HOLES), undeclared
+        for rel, id_kind, symbol_kind in KNOWN_KIND_SLOT_HOLES:
             assert (repo_root / rel).is_file(), f"declared hole names a missing file: {rel}"
+            assert any(
+                drift.startswith(f"{rel}:") and f"{id_kind!r}" in drift
+                and f"{symbol_kind!r}" in drift
+                for drift in undeclared
+            ), (rel, id_kind, symbol_kind, undeclared)
+
+    def test_a_declared_hole_silences_its_own_mismatch_only(self, tmp_path: Path) -> None:
+        """The declaration mechanism, on a tree of its own: the live table may
+        be empty, and a future hole must still be declarable."""
+        root = _write(tmp_path, '''
+            def f(path, start, end, name):
+                return Symbol(id=make_symbol_id("x", path, start, end, name, "test_case"), kind="test")
+
+            def g(path, start, end, name):
+                return Symbol(id=make_symbol_id("x", path, start, end, name, "function_call"), kind="call_site")
+        ''')
+        hole = {("packages/p/src/m/mod.py", "test_case", "test"): "awaits a bump"}
+        (drift,) = find_id_construction_drift(root, known_kind_slot_holes=hole)
+        assert "'function_call'" in drift and "'call_site'" in drift
+        assert len(find_id_construction_drift(root, known_kind_slot_holes={})) == 2
 
     def test_a_declaration_for_a_file_this_tree_lacks_says_nothing(self, tmp_path: Path) -> None:
         root = _write(tmp_path, '''

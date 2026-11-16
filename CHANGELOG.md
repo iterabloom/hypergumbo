@@ -185,6 +185,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **BitBake node ids carry the symbol's own kind and lines**, so two assignments to one variable no longer share an id.
 - **Swift initialisers of two same-named function-local types get distinct `stable_id`s.**
 - **A `package.json` `exports` entry's node id names its own kind.**
+- **Robot test ids name their kind `test`**; their `stable_id`s change.
 - **File-level edges in nine smaller-language analyzers join real file nodes.**
 - **Unresolved CMake, Starlark, reStructuredText and shader targets keep their own names.**
 - **Node ids from nine more analyzers and eight linkers name their symbol's own kind**: Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl and V; a linker stand-in keeps its role in the name slot.

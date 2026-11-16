@@ -102,20 +102,12 @@ _KIND_ARGUMENT_OF_FACTORY: dict[str, int] = {
 #: ``(repo-relative path, id kind word, Symbol kind) -> why it stands``.
 KNOWN_KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {
     (
-        "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/robot.py",
-        "test_case", "test",
-    ): (
-        "the word is also the kind input of make_doc_stable_id, so correcting "
-        "it changes every robot test's stable id: it goes with the next "
-        "stable-id scheme bump (INV-dulah limb 1)"
-    ),
-    (
         "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/twig.py",
         "function_call", "call_site",
     ): (
-        "robot's shape: the word is also the kind input of make_doc_stable_id, "
-        "so correcting it changes the stable id of every twig function call "
-        "(measured: 2 of 2 on a two-call fixture); it goes with the same bump"
+        "the word is also the kind input of make_doc_stable_id, so correcting "
+        "it changes the stable id of every twig function call (measured: 2 of "
+        "2 on a two-call fixture); it goes with the next stable-id scheme bump"
     ),
 }
 
