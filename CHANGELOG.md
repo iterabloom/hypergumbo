@@ -105,6 +105,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`.
 - **Python `stable_id` reads whole annotations: `Literal[-1]` and `Literal[-2]` no longer collide.**
+- **Groovy `stable_id` reads primitive, qualified and varargs parameter types.**
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`; `stable_id` does not change.
 - **C# `stable_id` reads `ref`/`out`/`params` modifiers and tuple types.**
 - **Scala `stable_id` reads every type, parameter clause and `using` keyword.**

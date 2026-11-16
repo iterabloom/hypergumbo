@@ -489,8 +489,9 @@ class TestGroovyEmptyRepo:
 class TestGroovySignatureExtraction:
     """Tests for Groovy method signature extraction.
 
-    Note: Groovy's tree-sitter grammar uses dynamic parameter types,
-    so we only capture parameter names in most cases.
+    Typed parameters are written ``Type name``. An untyped parameter
+    (``def f(x)``) does not parse in tree-sitter-groovy 0.1.2 and is not
+    written.
     """
 
     def test_params_extraction(self, tmp_path: Path) -> None:
@@ -507,10 +508,7 @@ class Calculator {
         result = analyze_groovy(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
         assert len(methods) == 1
-        # Groovy's grammar has limited type info, but captures params
-        assert methods[0].signature is not None
-        assert "x" in methods[0].signature
-        assert "y" in methods[0].signature
+        assert methods[0].signature == "(int x, int y): int"
 
     def test_void_return_type_omitted(self, tmp_path: Path) -> None:
         """Void return type is omitted from signature."""
@@ -544,8 +542,9 @@ class Counter {
         result = analyze_groovy(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
         assert len(methods) == 1
-        # Empty params
-        assert methods[0].signature == "()"
+        # Empty params; the ``int`` return type is written (it was dropped
+        # before: the renderer had no case for ``integral_type``).
+        assert methods[0].signature == "(): int"
 
 class TestGroovyImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
