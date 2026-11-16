@@ -1592,8 +1592,9 @@ contract C {
 }
 """)
         names = {s.name for s in self._by_kind(analyze_solidity(temp_repo), "field")}
-        assert "Account.balance" in names
-        assert "Account.addr" in names
+        # Named under the contract and the struct, like every contract member.
+        assert "C.Account.balance" in names
+        assert "C.Account.addr" in names
 
     def test_file_level_constant_emitted_as_variable(self, temp_repo: Path) -> None:
         (temp_repo / "K.sol").write_text("""

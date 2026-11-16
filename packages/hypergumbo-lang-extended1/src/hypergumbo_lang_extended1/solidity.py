@@ -10,8 +10,17 @@ This analyzer uses tree-sitter to parse Solidity smart contract files and extrac
 - Constructor definitions
 - Modifier definitions
 - Event definitions
-- State variables + struct members (kind="field"; WI-jusus); a member of a
-  struct declared in a contract hashes the contract too (INV-fabih)
+- Struct and enum declarations (kind="struct" / "enum"), at file level or
+  in a contract, interface or library, named like a contract member
+  (``Vault.Deposit``; bare at file level). Nested in a contract, the
+  stable_id is ``overload_arity.scoped_table_stable_id`` over it, so a
+  ``Deposit`` in two contracts of one file is two identities.
+- State variables, struct members and enum values (kind="field"; WI-jusus).
+  A struct member or enum value is named under its whole scope chain
+  (``Vault.Deposit.owner``, ``Vault.Mode.Fast``; ``Free.owner`` at file
+  level), and that chain is what its stable_id hashes (INV-fabih), so the
+  containment linker places it in its struct or enum, and two structs of
+  one contract declaring ``owner`` stay two identities.
 - File-level constants (kind="variable"; WI-jusus)
 - Function call relationships
 - Import relationships
@@ -67,6 +76,9 @@ member, each contract's ``is`` list and each state variable's declared type
   the function it overrides and not itself.
 - ``Base.f()``, ``Lib.f()``, ``emit IThing.E(...)``: the named contract's
   scope.
+- A struct construction (``Deposit({owner: a})``, ``Deposit(a, 1)``,
+  ``Lib.Entry(...)``) and an enum conversion (``Mode(x)``) are calls to the
+  struct / enum, found by the same scope walk as a function of that name.
 - ``token.f()`` where ``token`` is a parameter, a local or a state variable
   (own or inherited), and ``IERC20(x).f()``: the scope of the declared type.
   Solidity declares every variable with its type, so this reads the
@@ -121,7 +133,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -186,13 +198,27 @@ _BODY_BEARING_CALLABLE_KINDS: frozenset[str] = (
 # The three declarations that open a member scope.
 _CONTAINER_KINDS: frozenset[str] = frozenset({"contract", "interface", "library"})
 
+# The two type declarations a call can name: ``Deposit({owner: a})`` and
+# ``Deposit(a, 1)`` construct a struct, ``Mode(x)`` converts to an enum. Both
+# are backstop table kinds; nested in a contract they mint
+# ``overload_arity.scoped_table_stable_id`` over it.
+_TYPE_DECLARATION_KINDS: frozenset[str] = frozenset({"struct", "enum"})
+
 # What a call expression can name inside a contract scope. ``event`` is here
 # for Solidity before 0.4.21, which raised an event by calling it.
-_CALL_TARGET_KINDS: frozenset[str] = _FUNCTION_DECLARATION_KINDS | frozenset({"event"})
+_CALL_TARGET_KINDS: frozenset[str] = (
+    _FUNCTION_DECLARATION_KINDS | frozenset({"event"}) | _TYPE_DECLARATION_KINDS
+)
 
-# What a bare call can name at file level: a free function, or a contract
-# type (``IERC20(token)`` is a conversion written as a call).
-_FILE_LEVEL_CALL_KINDS: frozenset[str] = frozenset({"function"}) | _CONTAINER_KINDS
+# What a bare call can name at file level: a free function, a contract type
+# (``IERC20(token)`` is a conversion written as a call), a file-level struct
+# or enum.
+_FILE_LEVEL_CALL_KINDS: frozenset[str] = (
+    frozenset({"function"}) | _CONTAINER_KINDS | _TYPE_DECLARATION_KINDS
+)
+
+# What ``Base.f(...)`` / ``Lib.Entry(...)`` can name in the scope it names.
+_QUALIFIED_CALL_KINDS: frozenset[str] = _FUNCTION_DECLARATION_KINDS | _TYPE_DECLARATION_KINDS
 
 _EVENT_KINDS: frozenset[str] = frozenset({"event"})
 
@@ -450,17 +476,24 @@ def _get_enclosing_contract(node: "tree_sitter.Node", source: bytes) -> Optional
     return None  # pragma: no cover - defensive
 
 
-def _get_enclosing_struct(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up to the nearest enclosing struct name (owner of a struct member)."""
+def _member_owner(node: "tree_sitter.Node", source: bytes, declaration: str) -> str:
+    """The scope chain a struct member or an enum value is named under.
+
+    ``Contract.Struct`` (``Contract.Enum``) inside a contract, interface or
+    library; ``Struct`` at file level. ``declaration`` is the grammar node
+    that owns the member (``struct_declaration`` / ``enum_declaration``).
+    """
     current = node.parent
-    while current is not None:
-        if current.type == "struct_declaration":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node is not None:
-                return node_text(name_node, source)
-            return None  # pragma: no cover - a struct declaration always names
+    while current is not None and current.type != declaration:
         current = current.parent
-    return None  # pragma: no cover - a struct_member is always under a struct
+    name_node = (
+        find_child_by_type(current, "identifier") if current is not None else None
+    )
+    if name_node is None:  # pragma: no cover - a member is under a named declaration
+        return ""
+    owner = node_text(name_node, source)
+    contract = _get_enclosing_contract(node, source)
+    return f"{contract}.{owner}" if contract else owner
 
 
 def _base_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -733,6 +766,14 @@ def _extract_symbols_from_tree(
             callable_stable_id = scoped_stable_id(
                 kind=kind, lang="solidity", path=file_path, name=name,
             )
+        elif kind in _TYPE_DECLARATION_KINDS:
+            # A struct / enum declared in two contracts of one file is two
+            # identities: the contract is the scope (INV-fabih). At file level
+            # this is the backstop's own table value.
+            callable_stable_id = scoped_table_stable_id(
+                kind=kind, lang="solidity", path=file_path, name=name,
+                scope=(prefix,) if prefix else (),
+            )
         elif kind in _CALLABLE_STABLE_ID_KINDS:
             # _extract_solidity_signature always returns a "(...)" string, so
             # the fallback is a real signature, never empty.
@@ -803,12 +844,12 @@ def _extract_symbols_from_tree(
         vtype: Optional[str],
         modifiers: list[str],
         is_exported: bool,
-        hashed_name: Optional[str] = None,
     ) -> None:
         """Append a field/variable Symbol (WI-jusus).
 
-        ``hashed_name`` is the qualified name a field hashes when it is not
-        ``full_name`` (a struct member's: the contract too, INV-fabih).
+        A field hashes ``full_name``, its whole scope chain: ``Token.owner``
+        for a state variable, ``Token.Info.owner`` for a member of a struct
+        ``Info`` declared in ``Token`` (INV-fabih).
 
         Deliberately NOT registered in ``symbol_by_name`` (nor, via
         ``SolidityAnalyzer.register_symbol``, in the global registry): a state
@@ -823,7 +864,7 @@ def _extract_symbols_from_tree(
             stable_id = make_typed_stable_id(
                 "field", vtype or "",
                 visibility_from_modifiers(modifiers),
-                name=name, qualified_name=hashed_name or full_name,
+                name=name, qualified_name=full_name,
                 file_stable_id=file_stable_id,
             )
         else:
@@ -932,23 +973,41 @@ def _extract_symbols_from_tree(
                 if vtype is not None:
                     scopes.var_types.setdefault(owner, {})[name] = vtype
 
-        # Struct member -> field (owner = the struct type).
+        # Struct / enum declaration. Named like every contract member
+        # (``Vault.Deposit``; bare at file level), so its members below are
+        # named one level deeper and the containment linker places them in it.
+        elif node.type in ("struct_declaration", "enum_declaration"):
+            name_node = find_child_by_type(node, "identifier")
+            if name_node is not None:
+                add_symbol(
+                    node_text(name_node, source),
+                    "struct" if node.type == "struct_declaration" else "enum",
+                    node,
+                    _get_enclosing_contract(node, source) or "",
+                )
+
+        # Struct member -> field, named under its contract and struct
+        # (``Vault.Deposit.owner``). The whole chain is hashed, so
+        # ``struct Inner`` in contracts ``A`` and ``B`` yields two
+        # ``Inner.v`` identities and deleting ``A`` does not move ``B``'s
+        # field id (INV-fabih).
         elif node.type == "struct_member":
             name_node = find_child_by_type(node, "identifier")
             if name_node is not None:
                 name = node_text(name_node, source)
-                owner = _get_enclosing_struct(node, source) or ""
-                vtype = _solidity_value_type(node, source)
-                full_name = f"{owner}.{name}" if owner else name
-                # A struct declared in a contract hashes the contract too, so
-                # ``struct Inner`` in contracts ``A`` and ``B`` yields two
-                # ``Inner.v`` identities and deleting ``A`` does not move
-                # ``B``'s field id (INV-fabih).
-                contract = _get_enclosing_contract(node, source)
+                owner = _member_owner(node, source, "struct_declaration")
                 add_value_symbol(
-                    node, name, "field", full_name, vtype, [], True,
-                    hashed_name=f"{contract}.{full_name}" if contract else None,
+                    node, name, "field", f"{owner}.{name}",
+                    _solidity_value_type(node, source), [], True,
                 )
+
+        # Enum value -> field of its enum (``Vault.Mode.Fast``), as C++
+        # emits an enumerator: without it the enum is a container holding
+        # nothing. A value carries no declared type.
+        elif node.type == "enum_value":
+            name = node_text(node, source)
+            owner = _member_owner(node, source, "enum_declaration")
+            add_value_symbol(node, name, "field", f"{owner}.{name}", None, [], True)
 
         # File-level constant -> variable (contract-level constants parse as
         # state_variable_declaration and are handled above as fields).
@@ -1061,8 +1120,9 @@ class _MemberResolver:
                 return self._typed_call(own, declared, member)
             named = self._index.container(word)
             if named is not None:
-                # ``Base.f()`` / ``Lib.f()``: the call site names the scope.
-                scoped = self._index.member(named, member, _FUNCTION_DECLARATION_KINDS)
+                # ``Base.f()`` / ``Lib.f()`` / ``Lib.Entry(...)``: the call
+                # site names the scope.
+                scoped = self._index.member(named, member, _QUALIFIED_CALL_KINDS)
                 if scoped is None:
                     return None
                 return _Bound(scoped[0], "ast_call_direct", meta={"receiver": "qualified"})
