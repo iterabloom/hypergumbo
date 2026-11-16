@@ -2883,6 +2883,36 @@ def normalize_signature_go(
     a tuple: ``(int, error)``.
 
     Output format: ``(Type,Type)ReturnType``
+
+    Deliberate rewrites (kept exactly; they are what the hash means by "the
+    same interface"): a parameter's name is dropped; ONE leading ``*`` is
+    stripped from a parameter type and from a single result type (``*T``
+    and ``T`` hash alike), and every leading ``*`` from a tuple result
+    element; a package qualifier at the head of a type is stripped
+    (``*http.Request`` -> ``Request``, ``pkg.List[int]`` -> ``List[int]``)
+    by :func:`strip_fqn_prefix`, which leaves a qualifier inside a type
+    alone (``[]pkg.T``). Historical rewrites, kept because changing them
+    would move identities that lose nothing: in a grouped ``a, b int`` the
+    first name is hashed as written (``(a,int)``); a tuple result element
+    keeps its name (``(n int,err error)``) unless a qualifier was cut, when
+    the name goes with it (``r *http.Response`` -> ``Response``); a tuple
+    result is split by :func:`split_params_top_level`, which does not see
+    braces.
+
+    What was lost by accident, and is now written: a parameter's type was
+    its LAST whitespace token, so ``chan int``, ``<-chan int``, ``chan<-
+    int`` and ``int`` hashed alike, ``func(int) error`` hashed as
+    ``error``, ``map[string] int`` as ``int``, ``pkg.List[int, string]`` as
+    ``string]``, and ``struct{ a int }`` / ``interface{ A() }`` as ``}``;
+    and ``strip_fqn_prefix`` cuts at the last dot of a type with no ``[``,
+    so ``chan pkg.T`` hashed as ``T`` and ``func(x pkg.A) error`` as ``A)
+    error``, in a result as well as a parameter. A variadic ``...T`` (which
+    the analyzer used to drop) is ``...`` followed by ``T`` normalized as a
+    parameter type. A type whose old text lost nothing hashes as before, so
+    only declarations that had a hole move: :func:`_go_param_type`,
+    :func:`_go_result_type` and :func:`_go_tuple_result_element` each
+    compute the old text and keep it when :func:`_go_fqn_cut_is_deliberate`
+    says the only cut was a qualifier.
     """
     if not signature:
         return None
@@ -2897,47 +2927,140 @@ def normalize_signature_go(
     # Return type in Go — could be "(Type, Type)" or "Type"
     return_str = rest.strip()
 
-    # Parse params — Go format: "name Type" where Type is the last token
-    raw_params = split_params_top_level(params_str)
-    types: list[str] = []
-    for p in raw_params:
-        p = p.strip()
-        if not p:
-            continue
-        # Strip pointer: "*Type" → "Type"
-        parts = p.split()
-        if len(parts) >= 2:
-            # Last token is the type
-            raw_type = parts[-1]
-            if raw_type.startswith("*"):
-                raw_type = raw_type[1:]
-            types.append(_normalize_type(raw_type, type_params))
-        else:
-            # Single token — might be a type with no name
-            raw_type = parts[0]
-            if raw_type.startswith("*"):
-                raw_type = raw_type[1:]
-            types.append(_normalize_type(raw_type, type_params))
-
+    types = [
+        _go_param_type(p, type_params)
+        for p in _go_split_top_level(params_str)
+        if p.strip()
+    ]
     norm_params = ",".join(types)
 
     if return_str:
-        # Normalize return type (strip pointer prefixes, FQN)
         ret = return_str
         if ret.startswith("(") and ret.endswith(")"):
             # Tuple return: "(int, error)" → normalize each
-            inner = ret[1:-1]
-            ret_parts = split_params_top_level(inner)
             norm_ret = "(" + ",".join(
-                _normalize_type(r.strip().lstrip("*"), type_params)
-                for r in ret_parts
+                _go_tuple_result_element(r, type_params)
+                for r in split_params_top_level(ret[1:-1])
             ) + ")"
             return f"({norm_params}){norm_ret}"
-        if ret.startswith("*"):
-            ret = ret[1:]
-        norm_return = _normalize_type(ret, type_params)
-        return f"({norm_params}){norm_return}"
+        return f"({norm_params}){_go_result_type(ret, type_params)}"
     return f"({norm_params})"
+
+
+#: Keywords that open a Go type: a parameter part starting with one has no name.
+_GO_TYPE_KEYWORDS = frozenset({"chan", "func", "map", "struct", "interface"})
+_GO_IDENT = r"[^\W\d]\w*"
+#: A type whose head is a package-qualified name: ``pkg.T``, ``pkg.List[int]``.
+_GO_QUALIFIED_HEAD_RE = _re.compile(
+    rf"{_GO_IDENT}(?:\.{_GO_IDENT})+(?:\[.*\])?", _re.DOTALL)
+#: What a qualifier cut may remove from a parameter or single result type.
+_GO_QUALIFIER_CUT_RE = _re.compile(rf"(?:{_GO_IDENT}\.)+")
+#: ... and from a tuple result element: a name, pointer stars, a qualifier.
+_GO_ELEMENT_CUT_RE = _re.compile(
+    rf"(?:(?P<name>{_GO_IDENT})\s+)?\**(?:{_GO_IDENT}\.)+")
+#: What a deliberate cut leaves: a bare type name, with type arguments.
+_GO_CUT_REST_RE = _re.compile(rf"{_GO_IDENT}(?:\[.*\])?", _re.DOTALL)
+
+
+def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
+    """Whether ``strip_fqn_prefix(text)`` loses only what Go means to lose.
+
+    True when it changes nothing, or when it removes a package qualifier
+    (for a tuple result ``element``, also a name and pointer stars) and
+    leaves a bare type name. False when the cut is through a type:
+    ``chan pkg.T`` -> ``T``, ``func(pkg.T)`` -> ``T)``.
+    """
+    out = strip_fqn_prefix(text)
+    if out == text:
+        return True
+    cut = text[: len(text) - len(out)]
+    pattern = _GO_ELEMENT_CUT_RE if element else _GO_QUALIFIER_CUT_RE
+    match = pattern.fullmatch(cut)
+    if match is None or not _GO_CUT_REST_RE.fullmatch(out):
+        return False
+    return match.groupdict().get("name") not in _GO_TYPE_KEYWORDS
+
+
+def _go_strip_one_star(text: str) -> str:
+    return text[1:] if text.startswith("*") else text
+
+
+def _go_type(text: str, type_params: list[str] | None) -> str:
+    """A Go type written whole, with the deliberate rewrites of a parameter.
+
+    Each run of whitespace becomes one space, one leading ``*`` is stripped,
+    a package-qualified head is stripped to its name, and a variadic
+    ``...T`` is ``...`` followed by ``T`` written the same way.
+    """
+    t = " ".join(text.split())
+    if t.startswith("..."):
+        return "..." + _go_type(t[3:], type_params)
+    t = _go_strip_one_star(t)
+    if _GO_QUALIFIED_HEAD_RE.fullmatch(t):
+        t = strip_fqn_prefix(t)
+    return normalize_generic_params(t, type_params) if type_params else t
+
+
+def _go_param_type(part: str, type_params: list[str] | None) -> str:
+    """The hashed type of one parameter part (``name Type`` or ``Type``)."""
+    part = part.strip()
+    head = part.split(None, 1)
+    if len(head) == 2 and head[0].isidentifier() and head[0] not in _GO_TYPE_KEYWORDS:
+        typ = head[1]
+    else:
+        typ = part
+    # The old text: the last whitespace token, one "*" off, qualifier cut.
+    old = _go_strip_one_star(part.split()[-1])
+    if len(typ.split()) == 1 and _go_fqn_cut_is_deliberate(old):
+        return _normalize_type(old, type_params)
+    return _go_type(typ, type_params)
+
+
+def _go_result_type(ret: str, type_params: list[str] | None) -> str:
+    """The hashed text of a single (unparenthesized) result type."""
+    old = _go_strip_one_star(ret)
+    if _go_fqn_cut_is_deliberate(old):
+        return _normalize_type(old, type_params)
+    return _go_type(ret, type_params)
+
+
+def _go_tuple_result_element(element: str, type_params: list[str] | None) -> str:
+    """The hashed text of one element of a parenthesized result list."""
+    old = element.strip().lstrip("*")
+    if _go_fqn_cut_is_deliberate(old, element=True):
+        return _normalize_type(old, type_params)
+    t = " ".join(old.split())
+    return normalize_generic_params(t, type_params) if type_params else t
+
+
+def _go_split_top_level(params: str) -> list[str]:
+    """Split a Go parameter list at its top-level commas.
+
+    Like :func:`split_params_top_level`, and also not inside ``{...}`` (a
+    ``struct{ a, b int }`` parameter type) or a string literal (a struct
+    tag); ``<`` is not a bracket (in Go it is only the channel arrow, which
+    ``split_params_top_level`` takes for one, so ``(c <-chan int, d int)``
+    was one part). Parts are not stripped and empty parts are kept.
+    """
+    parts: list[str] = []
+    depth = 0
+    quote = ""
+    start = 0
+    for i, ch in enumerate(params):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"`":
+            quote = ch
+        elif ch in "[({":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            parts.append(params[start:i])
+            start = i + 1
+    parts.append(params[start:])
+    return parts
 
 
 def _find_matching_paren(s: str, start: int) -> int:
