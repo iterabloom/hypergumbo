@@ -170,6 +170,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**
 - **BitBake node ids carry the symbol's own kind and lines**, so two assignments to one variable no longer share an id.
+- **Swift initialisers of two same-named function-local types get distinct `stable_id`s.**
 - **A `package.json` `exports` entry's node id names its own kind.**
 - **File-level edges in nine smaller-language analyzers join real file nodes.**
 - **Unresolved CMake, Starlark, reStructuredText and shader targets keep their own names.**
