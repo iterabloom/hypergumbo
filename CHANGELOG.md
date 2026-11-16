@@ -109,6 +109,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **C# `stable_id` reads `ref`/`out`/`params` modifiers and tuple types.**
 - **Scala `stable_id` reads every type, parameter clause and `using` keyword.**
 - **Go `stable_id` hashes variadic and generic parameters, and type parameters.**
+- **Go `stable_id` hashes every parameter type and type parameter list.**
 - **A JSX `<Route>` marker is named for its route**, so a reference to the component reaches the component.
 - **A Python nested class and its methods carry their enclosing classes in `qualified_name`** (`Outer.Meta`, not `Meta`).
 - **A Python bare name never binds a nested or function-local class**: a route's handler is the view its name can reach.
