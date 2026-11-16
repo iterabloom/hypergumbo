@@ -513,6 +513,19 @@ def _extract_go_signature(
     Returns a signature string like "(x int, y string) error" or "(a, b int) (int, error)"
     for Go functions. None if extraction fails.
 
+    This one text is both the displayed ``Symbol.signature`` and the input
+    of :func:`normalize_go_signature`, whose output is hashed into the
+    typed ``stable_id``. Every parameter is written, whatever its type node:
+    a ``parameter_declaration`` as ``names type`` (or ``type`` when unnamed)
+    with the source text of its ``type`` field, and a
+    ``variadic_parameter_declaration`` as ``name ...type`` (or ``...type``).
+    Before, a type node outside a ten-kind list (a ``generic_type`` such as
+    ``List[int]``, a ``parenthesized_type``) dropped its parameter, and a
+    variadic parameter was dropped always, so ``f(xs ...int)`` and
+    ``f(xs ...string)`` hashed one text. The result is the source text of
+    the ``result`` field. The type parameter list is not part of this text
+    (see :func:`_go_type_parameters_text`).
+
     Args:
         node: A tree-sitter function_declaration or method_declaration node.
         source: Source bytes of the file.
@@ -532,26 +545,26 @@ def _extract_go_signature(
     # Extract parameters from parameter_list
     param_strs: list[str] = []
     for child in params_node.children:
-        if child.type == "parameter_declaration":
-            # Go parameters: can have multiple names sharing a type
-            # e.g., "a, b int" or "x string"
-            names: list[str] = []
-            type_str = ""
-            for param_child in child.children:
-                if param_child.type == "identifier":
-                    names.append(node_text(param_child, source))
-                elif param_child.type in ("type_identifier", "pointer_type",
-                                          "slice_type", "map_type", "array_type",
-                                          "interface_type", "struct_type",
-                                          "function_type", "channel_type",
-                                          "qualified_type"):
-                    type_str = node_text(param_child, source)
-
-            if names and type_str:
-                param_strs.append(f"{', '.join(names)} {type_str}")
-            elif type_str:  # pragma: no cover
-                # Unnamed parameter (rare but valid in Go interfaces)
-                param_strs.append(type_str)
+        if child.type not in (
+            "parameter_declaration", "variadic_parameter_declaration",
+        ):
+            continue
+        # Go parameters: can have multiple names sharing a type
+        # e.g., "a, b int" or "x string"; a variadic one has at most one.
+        names = [
+            node_text(n, source) for n in child.children_by_field_name("name")
+        ]
+        type_node = child.child_by_field_name("type")
+        if type_node is None:
+            continue  # pragma: no cover - the grammar requires a type
+        type_str = node_text(type_node, source)
+        if child.type == "variadic_parameter_declaration":
+            type_str = f"...{type_str}"
+        if names:
+            param_strs.append(f"{', '.join(names)} {type_str}")
+        else:
+            # Unnamed parameter: ``func(int, string)``
+            param_strs.append(type_str)
 
     sig = "(" + ", ".join(param_strs) + ")"
 
@@ -562,6 +575,31 @@ def _extract_go_signature(
         sig += f" {ret_text}"
 
     return sig
+
+
+def _go_type_parameters_text(
+    node: "tree_sitter.Node", source: bytes,
+) -> str:
+    """The type parameter list of a generic Go function, for its hashed text.
+
+    ``func Map[T any, U comparable](...)`` gives ``"[T any, U comparable]"``
+    (the source text with each run of whitespace written as one space); a
+    function with no type parameters gives ``""``. The function-declaration
+    site puts it in front of the normalized signature it hashes into the
+    typed ``stable_id``, so ``f[T any](x T)``, ``f[T comparable](x T)`` and a
+    plain ``f(x T)`` hash three texts. Names and constraints are kept as
+    written: no positional renaming (spec section 6 names it, but no analyzer
+    passes ``type_params``) and no package-prefix stripping. It is not shown
+    in ``Symbol.signature``, which stays ``(params) result``.
+
+    A method's receiver type parameters (``func (s *Stack[T]) Push(v T)``)
+    are not read here: Go has no method type parameters, and the receiver's
+    are declared on the type.
+    """
+    tp = find_child_by_field(node, "type_parameters")
+    if tp is None:
+        return ""
+    return " ".join(node_text(tp, source).split())
 
 
 def _go_parameters(
@@ -1711,10 +1749,13 @@ def _extract_symbols_from_file(
                 signature = _extract_go_signature(node, source)
                 modifiers = _go_visibility_modifiers(func_name)
 
-                # Typed stable_id (spec §6 typed tier)
+                # Typed stable_id (spec §6 typed tier); a generic
+                # function's type parameter list leads the hashed text.
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
-                    "function", norm_sig, visibility_from_modifiers(modifiers),
+                    "function",
+                    _go_type_parameters_text(node, source) + norm_sig,
+                    visibility_from_modifiers(modifiers),
                     name=func_name,
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
                     file_stable_id=file_stable_id,

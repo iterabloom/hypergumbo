@@ -108,6 +108,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`; `stable_id` does not change.
 - **C# `stable_id` reads `ref`/`out`/`params` modifiers and tuple types.**
 - **Scala `stable_id` reads every type, parameter clause and `using` keyword.**
+- **Go `stable_id` hashes variadic and generic parameters, and type parameters.**
 - **A JSX `<Route>` marker is named for its route**, so a reference to the component reaches the component.
 - **A Python nested class and its methods carry their enclosing classes in `qualified_name`** (`Outer.Meta`, not `Meta`).
 - **A Python bare name never binds a nested or function-local class**: a route's handler is the view its name can reach.
