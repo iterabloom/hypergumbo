@@ -62,8 +62,10 @@ WI-kamin, WI-monul. They file as separate analyzer bugs because no document said
 what the field was for, so each mismatch read as a local defect. Two of them
 turned out to be ONE defect in two languages (INV-fofoj's java half IS
 INV-januj), which is the signature of a missing axis rather than of unrelated
-bugs. Over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8% of
-slots are not a single module identity.
+bugs. On a 22-repository cold cohort (2026-11-15), 52.0% of the module slots
+on the 138,506 edges that point at an external stand-in are not a single module
+identity: the ``external`` sentinel 46.5%, a disjunction 5.2% (a cpp/c
+``module-set-`` handle 4.3%, a java comma-joined set 0.8%), ``<unknown>`` 0.3%.
 
 The producer surface says the same thing in a different way: 54 ``ExternalRef``
 construction sites across 22 analyzers when this axis was declared (2026-09-01),
@@ -74,9 +76,9 @@ variously ``path_hint``, ``module_hint``, ``module_name``, ``mod``, ``hint``,
 
 SCOPE: THIS DECLARES, IT DOES NOT MIGRATE. Nothing here changes what any
 analyzer emits. ``external_symbol`` node ids embed the module slot
-(``rust:external:0-0:File::open``), so normalising the slot's CONTENT changes
-emitted ids and needs a stable_id scheme bump, which WI-talos DECISION 3 gates
-behind v9/v10 and two releases. That is ADR-0024 step 7 and is WI-marok.
+(``rust:external:0-0:File::open``), so changing what a producer writes into
+the slot changes emitted ids; that is the producer's change (ADR-0024 step 7),
+never this module's.
 """
 
 from __future__ import annotations
@@ -359,7 +361,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=7927,
+                line=7918,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
