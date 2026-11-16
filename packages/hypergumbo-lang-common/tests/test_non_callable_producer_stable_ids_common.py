@@ -29,7 +29,7 @@ from hypergumbo_core.overload_arity import (
 )
 from hypergumbo_lang_common.erlang import analyze_erlang
 from hypergumbo_lang_common.graphql import analyze_graphql_files
-from hypergumbo_lang_common.handlebars import _scopes_at, analyze_handlebars
+from hypergumbo_lang_common.handlebars import _walk, analyze_handlebars
 from hypergumbo_lang_common.hcl import analyze_hcl
 from hypergumbo_lang_common.julia import analyze_julia
 from hypergumbo_lang_common.just import analyze_just
@@ -181,10 +181,17 @@ def test_handlebars_tags_are_scoped_by_open_blocks(tmp_path: Path) -> None:
 
 
 def test_handlebars_scope_tracking_pops_to_the_matching_block() -> None:
-    stack: list[tuple[str, str]] = [("each", "each rows")]
-    chains = _scopes_at("{{#if b}}{{> p}}{{/each}}{{> q}}{{/nothing}}", stack)
-    assert chains == {0: ("each rows", "if b"), 9: ("each rows", "if b"), 25: ()}
-    assert stack == []
+    """``{{/each}}`` closes the ``if`` opened inside it too, and a closer that
+    matches no open block (``{{/nothing}}``) is ignored."""
+    found = [(f.kind, f.name, f.scope) for f in _walk(
+        "{{#each rows}}{{#if b}}{{> p}}{{/each}}{{> q}}{{/nothing}}{{> r}}")]
+    assert found == [
+        ("block", "each", ("each rows",)),
+        ("block", "if", ("each rows", "if b")),
+        ("partial", "p", ("each rows", "if b")),
+        ("partial", "q", ()),
+        ("partial", "r", ()),
+    ]
 
 
 def test_erlang_records_take_producer_ids(tmp_path: Path) -> None:
