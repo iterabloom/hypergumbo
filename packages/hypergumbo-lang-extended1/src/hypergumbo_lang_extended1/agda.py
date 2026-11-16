@@ -80,11 +80,12 @@ the first symbol of any name, so ``run`` in ``module B`` was dropped when
 (A forward ``data D : Set`` is a ``data_signature`` node, not emitted, so the
 later ``data D where`` is the one data symbol.) Two declarations with one
 chain (a ``go`` in the ``where`` block of each of two clauses of ``run``) are
-a same-scope tie the per-file occurrence pass orders. Known grammar gap: in
-every probe tried (two top-level functions, or two clauses of one function,
-each with a ``where`` block), the bundled tree-sitter-agda nested only the
-first block; the second one's functions come out at top level and are
-emitted without their owner in the chain. Names
+a same-scope tie the per-file occurrence pass orders. Every ``where`` block
+nests under the clause that owns it, later blocks included (two top-level
+functions, two clauses of one function, a block after a one-entry layout
+block); nested ``module`` / ``record`` / ``data`` blocks keep the chain of the
+module around them and of the code after them (WI-molon). Under the 1.3.3
+wheel both failed after a layout-scanner error (see "Grammar"). Names
 carry the chain where code outside the block uses it: ``A.run``, ``Pair.fst``
 (a field), ``A.Tree`` (a data type in a nested module). A constructor is in
 scope in its module under its bare name, so it is named ``zero`` (``A.zero``
