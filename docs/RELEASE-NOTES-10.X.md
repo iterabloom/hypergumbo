@@ -75,7 +75,7 @@ exit codes and several JSON formats differ from 9.x.
 
 ---
 
-## Unreleased
+## 10.0.0 — 2026-11-16
 
 > `SCHEMA_VERSION` 0.20.15 → 0.21.0, `stable_id_scheme` v9 → v15,
 > `shape_id_scheme` v3 → v4, `repo_fingerprint_scheme` v2 → v3, the

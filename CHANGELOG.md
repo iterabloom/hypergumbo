@@ -3,14 +3,16 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v9.2.0
-- Released **schema** is at: v0.20.15
+- Released **tool** is at: v10.0.0
+- Released **schema** is at: v0.21.0
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 > **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-10.X.md](docs/RELEASE-NOTES-10.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [9.x](docs/RELEASE-NOTES-9.X.md), [8.x](docs/RELEASE-NOTES-8.X.md), [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+## [10.0.0] - 2026-11-16
 
 ### Summary
 
@@ -2953,7 +2955,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
-| Unreleased | — | **Breaking:** `stable_id_scheme` v15 with labelled identity values, `verify-claims` inconclusive exits 4 (bad input 2), schema 0.21.0 (`module_sets`), git-ignored untracked files not analysed. Imports and calls reach your own code; every command agrees on test code |
+| 10.0.0 | 2026-11-16 | **Breaking:** `stable_id_scheme` v15 with labelled identity values, `verify-claims` inconclusive exits 4 (bad input 2), schema 0.21.0 (`module_sets`), git-ignored untracked files not analysed. Imports and calls reach your own code; every command agrees on test code |
 | 9.2.0 | 2026-10-20 | `compact` leaves out test code by default; fewer false taint all-clears (same-line sinks, C escapes, transitive headers); calls resolve more precisely in eight languages; base classes bind only to the in-repo class an import names; each `.php` file analysed as PHP or Hack, not both |
 | 9.1.0 | 2026-10-16 | Summaries count your own code; analysed vendored code disclosed; git submodules skipped by default; edge confidence from evidence bands (`confidence_model` v2.2); Structure tree LOC column; surveys find `requirements/*.txt` and `conf/*.routes` |
 | 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
@@ -2990,7 +2992,8 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.2.0...HEAD
+[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v10.0.0...HEAD
+[10.0.0]: https://github.com/iterabloom/hypergumbo/compare/v9.2.0...v10.0.0
 [9.2.0]: https://github.com/iterabloom/hypergumbo/compare/v9.1.0...v9.2.0
 [9.1.0]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...v9.1.0
 [9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v8.1.0...v9.0.0
