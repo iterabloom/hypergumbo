@@ -568,7 +568,7 @@ def _process_exports(
             start_line = exports_node.start_point[0] + 1
             end_line = exports_node.end_point[0] + 1
             symbol_id = _make_symbol_id(
-                rel_path, start_line, end_line, entry_name, "export_entry",
+                rel_path, start_line, end_line, entry_name, "export",
             )
             sym = Symbol(
                 id=symbol_id,
@@ -629,7 +629,7 @@ def _process_exports(
         start_line = child.start_point[0] + 1
         end_line = child.end_point[0] + 1
         symbol_id = _make_symbol_id(
-            rel_path, start_line, end_line, subpath, "export_entry",
+            rel_path, start_line, end_line, subpath, "export",
         )
         sym = Symbol(
             id=symbol_id,
