@@ -28,7 +28,9 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols, and register every symbol
   except the field/variable data anchors in the global registry (WI-jusus;
   they stay in the output symbols)
-- Pass 2: Detect calls, imports, inheritance, event emits, and function overrides, resolving against the global symbol registry
+- Pass 2: Detect calls, imports, inheritance, event emits, and function
+  overrides. Calls, emits and base contracts are resolved by scope (below);
+  overrides against the registry's ``Contract.member`` keys.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Solidity-specific
@@ -41,6 +43,70 @@ Solidity id differ between two checkouts of the same repository. A
 ``library``, which is no backstop table kind, mints
 ``overload_arity.scoped_stable_id`` rather than falling to the floor key.
 
+Name Resolution
+---------------
+A name is resolved in the scope its site names, never by short name across
+the file. The per-file table ``symbol_by_name`` keeps one symbol per short
+name (the last declared), so with two contracts in one file that each declare
+``helper`` and ``Transfer``, it answers every ``helper()`` and every
+``emit Transfer(...)`` with the later contract's member.
+
+Pass 1 therefore also records, per file, which contract declares which
+member, each contract's ``is`` list and each state variable's declared type
+(``_FileScopes``). Pass 2 reads all files' tables through ``_ScopeIndex`` and
+``_MemberResolver``:
+
+- ``f()`` and ``emit E(...)``: the enclosing contract's own member, then a
+  member it inherits, then a file-level name (a free function, a contract
+  type used as a conversion, a file-level event) of this file or another.
+  The global registry keys a member as ``Contract.member``, so the file-level
+  step cannot reach another contract's member. The registry's suffix match is
+  not used: it would.
+- ``this.f()``: the enclosing contract's scope. ``super.f()``: the same scope
+  searched from the first base on, so an override that calls ``super`` joins
+  the function it overrides and not itself.
+- ``Base.f()``, ``Lib.f()``, ``emit IThing.E(...)``: the named contract's
+  scope.
+- ``token.f()`` where ``token`` is a parameter, a local or a state variable
+  (own or inherited), and ``IERC20(x).f()``: the scope of the declared type.
+  Solidity declares every variable with its type, so this reads the
+  declaration. A type that is no contract in the tree (``address``, a struct,
+  an interface from an unanalysed dependency) has no member to bind; the
+  caller's own same-named function is not the callee.
+- A receiver of unknown type (a call result, an index, a chain): the member
+  is bound, at confidence 0.60, only when exactly one contract in the file
+  declares it.
+- ``using L for T`` attaches ``L``'s functions to a receiver wherever the
+  receiver's own type gave no answer. A library function is a member of the
+  type of its first parameter, so with the receiver's type known, the
+  functions whose first parameter has it are preferred. If two attached
+  libraries still declare the member, that is a tie and stays unresolved.
+
+The receiver is read through one quirk of the grammar: tree-sitter-solidity
+binds a member access looser than an operator before it, so
+``ok || token.f(x)`` arrives as ``(ok || token).f(x)`` (``_receiver_of``).
+
+A scope is searched in Solidity's linearisation order: C3 over the ``is``
+list read right to left, so in ``contract C is X, Y`` a member of ``Y`` hides
+one of ``X``. A base that is not in the tree contributes nothing, which
+leaves a call to its members unresolved.
+
+The walk is done here and not by the shared ``inherited_calls`` linker
+because that linker indexes class-like kinds and ``calls`` edges only: it
+does not know ``contract`` / ``library``, an emit is a ``references`` edge,
+and the choice between an inherited member and a file-level function has to
+be made at the call site.
+An inherited call carries that linker's evidence type and
+confidence (``ast_call_inherited``, 0.90), so the finding reads the same in
+every language.
+
+Limits. Overloads are not told apart by argument (the last one declared in
+the contract found is bound). Visibility is not checked (a ``private`` base
+member is found). A contract name declared in two files resolves to this
+file's, else to whichever the global registry holds. A modifier invocation
+and ``revert Error(...)`` emit no edge; ``new C(...)`` emits an unresolved
+one.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -50,8 +116,9 @@ Why This Design
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -116,6 +183,247 @@ _BODY_BEARING_CALLABLE_KINDS: frozenset[str] = (
     _FUNCTION_DECLARATION_KINDS | frozenset({"constructor", "modifier"})
 )
 
+# The three declarations that open a member scope.
+_CONTAINER_KINDS: frozenset[str] = frozenset({"contract", "interface", "library"})
+
+# What a call expression can name inside a contract scope. ``event`` is here
+# for Solidity before 0.4.21, which raised an event by calling it.
+_CALL_TARGET_KINDS: frozenset[str] = _FUNCTION_DECLARATION_KINDS | frozenset({"event"})
+
+# What a bare call can name at file level: a free function, or a contract
+# type (``IERC20(token)`` is a conversion written as a call).
+_FILE_LEVEL_CALL_KINDS: frozenset[str] = frozenset({"function"}) | _CONTAINER_KINDS
+
+_EVENT_KINDS: frozenset[str] = frozenset({"event"})
+
+# Receivers that are part of the language and never a contract instance.
+_BUILTIN_NAMESPACES: frozenset[str] = frozenset({"abi", "block", "msg", "tx"})
+
+# ``address(x)`` / ``uint(x)`` / ``payable(x)``: the receiver is a value of
+# an elementary type, so only a library attached with ``using`` has members.
+_ELEMENTARY_CONVERSION_NODES: frozenset[str] = frozenset(
+    {"type_cast_expression", "payable_conversion_expression"}
+)
+
+_CALLABLE_NODE_TYPES: frozenset[str] = frozenset(
+    {"function_definition", "constructor_definition", "modifier_definition"}
+)
+
+# Operators the grammar binds tighter than the member access after them
+# (see ``_receiver_of``).
+_OPERATOR_NODES: frozenset[str] = frozenset({
+    "binary_expression", "unary_expression", "update_expression",
+    "ternary_expression",
+})
+
+# Spellings of one elementary type, for comparing two declared types.
+_TYPE_ALIASES: dict[str, str] = {
+    "uint": "uint256", "int": "int256", "address payable": "address",
+}
+
+# Confidence of a member call bound without knowing the receiver's type.
+_RECEIVER_BLIND_CONFIDENCE = 0.60
+
+# Confidence of a call bound to a member a base contract declares. The value
+# the shared ``inherited_calls`` linker gives the same finding in other
+# languages; the walk here follows the language's own linearisation, so the
+# edge deserves no less.
+_INHERITED_CALL_CONFIDENCE = 0.90
+
+# A contract is identified by (repo-relative path, name): two files may each
+# declare a ``Token``.
+_ContractKey = tuple[str, str]
+
+
+@dataclass
+class _FileScopes:
+    """The declarations of one file that name lookup reads, keyed by owner.
+
+    The owner is the enclosing contract / interface / library name; the owner
+    ``""`` is the file itself (free functions, file-level events).
+
+    ``members`` keeps every declaration of a name in source order, so
+    overloads and a same-named event and function stay apart; a lookup picks
+    by kind. ``var_types`` holds the declared type text of state variables,
+    which is what types a receiver such as ``token.transfer(...)``.
+    ``first_parameter_types`` maps a function's symbol id to the type of its
+    first parameter: for a library function attached with ``using``, that is
+    the receiver type it becomes a member of.
+    """
+
+    containers: dict[str, Symbol] = field(default_factory=dict)
+    bases: dict[str, list[str]] = field(default_factory=dict)
+    members: dict[str, dict[str, list[Symbol]]] = field(default_factory=dict)
+    var_types: dict[str, dict[str, str]] = field(default_factory=dict)
+    first_parameter_types: dict[str, str] = field(default_factory=dict)
+
+
+def _type_key(type_text: Optional[str]) -> Optional[str]:
+    """A declared type reduced to what two spellings of it share.
+
+    ``Memory.Slice`` written outside the library and ``Slice`` written inside
+    it are one type; so are ``uint`` and ``uint256``.
+    """
+    if type_text is None:
+        return None
+    key = type_text.rsplit(".", 1)[-1]
+    return _TYPE_ALIASES.get(key, key)
+
+
+def _c3_merge(sequences: list[list[_ContractKey]]) -> list[_ContractKey]:
+    """C3 merge. Takes a head that is in no other sequence's tail, repeatedly.
+
+    A hierarchy the compiler would reject has no such head; the first head is
+    taken instead, so the walk stays total.
+    """
+    seqs = [list(s) for s in sequences if s]
+    merged: list[_ContractKey] = []
+    while seqs:
+        head = next(
+            (s[0] for s in seqs if not any(s[0] in other[1:] for other in seqs)),
+            seqs[0][0],
+        )
+        merged.append(head)
+        seqs = [rest for rest in ([k for k in s if k != head] for s in seqs) if rest]
+    return merged
+
+
+class _ScopeIndex:
+    """Contract scopes across files, as seen from one file.
+
+    Answers the two questions Solidity name lookup needs: which contract a
+    name denotes here (this file first, then the global registry, exactly as
+    the ``inherits`` edge resolves a base), and in what order a contract and
+    its bases are searched.
+    """
+
+    def __init__(
+        self, files: dict[str, _FileScopes], path: str,
+        global_symbols: dict[str, Symbol],
+    ) -> None:
+        self._files = files
+        self._path = path
+        self._global = global_symbols
+        self._linearized: dict[_ContractKey, list[_ContractKey]] = {}
+        self.here = self.scopes(path)
+
+    def scopes(self, path: str) -> _FileScopes:
+        """The scope tables of ``path``; empty for a file that was not read."""
+        return self._files.get(path) or _FileScopes()
+
+    def container_symbol(self, name: str, from_path: Optional[str] = None) -> Optional[Symbol]:
+        """The contract / interface / library ``name`` denotes in a file."""
+        local = self.scopes(from_path or self._path).containers.get(name)
+        if local is not None:
+            return local
+        found = self._global.get(name)
+        if found is not None and found.kind in _CONTAINER_KINDS:
+            return found
+        return None
+
+    def container(self, name: str, from_path: Optional[str] = None) -> Optional[_ContractKey]:
+        """``container_symbol`` as a key into the scope tables."""
+        symbol = self.container_symbol(name, from_path)
+        return (symbol.path, symbol.name) if symbol is not None else None
+
+    def linearization(self, key: _ContractKey) -> list[_ContractKey]:
+        """``key`` followed by its bases in Solidity's search order.
+
+        Solidity linearises with C3 over the ``is`` list read right to left:
+        in ``contract C is X, Y`` a member of ``Y`` is found before one of
+        ``X``. A base that is not in the tree contributes nothing.
+        """
+        return self._linearize(key, frozenset())[0]
+
+    def _linearize(
+        self, key: _ContractKey, open_keys: frozenset[_ContractKey],
+    ) -> tuple[list[_ContractKey], bool]:
+        """Linearise ``key``; the flag is False when a cycle cut a base off.
+
+        Only a complete answer is remembered: one computed inside a cycle
+        lacks the base that was still open.
+        """
+        known = self._linearized.get(key)
+        if known is not None:
+            return known, True
+        path, name = key
+        open_here = open_keys | {key}
+        complete = True
+        bases: list[_ContractKey] = []
+        for base_name in self.scopes(path).bases.get(name, ()):
+            base = self.container(base_name, path)
+            if base is None or base in bases:
+                continue
+            if base in open_here:
+                complete = False
+                continue
+            bases.append(base)
+        bases.reverse()
+        sequences: list[list[_ContractKey]] = []
+        for base in bases:
+            base_order, base_complete = self._linearize(base, open_here)
+            complete = complete and base_complete
+            sequences.append(base_order)
+        order = [key] + _c3_merge([*sequences, bases])
+        if complete:
+            self._linearized[key] = order
+        return order, complete
+
+    def member(
+        self, start: _ContractKey, name: str, kinds: frozenset[str],
+        *, skip_own: bool = False,
+    ) -> Optional[tuple[Symbol, bool]]:
+        """The declaration ``name`` denotes in ``start``'s scope.
+
+        Returns it with whether it is inherited. ``skip_own`` is ``super``:
+        the search starts after ``start`` itself. Among overloads in one
+        contract the last declared is returned; arguments are not matched.
+        """
+        order = self.linearization(start)
+        for path, owner in order[1:] if skip_own else order:
+            declared = self.scopes(path).members.get(owner, {}).get(name, ())
+            for symbol in reversed(declared):
+                if symbol.kind in kinds:
+                    return symbol, (path, owner) != start
+        return None
+
+    def declared(
+        self, owner: _ContractKey, name: str, kinds: frozenset[str],
+    ) -> list[Symbol]:
+        """Every declaration of ``name`` in one contract itself, overloads included."""
+        declared = self.scopes(owner[0]).members.get(owner[1], {}).get(name, ())
+        return [symbol for symbol in declared if symbol.kind in kinds]
+
+    def first_parameter_type(self, function: Symbol) -> Optional[str]:
+        """The declared type of a function's first parameter, if it has one."""
+        return self.scopes(function.path).first_parameter_types.get(function.id)
+
+    def state_variable_type(self, start: _ContractKey, name: str) -> Optional[str]:
+        """The declared type of a state variable ``start`` declares or inherits."""
+        for path, owner in self.linearization(start):
+            declared = self.scopes(path).var_types.get(owner, {}).get(name)
+            if declared is not None:
+                return declared
+        return None
+
+    def file_level(self, name: str, kinds: frozenset[str]) -> Optional[tuple[Symbol, bool]]:
+        """A file-level declaration: this file's, else another file's.
+
+        Returns it with whether it is in this file. The global registry keys
+        a member as ``Contract.member``, so a bare key is a file-level name:
+        a member of another contract cannot be reached from here.
+        """
+        for symbol in reversed(self.here.members.get("", {}).get(name, ())):
+            if symbol.kind in kinds:
+                return symbol, True
+        local = self.here.containers.get(name)
+        if local is not None and local.kind in kinds:
+            return local, True
+        found = self._global.get(name)
+        if found is not None and found.kind in kinds:
+            return found, False
+        return None
+
 
 def find_solidity_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Solidity files in the repository.
@@ -153,6 +461,83 @@ def _get_enclosing_struct(node: "tree_sitter.Node", source: bytes) -> Optional[s
             return None  # pragma: no cover - a struct declaration always names
         current = current.parent
     return None  # pragma: no cover - a struct_member is always under a struct
+
+
+def _base_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names in a contract's ``is`` list, in source order."""
+    names: list[str] = []
+    for child in node.children:
+        if child.type == "inheritance_specifier":
+            parent_type_node = find_child_by_type(child, "user_defined_type")
+            if parent_type_node:
+                names.append(node_text(parent_type_node, source))
+    return names
+
+
+def _strip_wrappers(node: "tree_sitter.Node") -> "tree_sitter.Node":
+    """The expression a callee or receiver really is.
+
+    Unwraps the grammar's ``expression`` node, parentheses, and call options:
+    ``target.pay{value: 1}()`` parses its callee as a ``struct_expression``
+    whose ``type`` is ``target.pay``.
+    """
+    while True:
+        inner: Optional["tree_sitter.Node"] = None
+        if node.type in ("expression", "parenthesized_expression"):
+            if node.named_child_count == 1:
+                inner = node.named_children[0]
+        elif node.type == "struct_expression":
+            inner = node.child_by_field_name("type")
+        if inner is None:
+            return node
+        node = inner
+
+
+def _receiver_of(node: "tree_sitter.Node") -> "tree_sitter.Node":
+    """The receiver of a member access, as the language reads it.
+
+    tree-sitter-solidity binds a member access looser than an operator before
+    it: ``ok || token.f(x)`` parses as ``(ok || token).f(x)``, and
+    ``!token.f(x)`` as ``(!token).f(x)``. The receiver is the operator's last
+    operand. An operator the source put in parentheses is left alone: there
+    the receiver is the whole expression.
+    """
+    while True:
+        while node.type == "expression" and node.named_child_count == 1:
+            node = node.named_children[0]
+        if node.type not in _OPERATOR_NODES:
+            return _strip_wrappers(node)
+        node = node.named_children[-1]
+
+
+def _local_variable_types(
+    site: "tree_sitter.Node", source: bytes,
+    cache: dict[int, dict[str, str]],
+) -> dict[str, str]:
+    """Declared type text of the parameters and locals around a call site.
+
+    Solidity declares every variable with its type, so the receiver of
+    ``token.transfer(...)`` is typed by reading the declaration. One table
+    per callable; a name declared twice keeps its first declaration.
+    """
+    current = site.parent
+    while current is not None and current.type not in _CALLABLE_NODE_TYPES:
+        current = current.parent
+    if current is None:
+        return {}  # pragma: no cover - an attributed call site is inside a callable
+    known = cache.get(current.start_byte)
+    if known is None:
+        known = {}
+        for node in iter_tree(current):
+            if node.type in ("parameter", "variable_declaration"):
+                name_node = _find_child_by_field(node, "name")
+                type_node = _find_child_by_field(node, "type")
+                if name_node is not None and type_node is not None:
+                    known.setdefault(
+                        node_text(name_node, source), node_text(type_node, source),
+                    )
+        cache[current.start_byte] = known
+    return known
 
 
 def _solidity_value_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -303,8 +688,15 @@ def _extract_visibility_modifiers(node: "tree_sitter.Node", source: bytes) -> li
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree", source: bytes, file_path: str,
     run_id: str, analysis: FileAnalysis,
-) -> None:
-    """Extract symbols from a single Solidity file's parse tree."""
+) -> _FileScopes:
+    """Extract symbols from a single Solidity file's parse tree.
+
+    Returns the file's scope tables (which contract declares which member,
+    its ``is`` list, its state-variable types): Pass 2 resolves a name in the
+    contract that uses it, and a base may live in another file.
+    """
+    scopes = _FileScopes()
+
     def add_symbol(
         name: str,
         kind: str,
@@ -379,6 +771,16 @@ def _extract_symbols_from_tree(
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
         analysis.symbol_by_name[full_name] = symbol
+        if kind in _CONTAINER_KINDS:
+            scopes.containers[name] = symbol
+        else:
+            scopes.members.setdefault(prefix, {}).setdefault(name, []).append(symbol)
+        if kind in _FUNCTION_DECLARATION_KINDS:
+            first_parameter = find_child_by_type(node, "parameter")
+            if first_parameter is not None:
+                type_node = _find_child_by_field(first_parameter, "type")
+                if type_node is not None:
+                    scopes.first_parameter_types[symbol.id] = node_text(type_node, source)
         # Register the defining node so the base-class auto-stamp loop
         # (TreeSitterAnalyzer.analyze) computes shape_id (and any NatSpec doc
         # comment) for this body-bearing symbol. Solidity is a plain
@@ -455,6 +857,7 @@ def _extract_symbols_from_tree(
             if name_node:
                 contract_name = node_text(name_node, source)
                 add_symbol(contract_name, "contract", node)
+                scopes.bases[contract_name] = _base_names(node, source)
 
         # Interface declaration
         elif node.type == "interface_declaration":
@@ -462,6 +865,7 @@ def _extract_symbols_from_tree(
             if name_node:
                 interface_name = node_text(name_node, source)
                 add_symbol(interface_name, "interface", node)
+                scopes.bases[interface_name] = _base_names(node, source)
 
         # Library declaration
         elif node.type == "library_declaration":
@@ -525,6 +929,8 @@ def _extract_symbols_from_tree(
                     node, name, "field", full_name, vtype, modifiers,
                     visibility == "public",
                 )
+                if vtype is not None:
+                    scopes.var_types.setdefault(owner, {})[name] = vtype
 
         # Struct member -> field (owner = the struct type).
         elif node.type == "struct_member":
@@ -555,25 +961,253 @@ def _extract_symbols_from_tree(
                     vtype = _solidity_value_type(node, source)
                     add_value_symbol(node, name, "variable", name, vtype, [], True)
 
+    return scopes
+
+
+@dataclass(frozen=True)
+class _Bound:
+    """A call resolved to a declaration, and how the edge should say so.
+
+    ``confidence=None`` leaves the value to ``Edge.create``, which derives it
+    from the evidence type.
+    """
+
+    symbol: Symbol
+    evidence_type: str
+    confidence: Optional[float] = None
+    meta: Optional[dict[str, Any]] = None
+
+
+def _scope_bound(symbol: Symbol, inherited: bool) -> _Bound:
+    """A call bound in the calling contract's scope: own member or inherited."""
+    if inherited:
+        return _Bound(symbol, "ast_call_inherited", confidence=_INHERITED_CALL_CONFIDENCE)
+    return _Bound(symbol, "ast_call_direct")
+
+
+class _MemberResolver:
+    """Which declaration a name denotes at one site of one file.
+
+    Every answer starts from the scope the site names: the enclosing contract
+    for a bare name, ``this`` and ``super``; the named contract for
+    ``Base.f()``; the receiver's declared type for ``token.f()`` and
+    ``IERC20(x).f()``. A scope is searched own members first, then bases in
+    linearisation order. A bare name then falls back to file-level names. A
+    member of a contract the site is unrelated to is never an answer to a
+    bare name.
+    """
+
+    def __init__(
+        self, index: _ScopeIndex, source: bytes, path: str,
+        using_libraries: dict[str, set[str]],
+    ) -> None:
+        self._index = index
+        self._source = source
+        self._path = path
+        self._using = using_libraries
+        self._locals: dict[int, dict[str, str]] = {}
+
+    def _own(self, site: "tree_sitter.Node") -> Optional[_ContractKey]:
+        """The contract a site is written in; None for a free function."""
+        contract = _get_enclosing_contract(site, self._source)
+        return (self._path, contract) if contract else None
+
+    def call(self, site: "tree_sitter.Node", callee: "tree_sitter.Node") -> Optional[_Bound]:
+        """Resolve the callee of a call expression; None leaves it unresolved."""
+        own = self._own(site)
+        if callee.type == "identifier":
+            return self._bare_call(own, node_text(callee, self._source))
+        if callee.type == "member_expression":
+            receiver = _find_child_by_field(callee, "object")
+            member = _find_child_by_field(callee, "property")
+            if receiver is not None and member is not None:
+                return self._member_call(
+                    site, own, _receiver_of(receiver), node_text(member, self._source),
+                )
+        return None
+
+    def _bare_call(self, own: Optional[_ContractKey], name: str) -> Optional[_Bound]:
+        """``name(...)``: the contract's scope, then a file-level name."""
+        if own is not None:
+            scoped = self._index.member(own, name, _CALL_TARGET_KINDS)
+            if scoped is not None:
+                symbol, inherited = scoped
+                return _scope_bound(symbol, inherited)
+        loose = self._index.file_level(name, _FILE_LEVEL_CALL_KINDS)
+        if loose is not None:
+            symbol, same_file = loose
+            return _Bound(symbol, "ast_call_direct" if same_file else "ast_call")
+        return None
+
+    def _member_call(
+        self, site: "tree_sitter.Node", own: Optional[_ContractKey],
+        receiver: "tree_sitter.Node", member: str,
+    ) -> Optional[_Bound]:
+        """``receiver.member(...)``: the scope the receiver names."""
+        if receiver.type == "identifier":
+            word = node_text(receiver, self._source)
+            if own is not None and word in ("this", "super"):
+                scoped = self._index.member(
+                    own, member, _FUNCTION_DECLARATION_KINDS, skip_own=word == "super",
+                )
+                if scoped is None:
+                    return None
+                symbol, inherited = scoped
+                return _scope_bound(symbol, inherited)
+            declared = _local_variable_types(site, self._source, self._locals).get(word)
+            if declared is None and own is not None:
+                declared = self._index.state_variable_type(own, word)
+            if declared is not None:
+                return self._typed_call(own, declared, member)
+            named = self._index.container(word)
+            if named is not None:
+                # ``Base.f()`` / ``Lib.f()``: the call site names the scope.
+                scoped = self._index.member(named, member, _FUNCTION_DECLARATION_KINDS)
+                if scoped is None:
+                    return None
+                return _Bound(scoped[0], "ast_call_direct", meta={"receiver": "qualified"})
+            if word in _BUILTIN_NAMESPACES:
+                return None
+            return self._untyped_call(own, member)
+        if receiver.type in _ELEMENTARY_CONVERSION_NODES:
+            return self._attached_call(own, member)
+        if receiver.type == "call_expression":
+            # ``IERC20(token).transfer(...)``: a conversion types the receiver.
+            converted_to = _find_child_by_field(receiver, "function")
+            if converted_to is not None:
+                converted_to = _strip_wrappers(converted_to)
+                if converted_to.type == "identifier":
+                    type_name = node_text(converted_to, self._source)
+                    if self._index.container(type_name) is not None:
+                        return self._typed_call(own, type_name, member)
+        return self._untyped_call(own, member)
+
+    def _typed_call(
+        self, own: Optional[_ContractKey], receiver_type: str, member: str,
+    ) -> Optional[_Bound]:
+        """The receiver's declared type is known: its scope, then a library.
+
+        A type that is no contract in the tree (an elementary type, a struct,
+        a contract declared elsewhere) has no scope to search. No same-named
+        member of another contract is tried: the type rules it out.
+        """
+        contract = self._index.container(receiver_type)
+        if contract is not None:
+            scoped = self._index.member(contract, member, _FUNCTION_DECLARATION_KINDS)
+            if scoped is not None:
+                return _Bound(scoped[0], "ast_call_type_inferred")
+        return self._attached_call(own, member, receiver_type)
+
+    def _attached_call(
+        self, own: Optional[_ContractKey], member: str,
+        receiver_type: Optional[str] = None,
+    ) -> Optional[_Bound]:
+        """A library function attached with ``using L for T``.
+
+        The directives of the enclosing contract apply, and those at file
+        level. ``using`` makes a library function a member of the type of its
+        first parameter, so when the receiver's type is known the functions
+        whose first parameter has that type are preferred. What is left must
+        come from one library; two libraries are a tie, and a tie is left
+        unresolved. Overloads within the library are not told apart further.
+        """
+        libraries = set(self._using.get("", ()))
+        if own is not None:
+            libraries.update(self._using.get(own[1], ()))
+        declared: list[Symbol] = []
+        for library_name in libraries:
+            library = self._index.container(library_name)
+            if library is not None:
+                declared.extend(
+                    self._index.declared(library, member, _FUNCTION_DECLARATION_KINDS)
+                )
+        if receiver_type is not None:
+            wanted = _type_key(receiver_type)
+            fitting = [
+                function for function in declared
+                if _type_key(self._index.first_parameter_type(function)) == wanted
+            ]
+            declared = fitting or declared
+        if len({(function.path, function.name) for function in declared}) == 1:
+            return _Bound(declared[-1], "ast_call", confidence=_RECEIVER_BLIND_CONFIDENCE)
+        return None
+
+    def _untyped_call(self, own: Optional[_ContractKey], member: str) -> Optional[_Bound]:
+        """The receiver's type is unknown (a call result, an index, a chain).
+
+        An attached library first. Otherwise the member is bound only when
+        exactly one contract in this file declares it; with two there is
+        nothing to choose by. Last, a free function of that name.
+        """
+        attached = self._attached_call(own, member)
+        if attached is not None:
+            return attached
+        candidates: list[Symbol] = []
+        for owner in self._index.here.containers:
+            scoped = self._index.member(
+                (self._path, owner), member, _FUNCTION_DECLARATION_KINDS,
+            )
+            if scoped is not None and not scoped[1]:
+                candidates.append(scoped[0])
+        if not candidates:
+            loose = self._index.file_level(member, _FUNCTION_DECLARATION_KINDS)
+            if loose is not None:
+                candidates.append(loose[0])
+        if len(candidates) == 1:
+            return _Bound(candidates[0], "ast_call", confidence=_RECEIVER_BLIND_CONFIDENCE)
+        return None
+
+    def event(self, site: "tree_sitter.Node", name: "tree_sitter.Node") -> Optional[Symbol]:
+        """The event an ``emit`` names: ``E`` in scope, or ``Contract.E``."""
+        if name.type == "identifier":
+            word = node_text(name, self._source)
+            own = self._own(site)
+            if own is not None:
+                scoped = self._index.member(own, word, _EVENT_KINDS)
+                if scoped is not None:
+                    return scoped[0]
+            loose = self._index.file_level(word, _EVENT_KINDS)
+            return loose[0] if loose is not None else None
+        if name.type == "member_expression":
+            qualifier = _find_child_by_field(name, "object")
+            member = _find_child_by_field(name, "property")
+            if qualifier is not None and member is not None:
+                named = self._index.container(node_text(qualifier, self._source))
+                if named is not None:
+                    scoped = self._index.member(
+                        named, node_text(member, self._source), _EVENT_KINDS,
+                    )
+                    return scoped[0] if scoped is not None else None
+        return None
+
 
 def _extract_edges_from_tree(
     tree: "tree_sitter.Tree", source: bytes, file_path: str,
     local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
     run_id: str, resolver: NameResolver,
     all_local_symbols: Optional[list[Symbol]] = None,
+    scopes: Optional[dict[str, _FileScopes]] = None,
 ) -> tuple[list[Edge], dict[str, str]]:
     """Extract edges (calls, imports) from a Solidity file's parse tree.
 
     Returns (edges, import_aliases) where import_aliases maps alias names
-    to import paths for path_hint resolution.
+    to import paths.
 
     The all_local_symbols parameter provides the full list of symbols for
     position-based lookup, needed to correctly resolve overloaded functions
     (where symbol_by_name would only return the last-registered overload).
+
+    ``scopes`` is every file's scope tables from Pass 1, keyed by path. Calls,
+    emits and base contracts are resolved through it (``_MemberResolver``),
+    not through ``local_symbols``: that table keeps one symbol per short name
+    for the whole file, so two contracts declaring ``helper`` share one
+    entry. ``resolver`` is not consulted for the same reason one level up:
+    its suffix match answers a bare ``helper`` with any contract's member.
     """
     edges: list[Edge] = []
     import_aliases: dict[str, str] = {}
     file_id = make_file_id("solidity", file_path)
+    index = _ScopeIndex(scopes or {}, file_path, global_symbols)
 
     # Build position-based symbol index for overload-safe enclosing function lookup.
     # Maps (start_line, end_line) -> Symbol for functions/constructors/modifiers.
@@ -597,6 +1231,7 @@ def _extract_edges_from_tree(
                     if id_node:
                         lib_name = node_text(id_node, source)
                         using_libraries.setdefault(contract_name, set()).add(lib_name)
+    members = _MemberResolver(index, source, file_path, using_libraries)
 
     # First pass: extract import aliases.
     # Gate on the ``import_directive`` node type: _extract_import_aliases scans
@@ -632,14 +1267,17 @@ def _extract_edges_from_tree(
             name_node = find_child_by_type(node, "identifier")
             if name_node:
                 child_name = node_text(name_node, source)
-                child_sym = local_symbols.get(child_name) or global_symbols.get(child_name)
+                # A contract name is looked up among contracts: before 0.5 a
+                # constructor was a function named as its contract, and the
+                # short-name table would answer with that function.
+                child_sym = index.here.containers.get(child_name)
                 if child_sym:
                     for child in node.children:
                         if child.type == "inheritance_specifier":
                             parent_type_node = find_child_by_type(child, "user_defined_type")
                             if parent_type_node:
                                 parent_name = node_text(parent_type_node, source)
-                                parent_sym = local_symbols.get(parent_name) or global_symbols.get(parent_name)
+                                parent_sym = index.container_symbol(parent_name)
                                 if parent_sym:
                                     edge = Edge.create(
                                         src=child_sym.id,
@@ -665,109 +1303,30 @@ def _extract_edges_from_tree(
                 symbols_by_span=symbols_by_span,
             )
             if func_node and current_function:
-                call_name = node_text(func_node, source)
-                # Strip super./this. prefix — these resolve to the same
-                # contract's methods (super dispatches to parent, this
-                # dispatches to the current contract via external call).
-                if call_name.startswith(("super.", "this.")):
-                    call_name = call_name.split(".", 1)[1]
-                # Try to resolve the called function - local first
-                target = local_symbols.get(call_name)
-                if target:
-                    edge = Edge.create(
+                callee = _strip_wrappers(func_node)
+                bound = members.call(node, callee)
+                if bound is not None:
+                    edges.append(Edge.create(
                         src=current_function.id,
-                        dst=target.id,
+                        dst=bound.symbol.id,
                         edge_type="calls",
-                        evidence_type="ast_call_direct",
+                        evidence_type=bound.evidence_type,
                         line=node.start_point[0] + 1,
+                        confidence=bound.confidence,
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                    )
-                    edges.append(edge)
+                        meta=bound.meta,
+                    ))
                 else:
-                    # Get path_hint from import aliases if available
-                    path_hint = import_aliases.get(call_name)
-                    # Try global symbols via resolver with path_hint
-                    lookup_result = resolver.lookup(call_name, path_hint=path_hint)
-                    if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover - suffix fallback
-                        edge = Edge.create(
-                            src=current_function.id,
-                            dst=lookup_result.symbol.id,
-                            edge_type="calls",
-                            evidence_type="ast_call",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                        )
-                        edges.append(edge)
-                    elif "." in call_name:
-                        # Member access fallback: IERC20(token).transfer(...)
-                        # or contract.method() — try the method name after the
-                        # last dot against local/global symbols.
-                        method_name = call_name.rsplit(".", 1)[1]
-                        # Prefer library-qualified lookup via using directives.
-                        # This correctly resolves x.add(y) -> SafeMath.add
-                        # when 'using SafeMath for uint256' is declared.
-                        #
-                        # A Solidity ``using L for T;`` at file
-                        # level binds to the source unit, so the key
-                        # ``""`` (no enclosing contract) collects the
-                        # libraries applicable to every call site in the
-                        # same file. Probe both the call site's
-                        # enclosing contract (contract-scoped using) AND
-                        # the file-level ``""`` bucket so file-level
-                        # directives still dispatch calls that occur
-                        # inside contracts — e.g. ``Memory.load``
-                        # invoked via ``s.load(0)`` under a file-level
-                        # ``using Memory for Slice;`` (history: WI-jovur).
-                        enclosing_contract = _get_enclosing_contract(
-                            node, source,
-                        ) or ""
-                        applicable_libs = set(
-                            using_libraries.get(enclosing_contract, ())
-                        )
-                        if enclosing_contract:
-                            applicable_libs.update(
-                                using_libraries.get("", ())
-                            )
-                        member_target = None
-                        for lib_name in applicable_libs:
-                            qualified = f"{lib_name}.{method_name}"
-                            candidate = (
-                                local_symbols.get(qualified)
-                                or global_symbols.get(qualified)
-                            )
-                            if candidate and candidate.kind in _FUNCTION_DECLARATION_KINDS:
-                                member_target = candidate
-                                break
-                        if not member_target:
-                            member_target = (
-                                local_symbols.get(method_name)
-                                or global_symbols.get(method_name)
-                            )
-                        if member_target:
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=member_target.id,
-                                edge_type="calls",
-                                evidence_type="ast_call",
-                                line=node.start_point[0] + 1,
-                                confidence=0.60,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                            )
-                            edges.append(edge)
-                        else:
-                            edges.append(make_unresolved_edge(
-                                "solidity", current_function.id, call_name,
-                                node.start_point[0] + 1, PASS_ID, run_id,
-                            ))
-                    else:
-                        edges.append(make_unresolved_edge(
-                            "solidity", current_function.id, call_name,
-                            node.start_point[0] + 1, PASS_ID, run_id,
-                        ))
+                    # The name the unresolved edge carries: the callee as
+                    # written, without a ``this.`` / ``super.`` receiver.
+                    call_name = node_text(func_node, source)
+                    if call_name.startswith(("super.", "this.")):
+                        call_name = call_name.split(".", 1)[1]
+                    edges.append(make_unresolved_edge(
+                        "solidity", current_function.id, call_name,
+                        node.start_point[0] + 1, PASS_ID, run_id,
+                    ))
 
         # Emit statement: emit Transfer(...) → emits edge to event definition
         elif node.type == "emit_statement":
@@ -778,9 +1337,8 @@ def _extract_edges_from_tree(
                 symbols_by_span=symbols_by_span,
             )
             if event_name_node and current_function:
-                event_name = node_text(event_name_node, source)
-                event_sym = local_symbols.get(event_name) or global_symbols.get(event_name)
-                if event_sym and event_sym.kind == "event":
+                event_sym = members.event(node, _strip_wrappers(event_name_node))
+                if event_sym:
                     # Solidity `emit Event(...)` is a function→event-symbol
                     # reference, not pub-sub-shaped: a canonical
                     # 'references' edge + meta['ref_construct']='event_emit'
@@ -811,14 +1369,7 @@ def _extract_edges_from_tree(
             continue  # pragma: no cover - defensive
         child_contract = node_text(name_node, source)
 
-        # Collect parent contract names from inheritance_specifier
-        parent_names: list[str] = []
-        for child in node.children:
-            if child.type == "inheritance_specifier":
-                parent_type_node = find_child_by_type(child, "user_defined_type")
-                if parent_type_node:
-                    parent_names.append(node_text(parent_type_node, source))
-
+        parent_names = _base_names(node, source)
         if not parent_names:
             continue
 
@@ -878,6 +1429,10 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
     def __init__(self) -> None:
         super().__init__()
         self._file_symbols: dict[str, list[Symbol]] = {}
+        # Scope tables of every file read in Pass 1, by repo-relative path.
+        # Pass 2 needs all of them at once: a base contract, a receiver's
+        # type and an attached library may each be declared in another file.
+        self._file_scopes: dict[str, _FileScopes] = {}
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
@@ -904,7 +1459,7 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         # The REPO-RELATIVE path: it is an identity input (the file anchor,
         # a constant's make_variable_stable_id). An absolute path would make
         # every Solidity stable_id depend on where the repo is checked out.
-        _extract_symbols_from_tree(
+        self._file_scopes[rel_path] = _extract_symbols_from_tree(
             tree, source, rel_path, run.execution_id, analysis,
         )
         # Store full symbol list for position-based lookup in Pass 2
@@ -925,6 +1480,7 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
             local_symbols, global_symbols,
             run.execution_id, resolver,
             all_local_symbols=all_local,
+            scopes=self._file_scopes,
         )
         return edges
 

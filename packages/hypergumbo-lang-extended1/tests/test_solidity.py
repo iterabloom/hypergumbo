@@ -867,17 +867,23 @@ class TestSoliditySuperCalls:
     """Tests for Solidity super.method() and this.method() call resolution."""
 
     def test_super_call_creates_edge(self, temp_repo: Path) -> None:
-        """super.transfer() should create a calls edge to the local transfer function."""
+        """super.transfer() creates a calls edge to the base's transfer.
+
+        ``super`` starts the search after the calling contract, so the edge
+        joins the override to the function it overrides, not to itself.
+        """
         (temp_repo / "Token.sol").write_text("""
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract Token {
-    function transfer(address to, uint256 amount) public returns (bool) {
+contract Base {
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
         return true;
     }
+}
 
-    function safeTransfer(address to, uint256 amount) public returns (bool) {
+contract Token is Base {
+    function transfer(address to, uint256 amount) public override returns (bool) {
         super.transfer(to, amount);
         return true;
     }
@@ -885,25 +891,13 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        edges = result.edges
-
-        # Find the edge from safeTransfer → transfer
-        safe_transfer = next(
-            (s for s in result.symbols if "safeTransfer" in s.name and s.kind in _CALLABLE_DECL_KINDS),
-            None,
-        )
-        transfer = next(
-            (s for s in result.symbols if s.name.endswith("transfer") and "safe" not in s.name.lower() and s.kind in _CALLABLE_DECL_KINDS),
-            None,
-        )
-        assert safe_transfer is not None
-        assert transfer is not None
+        by_name = {s.name: s for s in result.symbols}
 
         call_edges = [
-            e for e in edges
-            if e.src == safe_transfer.id and e.dst == transfer.id and e.edge_type == "calls"
+            e for e in result.edges
+            if e.src == by_name["Token.transfer"].id and e.edge_type == "calls"
         ]
-        assert len(call_edges) == 1, f"Expected 1 edge from safeTransfer→transfer, found {len(call_edges)}"
+        assert [e.dst for e in call_edges] == [by_name["Base.transfer"].id]
 
     def test_this_call_creates_edge(self, temp_repo: Path) -> None:
         """this.transfer() should create a calls edge to the local transfer function."""
