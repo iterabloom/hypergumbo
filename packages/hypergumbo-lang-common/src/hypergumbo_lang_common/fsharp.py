@@ -9,6 +9,9 @@ This analyzer uses tree-sitter to parse F# files and extract:
 - Record type definitions (record_type_defn) and their fields (kind
   ``field``, named ``Type.field``)
 - Discriminated union definitions (union_type_defn)
+- Class, interface and struct types (anon_type_defn, interface_type_defn)
+- Members of any of those types (member_defn): methods, properties,
+  additional constructors and explicit ``val`` fields
 - Open statements (import_decl)
 - Function call relationships
 
@@ -18,9 +21,10 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Parse all files, extract symbols, and register all of them
-   except record fields (kept out of the resolver so a bare call cannot
-   suffix-match ``Rec.field``) in the global registry
+1. Pass 1: Parse all files, extract symbols, and register the functions,
+   module values, modules, records and unions in the global registry (fields,
+   class-like types and members stay out of the resolver; see
+   ``FsharpAnalyzer.register_symbol``)
 2. Pass 2: Detect calls and resolve against global symbol registry
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -70,9 +74,62 @@ arity. Before, all of them rode the backstop floor key, and ``run`` in
 ``module A`` and in ``module B`` (two same-name symbols in one file) were left
 null.
 
-Not emitted: class types (``type Shape(r) = ...``) and their ``member``
-definitions (WI-tamib), and a binding with an optional ``?x`` argument,
-which the grammar parses as a value pattern.
+Class types and members (WI-tamib)
+----------------------------------
+``type Shape(r) = ...`` is a ``class``, ``interface`` or ``struct`` by F#'s own
+rule: an attribute (``[<Struct>]``, ``[<Interface>]``, ``[<AbstractClass>]``,
+which also records the ``abstract`` modifier) or an explicit ``class`` /
+``struct`` / ``interface ... end`` decides, otherwise a type with no
+constructor whose body holds only abstract slots is an interface. These are
+table kinds, so the id is the backstop's ``{kind}:{language}:{path}:{name}``
+over the module-qualified name. Every type of an ``and`` chain is emitted and
+spans its own definition (the first one from the ``type`` keyword or the
+attributes above it); generic types are emitted too, and hash their arity
+(``Gen`1``), so ``type Gen<'T>`` beside a plain ``type Gen`` moves neither the
+plain type's id nor its fields'.
+
+A ``member_defn`` is a symbol named ``Owner.member`` wherever its type holds
+it: the type's body, an ``interface IFoo with`` block, a record or union's
+``with member``, a ``type X with`` extension (the owner is the type the
+extension names; the extension itself declares no type).
+
+- ``member this.Area = ...``, ``member val Tag = ...``, a member with ``get`` /
+  ``set`` accessors, an abstract ``Name : string``: ``property``.
+- A member with argument patterns, an abstract ``Go : int -> int``:
+  ``method``, with ``meta["parameters"]``. A tuple is flattened into the .NET
+  parameter list it is (the grammar parses ``(k: float, j: float)`` as one
+  typed pattern), ``()`` and ``unit`` are no parameter, ``?x`` has a default
+  and a ``ParamArray`` argument is variadic.
+- ``new(...) = ...``: ``constructor``, named ``Owner.new``. The primary
+  constructor is the type's own header and gets no symbol.
+- ``val X: int``: ``field``, like a record's.
+
+Methods, properties and constructors mint ``declared_arity_stable_id`` over
+the owner chain, the parameters (the typed tier when one declares a type, so
+same-arity overloads differ) and the ``static`` / ``abstract`` / ``default`` /
+``override`` keyword: an abstract slot and its ``default`` body share a name
+and an arity. A member of ``interface IFoo with`` hashes the interface after
+its owner, because a type may implement ``Go`` once per interface. An access
+modifier is recorded in ``modifiers`` and not hashed.
+
+A call is credited to the nearest enclosing declaration that has a symbol: a
+function, a member, or the type for a call in its body but in no member
+(``do``, a class-level ``let`` value). Before, a call in a member body had no
+enclosing symbol and was dropped.
+
+Kept as they were, because changing them would move ids already emitted: a
+function bound in a member body is named after the type (``Shape.local``), not
+scoped under the member; a class-level ``let`` in a GENERIC class has a bare
+name; a function's ``()`` argument counts as one parameter.
+
+Not emitted: a member of an object expression (``{ new IFoo with member
+... }``; its calls stay with the enclosing function), a class-level ``let``
+value, enum, delegate, exception and abbreviation types, and a binding with
+an optional ``?x`` argument, which the grammar parses as a value pattern. The
+bundled grammar does not parse ``.fsi`` signature members, nor the last
+declaration of a file that ends without a newline; a type it rejects is an
+ERROR node and emits nothing. Members and class-like types are not call
+TARGETS: ``x.Scale 2.0`` does not say what ``x`` is.
 """
 from __future__ import annotations
 
@@ -84,12 +141,12 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    enclosing_declared_symbol,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_symbol_id,
     node_text,
-    symbol_declared_by,
     symbols_at,
 )
 from hypergumbo_core.discovery import find_files
@@ -98,6 +155,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+    scoped_table_stable_id,
 )
 
 if TYPE_CHECKING:
@@ -339,6 +397,426 @@ def _fsharp_member_stable_id(kind: str, file_path: str, qualified: str) -> str:
     )
 
 
+#: The type definitions that are a symbol and can hold members.
+_FSHARP_TYPE_DEFNS = frozenset({
+    "anon_type_defn", "interface_type_defn", "record_type_defn", "union_type_defn",
+})
+
+#: What a ``member_defn`` belongs to: one of those, or a ``type X with``
+#: extension, which declares no type of its own.
+_FSHARP_MEMBER_OWNERS = _FSHARP_TYPE_DEFNS | {"type_extension"}
+
+#: The nodes a symbol's span can start at, for the enclosing-symbol walk. A
+#: type's span starts at its ``type_definition`` (the ``type`` keyword or the
+#: attributes above it), or at its own definition after ``and``.
+_FSHARP_CALLER_NODES = _FSHARP_TYPE_DEFNS | {
+    "function_or_value_defn", "member_defn", "type_definition",
+}
+
+#: Member keywords that are modifiers AND identity inputs: an ``abstract`` slot
+#: and its ``default`` body share a name and an arity.
+_FSHARP_MEMBER_KEYWORDS = frozenset({"static", "abstract", "default", "override"})
+
+#: In a type's body, what an interface cannot hold.
+_FSHARP_CONCRETE_ELEMENTS = frozenset({
+    "primary_constr_args", "function_or_value_defn", "interface_implementation", "do",
+})
+
+#: Kinds kept out of the call resolver (see ``FsharpAnalyzer.register_symbol``).
+_FSHARP_UNREGISTERED_KINDS = frozenset({
+    "field", "class", "interface", "struct", "method", "property", "constructor",
+})
+
+
+def _fsharp_parts(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """A node's named children without comments, which the grammar lets sit
+    anywhere (a ``// note`` after a member's body is that member's last child)."""
+    return [child for child in node.named_children if "comment" not in child.type]
+
+
+def _fsharp_type_text(node: "tree_sitter.Node", source: bytes) -> str:
+    """A type as written, on one line."""
+    return " ".join(node_text(node, source).split())
+
+
+def _fsharp_last_type(node: "tree_sitter.Node", source: bytes) -> str:
+    """The type a node ends with (``pattern : type``, ``args -> type``)."""
+    return "".join(_fsharp_type_text(part, source) for part in _fsharp_parts(node)[-1:])
+
+
+def _fsharp_type_identity(
+    defn: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """``(name, hashed name)`` of a type definition or extension.
+
+    The hashed name carries the generic arity the .NET way (``Gen`1``), so
+    ``type Gen<'T>`` and a plain ``type Gen`` of one module, which F# allows
+    side by side, do not tie; a plain type hashes its bare name.
+    """
+    type_name = find_child_by_type(defn, "type_name")
+    name_node = type_name.child_by_field_name("type_name") if type_name else None
+    if type_name is None or name_node is None:
+        return None  # pragma: no cover - a type definition names its type
+    name = node_text(name_node, source)
+    type_args = find_child_by_type(type_name, "type_arguments")
+    arity = sum(
+        child.type == "type_argument_defn" for child in type_args.children
+    ) if type_args else 0
+    return name, f"{name}`{arity}" if arity else name
+
+
+def _fsharp_declares_only_slots(defn: "tree_sitter.Node") -> bool:
+    """True when a type's body holds abstract slots and nothing concrete."""
+    slots = 0
+    for node in iter_tree(defn):
+        if node.type in _FSHARP_CONCRETE_ELEMENTS:
+            return False
+        if node.type == "member_defn":
+            if find_child_by_type(node, "member_signature") is None:
+                return False
+            slots += 1
+    return slots > 0
+
+
+def _fsharp_class_kind(
+    type_def: "tree_sitter.Node", defn: "tree_sitter.Node", source: bytes,
+    chained: bool,
+) -> tuple[str, list[str]]:
+    """``(kind, modifiers)`` of a class-like type, by F#'s own inference.
+
+    An attribute or an explicit ``class`` / ``struct`` / ``interface ... end``
+    decides; otherwise a type with no constructor whose body is only abstract
+    slots is an interface, and anything else a class. Attributes sit on the
+    ``type_definition`` for its first type and inside ``type_name`` after
+    ``and``.
+    """
+    if defn.type == "interface_type_defn":
+        return "interface", []
+    holders = [find_child_by_type(defn, "type_name")] + ([] if chained else [type_def])
+    attributes = {
+        node_text(attribute, source).split("(", 1)[0].strip()
+        .rsplit(".", 1)[-1].removesuffix("Attribute")
+        for holder in holders if holder is not None
+        for group in holder.children if group.type == "attributes"
+        for attribute in group.named_children
+    }
+    keywords = {child.type for child in defn.children}
+    if "Struct" in attributes or "struct" in keywords:
+        return "struct", []
+    if "Interface" in attributes:
+        return "interface", []
+    if "AbstractClass" in attributes:
+        return "class", ["abstract"]
+    if "Class" in attributes or "class" in keywords:
+        return "class", []
+    return ("interface" if _fsharp_declares_only_slots(defn) else "class"), []
+
+
+def _fsharp_type_symbols(
+    type_def: "tree_sitter.Node", defn: "tree_sitter.Node", source: bytes,
+    file_path: str, run_id: str, chained: bool,
+) -> list[Symbol]:
+    """The symbol of one type definition, and a record's fields.
+
+    ``chained`` is True after ``and``: the type then spans its own definition.
+    The first type of a ``type_definition`` starts where that node does, so
+    the ``type`` keyword and the attributes above it are inside the span.
+    """
+    identity = _fsharp_type_identity(defn, source)
+    if identity is None:
+        return []  # pragma: no cover - a type definition names its type
+    prefix = _fsharp_module_prefix(type_def, source)
+    type_name, hashed = prefix + identity[0], prefix + identity[1]
+    start = defn if chained else type_def
+    start_line = start.start_point[0] + 1
+    end_line = defn.end_point[0] + 1
+    span = Span(
+        start_line=start_line,
+        end_line=end_line,
+        start_col=start.start_point[1],
+        end_col=defn.end_point[1],
+    )
+    modifiers: list[str] = []
+    line_span: Optional[int] = None
+    if defn.type == "record_type_defn":
+        kind = "record"
+        stable_id = _fsharp_member_stable_id(kind, file_path, hashed)
+    elif defn.type == "union_type_defn":
+        kind = "union"
+        stable_id = _fsharp_member_stable_id(kind, file_path, hashed)
+    else:
+        kind, modifiers = _fsharp_class_kind(type_def, defn, source, chained)
+        # A table kind: the backstop's own formula, over the module-qualified
+        # name (types do not nest in types, so the name is the whole scope).
+        stable_id = scoped_table_stable_id(
+            kind=kind, lang="fsharp", path=file_path, name=hashed,
+        )
+        line_span = end_line - start_line + 1
+    symbols = [Symbol(
+        id=make_symbol_id("fsharp", file_path, start_line, end_line, type_name, kind),
+        stable_id=stable_id,
+        name=type_name,
+        kind=kind,
+        language="fsharp",
+        path=file_path,
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        modifiers=modifiers,
+        line_span=line_span,
+    )]
+    # WI-jusus: record members are `field` data anchors (owner = the record
+    # type). A `record_field`'s name is its first `identifier` child (a
+    # `mutable` modifier precedes it, which find_child_by_type skips).
+    fields_node = find_child_by_type(defn, "record_fields")
+    for field in fields_node.children if fields_node else ():
+        fname_node = find_child_by_type(field, "identifier")
+        if field.type != "record_field" or fname_node is None:
+            continue  # pragma: no cover - record_fields holds named record_field nodes
+        f_start = field.start_point[0] + 1
+        f_end = field.end_point[0] + 1
+        fname = node_text(fname_node, source)
+        qualified = f"{type_name}.{fname}"
+        symbols.append(Symbol(
+            id=make_symbol_id("fsharp", file_path, f_start, f_end, qualified, "field"),
+            stable_id=_fsharp_member_stable_id("field", file_path, f"{hashed}.{fname}"),
+            name=qualified,
+            kind="field",
+            language="fsharp",
+            path=file_path,
+            span=Span(
+                start_line=f_start,
+                end_line=f_end,
+                start_col=field.start_point[1],
+                end_col=field.end_point[1],
+            ),
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        ))
+    return symbols
+
+
+def _fsharp_member_owner(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """``(owner name, hashed owner chain)`` of a ``member_defn``, else None.
+
+    The owner is the type the member is written in, or the type a ``type X
+    with`` extension names. A member inside ``interface IFoo with`` hashes the
+    interface after the owner (``Bar.IFoo``): a type may implement ``Go`` once
+    per interface and once of its own, all three named ``Bar.Go``. None for a
+    member of an object expression (``{ new IFoo with member ... }``), which
+    is an anonymous implementation inside a function and declares no type.
+    """
+    interface = ""
+    current = node.parent
+    while current is not None:
+        if current.type == "object_expression":
+            return None
+        if current.type == "interface_implementation":
+            interface = "".join(
+                "." + "".join(node_text(implemented, source).split())
+                for implemented in _fsharp_parts(current)[:1]
+            )
+        elif current.type in _FSHARP_MEMBER_OWNERS:
+            identity = _fsharp_type_identity(current, source)
+            if identity is None:
+                return None  # pragma: no cover - a type definition names its type
+            prefix = _fsharp_module_prefix(current, source)
+            return prefix + identity[0], prefix + identity[1] + interface
+        current = current.parent
+    # A type the grammar could not parse: its members sit under an ERROR node.
+    return None
+
+
+def _fsharp_pattern_parameters(
+    pattern: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]`` entries for one argument pattern of a member.
+
+    A tuple is a .NET parameter list, so it is flattened; ``()`` is a member
+    taking nothing. The grammar parses ``(k: float, j: float)`` as ONE
+    ``typed_pattern`` whose left side is the tuple ``k: float, j``: the type
+    it carries is the LAST element's.
+    """
+    kind = pattern.type
+    if kind == "const" and find_child_by_type(pattern, "unit") is not None:
+        return []
+    parts = _fsharp_parts(pattern)
+    if kind in ("paren_pattern", "repeat_pattern"):
+        return [
+            entry for child in parts
+            for entry in _fsharp_pattern_parameters(child, source)
+        ]
+    if parts and kind in (
+        "typed_pattern", "as_pattern", "optional_pattern", "attribute_pattern",
+    ):
+        # The pattern is the last child after its attributes, else the first
+        # (before ``: type`` and ``as self``).
+        inner = parts[-1 if kind == "attribute_pattern" else 0]
+        entries = _fsharp_pattern_parameters(inner, source)
+        for entry in entries[-1:] if kind == "typed_pattern" else ():
+            entry["type"] = _fsharp_type_text(parts[-1], source)
+        for entry in entries:
+            if kind == "optional_pattern":
+                entry["default"] = True
+            elif kind == "attribute_pattern" and "ParamArray" in node_text(pattern, source):
+                entry["variadic"] = True
+        return entries
+    return [parameter_entry(node_text(pattern, source))]
+
+
+def _fsharp_slot_decl(
+    signature: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str, Optional[list[dict[str, object]]], str]]:
+    """An abstract slot (``member_signature``), in ``_fsharp_member_decl``'s shape.
+
+    ``Go : int -> int`` is a method; ``Name : string`` a property. An argument
+    may be named (``x: int``) and optional (``?x: int``); ``unit`` is no
+    parameter.
+    """
+    spec = find_child_by_type(signature, "curried_spec")
+    if spec is None:
+        return None  # pragma: no cover - a slot declares its type
+    name = node_text(_fsharp_parts(signature)[0], source)
+    groups = [child for child in spec.children if child.type == "arguments_spec"]
+    if not groups:
+        return name, "property", None, ""
+    params: list[dict[str, object]] = []
+    for group in groups:
+        for arg in _fsharp_parts(group):
+            type_text = _fsharp_last_type(arg, source)
+            name_spec = find_child_by_type(arg, "argument_name_spec")
+            arg_name = name_spec.child_by_field_name("name") if name_spec else None
+            if name_spec is not None and arg_name is not None:
+                params.append(parameter_entry(
+                    node_text(arg_name, source), type_text,
+                    default=node_text(name_spec, source).startswith("?"),
+                ))
+            elif type_text != "unit":
+                params.append(parameter_entry("", type_text))
+    return name, "method", params, _fsharp_last_type(spec, source)
+
+
+def _fsharp_member_decl(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str, Optional[list[dict[str, object]]], str]]:
+    """``(name, kind, parameters, return type)`` of a ``member_defn``.
+
+    ``parameters`` is None for a property or a field. A member with argument
+    patterns is a method; one with none, or with ``get`` / ``set`` accessors,
+    is a property.
+    """
+    defn = find_child_by_type(node, "method_or_prop_defn")
+    ident = defn.child_by_field_name("name") if defn else None
+    if defn is not None and ident is not None:
+        names = _fsharp_parts(ident) or [ident]
+        name = node_text(names[-1], source)
+        args = defn.children_by_field_name("args")
+        if name == "val" and len(names) == 1 and len(args) == 1:
+            # ``static member val X = 0``: the grammar reads a method named
+            # ``val`` taking ``X``.
+            return node_text(args[0], source), "property", None, ""
+        if not args:
+            return name, "property", None, ""
+        params: list[dict[str, object]] = []
+        result = ""
+        for arg in args:
+            parts = _fsharp_parts(arg)
+            if arg.type == "typed_pattern" and parts:
+                # Not inside parentheses, so the annotation is the member's
+                # RETURN type (``member this.R(x: int) : int``).
+                result = _fsharp_type_text(parts[-1], source)
+                arg = parts[0]
+            params.extend(_fsharp_pattern_parameters(arg, source))
+        return name, "method", params, result
+    constructor = find_child_by_type(node, "additional_constr_defn")
+    if constructor is not None:
+        return "new", "constructor", [
+            entry for pattern in _fsharp_parts(constructor)[:1]
+            for entry in _fsharp_pattern_parameters(pattern, source)
+        ], ""
+    signature = find_child_by_type(node, "member_signature")
+    if signature is not None:
+        return _fsharp_slot_decl(signature, source)
+    auto_property = find_child_by_type(node, "property_or_ident")
+    if auto_property is not None:
+        return node_text(auto_property, source), "property", None, ""
+    explicit_field = find_child_by_type(node, "identifier")
+    if explicit_field is not None:
+        return node_text(explicit_field, source), "field", None, ""
+    return None  # pragma: no cover - every member form above names itself
+
+
+def _fsharp_member_symbol(
+    node: "tree_sitter.Node", source: bytes, file_path: str, run_id: str,
+) -> Optional[Symbol]:
+    """The symbol of a ``member_defn``: a method, property, constructor or field.
+
+    Named ``Owner.member`` like a record field; an additional constructor is
+    ``Owner.new``. The stable_id is the ADR-0035 formula over the owner chain,
+    the declared parameters (the typed tier when one declares a type, so
+    overloads differ) and the ``static`` / ``abstract`` / ``default`` /
+    ``override`` keyword. An access modifier is recorded, not hashed.
+    """
+    owner = _fsharp_member_owner(node, source)
+    if owner is None:
+        return None
+    decl = _fsharp_member_decl(node, source)
+    if decl is None:
+        return None  # pragma: no cover - every member form names itself
+    name, kind, params, result = decl
+    display, chain = f"{owner[0]}.{name}", f"{owner[1]}.{name}"
+    keywords = [
+        child.type for child in node.children if child.type in _FSHARP_MEMBER_KEYWORDS
+    ]
+    access = find_child_by_type(node, "access_modifier")
+    modifiers = keywords + ([node_text(access, source)] if access is not None else [])
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    meta: Optional[dict[str, object]] = (
+        {PARAMETERS_KEY: params} if params is not None else None
+    )
+    if kind == "field":
+        stable_id = _fsharp_member_stable_id(kind, file_path, chain)
+    else:
+        stable_id = declared_arity_stable_id(
+            kind=kind, lang="fsharp", path=file_path, name=name,
+            qualified_name=chain, arity=declared_arity(meta),
+            decorators=",".join(sorted(keywords)),
+        )
+    signature: Optional[str] = None
+    if params is not None:
+        signature = "(" + ", ".join(
+            f"{p['name']}: {p['type']}" if p["name"] and p["type"]
+            else str(p["type"] or p["name"])
+            for p in params
+        ) + ")" + (f": {result}" if result else "")
+    return Symbol(
+        id=make_symbol_id("fsharp", file_path, start_line, end_line, display, kind),
+        stable_id=stable_id,
+        meta=meta,
+        name=display,
+        kind=kind,
+        language="fsharp",
+        path=file_path,
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        modifiers=modifiers,
+        signature=signature,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "fsharp") if params is not None else None
+        ),
+        line_span=end_line - start_line + 1 if params is not None else None,
+    )
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -352,8 +830,10 @@ def _extract_symbols_from_file(
     Detects:
     - named_module (module name)
     - function_or_value_defn (functions/values)
-    - record_type_defn (record types)
-    - union_type_defn (discriminated unions)
+    - type_definition: every record, union, class, interface and struct of
+      an ``and`` chain (``_fsharp_type_symbols``)
+    - member_defn (methods, properties, constructors, ``val`` fields;
+      ``_fsharp_member_symbol``)
     """
     symbols: list[Symbol] = []
     module_name = ""
@@ -470,109 +950,23 @@ def _extract_symbols_from_file(
                                     origin_run_id=run_id,
                                 ))
 
-        # Type definition
+        # Type definitions: every type of an ``and`` chain.
         elif node.type == "type_definition":
-            # Record type
-            record = find_child_by_type(node, "record_type_defn")
-            if record:
-                type_name_node = find_child_by_type(record, "type_name")
-                if type_name_node:
-                    name_node = find_child_by_type(type_name_node, "identifier")
-                    if name_node:
-                        type_name = (
-                            _fsharp_module_prefix(node, source)
-                            + node_text(name_node, source)
-                        )
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-                        span = Span(
-                            start_line=start_line,
-                            end_line=end_line,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        )
-                        sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, type_name, "record")
-                        symbols.append(Symbol(
-                            id=sym_id,
-                            stable_id=_fsharp_member_stable_id(
-                                "record", file_path, type_name,
-                            ),
-                            name=type_name,
-                            kind="record",
-                            language="fsharp",
-                            path=file_path,
-                            span=span,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                        ))
-                        # WI-jusus: record members are `field` data anchors
-                        # (owner = the record type). A `record_field`'s name is
-                        # its first `identifier` child (a `mutable` modifier
-                        # precedes it, which find_child_by_type skips).
-                        fields_node = find_child_by_type(record, "record_fields")
-                        if fields_node:
-                            for field in fields_node.children:
-                                if field.type != "record_field":
-                                    continue  # pragma: no cover - defensive: record_fields holds only record_field
-                                fname_node = find_child_by_type(field, "identifier")
-                                if fname_node is None:
-                                    continue  # pragma: no cover - a record field always names
-                                f_start = field.start_point[0] + 1
-                                f_end = field.end_point[0] + 1
-                                fname = node_text(fname_node, source)
-                                qualified = f"{type_name}.{fname}"
-                                symbols.append(Symbol(
-                                    id=make_symbol_id("fsharp", file_path, f_start, f_end, qualified, "field"),
-                                    stable_id=_fsharp_member_stable_id(
-                                        "field", file_path, qualified,
-                                    ),
-                                    name=qualified,
-                                    kind="field",
-                                    language="fsharp",
-                                    path=file_path,
-                                    span=Span(
-                                        start_line=f_start,
-                                        end_line=f_end,
-                                        start_col=field.start_point[1],
-                                        end_col=field.end_point[1],
-                                    ),
-                                    origin=PASS_ID,
-                                    origin_run_id=run_id,
-                                ))
+            chained = False
+            for child in node.children:
+                if child.type == "and":
+                    chained = True
+                elif child.type in _FSHARP_TYPE_DEFNS:
+                    symbols.extend(_fsharp_type_symbols(
+                        node, child, source, file_path, run_id, chained,
+                    ))
 
-            # Discriminated union type
-            union = find_child_by_type(node, "union_type_defn")
-            if union:
-                type_name_node = find_child_by_type(union, "type_name")
-                if type_name_node:
-                    name_node = find_child_by_type(type_name_node, "identifier")
-                    if name_node:
-                        type_name = (
-                            _fsharp_module_prefix(node, source)
-                            + node_text(name_node, source)
-                        )
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-                        span = Span(
-                            start_line=start_line,
-                            end_line=end_line,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        )
-                        sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, type_name, "union")
-                        symbols.append(Symbol(
-                            id=sym_id,
-                            stable_id=_fsharp_member_stable_id(
-                                "union", file_path, type_name,
-                            ),
-                            name=type_name,
-                            kind="union",
-                            language="fsharp",
-                            path=file_path,
-                            span=span,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                        ))
+        # A member, wherever its type holds it (the type's body, an
+        # ``interface ... with`` block, a ``type X with`` extension).
+        elif node.type == "member_defn":
+            member = _fsharp_member_symbol(node, source, file_path, run_id)
+            if member is not None:
+                symbols.append(member)
 
     return symbols, module_name
 
@@ -581,20 +975,17 @@ def _get_enclosing_function_fsharp(
     node: "tree_sitter.Node",
     decl_index: SymbolsAt,
 ) -> Symbol | None:
-    """The ``let``-bound function whose definition contains ``node``.
+    """The nearest declaration containing ``node`` that has a symbol.
 
-    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
-    Two nested modules of one file each binding ``let run`` share a name, and
-    the name lookup credited both bodies' calls to the last one.
+    A ``let``-bound function, a member, or the type itself for a call in the
+    type's body but in no member (``do helper ()``, ``let cached = helper 1``;
+    INV-bamij). Keyed by the definition's POSITION, not its name (INV-midag,
+    WI-mapor): two nested modules of one file each binding ``let run`` share a
+    name, as two overloads of a member do, and a name lookup credits both
+    bodies' calls to the last one. A declaration with no symbol (a member of
+    an object expression, a class-level ``let`` value) is walked past.
     """
-    current = node.parent
-    while current is not None:
-        if current.type == "function_or_value_defn":
-            sym = symbol_declared_by(current, decl_index)
-            if sym is not None:
-                return sym
-        current = current.parent
-    return None
+    return enclosing_declared_symbol(node, decl_index, _FSHARP_CALLER_NODES)
 
 
 def _extract_module_aliases(
@@ -761,7 +1152,7 @@ class FsharpAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract modules, functions, values, records, unions from an F# file."""
+        """Extract modules, functions, values, types and members from an F# file."""
         analysis = FileAnalysis()
 
         file_symbols, _module_name = _extract_symbols_from_file(
@@ -786,22 +1177,29 @@ class FsharpAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
-        """Keep record ``field`` symbols OUT of the call-resolution registry (WI-jusus).
+        """Keep fields, class-like types and members OUT of the call-resolution
+        registry (WI-jusus, WI-tamib).
 
         A record ``field`` is a data anchor, never a call target — and the
         ``NameResolver`` suffix index would let a registered qualified field
         (``Rec.name``) suffix-match a bare call ``name(…)`` and mint a wrong
         ``calls`` edge to the field, so the field skip is a load-bearing
-        precision guard. ``variable`` (an F# ``let`` value binding) is NOT
+        precision guard. A member is kept out for the same reason: the call
+        site ``x.Scale 2.0`` does not say what ``x`` is, and a registered
+        ``Shape.Scale`` would suffix-match every ``Scale`` call in the
+        repository (and one name holds only the last of its overloads). A
+        class-like type is kept out so that adding it cannot re-target a call
+        that resolves to a same-name function today. ``variable`` (an F#
+        ``let`` value binding) is NOT
         skipped: it is legitimately callable (point-free / factory idioms) and
         F# forbids a same-name value+function within a module, so keeping it
         resolvable adds recall without a clobber risk (the residual is a narrow
         cross-module data-value-evicts-function false-negative, symmetric with
         the function-vs-function bare-name ambiguity the resolver already
-        tolerates). Fields still reach output/search/centrality because the
-        output symbol set is built independently of this registry.
+        tolerates). The skipped kinds still reach output/search/centrality
+        because the output symbol set is built independently of this registry.
         """
-        if symbol.kind == "field":
+        if symbol.kind in _FSHARP_UNREGISTERED_KINDS:
             return
         super().register_symbol(symbol, global_symbols)
 
