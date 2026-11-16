@@ -31,6 +31,13 @@ is the only one allowed to contain colons. A slot filled by an interpolation is
 OPAQUE and is not judged — the check refuses to invent a verdict it has no
 evidence for, which is why ``python:{}:1-1:{}:{}`` passes.
 
+A ``NodeId(...)`` OR ``read_node_id(...)`` WRAPPING IS SEEN THROUGH. Once
+``Symbol.id`` is typed ``ir.NodeId``, a producer that keeps a hand-built id
+wraps it in ``NodeId(f"...")`` to satisfy mypy. The wrapper passes its
+argument through unchanged, so every hop judges the expression inside it
+(:func:`_unwrap`); otherwise the wrapping that the type checker asks for would
+take the template out of this check.
+
 EDGE IDS GET THEIR OWN RULE. An ``Edge.id`` is a content digest,
 ``edge:sha256:<16hex>``, not a node id, so ``Edge(id=...)`` is judged, through
 the same three hops, against that shape (:func:`edge_template_problem`). For
@@ -119,6 +126,24 @@ _EDGE_ID_CONSTRUCTORS = frozenset({"Edge"})
 _EDGE_ID_RE = re.compile(r"^edge:sha256:(\x00|[0-9a-f]{16})$")
 
 _FuncDef = ast.FunctionDef | ast.AsyncFunctionDef
+
+#: Calls that hand their one argument through as a node id, unchanged: the
+#: ``NodeId`` NewType and its boundary (``ir.read_node_id``). The id inside is
+#: what is judged, so wrapping a hand-built template in ``NodeId(...)`` to
+#: satisfy the type checker does not also hide it from this check.
+_ID_WRAPPERS = frozenset({"NodeId", "read_node_id"})
+
+
+def _unwrap(expr: ast.expr) -> ast.expr:
+    """*expr* with any ``NodeId(...)`` / ``read_node_id(...)`` wrapping removed."""
+    while (
+        isinstance(expr, ast.Call)
+        and _callee_name(expr) in _ID_WRAPPERS
+        and len(expr.args) == 1
+        and not expr.keywords
+    ):
+        expr = expr.args[0]
+    return expr
 
 
 def edge_template_problem(template: str) -> str | None:
@@ -211,10 +236,14 @@ def _resolve(
     assigns: dict[str, list[ast.expr]],
     module_functions: dict[str, _FuncDef],
 ) -> list[ast.expr]:
-    """The three hops. Returns every expression the ``id=`` slot can hold."""
+    """The three hops. Returns every expression the ``id=`` slot can hold.
+
+    A ``NodeId(...)`` wrapping is seen through at each hop (:func:`_unwrap`).
+    """
+    argument = _unwrap(argument)
     reached: list[ast.expr] = [argument]
     if isinstance(argument, ast.Name):
-        reached.extend(assigns.get(argument.id, []))
+        reached.extend(_unwrap(value) for value in assigns.get(argument.id, []))
     for expr in list(reached):
         if not isinstance(expr, ast.Call):
             continue
@@ -225,7 +254,7 @@ def _resolve(
         if target is None:
             continue
         reached.extend(
-            node.value
+            _unwrap(node.value)
             for node in ast.walk(target)
             if isinstance(node, ast.Return) and node.value is not None
         )
@@ -248,6 +277,7 @@ def _direct_kind_word(expr: ast.expr) -> tuple[str, str] | None:
     a literal or one bare interpolated name (``...:{name}:{kind}``). None for
     anything else, a call to any other function included.
     """
+    expr = _unwrap(expr)
     if isinstance(expr, ast.JoinedStr):
         slot = _template_of(expr).rsplit(":", 1)[-1]
         if _LOWER_RE.match(slot):
@@ -293,6 +323,7 @@ def _id_kind_words(
     that literal; a return that writes one of the helper's own parameters gives
     the word the caller passed for it; anything else gives nothing.
     """
+    expr = _unwrap(expr)
     direct = _direct_kind_word(expr)
     if direct is not None:
         return [direct]
