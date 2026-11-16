@@ -25,8 +25,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Breaking and contract changes
 
 - **Behavior map `SCHEMA_VERSION` 0.20.15 → 0.21.0**: a C/C++ module slot naming several headers points into the new top-level `module_sets` table.
-- **`stable_id_scheme` v9 → v14**: BitBake, SCIP-only, `@hg:route`, some C/C++ external symbols and every async function get new `stable_id`s; all others are unchanged.
-- **Scheme bumps `stableid` v14 → v15, `shapeid` v3 → v4, `repofp` v2 → v3.**
+- **`stable_id_scheme` v9 → v15**: BitBake, SCIP-only, `@hg:route`, some C/C++ external symbols, every async function, and part of sixteen analyzers' symbols get new digests (spec: "`stable_id_scheme` version history").
+- **`shape_id_scheme` v3 → v4, `repo_fingerprint_scheme` v2 → v3**: the label changed, no digest.
 - **Identity values carry their scheme's label**: `hgstableid15:`, `hgshapeid4:`, `hgrepofp3:`; digests unchanged.
 - **`verify-claims` output 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` become `reached` / `refuted`; command-line arguments are `untrusted_input`, counted only when a claim sets `include_command_line: true`.
 - **io-boundaries schema 2.4 → 2.5**: Unix-domain sockets are IPC, not network (ADR-0050 §1): a server is `ipc_listen`, its reads and writes `ipc_recv` / `ipc_send`.
