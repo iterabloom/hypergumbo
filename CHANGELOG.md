@@ -209,6 +209,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Commands skip paths outside their zone** instead of crashing.
 - **Trust grants are private (0600) before they are written.**
 - **`build-grammars` uses a private temp directory**, not shared `/tmp`.
+- **Installing the extended-languages package alone now brings its grammar pack.**
 - **`install-gitleaks` installs gitleaks 8.30.0 only**, checked against its published SHA-256, and never follows a symlink out of `~/.local/bin`.
 - **`add-extras` installs embeddings exactly as `install-embeddings` does.**
 - **`HF_HUB_OFFLINE=0` or `false` no longer lets analysis reach Hugging Face.**
