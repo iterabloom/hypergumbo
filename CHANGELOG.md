@@ -225,6 +225,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### CI gates
 
+- **`check-id-construction` compares a node id's kind slot with its symbol's kind**, and the per-language fixture gate checks the same on real output.
 - **New checks**: declared axioms against real output; io-boundaries and taint classifying each call alike; a run where every test skipped fails; `depends_on` must name earlier passes; fixtures may not commit lockfiles or `==` pins.
 - **Line citations**: `scripts/repin-line-citations` moves drifted `line=` citations back onto their anchors; signature-axis citations are checked; the citation gate sees split paths and extensionless scripts.
 - **Fixes for the twice-daily run's failing steps**: the test-only reachability and self-tree id checks; the I/O allowlist trace, which now checks `install-rust-analyzer` and `add-extras`; the readability tests, which run where hypergumbo is installed.

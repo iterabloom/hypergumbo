@@ -109,6 +109,7 @@ DOC_FAMILY_CASES = [
     "sparql",
     "svelte",
     "twig",
+    "twig-call",
     "vue",
 ]
 
@@ -116,7 +117,7 @@ DOC_FAMILY_CASES = [
 # vue/svelte also emit ``javascript:`` symbols for their <script> blocks (minted
 # by the JS analyzer through ``make_symbol_id``, already canonical), so the
 # lang-slot is what separates the doc-family nodes under test from those.
-CASE_LANG = {case: case for case in DOC_FAMILY_CASES}
+CASE_LANG = {case: case.split("-")[0] for case in DOC_FAMILY_CASES}
 
 # case -> (filename, source). One canonical declaration idiom per language,
 # chosen to exercise several kinds per analyzer rather than the minimum one, so
@@ -276,6 +277,12 @@ CASE_FILES: dict[str, tuple[str, str]] = {
           <input name="{{ name }}">
         {% endmacro %}
     """),
+    # A function call in an output directive, in a case of its own so that the
+    # hole it records does not excuse the other twig kinds above.
+    "twig-call": ("link.twig", """\
+        <a href="{{ path('home') }}">home</a>
+        {{ dump(items) }}
+    """),
     "vue": ("App.vue", """\
         <template>
           <div class="app">{{ title }}</div>
@@ -325,6 +332,14 @@ KIND_SLOT_HOLES: dict[str, str] = {
         "argument feeds make_doc_stable_id, so correcting the word churns "
         "these symbols' stable_id: the fix needs a scheme bump, any one, and "
         "INV-dulah limb 1 carries it."
+    ),
+    "twig-call": (
+        "twig.py passes kind='function_call' to make_doc_symbol_ids while the "
+        "Symbol it builds carries kind='call_site' (the fold of audit-findings "
+        "0010 changed Symbol.kind and left the id word). robot's shape and "
+        "reason: the argument feeds make_doc_stable_id, so correcting the word "
+        "moves the stable id of every twig function call (measured 2026-11-15 on "
+        "these two calls: 2 of 2). It goes with the same scheme bump."
     ),
 }
 
