@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .ir import Edge
+from .ir import Edge, StableId
 from .overload_arity import ARITY_KEY, declared_arity, declared_arity_stable_id
 
 #: The modifier on a callback declaration -- the marking cpp and kotlin give
@@ -52,7 +52,7 @@ CALLBACK_MODIFIER = "abstract"
 
 def callback_stable_id(
     lang: str, path: str, name: str, arity: int, kind: str = "function",
-) -> str:
+) -> StableId:
     """The stable_id of callback ``name`` (``arity`` parameters) declared in ``path``.
 
     ``kind`` is the symbol kind the callback requires: ``function``, or

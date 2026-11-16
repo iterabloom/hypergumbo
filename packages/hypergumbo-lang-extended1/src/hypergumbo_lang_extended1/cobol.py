@@ -57,7 +57,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -153,7 +153,7 @@ def _level(level: str) -> int:
     return int(level) if level.isdigit() else 1
 
 
-def _stable_id(kind: str, rel_path: str, name: str, chain: list[str]) -> str:
+def _stable_id(kind: str, rel_path: str, name: str, chain: list[str]) -> StableId:
     """The ADR-0035 producer id (WI-tusad): no arity (a program's USING list
     does not overload it), the full scope chain joined by ``/``."""
     return declared_arity_stable_id(

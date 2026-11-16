@@ -75,7 +75,8 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol,
+    make_pass_id,
 )
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_symbol_id, node_text,
@@ -152,7 +153,7 @@ def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optiona
 
 def _command_definition_identity(
     node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
-) -> tuple[Optional[str], dict[str, object]]:
+) -> tuple[Optional[StableId], dict[str, object]]:
     """``(stable_id, meta)`` of a ``function()`` / ``macro()`` definition.
 
     See the module docstring: the named arguments become ``meta["parameters"]``
@@ -198,7 +199,7 @@ def _block_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 def _target_stable_id(
     node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
-) -> str:
+) -> StableId:
     """The ADR-0035 stable_id of a target-like command (see the docstring)."""
     return scoped_stable_id(
         kind=kind, lang="cmake", path=rel_path, name=name,

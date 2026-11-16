@@ -71,7 +71,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -226,7 +226,7 @@ def _julia_parameters(call_node: "tree_sitter.Node", source: bytes) -> list[dict
 def _julia_stable_id(
     kind: str, file_path: str, name: str, chain: list[str],
     meta: Optional[dict[str, Any]], decorators: str = "",
-) -> str:
+) -> StableId:
     """The ADR-0035 producer stable_id: module chain plus declared parameters."""
     return declared_arity_stable_id(
         kind=kind, lang="julia", path=file_path, name=name,

@@ -207,7 +207,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -447,7 +447,7 @@ def _fsharp_parameters(
     return [parameter_entry(node_text(child, source)) for child in args.named_children]
 
 
-def _fsharp_member_stable_id(kind: str, file_path: str, qualified: str) -> str:
+def _fsharp_member_stable_id(kind: str, file_path: str, qualified: str) -> StableId:
     """The producer stable_id of a record, union or field (no arity)."""
     return declared_arity_stable_id(
         kind=kind, lang="fsharp", path=file_path,

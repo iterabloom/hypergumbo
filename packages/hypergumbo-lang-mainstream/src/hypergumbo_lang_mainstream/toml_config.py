@@ -98,7 +98,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -243,7 +243,7 @@ def _find_pair_value(table_node: "tree_sitter.Node", key: str) -> str | None:
     return None  # pragma: no cover - key not found
 
 
-def _toml_stable_id(kind: str, name: str, rel_path: str) -> Optional[str]:
+def _toml_stable_id(kind: str, name: str, rel_path: str) -> Optional[StableId]:
     """The producer stable_id of a table-like symbol, or None for a table kind."""
     if is_table_kind(kind):
         return None

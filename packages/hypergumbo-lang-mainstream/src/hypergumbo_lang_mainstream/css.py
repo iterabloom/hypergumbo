@@ -58,7 +58,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, make_pass_id,
     sanitize_id_name_segment,
 )
 from hypergumbo_core.analyze.base import (
@@ -215,7 +215,7 @@ def _css_scope_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 def _css_stable_id(
     node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
-) -> str:
+) -> StableId:
     """The ADR-0035 stable_id of a CSS symbol (see the module docstring)."""
     return scoped_stable_id(
         kind=kind, lang="css", path=rel_path, name=name,

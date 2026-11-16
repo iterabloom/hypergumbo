@@ -50,7 +50,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 
@@ -124,7 +124,7 @@ def _extract_graphql_signature(
     return sig
 
 
-def _graphql_stable_id(kind: str, name: str, rel_path: str) -> Optional[str]:
+def _graphql_stable_id(kind: str, name: str, rel_path: str) -> Optional[StableId]:
     """The producer stable_id of a GraphQL definition, or None for a table kind."""
     if is_table_kind(kind):
         return None

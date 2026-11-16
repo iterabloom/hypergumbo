@@ -96,7 +96,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import (
@@ -320,7 +320,7 @@ def _extract_symbols_from_file(
             is_exported = name in exported_names
 
         meta: Optional[dict[str, object]] = None
-        stable_id: Optional[str] = None
+        stable_id: Optional[StableId] = None
         if kind in _HS_PRODUCER_KINDS:
             if kind == "function":
                 patterns = find_child_by_type(node, "patterns")
