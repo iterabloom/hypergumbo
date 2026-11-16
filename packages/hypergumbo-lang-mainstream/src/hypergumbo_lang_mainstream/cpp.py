@@ -147,7 +147,14 @@ Call-edge details:
   name's pick. The overload set includes member templates and constructors,
   which are members of their class (WI-rugin), so ``Init()`` in a constructor
   binds the zero-parameter ``Init``, not ``template <class M> Init(M*)``
-  (WI-jidot). A ``new`` that lands on a constructor is re-chosen the same way
+  (WI-jidot). Among candidates the count cannot separate, exactly one
+  non-template beside function templates is the pick, after C++'s own
+  tie-breaker for an equally good non-template and template
+  (``_prefer_non_template``); the record stays ambiguous, because argument
+  types are not read and a ``Manager*`` argument makes only the template
+  viable. An ambiguous constructor choice draws no edge to one constructor,
+  so the construction reaches all of them. A ``new`` that lands on a
+  constructor is re-chosen the same way
   by its argument count (``new T`` and ``new T[n]`` pass none, ``new T{a, b}``
   two). A call on an explicit receiver other than ``this`` is not
   re-chosen: with no receiver type the overload set is a guess, and in the
@@ -699,6 +706,50 @@ def _alternatives_of_one_function(candidates: tuple[Symbol, ...]) -> bool:
             return False  # an unknown signature is not known to be identical
         shapes.add((c.path, tuple(e.get("type") for e in entries)))
     return len(shapes) == 1
+
+
+def _cpp_is_function_template(node: "tree_sitter.Node") -> bool:
+    """Whether a ``function_definition`` defines a function TEMPLATE.
+
+    Each ``template <..>`` directly above the definition introduces template
+    parameters; those a templated class in the declarator's qualifier
+    accounts for (``template <class T> void A<T>::h()``: one, for ``A<T>``)
+    belong to the class, and a member of a class template is an ordinary
+    function. One more than the qualifier spends makes the definition a
+    template (``template <class T> template <class U> void A<T>::k(U)``,
+    ``template <class U> void f(U)``, the explicit specialisation
+    ``template <> void f<int>(int)``)."""
+    introduced = 0
+    parent = node.parent
+    while parent is not None and parent.type == "template_declaration":
+        introduced += 1
+        parent = parent.parent
+    if introduced == 0:
+        return False
+    name = c_family_declarator(node).name
+    spent = sum(
+        1 for n in iter_tree(name) if n.type == "template_type"
+    ) if name is not None and name.type == "qualified_identifier" else 0
+    return introduced > spent
+
+
+def _prefer_non_template(
+    choice: OverloadChoice, template_ids: "frozenset[str] | set[str]",
+) -> OverloadChoice:
+    """C++ [over.match.best]: of a non-template and a function template
+    specialisation equally good for a call, the non-template is chosen.
+    Types unread, the analyzer cannot know the two are equally good (a
+    ``Manager*`` argument makes only the template viable), so the rule only
+    names the PICK: exactly one non-template among several admitted
+    candidates, some of them templates, is the edge's target, and the record
+    stays ambiguous with every admitted candidate, its confidence unchanged.
+    Two or more non-templates: the choice as it was."""
+    if not choice.ambiguous:
+        return choice
+    plain = [c for c in choice.admitted if c.id not in template_ids]
+    if len(plain) == 1 and len(plain) < len(choice.admitted):
+        return OverloadChoice(plain[0], choice.confidence, True, choice.admitted)
+    return choice
 
 
 def _record_cpp_prototype(
@@ -2095,6 +2146,7 @@ def _extract_edges_from_tree(
     callables_by_name: dict[str, list[Symbol]],
     include_closure: IncludeClosure | None = None,
     table_symbols: list[Symbol] | None = None,
+    template_ids: "frozenset[str] | set[str]" = frozenset(),
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -2117,6 +2169,9 @@ def _extract_edges_from_tree(
         include_closure: The run's include graph
             (``CppAnalyzer._include_closure``). Without one the file's own
             directory stands in for the repository.
+        template_ids: The ids of the run's function templates
+            (``CppAnalyzer._template_ids``), for the non-template tie-breaker
+            (``_prefer_non_template``).
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -2191,9 +2246,9 @@ def _extract_edges_from_tree(
         if len(group) < 2:
             return None
         same_file = [s for s in group if s.path == pick.path]
-        choice = choose_overload(
+        choice = _prefer_non_template(choose_overload(
             [same_file, group], _cpp_call_arity(call), preferred=pick,
-        )
+        ), template_ids)
         if choice.symbol is None:
             return None
         if choice.ambiguous and _alternatives_of_one_function(choice.admitted):
@@ -2212,9 +2267,9 @@ def _extract_edges_from_tree(
         if cls.kind not in ("class", "struct") or arity is None:
             return
         short = cls.name.rsplit("::", 1)[-1]
-        choice = choose_overload(
+        choice = _prefer_non_template(choose_overload(
             [callables_by_name.get(f"{cls.name}::{short}", [])], arity,
-        )
+        ), template_ids)
         if choice.symbol is None or choice.ambiguous:
             return
         edges.append(Edge.create(
@@ -3170,6 +3225,8 @@ class CppAnalyzer(TreeSitterAnalyzer):
     #: Pass 2 sees an overload set where ``global_symbols`` keeps one per name.
     _prototypes: Optional[dict[str, list[list[dict[str, Any]]]]] = None
     _callables_by_name: Optional[dict[str, list[Symbol]]] = None
+    #: The run's function templates by symbol id (``_prefer_non_template``).
+    _template_ids: Optional[set[str]] = None
     #: INV-zikul: the run's include graph, live only inside ``analyze()``.
     _include_closure: Optional[IncludeClosure] = None
     #: Dispatch-table variables the edge pass emits, added in ``post_process``.
@@ -3181,6 +3238,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
         """Run the base two-pass analysis with fresh overload indexes."""
         self._prototypes = {}
         self._callables_by_name = {}
+        self._template_ids = set()
         self._include_closure = IncludeClosure(repo_root)
         self._table_symbols = []
         try:
@@ -3188,6 +3246,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
         finally:
             self._prototypes = None
             self._callables_by_name = None
+            self._template_ids = None
             self._include_closure = None
             self._table_symbols = None
 
@@ -3213,9 +3272,16 @@ class CppAnalyzer(TreeSitterAnalyzer):
         rel_path: str,
         run: AnalysisRun,
     ) -> FileAnalysis:
-        return _extract_symbols_from_tree(
+        analysis = _extract_symbols_from_tree(
             tree, source, file_path, rel_path, run, prototypes=self._prototypes,
         )
+        if self._template_ids is not None:
+            self._template_ids.update(
+                sid for sid, node in analysis.node_for_symbol.items()
+                if node.type == "function_definition"
+                and _cpp_is_function_template(node)
+            )
+        return analysis
 
     def register_symbol(
         self,
@@ -3275,6 +3341,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             field_type_registry=getattr(self, "_field_type_registry", None),
             file_symbols=self.file_symbols(local_symbols),
             callables_by_name=self._callables_by_name or {},
+            template_ids=self._template_ids or frozenset(),
             include_closure=self._include_closure,
             table_symbols=self._table_symbols,
         )
