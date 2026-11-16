@@ -202,11 +202,10 @@ section "3. Dependencies & Security"
 #   --skip-editable        skip our own editable installs (audited at build)
 #   --ignore-vuln CVE-2025-71176  pytest TOCTOU (dev-only, single-tenant runner)
 #   --ignore-vuln CVE-2026-3219   pip ZIP confusion (AV:L+UI:A, ~0 exposure)
-# Two local-only ignores for advisories with NO released fix, in packages
-# absent from the CI audit env (so the mirror claim holds; CI never sees them):
+# One local-only ignore for an advisory with NO released fix, in a package
+# absent from the CI audit env (so the mirror claim holds; CI never sees it):
 #   --ignore-vuln CVE-2025-69872  diskcache, via llama_cpp_python
-#   --ignore-vuln PYSEC-2026-3740 nltk, via safety
-# Neither is a dependency of any hypergumbo package. Re-check cadence: tracker
+# It is not a dependency of any hypergumbo package. Re-check cadence: tracker
 # item WI-totak (drop each ignore when a fixed release ships).
 # pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.
 # Anything else (network, parse, unsupported package) is a real failure
@@ -250,14 +249,14 @@ done
 
 echo "  Running pip-audit..."
 # --ignore-vuln list kept IN SYNC with .woodpecker/woodpecker.yml (the
-# authoritative CI audit), plus TWO LOCAL-ONLY carve-outs this dev box pulls that
-# CI's closure does not: CVE-2025-69872 (diskcache, via llama_cpp_python) and
-# PYSEC-2026-3740 (nltk, via safety), neither with a fix. The published packages
-# depend on neither. tests/test_audit_ignore_lists.py pins the sync.
+# authoritative CI audit), plus ONE LOCAL-ONLY carve-out this dev box pulls that
+# CI's closure does not: CVE-2025-69872 (diskcache, via llama_cpp_python), which
+# has no fix. The published packages do not depend on it.
+# tests/test_audit_ignore_lists.py pins the sync.
 #
 # The 24-id torch / transformers / joblib carve-out is RETIRED (WI-totak,
 # 2026-09-27). On torch 2.14 / transformers 5.17 / joblib 1.5.3 none of its ids
-# fires (an audit with only the two CI ignores reports diskcache and nltk and
+# fires (an audit with only the two CI ignores reports diskcache and
 # nothing else), and no CI audit env installs the ML stack at all. A dead ignore
 # is not free: it would hide the NEXT torch or transformers advisory here.
 #
@@ -273,10 +272,9 @@ echo "  Running pip-audit..."
 # surfaces PYSEC-2026-2447 (the same advisory under its PYSEC id, still no fix
 # version). Fixable deps are pinned above, not ignored here.
 #
-# A second local-only no-fix carve-out, added 2026-09-25: PYSEC-2026-3740
-# (CVE-2026-81726, nltk 3.10.3, fix_versions: []). nltk reaches this box only via
-# the `safety` dev tool; no hypergumbo package depends on it. Drop it when nltk
-# ships a fix (WI-totak).
+# The nltk carve-out PYSEC-2026-3740 (CVE-2026-81726) is gone since 2026-11-16:
+# with nltk 3.10.4 (pinned above) an audit with only the two CI ignores reports
+# diskcache and nothing else.
 #
 # WI-zisoj: `|| AUDIT_EXIT=$?`, NOT a bare `AUDIT_EXIT=$?` on the next line.
 # This script runs under `set -euo pipefail` (line 18), and a simple assignment
@@ -289,7 +287,7 @@ echo "  Running pip-audit..."
 AUDIT_EXIT=0
 AUDIT_OUTPUT=$(pip-audit --skip-editable \
     --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
-    --ignore-vuln CVE-2025-69872 --ignore-vuln PYSEC-2026-3740 2>&1) || AUDIT_EXIT=$?
+    --ignore-vuln CVE-2025-69872 2>&1) || AUDIT_EXIT=$?
 if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"
 else
