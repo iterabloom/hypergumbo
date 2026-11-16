@@ -158,7 +158,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
             "would appear in a clean import statement -- NOT the in-scope "
             "alias, which is a property of the importing file. C and C++ "
             "header names (<string.h>) are namespaces in this sense, and so "
-            "are JS/TS relative paths: 2.7% of shipped refs, legitimate."
+            "are JS/TS relative paths."
         ),
         emission_sites=(
             EmissionSite(
@@ -288,7 +288,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
             "from any of them, and since WI-bapuk PREPENDS the namespace a "
             "`std::`-qualified call names (or, for an unqualified call, a "
             "`using namespace` the file declares), because that is another "
-            "home the call could have come from. 6.2% of shipped refs. "
+            "home the call could have come from. "
             "Non-conformant as an "
             "IDENTITY while being the honest answer to the question: the "
             "analyzer genuinely does not know which. Already handled "
@@ -326,7 +326,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
         axis=AXIS_UNCERTAINTY,
         description=(
             "A fixed marker standing for 'no module identity was recovered': "
-            "'external' (1.5% of refs). Non-conformant as an identity, and "
+            "'external'. Non-conformant as an identity, and "
             "load-bearing as an admission: io_boundary and taint share "
             "_UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot "
             "drift about what 'no module' looks like. bash's 'redirect' was "
