@@ -139,7 +139,7 @@ def _find_enclosing_function(
         if current.type == "function":
             name = _get_identifier(current)
             if name:
-                return make_symbol_id("gleam", rel_path, current.start_point[0]+1, current.end_point[0]+1, name, "fn")
+                return make_symbol_id("gleam", rel_path, current.start_point[0]+1, current.end_point[0]+1, name, "function")
         current = current.parent
     return None  # pragma: no cover
 
@@ -189,7 +189,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     signature += f" -> {return_type}"
 
                 sym = Symbol(
-                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "function"),
                     stable_id=self.compute_stable_id(node, kind="fn", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="function",
@@ -217,7 +217,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 constructor_count = _count_constructors(node)
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "class"),
                     stable_id=self.compute_stable_id(node, kind="type", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="class",
@@ -240,7 +240,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
             if name:
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type_alias"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
                     stable_id=self.compute_stable_id(node, kind="type_alias", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="type",

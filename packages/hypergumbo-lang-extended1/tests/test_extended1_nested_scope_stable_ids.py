@@ -252,7 +252,7 @@ def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
         analyze_tcl, tmp_path, "src/n.tcl",
         "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n"
         "  }\n}\nproc top {} { go }\n")}
-    assert syms["go"].id == "tcl:src/n.tcl:3-3:a..inner..go:proc"  # ids spell : as .
+    assert syms["go"].id == "tcl:src/n.tcl:3-3:a..inner..go:function"  # ids spell : as .
     assert syms["go"].meta == {"namespace": "a::inner"}
     assert syms["inner"].id == "tcl:src/n.tcl:2-4:a..inner:namespace"
     assert syms["a"].id == "tcl:src/n.tcl:1-5:a:namespace"

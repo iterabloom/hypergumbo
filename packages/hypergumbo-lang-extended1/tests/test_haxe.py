@@ -329,3 +329,49 @@ class TestHaxeCyclomaticComplexity:
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+_KIND_SLOT_SOURCE = """\
+interface Shape {
+  public function area():Float;
+}
+
+class App {
+  public function run():Void {
+    helper();
+  }
+
+  function helper():Void {}
+}
+"""
+
+
+def _kind_slot_result(tmp_path: Path):
+    (tmp_path / "App.hx").write_text(_KIND_SLOT_SOURCE)
+    return analyze_haxe(tmp_path)
+
+
+def test_the_haxe_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
+    result = _kind_slot_result(tmp_path)
+    got = sorted((s.kind, s.name) for s in result.symbols)
+    assert got == [('class', 'App'), ('function', 'App.helper'), ('function', 'App.run'), ('function', 'Shape.area'), ('interface', 'Shape')], got
+
+
+def test_every_haxe_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
+    The id of a function said ``fn``."""
+    result = _kind_slot_result(tmp_path)
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []
+
+
+def test_a_haxe_calls_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
+    """The analyzer builds the edge's source id a second time, from the
+    enclosing declaration. It must be the id the Symbol carries, or the edge
+    starts on no node."""
+    result = _kind_slot_result(tmp_path)
+    ids = {s.id for s in result.symbols}
+    edges = [e for e in result.edges if e.edge_type == "calls"]
+    assert edges
+    assert [e.src for e in edges if e.src not in ids] == []
+    assert any(e.dst in ids for e in edges)
