@@ -485,3 +485,34 @@ class TestLoadEdgeEndpoints:
             ),
         ]
         assert [e[2] for e in self._imports(temp_repo)] == [False, False]
+
+
+class TestCallEdgeEndpoints:
+    """A call no file of the run defines ends at the fleet's stand-in.
+
+    It ended at ``starlark:external:<name>:function``, four slots and so no
+    id: finalize rendered it with the path slot ``<unknown>``.
+    """
+
+    def test_unresolved_call_is_a_stand_in(self, temp_repo: Path) -> None:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (temp_repo / "defs.bzl").write_text(
+            "def helper(name):\n"
+            "    pass\n"
+            "\n"
+            "def macro(name):\n"
+            "    helper(name)\n"
+            "    native.cc_library(name = name)\n"
+            "    print(name)\n"
+        )
+        result = analyze_starlark(temp_repo)
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert {by_id[e.src].name for e in calls} == {"macro"}
+        assert [(by_id[e.dst].name if e.dst in by_id else e.dst, e.is_resolved) for e in calls] == [
+            ("helper", True),
+            ("starlark:external:0-0:cc_library:unresolved", False),
+            ("starlark:external:0-0:print:unresolved", False),
+        ]
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []

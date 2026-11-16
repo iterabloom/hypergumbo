@@ -6,7 +6,8 @@ This analyzer uses tree-sitter to parse WebGPU Shading Language files and extrac
 - Struct definitions
 - Uniform/storage buffer bindings (kind ``uniform``/``storage``); any other
   global carrying @group/@binding is kind ``variable`` with group/binding in meta
-- Function calls
+- Function calls (a callee no file of the run defines, such as ``sqrt``, is
+  the ``make_unresolved_edge`` stand-in ``wgsl:external:0-0:<name>:unresolved``)
 
 If the wgsl grammar is not available, the analyzer warns and returns a
 skipped result.
@@ -58,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_entry_stable_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -466,24 +468,21 @@ def _extract_wgsl_edges(
                 # resolver's match quality interpolated in the ast_call_direct
                 # band; a builtin is an unresolved target (ADR-0037) and
                 # derives the unresolved base.
-                resolution_score: float | None = None
                 if result.symbol is not None:
-                    dst_id = result.symbol.id
-                    resolution_score = result.confidence
+                    edge = Edge.create(
+                        src=caller.id,
+                        dst=result.symbol.id,
+                        edge_type="calls",
+                        line=start_line,
+                        resolution_score=result.confidence,
+                        origin=PASS_ID,
+                        evidence_type="ast_call_direct",
+                        origin_run_id=run_id,
+                    )
                 else:
-                    dst_id = f"wgsl:builtin:{func_name}"
-
-                edge = Edge.create(
-                    src=caller.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=start_line,
-                    resolution_score=resolution_score,
-                    is_resolved=resolution_score is not None,
-                    origin=PASS_ID,
-                    evidence_type="ast_call_direct",
-                    origin_run_id=run_id,
-                )
+                    edge = make_unresolved_edge(
+                        "wgsl", caller.id, func_name, start_line, PASS_ID, run_id,
+                    )
                 edges.append(edge)
 
 

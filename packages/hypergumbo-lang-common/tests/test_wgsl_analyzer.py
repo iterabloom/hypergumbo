@@ -482,3 +482,29 @@ struct VertexOutput {
     assert structs
     for s in structs:
         assert s.shape_id, f"wgsl struct {s.name} has no shape_id"
+
+
+def test_unresolved_call_ends_at_a_stand_in(tmp_path) -> None:
+    """A callee no file of the run defines is the fleet's stand-in.
+
+    It was ``wgsl:builtin:<name>``, three slots and so no id: finalize folded
+    every such callee of a repository into one node named ``builtin``.
+    """
+    from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+    (tmp_path / "s.wgsl").write_text(
+        "fn helper(x: f32) -> f32 { return x * 2.0; }\n"
+        "@fragment\n"
+        "fn main() -> @location(0) vec4<f32> {\n"
+        "    let y = helper(sqrt(4.0));\n"
+        "    return vec4<f32>(y, 0.0, 0.0, 1.0);\n"
+        "}\n"
+    )
+    result = analyze_wgsl_files(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    calls = [e for e in result.edges if e.edge_type == "calls"]
+    assert {by_id[e.src].name for e in calls} == {"main"}
+    assert {by_id[e.dst].name if e.dst in by_id else e.dst for e in calls} >= {
+        "helper", "wgsl:external:0-0:sqrt:unresolved",
+    }
+    assert non_id_edge_endpoints(result.symbols, result.edges) == []

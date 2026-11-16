@@ -368,3 +368,30 @@ class TestGlslCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+def test_unresolved_call_ends_at_a_stand_in(tmp_path) -> None:
+    """A callee no file of the run defines is the fleet's stand-in.
+
+    It was ``glsl:builtin:<name>``, three slots and so no id: finalize folded
+    every such callee of a repository into one node named ``builtin``.
+    """
+    from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+    (tmp_path / "s.frag").write_text(
+        "#version 330\n"
+        "float helper(float x) { return x * 2.0; }\n"
+        "void main() {\n"
+        "    float y = helper(normalize(vec3(1.0)).x);\n"
+        "}\n"
+    )
+    result = analyze_glsl_files(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    calls = [e for e in result.edges if e.edge_type == "calls"]
+    assert {by_id[e.src].name for e in calls} == {"main"}
+    assert {by_id[e.dst].name if e.dst in by_id else e.dst for e in calls} == {
+        "helper",
+        "glsl:external:0-0:normalize:unresolved",
+        "glsl:external:0-0:vec3:unresolved",
+    }
+    assert non_id_edge_endpoints(result.symbols, result.edges) == []

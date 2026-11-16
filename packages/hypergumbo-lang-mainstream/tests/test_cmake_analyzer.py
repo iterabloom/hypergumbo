@@ -135,7 +135,11 @@ target_link_libraries(myapp PRIVATE OpenSSL::SSL pthread)
     # External libraries should have lower confidence
     for edge in link_edges:
         assert edge.confidence == 0.70
-        assert "external" in edge.dst
+        assert edge.is_resolved is False
+    assert {e.dst for e in link_edges} == {
+        "cmake:OpenSSL:0-0:SSL:unresolved",
+        "cmake:external:0-0:pthread:unresolved",
+    }
 
 def test_analyze_find_package(tmp_path):
     """Test detection of find_package."""
@@ -374,3 +378,43 @@ def test_skipped_when_grammar_unavailable(tmp_path):
 
     assert result.skipped is True
     assert "not available" in result.skip_reason
+
+
+def test_link_to_an_undefined_library_ends_at_a_stand_in(tmp_path) -> None:
+    """A ``links`` dst no file defines is a stand-in in the id grammar.
+
+    It was ``cmake:external:<name>:library``, four slots and so no id:
+    finalize rendered it with the path slot ``<unknown>``, and an imported
+    target's ``::`` made it worse.
+    """
+    from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+    from hypergumbo_core.ir import ExternalRef
+
+    (tmp_path / "CMakeLists.txt").write_text(
+        "project(demo)\n"
+        "add_library(core core.c)\n"
+        "add_executable(app main.c)\n"
+        "target_link_libraries(app PRIVATE core m Qt5::Core ${EXTRA_LIBS}"
+        " $<TARGET_OBJECTS:objs>)\n"
+    )
+    result = analyze_cmake_files(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    links = [e for e in result.edges if e.edge_type == "links"]
+    assert {by_id[e.src].name for e in links} == {"app"}
+    assert [
+        (by_id[e.dst].name if e.dst in by_id else e.dst, e.dst_ref, e.is_resolved)
+        for e in links
+    ] == [
+        ("core", None, True),
+        ("cmake:external:0-0:m:unresolved", None, False),
+        # An imported target names its package: the path slot, not a colon
+        # in the name slot.
+        (
+            "cmake:Qt5:0-0:Core:unresolved",
+            ExternalRef(lang="cmake", module_path="Qt5", name="Core"),
+            False,
+        ),
+        ("cmake:external:0-0:${EXTRA_LIBS}:unresolved", None, False),
+        ("cmake:external:0-0:$<TARGET_OBJECTS.objs>:unresolved", None, False),
+    ]
+    assert non_id_edge_endpoints(result.symbols, result.edges) == []
