@@ -202,3 +202,21 @@ class TestOtherFrameworks:
             rel="app/web.py",
         )
         assert _refs(res, "/x") == ({_sym_id(res, "app/views.py", "index")}, set())
+
+
+def test_an_attribute_of_a_view_function_is_not_that_view(tmp_path: Path) -> None:
+    """The dotted walk stops at a declaration that is not a class.
+    ``views.index.wrapped`` names an attribute of the function object
+    ``views.index``, which the analyzer does not know; it is NOT ``index``.
+    Answering with the declaration the walk had reached would make ``index``
+    the handler of a route whose handler is something else. The sibling route
+    registered with ``views.index`` itself shows the fixture reaches it."""
+    res = _analyze(
+        tmp_path,
+        _DJANGO + "from app import views\n"
+        "urlpatterns = [path('', views.index), path('w/', views.index.wrapped)]\n",
+    )
+    ours = _sym_id(res, "app/views.py", "index")
+    assert _refs(res, "/") == ({ours}, {ours})
+    contexts, markers = _refs(res, "/w/")
+    assert ours not in contexts and ours not in markers, (contexts, markers)
