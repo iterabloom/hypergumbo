@@ -502,3 +502,195 @@ def test_the_precommit_hook_regex_covers_every_scoped_core_file():
         f"in DEFAULT_CORE_FILES but not matched by the pre-commit regex: "
         f"{sorted(scoped - covered)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# A field typed with a NewType over ``str`` is a str field
+# ---------------------------------------------------------------------------
+#
+# ``X = NewType("X", str)`` makes ``X`` a ``str`` at run time and a distinct
+# type to mypy. Before this check learned it, an annotation ``X`` was an
+# unknown ``Name`` and the field was SKIPPED: retyping ``Symbol.stable_id``
+# from ``Optional[str]`` to ``Optional[StableId]`` silently took it out of the
+# gate, and a new field typed ``StableId`` with no ``# axis:`` comment passed.
+# The NewType names are read from the scanned source (and from the modules
+# it imports them from), not from a list in the checker.
+
+_NEWTYPE_PRELUDE = (
+    "from dataclasses import dataclass\n"
+    "from typing import NewType, Optional\n"
+    'StableId = NewType("StableId", str)\n'
+)
+
+
+def test_is_str_like_newtype_name_only_when_known():
+    import ast as _ast
+
+    node = _ast.parse("x: StableId").body[0].annotation
+    assert _is_str_like_annotation(node) is False
+    assert _is_str_like_annotation(node, frozenset({"StableId"})) is True
+    opt = _ast.parse("x: Optional[StableId]").body[0].annotation
+    assert _is_str_like_annotation(opt, frozenset({"StableId"})) is True
+    pipe = _ast.parse("x: StableId | None").body[0].annotation
+    assert _is_str_like_annotation(pipe, frozenset({"StableId"})) is True
+
+
+def test_newtype_field_with_axis_comment_passes(tmp_path: Path):
+    root, rel = _write_fixture(
+        tmp_path,
+        _NEWTYPE_PRELUDE
+        + "@dataclass\nclass C:\n    f: StableId  # axis: identity\n",
+    )
+    assert find_field_drift(root, core_files=[rel]) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["StableId", "Optional[StableId]", "StableId | None", "None | StableId"],
+)
+def test_newtype_field_without_axis_comment_is_flagged(
+    tmp_path: Path, annotation: str
+):
+    root, rel = _write_fixture(
+        tmp_path,
+        _NEWTYPE_PRELUDE + f"@dataclass\nclass C:\n    f: {annotation} = None\n",
+    )
+    offenders = find_field_drift(root, core_files=[rel])
+    assert len(offenders) == 1, annotation
+    assert "C.f" in offenders[0]
+    assert "no `# axis: ...`" in offenders[0]
+
+
+@pytest.mark.parametrize(
+    "annotation", ["Optional[StableId]", "StableId | None"]
+)
+def test_optional_newtype_field_with_axis_comment_passes(
+    tmp_path: Path, annotation: str
+):
+    root, rel = _write_fixture(
+        tmp_path,
+        _NEWTYPE_PRELUDE
+        + f"@dataclass\nclass C:\n    f: {annotation} = None  # axis: identity\n",
+    )
+    assert find_field_drift(root, core_files=[rel]) == []
+
+
+def test_newtype_over_non_str_base_is_not_str_like(tmp_path: Path):
+    root, rel = _write_fixture(
+        tmp_path,
+        "from dataclasses import dataclass\n"
+        "from typing import NewType, Optional\n"
+        'Count = NewType("Count", int)\n'
+        'Names = NewType("Names", list)\n'
+        "@dataclass\nclass C:\n"
+        "    n: Count = Count(0)\n"
+        "    m: Optional[Count] = None\n"
+        "    k: Names = None\n",
+    )
+    assert find_field_drift(root, core_files=[rel]) == []
+
+
+def test_typing_attribute_form_and_newtype_chain_are_str_like(tmp_path: Path):
+    """``typing.NewType(...)`` counts, and a NewType over a str NewType is str."""
+    root, rel = _write_fixture(
+        tmp_path,
+        "import typing\n"
+        "from dataclasses import dataclass\n"
+        'Base = typing.NewType("Base", str)\n'
+        'Derived = typing.NewType("Derived", Base)\n'
+        "@dataclass\nclass C:\n"
+        "    a: Base = ''\n"
+        "    b: Derived = ''\n",
+    )
+    offenders = find_field_drift(root, core_files=[rel])
+    assert len(offenders) == 2
+    assert "C.a" in offenders[0] and "C.b" in offenders[1]
+
+
+def test_non_newtype_assignments_are_not_str_like(tmp_path: Path):
+    """Other assignments, and malformed NewType calls, define no str alias."""
+    root, rel = _write_fixture(
+        tmp_path,
+        "from dataclasses import dataclass\n"
+        "from typing import NewType\n"
+        "Alias = str\n"
+        "Other = make('Other', str)\n"
+        "Bad = NewType('Bad')\n"
+        "x, Pair = NewType('Pair', str), 1\n"
+        "@dataclass\nclass C:\n"
+        "    a: Alias = ''\n"
+        "    b: Other = ''\n"
+        "    c: Bad = ''\n"
+        "    d: Pair = ''\n",
+    )
+    assert find_field_drift(root, core_files=[rel]) == []
+
+
+def _write_package(tmp_path: Path, files: dict[str, str]) -> Path:
+    for rel, body in files.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    "import_line",
+    [
+        "from .ids import StableId\n",
+        "from .ids import StableId as Sid\n",
+        "from pkg.ids import StableId\n",
+        "from .sub.more import StableId\n",
+        "from ..ids import StableId\n",
+    ],
+)
+def test_newtype_imported_from_another_module_is_str_like(
+    tmp_path: Path, import_line: str
+):
+    """The NewType may live outside the scanned file; its import is followed."""
+    name = "Sid" if " as Sid" in import_line else "StableId"
+    core = "pkg/inner/core.py" if import_line.startswith("from ..") else "pkg/core.py"
+    root = _write_package(
+        tmp_path,
+        {
+            "src/pkg/__init__.py": "",
+            "src/pkg/inner/__init__.py": "",
+            "src/pkg/sub/__init__.py": "",
+            "src/pkg/ids.py": 'from typing import NewType\nStableId = NewType("StableId", str)\n',
+            "src/pkg/sub/more.py": "from ..ids import StableId\n"
+            'Unrelated = NewType("Unrelated", int)\n',
+            f"src/{core}": "from dataclasses import dataclass\n"
+            + import_line
+            + f"@dataclass\nclass C:\n    f: {name} = ''\n",
+        },
+    )
+    offenders = find_field_drift(root, core_files=[f"src/{core}"])
+    assert len(offenders) == 1, offenders
+    assert "C.f" in offenders[0]
+
+
+def test_unresolvable_or_non_newtype_imports_are_not_str_like(tmp_path: Path):
+    """An import that resolves to no file, or to a non-NewType, adds nothing.
+
+    Two modules importing each other must not loop.
+    """
+    root = _write_package(
+        tmp_path,
+        {
+            "src/pkg/__init__.py": "",
+            "src/pkg/helpers/__init__.py": "Thing = int\n",
+            "src/pkg/a.py": "from .core import Q\n",
+            "src/pkg/core.py": "from dataclasses import dataclass\n"
+            "from os.path import join\n"
+            "from .missing import Gone\n"
+            "from .helpers import Thing\n"
+            "from .a import P\n"
+            "from . import helpers\n"
+            "@dataclass\nclass C:\n"
+            "    f: Gone = ''\n"
+            "    g: Thing = 0\n"
+            "    h: join = ''\n"
+            "    i: P = ''\n",
+        },
+    )
+    assert find_field_drift(root, core_files=["src/pkg/core.py"]) == []
