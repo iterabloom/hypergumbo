@@ -102,6 +102,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The Go memberlist linker emits its delegate edges in a real survey**, not only in unit tests.
 - **Ansible: tasks in role task files are found, and play tasks are no longer reported as handlers.**
 - **Verilog instantiations with one port, positional ports, `.*` or none emit edges.**
+- **C++ in-class constructors and member templates are methods of their class.**
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`.
 - **Python `stable_id` reads whole annotations: `Literal[-1]` and `Literal[-2]` no longer collide.**
