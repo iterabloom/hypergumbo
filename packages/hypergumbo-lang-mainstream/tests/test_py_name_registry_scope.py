@@ -394,6 +394,50 @@ class TestBareNameCalls:
         assert _edges_from(res, make.id, _sym(res.symbols, "Local", 2).id) == ["instantiates"]
 
 
+class TestClosureReachesEnclosingLocalClass:
+    """A function-local class and a module-level class of one name: inside
+    the function AND its closures the name is the local class, as it was when
+    the registry kept the local class under its bare name."""
+
+    SRC = (
+        "def outer():\n"
+        "    class Local:\n"                 # line 2
+        "        def m(self):\n            return 1\n"
+        "    def closure():\n"               # line 5
+        "        x = Local()\n"
+        "        return x.m()\n"
+        "    return closure\n"
+        "class Local:\n"                     # line 9: module level, declared later
+        "    def m(self):\n        return 2\n"
+        "def user():\n"                      # line 12
+        "    x = Local()\n"
+        "    return x.m()\n"
+    )
+
+    def _res(self, tmp_path: Path):
+        f = tmp_path / "m.py"
+        f.write_text(self.SRC)
+        return extract_nodes(f)
+
+    def test_the_closure_constructs_and_calls_the_local_class(self, tmp_path: Path) -> None:
+        res = self._res(tmp_path)
+        closure = _sym(res.symbols, "outer.closure", 5)
+        assert _edges_from(res, closure.id, _sym(res.symbols, "Local", 2).id) == ["instantiates"]
+        assert _edges_from(res, closure.id, _sym(res.symbols, "Local", 9).id) == []
+        assert _edges_from(res, closure.id, _sym(res.symbols, "Local.m", 3).id) == ["calls"]
+        assert _edges_from(res, closure.id, _sym(res.symbols, "Local.m", 10).id) == []
+
+    def test_a_function_outside_constructs_and_calls_the_module_class(
+        self, tmp_path: Path,
+    ) -> None:
+        res = self._res(tmp_path)
+        user = _sym(res.symbols, "user", 12)
+        assert _edges_from(res, user.id, _sym(res.symbols, "Local", 9).id) == ["instantiates"]
+        assert _edges_from(res, user.id, _sym(res.symbols, "Local", 2).id) == []
+        assert _edges_from(res, user.id, _sym(res.symbols, "Local.m", 10).id) == ["calls"]
+        assert _edges_from(res, user.id, _sym(res.symbols, "Local.m", 3).id) == []
+
+
 class TestCrossFile:
     def test_an_import_of_a_bare_name_is_the_module_level_class(
         self, tmp_path: Path,
