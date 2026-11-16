@@ -483,9 +483,12 @@ def _extract_function_call(
         return
 
     span = _directive_span(parent_node)
-    # Both ids minted together by make_doc_symbol_ids (INV-dulah).
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah). The kind
+    # word is the Symbol's own kind, ``call_site`` (ADR-0036 Ruling 2); it also
+    # feeds the stable id, which hashed ``function_call`` before the v15
+    # stable-id scheme.
     symbol_id, stable_id = make_doc_symbol_ids(
-        "twig", str(rel_path), "function_call", func_name,
+        "twig", str(rel_path), "call_site", func_name,
         span.start_line, span.end_line, scope=scopes.chain(),
     )
 
