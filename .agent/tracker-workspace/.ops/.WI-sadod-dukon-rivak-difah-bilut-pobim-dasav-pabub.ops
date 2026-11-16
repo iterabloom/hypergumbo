@@ -1,0 +1,21 @@
+- op: create  # 1f88
+  at: '2026-11-16T04:58:01Z'  # 1f88
+  by: agent  # 1f88
+  actor: jgstern_agent  # 1f88
+  clock: 1  # 1f88
+  nonce: 1f88  # 1f88
+  data:  # 1f88
+    kind: work_item  # 1f88
+    title: "Symbol and edge lists are extended in thread completion order, so list order differs between runs of one tree"  # 1f88
+    status: todo_hard  # 1f88
+    priority: 2  # 1f88
+    parent:  # 1f88
+    tags:  # 1f88
+    - determinism  # 1f88
+    - reproducibility  # 1f88
+    isbefore: []  # 1f88
+    duplicate_of: []  # 1f88
+    not_duplicate_of: []  # 1f88
+    pr_ref:  # 1f88
+    description: "WHAT. analyze/all_analyzers.py (the `for future in as_completed(futures)` loop) extends all_symbols in analyzer COMPLETION order, and linkers/registry.py (`for future in as_completed(future_to_linker)`) extends the accumulated symbols and edges in linker completion order within a priority cohort. Any consumer that keeps 'the first' or 'the last' holder of a name then answers differently between runs.\n\nSEEN. On pretix the Django route ^locale/set$ bound the Python view LocaleSet in one run and a JavaScript class LocaleSet in vendored pdf.js in another; 22 enclosure-linker uses edges change position between runs on mastodon. The route-handler linker was fixed in PR #2198 to choose by the source; the order itself was not changed.\n\nCANDIDATE FIX, not applied and not tested: iterate the futures dict in submission order in both loops (two lines each). It would change which candidate wins in every remaining last-write-wins table, fleet-wide: measure before landing.\n\nRELATED. framework_patterns' flat tables (separate item). Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 1f88
+    fields: {}  # 1f88

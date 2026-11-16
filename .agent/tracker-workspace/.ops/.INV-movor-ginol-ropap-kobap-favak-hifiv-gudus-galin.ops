@@ -104,3 +104,18 @@
   clock: 12  # c5ca
   nonce: c5ca  # c5ca
   message: "OWNER RULING 2026-11-15 (\"keep it, but narrow and rewrite it\" -- agreed): this invariant stays the carrier. Title, statement and root_cause rewritten: the statement is narrowed to the file pseudo-symbol, names the manifest-entry exclusion, lists the fixed instances and sets a validator check as the close condition. WI-modan-tizob-bilag-fanas-simip-guzuz-homoj-rimut keeps its points 1-4 (phantom import targets); its point 5 is this item. The file's language is the file's own (ADR-0031; INV-ronuf-hazag-mumut-rozih-rumig-sugif-dijip-sijiz's statement), and two producers of one declaration yield one record (ADR-0057). Status unchanged: violated. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/INV-movor and work/v_movor."  # c5ca
+- op: update  # 8a32
+  at: '2026-11-16T04:57:51Z'  # 8a32
+  by: agent  # 8a32
+  actor: jgstern_agent  # 8a32
+  clock: 13  # 8a32
+  nonce: 8a32  # 8a32
+  set:  # 8a32
+    status: satisfied  # 8a32
+- op: discuss  # f3e1
+  at: '2026-11-16T04:57:51Z'  # f3e1
+  by: agent  # f3e1
+  actor: jgstern_agent  # f3e1
+  clock: 14  # f3e1
+  nonce: f3e1  # f3e1
+  message: "Satisfied by PR #2198 for the statement as written (every path has exactly one file pseudo-symbol across producers). Re-ran the live limb: on the six-file Svelte/Vue fixture paths with more than one file node went 4 -> 0; koel 219 -> 0; workadventure play/src/front 251 -> 0; nuclear 8 -> 0; pretix 5 -> 0; whisper.cpp 1 -> 0. Mechanism: analyze/file_records.py reconciles after the linkers (survivor = the file's own language by taxonomy, else the first emitted; edges and usage contexts rewired, none dropped), and a new validator check one_file_node_per_path at error reads 0 on those trees. Members of a component kept their stable ids (koel 5,330, workadventure 5,887: 0 moved). NOT done, filed separately because it moves stable ids: a component whose ONLY file node is the JavaScript analyzer's keeps typescript:/javascript: in the slot (koel 62 of 297, workadventure 187 of 440). No fleet measurement of the new check beyond these trees."  # f3e1

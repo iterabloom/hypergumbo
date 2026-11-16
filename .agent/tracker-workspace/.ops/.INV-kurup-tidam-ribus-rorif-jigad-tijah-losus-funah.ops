@@ -178,3 +178,10 @@
   clock: 22  # 5d75
   nonce: 5d75  # 5d75
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Still violated. Fixture run: 6 id_format errors from INV-dulah's three producers (robot `test_case`, JSX route marker `route`, BitBake `python_task`, 2 each) and 4 `<unknown>`-path warnings from cmake `links` and starlark `calls` (WI-zihij, todo_hard; check still a warning). `scripts/check-id-construction` exits 0 on the same tree: the linter does not check kind-slot == Symbol.kind. WI-vodin, WI-popak-gugoz, WI-dipim, WI-lusoh, WI-pusan are done. The 2026-06-02 markdown/gitignore mechanisms produce 0 violations under --include-docs. No name-slot == sanitized(name) check exists (spec_validator.py:2040-2056) and no item is filed for it. test_doc_family_id_parity.py KIND_SLOT_HOLES holds robot only. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-kurup.md. No status or priority change made by this review."  # 5d75
+- op: discuss  # b4cb
+  at: '2026-11-16T04:57:51Z'  # b4cb
+  by: agent  # b4cb
+  actor: jgstern_agent  # b4cb
+  clock: 23  # b4cb
+  nonce: b4cb  # b4cb
+  message: "PR #2198, 2026-11-15: members done here: WI-zihij, WI-mamip, WI-dakas. INV-dulah is still violated on two producers (robot, twig; the v15 bump), so this umbrella stays open. The static check now compares an id's kind word with Symbol.kind; the validator records the name-slot round-trip per producer on every run (not an error: 14,056 of 97,574 nodes mismatch on six maps, 5,919 of them file nodes that are exempt by rule)."  # b4cb

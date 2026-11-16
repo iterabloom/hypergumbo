@@ -33,3 +33,18 @@
   clock: 3  # f863
   nonce: f863  # f863
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): probe `type Shape(r) = member Area / Scale(k) / Scale(k, j)` emits no Shape node and no member node. Wider fixture (static member, `member val`, `new()`, abstract member in interface IFoo, `interface IFoo with` in Bar, record `with member`) emits module, `helper`, record `P`, field `P.X` only; its three member bodies that call `helper`, and one in the probe, emit no calls edge. Enclosing walk still tests `function_or_value_defn` only (fsharp.py L592, L304). A class-level `let inner` IS emitted as `Shape.inner` with its calls, contained by the module since Shape has no node. Gate cases `fsharp` / `fsharp-nested` hold no member. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tamib.md. No status or priority change made by this review."  # f863
+- op: update  # 00f7
+  at: '2026-11-16T04:57:53Z'  # 00f7
+  by: agent  # 00f7
+  actor: jgstern_agent  # 00f7
+  clock: 4  # 00f7
+  nonce: 00f7  # 00f7
+  set:  # 00f7
+    status: done  # 00f7
+- op: discuss  # 5a21
+  at: '2026-11-16T04:57:53Z'  # 5a21
+  by: agent  # 5a21
+  actor: jgstern_agent  # 5a21
+  clock: 5  # 5a21
+  nonce: 5a21  # 5a21
+  message: "Fixed in PR #2198. F# classes, interfaces, structs and their members (method, property, constructor, field; interface implementations, record/union members, type extensions) are symbols, and calls reach them where the source names the target (static through the type, construction, the self identifier, a typed value). Existing ids did not move: 0 declared gone on the fixtures and on rabbitmq deps/rabbit (34,595 of 34,595 base call edges kept). Dead-code on a calling fixture 5/4/1 -> 19/13/6, each remaining candidate uncalled except one reached only through an interface slot. ONLY TWO genuine F# files are cloned on this machine, so class and member forms are measured on fixtures. Residuals filed: is_exported is set on no F# symbol; interface dispatch; the last declaration of a file with no trailing newline is lost; nested modules emit no symbol."  # 5a21

@@ -1,0 +1,21 @@
+- op: create  # bc7b
+  at: '2026-11-16T04:58:53Z'  # bc7b
+  by: agent  # bc7b
+  actor: jgstern_agent  # bc7b
+  clock: 1  # bc7b
+  nonce: bc7b  # bc7b
+  data:  # bc7b
+    kind: work_item  # bc7b
+    title: "F#: is_exported is set on no symbol; interface slots have no edge to their implementations; a file with no trailing newline loses its last declaration"  # bc7b
+    status: todo_hard  # bc7b
+    priority: 3  # bc7b
+    parent:  # bc7b
+    tags:  # bc7b
+    - fsharp  # bc7b
+    - analysis_quality  # bc7b
+    isbefore: []  # bc7b
+    duplicate_of: []  # bc7b
+    not_duplicate_of: []  # bc7b
+    pr_ref:  # bc7b
+    description: "WHAT.\n1. The F# analyzer sets is_exported on no symbol and has no entrypoint pattern, so dead-code seeds are only the connectivity fallback: every public member nothing in the repository calls is a candidate.\n2. A call through an interface-typed value resolves to the abstract slot; there is no edge from slot to implementation (needs base_classes plus fsharp in the inheritance linker's depends_on).\n3. Base defect: `module M\\nlet f x = g x` with no final newline emits no f (the grammar rejects the last declaration). The one F# class in a cloned repository (vscode's colorize test) is lost this way.\n4. Base defect: nested `module A =` emits no module symbol, so the containment linker's naming phase binds A.run to a same-named type in another file.\n5. Not symbols: object-expression members, class-level let values, enum/delegate/exception/abbreviation types, the primary constructor; .fsi signature files do not parse.\n\nOnly two genuine F# files are cloned on the build machine. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # bc7b
+    fields: {}  # bc7b

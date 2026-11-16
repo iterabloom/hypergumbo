@@ -19,3 +19,18 @@
     pr_ref:  # 6d03
     description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. verilog.py:262 matches the node type `module_instantiation` only. tree-sitter-verilog 1.0.3 gives that type\nto an instantiation with two or more NAMED ports (and to parameterised ones); the other forms parse as different\nnode types and produce no edge:\n\n    a u_a(.x(w));        checker_instantiation     no edge\n    a u_b();             checker_instantiation     no edge\n    a u_c(w);            checker_instantiation     no edge\n    a u_h(.*);           checker_instantiation     no edge\n    a u_g[3:0](.x(w));   checker_instantiation     no edge   (reviewer's run)\n    a u_f(w, z);         udp_instantiation         no edge   (reviewer's run)\n    c u_e(.x(w), .y(z)); module_instantiation      instantiates d -> c\n    a #(.P(1)) u_d(.x(w)); module_instantiation    edge                 (reviewer's run)\n\nREPRO. ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/verilog/src/d.v (modules a, b, c, d; b instantiates a four ways, d instantiates c with two\nnamed ports). `hypergumbo run` emits exactly one instantiates edge, d -> c. The four instantiations of `a` in `b`\nemit nothing, so `a` has no incoming edge and `b` no outgoing one.\n\nEFFECT. A module instantiated only through one-port or positional forms looks unused, and its parent looks like a\nleaf. Single-port named instantiation is ordinary Verilog.\n\nFIX DIRECTION. Treat checker_instantiation and udp_instantiation whose first identifier names a module declared in\nthe repository as a module instantiation (the grammar cannot tell them apart without the declaration; the analyzer\ncan). Keep a real checker or UDP instance, where the name is declared as one, out.\n\nACCEPTANCE. On the fixture, b has four instantiates edges to a and d has one to c; a fixture with a declared\n`checker` and a declared `primitive` shows no module edge for their instances.\n\nOutside WI-bodug-jikot-tuvak-vupum-hifop-kabit-damaj-gamir (tasks, functions and nets emit no symbol), which is about symbols, not instantiation edges.\nNOT CHECKED: corpus counts; SystemVerilog interface instances."  # 6d03
     fields: {}  # 6d03
+- op: update  # b9ab
+  at: '2026-11-16T04:57:53Z'  # b9ab
+  by: agent  # b9ab
+  actor: jgstern_agent  # b9ab
+  clock: 2  # b9ab
+  nonce: b9ab  # b9ab
+  set:  # b9ab
+    status: done  # b9ab
+- op: discuss  # b785
+  at: '2026-11-16T04:57:53Z'  # b785
+  by: agent  # b785
+  actor: jgstern_agent  # b785
+  clock: 3  # b785
+  nonce: b785  # b785
+  message: "Fixed in PR #2198. Re-ran the item's d.v: instantiations with zero or one port, positional ports, .* and instance arrays emit instantiates edges (fixture 3 -> 7); a name declared only as a checker, program or primitive emits none; an undeclared module gets the external edge the two-port form already had. NOT measured on real code (no Verilog repository cloned). bind was not checked."  # b785

@@ -1,0 +1,21 @@
+- op: create  # e5d7
+  at: '2026-11-16T04:59:34Z'  # e5d7
+  by: agent  # e5d7
+  actor: jgstern_agent  # e5d7
+  clock: 1  # e5d7
+  nonce: e5d7  # e5d7
+  data:  # e5d7
+    kind: work_item  # e5d7
+    title: "dead-code-maybe --input with no path scans the current directory for its cross-language demoter"  # e5d7
+    status: todo_hard  # e5d7
+    priority: 3  # e5d7
+    parent:  # e5d7
+    tags:  # e5d7
+    - dead_code  # e5d7
+    - cli  # e5d7
+    isbefore: []  # e5d7
+    duplicate_of: []  # e5d7
+    not_duplicate_of: []  # e5d7
+    pr_ref:  # e5d7
+    description: "WHAT. `hypergumbo dead-code-maybe --input <map>` without a path argument reads the CURRENT directory's tree for the cross-language demotion scan. The same git-gui map gave 10 demotions from one cwd and 4 from another; run from /tmp it scanned /tmp for about 22 CPU-minutes.\n\nASK. Take the tree from the map's own recorded root, or refuse --input without a path. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # e5d7
+    fields: {}  # e5d7

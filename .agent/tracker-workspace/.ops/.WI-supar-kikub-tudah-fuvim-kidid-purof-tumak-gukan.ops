@@ -1,0 +1,21 @@
+- op: create  # e762
+  at: '2026-11-16T04:59:39Z'  # e762
+  by: agent  # e762
+  actor: jgstern_agent  # e762
+  clock: 1  # e762
+  nonce: e762  # e762
+  data:  # e762
+    kind: work_item  # e762
+    title: "Linkers: openapi activation and stand-in shape, shared node ids, and three order-dependent picks"  # e762
+    status: todo_hard  # e762
+    priority: 3  # e762
+    parent:  # e762
+    tags:  # e762
+    - linkers  # e762
+    - analysis_quality  # e762
+    isbefore: []  # e762
+    duplicate_of: []  # e762
+    not_duplicate_of: []  # e762
+    pr_ref:  # e762
+    description: "WHAT, each seen while measuring PR #2198 and not fixed:\n- linkers/openapi: activates only on framework openapi/swagger, and the only detection pattern found is the Java io.swagger dependency (an openapi.yaml alone produced no operation nodes); its stand-ins lack discovery_language (one cross_field violation); lang slots openapi, ipc and phoenix are not languages;\n- node ids held by two nodes: 1,445 vue directive nodes on koel, 10 svelte event nodes on workadventure, 12 ids on hocuspocus, 1 on openzeppelin (both arms);\n- svelte event and vue prop/directive symbols have no contains edge from their file node;\n- linkers/di_resolution keeps the FIRST binding of a method pair, not the highest-confidence one (now deterministic: annotation .java at 0.85 over regex .kt at 0.90);\n- linkers/ruby_ffi collapses registrations of same-named functions from different C files into one edge;\n- linkers/napi.py:255 iterates a set with last-writer-wins (WI-rumuv);\n- linkers/message_dispatch uses a bare role-less stand-in id and can collide with a declared one-line function (not checked at run time);\n- tcl: util::helper 1 resolves to a stand-in although util::helper is declared (fixture; not investigated);\n- starlark's run id lacks the uuid: prefix;\n- file ids built from a raw import string in proto.py, capnp.py, thrift.py, make.py (the astro mechanism fixed in PR #2198); a Svelte-only project had no component edges before because the vue component linker activates only on Vue;\n- metabase's bin/*.bb are Babashka scripts and are discovered as BitBake. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # e762
+    fields: {}  # e762

@@ -20,3 +20,18 @@
     pr_ref:  # 7412
     description: "FOUND by the WI-naviz investigation, 2026-11-15, dev 03068d3531. Split out because it is a defect of the Python call resolver, not of the qualified_name field WI-naviz is about.\n\nWHAT. A call through a nested class is not bound to the nested class or its method. Fixture (~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/naviz/py_fixture/pkg/m.py):\n\n    class A:\n        class B:\n            def go(self): return 1\n        def run(self): return A.B().go()\n    def top(): return A.B().go()\n    def via_name():\n        b = A.B()\n        return b.go()\n\nOBSERVED. From A.run, top and via_name the edges are calls -> python:external:0-0:B:external_symbol and calls -> python:external:0-0:go:external_symbol, both unresolved. From another file (from pkg.m import A; A.B().go()) the stand-ins are python:pkg.m.A:0-0:B and external go. A.B.C().deep() likewise. The class B and the method B.go exist as symbols in the same file.\n\nNOT A FIX. Giving the nested class its full chain in qualified_name (the WI-naviz prototype) changes none of these edges.\n\nDONE WHEN. The fixture's calls bind to the nested class (the constructor call) and to its method, from the same file and from an importing file; measured on one corpus repo with nested classes that no existing resolved edge changes target wrongly.\n\nRELATED. WI-naviz-* (the field). WI-hahud-* (a nested class registered bare in symbol_by_name clobbers a top-level view): same registry."  # 7412
     fields: {}  # 7412
+- op: update  # d8df
+  at: '2026-11-16T04:57:52Z'  # d8df
+  by: agent  # d8df
+  actor: jgstern_agent  # d8df
+  clock: 2  # d8df
+  nonce: d8df  # d8df
+  set:  # d8df
+    status: done  # d8df
+- op: discuss  # e1c1
+  at: '2026-11-16T04:57:52Z'  # e1c1
+  by: agent  # e1c1
+  actor: jgstern_agent  # e1c1
+  clock: 3  # e1c1
+  nonce: e1c1  # e1c1
+  message: "Fixed in PR #2198. Re-ran the item's fixture: A.B(), A.B().go(), b = A.B(); b.go(), A.B.C().deep() and the same from an importing file now bind the nested class (instantiates) and its method (calls); on the fixture calls to stand-ins went 10 -> 5 and instantiates 0 -> 5. A dotted name is walked from its root, one member at a time, with no last-segment fallback. pretix: no edge went from an in-repo target to a stand-in; dead-code unchanged (15,324 / 6,052 / 7,660). LEFT, each in the forms table of the package report: cls.B(), self.B().go(), an inherited member reached through a nested class when a twin class name exists, a parameter annotated A.B."  # e1c1

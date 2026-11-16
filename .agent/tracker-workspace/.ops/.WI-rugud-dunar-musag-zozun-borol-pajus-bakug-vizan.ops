@@ -49,3 +49,18 @@
   clock: 5  # 3311
   nonce: '3311'  # 3311
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Trigger met; no step executed. ADR-0014 is 335 lines, last touched 79c203145b (2026-10-02). Scheme is stableid-v14. Spec delegation sites are spec:633 and spec:649; §3 pointer spec:628; vendor-sync.md:70. \"ADR-0014 §4\": 25 hits (21 outside the ADR and tests/fixtures/archaeology-corpus.json). \"Amended by Phase 6\" wording remains at docs/schema.json:959, scripts/generate_schema_lib.py:521, test_stable_shape_ids.py:42; ir.py:601 and docs/ARCHITECTURE.md:198 now say \"(ADR-0014; INV-bazij)\". Step 5 is partly present: spec:638 lists the 15 factory kinds and the never-override rule; the per-kind formulas are still ADR-0014 §5b only. SCIP still hashes outside the factories (scip/index.py:282-290). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-rugud.md. No status or priority change made by this review."  # 3311
+- op: update  # ac60
+  at: '2026-11-16T04:57:50Z'  # ac60
+  by: agent  # ac60
+  actor: jgstern_agent  # ac60
+  clock: 6  # ac60
+  nonce: ac60  # ac60
+  set:  # ac60
+    status: done  # ac60
+- op: discuss  # c1e2
+  at: '2026-11-16T04:57:50Z'  # c1e2
+  by: agent  # c1e2
+  actor: jgstern_agent  # c1e2
+  clock: 7  # c1e2
+  nonce: c1e2  # c1e2
+  message: "Done in PR #2198: ADR-0014 is a stub; every rule that lived only there has a home (spec section 6, ADR-0035, docs/grammars/vendor-sync.md, docstrings), with a section-by-section table in the stub. 182 citations of ADR-0014 across the touched files became 32 (history lines and recorded corpora left). The spec's coverage census was re-derived from the code: 42 analyzer modules set a shape_id; 15 call make_typed_stable_id. The SCIP importer is stated as outside the shared factories. In .py files only comments and docstrings changed (AST comparison, 51 of 52 identical; generate_schema_lib.py has two description strings). Residuals filed separately: code disagrees with what ADR-0014 said on TypeScript default values, pointer decorators and Python visibility; the PyPI grammar-constraint question for SHAPE_ID_SCHEME."  # c1e2

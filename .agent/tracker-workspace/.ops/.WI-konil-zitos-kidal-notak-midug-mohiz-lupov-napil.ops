@@ -1,0 +1,21 @@
+- op: create  # 3f46
+  at: '2026-11-16T04:57:55Z'  # 3f46
+  by: agent  # 3f46
+  actor: jgstern_agent  # 3f46
+  clock: 1  # 3f46
+  nonce: 3f46  # 3f46
+  data:  # 3f46
+    kind: work_item  # 3f46
+    title: "dead-code-maybe reports a callable as dead when the analyzer of its language emits no call edges at all"  # 3f46
+    status: todo_hard  # 3f46
+    priority: 2  # 3f46
+    parent:  # 3f46
+    tags:  # 3f46
+    - dead_code  # 3f46
+    - analysis_quality  # 3f46
+    isbefore: []  # 3f46
+    duplicate_of: []  # 3f46
+    not_duplicate_of: []  # 3f46
+    pr_ref:  # 3f46
+    description: "WHAT. dead-code-maybe lists every production function/method no seed reaches. For a language (or a kind) whose analyzer emits NO incoming-call evidence anywhere in the run, 'no edge reaches it' is absence of the instrument, not evidence of no caller, and every callable is reported.\n\nSEEN. Adding Verilog function symbols took an 8-file fixture from 'No production functions found' to 13 of 13 dead; adding F# members took a fixture from 7 to 48 candidates. Both packages were sent back to add call edges before merging. Verilog task enables do not parse in tree-sitter-verilog 1.0.3, so tasks can never get an incoming edge (the view does not count kind task today).\n\nASK. Decide and implement what the view says for a language/kind with no call evidence in the run: withhold, or label the candidates as unverifiable. A rule, not a list of languages.\n\nNOT DONE. No design; no count of which of the 117 languages emit callables and no calls edges. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 3f46
+    fields: {}  # 3f46

@@ -1,0 +1,22 @@
+- op: create  # c0f9
+  at: '2026-11-16T04:58:07Z'  # c0f9
+  by: agent  # c0f9
+  actor: jgstern_agent  # c0f9
+  clock: 1  # c0f9
+  nonce: c0f9  # c0f9
+  data:  # c0f9
+    kind: work_item  # c0f9
+    title: "framework_patterns resolves deferred symbol_refs through flat last-write-wins tables over all languages"  # c0f9
+    status: todo_hard  # c0f9
+    priority: 2  # c0f9
+    parent:  # c0f9
+    tags:  # c0f9
+    - framework_patterns  # c0f9
+    - determinism  # c0f9
+    - analysis_quality  # c0f9
+    isbefore: []  # c0f9
+    duplicate_of: []  # c0f9
+    not_duplicate_of: []  # c0f9
+    pr_ref:  # c0f9
+    description: "WHAT. framework_patterns.resolve_deferred_symbol_refs and the enrichment table beside it key every symbol of every language by name, last write wins, in symbols order (which varies between runs: see the completion-order item).\n\nSEEN. pretix: the UsageContext for route ^locale/set$ carried symbol_ref = the Python view in one base run and javascript:static/pdfjs/pdf.worker.js:...:LocaleSet:class in another. PR #2198 fixed the same defect in linkers/route_handler.py (candidates restricted to the route's host language, total order, qualified name before name) and left this one.\n\nASK. The same rule here. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # c0f9
+    fields: {}  # c0f9
