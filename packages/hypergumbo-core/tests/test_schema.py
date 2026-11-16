@@ -860,16 +860,19 @@ class TestTopLevelBlockTyping:
         violations_by_class."""
         from dataclasses import asdict
 
+        from types import SimpleNamespace
+
         from hypergumbo_core.spec_validator import (
             ValidationViolation,
             build_validation_report,
+            compute_name_slot_stats,
         )
 
         schema = load_schema()
         vr_props = schema["properties"]["validation_report"]["properties"]
         assert set(vr_props) == {
             "schema_version", "violations", "violations_by_class",
-            "wired_checks", "stable_id_stats",
+            "wired_checks", "stable_id_stats", "name_slot_stats",
         }
         assert (
             vr_props["violations"]["items"].get("$ref")
@@ -890,6 +893,15 @@ class TestTopLevelBlockTyping:
         )
         registry = Registry().with_resource(schema["$id"], resource)
         jsonschema.Draft202012Validator(sub, registry=registry).validate(report)
+        # a populated name_slot_stats block validates too (ADR-0036 Ruling 1)
+        stats = compute_name_slot_stats([SimpleNamespace(
+            id="javascript:a.js:1-2:_cb_map@1:function", name="_cb_map",
+            kind="function", origin=["javascript"], language="javascript",
+        )])
+        assert stats["by_producer"]
+        jsonschema.Draft202012Validator(sub, registry=registry).validate(
+            build_validation_report([violation], name_slot_stats=stats)
+        )
 
     def test_reproducibility_context_block(self):
         """reproducibility_context's schema matches the builder output."""

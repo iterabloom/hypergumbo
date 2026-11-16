@@ -647,6 +647,59 @@
             }
           ],
           "description": "ADR-0035 \u00a75 corpus stable_id population/collision/None-cohort disclosure over an all-Symbols denominator; always present so a clean non-null rate can never hide a None-cohort. floor_cohort counts ids equal to their recomputed ADR-0035 \u00a71 backstop floor key and floor_abstained the nulls whose floor key is shared in their file, so none_cohort=0 is not read as every id coming from a producer formula. Null on bare build_validation_report calls (unit tests)."
+        },
+        "name_slot_stats": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "ids_checked": {
+                  "type": "integer"
+                },
+                "exempt_file_nodes": {
+                  "type": "integer"
+                },
+                "not_parsed": {
+                  "type": "integer"
+                },
+                "mismatched": {
+                  "type": "integer"
+                },
+                "by_producer": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "producer": {
+                        "type": "string"
+                      },
+                      "mismatched": {
+                        "type": "integer"
+                      },
+                      "checked": {
+                        "type": "integer"
+                      },
+                      "example_id": {
+                        "type": "string"
+                      },
+                      "example_name": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "producers_cut": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0036 Ruling 1 name-slot round-trip, measured per run: of the node ids parsed from the right (ids_checked), how many have a name slot that is not sanitize_id_name_segment(name) (mismatched), by producer (the originating pass id, else the language), most mismatches first, each with its smallest mismatching id and that node's name; at most 20 producers, the rest counted in producers_cut. File pseudo-symbols (exempt_file_nodes) are exempt because the id grammar fixes their name slot to 'file'; ids with fewer than five slots are not_parsed. A statistic, not violations. Null on bare build_validation_report calls (unit tests)."
         }
       }
     },

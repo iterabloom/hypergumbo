@@ -327,6 +327,20 @@ def test_substrate_within_ratchet_baseline(
     assert 0 <= stats["floor_abstained"] <= stats["none_cohort"]
     assert 0 <= stats["floor_cohort"] <= stats["non_null"]
 
+    # --- ADR-0036 Ruling 1 measurement: name_slot_stats covers every node. --
+    # A statistic, not a ratcheted violation count: the block must be present
+    # and must account for each emitted node exactly once.
+    name_stats = report.get("name_slot_stats")
+    assert name_stats is not None, f"[{substrate}] name_slot_stats missing"
+    assert (
+        name_stats["ids_checked"] + name_stats["exempt_file_nodes"]
+        + name_stats["not_parsed"]
+    ) == len(nodes), f"[{substrate}] name_slot_stats does not cover every node"
+    assert name_stats["exempt_file_nodes"] == sum(
+        1 for n in nodes
+        if n.get("kind") == "file" and str(n.get("id")).endswith(":1-1:file:file")
+    )
+
     # --- Shrink-only ratchet across both dimensions. ---------------------
     failures: list[str] = []
 

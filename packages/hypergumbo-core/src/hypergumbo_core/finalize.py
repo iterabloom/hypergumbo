@@ -96,6 +96,7 @@ from .visibility import (
 from .spec_validator import (
     ValidationViolation,
     build_validation_report,
+    compute_name_slot_stats,
     compute_stable_id_stats,
     validate_ir,
 )
@@ -892,5 +893,6 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     ctx.behavior_map["validation_report"] = build_validation_report(
         ctx.violations,
         stable_id_stats=compute_stable_id_stats(ctx.symbols),
+        name_slot_stats=compute_name_slot_stats(ctx.symbols),
     )
     return _freeze(ctx)

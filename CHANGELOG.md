@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **F# classes, interfaces, structs and members are symbols, and calls reach them.**
 - **`request_ingress`**: a top-level list of every request handler, which `verify-claims` reads instead of the capped entrypoint list.
 - **`hypergumbo catalog` names each pass's grammar package.**
+- **`validation_report.name_slot_stats` counts, per producer, node ids not matching their name.**
 - **Go functions and methods record `meta.parameters`.**
 - **Missing scip-python or rust-analyzer prints copy-paste install steps.**
 - **Either spelling of a command works**: `catalogue`, `init-catalogues`, `catalogue-inventory`, `trust-catalogs`, `--in-repo-catalogs` and `trust-backend rust-analyzer` are accepted beside the existing names.
