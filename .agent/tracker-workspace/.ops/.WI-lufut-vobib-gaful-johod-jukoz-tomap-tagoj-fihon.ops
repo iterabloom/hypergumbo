@@ -1,0 +1,21 @@
+- op: create  # 0916
+  at: '2026-11-16T19:00:18Z'  # 0916
+  by: agent  # 0916
+  actor: jgstern_agent  # 0916
+  clock: 1  # 0916
+  nonce: '0916'  # 0916
+  data:  # 0916
+    kind: work_item  # 0916
+    title: "What a sketch does with quoted repository prose beyond saying it is data: agent-instruction files, an option that leaves out quoted prose, and a delimiter for inline docstring summaries"  # 0916
+    status: todo_hard  # 0916
+    priority: 3  # 0916
+    parent:  # 0916
+    tags:  # 0916
+    - sketch  # 0916
+    - pre_release_outputs  # 0916
+    isbefore: []  # 0916
+    duplicate_of: []  # 0916
+    not_duplicate_of: []  # 0916
+    pr_ref:  # 0916
+    description: "Context: option (a) shipped in PR #2203. Every sketch prints QUOTED_TEXT_NOTICE under its title, and SECURITY.md states the position. Three questions were not ruled on.\n\n(b) Files addressed to coding agents (AGENTS.md, CLAUDE.md, GEMINI.md, copilot-instructions.md, .cursorrules, .cursor/rules): list them, do not print their content. In the five repositories measured for the PR (httpx, express, ripgrep, mini-redis, knex) none of these files exists, so 0 of 30 sketches print one. The earlier 21-repository study found 2 that print one at 128k (the hypergumbo self-run and mitmproxy), because Additional Files ranks root-level Markdown high (WI-rimip). A name list covers known instances, not the class, so any rule needs a general form with the list added on top.\n\n(c) An option that leaves out all quoted prose: README description, docstring summaries, Additional Files content, and perhaps Source Files Content. Whole quoted files are the bulk of a with-source sketch: on the five repositories the 32k sketch is about 26k to 32k tokens with source against 3.8k to 17k without.\n\nDelimiter for inline docstring summaries. The README description (222 to 297 characters on the five repositories) and the docstring summaries are printed inline with no delimiter. A 32k sketch carries, by a heuristic count of \" — summary\" lines in Entry Points, Source Files and Key Symbols: httpx 50 with source / 56 without; express 46 / 63; ripgrep 131 / 206; mini-redis 81 / 81; knex 52 / 112. A delimiter costs tokens on each of these lines.\n\nAlso open: `explain` prints a symbol's whole docstring as text with no such line, and the JSON outputs carry docstrings as fields. Whether either gets a statement is not ruled."  # 0916
+    fields: {}  # 0916

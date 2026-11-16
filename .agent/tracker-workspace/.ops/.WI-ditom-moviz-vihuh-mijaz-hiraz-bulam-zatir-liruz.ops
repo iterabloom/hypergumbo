@@ -48,3 +48,10 @@
   clock: 5  # 2459
   nonce: '2459'  # 2459
   message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ditom's 'transforms string row -> AttributeError -> main catch-all exits 1 = violated' exit-code half is WI-tajup's main() exit-code collision; the loader shape-check half stays here."  # 2459
+- op: discuss  # 972c
+  at: '2026-11-16T19:01:11Z'  # 972c
+  by: agent  # 972c
+  actor: jgstern_agent  # 972c
+  clock: 6  # 972c
+  nonce: 972c  # 972c
+  message: "PR #2203 (dev c9295d38c6) fixes one limb named in this item's title: a string row under `transforms:` no longer crashes into exit 1; the sanitizer loader refuses it with exit 2 and names it by path (transforms[0]). The same PR adds type checks on taint catalogue fields (name lists, labels, argument_tainted). STILL OPEN from this item: a non-mapping row under sources.<lang> / sinks.<lang> is skipped silently; claims allowed_sanitizers is unread. I did not re-check this item's other limbs. No status change."  # 972c
