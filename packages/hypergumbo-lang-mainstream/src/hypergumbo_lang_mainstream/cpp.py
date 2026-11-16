@@ -129,7 +129,12 @@ Call-edge details:
   none there can take the call. Several that can is an ambiguous record
   (``meta.resolution_quality="ambiguous"``, confidence scaled by ``1/sqrt(N)``),
   except ``#if`` alternatives with one signature; none that can keeps the
-  name's pick. A call on an explicit receiver other than ``this`` is not
+  name's pick. The overload set includes member templates and constructors,
+  which are members of their class (WI-rugin), so ``Init()`` in a constructor
+  binds the zero-parameter ``Init``, not ``template <class M> Init(M*)``
+  (WI-jidot). A ``new`` that lands on a constructor is re-chosen the same way
+  by its argument count (``new T`` and ``new T[n]`` pass none, ``new T{a, b}``
+  two). A call on an explicit receiver other than ``this`` is not
   re-chosen: with no receiver type the overload set is a guess, and in the
   pimpl idiom its arity match is the caller itself.
 - **Callbacks**: a bare identifier argument that resolves to a function
@@ -169,7 +174,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.module_sets import module_slot
@@ -511,13 +516,18 @@ def _extract_field_types_cpp(
 
 
 def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
-    """How many arguments a call passes; None when it cannot be counted.
+    """How many arguments a call or a ``new`` passes; None when it cannot be
+    counted.
 
     A pack expansion (``f(args...)``) passes an unknown number. A comment
-    between arguments is a named node and is not an argument.
+    between arguments is a named node and is not an argument. ``new T`` and
+    ``new T[n]`` have no argument list and default-construct: none; the
+    braces of ``new T{a, b}`` count as ``new T(a, b)`` does.
     """
     args = call_node.child_by_field_name("arguments")
     if args is None:
+        if call_node.type == "new_expression":
+            return 0
         return None  # pragma: no cover - every call_expression has an argument_list
     count = 0
     for child in args.named_children:
@@ -1447,37 +1457,46 @@ def _try_instantiation_edge(
     resolver: NameResolver,
     edges: list[Edge],
     run: AnalysisRun,
+    choose: Callable[[Symbol, "tree_sitter.Node"], Optional[OverloadChoice]],
 ) -> None:
     """Emit an instantiates edge if type_name resolves to a known symbol.
 
     Checks local symbols first (an exact match: the pathway base), then
     falls back to the NameResolver, whose grade interpolates in the pathway
     band (ADR-0039 ruling 6).
+
+    A constructor shares its class's short name, so the name can pick one
+    of the class's constructors -- the last one defined, whatever its
+    parameters. ``choose`` (the edge pass's ``overload_choice``) re-chooses
+    it among the class's constructors by the argument count of the ``new``,
+    as a call's callee is (WI-jidot); a class it picks is left alone.
     """
+    score: Optional[float] = None
     if type_name in local_symbols:
         target = local_symbols[type_name]
-        edges.append(Edge.create(
-            src=current_function.id,
-            dst=target.id,
-            edge_type="instantiates",
-            line=node.start_point[0] + 1,
-            evidence_type=evidence_type,
-            origin=PASS_ID,
-            origin_run_id=run.execution_id,
-        ))
     else:
         lookup_result = resolver.lookup(type_name)
-        if lookup_result.found and lookup_result.symbol is not None:
-            edges.append(Edge.create(
-                src=current_function.id,
-                dst=lookup_result.symbol.id,
-                edge_type="instantiates",
-                line=node.start_point[0] + 1,
-                evidence_type=evidence_type,
-                resolution_score=lookup_result.confidence,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-            ))
+        if not lookup_result.found or lookup_result.symbol is None:
+            return
+        target, score = lookup_result.symbol, lookup_result.confidence
+    meta: Optional[dict[str, Any]] = None
+    choice = choose(target, node)
+    if choice is not None and choice.symbol is not None:
+        target = choice.symbol
+        if choice.ambiguous:
+            meta = {"resolution_quality": "ambiguous"}
+            score = (1.0 if score is None else score) * choice.confidence
+    edges.append(Edge.create(
+        src=current_function.id,
+        dst=target.id,
+        edge_type="instantiates",
+        line=node.start_point[0] + 1,
+        evidence_type=evidence_type,
+        resolution_score=score,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        meta=meta,
+    ))
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -2477,7 +2496,7 @@ def _extract_edges_from_tree(
                     # their own registered 'stack_construction' pathway.
                     _try_instantiation_edge(
                         type_name, current_function, node, "ast_new",
-                        local_symbols, resolver, edges, run,
+                        local_symbols, resolver, edges, run, overload_choice,
                     )
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
