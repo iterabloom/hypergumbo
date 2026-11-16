@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **377** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (9 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **59506** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13335, of which 7642 are functions, methods or classes
-- **239400** edges, test code included, by type:
-  - calls: 135279
-  - contains: 55418
-  - imports: 20483
-  - instantiates: 13078
-  - references: 11005
-  - module_attr_ref: 2290
-  - other: 1847
+- **378** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **60788** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13677, of which 7846 are functions, methods or classes
+- **244399** edges, test code included, by type:
+  - calls: 138095
+  - contains: 56677
+  - imports: 20842
+  - instantiates: 13239
+  - references: 11350
+  - module_attr_ref: 2327
+  - other: 1869
 
 ## Package Architecture
 
@@ -195,8 +195,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat. The declared type is ``str | List[str]`` so this accepted-input contract holds at the type level; do NOT narrow it to ``List[str]`` — most producers pass a single scalar pass ID, and narrowing would produce arg-type errors at those call sites under mypy strict (INV-zogud). The stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014; INV-bazij). Survives BODY edits; does NOT survive rename or move — those are identity-changing operations, because name + qualified_name are hash inputs. Without them, same-shaped symbols in one scope collide (e.g. the zero-param bash functions of one file would share one ID). Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix. Unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified (WI-tisar). Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
-- `shape_id`: Structural *skeleton* hash — the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 §1 compute_shape_id), so two symbols with the same code shape but different names/values collide. Compared within-language only (Python uses an ast-based variant). Contrast ``fingerprint``, which KEEPS identifiers/literals — ``shape_id`` is a strict coarsening of it. Serialized as ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that field's note on cross-axis bare-hash joins; WI-tisar).
+- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0035 §1; INV-bazij). Survives BODY edits; does NOT survive rename or move — those are identity-changing operations, because name + qualified_name are hash inputs. Without them, same-shaped symbols in one scope collide (e.g. the zero-param bash functions of one file would share one ID). Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names the hash *algorithm*, not the identity axis — the scheme/version lives in the top-level ``stable_id_scheme`` descriptor. ``shape_id`` shares this exact surface; the two are discriminated by field identity (and their ``*_scheme`` descriptors), NOT by an in-value prefix. Unlike ``fingerprint``'s ``hgfp2:`` *version* tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these two need no in-value discriminator because they are always field-qualified (WI-tisar). Consumers must therefore retain field context — do NOT join on bare hash values across the stable_id/shape_id axes.
+- `shape_id`: Structural *skeleton* hash — the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (spec §6 ``shape_id``; compute_shape_id), so two symbols with the same code shape but different names/values collide. Compared within-language only (Python uses an ast-based variant). Contrast ``fingerprint``, which KEEPS identifiers/literals — ``shape_id`` is a strict coarsening of it. Serialized as ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that field's note on cross-axis bare-hash joins; WI-tisar).
 - `fingerprint`: Structural *content* hash of the symbol's parse subtree — shape PLUS identifiers and literals, whitespace/ comment-invariant, tagged with the scheme in ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw source-byte hash (ADR-0032). ``None`` for grammarless languages / parse errors / synthetic spans. Producer: fingerprint.py.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
@@ -275,21 +275,21 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 2149.4 | hypergumbo_core/ir.py |
-| `node_text` | function | 1349.4 | hypergumbo_core/analyze/base.py |
-| `Span` | class | 1247.2 | hypergumbo_core/ir.py |
+| `Symbol` | class | 2168.2 | hypergumbo_core/ir.py |
+| `node_text` | function | 1391.8 | hypergumbo_core/analyze/base.py |
+| `Span` | class | 1259.5 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
-| `Edge.create` | method | 962.0 | hypergumbo_core/ir.py |
-| `Edge` | class | 846.3 | hypergumbo_core/ir.py |
+| `Edge.create` | method | 969.6 | hypergumbo_core/ir.py |
+| `Edge` | class | 854.9 | hypergumbo_core/ir.py |
 | `AnalysisRun` | class | 814.2 | hypergumbo_core/ir.py |
-| `iter_tree` | function | 773.2 | hypergumbo_core/analyze/base.py |
+| `iter_tree` | function | 787.5 | hypergumbo_core/analyze/base.py |
 | `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
 | `AnalysisResult` | class | 568.0 | hypergumbo_core/analyze/base.py |
 | `find_files` | function | 558.1 | hypergumbo_core/discovery.py |
 | `FileAnalysis` | class | 530.1 | hypergumbo_core/analyze/base.py |
-| `compute_cyclomatic_complexity` | function | 482.5 | hypergumbo_core/analyze/cyclomatic.py |
-| `make_symbol_id` | function | 455.5 | hypergumbo_core/analyze/base.py |
-| `find_child_by_type` | function | 428.0 | hypergumbo_core/analyze/base.py |
+| `make_symbol_id` | function | 494.4 | hypergumbo_core/analyze/base.py |
+| `compute_cyclomatic_complexity` | function | 485.9 | hypergumbo_core/analyze/cyclomatic.py |
+| `find_child_by_type` | function | 450.0 | hypergumbo_core/analyze/base.py |
 
 ## Pattern System
 
@@ -740,6 +740,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
 - **`hypergumbo_core.analyze.edge_source`**: Where an edge comes FROM: the src of every edge is an emitted symbo...
 - **`hypergumbo_core.analyze.edge_target`**: Where an edge goes TO: every endpoint is the id of a node, never a ...
+- **`hypergumbo_core.analyze.file_records`**: One file pseudo-symbol per path, whoever names the file.
 - **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become o...
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
@@ -785,7 +786,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_lang_mainstream.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`hypergumbo_lang_mainstream.rust`**: Rust analysis pass using tree-sitter-rust.
 - **`hypergumbo_lang_mainstream.rust_def_use`**: Rust def/use extractor for intraprocedural dataflow analysis (ADR-0...
-- **`hypergumbo_lang_mainstream.rust_scip`**: SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014 §3).
+- **`hypergumbo_lang_mainstream.rust_scip`**: SCIP → rust.py stable_id mapping helper (WI-bajuz; typed tier, spec...
 - **`hypergumbo_lang_mainstream.scala`**: Scala analysis pass using tree-sitter-scala.
 - **`hypergumbo_lang_mainstream.sql`**: SQL schema analysis pass using tree-sitter-sql.
 - **`hypergumbo_lang_mainstream.swift`**: Swift analysis pass using tree-sitter-swift.
@@ -1003,8 +1004,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 20ae258a0d61
-  commit_count: 9205
+  commit: e93f40b09035
+  commit_count: 9264
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
