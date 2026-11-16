@@ -156,6 +156,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Edges start and end on real nodes** for a dozen kinds of import (Starlark, Cargo, requirements.txt, CSS, JSX, WebAssembly and more), and every linker stand-in is attached to its enclosing function.
 - **A node id disagreeing with its node is a validator error** (ADR-0036 Ruling 3).
 - **Svelte and Vue files have one file symbol** and parse each `<script>` in its `lang` language.
+- **A Vue component import names the run that found it**, where it named no run.
 - **Wolfram `.m`-only packages are analysed.**
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**

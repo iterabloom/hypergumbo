@@ -862,3 +862,28 @@ import Modal from '@/components/Modal.vue';
         assert edge is not None
         assert edge.dst == "vue:@/components/Modal.vue:0-0:Modal:component"
         assert edge.meta.get("import_path") == "@/components/Modal.vue"
+
+
+class TestRunProvenance:
+    """Every record the analyzer emits joins its one AnalysisRun."""
+
+    def test_component_edges_carry_the_runs_execution_id(self, tmp_path: Path) -> None:
+        """An ``imports`` edge names the pass's own run, not an id of its own.
+
+        The edge helper minted a fresh uuid per tag, so the edge's
+        ``origin_run_id`` matched no AnalysisRun and the map failed the
+        provenance cross-check on every component reference.
+        """
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <Kid /><Other /><unimported-tag />
+</template>
+<script>
+import Kid from "./Kid.vue";
+import Other from "./Other.vue";
+</script>
+""")
+        result = analyze_vue(tmp_path)
+        imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(imports) == 3
+        assert result.run is not None
+        assert {e.origin_run_id for e in imports} == {result.run.execution_id}
