@@ -29,7 +29,11 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.ir import Symbol
-from hypergumbo_lang_mainstream.csharp import analyze_csharp, normalize_csharp_signature
+from hypergumbo_lang_mainstream.csharp import (
+    _CSHARP_PARAMETER_MODIFIERS,
+    analyze_csharp,
+    normalize_csharp_signature,
+)
 
 
 def _members(tmp_path: Path, body: str, name: str) -> list[Symbol]:
@@ -226,3 +230,51 @@ def test_a_default_value_is_not_the_parameter_name(tmp_path: Path) -> None:
     which drops names, is unchanged."""
     [d] = _members(tmp_path, "  C D(C f = null, int y = Q) => f;\n  const int Q = 1;", "D")
     assert d.signature == "(C f, int y) C"
+
+
+# Every parameter modifier keeps its place in the hashed text in front of a
+# QUALIFIED type, where the shared FQN strip (which keeps what follows the last
+# dot of a type's head) would otherwise cut it off. The cases are the union of
+# the normalizer's own modifier set (so a modifier added there is covered) and
+# the modifiers C# has today (so removing one from that set fails its case).
+_MODIFIERS = sorted(
+    set(_CSHARP_PARAMETER_MODIFIERS)
+    | {"this", "scoped", "ref", "out", "in", "readonly", "params"},
+)
+# The smallest legal parameter for a modifier that cannot stand alone in front
+# of ``System.Int32``: (modifier words, qualified type). The default is the
+# modifier alone. ``this`` is legal because every case is a static method of
+# a static class.
+_MODIFIER_SHAPES = {
+    "params": ("params", "System.Int32[]"),  # an array type
+    "readonly": ("ref readonly", "System.Int32"),  # only after ``ref``
+    "scoped": ("scoped ref", "System.Int32"),  # a ref, or a ref struct type
+}
+
+
+def _static_member_id(tmp_path: Path, folder: str, parameter: str) -> tuple[str, str | None]:
+    root = tmp_path / folder
+    root.mkdir()
+    (root / "A.cs").write_text(
+        "namespace N {\n public static class C {\n"
+        f"  public static void F({parameter}) {{ }}\n }}\n}}\n"
+    )
+    [f] = [s for s in analyze_csharp(root).symbols if s.name == "C.F"]
+    assert f.stable_id is not None
+    return f.stable_id, f.signature
+
+
+@pytest.mark.parametrize("modifier", _MODIFIERS)
+def test_every_parameter_modifier_survives_a_qualified_type(
+    tmp_path: Path, modifier: str,
+) -> None:
+    words, qualified = _MODIFIER_SHAPES.get(modifier, (modifier, "System.Int32"))
+    simple = qualified.rsplit(".", 1)[-1]
+    other = "out" if words == "ref" else "ref"
+    modified, signature = _static_member_id(tmp_path, "modified", f"{words} {qualified} x")
+    plain, _ = _static_member_id(tmp_path, "plain", f"{qualified} x")
+    contrast, _ = _static_member_id(tmp_path, "contrast", f"{other} {qualified} x")
+    assert signature == f"({words} {qualified} x)"
+    assert normalize_csharp_signature(signature) == f"({words} {simple})"
+    assert modified != plain
+    assert modified != contrast
