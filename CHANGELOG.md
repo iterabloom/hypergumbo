@@ -92,6 +92,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Electron IPC connects renderer → preload → main**, through `contextBridge` or a project's own wrapper: on podman-desktop, 66 of 66 bridge calls reach main, up from 1.
 - **The Go memberlist linker emits its delegate edges in a real survey**, not only in unit tests.
 - **Ansible: tasks in role task files are found, and play tasks are no longer reported as handlers.**
+- **Verilog instantiations with one port, positional ports, `.*` or none emit edges.**
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`; `stable_id` does not change.
 

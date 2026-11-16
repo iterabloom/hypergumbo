@@ -550,3 +550,210 @@ wire loose;
     contains = [e for e in result.edges if e.edge_type == "contains"]
     assert len(contains) == len(owners)
     assert {e.evidence_type for e in contains} == {"enclosing_scope"}
+
+
+# -- instantiations the grammar reads as checker or UDP instances --------------
+
+
+def _instantiations(result: AnalysisResult) -> list[tuple[str, str, int]]:
+    """``(source name, target name or external id, line)`` of every
+    ``instantiates`` edge, sorted by line."""
+    names = {s.id: s.name for s in result.symbols}
+    return sorted(
+        ((names[e.src], names.get(e.dst, e.dst), e.line)
+         for e in result.edges if e.edge_type == "instantiates"),
+        key=lambda edge: edge[2],
+    )
+
+
+def test_one_port_positional_wildcard_and_empty_instantiations_emit_edges(tmp_path):
+    """tree-sitter-verilog gives ``module_instantiation`` to an instantiation
+    with two or more named ports; one named port, no port, one positional
+    port and ``.*`` parse as ``checker_instantiation``. Each is an
+    ``instantiates`` edge to the declared module, like the two-port form."""
+    result = _analyze(tmp_path, {"src/d.v": """\
+module a(input x); endmodule
+module b;
+  wire w, z;
+  a u_a(.x(w));
+  a u_b();
+  a u_c(w);
+  a u_h(.*);
+endmodule
+module c(input x, input y); endmodule
+module d;
+  wire w, z;
+  c u_e(.x(w), .y(z));
+endmodule
+"""})
+
+    assert _instantiations(result) == [
+        ("b", "a", 4), ("b", "a", 5), ("b", "a", 6), ("b", "a", 7), ("d", "c", 12),
+    ]
+    assert {e.confidence for e in result.edges if e.edge_type == "instantiates"} == {0.90}
+    assert {e.evidence_type for e in result.edges if e.edge_type == "instantiates"} == {
+        "verilog_instantiation",
+    }
+
+
+def test_instance_arrays_and_positional_port_lists_emit_edges(tmp_path):
+    """An instance array, an implicit ``.x`` port, a port expression the
+    grammar rejects as a checker argument (a concatenation), and two or more
+    positional ports (``udp_instantiation``, with or without an array range)
+    are module instantiations too."""
+    result = _analyze(tmp_path, {"src/forms.sv": """\
+module a(input x, input y); endmodule
+module b;
+  wire w, z, q;
+  a u_arr[3:0](.x(w));
+  a u_impl(.x);
+  a u_mix(.x(w), .*);
+  a u_cat({w, z});
+  a u_pos2(w, z);
+  a u_pos3(w, z, q);
+  a u_posarr[1:0](w, z);
+endmodule
+"""})
+
+    assert _instantiations(result) == [("b", "a", line) for line in range(4, 11)]
+
+
+def test_a_real_checker_udp_or_program_instance_is_no_module_edge(tmp_path):
+    """The same node types hold real checker and UDP instances. A name the
+    repository declares as a checker, a primitive or a program (in any file)
+    and not as a module is not a module instantiation; neither is a gate, an
+    unnamed UDP instance, a checker instantiated in procedural code, or a
+    package-scoped checker."""
+    result = _analyze(tmp_path, {
+        "src/units.sv": """\
+checker chk(input x); endchecker
+primitive udp(output o, input i, input j);
+  table 0 0 : 0; endtable
+endprimitive
+primitive udp_old(o, i, j);
+  output o; input i, j;
+  table 0 0 : 0; endtable
+endprimitive
+program prog(input x); endprogram
+""",
+        "src/top.sv": """\
+module top(input clk);
+  wire w, z, o;
+  chk c1(w);
+  udp p1(o, w, z);
+  udp_old p2(o, w, z);
+  udp (o, w, z);
+  prog pr(w);
+  and g1(o, w, z);
+  pkg::scoped_chk c2(.x(w));
+  always @(posedge clk) proc_chk c3(w);
+  initial begin proc_chk c4(w); end
+endmodule
+""",
+    })
+
+    assert _instantiations(result) == []
+
+
+def test_a_task_enable_is_no_instantiation(tmp_path):
+    """``initial t2(w, z);`` reads as a checker instantiation with no instance
+    name; it is a task enable."""
+    result = _analyze(tmp_path, {"src/tb.sv": """\
+module t2(input a, input b); endmodule
+module tb;
+  wire w, z;
+  initial t2(w, z);
+endmodule
+"""})
+
+    assert _instantiations(result) == []
+
+
+def test_a_module_wins_over_a_same_named_checker(tmp_path):
+    """A name declared as a module in one file and as a checker in another
+    resolves to the module."""
+    result = _analyze(tmp_path, {
+        "src/m.sv": "module both(input x); endmodule\n",
+        "src/c.sv": "checker both(input x); endchecker\n",
+        "src/top.sv": "module top;\n  wire w;\n  both u1(.x(w));\nendmodule\n",
+    })
+
+    assert _instantiations(result) == [("top", "both", 3)]
+
+
+def test_an_undeclared_module_is_external_whatever_its_port_list(tmp_path):
+    """An instantiation of a module the repository does not declare is the
+    same external edge (confidence 0.70) with one port as with two."""
+    result = _analyze(tmp_path, {"src/top.sv": """\
+module top;
+  wire w, z;
+  vendor_two u1(.a(w), .b(z));
+  vendor_one u2(.a(w));
+  vendor_none u3();
+  vendor_pos u4(w, z);
+endmodule
+"""})
+
+    assert _instantiations(result) == [
+        ("top", "verilog:external:vendor_two:module", 3),
+        ("top", "verilog:external:vendor_one:module", 4),
+        ("top", "verilog:external:vendor_none:module", 5),
+        ("top", "verilog:external:vendor_pos:module", 6),
+    ]
+    assert {e.confidence for e in result.edges if e.edge_type == "instantiates"} == {0.70}
+
+
+def test_interface_instances_in_a_module_and_in_an_interface(tmp_path):
+    """An interface instance (``bus_if bif();``) is an ``instantiates`` edge
+    to the interface, and an instance inside an interface body has the
+    enclosing interface as its source, whichever node type the grammar gives
+    it. A same-named module does not take an interface-body instance."""
+    result = _analyze(tmp_path, {"src/ifs.sv": """\
+interface inner_if; logic v; endinterface
+module inner_if; endmodule
+interface outer_if;
+  logic v;
+  inner_if u_one();
+  inner_if u_two(.a(v), .b(v));
+  inner_if u_pos(v, v);
+endinterface
+interface bus_if; logic v; endinterface
+module top;
+  bus_if bif();
+endmodule
+"""})
+
+    by_id = {s.id: s for s in result.symbols}
+    edges = sorted(
+        ((by_id[e.src].kind, by_id[e.src].name, by_id[e.dst].kind, by_id[e.dst].name, e.line)
+         for e in result.edges if e.edge_type == "instantiates"),
+        key=lambda edge: edge[4],
+    )
+    assert edges == [
+        ("interface", "outer_if", "interface", "inner_if", 5),
+        ("interface", "outer_if", "interface", "inner_if", 6),
+        ("interface", "outer_if", "interface", "inner_if", 7),
+        ("module", "top", "interface", "bus_if", 11),
+    ]
+
+
+def test_an_instantiation_outside_every_parsed_unit_emits_no_edge(tmp_path):
+    """A user task enable in a ``begin`` block is a syntax error to
+    tree-sitter-verilog, which then yields no ``module_declaration`` for the
+    module around it: the module is no symbol, and its instantiations have no
+    source to hang an edge on."""
+    result = _analyze(tmp_path, {"tb/tb.sv": """\
+module dut(input clk, input rst); endmodule
+module tb;
+  reg clk, rst;
+  dut u_dut(.clk(clk), .rst(rst));
+  dut u_one(.clk(clk));
+  task check(input [7:0] expect); begin end endtask
+  initial begin
+    check(8'd1);
+  end
+endmodule
+"""})
+
+    assert _named(result, "module") == ["dut"]
+    assert _instantiations(result) == []
