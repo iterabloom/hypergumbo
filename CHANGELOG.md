@@ -157,7 +157,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A node id disagreeing with its node is a validator error** (ADR-0036 Ruling 3).
 - **Svelte and Vue files have one file symbol** and parse each `<script>` in its `lang` language.
 - **Every path has one file node across analyzers and linkers**; Svelte, Vue, Blade and `package.json` entry-file duplicates are merged.
-- **A Svelte or Vue component import ends on the imported file's node**, not a stand-in.
+- **A Svelte, Vue or Astro component import ends on the imported file's node**, not a stand-in.
 - **A Vue component import names the run that found it**, where it named no run.
 - **Wolfram `.m`-only packages are analysed.**
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.

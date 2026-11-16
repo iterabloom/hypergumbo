@@ -34,11 +34,13 @@ Symbols Extracted
 Edges Extracted
 ---------------
 - **imports** (frontmatter): one per default import of a ``.astro`` path,
-  from the file id to a dangling ``astro:{import_path}:1-1:file:file`` id,
-  with ``import_name`` / ``import_path`` in meta. The former per-import
+  from the file id to the imported file's node when the path is relative
+  and the file is in the tree, else to the module-import placeholder
+  ``astro:{import_path}:0-0:module:module`` (``_import_dst``), with
+  ``import_name`` / ``import_path`` in meta. The former per-import
   Symbol is no longer emitted (audit-findings 0010, WI-kunag).
 - **imports** (component use): one per capitalized template tag, from the
-  file id to the raw import path (or a dangling
+  file id to the same target as the frontmatter edge (or a dangling
   ``astro:component:{tag}:0-0:{tag}:component`` id when no import names
   it), with ``component_name``, ``client_directive`` and ``attributes`` in
   meta. This replaces the former per-reference ``component_ref`` Symbol
@@ -80,6 +82,7 @@ from hypergumbo_core.analyze.base import (
     make_module_import_dst,
     TreeSitterAnalyzer,
 )
+from hypergumbo_core.analyze.file_records import file_reference_dst
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -138,12 +141,15 @@ class _AstroFileExtractor:
     instance is created for each file.
     """
 
-    def __init__(self, rel_path: str, run_id: str) -> None:
+    def __init__(self, rel_path: str, run_id: str, file_path: Path) -> None:
         # WI-pifus: the path is the one the base class computed against the
         # analysis root (``source_file.relative_to(repo_root)``), taken as
         # given. Re-deriving a root from the absolute path is how this
         # analyzer once landed one directory too high.
         self.rel_path = rel_path
+        # The file on disk, to check that a relative import names a file
+        # that exists; ids are still built from ``rel_path`` alone.
+        self.file_path = file_path
         self._symbols: list[Symbol] = []
         self._edges: list[Edge] = []
         self._execution_id = run_id
@@ -163,7 +169,30 @@ class _AstroFileExtractor:
         # Second pass: extract template content
         self._extract_template_pass(tree.root_node)
 
+        # An import yields a frontmatter edge and one edge per tag that uses
+        # the component, and all of them name one target (``_import_dst``).
+        # Edge dedup keeps the FIRST of identical relations and only the call
+        # lines of the rest, so the tag edges go first: the survivor is then
+        # the one carrying the use site's hydration directive and attributes
+        # (its ``component_name`` is the import's name). The frontmatter edge
+        # of a component no tag uses is alone, and stays.
+        self._edges.sort(key=lambda edge: "component_name" not in (edge.meta or {}))
+
         return self._symbols, self._edges
+
+    def _import_dst(self, import_path: str) -> str:
+        """Where an ``imports`` edge for ``import_path`` ends.
+
+        A relative import of a file in the tree ends on that file's node
+        (``file_reference_dst``). Anything else, an alias (``@components/``)
+        or a missing file, ends on the canonical module-import placeholder.
+        It is never a file id built from the raw import string: the path slot
+        of ``astro:../components/Hero.astro:1-1:file:file`` names no file, yet
+        the orchestrator minted a ``kind="file"`` node for it.
+        """
+        return file_reference_dst(
+            "astro", self.file_path, Path(self.rel_path).as_posix(), import_path,
+        ) or make_module_import_dst("astro", import_path)
 
     def _extract_frontmatter_pass(
         self, node: "tree_sitter.Node", content: bytes
@@ -237,7 +266,7 @@ class _AstroFileExtractor:
                         line_num = base_line + _line_offset
                         self._edges.append(Edge.create(
                             src=make_file_id("astro", str(rel_path)),
-                            dst=f"astro:{import_path}:1-1:file:file",
+                            dst=self._import_dst(import_path),
                             edge_type="imports",
                             line=line_num,
                             origin=PASS_ID,
@@ -349,9 +378,7 @@ class _AstroFileExtractor:
             # is a 5-part dangling component id so the relationship keeps
             # representation in the graph.
             if import_path:
-                # WI-bufar-pokam: the canonical module-import id, not
-                # the bare path (finalize's ``<unknown>`` fallback).
-                edge_dst = make_module_import_dst("astro", import_path)
+                edge_dst = self._import_dst(import_path)
             else:
                 edge_dst = f"astro:component:{tag_name}:0-0:{tag_name}:component"
             edge = Edge.create(
@@ -477,7 +504,7 @@ class AstroAnalyzer(TreeSitterAnalyzer):
         """
         analysis = FileAnalysis()
 
-        extractor = _AstroFileExtractor(rel_path, run.execution_id)
+        extractor = _AstroFileExtractor(rel_path, run.execution_id, file_path)
         symbols, _ = extractor.extract(tree, source)
         analysis.symbols = symbols
         for sym in symbols:
@@ -496,7 +523,7 @@ class AstroAnalyzer(TreeSitterAnalyzer):
         The base class carries no Pass-1 edges into Pass 2, so the extraction
         ``extract_symbols_from_file`` already did is repeated here.
         """
-        extractor = _AstroFileExtractor(rel_path, run.execution_id)
+        extractor = _AstroFileExtractor(rel_path, run.execution_id, file_path)
         _, edges = extractor.extract(tree, source)
         return edges
 
