@@ -18,6 +18,7 @@ failed import exits 2 with the reason on stderr.
 # covers: scripts/generate-concepts
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -32,9 +33,13 @@ GENERATORS = ("generate-schema", "generate-concept-axes", "generate-concepts")
 
 def _run(script: Path, *args: str) -> subprocess.CompletedProcess:
     # -S: no site-packages, so neither the venv's editable installs nor any
-    # system copy of hypergumbo_core can be found by accident.
+    # system copy of hypergumbo_core can be found by accident. PYTHONPATH is
+    # dropped for the same reason: a caller that points it at packages/*/src
+    # (a worktree run does) would hand the copies outside the checkout the
+    # very import these tests say they cannot make.
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     return subprocess.run([sys.executable, "-S", str(script), *args],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, env=env)
 
 
 @pytest.mark.parametrize("name", GENERATORS)
