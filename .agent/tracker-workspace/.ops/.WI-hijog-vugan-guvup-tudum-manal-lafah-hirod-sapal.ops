@@ -18,3 +18,10 @@
     pr_ref:  # b7e6
     description: "Seen 2026-10-31 at PR #1983 integration: check-package-coverage core reports c_family.py 256 (the class/struct member continue in c_family_file_scope_variables), sketch.py 6657 (the vendored-disclosure header line) and verify_claims.py 7160 (_withhold_for_unfollowed_escapes call). The branch changed no code in those files (core diff: linkers/ipc.py, two pin files, test_ipc_linker.py), so the gaps predate it. Each needs a core-package test. Cause of drift: WI-sagar (no live CI runs per-package isolation)."  # b7e6
     fields: {}  # b7e6
+- op: discuss  # b035
+  at: '2026-11-16T11:46:43Z'  # b035
+  by: agent  # b035
+  actor: jgstern_agent  # b035
+  clock: 2  # b035
+  nonce: b035  # b035
+  message: "2026-11-16, dev 3da1f85b37 and again on the PR #2200 branch: `scripts/check-package-coverage core` reports 3 lines, today c_family.py:256, route_handler.py:463, verify_claims.py:7100 (sketch.py:6657 of this title is no longer among them). On the branch the checker ran 20,982 core tests where smart-test with explicit file lists ran 21,104, so part of the gap may be collection, not coverage: not investigated. WI-hozur-rofan-zodor-rinan-gazih-kijig-ragig-lalun reads as the same finding; folding is the owner's call."  # b035

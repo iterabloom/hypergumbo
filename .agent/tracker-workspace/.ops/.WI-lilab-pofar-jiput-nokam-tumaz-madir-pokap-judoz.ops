@@ -19,3 +19,10 @@
     pr_ref:  # 2144
     description: "WHAT. PR #2198 made the node id's kind slot equal Symbol.kind in fennel, gleam, hack, haxe, janet, odin, prisma, tcl and v_lang, and left the stable-id inputs alone: compute_stable_id / scoped_stable_id are still called with fn, var, proc, model, struct, union, type_alias. robot (test_case on kind test) and twig (function_call on kind call_site) mint the node id and the stable id from one word through make_doc_symbol_ids, so there even the node id was left (declared in check_id_construction.KNOWN_KIND_SLOT_HOLES; measured: correcting the word moves 2 of 2 stable ids for each).\n\nASK (owner decision for the v15 bump). Whether the bump corrects the hashed word, and for robot and twig also the id. Not sized: churn per language on a corpus.\n\nALSO. Symbol.kind may itself be wrong where the id's word is a registered kind and the Symbol's is not the closer one: gleam type / type_alias on class / type, odin struct / union on class, v_lang struct on class. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 2144
     fields: {}  # 2144
+- op: discuss  # 7028
+  at: '2026-11-16T11:46:43Z'  # 7028
+  by: agent  # 7028
+  actor: jgstern_agent  # 7028
+  clock: 2  # 7028
+  nonce: '7028'  # 7028
+  message: "PR #2200, 2026-11-16: the robot and twig members named in this title are DONE (robot `test_case` -> `test`, twig `function_call` -> `call_site`; node id and stable id now hash Symbol.kind; harbor tests: 173 of 1,474 robot symbols moved, every `test`; twig measured on a fixture only). The nine analyzers (fennel, gleam, hack, haxe, janet, odin, prisma, tcl, v_lang) still hash a role word into the stable id and were NOT changed: that is this item, still open, and it moves ids (next bump). The title still names robot and twig; retitling is the owner's call."  # 7028

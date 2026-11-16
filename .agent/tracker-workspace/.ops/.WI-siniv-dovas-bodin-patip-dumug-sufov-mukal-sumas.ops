@@ -26,3 +26,18 @@
   clock: 2  # 8282
   nonce: '8282'  # 8282
   message: "2026-11-15: the owner ruled that Agda switches to the language pack's grammar in the v15 bump PR (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md). That makes Agda a fourth analyzer of hypergumbo-lang-extended1 that loads tree-sitter-language-pack (after D, asm and BitBake), so this item is a prerequisite of the switch and rides in that PR: the package declares the pack at the pin the other language packages use, and drops the tree-sitter-agda wheel. Not re-checked today: this item's own repro."  # 8282
+- op: update  # 36db
+  at: '2026-11-16T11:46:42Z'  # 36db
+  by: agent  # 36db
+  actor: jgstern_agent  # 36db
+  clock: 3  # 36db
+  nonce: 36db  # 36db
+  set:  # 36db
+    status: done  # 36db
+- op: discuss  # 71f3
+  at: '2026-11-16T11:46:43Z'  # 71f3
+  by: agent  # 71f3
+  actor: jgstern_agent  # 71f3
+  clock: 4  # 71f3
+  nonce: 71f3  # 71f3
+  message: "Fixed in PR #2200. packages/hypergumbo-lang-extended1/pyproject.toml declared no tree-sitter-language-pack on dev although 27 of its analyzers set language_pack_name; it now declares `tree-sitter-language-pack~=0.13.0` (28 analyzers with Agda) and no longer declares tree-sitter-agda. A test (test_grammar_dependencies_declared) compares what the analyzers load with what the package declares; my mutation (the dropped wheel re-declared) fails it. NOT CHECKED: installing hypergumbo-lang-extended1 alone in a clean environment. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 71f3

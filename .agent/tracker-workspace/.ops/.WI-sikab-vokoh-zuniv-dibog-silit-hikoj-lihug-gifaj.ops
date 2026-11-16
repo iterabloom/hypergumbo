@@ -1,0 +1,21 @@
+- op: create  # 19e0
+  at: '2026-11-16T11:47:18Z'  # 19e0
+  by: agent  # 19e0
+  actor: jgstern_agent  # 19e0
+  clock: 1  # 19e0
+  nonce: '19e0'  # 19e0
+  data:  # 19e0
+    kind: work_item  # 19e0
+    title: "java: annotation-type elements, lambdas and a varargs record component emit no symbol; declaration annotations are not hashed"  # 19e0
+    status: todo_hard  # 19e0
+    priority: 3  # 19e0
+    parent:  # 19e0
+    tags:  # 19e0
+    - java  # 19e0
+    - analysis_quality  # 19e0
+    isbefore: []  # 19e0
+    duplicate_of: []  # 19e0
+    not_duplicate_of: []  # 19e0
+    pr_ref:  # 19e0
+    description: "WHAT, after PR #2200:\n- A varargs record component (`record R(int... xs)`) emits no field.\n- Annotation-type elements and lambdas emit no symbols.\n- Declaration annotations are not hashed (MOVES IDS if added).\n- Type-parameter bounds: see the cross-language type-parameter item.\n\nNOTE for a reader of the v15 figures: jedis moved 1,579 of 21,512 (7.34%), of which 1,538 are `T...` now hashing as `T[]` (jedis has many `del(String key)` / `del(String... keys)` pairs that hashed one text).\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 19e0
+    fields: {}  # 19e0

@@ -57,3 +57,18 @@
   set: {}  # 7e47
   add:  # 7e47
     isbefore: [WI-jidot-jabag-bihun-pimib-jufug-jidub-tukis-nakav]  # 7e47
+- op: update  # dfe9
+  at: '2026-11-16T11:46:40Z'  # dfe9
+  by: agent  # dfe9
+  actor: jgstern_agent  # dfe9
+  clock: 7  # dfe9
+  nonce: dfe9  # dfe9
+  set:  # dfe9
+    status: done  # dfe9
+- op: discuss  # 1cca
+  at: '2026-11-16T11:46:40Z'  # 1cca
+  by: agent  # 1cca
+  actor: jgstern_agent  # 1cca
+  clock: 8  # 1cca
+  nonce: 1cca  # 1cca
+  message: "Fixed in PR #2200. Re-ran the filed forms: an in-class constructor, a member template, a template overload and a constructor template were kind function with bare names (`S`, `get`, `over`, `T`) on dev and are methods of their class now (`S::S`, `T::get`, ...). sherpa-onnx csrc: 1,218 of 5,963 C++ symbols moved with this item and INV-tohuj together (20.43%), 496 of them function -> method; whisper.cpp 413 of 18,625 (2.22%). Constructions now reach constructors (dead-code candidates on csrc 1,581 -> 1,077). NOT DONE (filed): 285 of 729 constructors there are still candidates (member construction and implicit base-constructor calls are not modelled); class template specialisations keep bare members; out-of-class members of class templates keep `A<T>::f`; a C++ method's qualified_name is None (it was before too). The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 1cca

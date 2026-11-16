@@ -40,3 +40,18 @@
   clock: 4  # 183c
   nonce: 183c  # 183c
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): fixture with file-level `struct TopLevel` / `enum TopMode` and in-contract `struct RoyaltyInfo` / `enum Mode` emits fields `TopLevel.a`, `RoyaltyInfo.receiver`, `RoyaltyInfo.royaltyFraction` and no struct or enum node; containment is `span_overlap` to the file / contract. Real openzeppelin `ERC2981.sol` (single file) still yields `solidity:external:0-0:RoyaltyInfo:external_symbol` as target of the two `RoyaltyInfo(...)` constructor calls (lines 102, 130). solidity.py symbol arms (L453-549) have no struct_declaration or enum_declaration arm; `struct` and `enum` are in `_KIND_STABLE_ID_FACTORIES` (base.py L1851-1852). Enum members: no node. Not checked: the \"12 fields\" count. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-fuvit.md. No status or priority change made by this review."  # 183c
+- op: update  # afc5
+  at: '2026-11-16T11:46:40Z'  # afc5
+  by: agent  # afc5
+  actor: jgstern_agent  # afc5
+  clock: 5  # afc5
+  nonce: afc5  # afc5
+  set:  # afc5
+    status: done  # afc5
+- op: discuss  # 5ebb
+  at: '2026-11-16T11:46:41Z'  # 5ebb
+  by: agent  # 5ebb
+  actor: jgstern_agent  # 5ebb
+  clock: 6  # 5ebb
+  nonce: 5ebb  # 5ebb
+  message: "Fixed in PR #2200. Re-ran the filed forms (top-level and in-contract struct and enum, and openzeppelin's ERC2981.sol): dev emitted no struct or enum node, contained the fields by span overlap under the contract, and sent `RoyaltyInfo(receiver, feeNumerator)` to an external stand-in; now `struct ERC2981.RoyaltyInfo` and `enum ERC2981.Mode` exist, enum values are fields of their enum, containment is by name, and the two construction calls bind the struct. openzeppelin: 168 new symbols (66 structs, 18 enums, 84 enum values), 130 fields renamed to carry their contract (`ERC2981.RoyaltyInfo.receiver`) under the SAME stable id, 0 ids moved of 4,384. THE ITEM'S PREMISE WAS PARTLY WRONG: struct fields already hashed Contract.Struct.field (since v9), so no id needed to move; the fix rode in this PR to save a CI run. NOT DONE: error declarations and user-defined value types are not symbols, member access emits no edge to a field (noted on WI-palof). NOT CHECKED: the item's '12 fields' count. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 5ebb

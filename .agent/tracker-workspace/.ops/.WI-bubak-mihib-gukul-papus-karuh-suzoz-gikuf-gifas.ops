@@ -1,0 +1,21 @@
+- op: create  # 5054
+  at: '2026-11-16T11:46:44Z'  # 5054
+  by: agent  # 5054
+  actor: jgstern_agent  # 5054
+  clock: 1  # 5054
+  nonce: '5054'  # 5054
+  data:  # 5054
+    kind: work_item  # 5054
+    title: "No analyzer passes type parameters to the signature normalizers, though the spec says generic parameters are renamed by position"  # 5054
+    status: todo_hard  # 5054
+    priority: 2  # 5054
+    parent:  # 5054
+    tags:  # 5054
+    - stable_id  # 5054
+    - analysis_quality  # 5054
+    isbefore: []  # 5054
+    duplicate_of: []  # 5054
+    not_duplicate_of: []  # 5054
+    pr_ref:  # 5054
+    description: "WHAT. docs/hypergumbo-spec.md says the typed tier of a stable id renames generic type parameters by position ($0, $1), so `f<T>(x: T)` and `f<U>(x: U)` share an id. The normalizers accept a type_params argument, and no analyzer passes it: Java, Kotlin, Go, C#, Groovy, Scala, Dart and Swift hash a type parameter by its NAME, and none hashes the type-parameter clause's bounds or constraints (Java `<T extends A>`, Kotlin `where`, Swift `where` and generic constraints, Scala bounds, Dart bounds, C# `where`).\n\nSEEN. Each of the nine type-hole packages of PR #2200 reported it independently on its own fixtures; Go's Symbol.signature also does not show type parameters.\n\nCONSEQUENCE. Renaming a type parameter moves the id (the spec says it does not); two overloads that differ only in a bound share an id until the within-file occurrence split separates them by order.\n\nDECISION NEEDED (owner). Either pass type_params from each analyzer and hash bounds (MOVES IDS in every language named), or correct the spec sentence to what the code does.\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 5054
+    fields: {}  # 5054

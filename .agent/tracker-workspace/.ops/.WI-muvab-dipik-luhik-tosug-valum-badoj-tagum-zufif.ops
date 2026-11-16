@@ -26,3 +26,18 @@
   clock: 2  # bce8
   nonce: bce8  # bce8
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces. `analyze_swift` on two function-local `struct Inner { init(x: Int) {}; deinit {}; func go() {} }` (in `f` and `g`): both inits `sha256:15a05d39b08dc2a9`, both deinits `sha256:1340cad2708b809c`; struct and `go` ids differ. `_swift_lifecycle_symbol` (swift.py:1661) hashes `_get_swift_type_ancestors`, not `_swift_scope`. In `hypergumbo run` output the tie is split by `split_within_file_stable_id_collisions` (`:occ:1`), so no shared id is emitted, but deleting f's `Inner` moves g's `Inner.init` 365fa579… -> 15a05d39… and `Inner.deinit` ca92d0f5… -> 1340cad2…, while g's `Inner`/`go` ids stay. The description's evidence text is cut off after \"printed\". Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-muvab. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-muvab.md. No status or priority change made by this review."  # bce8
+- op: update  # 4a45
+  at: '2026-11-16T11:46:39Z'  # 4a45
+  by: agent  # 4a45
+  actor: jgstern_agent  # 4a45
+  clock: 3  # 4a45
+  nonce: 4a45  # 4a45
+  set:  # 4a45
+    status: done  # 4a45
+- op: discuss  # 10cf
+  at: '2026-11-16T11:46:39Z'  # 10cf
+  by: agent  # 10cf
+  actor: jgstern_agent  # 10cf
+  clock: 4  # 10cf
+  nonce: 10cf  # 10cf
+  message: "Fixed in PR #2200. Re-ran the filed repro: the init and deinit of two same-named types declared in two functions shared one id each on dev (init 15a05d39..., deinit 1340cad2...) and g's ids moved when f's type was deleted; now the four ids are distinct and g's stay put on deletion. The init / deinit of a function-local type hashes the enclosing function in its scope chain. swift-composable-architecture: 6 symbols moved by this fix alone, every one an init of a type inside a test function. NOT DONE: INV-fabih's wide statement still fails for five other same-name-sibling shapes (two blocks of one function, two getters, label-only overloads, two inits, two closures): filed with the Swift residual. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 10cf

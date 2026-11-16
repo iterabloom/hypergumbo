@@ -1,0 +1,22 @@
+- op: create  # 3fec
+  at: '2026-11-16T11:48:04Z'  # 3fec
+  by: agent  # 3fec
+  actor: jgstern_agent  # 3fec
+  clock: 1  # 3fec
+  nonce: 3fec  # 3fec
+  data:  # 3fec
+    kind: work_item  # 3fec
+    title: "agda: no call edges and no is_exported; multi-name signatures, field lists, variable entries, pattern synonyms and module aliases"  # 3fec
+    status: todo_hard  # 3fec
+    priority: 3  # 3fec
+    parent:  # 3fec
+    tags:  # 3fec
+    - agda  # 3fec
+    - analysis_quality  # 3fec
+    - dead_code  # 3fec
+    isbefore: []  # 3fec
+    duplicate_of: []  # 3fec
+    not_duplicate_of: []  # 3fec
+    pr_ref:  # 3fec
+    description: "WHAT, after PR #2200:\n- The analyzer emits no `calls` edge and sets is_exported on nothing, so dead-code-maybe lists every function nothing structural reaches: 159 of 208 on the package fixture.\n- A multi-name signature `t f : B` is ONE function whose name contains a space; `field x y : A` emits only `x`; `variable` entries have kind field.\n- Pattern synonyms and `module X = ...` are not emitted; `import X as L` does not parse.\n- A module's span is its header line, so the containment linker puts its members under the file node, not under the module.\n- docs/example-output.md still shows tree-sitter-agda-1.3.3 in a captured pip transcript; the optional-dependency playbook (a governance file) names that wheel as its example.\n- An anonymous module (`module _ ... where`) is no longer a symbol and its members belong to the enclosing module (the choice made for WI-bokud: 1,085 `_` module symbols gone on agda-stdlib). Its parameters are therefore in no scope chain.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 3fec
+    fields: {}  # 3fec

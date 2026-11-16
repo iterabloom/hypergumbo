@@ -26,3 +26,18 @@
   clock: 2  # df3d
   nonce: df3d  # df3d
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096: reproduced through `hypergumbo run` (fixtures ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-dolad). `{{~#each}}`, `{{#> layout}}`, `{{#*inline}}`: no symbol, contents miss a scope link. Split-line `{{#each\\n inner}}`: the block symbol IS emitted (`_BLOCK_RE` matches) but with scope `()`; only `_OPEN_RE` misses it. The closer pops a wrong block only when an enclosing block has the same name (each-in-each, or `{{#> layout}}` inside `{{#layout}}`); otherwise it is ignored. Also seen: `{{~> lead}}` emits no partial, and `{{#each items~}}` is labelled `each items~`. handlebars.py:58/62 exact; file last changed 2026-10-13. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-dolad.md. No status or priority change made by this review."  # df3d
+- op: update  # deb2
+  at: '2026-11-16T11:46:41Z'  # deb2
+  by: agent  # deb2
+  actor: jgstern_agent  # deb2
+  clock: 3  # deb2
+  nonce: deb2  # deb2
+  set:  # deb2
+    status: done  # deb2
+- op: discuss  # 1f6f
+  at: '2026-11-16T11:46:41Z'  # 1f6f
+  by: agent  # 1f6f
+  actor: jgstern_agent  # 1f6f
+  clock: 4  # 1f6f
+  nonce: 1f6f  # 1f6f
+  message: "Fixed in PR #2200. Re-ran every filed form with --include-docs: `{{~#each}}`, an opener split across lines, `{{#> layout}}`, `{{#*inline}}` and a same-name close gave no block or a wrong scope on dev; each now emits its block and scopes its contents, and a closer closes the innermost block of its name. vault ui: 81 of 2,102 Handlebars symbols moved (3.85%). NOT DONE (filed): a block name with a hyphen or a dot is cut at it (`each-in` -> `each`; 43 on vault ui); a dynamic partial is named `(lookup`; Glimmer `<Foo>` tags are not tracked. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 1f6f
