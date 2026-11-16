@@ -57,6 +57,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch no longer downloads embedding models**: run `hypergumbo install-embeddings` first.
 - **Sketch picks Additional Files without an embedding model**: minutes faster cold, and identical on every run. `install-embeddings` fetches one model, not two.
 - **Sketch no longer re-encodes its 180 fixed config probes on every run**: about a second faster, same output.
+- **Sketch says under its title that quoted repository text is data**, not instructions.
 - **A catalogue file is parsed once per process**, not on every load: `verify-claims` parsed fifteen files about forty times.
 - **A catalogue's lookup index is built on first use**, not eleven times per load; loading takes half as long.
 - **Installed packages are read once per environment**, not on every run: a small run takes a third less.

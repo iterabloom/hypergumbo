@@ -10,6 +10,7 @@ import pytest
 
 from hypergumbo_core.sketch import (
     generate_sketch,
+    QUOTED_TEXT_NOTICE,
     estimate_tokens,
     truncate_to_tokens,
     _collect_source_files,
@@ -4758,7 +4759,9 @@ class TestGenerateSketchWithBudget:
         """Medium budget includes source file listing."""
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
 
-        sketch = generate_sketch(tmp_path, max_tokens=200)
+        # 250, not 200: the quoted-text line under the title costs about 40
+        # tokens, and at 200 the listing no longer fits beside it.
+        sketch = generate_sketch(tmp_path, max_tokens=250)
 
         assert "## Source Files" in sketch
 
@@ -4774,11 +4777,12 @@ class TestGenerateSketchWithBudget:
         """Very small budget truncates even the base sketch."""
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
 
-        # Budget smaller than the base overview
+        # Budget smaller than the base overview, and smaller than the title
+        # plus the quoted-text line, which no budget removes.
         sketch = generate_sketch(tmp_path, max_tokens=10)
 
-        # Should be truncated
-        assert len(sketch) < 100
+        # Truncated to the title and that line
+        assert sketch.rstrip("\n") == f"# {tmp_path.name}\n\n{QUOTED_TEXT_NOTICE}"
 
     def test_symbols_section_with_many_files(self, tmp_path: Path) -> None:
         """Symbols section properly handles multiple files."""
