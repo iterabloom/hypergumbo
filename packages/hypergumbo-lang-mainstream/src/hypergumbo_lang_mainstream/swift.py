@@ -1094,15 +1094,17 @@ def _extract_swift_signature(
     return _swift_callable_signature(node, source)
 
 
-#: The decorations a Swift type text may carry around its core type: an
+#: The prefixes a Swift type text may carry before its core type: an
 #: attribute (``@escaping``, ``@Sendable``, ``@convention(c)``), an ownership
-#: or passing modifier, ``some`` / ``any``, a pack's ``repeat each``, a
-#: suppressed constraint's ``~``.
+#: or passing modifier, ``some`` / ``any``, a pack's ``repeat each``. Each
+#: matters only before a QUALIFIED core, which the shared FQN strip would
+#: otherwise cut at its last ``.`` together with the prefix. A suppressed
+#: constraint's ``~`` is not here: the grammar reads ``~`` before one type
+#: identifier only, so no dot ever follows it.
 _SWIFT_TYPE_PREFIX_RE = re.compile(
     r"@\w+(?:\([^()]*\))?\s*"
     r"|(?:inout|borrowing|consuming|__owned|__shared|sending|isolated"
     r"|some|any|repeat|each)\s+"
-    r"|~"
 )
 
 
@@ -1130,11 +1132,13 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     The shared rewrite (``strip_fqn_prefix`` and generic-parameter
     numbering, as ``normalize_signature_names_first`` applies it) is applied
     to the CORE type only. The decorations around it -- prefixes matched by
-    ``_SWIFT_TYPE_PREFIX_RE``, a variadic's ``...``, an implicitly unwrapped
-    ``!``, and the members of a top-level ``A & B`` -- are kept beside it:
-    the shared helper splits at the last ``.``, which would turn ``Int...``
-    into ``""`` and ``inout Foo.Bar`` into ``Bar``. A type with none of them
-    normalizes exactly as the shared normalizer does it.
+    ``_SWIFT_TYPE_PREFIX_RE``, a variadic's ``...``, and the members of a
+    top-level ``A & B`` -- are kept beside it: the shared helper splits at
+    the last ``.``, which would turn ``Int...`` into ``""``, ``inout Foo.Bar``
+    into ``Bar`` and ``A.B & C.D`` into ``D``. An implicitly unwrapped ``!``
+    needs no handling: it follows the last ``.``, so the strip keeps it
+    (``Mod.T!`` -> ``T!``). A type with none of them normalizes exactly as
+    the shared normalizer does it.
     """
     from hypergumbo_core.analyze.base import normalize_generic_params, strip_fqn_prefix
 
@@ -1150,11 +1154,9 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     suffix = ""
     if rest.endswith("...") and len(rest) > 3:
         suffix, rest = "...", rest[:-3].rstrip()
-    elif rest.endswith("!") and len(rest) > 1:
-        suffix, rest = "!", rest[:-1].rstrip()
     members = _swift_top_level_split(rest, "&")
     body = " & ".join(core(m) for m in members) if len(members) > 1 else core(rest)
-    head = "".join(p if p == "~" else p + " " for p in prefixes)
+    head = "".join(p + " " for p in prefixes)
     return head + body + suffix
 
 

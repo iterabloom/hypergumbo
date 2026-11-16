@@ -19,6 +19,7 @@ names-first normalizer's result for every hole-free signature.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -207,3 +208,98 @@ def test_a_signature_the_renderer_cannot_have_written_normalizes_to_none() -> No
     assert normalize_swift_signature(None) is None
     assert normalize_swift_signature("x: Int") is None
     assert normalize_swift_signature("(x: Int") is None
+
+
+#: A literal copy of ``_SWIFT_TYPE_PREFIX_RE``'s word alternation, so a word
+#: removed from the regex keeps its case here.
+_PREFIX_WORDS_LITERAL = (
+    "inout", "borrowing", "consuming", "__owned", "__shared", "sending",
+    "isolated", "some", "any", "repeat", "each",
+)
+
+
+def _regex_words() -> set[str]:
+    from hypergumbo_lang_mainstream.swift import _SWIFT_TYPE_PREFIX_RE
+
+    found = re.search(r"\(\?:([a-z_|]+)\)", _SWIFT_TYPE_PREFIX_RE.pattern)
+    assert found is not None
+    return set(found.group(1).split("|"))
+
+
+def _decorated(word: str) -> str:
+    """The parameter type text for ``word`` before a QUALIFIED core."""
+    if word == "repeat":
+        return "repeat each Mod.T"
+    return f"{word} Mod.T"
+
+
+#: Every prefix entry, as (case id, decorated parameter type, the hashed type
+#: it must normalize to). The attribute branch is three cases, one with a
+#: parenthesised argument.
+_PREFIX_CASES = sorted(
+    [(w, _decorated(w), "repeat each T" if w == "repeat" else f"{w} T")
+     for w in set(_PREFIX_WORDS_LITERAL) | _regex_words()]
+    + [
+        ("@escaping", "@escaping Mod.T", "@escaping T"),
+        ("@Sendable", "@Sendable Mod.T", "@Sendable T"),
+        ("@convention(c)", "@convention(c) Mod.T", "@convention(c) T"),
+    ],
+)
+
+
+def _f_symbol(root: Path, param_type: str) -> Symbol:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "a.swift").write_text(f"func f<each U>(x: {param_type}) {{}}\n")
+    (hit,) = [s for s in analyze_swift(root).symbols if s.name == "f"]
+    return hit
+
+
+def test_the_literal_word_list_is_the_regexs() -> None:
+    assert _regex_words() == set(_PREFIX_WORDS_LITERAL)
+
+
+@pytest.mark.parametrize(
+    ("param_type", "hashed"),
+    [case[1:] for case in _PREFIX_CASES],
+    ids=[case[0] for case in _PREFIX_CASES],
+)
+def test_a_prefix_before_a_qualified_type_is_hashed(
+    tmp_path: Path, param_type: str, hashed: str,
+) -> None:
+    """Every entry of ``_SWIFT_TYPE_PREFIX_RE`` before a QUALIFIED core: the
+    hashed text keeps the prefix and the simple name (``some T``, not the
+    shared strip's ``T``), and the id differs from the undecorated
+    declaration's and from the same declaration under another prefix.
+
+    All eleven words and the three attributes go through the analyzer:
+    ``__owned`` and ``__shared`` parse with an ERROR node in the venv's
+    grammar, but the renderer writes the parameter's text after its ``:``
+    whole, so they reach the normalizer as written (checked: the signature
+    contains them). ``each`` alone (``x: each Mod.T``) parses as a pack."""
+    decorated = _f_symbol(tmp_path / "decorated", param_type)
+    plain = _f_symbol(tmp_path / "plain", "Mod.T")
+    other = _f_symbol(
+        tmp_path / "other", "borrowing Mod.T" if param_type.startswith("inout") else "inout Mod.T",
+    )
+    assert f"x: {param_type}" in (decorated.signature or "")
+    assert normalize_swift_signature(decorated.signature) == f"({hashed})"
+    assert decorated.stable_id != plain.stable_id
+    assert decorated.stable_id != other.stable_id
+
+
+@pytest.mark.parametrize(("param_type", "hashed"), [
+    ("Mod.T...", "T..."),
+    ("A.B & C.D", "B & D"),
+    ("Mod.T!", "T!"),
+])
+def test_a_suffix_or_composition_around_a_qualified_type_is_hashed(
+    tmp_path: Path, param_type: str, hashed: str,
+) -> None:
+    """The variadic ``...`` and a top-level ``&`` are kept beside qualified
+    cores (the shared strip would give ``""`` and ``D``). ``Mod.T!`` needs no
+    branch -- the ``!`` follows the last ``.`` -- and is pinned so that stays
+    true."""
+    decorated = _f_symbol(tmp_path / "decorated", param_type)
+    plain = _f_symbol(tmp_path / "plain", "Mod.T")
+    assert normalize_swift_signature(decorated.signature) == f"({hashed})"
+    assert decorated.stable_id != plain.stable_id
