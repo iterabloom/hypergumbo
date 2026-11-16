@@ -277,6 +277,54 @@ class TestFailedTests:
         assert len(got) == 2
 
 
+_JUNIT_MODULE_LEVEL = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" tests="3">
+<testcase classname="pkg.tests.test_x" name="test_ok" time="0.1"/>
+<testcase classname="" name="pkg.tests.test_y" time="0.0">
+  <skipped message="could not import 'numpy'"/>
+</testcase>
+<testcase classname="" name="pkg.tests.test_z" time="0.0">
+  <error message="collection failure">E ImportError</error>
+</testcase>
+<testcase classname="" name="nowhere.test_gone" time="0.0">
+  <error message="collection failure">E ImportError</error>
+</testcase>
+<testcase classname="" name="" time="0.0">
+  <error message="an entry naming nothing">E</error>
+</testcase>
+</testsuite></testsuites>
+"""
+
+
+class TestModuleLevelEntries:
+    """A module skipped or broken at import is reported with an EMPTY classname
+    and the module's dotted path as its name. Seen on a machine without numpy:
+    the reader raised on the empty classname, and the caller lost the whole
+    observation of a run in which a test had failed."""
+
+    def _tree(self, tmp_path: Path) -> Path:
+        d = tmp_path / "pkg" / "tests"
+        d.mkdir(parents=True)
+        for name in ("test_x.py", "test_y.py", "test_z.py"):
+            (d / name).write_text("")
+        (tmp_path / "junit.xml").write_text(_JUNIT_MODULE_LEVEL)
+        return tmp_path
+
+    def test_a_module_that_never_imported_ran_no_test(self, tmp_path) -> None:
+        root = self._tree(tmp_path)
+        assert ran_tests_from_junit(root / "junit.xml", root) == {
+            "pkg/tests/test_x.py::test_ok"}
+
+    def test_a_module_that_failed_to_import_is_a_failure_named_by_its_file(
+        self, tmp_path,
+    ) -> None:
+        """The file is the id: there is no test name to give. A skip at import
+        is not a failure, and a module that is not on disk is not invented."""
+        root = self._tree(tmp_path)
+        assert failed_tests_from_junit(root / "junit.xml", root) == {
+            "pkg/tests/test_z.py"}
+
+
 class TestDangerousMisses:
     """The ONLY disqualifying result: coverage would not have selected a test
     that ran and failed. Everything else in the report is diagnostics."""
