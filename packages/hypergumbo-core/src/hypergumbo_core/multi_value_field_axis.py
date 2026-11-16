@@ -14,8 +14,9 @@ see :data:`DEFAULT_CORE_FILES`), the linter walks
 every field annotation. For each field whose annotation is ``str``,
 ``Optional[str]``, ``str | None``, or a ``Literal[...]`` of strings,
 the linter requires a trailing source-line comment of the form
-``# axis: <category>`` (optionally with extra text). The category must
-be one of:
+``# axis: <category>`` (optionally with extra text). A name bound by
+``X = NewType("X", str)`` counts as ``str`` (see "NewType fields"
+below). The category must be one of:
 
 - A **known axis name** — see :func:`_known_axes` for the live set,
   which is fourteen: ``edge-type``, ``symbol-kind``,
@@ -67,6 +68,29 @@ isn't anchored elsewhere (named axes have a registry; ``identity``
 has a uniqueness invariant; ``bounded-enum`` has the docstring
 listing). Requiring the author to write a one-sentence explanation
 raises the friction enough to deter drive-by use.
+
+NewType fields
+--------------
+``X = NewType("X", str)`` is a ``str`` at run time and a distinct type
+to mypy, so a field typed ``X`` (or ``Optional[X]``, ``X | None``) is a
+str field and needs its ``# axis:`` comment like any other. The checker
+reads the annotation's AST, where ``X`` is a bare ``Name``; without the
+rule below it was not ``str`` and the field was skipped, so retyping a
+field to a NewType silently removed it from this gate, and a new field
+typed ``X`` with no comment passed.
+
+The NewType names are resolved from source, never from a list in this
+module, so the next NewType is covered without editing the checker
+(:func:`_str_newtypes_in`): for each scanned file, a module-level
+``X = NewType("X", <base>)`` (or ``typing.NewType``) whose ``<base>`` is
+str-like, and every name the file imports with ``from <module> import``
+when ``<module>`` resolves to a file on disk (relative imports, and
+absolute imports rooted at the file's own top-level package) that
+defines or itself imports such a NewType. A NewType over another str
+NewType is str-like; one over ``int`` or a container is not. Not
+followed: ``import m`` followed by ``m.X`` (an ``Attribute``
+annotation), star imports, and a NewType created through an aliased
+``NewType`` name; a field so typed is skipped as before.
 
 Exit semantics
 --------------
@@ -170,22 +194,27 @@ _AXIS_COMMENT_RE = re.compile(
 )
 
 
-def _is_str_like_annotation(node: ast.expr) -> bool:
+def _is_str_like_annotation(
+    node: ast.expr, str_newtypes: frozenset[str] = frozenset()
+) -> bool:
     """Return True iff *node* is a type annotation rooted at ``str``.
 
     Covers ``str``, ``Optional[str]``, ``str | None`` / ``None | str``,
     and ``Literal[...]`` of string constants. Container types whose
     elements are ``str`` (``List[str]``, ``Dict[str, str]``) are NOT
     in scope — those are payload containers, not single-string
-    enumerable fields.
+    enumerable fields. A bare name in *str_newtypes* (a NewType over
+    ``str``, see :func:`_str_newtypes_in`) counts as ``str``.
     """
-    # Bare ``str``
-    if isinstance(node, ast.Name) and node.id == "str":
+    # Bare ``str``, or a NewType over it
+    if isinstance(node, ast.Name) and (
+        node.id == "str" or node.id in str_newtypes
+    ):
         return True
     # ``Optional[str]`` → Subscript(value=Name('Optional'), slice=Name('str'))
     if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
         if node.value.id == "Optional":
-            return _is_str_like_annotation(node.slice)
+            return _is_str_like_annotation(node.slice, str_newtypes)
         if node.value.id == "Literal":
             # ``Literal[...]`` where all values are str constants
             # counts as a multi-value str enumeration.
@@ -200,10 +229,102 @@ def _is_str_like_annotation(node: ast.expr) -> bool:
             )
     # ``str | None`` / ``None | str``
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _is_str_like_annotation(node.left) or _is_str_like_annotation(
-            node.right
-        )
+        return _is_str_like_annotation(
+            node.left, str_newtypes
+        ) or _is_str_like_annotation(node.right, str_newtypes)
     return False
+
+
+def _newtype_definitions(tree: ast.Module) -> dict[str, ast.expr]:
+    """Map each module-level ``X = NewType("X", base)`` name to its *base*.
+
+    Accepts ``NewType(...)`` and ``<module>.NewType(...)`` with exactly
+    two positional arguments and a single ``Name`` target.
+    """
+    found: dict[str, ast.expr] = {}
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
+            continue
+        target, call = stmt.targets[0], stmt.value
+        if not isinstance(target, ast.Name) or not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        is_newtype = (isinstance(func, ast.Name) and func.id == "NewType") or (
+            isinstance(func, ast.Attribute) and func.attr == "NewType"
+        )
+        if is_newtype and len(call.args) == 2:
+            found[target.id] = call.args[1]
+    return found
+
+
+def _resolve_import(py_file: Path, node: ast.ImportFrom) -> Path | None:
+    """Return the file a ``from <module> import ...`` in *py_file* names.
+
+    A relative import resolves against *py_file*'s directory. An absolute
+    one resolves only when its first segment is *py_file*'s own top-level
+    package (found by walking up while ``__init__.py`` exists); other
+    absolute imports (stdlib, third party, sibling packages) return None.
+    """
+    parts = node.module.split(".") if node.module else []
+    if node.level:
+        base = py_file.parent
+        for _ in range(node.level - 1):
+            base = base.parent
+    else:
+        top = py_file.parent
+        while (top.parent / "__init__.py").exists():
+            top = top.parent
+        if not parts or parts[0] != top.name:
+            return None
+        base = top.parent
+    stem = base.joinpath(*parts)
+    for candidate in (stem.with_suffix(".py"), stem / "__init__.py"):
+        if parts and candidate.is_file():
+            return candidate
+    return None
+
+
+def _str_newtypes_in(
+    py_file: Path, cache: dict[Path, frozenset[str]] | None = None
+) -> frozenset[str]:
+    """Names usable in *py_file* that are NewTypes over ``str``.
+
+    The names *py_file* defines with ``NewType`` over a str-like base
+    (a NewType over a str NewType included), plus the names it imports
+    from a module whose own set contains them (``as`` renames applied).
+    *cache* memoises per file; a file being resolved maps to the empty
+    set, so two modules that import each other terminate.
+    """
+    cache = {} if cache is None else cache
+    key = py_file.resolve()
+    if key in cache:
+        return cache[key]
+    cache[key] = frozenset()
+    tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+    names: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        source = _resolve_import(py_file, node)
+        if source is None:
+            continue
+        exported = _str_newtypes_in(source, cache)
+        names.update(
+            alias.asname or alias.name
+            for alias in node.names
+            if alias.name in exported
+        )
+    pending = _newtype_definitions(tree)
+    changed = True
+    while changed:
+        changed = False
+        for name, base in list(pending.items()):
+            if _is_str_like_annotation(base, frozenset(names)):
+                names.add(name)
+                del pending[name]
+                changed = True
+    cache[key] = frozenset(names)
+    return cache[key]
 
 
 def _iter_dataclass_str_fields(
@@ -212,13 +333,16 @@ def _iter_dataclass_str_fields(
     """Yield ``(class_name, field_name, line_no, source_line)`` per str field.
 
     A "str field" is any class-body ``AnnAssign`` whose target is a
-    ``Name`` and whose annotation passes :func:`_is_str_like_annotation`.
+    ``Name`` and whose annotation passes :func:`_is_str_like_annotation`,
+    with the file's NewTypes over ``str`` (:func:`_str_newtypes_in`)
+    counted as ``str``.
     Class-level fields that aren't annotated assignments (regular
     assignments, methods, etc.) are skipped.
     """
     source = py_file.read_text(encoding="utf-8")
     lines = source.splitlines()
     tree = ast.parse(source, filename=str(py_file))
+    str_newtypes = _str_newtypes_in(py_file)
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
@@ -229,7 +353,7 @@ def _iter_dataclass_str_fields(
                 continue
             if not isinstance(stmt.target, ast.Name):
                 continue  # pragma: no cover — class-body AnnAssign with non-Name target is exotic
-            if not _is_str_like_annotation(stmt.annotation):
+            if not _is_str_like_annotation(stmt.annotation, str_newtypes):
                 continue
             line_no = stmt.lineno
             source_line = lines[line_no - 1] if 0 < line_no <= len(lines) else ""

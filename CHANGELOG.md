@@ -267,6 +267,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The pre-commit hook says when a check could not run**, rather than calling the doc stale; `generate-architecture --check` recomputes source-tree counts; CI sets its pytest plugin path as a plain value.
 - **The Python I/O catalogue classifies `tokenize`** and the `-m` entry points of stdlib modules.
 - **The mypy strict surface shrinks 492 → 477.**
+- **A core dataclass field typed with a `str` NewType needs `# axis:`.**
 
 #### Scripts
 
