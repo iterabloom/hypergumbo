@@ -21,6 +21,11 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   when the other method is deleted. Outside a method body the two chains are
   equal. A ``record`` (no table kind) mints the producer formula over that
   chain (``_java_type_stable_id``; INV-fabih)
+- A method's or constructor's typed stable_id hashes its signature text
+  (``_extract_java_signature``), which writes every parameter and return
+  type as its source text whatever the type's node kind; a type left out
+  there is one the id cannot see, so two overloads differing only in it
+  would tie.
 - Method call relationships (edges)
 - Inheritance relationships: this analyzer emits ``extends`` / ``implements``
   edges for classes only. A record's ``implements`` and an interface's
@@ -386,72 +391,87 @@ def _extract_java_signature(
     - "(int a, int b) int" for regular methods
     - "(String message)" for void methods (no return type shown)
     - "(String name, int age)" for constructors (no return type)
+    - "(String fmt, Object... args) String" for a variable-arity parameter
+
+    Every type is written as its source text, whatever its node kind (the
+    grammar's ``_unannotated_type``: the primitive kinds, ``type_identifier``,
+    ``scoped_type_identifier``, ``generic_type``, ``array_type``). Dimensions
+    written after a parameter's name (``int x[]``) or after the parameter list
+    (``int f()[]``) are appended to the type they belong to. A parameter is
+    written with whatever names it (an ``identifier`` or ``_``). A varargs
+    parameter with an annotation before ``...`` (``String @A ... xs``), which
+    the grammar leaves as an ERROR node, is written as its source text. This
+    text is what ``normalize_java_signature`` hashes, so a type left out here
+    is a type the stable_id cannot see: two declarations differing only there
+    would share one id. A receiver parameter (``Outer this``) is left out on
+    purpose: it is not a formal parameter and not part of the method's
+    signature (JLS 8.4).
 
     Args:
-        node: The method_declaration or constructor_declaration node.
+        node: The method_declaration or constructor_declaration node (or the
+            record_declaration whose components a compact constructor takes).
         source: The source code bytes.
         is_constructor: True if this is a constructor (no return type).
 
     Returns:
         The signature string, or None if extraction fails.
     """
-    params_node = None
-    return_type = None
-
-    # Find formal_parameters and return type
-    for child in node.children:
-        if child.type == "formal_parameters":
-            params_node = child
-        # Return type appears before the identifier for methods
-        # Types we care about: void_type, type_identifier, generic_type, array_type, and primitives
-        elif child.type in ("void_type", "type_identifier", "generic_type", "array_type",
-                            "integral_type", "floating_point_type", "boolean_type"):
-            # Only capture if we haven't found params yet (return type comes before name)
-            if params_node is None:
-                return_type = _extract_type_text(child, source)
-
+    params_node = node.child_by_field_name("parameters")
     if params_node is None:
         return None  # pragma: no cover
 
     # Extract parameters
     params: list[str] = []
-    for child in params_node.children:
+    for child in params_node.named_children:
         if child.type == "formal_parameter":
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                if subchild.type in ("type_identifier", "generic_type", "array_type",
-                                      "integral_type", "floating_point_type", "boolean_type"):
-                    param_type = _extract_type_text(subchild, source)
-                elif subchild.type == "identifier":
-                    param_name = _node_text(subchild, source)
-                elif subchild.type == "dimensions":
-                    # Array notation after variable name: String[] args
-                    if param_type:
-                        param_type += _node_text(subchild, source)
-            if param_type and param_name:
-                params.append(f"{param_type} {param_name}")
+            type_node = child.child_by_field_name("type")
+            name_node = child.child_by_field_name("name")
+            if type_node is None or name_node is None:
+                continue  # pragma: no cover - the grammar requires both
+            param_type = _extract_type_text(type_node, source)
+            dims = child.child_by_field_name("dimensions")
+            if dims is not None:
+                # Array notation after the name: String args[]
+                param_type += _node_text(dims, source)
+            params.append(f"{param_type} {_node_text(name_node, source)}")
         elif child.type == "spread_parameter":
-            # Varargs: String... args
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                if subchild.type in ("type_identifier", "generic_type", "array_type"):
-                    param_type = _extract_type_text(subchild, source)
-                elif subchild.type == "variable_declarator":
-                    for vchild in subchild.children:
-                        if vchild.type == "identifier":
-                            param_name = _node_text(vchild, source)
-                elif subchild.type == "identifier":  # pragma: no cover
-                    param_name = _node_text(subchild, source)  # pragma: no cover
-            if param_type and param_name:
-                params.append(f"{param_type}... {param_name}")
+            # Varargs: String... args. The type is the one named child that
+            # is neither a modifier nor the declarator.
+            spread_type = next(
+                (c for c in child.named_children
+                 if c.type not in ("modifiers", "variable_declarator")),
+                None,
+            )
+            declarator = next(
+                (c for c in child.named_children if c.type == "variable_declarator"),
+                None,
+            )
+            spread_name = (
+                declarator.child_by_field_name("name") if declarator is not None else None
+            )
+            if spread_type is None or spread_name is None:
+                continue  # pragma: no cover - the grammar requires both
+            params.append(
+                f"{_extract_type_text(spread_type, source)}... "
+                f"{_node_text(spread_name, source)}"
+            )
+        elif child.type == "ERROR" and "..." in _node_text(child, source):
+            # tree-sitter-java cannot parse an annotation before a varargs
+            # marker (`String @Nullable ... keys`) and leaves an ERROR node;
+            # its source text is the parameter, written whitespace-collapsed.
+            params.append(" ".join(_node_text(child, source).split()))
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
 
     # Add return type for methods (not constructors), but omit void
-    if not is_constructor and return_type and return_type != "void":
+    type_node = None if is_constructor else node.child_by_field_name("type")
+    if type_node is not None and type_node.type != "void_type":
+        return_type = _extract_type_text(type_node, source)
+        dims = node.child_by_field_name("dimensions")
+        if dims is not None:
+            # Dimensions after the parameter list: int f()[]
+            return_type += _node_text(dims, source)
         signature += f" {return_type}"
 
     return signature
@@ -2197,9 +2217,14 @@ def _extract_symbols(
                     name_node = declarator.child_by_field_name("name")
                     if name_node is None:
                         continue  # pragma: no cover - a declarator always names a field
+                    # `int a[], b;`: dimensions after a name belong to that
+                    # field's type alone (a is int[], b is int).
+                    dims = declarator.child_by_field_name("dimensions")
                     symbols.append(_java_field_symbol(
                         _node_text(name_node, source), declarator, ancestors,
-                        field_type, modifiers, decorators,
+                        field_type + _node_text(dims, source)
+                        if field_type is not None and dims is not None else field_type,
+                        modifiers, decorators,
                         # interface constants are implicitly public static final;
                         # class/enum fields export only with an explicit `public`.
                         _java_is_exported(node, modifiers),
