@@ -436,7 +436,7 @@ def _create_wasm_load_edges(
             # language slot stays: the module has no host discovery language,
             # and the slot of a host-less synthetic is ADR-0036's deferred
             # chokepoint question (make_synthetic_symbol_identity, 5b).
-            wasm_module_id = f"wasm:{wasm_ref}:0-0:module:module"
+            wasm_module_id = make_symbol_id("wasm", wasm_ref, 0, 0, "module", "module")
 
             if wasm_module_id not in {s.id for s in symbols}:
                 # ADR-0031 Class B: WASM module synthetic — has no host

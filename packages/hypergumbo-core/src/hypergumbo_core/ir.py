@@ -152,6 +152,9 @@ ShapeId = NewType("ShapeId", str)
 RepoFingerprint = NewType("RepoFingerprint", str)
 """An ``AnalysisRun.repo_fingerprint`` value: ``hgrepofp<N>:<64hex>``. See StableId."""
 
+NodeId = NewType("NodeId", str)
+"""A node id: ``{lang}:{path}:{start}-{end}:{name}:{kind}`` (ADR-0036)."""
+
 VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "delete"})
 """ADR-0015 access mode vocabulary for dataflow edges.
 
@@ -1697,7 +1700,7 @@ def sanitize_id_name_segment(name: str) -> str:
     return name.replace(":", ".")
 
 
-def _canonical_external_id(language: str, path: str, name: str) -> str:
+def _canonical_external_id(language: str, path: str, name: str) -> NodeId:
     """Canonical id for a deduplicated boundary Symbol (WI-fozoh; ADR-0036 Ruling 2).
 
     The kind slot is fixed at ``external_symbol`` — the boundary node's own
@@ -1724,7 +1727,7 @@ def _canonical_external_id(language: str, path: str, name: str) -> str:
     INV-sadiv). Full fidelity lives on ``Symbol.name``, which is
     exactly the split Ruling 1 prescribes — lossy key, lossless field.
     """
-    return (
+    return NodeId(
         f"{language}:{path}:0-0:"
         f"{sanitize_id_name_segment(name)}:external_symbol"
     )

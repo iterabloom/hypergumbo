@@ -55,8 +55,8 @@ from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import NodeId, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, parameter_entry, scoped_stable_id,
@@ -74,8 +74,8 @@ _VAR_RE = re.compile(r"^(\w+)\s*=\s*(?!\s*\()(.+)", re.MULTILINE)
 _PLOT_RE = re.compile(r"^((?:re)?[sp]?plot)\b", re.MULTILINE)
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"gnuplot:{path}:{line}-{line}:{name}:{kind}"
+def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
+    return make_symbol_id("gnuplot", path, line, line, name, kind)
 
 
 def _function_parameters(args: str) -> list[dict[str, object]]:

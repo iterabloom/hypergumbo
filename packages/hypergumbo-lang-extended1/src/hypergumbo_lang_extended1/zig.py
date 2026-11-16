@@ -552,7 +552,7 @@ def _extract_edges_from_tree(
                             import_aliases[var_name] = module_name
 
                         # Create file-level import edge
-                        src_id = f"zig:{rel_path}:0-0:file:file"
+                        src_id: str = make_symbol_id("zig", rel_path, 0, 0, "file", "file")
                         dst_id = f"zig:{module_name}:0-0:{module_name}:module"
                         line = node.start_point[0] + 1
                         edge = Edge.create(
@@ -572,7 +572,10 @@ def _extract_edges_from_tree(
             if builtin_id and node_text(builtin_id, source) == "@import":
                 module_name = _get_import_module(node, source)
                 if module_name:
-                    src_id = current_function_sym.id if current_function_sym else f"zig:{rel_path}:0-0:file:file"
+                    src_id = (
+                        current_function_sym.id if current_function_sym
+                        else make_symbol_id("zig", rel_path, 0, 0, "file", "file")
+                    )
                     dst_id = f"zig:{module_name}:0-0:{module_name}:module"
                     line = node.start_point[0] + 1
                     edge = Edge.create(

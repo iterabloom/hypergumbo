@@ -43,8 +43,8 @@ from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import NodeId, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.paths import to_relative_path
@@ -70,8 +70,8 @@ _CLASS_RE = re.compile(r"^\s*class\s+(\w+)", re.MULTILINE)
 _STATE_RE = re.compile(r"""^\s*state\s+["']([^"']+)["']\s+as\s+(\w+)""", re.MULTILINE)
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"mermaid:{path}:{line}-{line}:{name}:{kind}"
+def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
+    return make_symbol_id("mermaid", path, line, line, name, kind)
 
 
 def find_mermaid_files(

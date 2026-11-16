@@ -503,7 +503,7 @@ def _extract_edges_from_file(
                     # otherwise keep module ID for external deps.
                     expected_path = _module_name_to_file_path(module_name)
                     if expected_path in known_file_paths:
-                        target_id = make_file_id("lean", expected_path)
+                        target_id: str = make_file_id("lean", expected_path)
                         imported_file_paths.add(expected_path)
                     else:
                         target_id = _make_module_id(module_name)

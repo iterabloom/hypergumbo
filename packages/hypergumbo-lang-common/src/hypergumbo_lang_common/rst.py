@@ -80,7 +80,7 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol,
+    AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, Symbol,
     _get_python_toolchain, make_pass_id,
 )
 from hypergumbo_core.analyze.base import (
@@ -178,7 +178,7 @@ class _RSTExtractor:
         self._open_sections: list[tuple[int, str]] = []
         # Each ``:ref:`` as (referring file's node id, label, line), resolved
         # against the run's targets once every file is read.
-        self._pending_refs: list[tuple[str, str, int]] = []
+        self._pending_refs: list[tuple[NodeId, str, int]] = []
 
     def _file_dst(
         self, path: Path, written: str, suffixes: tuple[str, ...] = ("",),
@@ -472,7 +472,7 @@ class _RSTExtractor:
             self._edges.append(edge)
 
     def _extract_toctree_entries(
-        self, node: "tree_sitter.Node", path: Path, source_id: str
+        self, node: "tree_sitter.Node", path: Path, source_id: NodeId
     ) -> None:
         """Extract entries from a toctree directive, one per content line."""
         for child in node.children:
@@ -485,6 +485,7 @@ class _RSTExtractor:
                             entry = _explicit_target(line)
                             if not entry or entry.startswith(":"):
                                 continue
+                            dst: str
                             if entry == "self":
                                 dst, in_tree = make_file_id(
                                     "rst", path.relative_to(self.repo_root).as_posix(),

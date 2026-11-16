@@ -271,11 +271,13 @@ from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, Sequence, Type
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, ShapeId, Span, StableId, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, ShapeId, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     assemble_stable_id,
+    make_file_id,
     make_file_stable_id,
+    make_symbol_id,
     mint_shape_id,
     make_route_symbol,
     make_typed_stable_id,
@@ -407,9 +409,9 @@ def normalize_python_signature(
     )
 
 
-def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> NodeId:
     """Generate location-based ID in format {lang}:{file}:{start}-{end}:{name}:{kind}."""
-    return f"python:{path}:{line}-{end_line}:{name}:{kind}"
+    return make_symbol_id("python", path, line, end_line, name, kind)
 
 
 def _class_key(class_symbol: Symbol) -> str:
@@ -649,9 +651,9 @@ def _constructed_from(node: ast.AST) -> "str | None":
     return _callee_dotted_name(value.func)
 
 
-def _make_file_id(path: str) -> str:
+def _make_file_id(path: str) -> NodeId:
     """Generate ID for a Python file node (used as import edge source)."""
-    return f"python:{path}:1-1:file:file"
+    return make_file_id("python", path)
 
 
 def _make_module_id(module_name: str) -> str:
@@ -3078,7 +3080,7 @@ def _extract_import_edges(
                     )
                     dst_ref: ExternalRef | None
                     if symbol:
-                        dst_id = symbol.id
+                        dst_id: str = symbol.id
                         # Internal target — Symbol ID is the canonical id; no ExternalRef.
                         dst_ref = None
                     elif (
@@ -7700,7 +7702,9 @@ def _extract_edges(
                 ))
             elif isinstance(signal_node, ast.Name):
                 # Unresolved signal - emit edge anyway for visibility
-                dst_id = f"python:unresolved:0-0:{signal_node.id}:signal"
+                dst_id = make_symbol_id(
+                    "python", "unresolved", 0, 0, signal_node.id, "signal",
+                )
                 edges.append(Edge.create(
                     src=dst_id,
                     dst=decorated_symbol.id,
