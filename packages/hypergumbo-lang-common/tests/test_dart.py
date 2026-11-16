@@ -1010,10 +1010,12 @@ class TestDartReturnTypeExtraction:
         assert _extract_dart_return_type_name("() int") is None
 
     def test_generic_return_type(self) -> None:
-        """Returns None for generic return types (not simple identifier)."""
+        """Returns the head of a generic return type, its arguments off: the
+        value the receiver typing read when the signature wrote only that
+        head (``() List``)."""
         from hypergumbo_lang_common.dart import _extract_dart_return_type_name
 
-        assert _extract_dart_return_type_name("() List<String>") is None
+        assert _extract_dart_return_type_name("() List<String>") == "List"
 
 
 class TestDartImportHintsExtraction:

@@ -40,6 +40,23 @@ bare ``function_signature`` (top level, or local to another function's body)
 hashes its full scope chain (``_dart_scope``; INV-fabih), so a local function
 in two functions no longer ties; the top-level ones keep their values.
 
+The hashed signature text writes every type. A function's return type is its
+source text, whatever node kind spells it (``List<int>``, ``int?``,
+``p.Foo``, ``int Function(int)``, ``(int, String)``, ``Function``); before,
+it was the first ``type_identifier`` only, so ``List<int> f()`` and
+``List<String> f()`` hashed one text. A field's type is the whole run of type
+nodes before its name (it was a lone ``type_identifier``; ``String?``,
+``List<T>``, function and record types hashed the empty text). Parameters
+were already their source text; ``normalize_dart_signature`` applies the
+types-first family's shared rule to them and keeps two Dart forms out of its
+FQN strip, which cut at a dot inside a function or record type
+(``int Function(p.A)`` -> ``A)``) and took a modifier or a named group's
+``{`` with a library prefix (``{required p.Foo x}`` -> ``Foo``), and writes
+an old-style function-typed parameter whose last word is not its name alone
+(``int g()``, ``int g(int)``) whole. A signature with none of these forms
+hashes exactly the shared rule's text, and a field with a plain or prefixed
+name type hashes what it did.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Dart-specific
 extraction logic.
@@ -76,6 +93,7 @@ AST Structure Notes
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
@@ -158,6 +176,48 @@ def _get_combined_span(
     return start_line, end_line, start_col, end_col
 
 
+#: Comment nodes the grammar may place between the parts of a declaration.
+_DART_COMMENT_NODE_TYPES = frozenset({"comment", "documentation_comment"})
+
+#: The node kinds that spell a type where the grammar writes it as a run of
+#: siblings rather than one node: a field's or variable's type, before its
+#: value list (``p.Foo<int>?`` is ``type_identifier`` ``.`` ``type_identifier``
+#: ``type_arguments`` ``nullable_type``; a function type and a record type are
+#: one node each).
+_DART_TYPE_PART_NODE_TYPES = frozenset({
+    "type_identifier", ".", "type_arguments", "nullable_type",
+    "function_type", "record_type",
+})
+
+
+def _dart_type_text(parts: list["tree_sitter.Node"], source: bytes) -> Optional[str]:
+    """The type spelled by a run of sibling nodes, comments left out, or None.
+
+    The parts are joined without a space: in Dart they are adjacent tokens
+    (``p`` ``.`` ``Foo`` ``<int>`` ``?``), and a function or record type is a
+    single part written as in the source.
+    """
+    texts = [node_text(n, source) for n in parts if n.type not in _DART_COMMENT_NODE_TYPES]
+    return "".join(texts) if texts else None
+
+
+def _dart_return_type(
+    func_sig_node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """The declared return type of a ``function_signature``, as written.
+
+    Every child before the ``name`` field is part of it, whatever node kind
+    spells it: a plain or prefixed name, type arguments, ``?``, a function
+    type, a record type, ``void``. None when no return type is declared.
+    """
+    name = func_sig_node.child_by_field_name("name")
+    if name is None:  # pragma: no cover - the grammar names every function_signature
+        return None
+    return _dart_type_text(
+        [c for c in func_sig_node.children if c.end_byte <= name.start_byte], source,
+    )
+
+
 def _extract_dart_signature(
     func_sig_node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -169,16 +229,16 @@ def _extract_dart_signature(
         void main()
 
     Returns signature like "(int x, int y) int" or "(String name, {bool loud = ...}) String".
+    Each parameter is its source text (a default value written ``...``); the
+    return type is its source text whatever node kind spells it
+    (``List<int>?``, ``p.Foo``, ``int Function(int)``, ``(int, String)``),
+    and ``void`` is omitted.
     """
     params: list[str] = []
-    return_type: Optional[str] = None
+    return_type = _dart_return_type(func_sig_node, source)
 
     for child in func_sig_node.children:
-        if child.type == "type_identifier":
-            # Return type comes before function name
-            if return_type is None:
-                return_type = node_text(child, source).strip()
-        elif child.type == "formal_parameter_list":
+        if child.type == "formal_parameter_list":
             # Extract parameters
             for param_child in child.children:
                 if param_child.type == "formal_parameter":
@@ -190,7 +250,6 @@ def _extract_dart_signature(
                     opt_text = node_text(param_child, source).strip()
                     if opt_text:
                         # Replace default values with ...
-                        import re
                         opt_text = re.sub(r'\s*=\s*[^,}\]]+', ' = ...', opt_text)
                         params.append(opt_text)
 
@@ -200,36 +259,215 @@ def _extract_dart_signature(
     return sig
 
 
+#: Words that may stand before a parameter's type (``required``, ``covariant``
+#: and ``final`` in Dart; ``const`` and ``late`` are accepted by the grammar).
+_DART_PARAMETER_MODIFIERS: frozenset[str] = frozenset({
+    "required", "covariant", "final", "const", "late",
+})
+
+#: A library prefix at the head of a type: ``p.`` in ``p.Foo``.
+_DART_LIBRARY_PREFIX = re.compile(r"(?:[A-Za-z_$][\w$]*\.)+")
+
+_DART_BRACKET_PAIRS = {")": "(", "]": "[", "}": "{", ">": "<"}
+
+
+def _dart_closing_paren(text: str) -> int:
+    """Index of the ``)`` that closes the ``(`` opening ``text`` (the shared
+    types-first rule's own split point; that rule refuses a text without one)."""
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1  # pragma: no cover - the shared rule already refused the text
+
+
+def _dart_balanced(text: str) -> bool:
+    """True when the brackets of ``text`` (``()``, ``[]``, ``{}``, ``<>``) balance.
+
+    The signature text writes a default value as ``...`` only up to its first
+    comma, so a default holding a comma leaves a fragment (``2)`` of
+    ``= const Size(1, 2)``) that the parameter split takes for a parameter,
+    or, when its ``)`` closes the parameter list early, for the return type.
+    Such a fragment never balances; a type always does.
+    """
+    stack: list[str] = []
+    for ch in text:
+        if ch in "([{<":
+            stack.append(ch)
+        elif ch in _DART_BRACKET_PAIRS:
+            if not stack or stack.pop() != _DART_BRACKET_PAIRS[ch]:
+                return False
+    return not stack
+
+
+def _dart_is_whole_parameter(text: str) -> bool:
+    """True when ``text`` is one whole parameter (``_dart_balanced``) once a
+    ``{`` / ``[`` opening a named or optional group and a ``}`` / ``]``
+    closing one are set aside."""
+    if text[:1] in "{[":
+        text = text[1:]
+    if text[-1:] in "}]":
+        text = text[:-1]
+    return _dart_balanced(text)
+
+
+def _dart_type_is_kept(text: str) -> bool:
+    """True when the shared FQN strip keeps every part of ``text`` but a
+    library prefix (``p.Foo<q.Bar>?`` -> ``Foo<q.Bar>?``), or changes nothing.
+
+    The strip keeps what follows the last dot of the text before its first
+    ``<`` (or ``[``). On a function type or a record type that dot can sit
+    inside the type (``int Function(p.A)`` -> ``A)``), and before a modifier
+    or a group bracket it takes them too (``{required p.Foo`` -> ``Foo``).
+    """
+    from hypergumbo_core.analyze.base import strip_fqn_prefix
+
+    stripped = strip_fqn_prefix(text)
+    if stripped == text:
+        return True
+    prefix = _DART_LIBRARY_PREFIX.match(text)
+    return prefix is not None and text[prefix.end():] == stripped
+
+
+def _normalize_dart_type(text: str, type_params: list[str] | None) -> str:
+    """One type, normalized: the shared rule's FQN strip when it takes off a
+    library prefix only (or nothing), else the type as written (a function
+    type's or a record type's inner types are kept as a generic's arguments
+    are); declared type parameters by position in both cases."""
+    from hypergumbo_core.analyze.base import normalize_generic_params, strip_fqn_prefix
+
+    text = text.strip()
+    written = strip_fqn_prefix(text) if _dart_type_is_kept(text) else text
+    return normalize_generic_params(written, type_params) if type_params else written
+
+
+def _dart_parameter_words(param: str) -> tuple[str, str]:
+    """``(type part, last word)`` of a parameter as the shared rule splits it:
+    a ``...`` (a default value) made a space, then the last word cut off."""
+    text = param.replace("...", " ").strip() if "..." in param else param
+    words = text.rsplit(None, 1)
+    return words[0], (words[1] if len(words) == 2 else "")
+
+
+def _dart_parameter_hole(param: str, type_params: list[str] | None) -> Optional[str]:
+    """The normalized text of a parameter the shared rule would lose a type
+    of, or None when the shared rule keeps every type in it.
+
+    The shared rule drops the last word (the name) and FQN-strips the rest.
+    It loses a type in two ways. (1) The strip cuts at a dot inside the type
+    or behind a modifier or group bracket (``int Function(p.A) g`` -> ``A)``,
+    ``{required p.Foo? q}`` -> ``Foo?``). (2) The last word of a function-typed
+    parameter written the old way is not its name alone: ``int g()``,
+    ``int g(int)`` and ``int g(int a)?`` lose ``()``, ``(int)`` and ``?``.
+    Such a parameter is written whole, name included, as ``int g(int a)``'s
+    shared text already holds its ``g``. The text is then written as its
+    group bracket, its modifiers and its type normalized by
+    ``_normalize_dart_type``. A fragment of a default value is never a hole
+    (``_dart_is_whole_parameter``).
+    """
+    if not _dart_is_whole_parameter(param):
+        return None
+    head, last = _dart_parameter_words(param)
+    function_typed = "(" in last or last.rstrip("]}").endswith("?")
+    if not function_typed and _dart_type_is_kept(head):
+        return None
+    rest = f"{head} {last}" if function_typed else head
+    bracket = ""
+    if rest[:1] in "{[":
+        bracket, rest = rest[0], rest[1:].lstrip()
+    modifiers: list[str] = []
+    word, _, after = rest.partition(" ")
+    while word in _DART_PARAMETER_MODIFIERS and after.strip():
+        modifiers.append(word)
+        rest = after.lstrip()
+        word, _, after = rest.partition(" ")
+    return bracket + " ".join([*modifiers, _normalize_dart_type(rest, type_params)])
+
+
+def _shared_type_rule(text: str, type_params: list[str] | None) -> str:
+    """The shared types-first rule on one type (its FQN strip, then declared
+    type parameters by position), for a type that is not a hole."""
+    from hypergumbo_core.analyze.base import normalize_generic_params, strip_fqn_prefix
+
+    written = strip_fqn_prefix(text.strip())
+    return normalize_generic_params(written, type_params) if type_params else written
+
+
 def normalize_dart_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Dart signature for typed stable_id (spec §6 typed tier)."""
-    from hypergumbo_core.analyze.base import normalize_signature_types_first
-    return normalize_signature_types_first(signature, type_params)
+    """Normalize a Dart signature for typed stable_id (spec §6 typed tier).
+
+    ``(Type name, ...) Return`` becomes ``(Type,...)Return`` by the
+    types-first family's rule (``normalize_signature_types_first``, shared
+    with Java, C# and Groovy): the last word of each parameter (its name)
+    dropped, a library prefix stripped from the head of a type, declared type
+    parameters by position, ``void`` omitted. A signature in which that rule
+    keeps every type gets exactly its text. One in which it would lose a type
+    of a parameter (``_dart_parameter_hole``) or of the return type
+    (``_dart_type_is_kept``) is written one parameter and one return type at
+    a time: those through the Dart rules above, the others through the
+    shared rule's own step (``_shared_type_rule``).
+    """
+    from hypergumbo_core.analyze.base import (
+        normalize_signature_types_first,
+        split_params_top_level,
+    )
+
+    shared = normalize_signature_types_first(signature, type_params)
+    if shared is None or signature is None:
+        return None
+    close = _dart_closing_paren(signature)
+    params = [p.strip() for p in split_params_top_level(signature[1:close]) if p.strip()]
+    holes = [_dart_parameter_hole(p, type_params) for p in params]
+    returned = signature[close + 1:].strip()
+    if returned.lower() == "void":
+        returned = ""
+    returned_hole = bool(returned) and _dart_balanced(returned) and not _dart_type_is_kept(returned)
+    if all(h is None for h in holes) and not returned_hole:
+        return shared
+    written = [
+        hole if hole is not None else _shared_type_rule(_dart_parameter_words(p)[0], type_params)
+        for p, hole in zip(params, holes, strict=True)
+    ]
+    normalized = f"({','.join(written)})"
+    if returned:
+        normalized += (
+            _normalize_dart_type(returned, type_params) if returned_hole
+            else _shared_type_rule(returned, type_params)
+        )
+    return normalized
 
 
 def _extract_dart_return_type_name(signature: str | None) -> str | None:
     """Extract the return type name from a Dart function signature.
 
     Dart signatures use the format ``(params) ReturnType`` where void is omitted.
-    Returns the type name only if it is a simple uppercase identifier (filters
-    out primitive types like ``int``, ``String`` and generics like ``List<T>``).
+    Returns the head of the type when it is a simple uppercase identifier
+    (filters out primitive types like ``int`` and ``String``), with its type
+    arguments and a ``?`` taken off. A function type (``Function``,
+    ``Foo Function()``), a record type and a prefixed type give None.
 
     Examples:
         ``"() ServiceClient"`` → ``"ServiceClient"``
         ``"(String name, int age) User"`` → ``"User"``
+        ``"() User?"`` → ``"User"``
+        ``"() List<String>"`` → ``"List"``
         ``"()"`` → ``None``
         ``"() int"`` → ``None`` (lowercase = primitive)
-        ``"() List<String>"`` → ``None`` (generic)
     """
     if not signature:
         return None
     paren_idx = signature.rfind(")")
     if paren_idx < 0 or paren_idx == len(signature) - 1:
         return None
-    ret_part = signature[paren_idx + 1:].strip()
-    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
+    ret_part = signature[paren_idx + 1:].strip().split("<", 1)[0].rstrip("?")
+    if ret_part and ret_part != "Function" and ret_part.isidentifier() and ret_part[0].isupper():
         return ret_part
     return None
 
@@ -341,17 +579,24 @@ def _dart_value_list_has_error_sibling(list_node: "tree_sitter.Node") -> bool:
 
 
 def _dart_value_type(list_node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """The declared type for a value list, or None.
+    """The declared type for a value list, as written, or None.
 
-    Only a bare ``type_identifier`` immediately preceding the list (``int x``,
-    ``String name``) is a reliable type; ``List<String>`` yields ``type_arguments``,
-    a nullable type ``nullable_type``, and ``var``/inferred yields ``inferred_type``.
-    Returning None for those (rather than their node text) never emits a wrong type.
+    The grammar writes the type as the run of siblings before the list
+    (``_DART_TYPE_PART_NODE_TYPES``): ``int``, ``p.Foo``, ``List<String>``,
+    ``int?``, ``void Function()``, ``(int, String)``. A modifier (``final``,
+    ``late``, ``static``, ``const``, ``covariant``), ``var`` (``inferred_type``)
+    or anything before the declaration ends the run; ``final x`` and
+    ``var x`` declare no type and give None. Comments inside the run are
+    left out.
     """
-    prev = list_node.prev_named_sibling
-    if prev is not None and prev.type == "type_identifier":
-        return node_text(prev, source)
-    return None
+    parts: list["tree_sitter.Node"] = []
+    sibling = list_node.prev_sibling
+    while sibling is not None and (
+        sibling.type in _DART_TYPE_PART_NODE_TYPES or sibling.type in _DART_COMMENT_NODE_TYPES
+    ):
+        parts.append(sibling)
+        sibling = sibling.prev_sibling
+    return _dart_type_text(parts[::-1], source)
 
 
 def _dart_value_names(
@@ -618,7 +863,7 @@ def _extract_symbols_from_file(
                 v_end = item.end_point[0] + 1
                 if scope == "field":
                     v_stable_id = make_typed_stable_id(
-                        "field", vtype or "",
+                        "field", _normalize_dart_type(vtype, None) if vtype else "",
                         visibility_from_modifiers(v_modifiers),
                         name=value_name, qualified_name=full_name,
                         file_stable_id=file_stable_id,
