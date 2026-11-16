@@ -13,7 +13,12 @@ How It Works
 4. Match imports to dependencies, handling naming conventions:
    - Rust: hyphens in Cargo.toml become underscores in code (my-crate -> my_crate)
    - Python: match root package name for submodule imports (requests.adapters -> requests)
-5. When several manifests declare the same name (monorepos), pick the one
+5. When ONE manifest declares the name more than once (a runtime dependency
+   that is also in an extra, a dev group or the build requirements; Cargo's
+   ``[dependencies]`` and ``[dev-dependencies]``), keep one declaration of
+   that manifest: the runtime one, else by role (``_one_per_manifest``). The
+   order of the tables in the file does not decide.
+   When several manifests declare the same name (monorepos), pick the one
    whose directory most tightly encloses the importing file
    (``_select_nearest_manifest_dep``, WI-timon). If the importer's path is
    unknown or under no candidate's directory, take the first candidate by
@@ -136,6 +141,36 @@ def _manifest_dir(manifest_path: str) -> str:
     return manifest_path.rsplit("/", 1)[0] if "/" in manifest_path else ""
 
 
+#: ``meta["dependency_scope"]`` values from the nearest to a runtime
+#: dependency to the furthest. A declaration with no scope is the runtime one.
+_SCOPE_RANK = {None: 0, "optional": 1, "dev": 2, "build": 3}
+
+
+def _scope_rank(dep: Symbol) -> int:
+    """How far a declaration's role is from a runtime dependency."""
+    scope = (dep.meta or {}).get("dependency_scope")
+    return _SCOPE_RANK.get(scope, len(_SCOPE_RANK))
+
+
+def _one_per_manifest(candidates: list[Symbol]) -> list[Symbol]:
+    """One declaration per manifest: its runtime one when it has one.
+
+    A manifest can declare one package in several tables (``requests`` in
+    ``[project].dependencies``, in an extra and in ``[build-system].requires``).
+    Those are several declarations of ONE manifest, not the several manifests
+    :func:`_select_nearest_manifest_dep` chooses among, and an import of the
+    package is a use of the runtime declaration first. Without this the
+    declaration that came first in the file was taken, so a ``[build-system]``
+    table above ``[project]`` took the edge. Ties keep the first in input order.
+    """
+    kept: dict[str, Symbol] = {}
+    for cand in candidates:
+        held = kept.get(cand.path)
+        if held is None or _scope_rank(cand) < _scope_rank(held):
+            kept[cand.path] = cand
+    return list(kept.values())
+
+
 def _select_nearest_manifest_dep(
     candidates: list[Symbol], importing_path: str | None
 ) -> tuple[Symbol, bool]:
@@ -149,7 +184,12 @@ def _select_nearest_manifest_dep(
     the importing path is unknown, or falls under no candidate's manifest dir,
     fall back to a DETERMINISTIC first-by-id (not the old input-order
     last-writer-wins) and mark the result ambiguous.
+
+    Several declarations in one manifest are reduced to one first
+    (:func:`_one_per_manifest`), so "several candidates" below always means
+    several manifests.
     """
+    candidates = _one_per_manifest(candidates)
     if len(candidates) == 1:
         return candidates[0], False
 
