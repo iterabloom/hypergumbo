@@ -250,6 +250,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Line citations**: `scripts/repin-line-citations` moves drifted `line=` citations back onto their anchors; the citation gate checks more files.
 - **Fixes for the twice-daily run's failing steps**: test-only reachability, self-tree id checks, the I/O allowlist trace and the readability tests.
 - **The pre-commit hook says when a check could not run**, rather than calling the doc stale; `generate-architecture --check` recomputes source-tree counts.
+- **The release workflow's secret scan runs the pinned gitleaks and can fail**; it had never run.
+- **The release's expected I/O manifest lists the git queries and file renames this release added.**
 - **The mypy strict surface shrinks 492 → 477**; stable ids, shape ids and repo fingerprints are NewTypes, which the `# axis:` check and `generate-schema` read as `str`.
 
 #### Scripts

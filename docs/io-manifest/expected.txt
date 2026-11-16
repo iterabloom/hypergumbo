@@ -16,7 +16,18 @@
 # "Security and trust") runs, and the proxy creates `$HOME/.rustup` when it is
 # absent. On a machine without rust-analyzer both lines are reported as
 # "expected but not observed", which is a note, not a failure.
+#
+# Four lines added for 10.0.0, from the failure list of the v10.0.0 release run
+# and reproduced by a local run of the same corpus (2026-11-16):
+# - `git check-ignore --no-index -z --stdin` and `git ls-tree -r -z --name-only
+#   HEAD`: discovery asks git which files are ignored and not tracked, and does
+#   not analyse them (ADR-0004 point 9).
+# - the two `rename` lines: an output file and a results-cache file are written
+#   to a sibling and renamed into place, so an interrupted run leaves no
+#   truncated file (safety_zones.py, `_publish_when_complete`).
+exec	git check-ignore --no-index -z --stdin
 exec	git config --get remote.origin.url
+exec	git ls-tree -r -z --name-only HEAD
 exec	git rev-list --max-parents=0 HEAD
 exec	git rev-parse HEAD
 exec	hypergumbo sketch <repo>
@@ -26,6 +37,8 @@ exec	rust-analyzer --version
 mkdir	<cache>/hypergumbo/...
 mkdir	<home>/.rustup
 mkdir	<out>/...
+rename	<cache>/hypergumbo/... -> <cache>/hypergumbo/...
+rename	<out>/... -> <out>/...
 unlink	<tmp>/...
 write	/dev/null
 write	<cache>/hypergumbo/...

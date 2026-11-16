@@ -117,8 +117,19 @@ jobs:
 
       - name: Secret scanning
         run: |
-          pip install trufflehog
-          trufflehog filesystem . --no-update --only-verified || true
+          # gitleaks at the release hypergumbo itself installs
+          # (`install-gitleaks`: the pinned version, its archive checked against
+          # the published SHA-256), run as scripts/release-check runs it. Its
+          # exit code is the gate: nothing here may be followed by `|| true`.
+          # Invoked as a module because this job installs hypergumbo-core, not
+          # the meta-package that provides the `hypergumbo` command.
+          # A scanner must be installed by a means that yields the program the
+          # command line is written for: `pip install trufflehog` installs a
+          # different, older program of that name, which rejects these
+          # arguments.
+          python -m hypergumbo_core install-gitleaks --quiet
+          "$HOME/.local/bin/gitleaks" version
+          "$HOME/.local/bin/gitleaks" detect --source . --no-git --no-banner
 
   # ─────────────────────────────────────────────────────────────
   # Build and publish (gated on security-audit).
