@@ -1,0 +1,28 @@
+Original commit body from 96d0bcc2baf1f054db12ab9eb2c71a58bb887c30:
+
+Documents `scripts/prepare-release 10.0.0` needs. No code, script or test file changes.
+
+## Changelog audit of `[Unreleased]` (both changelogs)
+
+- All 689 commits since v9.2.0 were enumerated and mapped to an entry or to "internal, no entry". 14 commits whose user-visible effect had lost its entry get one; 2 entries that contradicted the code are corrected (a Python annotation bullet that said `stable_id` does not change; `analysis_runs` reports why a pass found nothing in `silence_reason`); 1 entry with no reader is removed.
+- Reader pass: each entry leads with what changed for a user who has not read the code, with no internal names. About half of the 226 bullets are unchanged; the rest are rewritten, merged or moved.
+- Words per commit, cap 9.0: `CHANGELOG.md` 4,206 / 689 = 6.10 before, 3,794 / 689 = 5.51 after. Tracker changelog 189 / 13 = 14.5 before, 107 / 13 = 8.23 after.
+- "Breaking and contract changes" gains what was missing from it: `validation_report` 0.4 → 0.5, the sketch never downloading a model, catalogue files with unread keys refused, community overlays (moved up from Changed), node ids naming their symbol's own kind, the symbol kind and name changes, and the malformed `verify-claims` input now refused.
+
+## Version History row
+
+`| Unreleased | — | … |` as the first row; `prepare-release` turns it into the version and date.
+
+## `docs/RELEASE-NOTES-10.X.md`
+
+New file for the 10.x line, structure of the 9.x file: TL;DR with eight "act on these" items, then one `## Unreleased` section that `prepare-release` promotes. 104 claims, each traced to a changelog entry, the spec or the code. README (and its synced copy) and the changelog preamble point at it and list 9.x among the earlier lines.
+
+## Also
+
+The `[9.2.0]` compare link started at v6.1.0; it now starts at v9.1.0.
+
+## Checks
+
+- Manifest tests (36 files) under the CI stubs: 689 passed, 3 skipped.
+- The release-document gates (`test_prepare_release_*`, `test_readme_prose`, `test_cli_docs_prose_gate`, the spec tests): green.
+- The promotion block of `prepare-release`, run on a copy of the notes, turns `## Unreleased` into `## 10.0.0 — <date>`.
