@@ -1265,8 +1265,9 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "namespace A\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend A\n",
         "namespace B\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend B\n",
         nested="structure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\n"),
-    # tree-sitter-agda 1.3.3 swallows the declarations after a ONE-constructor
-    # data type into it; the two-constructor Nat keeps the modules apart.
+    # A two-constructor Nat: the tree-sitter-agda 1.3.3 wheel, since replaced
+    # by the language pack's build, broke the declaration after a ONE-constructor
+    # data type.
     "agda-nested": SiblingCase(
         "src/Nested.agda",
         "module Nested where\n\ndata Nat : Set where\n  zero : Nat\n  suc : Nat -> Nat\n\n",

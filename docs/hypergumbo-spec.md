@@ -392,7 +392,7 @@ Hypergumbo supports 100+ languages via tree-sitter grammars (see [LANGUAGES.md](
 
 ### Dependency strategy
 * **All-in-one package**: `pip install hypergumbo` includes Python AST + tree-sitter grammars for all supported languages as standard dependencies (see [LANGUAGES.md](LANGUAGES.md) for the full list)
-* **Grammar sources**: Most grammars are installed as individual PyPI packages (e.g., `tree-sitter-javascript`). A subset (Elixir, COBOL, Dart, LaTeX, R) come from `tree-sitter-language-pack`.
+* **Grammar sources**: Most grammars are installed as individual PyPI packages (e.g., `tree-sitter-javascript`). The rest (Elixir, COBOL, Dart, LaTeX, R and Agda among them) come from `tree-sitter-language-pack`, which every language package that loads it declares; a catalog pass's `requires` names the distribution its grammar comes from. Agda takes the pack's build of tree-sitter-agda, a later upstream commit than the `tree-sitter-agda` 1.3.3 wheel, whose layout scanner dropped or mis-scoped the declaration after a one-entry layout block.
 * **Build-from-source grammars**: Lean, Wolfram, Circom built from source in CI for languages lacking PyPI packages
 * **Fallback**: If a specific grammar fails to load, that language is skipped with explicit `limits.skipped_languages[]` logging
 * **Optional extras**:
