@@ -2952,6 +2952,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| Unreleased | — | **Breaking:** `stable_id_scheme` v15 with labelled identity values, `verify-claims` inconclusive exits 4 (bad input 2), schema 0.21.0 (`module_sets`), git-ignored untracked files not analysed. Imports and calls reach your own code; every command agrees on test code |
 | 9.2.0 | 2026-10-20 | `compact` leaves out test code by default; fewer false taint all-clears (same-line sinks, C escapes, transitive headers); calls resolve more precisely in eight languages; base classes bind only to the in-repo class an import names; each `.php` file analysed as PHP or Hack, not both |
 | 9.1.0 | 2026-10-16 | Summaries count your own code; analysed vendored code disclosed; git submodules skipped by default; edge confidence from evidence bands (`confidence_model` v2.2); Structure tree LOC column; surveys find `requirements/*.txt` and `conf/*.routes` |
 | 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
