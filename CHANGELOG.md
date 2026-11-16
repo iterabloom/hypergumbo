@@ -16,6 +16,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
 
+### Development tools and CI
+
+- **mypy now rejects a hand-built node id.**
+
 ## [10.0.0] - 2026-11-16
 
 ### Summary
