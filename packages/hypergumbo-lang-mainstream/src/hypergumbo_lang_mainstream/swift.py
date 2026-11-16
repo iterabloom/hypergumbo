@@ -11,6 +11,15 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Computed properties and subscripts, whose stable_id is the ADR-0035
   producer formula (``make_typed_stable_id`` over the type or, for a
   subscript, the parameter types; WI-tusad)
+- A signature text (``_swift_callable_signature``; a property's annotation)
+  writes every type AS WRITTEN -- ``some P``, ``any P``, ``A & B``,
+  ``repeat each T``, ``~Copyable``, and the ``inout`` / ``borrowing`` /
+  ``consuming`` / ``@escaping`` / ``@autoclosure`` / type attribute / ``...`` /
+  ``!`` beside a type -- and ``normalize_swift_signature`` keeps those
+  decorations beside the FQN-stripped core. Until scheme v15 the renderers
+  read six type node kinds and dropped the rest, so ``f(x: some P)`` hashed
+  as ``f()``. Argument labels, default values, ``throws`` and generic
+  clauses are not hashed
 - Every stable_id hashes the FULL chain of enclosing types and functions
   (``_swift_scope``), so two nested ``class Inner`` in different outer types
   do not tie, and deleting one outer type does not move the other's ids;
@@ -144,6 +153,7 @@ ERROR node carries no modifiers and leaves ``is_exported`` unset (``None``).
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, NamedTuple, Optional
 
@@ -379,39 +389,96 @@ def _extract_subscript_signature(
 ) -> Optional[str]:
     """Extract signature from a subscript_declaration node.
 
-    Returns a signature like ``(index: Int) -> JSON``.
+    Returns a signature like ``(index: Int) -> JSON``; the shape and the type
+    texts are :func:`_swift_callable_signature`'s.
     """
+    return _swift_callable_signature(node, source)
+
+
+#: Comments the grammar may attach inside a type's span; never part of it.
+_SWIFT_COMMENT_NODES = frozenset({"comment", "multiline_comment"})
+
+#: What follows a declaration's return type and is not part of it: the body,
+#: a ``where`` clause, a protocol property's ``{ get }``, a default value.
+_SWIFT_TYPE_TAIL_STOP = frozenset({
+    "function_body", "type_constraints", "computed_property",
+    "protocol_property_requirements", "{", ";", "=", "ERROR",
+})
+
+
+def _swift_span_text(nodes: "list[tree_sitter.Node]", source: bytes) -> Optional[str]:
+    """The source text from the first to the last of ``nodes``, comments
+    excluded at either end; ``None`` for none. One node gives exactly its
+    ``node_text``."""
+    kept = [n for n in nodes if n.type not in _SWIFT_COMMENT_NODES]
+    if not kept:  # pragma: no cover - defensive: a ``:`` / ``->`` the grammar left with no type
+        return None
+    return source[kept[0].start_byte:kept[-1].end_byte].decode("utf-8", errors="replace")
+
+
+def _swift_parameter_type_text(param: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """A parameter's type as written: everything after its ``:``.
+
+    That is the type node AND what the grammar keeps beside it -- a
+    parameter modifier (``inout``, ``borrowing``, ``consuming``,
+    ``@escaping``, ``@autoclosure``), a type attribute (``@Sendable``), and
+    the ``...`` of a variadic or the ``!`` of an implicitly unwrapped
+    optional. A default value is not in the parameter node. Until scheme
+    v15 only six type node kinds were read and the rest dropped: ``inout``,
+    ``...`` and ``!`` were lost, and a parameter typed ``some P``, ``any P``,
+    ``A & B``, ``repeat each T`` or ``~Copyable`` vanished from the
+    signature (the type-hole sweep, owner ruling 2026-11-16).
+    """
+    kids = param.children
+    colon = next((i for i, c in enumerate(kids) if c.type == ":"), None)
+    if colon is None:  # pragma: no cover - defensive: a declaration's parameter has a type
+        return None
+    return _swift_span_text(kids[colon + 1:], source)
+
+
+def _swift_return_type_text(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The return type after ``->`` as written (``some View``, ``any P``,
+    ``A & B``, an ``!``), up to the body or ``where`` clause."""
+    kids = node.children
+    arrow = next((i for i, c in enumerate(kids) if c.type == "->"), None)
+    if arrow is None:
+        return None
+    tail: "list[tree_sitter.Node]" = []
+    for child in kids[arrow + 1:]:
+        if child.type in _SWIFT_TYPE_TAIL_STOP:
+            break
+        tail.append(child)
+    return _swift_span_text(tail, source)
+
+
+def _swift_annotation_type_text(
+    type_ann: "tree_sitter.Node | None", source: bytes,
+) -> Optional[str]:
+    """A ``type_annotation``'s type as written (``: some View`` -> ``some View``,
+    ``: Int!`` -> ``Int!``, ``: @Sendable () -> Void`` whole)."""
+    if type_ann is None:
+        return None
+    return _swift_span_text([c for c in type_ann.children if c.type != ":"], source)
+
+
+def _swift_callable_signature(node: "tree_sitter.Node", source: bytes) -> str:
+    """``(label: Type, ...) -> Return`` for a function, init, subscript or
+    protocol requirement: each parameter's first identifier (its argument
+    label, or its name when it has none) and its type as written, and the
+    return type as written. A parameter with no type is left out."""
     params: list[str] = []
-    return_type = None
-    found_closing_paren = False
-
     for child in node.children:
-        if child.type == "parameter":
-            param_name = None
-            param_type = None
-            for subchild in child.children:
-                if subchild.type == "simple_identifier" and param_name is None:
-                    param_name = node_text(subchild, source)
-                elif subchild.type in (
-                    "user_type", "array_type", "dictionary_type",
-                    "optional_type", "tuple_type", "function_type",
-                ):
-                    param_type = node_text(subchild, source)
-            if param_name and param_type:
-                params.append(f"{param_name}: {param_type}")
-        elif child.type == ")":
-            found_closing_paren = True
-        elif found_closing_paren and child.type in (
-            "user_type", "array_type", "dictionary_type",
-            "optional_type", "tuple_type", "function_type",
-        ):
-            return_type = node_text(child, source)
-
-    params_str = ", ".join(params)
-    sig = f"({params_str})"
+        if child.type != "parameter":
+            continue
+        name_node = find_child_by_type(child, "simple_identifier")
+        param_type = _swift_parameter_type_text(child, source)
+        if name_node is not None and param_type:
+            params.append(f"{node_text(name_node, source)}: {param_type}")
+    signature = f"({', '.join(params)})"
+    return_type = _swift_return_type_text(node, source)
     if return_type:
-        sig += f" -> {return_type}"
-    return sig
+        signature += f" -> {return_type}"
+    return signature
 
 
 # Node types whose DIRECT ``property_declaration`` children are stored properties
@@ -1014,6 +1081,8 @@ def _extract_swift_signature(
     Returns signature like:
     - "(x: Int, y: Int) -> Int" for regular functions
     - "(message: String)" for void functions (no return type shown)
+    - "(x: inout Int, y: some P...) -> some View": every type as written
+      (:func:`_swift_callable_signature`)
 
     Args:
         node: The function_declaration node.
@@ -1022,46 +1091,115 @@ def _extract_swift_signature(
     Returns:
         The signature string, or None if extraction fails.
     """
-    params: list[str] = []
-    return_type = None
-    found_closing_paren = False
+    return _swift_callable_signature(node, source)
 
-    # Iterate through children to find parameters and return type
-    for child in node.children:
-        if child.type == "parameter":
-            param_name = None
-            param_type = None
-            for subchild in child.children:
-                if subchild.type == "simple_identifier" and param_name is None:
-                    param_name = node_text(subchild, source)
-                elif subchild.type in ("user_type", "array_type", "dictionary_type",
-                                        "optional_type", "tuple_type", "function_type"):
-                    param_type = node_text(subchild, source)
-            if param_name and param_type:
-                params.append(f"{param_name}: {param_type}")
-        elif child.type == ")":
-            found_closing_paren = True
-        # Return type comes after ) and before function_body
-        elif found_closing_paren and child.type in ("user_type", "array_type", "dictionary_type",
-                                                      "optional_type", "tuple_type", "function_type"):
-            return_type = node_text(child, source)
 
-    params_str = ", ".join(params)
-    signature = f"({params_str})"
+#: The decorations a Swift type text may carry around its core type: an
+#: attribute (``@escaping``, ``@Sendable``, ``@convention(c)``), an ownership
+#: or passing modifier, ``some`` / ``any``, a pack's ``repeat each``, a
+#: suppressed constraint's ``~``.
+_SWIFT_TYPE_PREFIX_RE = re.compile(
+    r"@\w+(?:\([^()]*\))?\s*"
+    r"|(?:inout|borrowing|consuming|__owned|__shared|sending|isolated"
+    r"|some|any|repeat|each)\s+"
+    r"|~"
+)
 
-    if return_type:
-        signature += f" -> {return_type}"
 
-    return signature
+def _swift_top_level_split(text: str, sep: str) -> list[str]:
+    """``text`` split at ``sep`` outside ``()``, ``[]`` and ``<>`` (the ``>``
+    of ``->`` is not a bracket)."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(text):
+        if ch in "([<":
+            depth += 1
+        elif ch in ")]" or (ch == ">" and (i == 0 or text[i - 1] != "-")):
+            depth = max(0, depth - 1)
+        elif ch == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
+    """One type of a Swift signature, normalized for the typed stable_id.
+
+    The shared rewrite (``strip_fqn_prefix`` and generic-parameter
+    numbering, as ``normalize_signature_names_first`` applies it) is applied
+    to the CORE type only. The decorations around it -- prefixes matched by
+    ``_SWIFT_TYPE_PREFIX_RE``, a variadic's ``...``, an implicitly unwrapped
+    ``!``, and the members of a top-level ``A & B`` -- are kept beside it:
+    the shared helper splits at the last ``.``, which would turn ``Int...``
+    into ``""`` and ``inout Foo.Bar`` into ``Bar``. A type with none of them
+    normalizes exactly as the shared normalizer does it.
+    """
+    from hypergumbo_core.analyze.base import normalize_generic_params, strip_fqn_prefix
+
+    def core(text: str) -> str:
+        normalized = strip_fqn_prefix(text.strip())
+        return normalize_generic_params(normalized, type_params) if type_params else normalized
+
+    rest = raw_type.strip()
+    prefixes: list[str] = []
+    while (match := _SWIFT_TYPE_PREFIX_RE.match(rest)) is not None:
+        prefixes.append(" ".join(match.group(0).split()))
+        rest = rest[match.end():].lstrip()
+    suffix = ""
+    if rest.endswith("...") and len(rest) > 3:
+        suffix, rest = "...", rest[:-3].rstrip()
+    elif rest.endswith("!") and len(rest) > 1:
+        suffix, rest = "!", rest[:-1].rstrip()
+    members = _swift_top_level_split(rest, "&")
+    body = " & ".join(core(m) for m in members) if len(members) > 1 else core(rest)
+    head = "".join(p if p == "~" else p + " " for p in prefixes)
+    return head + body + suffix
 
 
 def normalize_swift_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Swift signature for typed stable_id (spec §6 typed tier)."""
-    from hypergumbo_core.analyze.base import normalize_signature_names_first
-    return normalize_signature_names_first(signature, type_params, return_sep="->")
+    """Normalize a Swift signature for typed stable_id (spec §6 typed tier).
+
+    The names-first shape (``(name: Type, ...) -> Ret`` -> ``(Type,...)Ret``:
+    parameter names and argument labels dropped, ``strip_fqn_prefix`` on each
+    type) of ``normalize_signature_names_first``, with each type through
+    :func:`_swift_normalize_type`, so a decorated type keeps its decoration.
+    For a signature with no decorated type the result is exactly the shared
+    normalizer's.
+    """
+    from hypergumbo_core.analyze.base import split_params_top_level
+
+    if not signature or not signature.startswith("("):
+        return None
+    depth = 0
+    close = -1
+    for i, ch in enumerate(signature):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                close = i
+                break
+    if close < 0:
+        return None
+    rest = signature[close + 1:].strip()
+    return_str = rest[2:].strip() if rest.startswith("->") else rest
+    types: list[str] = []
+    for param in split_params_top_level(signature[1:close]):
+        param = param.strip()
+        if not param:
+            continue  # pragma: no cover - the renderer writes no empty parameter
+        colon = param.find(":")
+        types.append(
+            _swift_normalize_type(param[colon + 1:], type_params) if colon >= 0 else param,
+        )
+    normalized = f"({','.join(types)})"
+    return normalized + _swift_normalize_type(return_str, type_params) if return_str else normalized
 
 
 # Swift modifier keywords extractable from the AST.
@@ -1436,15 +1574,9 @@ def _extract_symbols_from_file(
                     # The declared type is the whole contract of a property
                     # requirement; read it from the same type_annotation slot
                     # the stored-property branch uses.
-                    type_ann = find_child_by_type(node, "type_annotation")
-                    signature = None
-                    for tc in type_ann.children if type_ann else ():
-                        if tc.type in (
-                            "user_type", "array_type", "dictionary_type",
-                            "optional_type", "tuple_type", "function_type",
-                        ):
-                            signature = node_text(tc, source)
-                            break
+                    signature = _swift_annotation_type_text(
+                        find_child_by_type(node, "type_annotation"), source,
+                    )
 
                 type_ancestors = _get_swift_type_ancestors(node, source)
                 qualified = _make_swift_qualified_name(type_ancestors, member_name)
@@ -1499,16 +1631,9 @@ def _extract_symbols_from_file(
                     modifiers = _extract_modifiers_swift(node)
 
                     # Extract return type from type_annotation
-                    type_ann = find_child_by_type(node, "type_annotation")
-                    ret_type = None
-                    if type_ann:
-                        for tc in type_ann.children:
-                            if tc.type in (
-                                "user_type", "array_type", "dictionary_type",
-                                "optional_type", "tuple_type", "function_type",
-                            ):
-                                ret_type = node_text(tc, source)
-                                break
+                    ret_type = _swift_annotation_type_text(
+                        find_child_by_type(node, "type_annotation"), source,
+                    )
                     signature = f"() -> {ret_type}" if ret_type else None
 
                     type_ancestors = _get_swift_type_ancestors(node, source)
@@ -1582,16 +1707,9 @@ def _extract_symbols_from_file(
                 modifiers = _extract_modifiers_swift(node)
 
                 # Declared type from type_annotation (None for inferred `let x = 5`).
-                type_ann = find_child_by_type(node, "type_annotation")
-                prop_type = None
-                if type_ann:
-                    for tc in type_ann.children:
-                        if tc.type in (
-                            "user_type", "array_type", "dictionary_type",
-                            "optional_type", "tuple_type", "function_type",
-                        ):
-                            prop_type = node_text(tc, source)
-                            break
+                prop_type = _swift_annotation_type_text(
+                    find_child_by_type(node, "type_annotation"), source,
+                )
 
                 type_ancestors = _get_swift_type_ancestors(node, source)
                 qualified = _make_swift_qualified_name(type_ancestors, prop_name)
