@@ -123,6 +123,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name: ripgrep test coverage rises 9.3% → 36.2%.
 - **Code called only from module level or a class body is live.**
 - **A dependency naming an in-tree package gets its tier** (ADR-0041 §1): on nest, 172 of 1,379 move from tier 3 to 1.
+- **Every `pyproject.toml` dependency table yields nodes**: extras, groups, build requirements, Poetry, PDM, uv, Hatch.
 - **A file the tier filter removes takes its edges with it**, instead of leaving them on a shared pathless placeholder.
 
 #### Sketch

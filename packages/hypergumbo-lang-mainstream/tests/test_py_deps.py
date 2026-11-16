@@ -9,32 +9,20 @@ from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.supply_chain import DependencyManifest, Tier
 from hypergumbo_lang_mainstream.py_deps import (
     _extract_distribution_name,
-    _extract_pep621_distribution_names,
-    _extract_poetry_distribution_names,
     _normalize_dist_name,
-    _strip_specifier,
+    declared_distributions,
     parse_python_dependencies,
 )
 
 
-class TestStripSpecifier:
-    def test_pep440_version_specifier(self) -> None:
-        assert _strip_specifier("click>=8.0") == "click"
-        assert _strip_specifier("rich==13.0") == "rich"
-        assert _strip_specifier("pydantic~=2.0") == "pydantic"
-        assert _strip_specifier("requests<3.0") == "requests"
-        assert _strip_specifier("hypothesis>4.0") == "hypothesis"
-        assert _strip_specifier("pytest!=7.4.0") == "pytest"
+def _declared_names(data: dict) -> set[str]:
+    """The distribution names ``data`` declares, in any table.
 
-    def test_environment_marker(self) -> None:
-        assert _strip_specifier("tomli; python_version < '3.11'") == "tomli"
-
-    def test_extras(self) -> None:
-        assert _strip_specifier("uvicorn[standard]>=0.20") == "uvicorn"
-
-    def test_bare_name(self) -> None:
-        assert _strip_specifier("ruamel.yaml") == "ruamel.yaml"
-        assert _strip_specifier("  click  ") == "click"
+    The requirement-string parse (``pep508_name``) and the tables beyond
+    PEP 621 and ``[tool.poetry.dependencies]`` are covered in
+    ``test_pyproject_dependency_tables.py``.
+    """
+    return {name for _table, name in declared_distributions(data)}
 
 
 class TestNormalizeDistName:
@@ -48,7 +36,7 @@ class TestNormalizeDistName:
 class TestExtractPep621:
     def test_dependencies_section(self) -> None:
         data = {"project": {"dependencies": ["click>=8.0", "rich"]}}
-        assert _extract_pep621_distribution_names(data) == {"click", "rich"}
+        assert _declared_names(data) == {"click", "rich"}
 
     def test_optional_dependencies_flattened(self) -> None:
         data = {
@@ -59,24 +47,24 @@ class TestExtractPep621:
                 },
             },
         }
-        assert _extract_pep621_distribution_names(data) == {"pytest", "ruff", "sphinx"}
+        assert _declared_names(data) == {"pytest", "ruff", "sphinx"}
 
     def test_no_project_key(self) -> None:
-        assert _extract_pep621_distribution_names({}) == set()
+        assert _declared_names({}) == set()
 
     def test_malformed_project(self) -> None:
-        assert _extract_pep621_distribution_names({"project": "not a dict"}) == set()
+        assert _declared_names({"project": "not a dict"}) == set()
 
     def test_malformed_dependencies(self) -> None:
         # Non-list dependencies, non-dict optional-dependencies are ignored
-        assert _extract_pep621_distribution_names(
+        assert _declared_names(
             {"project": {"dependencies": "not a list",
                          "optional-dependencies": "not a dict"}},
         ) == set()
 
     def test_non_string_dep_entries_skipped(self) -> None:
         data = {"project": {"dependencies": ["click", 42, None]}}
-        assert _extract_pep621_distribution_names(data) == {"click"}
+        assert _declared_names(data) == {"click"}
 
     def test_non_list_optional_group_skipped(self) -> None:
         data = {
@@ -84,11 +72,11 @@ class TestExtractPep621:
                 "optional-dependencies": {"dev": "not a list", "real": ["pytest"]},
             },
         }
-        assert _extract_pep621_distribution_names(data) == {"pytest"}
+        assert _declared_names(data) == {"pytest"}
 
     def test_non_string_inside_optional_group_skipped(self) -> None:
         data = {"project": {"optional-dependencies": {"dev": ["pytest", 99]}}}
-        assert _extract_pep621_distribution_names(data) == {"pytest"}
+        assert _declared_names(data) == {"pytest"}
 
 
 class TestExtractPoetry:
@@ -105,30 +93,30 @@ class TestExtractPoetry:
             },
         }
         # python key is the interpreter constraint, must be excluded
-        assert _extract_poetry_distribution_names(data) == {"click", "rich"}
+        assert _declared_names(data) == {"click", "rich"}
 
     def test_no_tool_key(self) -> None:
-        assert _extract_poetry_distribution_names({}) == set()
+        assert _declared_names({}) == set()
 
     def test_malformed_tool(self) -> None:
-        assert _extract_poetry_distribution_names({"tool": "not a dict"}) == set()
+        assert _declared_names({"tool": "not a dict"}) == set()
 
     def test_no_poetry_subsection(self) -> None:
-        assert _extract_poetry_distribution_names({"tool": {}}) == set()
+        assert _declared_names({"tool": {}}) == set()
 
     def test_malformed_poetry(self) -> None:
-        assert _extract_poetry_distribution_names({"tool": {"poetry": []}}) == set()
+        assert _declared_names({"tool": {"poetry": []}}) == set()
 
     def test_malformed_poetry_dependencies(self) -> None:
         # Non-dict dependencies are ignored
-        assert _extract_poetry_distribution_names(
+        assert _declared_names(
             {"tool": {"poetry": {"dependencies": ["not", "a", "dict"]}}},
         ) == set()
 
     def test_non_string_keys_skipped(self) -> None:
         # ints / None as keys are skipped
         data = {"tool": {"poetry": {"dependencies": {123: "x", "click": "*"}}}}
-        assert _extract_poetry_distribution_names(data) == {"click"}
+        assert _declared_names(data) == {"click"}
 
 
 class TestParsePythonDependencies:

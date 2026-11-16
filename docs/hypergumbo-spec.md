@@ -1202,7 +1202,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 - `component_framework` (optional): single-file-component framework (`vue`, `svelte`, `astro`).
 - `package_ecosystem` (optional): package-manager registry on package nodes (`npm`, `composer`) — distinct from the `ecosystem` provenance key above.
 - `entry_role` (optional): entry-point role on file nodes (`main`, `script`).
-- `dependency_scope` (optional): dependency scope (`dev`).
+- `dependency_scope` (optional): role of the manifest table a dependency is declared in — `dev`, `build` or `optional`; absent on a runtime dependency (§14 3a lists the `pyproject.toml` tables).
 - `install_mode` / `install_source` (optional): requirement install mode (`editable`) / source (`url`).
 - `config_format` (optional): config-shape format (`tsconfig`).
 - `task_implementation` (optional): task implementation language.

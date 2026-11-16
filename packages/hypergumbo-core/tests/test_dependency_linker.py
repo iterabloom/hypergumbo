@@ -295,6 +295,77 @@ def test_depends_on_manifest_file_outside_all_package_dirs_falls_back():
     assert dep_edges[0].meta.get("disambiguation_fallback") is True
 
 
+def _scoped_dep_sym(sym_id: str, name: str, manifest_path: str, scope: str) -> Symbol:
+    sym = _dep_sym(sym_id, name, manifest_path)
+    sym.meta = {"dependency_scope": scope}
+    return sym
+
+
+def _one_manifest_declarations() -> list[Symbol]:
+    """``requests`` declared four times in one pyproject, as its tables allow."""
+    return [
+        _scoped_dep_sym("toml:root:2:requests", "requests", "pyproject.toml", "build"),
+        _scoped_dep_sym("toml:root:6:requests", "requests", "pyproject.toml", "dev"),
+        _dep_sym("toml:root:13:requests", "requests", "pyproject.toml"),
+        _scoped_dep_sym("toml:root:21:requests", "requests", "pyproject.toml", "optional"),
+    ]
+
+
+def _linked(toml_symbols: list[Symbol], code_symbols: list[Symbol]) -> Edge:
+    edge = _import_edge("e1", "python:mod", "requests")
+    result = link_dependencies(
+        toml_symbols=toml_symbols, code_edges=[edge], code_symbols=code_symbols,
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1, dep_edges
+    return dep_edges[0]
+
+
+def test_one_manifest_links_to_its_runtime_declaration_in_any_order():
+    """A package a manifest declares in several tables (runtime, an extra, a
+    dev group, the build requirements) links to the runtime declaration,
+    wherever the tables stand in the file."""
+    import itertools
+
+    file_s = _file_sym("python:mod", "src/app.py")
+    for order in itertools.permutations(_one_manifest_declarations()):
+        edge = _linked(list(order), [file_s])
+        assert edge.dst == "toml:root:13:requests", [s.id for s in order]
+        assert edge.confidence == 0.9
+        assert edge.meta is None
+
+
+def test_one_manifest_is_not_an_ambiguous_fallback():
+    """Several declarations in ONE manifest are not several manifests: an
+    importer with no known path still gets the confident edge it got when the
+    manifest had one declaration."""
+    edge = _linked(_one_manifest_declarations(), [])
+    assert edge.dst == "toml:root:13:requests"
+    assert edge.confidence == 0.9
+    assert edge.meta is None
+
+
+def test_scoped_declarations_rank_optional_then_dev_then_build():
+    """With no runtime declaration the nearest role to runtime is taken; a
+    scope outside the vocabulary ranks last."""
+    file_s = _file_sym("python:mod", "src/app.py")
+    odd = _scoped_dep_sym("toml:root:1:requests", "requests", "pyproject.toml", "odd")
+    build, dev, _runtime, optional = _one_manifest_declarations()
+    assert _linked([odd, build, dev, optional], [file_s]).dst == optional.id
+    assert _linked([odd, build, dev], [file_s]).dst == dev.id
+    assert _linked([odd, build], [file_s]).dst == build.id
+    assert _linked([odd], [file_s]).dst == odd.id
+
+
+def test_nearest_manifest_wins_over_the_role_of_the_declaration():
+    """The role only chooses among the declarations of one manifest."""
+    root_runtime = _dep_sym("toml:root:requests", "requests", "pyproject.toml")
+    pkg_dev = _scoped_dep_sym(
+        "toml:a:requests", "requests", "packages/a/pyproject.toml", "dev")
+    file_a = _file_sym("python:mod", "packages/a/tests/test_x.py")
+    assert _linked([root_runtime, pkg_dev], [file_a]).dst == "toml:a:requests"
+
+
 def test_multiple_files_import_same_dependency():
     """Test that multiple files importing same dep each get an edge."""
     cargo_dep = Symbol(
