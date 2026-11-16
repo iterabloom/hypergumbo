@@ -124,3 +124,18 @@
   clock: 15  # e7f3
   nonce: e7f3  # e7f3
   message: "OWNER RULING 2026-11-15 (\"its decision stands, but the spec needs re-basing\" -- agreed): the 2026-07-29 decision to prefix identity values is confirmed over WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj's 2026-07-15 verdict. The description now opens with the re-based spec: next scheme numbers (v15 / shapeid v4 / repofp v3 if nothing bumps first), ship with the next release, no compatibility field in that case, the rust-analyzer arm's label decided in the same change, the decision moved into ADR-0035 when it ships. Title, status and priority unchanged."  # e7f3
+- op: update  # f6df
+  at: '2026-11-16T11:46:43Z'  # f6df
+  by: agent  # f6df
+  actor: jgstern_agent  # f6df
+  clock: 16  # f6df
+  nonce: f6df  # f6df
+  set:  # f6df
+    status: done  # f6df
+- op: discuss  # 6a13
+  at: '2026-11-16T11:46:43Z'  # 6a13
+  by: agent  # 6a13
+  actor: jgstern_agent  # 6a13
+  clock: 17  # 6a13
+  nonce: 6a13  # 6a13
+  message: "Done in PR #2200. Re-ran on a multi-language fixture: on dev every stable_id, shape_id and repo_fingerprint began `sha256:`; now stable_id is `hgstableid15:<16hex>` (or `hgscipid1:` when the rust-analyzer arm minted it), shape_id `hgshapeid4:`, repo_fingerprint `hgrepofp3:<64hex>`; schemes hypergumbo-stableid-v15, -shapeid-v4, -repofp-v3 and a new top-level scip_stable_id_scheme = hypergumbo-scip-stableid-v1. Each label is DERIVED from its scheme constant (schema.value_label), so a bump is one edit. NO DIGEST CHANGED BY THE RELABEL: on 27 trees every per-language moved count after the labels equals the count before them, and all stable ids in all 27 maps carry the new label. HOW: a stable id folded into another id's hash input (containing scope, file anchor, occurrence re-mint, route widening) enters it in its v14 text `sha256:<hex>` (analyze/base.py stable_id_hash_input); that frozen literal is now part of the formula. The validator rejects a `sha256:` stable id and a shape-id label in the stable_id field. DECISIONS THE ITEM LEFT TO THE BUILDER, made by me, the owner's to overrule: the label words (hgstableid / hgshapeid / hgrepofp / hgscipid); the SCIP arm gets its own scheme and label; pass_version, config_fingerprint and run_signature keep `sha256:` (content digests with no scheme; said in ADR-0035 section 7); no digest-compatibility field (as the re-based item says); SCHEMA_VERSION not bumped for the additive field. NOT DONE (filed): 506 pinned test literals carry the versioned label and need a rewrite at every bump; fingerprint.py's `hgfp2:` is still its own literal. NOT CHECKED: a live rust-analyzer run (a recorded two-arm artifact was used). Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 6a13

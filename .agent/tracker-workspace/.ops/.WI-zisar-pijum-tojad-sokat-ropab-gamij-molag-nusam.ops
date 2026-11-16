@@ -19,3 +19,18 @@
     pr_ref:  # 8174
     description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. REPRO, ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/hbs/src/t.hbs:\n\n    {{~> lead}}\n    {{> plain}}\n\n`hypergumbo run --include-docs` emits a `partial` symbol for `plain` (line 2) and nothing for `lead` (line 1).\n\nSame family as WI-dolad-gofol-nurod-kulas-bopob-hinab-vubah-givil, which covers block OPENERS with whitespace control (`{{~#each}}`), split-line openers and\npartial BLOCKS (`{{#> layout}}`, `{{#*inline}}`). A plain partial with a leading tilde is not in its list. The\nregexes are at handlebars.py:58 and :62.\n\nA second shape was reported by the reviewer and NOT reproduced by me: `{{#each items~}}` (trailing tilde) was said\nto be labelled `each items~`. On the fixture above the block symbol is named `each` with no label; check the scope\nor stable-id input before treating it as a defect.\n\nFIX DIRECTION. Allow an optional `~` after `{{` and before `}}` in every tag pattern, in one place, and fix WI-dolad-gofol-nurod-kulas-bopob-hinab-vubah-givil's\nopener shapes with the same change.\n\nACCEPTANCE. Both lines of the fixture emit a partial symbol; `{{~> lead~}}` does too.\n\nNOT CHECKED: triple-stash forms; corpus counts."  # 8174
     fields: {}  # 8174
+- op: update  # 471e
+  at: '2026-11-16T11:46:41Z'  # 471e
+  by: agent  # 471e
+  actor: jgstern_agent  # 471e
+  clock: 2  # 471e
+  nonce: 471e  # 471e
+  set:  # 471e
+    status: done  # 471e
+- op: discuss  # 26ee
+  at: '2026-11-16T11:46:41Z'  # 26ee
+  by: agent  # 26ee
+  actor: jgstern_agent  # 26ee
+  clock: 3  # 26ee
+  nonce: 26ee  # 26ee
+  message: "Fixed in PR #2200. Re-ran the filed forms with --include-docs (and once more on merged dev): `{{~> lead}}` and `{{~> lead~}}` emitted no partial on dev and emit `handlebars:t.hbs:1-1:lead:partial` now; the block label `each items~` is `each items`. NOT CHECKED: triple-stash forms, corpus counts. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 26ee

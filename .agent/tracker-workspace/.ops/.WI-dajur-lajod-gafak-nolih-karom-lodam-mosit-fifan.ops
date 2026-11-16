@@ -40,3 +40,18 @@
   clock: 4  # 3644
   nonce: '3644'  # 3644
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces. `private const`, `protected const`, `final public const`, an interface const and an enum's `private const` all come out `visibility=public`, `is_exported=True`, `visibility_signal=default`; `private $hidden` comes out private / False. The const branch is php.py:1285-1310 (`[], True` at :1298, `visibility_from_modifiers([])` at :1300). tree-sitter-php gives `const_declaration` a `visibility_modifier` child (and `final_modifier`), and the existing `_extract_modifiers_php` already returns `['private']` for it. The docstring sentence to update is php.py:64-67. The cited INV-kubus does not resolve; INV-kubup is the is_exported item (satisfied). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-dajur.md. No status or priority change made by this review."  # 3644
+- op: update  # 8e36
+  at: '2026-11-16T11:46:40Z'  # 8e36
+  by: agent  # 8e36
+  actor: jgstern_agent  # 8e36
+  clock: 5  # 8e36
+  nonce: '8e36'  # 8e36
+  set:  # 8e36
+    status: done  # 8e36
+- op: discuss  # 22f5
+  at: '2026-11-16T11:46:40Z'  # 22f5
+  by: agent  # 22f5
+  actor: jgstern_agent  # 22f5
+  clock: 6  # 22f5
+  nonce: 22f5  # 22f5
+  message: "Fixed in PR #2200. Re-ran the filed repro: `private const`, `protected const` read visibility=public and exported on dev; now SECRET is private and GUARDED protected, not exported, and public / unmodified / `final public` / interface constants stay public (an enum's `private const` is private). Rule: only private and protected enter the id's visibility slot; an explicit `public const` hashes like an unmodified one. koel: 14 class constants moved (the 14 `private const`), dead-code output byte-identical. NOT DONE (filed): enum cases are not symbols; a typed constant's type is not hashed; methods and properties hash an explicit `public` differently from none. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 22f5

@@ -45,3 +45,10 @@
   clock: 4  # 9651
   nonce: '9651'  # 9651
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. `NewType` has 0 uses in packages/, scripts/, docs/. Symbol.id, Edge.id/src/dst, AnalysisRun.config_fingerprint are `str`; Symbol.stable_id/shape_id are `Optional[str]`. `make_node_id` (named in the description) does not exist; the Symbol.id factory is `make_symbol_id` (base.py:597). INV-lidul is satisfied (2026-06-17), so that rationale is void; `compute_config_fingerprint({})` still returns sha256:44136fa355b3678a, and a fixture run shows 81 distinct fingerprints over 81 runs, none equal to it. INV-kurup is violated (open). scripts/check-id-construction exits 0 and is in .githooks/pre-commit:433. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tapak.md. No status or priority change made by this review."  # 9651
+- op: discuss  # 20cb
+  at: '2026-11-16T11:46:43Z'  # 20cb
+  by: agent  # 20cb
+  actor: jgstern_agent  # 20cb
+  clock: 5  # 20cb
+  nonce: 20cb  # 20cb
+  message: "PR #2200, 2026-11-16: a SUBSET is done and the item stays open. StableId, ShapeId and RepoFingerprint are NewTypes over str in ir.py, each wrapped once where it is minted (analyze/base.py `_short_sha256`, `mint_scip_stable_id`, `mint_shape_id`; ir.py `_canonical_external_stable_id`; repo_fingerprint.py `compute_repo_fingerprint_field`); a test (test_id_newtypes.py) holds the list of mint sites. No emitted value changed (fixture 157 nodes and meson 23,602 nodes equal in both arms). The axis checker and the schema generator were taught to read a NewType field. mypy strict 466 before and after; the baseline file says 477 and was not lowered. Sizing for the rest (pr2/tapak_sizing.md): NodeId, EdgeId, RunId, EdgeKey, SymbolFingerprint = 476 mypy errors, 74 hand-built node ids, 14 linker sites that set Symbol.fingerprint to a bare 16-hex hash. LIMIT: the mint-site test reads the plain name, so an aliased import of StableId evades it. The re-scope to a subset was my call; the owner's to overrule."  # 20cb

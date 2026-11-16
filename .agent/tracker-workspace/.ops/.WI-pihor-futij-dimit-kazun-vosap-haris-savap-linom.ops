@@ -26,3 +26,18 @@
   clock: 2  # 3617
   nonce: '3617'  # 3617
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): reproduced through `hypergumbo run` on a two-file fixture. `@extends('layouts.app', [...])` gives no extends edge, `@yield('title', 'Default')` and `@component('alert', [...])` give no node; the one-argument control gives all three. `@yield('after')` between the inner and outer `@endcomponent` carries the stable_id of scope `[]` in the two-argument file and of scope `['outer']` in the control (checked against `scoped_stable_id`). Citations blade.py:66 and :108-113 are exact; blade.py last changed 2026-10-13. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-pihor. Corpus impact still not measured. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-pihor.md. No status or priority change made by this review."  # 3617
+- op: update  # 1999
+  at: '2026-11-16T11:46:41Z'  # 1999
+  by: agent  # 1999
+  actor: jgstern_agent  # 1999
+  clock: 3  # 1999
+  nonce: '1999'  # 1999
+  set:  # 1999
+    status: done  # 1999
+- op: discuss  # 91ec
+  at: '2026-11-16T11:46:41Z'  # 91ec
+  by: agent  # 91ec
+  actor: jgstern_agent  # 91ec
+  clock: 4  # 91ec
+  nonce: 91ec  # 91ec
+  message: "Fixed in PR #2200. Re-ran the filed forms with --include-docs: `@extends`, `@yield` and `@component` with a second argument emitted nothing on dev, and the `@yield('after')` following the dropped `@component` had scope (); all three are emitted now and that `@yield` is scoped ('outer',). koel: 0 of its 4 Blade symbols moved. This item is NOT about `@if` / `@foreach` scopes (a scheme decision; not done). NOT DONE (filed): `<x-component>` tags, `@include` edges, `@slot` / `@push` scopes, case-insensitive directive names. NOT MEASURED: corpus impact beyond koel. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 91ec

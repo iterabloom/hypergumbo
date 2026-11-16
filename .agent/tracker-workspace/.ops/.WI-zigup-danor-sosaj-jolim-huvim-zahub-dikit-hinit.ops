@@ -49,3 +49,18 @@
   clock: 5  # 1435
   nonce: '1435'  # 1435
   message: "[OWNER RULING 2026-11-15] Title: the clause '(needs its own stable-id scheme bump)' is dropped at the owner's word ('yes'). It contradicted the ruling of the same day that every id-moving fix shares the one bump to v15. The change still moves stable ids and still needs a bump; it rides the v15 bump PR."  # 1435
+- op: update  # d97c
+  at: '2026-11-16T11:46:39Z'  # d97c
+  by: agent  # d97c
+  actor: jgstern_agent  # d97c
+  clock: 6  # d97c
+  nonce: d97c  # d97c
+  set:  # d97c
+    status: done  # d97c
+- op: discuss  # 7913
+  at: '2026-11-16T11:46:39Z'  # 7913
+  by: agent  # 7913
+  actor: jgstern_agent  # 7913
+  clock: 7  # 7913
+  nonce: '7913'  # 7913
+  message: "Fixed in PR #2200. Re-ran the filed repro: `pub const N` was rust:lib.rs:1-1:N:variable on dev and is rust:lib.rs:1-1:N:const now; rust-analyzer's `constant` is refined to `const` for Rust, and the recorded two-backend agreement artifact went from 135 agree / 15 disagree to 150 / 0 on kind. ripgrep: 45 of 4,149 Rust symbols moved (1.08%), every one a module-level const; nothing else moved. `static` stays kind variable. Visible change: Rust consts now appear in compact output and `hypergumbo symbols` (+45 rows on ripgrep), because `const` was added to the containment linker's containable kinds and to selection's key kinds. NOT DONE (filed): associated, trait, macro-generated and fn-local consts and extern statics emit nothing; a non-`pub` const reads visibility=public (present before this PR too); the effect of the shared `const` change on Julia, Thrift and Cap'n Proto output was not measured. NOT CHECKED: whether any consumer branches on `variable` for a Rust const. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 7913

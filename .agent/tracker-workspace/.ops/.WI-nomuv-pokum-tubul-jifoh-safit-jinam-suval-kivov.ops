@@ -1,0 +1,21 @@
+- op: create  # c35e
+  at: '2026-11-16T11:48:10Z'  # c35e
+  by: agent  # c35e
+  actor: jgstern_agent  # c35e
+  clock: 1  # c35e
+  nonce: c35e  # c35e
+  data:  # c35e
+    kind: work_item  # c35e
+    title: "rust: associated, trait and macro-generated consts and extern statics are not emitted by the tree-sitter arm; `const` now selects in compact output for Julia, Thrift and Cap'n Proto too"  # c35e
+    status: todo_hard  # c35e
+    priority: 3  # c35e
+    parent:  # c35e
+    tags:  # c35e
+    - rust  # c35e
+    - analysis_quality  # c35e
+    isbefore: []  # c35e
+    duplicate_of: []  # c35e
+    not_duplicate_of: []  # c35e
+    pr_ref:  # c35e
+    description: "WHAT, after PR #2200 gave a module-level Rust `const` the kind `const`:\n- Associated consts (`impl X { const N }`), trait consts, fn-local consts, macro-generated consts and `extern` statics are not emitted by the tree-sitter arm. `static` stays kind variable. Whether `const _` should be a symbol is undecided.\n- A const without `pub` and a `static mut` read visibility=public (the same before PR #2200).\n- The shared change: `const` was added to the containment linker's CONTAINABLE_KINDS and to selection's KEY_SYMBOL_KINDS. That also changes what compact output and `hypergumbo symbols` show for Julia, Thrift and Cap'n Proto consts. NOT MEASURED for those three languages (ripgrep: +45 rows).\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # c35e
+    fields: {}  # c35e

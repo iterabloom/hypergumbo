@@ -1,0 +1,22 @@
+- op: create  # b15d
+  at: '2026-11-16T11:47:07Z'  # b15d
+  by: agent  # b15d
+  actor: jgstern_agent  # b15d
+  clock: 1  # b15d
+  nonce: b15d  # b15d
+  data:  # b15d
+    kind: work_item  # b15d
+    title: "cpp: union symbols, template specialisations, out-of-class members of class templates, and constructors nothing reaches"  # b15d
+    status: todo_hard  # b15d
+    priority: 3  # b15d
+    parent:  # b15d
+    tags:  # b15d
+    - cpp  # b15d
+    - analysis_quality  # b15d
+    - dead_code  # b15d
+    isbefore: []  # b15d
+    duplicate_of: []  # b15d
+    not_duplicate_of: []  # b15d
+    pr_ref:  # b15d
+    description: "WHAT, after PR #2200 (sherpa-onnx `sherpa-onnx/csrc` unless said):\n- A union emits no container symbol (its members are seen as enclosed).\n- Members of a class template specialisation keep bare names; out-of-class members of a class template keep `A<T>::f` as written.\n- `OnlineStream::Impl x;` resolves by its last segment.\n- 285 of 729 constructors are still dead-code candidates: member construction and implicit base-constructor calls are not modelled; 8 `Impl` constructors are unexplained.\n- An ambiguous overload record makes only its PICK reachable: the `Manager*` template at keyword-spotter-transducer-impl.h:319 now reads as dead although one of the candidates of a record calls it (see WI-jutur-tonul-buloj-toson-mijum-jozot-havok-pipih for argument shapes).\n- The field-type reader turns `vector<T>` into `T` (15 wrong receiver hints).\n- Node ids collide for same-name overloads declared on one line.\n- A nested forward declaration (`class Impl;` inside `class OnlineStream`) is a class node named `Impl` beside the definition's node `OnlineStream::Impl`.\n- A C++ method's qualified_name is None.\n- On an arity tie with one non-template candidate the non-template is the pick (the record stays ambiguous): at keyword-spotter-transducer-impl.h:98, `InitKeywords(mgr)` with a `Manager*`, the pick is the `std::istream&` overload at line 283, the wrong one.\n\nDead-code candidates there went 1,581 -> 1,077 with PR #2200; ambiguous records 328 edges / 416 sites -> 326 / 416.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # b15d
+    fields: {}  # b15d

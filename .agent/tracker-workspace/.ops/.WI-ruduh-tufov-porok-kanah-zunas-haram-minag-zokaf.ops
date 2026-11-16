@@ -1,0 +1,22 @@
+- op: create  # 60b6
+  at: '2026-11-16T11:47:30Z'  # 60b6
+  by: agent  # 60b6
+  actor: jgstern_agent  # 60b6
+  clock: 1  # 60b6
+  nonce: 60b6  # 60b6
+  data:  # 60b6
+    kind: work_item  # 60b6
+    title: "go: a generic receiver loses its type in the method name; grouped parameters and tuple results hash names"  # 60b6
+    status: todo_hard  # 60b6
+    priority: 3  # 60b6
+    parent:  # 60b6
+    tags:  # 60b6
+    - go  # 60b6
+    - stable_id  # 60b6
+    - analysis_quality  # 60b6
+    isbefore: []  # 60b6
+    duplicate_of: []  # 60b6
+    not_duplicate_of: []  # 60b6
+    pr_ref:  # 60b6
+    description: "WHAT, after PR #2200:\n- `func (s *Stack[T]) Push` is named `Push`, not `Stack.Push`.\n- Grouped parameters (`a, b int`) hash the first name; tuple-result elements hash their names (MOVES IDS if fixed).\n- The pointer strip on receivers is deliberate (commit 23708dff23) and was kept.\n- Symbol.signature does not show type parameters.\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 60b6
+    fields: {}  # 60b6
