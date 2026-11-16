@@ -135,12 +135,12 @@ _HOLE_FREE = (
     "func (s *S) Do(x [4]byte, f func(int)) error { return nil }\n"
 )
 _BASE_IDS = {
-    "I.Get": "sha256:c3d6e6c6be984913",
-    "Plain": "sha256:b0498b443211caed",
-    "Handler": "sha256:d6d25163f98eaf16",
-    "Ret": "sha256:2ca5bcb183918520",
-    "Chan": "sha256:97fc58949ca7e6f1",
-    "S.Do": "sha256:c60b10f5dc28c3f1",
+    "I.Get": "hgstableid15:c3d6e6c6be984913",
+    "Plain": "hgstableid15:b0498b443211caed",
+    "Handler": "hgstableid15:d6d25163f98eaf16",
+    "Ret": "hgstableid15:2ca5bcb183918520",
+    "Chan": "hgstableid15:97fc58949ca7e6f1",
+    "S.Do": "hgstableid15:c60b10f5dc28c3f1",
 }
 
 

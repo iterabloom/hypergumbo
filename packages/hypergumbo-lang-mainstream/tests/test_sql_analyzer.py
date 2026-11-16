@@ -301,7 +301,7 @@ class TestSqlStableId:
         result = analyze_sql_files(tmp_path)
         tbl = next(s for s in result.symbols if s.name == "users")
         assert tbl.stable_id is not None
-        assert tbl.stable_id.startswith("sha256:")
+        assert tbl.stable_id.startswith("hgstableid15:")
 
 
 class TestSqlShapeId:
@@ -316,7 +316,7 @@ class TestSqlShapeId:
         result = analyze_sql_files(tmp_path)
         tbl = next(s for s in result.symbols if s.name == "users")
         assert tbl.shape_id is not None
-        assert tbl.shape_id.startswith("sha256:")
+        assert tbl.shape_id.startswith("hgshapeid4:")
 
 
 class TestSqlCyclomaticComplexity:

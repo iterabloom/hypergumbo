@@ -483,7 +483,7 @@ const description = 'A test page';
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # WI-rijup: stable_id must be the canonical sha256 form
-        # (``sha256:<16hex>``), produced by make_doc_stable_id — not the raw
+        # (``hgstableid15:<16hex>``), produced by make_doc_stable_id — not the raw
         # composite Symbol.id. Reuse the complete-component fixture so the
         # variable, slot, and directive sites are all exercised.
         make_astro_file(tmp_path, "Page.astro", """---
@@ -513,7 +513,7 @@ const description = 'A test page';
         result = analyze_astro(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), symbol.stable_id
 

@@ -333,6 +333,7 @@ from .schema import (
     new_behavior_map,
     DEAD_CODE_MAYBE_SCHEMA_VERSION,
     READ_VIEW_SCHEMA_VERSION,
+    identity_digest,
 )
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import (
@@ -9245,7 +9246,7 @@ def _emit_repeat_finder_json(
 def _print_repeat_cluster(cluster: dict) -> None:
     """Print one clone cluster as a refactoring-lead block."""
     kinds = "/".join(cluster["kinds"]) or "symbol"
-    short = cluster["shape_id"].replace("sha256:", "")[:8]
+    short = identity_digest(cluster["shape_id"])[:8]
     cc = cluster["cyclomatic_complexity"]
     cc_str = f"cc {cc}" if cc is not None else "cc ?"
     print(

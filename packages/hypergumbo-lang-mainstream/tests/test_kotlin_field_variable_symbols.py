@@ -109,7 +109,7 @@ class TestKotlinFieldVariableSymbols:
         result = analyze_kotlin(tmp_path)
         v = next(s for s in _variables(result) if s.name == "topLevelConst")
         assert v.language == "kotlin"
-        assert v.stable_id and v.stable_id.startswith("sha256:"), v.stable_id
+        assert v.stable_id and v.stable_id.startswith("hgstableid15:"), v.stable_id
         assert v.qualified_name == "com.example.topLevelConst", v.qualified_name
         assert v.id.rsplit(":", 1)[-1] == "variable", v.id
 

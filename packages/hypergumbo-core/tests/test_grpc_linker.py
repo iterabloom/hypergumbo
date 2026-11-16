@@ -1110,7 +1110,7 @@ class TestGrpcProtoRouteSymbols:
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
         assert route_symbols[0].stable_id is not None
-        assert route_symbols[0].stable_id.startswith("sha256:")
+        assert route_symbols[0].stable_id.startswith("hgstableid15:")
 
     def test_proto_rpc_route_creates_routes_to_edge(self, tmp_path: Path) -> None:
         """Route symbols get routes_to edges to the service symbol."""

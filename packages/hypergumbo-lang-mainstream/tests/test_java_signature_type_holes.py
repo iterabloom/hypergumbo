@@ -182,13 +182,13 @@ _HOLE_FREE = """\
 """
 
 _BASE_IDS = {
-    "C.add": "sha256:5c8b45367506a4e6",
-    "C.g": "sha256:e5fef13ec33fe01e",
-    "C.h": "sha256:bccce9530b4d4b7d",
-    "C.v": "sha256:baca420412b946d3",
-    "C.C": "sha256:167880bda81d22a7",
-    "C.name": "sha256:66946f25afcc920b",
-    "C.table": "sha256:33ffedc784a9392a",
+    "C.add": "hgstableid15:5c8b45367506a4e6",
+    "C.g": "hgstableid15:e5fef13ec33fe01e",
+    "C.h": "hgstableid15:bccce9530b4d4b7d",
+    "C.v": "hgstableid15:baca420412b946d3",
+    "C.C": "hgstableid15:167880bda81d22a7",
+    "C.name": "hgstableid15:66946f25afcc920b",
+    "C.table": "hgstableid15:33ffedc784a9392a",
 }
 
 

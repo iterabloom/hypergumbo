@@ -238,7 +238,7 @@ class TestAnalyzeSvelte:
         assert _head == "svelte:App.svelte", slot.id
         assert re.match(r"^\d+-\d+$", _span), slot.id
         assert _kind == slot.kind, slot.id
-        assert re.match(r"^sha256:[0-9a-f]{16}$", slot.stable_id)
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", slot.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every emitted Symbol carries a canonical sha256 stable_id (WI-rijup)."""
@@ -270,7 +270,7 @@ class TestAnalyzeSvelte:
 """)
         result = analyze_svelte(tmp_path)
         assert len(result.symbols) >= 1
-        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), (
                 f"{symbol.kind} {symbol.name} has non-canonical stable_id: {symbol.stable_id}"

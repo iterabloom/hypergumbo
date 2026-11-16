@@ -97,7 +97,7 @@ return Symbol(
 
 This ADR addresses only `Symbol.id` construction. Three adjacent identity-discipline gaps remain open and are tracked separately:
 
-- **`Symbol.stable_id` format and multiplicity** (INV-hunup, INV-bazij) — Phase 6 PR1 / PR3 territory. The `stable_id` field has its own schema (`sha256:<16hex>` and family-specific factory outputs) and its own validator class (Phase 6).
+- **`Symbol.stable_id` format and multiplicity** (INV-hunup, INV-bazij) — Phase 6 PR1 / PR3 territory. The `stable_id` field has its own schema (`hgstableid<N>:<16hex>` or the SCIP arm's `hgscipid<N>:<16hex>` since ADR-0035 §7, `sha256:<16hex>` through scheme v14, and family-specific factory outputs) and its own validator class (Phase 6).
 - **`Edge.id` format** — an edge id is `edge:sha256:<16hex>`, not the five-slot node grammar, and the validator checks it against that shape (`_check_edge_id_format`, WI-vodin). The placeholder *dst* shape `make_unresolved_edge` mints is ADR-0036's id grammar, with its `:unresolved` kind token folded into `external_symbol` on the final graph (ADR-0037 ruling 4).
 - **Stable-id collision counting** (INV-bazij P0, 60% collision rate) — Phase 6 PR3 territory. Collision detection is a separate validator concern (cross-record coherence), not a per-record shape check.
 

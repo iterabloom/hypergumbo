@@ -324,7 +324,7 @@ end
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("luau:test.luau:")
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", """

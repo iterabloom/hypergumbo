@@ -424,7 +424,7 @@ public class Service {}
         assert cls is not None
         assert cls.id != cls.stable_id
         assert cls.id.startswith("apex:Service.cls:")
-        assert cls.stable_id.startswith("sha256:")
+        assert cls.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Service.cls", """

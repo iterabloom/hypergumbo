@@ -200,26 +200,26 @@ class Plain(val a: Int, var b: String?) {
 """
 
 _CLEAN_PINS = {
-    "cPlain": "sha256:b7b34c46e09dc869",
-    "cNullable": "sha256:af36abebae2237c5",
-    "cFun": "sha256:60420bdcb1a07587",
-    "cSuspendType": "sha256:9c15b6c19b92f167",
-    "cFunReceiverType": "sha256:7687ff26be87c825",
-    "cNamedLambda": "sha256:bb51e3923da5dc74",
-    "cGeneric": "sha256:d578ca9b48ce2f56",
-    "cBound": "sha256:56cc8cccaca74124",
-    "cWhere": "sha256:eb662138077f8f03",
-    "cReified": "sha256:47917587af406244",
-    "cDefault": "sha256:572450cc72dfa7d8",
-    "cSuspend": "sha256:d6f66cb0c812e82a",
-    "cCross": "sha256:8eb951c54c90d384",
-    "cDotted": "sha256:517f144df997b496",
-    "cAnnotated": "sha256:fd17c8c849403923",
-    "cRetFun": "sha256:035de721da22c002",
-    "cUnit": "sha256:733e8a396b5344ec",
-    "Plain.fUser": "sha256:95ea475d1f874dd6",
-    "Plain.fInferred": "sha256:47b982cf142034b2",
-    "Plain.method": "sha256:f8579ec21a8b4fc4",
+    "cPlain": "hgstableid15:b7b34c46e09dc869",
+    "cNullable": "hgstableid15:af36abebae2237c5",
+    "cFun": "hgstableid15:60420bdcb1a07587",
+    "cSuspendType": "hgstableid15:9c15b6c19b92f167",
+    "cFunReceiverType": "hgstableid15:7687ff26be87c825",
+    "cNamedLambda": "hgstableid15:bb51e3923da5dc74",
+    "cGeneric": "hgstableid15:d578ca9b48ce2f56",
+    "cBound": "hgstableid15:56cc8cccaca74124",
+    "cWhere": "hgstableid15:eb662138077f8f03",
+    "cReified": "hgstableid15:47917587af406244",
+    "cDefault": "hgstableid15:572450cc72dfa7d8",
+    "cSuspend": "hgstableid15:d6f66cb0c812e82a",
+    "cCross": "hgstableid15:8eb951c54c90d384",
+    "cDotted": "hgstableid15:517f144df997b496",
+    "cAnnotated": "hgstableid15:fd17c8c849403923",
+    "cRetFun": "hgstableid15:035de721da22c002",
+    "cUnit": "hgstableid15:733e8a396b5344ec",
+    "Plain.fUser": "hgstableid15:95ea475d1f874dd6",
+    "Plain.fInferred": "hgstableid15:47b982cf142034b2",
+    "Plain.method": "hgstableid15:f8579ec21a8b4fc4",
 }
 
 
@@ -227,4 +227,4 @@ def test_hole_free_declarations_keep_their_ids(tmp_path: Path) -> None:
     by_name = {s.name: s for s in _symbols(tmp_path, _CLEAN_SOURCE, rel="Clean.kt")}
     assert {n: by_name[n].stable_id for n in _CLEAN_PINS} == _CLEAN_PINS
     # The one extension function in the file is the receiver hole, so it moves.
-    assert by_name["plus"].stable_id != "sha256:367a0f601cc571ed"
+    assert by_name["plus"].stable_id != "hgstableid15:367a0f601cc571ed"

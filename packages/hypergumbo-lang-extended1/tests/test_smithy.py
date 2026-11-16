@@ -286,7 +286,7 @@ service MyService {}
         assert svc is not None
         assert svc.id != svc.stable_id
         assert svc.id.startswith("smithy:test.smithy:")
-        assert svc.stable_id.startswith("sha256:")
+        assert svc.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """

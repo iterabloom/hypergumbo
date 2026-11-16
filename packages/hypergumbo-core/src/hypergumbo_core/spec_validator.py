@@ -58,8 +58,11 @@ CI ratchet holds those counts shrink-only):
 5. **ID-format conformance** — every ``Symbol.id`` matches the canonical
    ``<language>:<path>:<start>-<end>:<name>:<kind>`` schema with single-colon
    separators, the shape ``make_symbol_id(...)`` produces (INV-sadiv). A
-   ``Symbol.stable_id`` sub-check pins the canonical ``sha256:<16hex>`` shape
-   that every ``make_*_stable_id`` factory produces (INV-hunup). See
+   ``Symbol.stable_id`` sub-check pins the canonical ``<label><16hex>`` shape,
+   where the label is the tree-sitter scheme's ``hgstableid<N>:`` (every
+   ``make_*_stable_id`` factory) or the SCIP scheme's ``hgscipid<N>:``, both
+   derived from their scheme constants (INV-hunup; ADR-0035 §"Value
+   labels"). See
    ADR-0034 for the discipline rationale. ``_check_id_roundtrip`` adds the
    ADR-0036 Ruling-2 *round-trip* canary: the id kind-slot must be a
    registered symbol-kind and equal ``Symbol.kind``, the name-slot must be
@@ -151,6 +154,7 @@ from .ir import (
     VALID_CONFIDENCE_SOURCES,
     sanitize_id_name_segment,
 )
+from .schema import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 VALIDATION_REPORT_SCHEMA_VERSION = "0.5"  # 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
@@ -204,7 +208,8 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "scheme -- its OWN grammar, not Symbol.id's five-slot one "
                     "(WI-vodin)."},
     {"check": "stable_id_format", "validator_class": "id_format",
-     "description": "Symbol.stable_id matches the sha256:<16hex> scheme."},
+     "description": "Symbol.stable_id is a stable-id label (the tree-sitter "
+                    "or the SCIP scheme's) followed by 16 lowercase hex."},
     {"check": "id_roundtrip", "validator_class": "id_format",
      "description": "Symbol.id kind-slot matches Symbol.kind and is a "
                     "registered kind; span/name well-formed."},
@@ -2009,18 +2014,31 @@ def _check_edge_id_format(edges: Iterable[Any]) -> list[ValidationViolation]:
 # ----------------------------------------------------------------------
 #
 # The ``id_format`` validator class extends to ``Symbol.stable_id`` to
-# enforce the canonical ``sha256:<16hex>`` shape produced by the
-# ``make_*_stable_id`` factory family in ``analyze/base.py``. The
-# classifier below names the escape categories (raw 64-char hex, bare
-# name, ``sha256:`` prefix with a bad suffix, colon composites). See
-# ADR-0034 for the discipline rationale.
+# enforce the canonical ``<label><16hex>`` shape. The label is one of the two
+# stable-id labels, each derived from its scheme constant in ``schema``:
+# ``STABLE_ID_PREFIX`` (``hgstableid<N>:``, the ``make_*_stable_id`` factory
+# family in ``analyze/base.py``) or ``SCIP_STABLE_ID_PREFIX``
+# (``hgscipid<N>:``, the rust-analyzer arm). Any other label fails: the
+# shape-id label (a shape id in the wrong field) and the ``sha256:`` label
+# every stable id carried through stableid-v14. The classifier below names
+# the escape categories (raw 64-char hex, bare name, a stable-id label with a
+# bad suffix, a foreign label, colon composites). See ADR-0034 for the
+# discipline rationale and ADR-0035 §"Value labels" for the labels.
 #
-# Canonical pattern: ``sha256:`` literal prefix + 16 lowercase hex chars.
-# Total length 23. The 16-char window comes from
-# ``_short_sha256`` (analyze/base.py:_short_sha256), which truncates the
-# 64-char hexdigest to 16 chars.
+# The 16-char window comes from ``_digest16`` (analyze/base.py), which
+# truncates the 64-char hexdigest to 16 chars.
 
-_CANONICAL_STABLE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{16}$")
+_STABLE_ID_LABELS = (STABLE_ID_PREFIX, SCIP_STABLE_ID_PREFIX)
+_CANONICAL_STABLE_ID_PATTERN = re.compile(
+    "^(?:" + "|".join(re.escape(label) for label in _STABLE_ID_LABELS)
+    + ")[0-9a-f]{16}$"
+)
+#: The label every stable id carried through stableid-v14. Read here only to
+#: name the failure; nothing mints it.
+_SUPERSEDED_STABLE_ID_LABEL = "sha256:"
+_EXPECTED_STABLE_ID = (
+    f"{STABLE_ID_PREFIX}<16hex> or {SCIP_STABLE_ID_PREFIX}<16hex>"
+)
 
 
 def _classify_stable_id_format_problem(stable_id: str) -> str:
@@ -2033,21 +2051,32 @@ def _classify_stable_id_format_problem(stable_id: str) -> str:
     titles and tracker discussion entries.
     """
     if re.match(r"^[0-9a-f]{64}$", stable_id):
-        return "raw_hex_no_prefix (64-char hexdigest without sha256: prefix)"
+        return "raw_hex_no_prefix (64-char hexdigest without a label)"
     if ":" not in stable_id:
         return "bare_name_no_prefix"
-    if stable_id.startswith("sha256:"):
-        suffix = stable_id[len("sha256:"):]
-        if not re.match(r"^[0-9a-f]+$", suffix):
-            return f"sha256_prefix_with_non_hex_suffix ({suffix!r})"
-        return f"sha256_prefix_wrong_length (expected 16 chars, got {len(suffix)})"
+    for label in _STABLE_ID_LABELS:
+        if stable_id.startswith(label):
+            suffix = stable_id[len(label):]
+            if not re.match(r"^[0-9a-f]+$", suffix):
+                return f"stable_id_label_with_non_hex_suffix ({suffix!r})"
+            return (
+                f"stable_id_label_wrong_length (expected 16 chars, "
+                f"got {len(suffix)})"
+            )
+    if stable_id.startswith(SHAPE_ID_PREFIX):
+        return f"shape_id_label ({SHAPE_ID_PREFIX!r} labels a shape_id)"
+    if stable_id.startswith(_SUPERSEDED_STABLE_ID_LABEL):
+        return (
+            f"superseded_label ({_SUPERSEDED_STABLE_ID_LABEL!r} is the "
+            f"stableid-v14 form; this scheme labels values {STABLE_ID_PREFIX!r})"
+        )
     colon_count = stable_id.count(":")
     return f"composite_no_sha_prefix (colon_count={colon_count})"
 
 
 def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
     """Stable-ID-format conformance: every Symbol.stable_id matches the
-    canonical ``sha256:<16hex>`` schema.
+    canonical ``<stable-id label><16hex>`` schema.
 
     See ADR-0034 §"ID-format validator" (INV-hunup). ``None`` is
     treated as pass: some Symbols legitimately
@@ -2072,7 +2101,7 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
             field_name="Symbol.stable_id",
             record_id=sym_id,
             observed=stable_id,
-            expected="sha256:<16hex>",
+            expected=_EXPECTED_STABLE_ID,
             message=(
                 f"Symbol.stable_id does not match the canonical schema: "
                 f"{problem}. Use a make_*_stable_id factory from "

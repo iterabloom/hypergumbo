@@ -235,9 +235,9 @@ host = localhost
         result = analyze_ini(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        # WI-banod: stable_id is now the canonical sha256:<16hex> (not the
+        # WI-banod: stable_id is now the canonical hgstableid15:<16hex> (not the
         # composite node.id); node.id remains the location key.
-        assert section.stable_id.startswith("sha256:")
+        assert section.stable_id.startswith("hgstableid15:")
         assert section.id != section.stable_id
         assert "ini:" in section.id
 

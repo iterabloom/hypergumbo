@@ -1278,7 +1278,7 @@ class TestScalaShapeId:
         result = analyze_scala(tmp_path)
         func = next(s for s in result.symbols if s.kind in ("function", "method"))
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.scala import analyze_scala
@@ -1289,7 +1289,7 @@ class TestScalaShapeId:
         result = analyze_scala(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestScalaShortNameConfidencePenalty:

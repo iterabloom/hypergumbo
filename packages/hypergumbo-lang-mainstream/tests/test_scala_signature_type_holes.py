@@ -207,14 +207,14 @@ HOLE_FREE = (
     "}\n"
 )
 HOLE_FREE_PINS = {
-    "O.p": ("(a: Int, b: List[String]): Map[Int, String]", "sha256:bb4038a1b0306639"),
-    "O.q": ("(f: (Int, String) => Boolean, t: (Int, Int))", "sha256:14d159e9ddc767c5"),
-    "O.r": ("(a: A | B, b: F[_]): Int", "sha256:a67407c0019ffdd7"),
-    "O.s": ("(): Int", "sha256:e5f6ef73b995c21d"),
-    "O.u": ("()", "sha256:cb227b6fa4999140"),
-    "O.v": ("Int", "sha256:efbf633667397858"),
-    "O.w": (None, "sha256:b056729bff274ba9"),
-    "K.this": ("(s: String)", "sha256:7e8221197b502170"),
+    "O.p": ("(a: Int, b: List[String]): Map[Int, String]", "hgstableid15:bb4038a1b0306639"),
+    "O.q": ("(f: (Int, String) => Boolean, t: (Int, Int))", "hgstableid15:14d159e9ddc767c5"),
+    "O.r": ("(a: A | B, b: F[_]): Int", "hgstableid15:a67407c0019ffdd7"),
+    "O.s": ("(): Int", "hgstableid15:e5f6ef73b995c21d"),
+    "O.u": ("()", "hgstableid15:cb227b6fa4999140"),
+    "O.v": ("Int", "hgstableid15:efbf633667397858"),
+    "O.w": (None, "hgstableid15:b056729bff274ba9"),
+    "K.this": ("(s: String)", "hgstableid15:7e8221197b502170"),
 }
 
 

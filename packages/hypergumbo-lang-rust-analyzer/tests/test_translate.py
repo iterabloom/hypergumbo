@@ -155,7 +155,7 @@ class TestReassignRustStableIds:
         sym = self._symbol(span=Span(1, 1, 0, 0))
         out = reassign_rust_stable_ids([sym], lambda _p: source)
         assert out[0].stable_id != "scip-raw-id"
-        assert out[0].stable_id.startswith("sha256:")
+        assert out[0].stable_id.startswith("hgstableid15:")
 
     def test_production_shaped_span_keeps_the_scip_id_for_a_multi_line_function(self) -> None:
         """What production actually supplies, and what it gets (INV-dolud).

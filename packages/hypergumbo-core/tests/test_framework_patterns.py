@@ -19583,16 +19583,16 @@ class TestMaterializeRouteSymbols:
     def test_stable_id_assigned(self) -> None:
         """Materialized route has a canonical-shape stable_id.
 
-        ``make_route_stable_id`` produces the ``sha256:<16hex>`` shape
-        (23 chars) shared by the rest of the ``make_*_stable_id``
+        ``make_route_stable_id`` produces the ``hgstableid15:<16hex>`` shape
+        (29 chars) shared by the rest of the ``make_*_stable_id``
         factory family (INV-hunup).
         """
         handler = self._make_handler("createUser", "POST", "/api/users")
         routes = materialize_route_symbols([handler])
         assert len(routes) == 1
         assert routes[0].stable_id is not None
-        assert routes[0].stable_id.startswith("sha256:")
-        assert len(routes[0].stable_id) == len("sha256:") + 16
+        assert routes[0].stable_id.startswith("hgstableid15:")
+        assert len(routes[0].stable_id) == len("hgstableid15:") + 16
 
     def test_no_path_normalized_to_root(self) -> None:
         """Route with method but no path gets normalized to '/' (INV-nimik)."""

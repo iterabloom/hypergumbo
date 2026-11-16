@@ -168,6 +168,14 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "hashing scheme"
                 )
             },
+            "scip_stable_id_scheme": {
+                "type": "string",
+                "description": (
+                    "Identifier for the algorithm the rust-analyzer (SCIP) "
+                    "arm computes its stable_id values with; those values "
+                    "carry the hgscipid<N>: label"
+                )
+            },
             "view": {
                 "type": "string",
                 "enum": list(VIEW_NAMES),

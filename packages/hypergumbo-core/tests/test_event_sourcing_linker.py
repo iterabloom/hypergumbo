@@ -510,7 +510,7 @@ class TestEventSourcingLinker:
         assert (symbol.meta or {}).get("framework_role") == "event_publisher"
         assert symbol.meta["event_name"] == "user:created"
         assert symbol.meta["framework"] == "event_bus"
-        # stable_id uses the canonical ``sha256:<16hex>`` shape from
+        # stable_id uses the canonical ``hgstableid15:<16hex>`` shape from
         # ``make_protocol_stable_id`` (INV-hunup). The event_name stays
         # addressable via ``meta["event_name"]`` (asserted above) for any
         # downstream consumer that needs the human-readable identity
@@ -519,7 +519,7 @@ class TestEventSourcingLinker:
         assert symbol.stable_id == make_protocol_stable_id(
             "event_sourcing", "event_bus", "publish", "user:created"
         )
-        assert symbol.stable_id.startswith("sha256:")
+        assert symbol.stable_id.startswith("hgstableid15:")
 
     def test_django_signal_linking(self, tmp_path: Path):
         """Links Django signal publishers to receivers."""

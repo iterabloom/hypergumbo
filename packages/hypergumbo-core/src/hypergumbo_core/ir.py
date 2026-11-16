@@ -100,9 +100,15 @@ Provenance Fields
 - run_signature: Deterministic hash of (pass_id, version, config_fingerprint,
   toolchain). Serialized as provenance only; not read back to key a cache.
 - repo_fingerprint: Content hash of the analyzed tree (plus HEAD when .git
-  exists). Serialized as provenance only and never read back; the results
-  cache recomputes the same digest (compute_repo_fingerprint, truncated to 16
-  hex) as its state_hash path segment, alongside analyzer_identity.
+  exists), serialized ``hgrepofp<N>:<64hex>``. Serialized as provenance only
+  and never read back; the results cache recomputes the same digest
+  (compute_repo_fingerprint, truncated to 16 hex) as its state_hash path
+  segment, alongside analyzer_identity.
+
+``run_signature``, ``config_fingerprint`` and ``pass_version`` keep the
+``sha256:`` prefix: each is a content digest of its inputs, named by its field,
+with no scheme of its own (ADR-0035 §"Value labels"). Identity values carry a
+scheme label instead (``StableId`` below).
 """
 import functools
 import hashlib
@@ -117,9 +123,11 @@ from typing import Any, Callable, Dict, Final, List, Literal, NewType, Optional
 
 from . import __version__
 from .axis_meta_keys import per_call_site_keys
+from .schema import STABLE_ID_PREFIX
 
 StableId = NewType("StableId", str)
-"""A ``Symbol.stable_id`` value (ADR-0035): ``sha256:<16hex>`` today.
+"""A ``Symbol.stable_id`` value (ADR-0035): ``hgstableid<N>:<16hex>``, or
+``hgscipid<N>:<16hex>`` from the rust-analyzer (SCIP) arm.
 
 The identifier NewTypes (WI-tapak). Each is a plain ``str`` at run time:
 ``StableId(x)`` returns ``x`` itself, so no value, hash or output byte
@@ -129,8 +137,9 @@ depends on them. To mypy each is a distinct subtype of ``str``: a plain
 ONCE, where it is minted (the hash-and-prefix site), and every function
 that only passes it on takes and returns the NewType, so the type
 checker, not a grep, finds a hand-built id. The minting sites:
-``_short_sha256`` (analyze/base.py) for every tree-sitter and SCIP
-stable id, ``_canonical_external_stable_id`` (this module) for external
+``_short_sha256`` (analyze/base.py) for every tree-sitter stable id,
+``mint_scip_stable_id`` (analyze/base.py) for every SCIP-arm stable id,
+``_canonical_external_stable_id`` (this module) for external
 stand-ins; ``mint_shape_id`` (analyze/base.py) for every shape id;
 ``compute_repo_fingerprint_field`` (repo_fingerprint.py) for the repo
 fingerprint. Values read back from JSON arrive as ``Any`` and are
@@ -138,10 +147,10 @@ assignable without a wrap.
 """
 
 ShapeId = NewType("ShapeId", str)
-"""A ``Symbol.shape_id`` value (spec §6): ``sha256:<16hex>`` today. See StableId."""
+"""A ``Symbol.shape_id`` value (spec §6): ``hgshapeid<N>:<16hex>``. See StableId."""
 
 RepoFingerprint = NewType("RepoFingerprint", str)
-"""An ``AnalysisRun.repo_fingerprint`` value. See StableId."""
+"""An ``AnalysisRun.repo_fingerprint`` value: ``hgrepofp<N>:<64hex>``. See StableId."""
 
 VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "delete"})
 """ADR-0015 access mode vocabulary for dataflow edges.
@@ -628,17 +637,19 @@ class Symbol:
             operations, because name + qualified_name are hash inputs.
             Without them, same-shaped symbols in one scope collide (e.g.
             the zero-param bash functions of one file would share one ID).
-            Serialized as ``sha256:<16hex>``; the ``sha256:`` prefix names
-            the hash *algorithm*, not the identity axis — the scheme/version
-            lives in the top-level ``stable_id_scheme`` descriptor.
-            ``shape_id`` shares this exact surface; the two are discriminated
-            by field identity (and their ``*_scheme`` descriptors), NOT by an
-            in-value prefix. Unlike ``fingerprint``'s ``hgfp2:`` *version*
-            tag or the edges' ``edge:``/``edgekey:`` *namespace* tags, these
-            two need no in-value discriminator because they are always
-            field-qualified (WI-tisar). Consumers
-            must therefore retain field context — do NOT join on bare hash
-            values across the stable_id/shape_id axes.
+            Serialized as ``<label><16hex>``. The label names the value
+            and the scheme that produced it: ``hgstableid<N>:`` for the
+            tree-sitter / ``ast`` factories (``stable_id_scheme``,
+            ``hypergumbo-stableid-v<N>``), ``hgscipid<N>:`` for an id the
+            rust-analyzer (SCIP) arm minted (``scip_stable_id_scheme``). Like
+            ``fingerprint``'s ``hgfp2:``, the label is readable without the
+            field, so a stable id, a shape id (``hgshapeid<N>:``) and a repo
+            fingerprint (``hgrepofp<N>:``) cannot be mistaken for one
+            another, and two ids from different algorithms never compare
+            equal (ADR-0035 §"Value labels"). Each label is derived from its
+            scheme constant (``schema.value_label``). The labels are labels
+            only: stableid-v15 wrote the digest stableid-v14 wrote after
+            ``sha256:``.
         shape_id: Structural *skeleton* hash — the parse subtree with
             identifiers, literals, comments, and punctuation STRIPPED
             (spec §6 ``shape_id``; compute_shape_id), so two symbols with the same
@@ -646,8 +657,8 @@ class Symbol:
             within-language only (Python uses an ast-based variant).
             Contrast ``fingerprint``, which KEEPS identifiers/literals —
             ``shape_id`` is a strict coarsening of it. Serialized as
-            ``sha256:<16hex>`` — the same surface as ``stable_id`` (see that
-            field's note on cross-axis bare-hash joins; WI-tisar).
+            ``hgshapeid<N>:<16hex>`` (``shape_id_scheme``; see
+            ``stable_id`` on the labels).
         fingerprint: Structural *content* hash of the symbol's parse
             subtree — shape PLUS identifiers and literals, whitespace/
             comment-invariant, tagged with the scheme in
@@ -1799,7 +1810,7 @@ def _canonical_external_stable_id(
     the same stable_id for the same logical boundary.
     """
     payload = f"external:{language}:{path}:{name}"
-    return StableId(f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}")
+    return StableId(STABLE_ID_PREFIX + hashlib.sha256(payload.encode()).hexdigest()[:16])
 
 
 def _span_token_index(parts: list[str]) -> Optional[int]:

@@ -118,7 +118,7 @@ class TestSharedEdgeShapes:
         """Arity, kind and file each change the id; the name alone does not
         make it collide with anything but another callback."""
         base = callback_stable_id("erlang", "src/shape.erl", "area/0", 0)
-        assert base.startswith("sha256:")
+        assert base.startswith("hgstableid15:")
         assert base == callback_stable_id("erlang", "src\\shape.erl", "area/0", 0)
         assert base != callback_stable_id("erlang", "src/shape.erl", "area/0", 1)
         assert base != callback_stable_id("erlang", "src/other.erl", "area/0", 0)

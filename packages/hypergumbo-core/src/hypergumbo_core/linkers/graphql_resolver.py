@@ -466,7 +466,7 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
         protocol_origin="graphql",
         # Phase 6 PR1 (INV-hunup): was ``f"{type_name}.{field_name}"``
         # (escape category ``no_colon``). The factory hashes (type_name,
-        # field_name) into ``sha256:<16hex>``.
+        # field_name) into ``hgstableid<N>:<16hex>``.
         stable_id=make_protocol_stable_id(
             "graphql_resolver",
             pattern.type_name,

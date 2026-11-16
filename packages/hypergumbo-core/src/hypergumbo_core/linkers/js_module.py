@@ -944,7 +944,7 @@ def link_js_modules(
                 # ADR-0031 Class B: synthetic stand-in for an npm package; the
                 # package has no source-language declaration of its own — the
                 # discovery context is the importing file's language.
-                # stable_id uses the canonical sha256:<16hex> dependency
+                # stable_id uses the canonical hgstableid<N>:<16hex> dependency
                 # factory (ADR-0034).
                 pkg_sym = Symbol(
                     id=pkg_id,

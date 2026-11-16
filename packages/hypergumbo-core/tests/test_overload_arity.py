@@ -234,17 +234,17 @@ def test_arities_and_scopes_hash_apart() -> None:
             containing_stable_id=containing,
         )
 
-    assert len({sid(0), sid(1), sid(2), sid(1, "sha256:0000000000000000")}) == 4
+    assert len({sid(0), sid(1), sid(2), sid(1, "hgstableid15:0000000000000000")}) == 4
 
 
 def test_callback_stable_id_is_byte_identical_through_the_shared_helper() -> None:
     """WI-hidit's values, pinned before the helper took them over: a changed
     producer value would be a scheme bump (ADR-0035 §6)."""
     assert callback_stable_id("elixir", "lib/shape.ex", "Shape.area", 1) == (
-        "sha256:35261acfab20d1d1"
+        "hgstableid15:35261acfab20d1d1"
     )
     assert callback_stable_id("erlang", "src/shape.erl", "area", 0, "macro") == (
-        "sha256:e47ba7cc993e0988"
+        "hgstableid15:e47ba7cc993e0988"
     )
     assert callback_stable_id("elixir", "lib/shape.ex", "Shape.area", 1) == (
         assemble_stable_id(
