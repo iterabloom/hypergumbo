@@ -41,6 +41,7 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "pony": ("verified", "test_call_anchor_gate_extended1::test_pony_same_named_callables"),
     "solidity": ("verified", "test_call_anchor_gate_extended1::test_solidity_same_named_callables"),
     "v_lang": ("verified", "test_call_anchor_gate_extended1::test_v_lang_same_named_callables"),
+    "verilog": ("verified", "test_call_anchor_gate_extended1::test_verilog_same_named_callables"),
     "ada": ("unverified", "WI-tosum"),
     "apex": ("unverified", "WI-tosum"),
     "asm": ("unverified", "WI-tosum"),
@@ -392,6 +393,36 @@ fn (b B) run() {
 }
 """)
     _assert_contained(analyze_v(tmp_path), [10, 14])
+
+
+def test_verilog_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: a function ``run`` in each of two modules of one file,
+    each calling another function of its own module. The caller is found by
+    position (the innermost enclosing task or function), so each call is
+    credited to the ``run`` that holds it."""
+    from hypergumbo_lang_extended1.verilog import analyze_verilog_files
+
+    (tmp_path / "two.v").write_text("""\
+module a;
+  function integer one; input x; one = x; endfunction
+  function integer run; input x;
+    run = one(x);
+  endfunction
+endmodule
+module b;
+  function integer two; input x; two = x; endfunction
+  function integer run; input x;
+    run = two(x);
+  endfunction
+endmodule
+""")
+    result = analyze_verilog_files(tmp_path)
+    _assert_contained(result, [4, 10])
+    by_id = {s.id: s for s in result.symbols}
+    callers = sorted(
+        (by_id[e.src].span.start_line, by_id[e.dst].name)
+        for e in result.edges if e.edge_type == "calls")
+    assert callers == [(3, "one"), (9, "two")], callers
 
 
 def test_pony_same_named_callables(tmp_path: Path) -> None:
