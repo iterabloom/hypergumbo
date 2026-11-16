@@ -65,7 +65,12 @@ Call-edge details:
   returning a function pointer), and for every leaf tree-sitter-cpp gives a
   definition: qualified and plain identifiers, an explicit specialisation
   (``template <> void f<int>(int)``, named ``f``), ``operator==``, a
-  destructor and a conversion operator (WI-saduj).
+  destructor and a conversion operator (WI-saduj). A definition in a class
+  body -- directly, as a member template, or in a ``#if`` block of the body
+  (``_cpp_in_class_body``) -- is a ``method`` named ``C::name``: the
+  constructor ``C() {}`` is ``C::C`` as an out-of-class ``C::C() {}`` is, and
+  ``template <class T> void f(T) {}`` is ``C::f`` (WI-rugin). A ``friend``
+  defined there is a free function.
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
   ``_CPP_STL_METHODS`` (``v.clear()``) is not resolved against project
@@ -645,12 +650,22 @@ def _cpp_operator_cast_name(node: "tree_sitter.Node", source: bytes) -> str:
     return " ".join(source[node.start_byte:end].decode("utf-8", errors="replace").split())
 
 
+#: What may stand between a member definition and its class body: a member
+#: template's ``template <..>`` and a ``#if`` / ``#ifdef`` / ``#else`` block of
+#: the body (sherpa-onnx's ``#if __ANDROID_API__ >= 9`` constructors).
+_CPP_MEMBER_WRAPPERS = frozenset({
+    "template_declaration", "preproc_if", "preproc_ifdef", "preproc_else",
+    "preproc_elif", "preproc_elifdef",
+})
+
+
 def _cpp_in_class_body(node: "tree_sitter.Node") -> bool:
     """Whether a ``function_definition`` is a member defined in a class body
-    (directly, or as a member template). A ``friend`` definition is not: its
-    parent is the ``friend_declaration``, and it defines a free function."""
+    (directly, as a member template, or inside a preprocessor block of the
+    body). A ``friend`` definition is not: its parent is the
+    ``friend_declaration``, and it defines a free function."""
     parent = node.parent
-    if parent is not None and parent.type == "template_declaration":
+    while parent is not None and parent.type in _CPP_MEMBER_WRAPPERS:
         parent = parent.parent
     return parent is not None and parent.type == "field_declaration_list"
 
@@ -665,13 +680,23 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     decides the name and kind:
 
     - ``qualified_identifier`` (``A::run``, ``A::operator bool``): method.
-    - ``identifier``: function; ``field_identifier`` (an in-class method): method.
+    - ``field_identifier`` (an in-class method): method.
+    - ``identifier``: a method when defined in a class body, else a function.
+      tree-sitter-cpp gives a plain ``identifier`` to the two member shapes
+      that have no ``field_identifier``: an in-class constructor (``C() {}``,
+      ``C(const C&) = default;``, ``template <class T> C(T) {}``) and an
+      in-class member template (``template <class T> void f(T) {}``). Read as
+      free functions they were ``function C`` / ``function f`` beside the
+      method ``C::C`` an out-of-class constructor is (WI-rugin).
     - ``template_function`` (an explicit specialisation ``template <> void
       f<int>(int)``): the template's name, ``f``, so it sits beside the primary
       template the way an overload sits beside its siblings.
     - ``operator_name``, ``destructor_name``, ``operator_cast``: a method when
       defined in a class body, else a function (a free or ``friend``
       ``operator==``).
+
+    "In a class body" is ``_cpp_in_class_body``: a ``friend`` defined there is
+    not, and stays a function.
     """
     shape = c_family_declarator(node)
     leaf = shape.name
@@ -694,11 +719,11 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
             prefix = source[leaf.start_byte:cast.start_byte].decode("utf-8", errors="replace")
             return (prefix + _cpp_operator_cast_name(cast, source), "method")
         return (_node_text(leaf, source), "method")
-    if leaf.type == "identifier":
-        return (_node_text(leaf, source), "function")
     if leaf.type == "field_identifier":
         return (_node_text(leaf, source), "method")
-    if leaf.type == "template_function":
+    if leaf.type == "identifier":
+        name = _node_text(leaf, source)
+    elif leaf.type == "template_function":
         name = _node_text(leaf, source).split("<", 1)[0].strip()
     elif leaf.type == "operator_cast":
         name = _cpp_operator_cast_name(leaf, source)
