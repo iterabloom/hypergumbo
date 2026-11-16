@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -434,18 +434,18 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
                 dst, dst_ref = external_target(
                     "bitbake", name, _STAND_IN_NAMESPACE[edge_type],
                 )
-            edges.append(Edge.create(
-                src=src,
-                dst=dst,
-                edge_type=edge_type,
-                line=line,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                evidence_type="static",
-                evidence_lang="bitbake",
-                is_resolved=target is not None,
-                dst_ref=dst_ref,
-            ))
+            common: dict[str, Any] = {
+                "src": src, "dst": dst, "line": line, "origin": PASS_ID,
+                "origin_run_id": run.execution_id, "evidence_type": "static",
+                "evidence_lang": "bitbake", "is_resolved": target is not None,
+                "dst_ref": dst_ref,
+            }
+            # The type is spelled as a literal at each site so the
+            # producer-set gates can enumerate what this module emits.
+            if edge_type == "inherits":
+                edges.append(Edge.create(edge_type="inherits", **common))
+            else:
+                edges.append(Edge.create(edge_type="depends_on", **common))
         return edges
 
 
