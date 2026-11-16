@@ -836,7 +836,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_lang_common.vue`**: Vue.js component analyzer using tree-sitter.
 - **`hypergumbo_lang_common.wgsl`**: WGSL (WebGPU Shading Language) analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.ada`**: Ada analysis pass using tree-sitter.
-- **`hypergumbo_lang_extended1.agda`**: Agda analysis pass using tree-sitter-agda.
+- **`hypergumbo_lang_extended1.agda`**: Agda analysis pass on the language pack's tree-sitter-agda grammar.
 - **`hypergumbo_lang_extended1.apex`**: Apex language analyzer.
 - **`hypergumbo_lang_extended1.asm`**: Assembly language analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.bibtex`**: BibTeX bibliography analyzer using tree-sitter.

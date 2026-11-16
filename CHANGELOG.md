@@ -189,6 +189,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Handlebars partial calls with whitespace control (`{{~> name}}`) are found.**
 - **Handlebars tilde, multi-line and partial-block openers now scope their contents.**
 - **Blade `@yield`, `@component` and `@extends` with a second argument are found.**
+- **Agda takes the pack's grammar; declarations after one-entry blocks reappear.**
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**
 - **BitBake node ids carry the symbol's own kind and lines**, so two assignments to one variable no longer share an id.

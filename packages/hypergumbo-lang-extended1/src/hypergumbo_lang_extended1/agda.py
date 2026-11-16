@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Agda analysis pass using tree-sitter-agda.
+"""Agda analysis pass on the language pack's tree-sitter-agda grammar.
 
 This analyzer uses tree-sitter to parse Agda files and extract:
 - Module declarations
-- Function definitions (including theorems, lemmas, postulates)
+- Function definitions (including theorems, lemmas, postulates, primitives)
 - Data type definitions
 - Record type definitions and record field declarations
 - Import statements (open import, import), including ``renaming (x to y)``
@@ -34,7 +34,8 @@ Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-agda package for grammar
+- The grammar is the language pack's build of tree-sitter-agda, not the
+  ``tree-sitter-agda`` 1.3.3 wheel (see "Grammar" below)
 - Two-pass allows cross-file resolution
 - References model fits proof languages better than calls
 
@@ -46,6 +47,23 @@ Agda-Specific Considerations
 - Records have fields and potentially a constructor
 - Postulates are axioms (functions without implementation)
 - Import can be `open import`, `import`, with using/hiding/renaming
+- A ``primitive`` block's entries are ``type_signature`` nodes (one
+  ``field_name`` per declared name), emitted as functions
+
+Grammar
+-------
+The grammar is the upstream tree-sitter-agda that tree-sitter-language-pack
+builds (``language_pack_name``), a later commit of the same repository than
+the ``tree-sitter-agda`` 1.3.3 wheel on PyPI (the wheel's only release). The
+two have the same node kinds and no fields, so this module reads either; the
+later commit carries an upstream fix to the layout scanner. Under 1.3.3 a
+layout block of one entry (``data Unit : Set where / tt : Unit``, a one-line
+``postulate``) split the next signature into two ``function`` nodes, so that
+declaration was not emitted (INV-vokir), and nested layout blocks lost or
+misplaced their scope chains (WI-molon). On agda-stdlib (1,248 files) the
+files parsed through error recovery go from 747 under 1.3.3 to 510.
+Neither grammar parses every file: a file parsed through error recovery is
+reported in ``limits.failed_files`` with a ``partial_parse`` reason.
 
 Scope and identity (INV-kagib, WI-tusad)
 ----------------------------------------
@@ -256,7 +274,7 @@ def _extract_symbols_from_file(
 
     Detects:
     - module: Module declarations
-    - function: Function/theorem type signatures
+    - function: Function/theorem type signatures, primitives
     - data: Data type definitions
     - record: Record type definitions
     - field: Record field declarations
@@ -384,6 +402,15 @@ def _extract_symbols_from_file(
             if name_node:
                 name = node_text(name_node, source).strip()
                 add_symbol(node, name, "record")
+
+        elif node.type == "type_signature":
+            # A ``primitive`` block's entry: one ``field_name`` per declared
+            # name (``primitive / primA primB : Set``), then ``:`` and the type.
+            expr_node = find_child_by_type(node, "expr")
+            sig = ": " + node_text(expr_node, source).strip() if expr_node else None
+            for child in node.children:
+                if child.type == "field_name":
+                    add_symbol(node, node_text(child, source).strip(), "function", signature=sig)
 
         elif node.type == "signature":
             # Record field declaration (inside fields block)
@@ -599,11 +626,11 @@ def _extract_edges_from_file(
 
 
 class AgdaAnalyzer(TreeSitterAnalyzer):
-    """Agda language analyzer using tree-sitter-agda."""
+    """Agda language analyzer on the language pack's tree-sitter-agda build."""
 
     lang = "agda"
     file_patterns: ClassVar[list[str]] = ["*.agda", "*.lagda", "*.lagda.md"]
-    grammar_module = "tree_sitter_agda"
+    language_pack_name = "agda"
     create_file_symbols = True
 
     def extract_symbols_from_file(
