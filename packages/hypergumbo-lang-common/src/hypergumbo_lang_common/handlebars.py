@@ -15,7 +15,7 @@ Regex-based extraction (no tree-sitter grammar available on PyPI):
 
 Symbols Extracted
 -----------------
-- **partial**: Partial template references ({{> header}})
+- **partial**: Partial template references ({{> header}}, {{~> header~}})
 - **block**: Block helper invocations ({{#each}}, {{#if}}, {{#with}})
 - **helper**: Custom block helper invocations ({{#formatDate date}})
 
@@ -52,8 +52,10 @@ from hypergumbo_core.paths import to_relative_path
 
 PASS_ID = make_pass_id("handlebars")
 
-# {{> partialName}} or {{> "path/to/partial"}}
-_PARTIAL_RE = re.compile(r"""\{\{>\s*['"]?([^\s'"}\)]+)['"]?""")
+# {{> partialName}} or {{> "path/to/partial"}}, also with whitespace control
+# ({{~> name~}}): a tilde before the closing }} is not part of the name
+_PARTIAL_RE = re.compile(
+    r"""\{\{~?>\s*['"]?([^\s'"}\)~]+(?:~+[^\s'"}\)~]+)*)['"]?""")
 # {{#blockHelper}} — custom block helpers
 _BLOCK_RE = re.compile(r"""\{\{#(\w+)""")
 # Built-in block helpers to exclude from custom helper detection

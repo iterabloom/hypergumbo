@@ -2,6 +2,7 @@
 """Tests for Handlebars template analyzer."""
 from pathlib import Path
 
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_lang_common.handlebars import analyze_handlebars
 
 
@@ -56,3 +57,18 @@ class TestAnalyzeHandlebars:
         assert "header" in names
         assert "content" in names
         assert "footer" in names
+
+
+class TestTildePartial:
+    """A partial call with whitespace control is still a partial (WI-zisar)."""
+
+    def test_tilde_partials_emit_symbols(self, tmp_path: Path) -> None:
+        (tmp_path / "t.hbs").write_text(
+            "{{~> lead}}\n{{> plain}}\n{{~> both~}}\n{{#if a}}{{~> inner}}{{/if}}\n")
+        result = analyze_handlebars(tmp_path)
+        partials = {(s.span.start_line, s.name): s for s in result.symbols
+                    if s.kind == "partial"}
+        assert set(partials) == {(1, "lead"), (2, "plain"), (3, "both"), (4, "inner")}
+        assert partials[(4, "inner")].stable_id == scoped_stable_id(
+            kind="partial", lang="handlebars", path="t.hbs", name="inner", scope=("if a",))
+        assert partials[(1, "lead")].span.start_col == 0
