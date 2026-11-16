@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Optional
 
 from ..ir import ExternalRef
+from ..discovery import is_excluded
 from ..taxonomy import get_language
 from .base import make_file_id, make_symbol_id
 from .edge_source import unemitted_edge_sources
@@ -81,6 +82,10 @@ def in_tree_file_id(
     repository-relative path (the caller applies its language's own rule for
     what a written path is relative to). A candidate that leaves the
     repository, is absent, or has no language in the taxonomy is skipped.
+    So is one that is on disk and that DISCOVERY leaves out (git ignores it
+    and does not track it, or a default exclude covers it, ADR-0004): the
+    disk is not the analysed tree, and a file id for such a file would have
+    the synthesis pass mint a node for a file no analyzer read.
     Returns ``None`` when none is left: the target is outside the tree.
     """
     repo_root = file_path.parents[len(Path(rel_path).parts) - 1]
@@ -89,7 +94,8 @@ def in_tree_file_id(
         if norm == "." or norm == ".." or norm.startswith(("../", "/")):
             continue
         lang = get_language(Path(norm))
-        if lang is not None and (repo_root / norm).is_file():
+        target = repo_root / norm
+        if lang is not None and target.is_file() and not is_excluded(target, repo_root):
             return make_file_id(lang, norm)
     return None
 
