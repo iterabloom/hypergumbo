@@ -8,7 +8,7 @@ This analyzer uses tree-sitter to parse Verilog/SystemVerilog files and extract:
   they are declared: a module, interface, package, program, class, checker,
   generate block or the compilation unit
 - Net declarations (``kind="signal"``), one symbol per declared name
-- Module instantiations, as ``instantiates`` edges (not symbols)
+- Module and interface instantiations, as ``instantiates`` edges (not symbols)
 
 If tree-sitter-verilog is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -17,19 +17,46 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all definitions
-2. Pass 2: Place tasks and nets under their design unit, resolve module
+2. Pass 2: Place tasks and nets under their design unit, resolve
    instantiations, and create edges
 
-An instantiation's source is the enclosing ``module_declaration``, found by
-position; one outside any module (e.g. inside an interface) is dropped. The
-target type is looked up case-insensitively, preferring ``kind="module"``: a
-unique match gets confidence 0.90, several candidates 0.50 with
-``disambiguation_fallback``, and no match ``verilog:external:<type>:module`` at
-0.70.
+Instantiations
+--------------
+An instantiation's source is the innermost enclosing module or interface,
+found by position; one outside both (in a module the grammar could not parse)
+is dropped. The target type is looked up case-insensitively, preferring
+``kind="module"`` (``"interface"`` when the source is an interface, which can
+instantiate nothing else): a unique match gets confidence 0.90, several
+candidates 0.50 with ``disambiguation_fallback``, and no match
+``verilog:external:<type>:module`` at 0.70.
 
 Only modules and interfaces are registered for that lookup
 (``register_symbol``): a net or a task named like an undeclared module must
 not capture its instantiations.
+
+tree-sitter-verilog decides the node type from the port list, not from what
+is instantiated (``_INSTANTIATIONS``):
+
+- ``module_instantiation`` (``interface_instantiation`` in an interface
+  body): two or more named ports, a ``#(...)`` parameter list, or several
+  instances in one statement.
+- ``checker_instantiation``: one instance with no port, one named or
+  positional port, ``.*`` or an implicit ``.x``, with or without an array
+  range.
+- ``udp_instantiation``: one instance with two or more positional ports.
+
+The last two are also what a real checker or UDP instance parses as, so the
+type name decides. A name the repository declares as a module or interface
+is an instantiation of it. Otherwise a name it declares as a checker, a
+program or a UDP (``primitive``) in any file is not a module instantiation
+and emits nothing (pass 1 records those names in ``_other_units``; they are
+not symbols). A name declared nowhere is an external module, exactly as for
+``module_instantiation``: the port list must not decide whether an edge
+exists. Three shapes of ``checker_instantiation`` are never a module
+(``_instantiated_type``): one with no instance name (how a task enable
+``initial t2(w, z);`` parses), one in procedural code, and one whose type is
+package-scoped. Gate instances (``and g1(...)``) are ``gate_instantiation``
+and emit nothing.
 
 Members and their identity
 --------------------------
@@ -158,6 +185,9 @@ def _extract_interface_name(node: "tree_sitter.Node", source: bytes) -> Optional
 #: Kinds an instantiation can name; the only ones ``register_symbol`` indexes.
 _DESIGN_UNIT_KINDS = frozenset({"module", "interface"})
 
+#: The declaration nodes of those kinds.
+_UNIT_DECLARATIONS = frozenset({"module_declaration", "interface_declaration"})
+
 #: Member kinds the containment linker does not place (its containable set
 #: holds ``function`` and ``variable``, not ``task`` or ``signal``), so this
 #: module emits their ``contains`` edge itself.
@@ -259,44 +289,76 @@ def _enclosing_unit(member: Symbol, units: list[Symbol]) -> Optional[Symbol]:
     return best
 
 
-def _extract_instantiation_info(node: "tree_sitter.Node", source: bytes) -> Optional[tuple[str, str]]:
-    """Extract module type and instance name from module_instantiation.
+#: An instantiation node's ``(type-name node type, node type holding
+#: name_of_instance)``; ``None`` when the instantiation holds the name itself.
+_INSTANTIATIONS: dict[str, tuple[str, Optional[str]]] = {
+    "module_instantiation": ("simple_identifier", "hierarchical_instance"),
+    "interface_instantiation": ("interface_identifier", "hierarchical_instance"),
+    "checker_instantiation": ("checker_identifier", None),
+    "udp_instantiation": ("simple_identifier", "udp_instance"),
+}
 
-    Returns:
-        Tuple of (module_type, instance_name) or None if not found
+#: The node types the grammar also gives a real checker or UDP instance, so
+#: the type name decides (see "Instantiations" in the module docstring).
+_AMBIGUOUS_INSTANTIATIONS = frozenset({"checker_instantiation", "udp_instantiation"})
+
+#: Declarations an ambiguous instantiation may name instead of a module.
+_OTHER_UNIT_DECLARATIONS = frozenset({
+    "checker_declaration", "program_declaration", "udp_declaration",
+})
+
+
+def _other_unit_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name a checker, program or UDP (``primitive``) declaration declares."""
+    if node.type == "udp_declaration":
+        header = node.children[0]
+        ident = find_child_by_type(header, "simple_identifier")
+        return node_text(ident, source) if ident else None
+    return _scope_label(node, source)
+
+
+def _instantiated_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The type name of a named instance, from an ``_INSTANTIATIONS`` node.
+
+    ``None`` when the node is no instantiation of a design unit:
+
+    - it names no instance (an unnamed UDP instance; a task enable such as
+      ``initial t2(w, z);``, which the grammar reads as a checker
+      instantiation with a missing instance name);
+    - it is a checker instantiation in procedural code (a statement), where
+      no module or interface can be instantiated;
+    - its type name is package-scoped (``pkg::c u(...)``): a package holds
+      checkers, never modules or interfaces.
     """
-    module_type = None
-    instance_name = None
-
-    for child in node.children:
-        if child.type == "simple_identifier" and module_type is None:
-            module_type = node_text(child, source)
-        elif child.type == "hierarchical_instance":
-            # Look for name_of_instance -> instance_identifier -> simple_identifier
-            name_of_inst = find_child_by_type(child, "name_of_instance")
-            if name_of_inst:
-                inst_ident = find_child_by_type(name_of_inst, "instance_identifier")
-                if inst_ident:
-                    ident = find_child_by_type(inst_ident, "simple_identifier")
-                    if ident:
-                        instance_name = node_text(ident, source)
-
-    if module_type and instance_name:
-        return (module_type, instance_name)
-    return None  # pragma: no cover
+    type_node_type, holder_type = _INSTANTIATIONS[node.type]
+    type_node = find_child_by_type(node, type_node_type)
+    if type_node is None:
+        return None  # pragma: no cover - an instantiation always names a type
+    if holder_type is None:
+        parent_type = node.parent.type if node.parent is not None else ""
+        if parent_type == "statement_item" or find_child_by_type(node, "package_scope"):
+            return None
+        holders = [node]
+    else:
+        holders = [c for c in node.children if c.type == holder_type]
+    for holder in holders:
+        name_node = find_child_by_type(holder, "name_of_instance")
+        if name_node is not None and node_text(name_node, source):
+            return node_text(type_node, source) or None
+    return None
 
 
-def _find_containing_module(
-    node: "tree_sitter.Node", module_by_pos: dict[tuple[int, int], str]
-) -> Optional[str]:
-    """Walk up parents to find the containing module's symbol ID."""
+def _find_containing_unit(
+    node: "tree_sitter.Node", unit_by_pos: dict[tuple[int, int], Symbol]
+) -> Optional[Symbol]:
+    """Walk up parents to the innermost module or interface holding ``node``."""
     current = node.parent
     while current is not None:
-        pos_key = (current.start_byte, current.end_byte)
-        if pos_key in module_by_pos:
-            return module_by_pos[pos_key]
+        unit = unit_by_pos.get((current.start_point[0] + 1, current.start_point[1]))
+        if unit is not None and current.type in _UNIT_DECLARATIONS:
+            return unit
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
 
 
 class VerilogAnalyzer(TreeSitterAnalyzer):
@@ -305,6 +367,18 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
     lang = "verilog"
     file_patterns: ClassVar[list[str]] = ["*.v", "*.sv", "*.vh", "*.svh"]
     grammar_module = "tree_sitter_verilog"
+
+    #: Lowercased names the repository declares as a checker, program or UDP;
+    #: filled by pass 1, read by pass 2, reset around each ``analyze`` run.
+    _other_units: Optional[set[str]] = None
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Run both passes with a fresh record of the non-module units."""
+        self._other_units = set()
+        try:
+            return super().analyze(repo_root, max_files)
+        finally:
+            self._other_units = None
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -357,6 +431,11 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                     analysis.symbol_by_name[interface_name] = add(
                         node, interface_name, "interface",
                     )
+
+            elif node.type in _OTHER_UNIT_DECLARATIONS:
+                other_name = _other_unit_name(node, source)
+                if other_name and self._other_units is not None:
+                    self._other_units.add(other_name.lower())
 
             elif node.type in _CALLABLE_DECLARATIONS:
                 body_type, ident_type, kind = _CALLABLE_DECLARATIONS[node.type]
@@ -430,61 +509,60 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
 
         # WI-sofaf / INV-paroh: build a kind-aware index so module
         # instantiations resolve to ``module`` candidates even when a
-        # same-named interface / package / primitive coexists.
+        # same-named interface coexists.
         sym_index = SymbolByName(case_insensitive=True)
         for candidates in global_symbols.values():
             for sym in candidates:
                 sym_index.add(sym)
 
-        # Build module_by_pos for parent walking
-        module_by_pos: dict[tuple[int, int], str] = {}
-        for node in iter_tree(tree.root_node):
-            if node.type == "module_declaration":
-                module_name = _extract_module_name(node, source)
-                if module_name:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    symbol_id = make_symbol_id("verilog", rel_path, start_line, end_line, module_name, "module")
-                    module_by_pos[(node.start_byte, node.end_byte)] = symbol_id
+        # A unit's symbol by where its declaration starts (INV-mozas: an
+        # enclosing symbol is found by position, never by name).
+        unit_by_pos = {_span_bounds(unit)[0]: unit for unit in units}
+        other_units = self._other_units or set()
 
         for node in iter_tree(tree.root_node):
-            if node.type == "module_instantiation":
-                current_module_id = _find_containing_module(node, module_by_pos)
-                inst_info = _extract_instantiation_info(node, source)
-                if inst_info and current_module_id:
-                    module_type, _instance_name = inst_info
-                    start_line = node.start_point[0] + 1
+            if node.type not in _INSTANTIATIONS:
+                continue
+            source_unit = _find_containing_unit(node, unit_by_pos)
+            module_type = _instantiated_type(node, source)
+            if not module_type or source_unit is None:
+                continue
 
-                    resolved = sym_index.lookup_one(module_type, prefer_kind="module")
-                    edge_meta: Optional[dict] = None
-                    if resolved is not None:
-                        dst_sym, is_fallback = resolved
-                        dst_id = dst_sym.id
-                        # INV-zuhub fallback contract: when multiple
-                        # candidates matched, mark the edge as a
-                        # disambiguation fallback with confidence ≤ 0.5
-                        # so downstream consumers can demote it.
-                        if is_fallback:
-                            confidence = 0.50
-                            edge_meta = {"disambiguation_fallback": True}
-                        else:
-                            confidence = 0.90
-                    else:
-                        dst_id = f"verilog:external:{module_type}:module"
-                        confidence = 0.70
+            # An interface can instantiate only interfaces.
+            resolved = sym_index.lookup_one(
+                module_type,
+                prefer_kind="interface" if source_unit.kind == "interface" else "module",
+            )
+            edge_meta: Optional[dict[str, Any]] = None
+            if resolved is not None:
+                dst_sym, is_fallback = resolved
+                dst_id = dst_sym.id
+                # INV-zuhub fallback contract: when multiple
+                # candidates matched, mark the edge as a
+                # disambiguation fallback with confidence ≤ 0.5
+                # so downstream consumers can demote it.
+                if is_fallback:
+                    confidence = 0.50
+                    edge_meta = {"disambiguation_fallback": True}
+                else:
+                    confidence = 0.90
+            elif node.type in _AMBIGUOUS_INSTANTIATIONS and module_type.lower() in other_units:
+                continue  # a real checker, UDP or program instance
+            else:
+                dst_id = f"verilog:external:{module_type}:module"
+                confidence = 0.70
 
-                    edge = Edge.create(
-                        src=current_module_id,
-                        dst=dst_id,
-                        edge_type="instantiates",
-                        line=start_line,
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        evidence_type="verilog_instantiation",
-                        meta=edge_meta,
-                        origin_run_id=run.execution_id,
-                    )
-                    edges.append(edge)
+            edges.append(Edge.create(
+                src=source_unit.id,
+                dst=dst_id,
+                edge_type="instantiates",
+                line=node.start_point[0] + 1,
+                confidence=confidence,
+                origin=PASS_ID,
+                evidence_type="verilog_instantiation",
+                meta=edge_meta,
+                origin_run_id=run.execution_id,
+            ))
 
         return edges
 
