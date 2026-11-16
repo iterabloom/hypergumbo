@@ -204,13 +204,13 @@ namespace Fx
 # Stable ids of the hole-free members above, taken from the analyzer before
 # the holes were filled (dev 3da1f85b37, file ``Clean.cs`` at the root).
 PINNED = {
-    ("constructor", "Clean.Clean"): "sha256:ad210095a4bc8b3e",
-    ("method", "Clean.H"): "sha256:857b56ab37223405",
-    ("method", "Clean.G"): "sha256:fd5db1288a1f18fd",
-    ("method", "Clean.Def"): "sha256:c1657d9473d0a6bb",
-    ("method", "Clean.RoRet"): "sha256:05fd7e7aaaaae32c",
-    ("subscript", "Clean.this[]"): "sha256:220ec7dbd954342f",
-    ("method", "Clean.operator-"): "sha256:1f7384d67b5de455",
+    ("constructor", "Clean.Clean"): "hgstableid15:ad210095a4bc8b3e",
+    ("method", "Clean.H"): "hgstableid15:857b56ab37223405",
+    ("method", "Clean.G"): "hgstableid15:fd5db1288a1f18fd",
+    ("method", "Clean.Def"): "hgstableid15:c1657d9473d0a6bb",
+    ("method", "Clean.RoRet"): "hgstableid15:05fd7e7aaaaae32c",
+    ("subscript", "Clean.this[]"): "hgstableid15:220ec7dbd954342f",
+    ("method", "Clean.operator-"): "hgstableid15:1f7384d67b5de455",
 }
 
 

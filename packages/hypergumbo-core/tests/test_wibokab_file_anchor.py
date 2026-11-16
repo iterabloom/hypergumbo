@@ -28,8 +28,8 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
 )
 
-_A = "sha256:aaaa000000000000"
-_B = "sha256:bbbb000000000000"
+_A = "hgstableid15:aaaa000000000000"
+_B = "hgstableid15:bbbb000000000000"
 
 
 class _StubAnalyzer(TreeSitterAnalyzer):
@@ -62,7 +62,7 @@ def test_make_typed_folds_file_stable_id_into_empty_containing() -> None:
 
 def test_make_typed_explicit_containing_wins_over_file_stable_id() -> None:
     """A real enclosing-scope containing must NOT be clobbered by the file anchor."""
-    real = "sha256:dead0000beef0000"
+    real = "hgstableid15:dead0000beef0000"
     with_both = make_typed_stable_id(
         "function", "()void", "", containing_stable_id=real,
         name="f", qualified_name="f", file_stable_id=_A,
@@ -113,7 +113,7 @@ def test_compute_stable_id_distinct_file_anchors_yield_distinct_ids() -> None:
 
 def test_compute_stable_id_explicit_containing_wins() -> None:
     a = _StubAnalyzer()
-    real = "sha256:dead0000beef0000"
+    real = "hgstableid15:dead0000beef0000"
     both = a.compute_stable_id(
         _fake_node(), "function", containing_stable_id=real,
         name="f", qualified_name="f", file_stable_id=_A,

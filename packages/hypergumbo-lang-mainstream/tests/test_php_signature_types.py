@@ -220,11 +220,11 @@ class K {
 }"""
 
 _PINNED = {
-    "plain": ("(int,?string,int|float,$d,\\Foo\\Bar)?static", "sha256:9986f7cf938cb60d"),
-    "untyped": ("($x,$y)", "sha256:37f79e237ad0871f"),
-    "returnsVoid": ("(array)", "sha256:b7aa9afb515e4391"),
-    "K.m": ("(callable,iterable,mixed,object,self)\\Foo\\Bar", "sha256:522d753fbb322574"),
-    "K.n": ("(?int)int|false", "sha256:f66f14ed3b34a50f"),
+    "plain": ("(int,?string,int|float,$d,\\Foo\\Bar)?static", "hgstableid15:9986f7cf938cb60d"),
+    "untyped": ("($x,$y)", "hgstableid15:37f79e237ad0871f"),
+    "returnsVoid": ("(array)", "hgstableid15:b7aa9afb515e4391"),
+    "K.m": ("(callable,iterable,mixed,object,self)\\Foo\\Bar", "hgstableid15:522d753fbb322574"),
+    "K.n": ("(?int)int|false", "hgstableid15:f66f14ed3b34a50f"),
 }
 
 

@@ -705,7 +705,7 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
         discovery_language=pattern.language,
         protocol_origin="event_sourcing",
         # The factory hashes (framework, pattern_type, event_name) into
-        # ``sha256:<16hex>`` so two events named ``dispatch`` from
+        # ``hgstableid<N>:<16hex>`` so two events named ``dispatch`` from
         # different frameworks remain distinct (INV-hunup). An unresolved
         # identifier is not an event name, so its stable_id carries a
         # marker segment and cannot collide with one (WI-misod).

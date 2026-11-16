@@ -171,6 +171,7 @@ from ..ir import (
 # (``_canonical_external_id``) and importing it from here would be a cycle;
 # ``analyze.base`` remains the producer-facing surface (INV-divuf).
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
+from ..schema import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 from ..axis_meta_keys import write_meta_key
 from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
@@ -1260,7 +1261,7 @@ def make_route_stable_id(method: str, path: str) -> StableId:
 
     Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0035 §3
     (INV-hunup). Hashing the path with the method keeps same-method routes
-    from colliding, and the output has the canonical ``sha256:<16hex>``
+    from colliding, and the output has the canonical ``hgstableid<N>:<16hex>``
     shape the other ``make_*_stable_id`` factories use. The result is
     file-blind; :func:`widen_route_stable_ids` folds in the declaring file
     later.
@@ -1271,7 +1272,7 @@ def make_route_stable_id(method: str, path: str) -> StableId:
         path: Route path (e.g. "/users", "/posts/:id").
 
     Returns:
-        A ``sha256:<16hex>``-shaped string that uniquely identifies the
+        A ``hgstableid<N>:<16hex>``-shaped string that uniquely identifies the
         (method, path) pair.
     """
     # Normalize empty paths to "/" — empty strings from annotation extraction
@@ -1436,7 +1437,7 @@ def make_entry_stable_id(entry_type: str, name: str, path: str) -> StableId:
     §3 (INV-hunup). Used for symbols like WGSL shader stages (@vertex,
     @fragment, @compute); hashing the name with the entry type keeps
     same-type entry points from colliding. The output has the canonical
-    ``sha256:<16hex>`` shape, so consumers can match it against the
+    ``hgstableid<N>:<16hex>`` shape, so consumers can match it against the
     ``_check_stable_id_format`` regex without a special case.
 
     ADR-0035 §4: the declaring file ``path`` is folded in. Shader entry names are file-scoped
@@ -1449,33 +1450,83 @@ def make_entry_stable_id(entry_type: str, name: str, path: str) -> StableId:
         path: Repo-relative path of the declaring file.
 
     Returns:
-        A ``sha256:<16hex>``-shaped string that uniquely identifies the
+        A ``hgstableid<N>:<16hex>``-shaped string that uniquely identifies the
         (entry_type, name, path) triple.
     """
     return _short_sha256(f"entry:{entry_type}:{name}:{path}")
 
 
-def _short_sha256(payload: str) -> StableId:
-    """Return the canonical ``sha256:{16-hex}`` form used by `_compute_stable_id`.
+def _digest16(payload: str) -> str:
+    """The first 16 hex digits of ``sha256(payload)``: the digest every
+    stable id and shape id carries after its label."""
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
-    The ONE place a tree-sitter or SCIP stable id is minted (the
+
+def _short_sha256(payload: str) -> StableId:
+    """Return the ``hgstableid<N>:{16-hex}`` stable id of a hash input.
+
+    The ONE place a tree-sitter (or Python ``ast``) stable id is minted (the
     ``StableId`` wrap; see ``hypergumbo_core.ir.StableId``): every
-    ``make_*_stable_id`` factory, ``assemble_stable_id`` and
-    ``scip_stable_id`` reach it.
+    ``make_*_stable_id`` factory and ``assemble_stable_id`` reach it. The
+    label is ``schema.STABLE_ID_PREFIX``, derived from the scheme constant
+    (ADR-0035 §"Value labels"); the digest is ``sha256(payload)[:16]``.
+    The SCIP arm mints through :func:`mint_scip_stable_id` instead.
     """
-    return StableId(f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}")
+    return StableId(STABLE_ID_PREFIX + _digest16(payload))
+
+
+def mint_scip_stable_id(payload: str) -> StableId:
+    """Return the ``hgscipid<N>:{16-hex}`` stable id of a SCIP hash input.
+
+    The ONE place a rust-analyzer (SCIP) arm stable id is minted:
+    ``scip.index.scip_stable_id`` and the occurrence re-mint of a SCIP id
+    (:func:`split_within_file_stable_id_collisions`) reach it. A separate
+    mint because the SCIP arm hashes a different input (document path and
+    moniker) from the tree-sitter factories, and one label over two
+    algorithms would hide which one a value came from (ADR-0035 §"Value
+    labels"). Lives here, not in ``scip``, because the occurrence re-mint
+    needs it and ``scip`` imports this module.
+    """
+    return StableId(SCIP_STABLE_ID_PREFIX + _digest16(payload))
 
 
 def mint_shape_id(structure: str) -> ShapeId:
-    """Return the ``sha256:{16-hex}`` shape id of a structural skeleton.
+    """Return the ``hgshapeid<N>:{16-hex}`` shape id of a structural skeleton.
 
     The ONE place a ``Symbol.shape_id`` is minted (the ``ShapeId`` wrap):
     the tree-sitter walker (:meth:`TreeSitterAnalyzer.compute_shape_id`)
     and Python's ``ast``-based ``_compute_shape_id`` /
     ``_compute_value_shape_id`` each build their skeleton string and hash
-    it here, so the hash, its truncation and its prefix live once.
+    it here, so the hash, its truncation and its label live once.
     """
-    return ShapeId(f"sha256:{hashlib.sha256(structure.encode()).hexdigest()[:16]}")
+    return ShapeId(SHAPE_ID_PREFIX + _digest16(structure))
+
+
+#: How a stable id is written when it is folded into ANOTHER id's hash input
+#: (a containing scope, a file anchor, the id an occurrence or route re-mint
+#: extends). This is hash input, not a label: it is the text the stableid-v14
+#: values had, and it stays that text so that relabelling values (v14 -> v15)
+#: moved no digest. Changing it moves every nested id, which is a stable-id
+#: scheme bump (ADR-0035 §"Value labels").
+_NESTED_ID_HASH_LABEL = "sha256:"
+
+#: The labels a stable id may carry: tree-sitter / ``ast``, then SCIP.
+_STABLE_ID_LABELS = (STABLE_ID_PREFIX, SCIP_STABLE_ID_PREFIX)
+
+
+def stable_id_hash_input(value: str) -> str:
+    """The text a stable id contributes to another id's hash input.
+
+    A labelled stable id is written with :data:`_NESTED_ID_HASH_LABEL` in
+    place of its label, so the digest of an id that folds another id is a
+    function of the folded id's DIGEST, not of the label it is displayed
+    with. Any other value (an empty containing id, a non-canonical value a
+    producer stamped) is returned unchanged.
+    """
+    for label in _STABLE_ID_LABELS:
+        if value.startswith(label):
+            return _NESTED_ID_HASH_LABEL + value[len(label):]
+    return value
 
 
 def assemble_stable_id(
@@ -1499,6 +1550,10 @@ def assemble_stable_id(
     declaration: the caller gets a coroutine or future, a different contract,
     so the id changes; every non-async id is the formula without the suffix.
 
+    ``containing_stable_id`` enters the hash as :func:`stable_id_hash_input`
+    writes it (the digest, not the display label), so relabelling ids moves
+    no digest.
+
     This is the one place the formula lives; both :meth:`TreeSitterAnalyzer.compute_stable_id`
     (the tree-sitter path) and the Python analyzer's ``_compute_stable_id`` (the AST path)
     call it, so they cannot diverge (WI-gitun, INV-tazaj).
@@ -1517,7 +1572,7 @@ def assemble_stable_id(
     """
     sig = (
         f"{kind}:{param_count}:{arity_flags}:{decorators}"
-        f":{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}"
+        f":{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}:{occurrence_index}"
         f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
@@ -1686,7 +1741,7 @@ def make_doc_stable_id(
     ``section`` / ``code_block`` / ``link`` / ``pattern`` Symbols — all
     ``_NOISE_KINDS``, absent from default output), and through
     :func:`make_doc_symbol_ids` by the doc/markup/template family. The output
-    has the canonical ``sha256:<16hex>`` shape.
+    has the canonical ``hgstableid<N>:<16hex>`` shape.
 
     These doc nodes routinely share a ``name`` (anonymous code blocks are all
     ``"code"``; a file can repeat a heading), so the payload folds in ``kind``
@@ -1736,7 +1791,7 @@ def make_doc_symbol_ids(
     The markdown/gitignore analyzers mint the canonical shape themselves and do
     not use this helper.
 
-    ``stable_id`` is the canonical ``sha256:<16hex>`` from
+    ``stable_id`` is the canonical ``hgstableid<N>:<16hex>`` from
     :func:`make_doc_stable_id`.
 
     ``path`` is coerced with ``str()`` so callers may pass ``str`` or
@@ -1818,11 +1873,11 @@ def make_protocol_stable_id(category: str, *parts: str) -> StableId:
     in one of the non-canonical shapes:
 
     * ``raw_hex_64`` — full ``hashlib.sha256(...).hexdigest()`` without
-      the ``sha256:`` prefix.
+      a label.
     * ``colon_1`` / ``colon_2`` — composite name with no namespace prefix.
     * ``no_colon`` — bare event/method name with no disambiguator.
 
-    This factory guarantees the canonical ``sha256:<16hex>`` schema the
+    This factory guarantees the canonical ``hgstableid<N>:<16hex>`` schema the
     ``_check_stable_id_format`` validator enforces.
 
     Args:
@@ -1835,7 +1890,7 @@ def make_protocol_stable_id(category: str, *parts: str) -> StableId:
             caller controls disambiguator priority.
 
     Returns:
-        A ``sha256:<16hex>``-shaped string suitable for direct use as
+        A ``hgstableid<N>:<16hex>``-shaped string suitable for direct use as
         ``Symbol.stable_id``.
     """
     key = ":".join((category,) + tuple(parts))
@@ -2199,7 +2254,9 @@ def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
     (§3); the occurrence ordinal goes in. Returns the count of re-minted ids.
 
     Per ADR-0035 §6 the occurrence-disambiguation slot is reserved so this needs
-    no scheme bump; only the colliding symbols' values change. LOGICAL stand-ins are already collapsed by
+    no scheme bump; only the colliding symbols' values change. The re-mint
+    hashes the id's digest (:func:`stable_id_hash_input`) and keeps its
+    scheme: a SCIP-arm id is re-minted with the SCIP label. LOGICAL stand-ins are already collapsed by
     :func:`dedup_logical_synthetic_identities` (run first), so they present no
     within-file collision here. Pathless / null-stable_id Symbols are out of
     scope (this is the in-a-file guarantee).
@@ -2210,13 +2267,18 @@ def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
             continue
         groups.setdefault((sym.path, sym.stable_id), []).append(sym)
     reminted = 0
-    for group in groups.values():
+    for (_path, shared_id), group in groups.items():
         if len(group) < 2:
             continue
+        mint = (
+            mint_scip_stable_id
+            if shared_id.startswith(SCIP_STABLE_ID_PREFIX)
+            else _short_sha256
+        )
         for occurrence, sym in enumerate(sorted(group, key=_occurrence_sort_key)):
             if occurrence == 0:
                 continue
-            sym.stable_id = _short_sha256(f"{sym.stable_id}:occ:{occurrence}")
+            sym.stable_id = mint(f"{stable_id_hash_input(shared_id)}:occ:{occurrence}")
             reminted += 1
     return reminted
 
@@ -2279,7 +2341,8 @@ def widen_route_stable_ids(symbols: list[Symbol]) -> int:
         # stand-in with language None (WI-mupal); its declaring language is
         # discovery_language.
         sym.stable_id = _short_sha256(
-            f"route_site:{sym.host_language or ''}:{normalize_path(sym.path)}:{sym.stable_id}"
+            f"route_site:{sym.host_language or ''}:{normalize_path(sym.path)}"
+            f":{stable_id_hash_input(sym.stable_id)}"
         )
         widened += 1
     return widened
@@ -2345,16 +2408,17 @@ def make_typed_stable_id(
             it from the node with :func:`declares_async`.
 
     Returns:
-        Stable ID in ``sha256:{16-hex-chars}`` format.
+        Stable ID in ``hgstableid<N>:{16-hex-chars}`` format.
     """
     # Fold the declaring file's identity for file-resident symbols that don't
     # already carry an enclosing scope (WI-bokab). Tree-sitter producers do not
-    # pass a real containing_stable_id.
+    # pass a real containing_stable_id. Either enters the hash through
+    # stable_id_hash_input (its digest, not its label).
     if not containing_stable_id and file_stable_id:
         containing_stable_id = file_stable_id
     sig = (
         f"{kind}:{normalized_signature}:{visibility}"
-        f":{decorators}:{containing_stable_id}:{name}:{qualified_name}"
+        f":{decorators}:{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}"
         f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
@@ -4462,7 +4526,7 @@ class TreeSitterAnalyzer:
         provenance scheme versioning").
 
         Returns:
-            Shape hash in ``sha256:{16-hex-chars}`` format matching
+            Shape hash in ``hgshapeid<N>:{16-hex-chars}`` format matching
             the Python analyzer's convention.
         """
         return mint_shape_id(self._cst_structure(node))
@@ -4676,7 +4740,7 @@ class TreeSitterAnalyzer:
                 wins. Pass ``file_stable_id=self._file_anchor(rel_path)``.
 
         Returns:
-            Stable ID in ``sha256:{16-hex-chars}`` format.
+            Stable ID in ``hgstableid<N>:{16-hex-chars}`` format.
         """
         # Fold the declaring file's identity for file-resident symbols lacking
         # an enclosing-scope containing id (WI-bokab). Tree-sitter producers

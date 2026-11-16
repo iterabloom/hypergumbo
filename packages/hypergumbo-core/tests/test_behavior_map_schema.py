@@ -9,9 +9,10 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert bm["schema_version"] == SCHEMA_VERSION
     assert bm["view"] == "behavior_map"
     assert bm["confidence_model"] == "hypergumbo-evidence-v2.2"
-    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v14"
-    assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v3"
-    assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v2"
+    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v15"
+    assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v4"
+    assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v3"
+    assert bm["scip_stable_id_scheme"] == "hypergumbo-scip-stableid-v1"
 
     # Basic structure
     assert bm["analysis_incomplete"] is False
@@ -52,3 +53,42 @@ def test_confidence_model_matches_documented_grammar() -> None:
         f"leaves MINOR — the channel for refinements like new evidence types — "
         f"unexpressible (WI-huhin)."
     )
+
+
+def test_each_value_label_is_derived_from_its_scheme_constant() -> None:
+    """ADR-0035 "Value labels": one source per label. Each prefix is
+    ``value_label`` of its scheme constant, so bumping the constant relabels
+    every value; the literals pin what the labels are today."""
+    from hypergumbo_core import schema
+
+    pairs = (
+        (schema.STABLE_ID_PREFIX, "stableid", schema.STABLE_ID_SCHEME, "hgstableid15:"),
+        (schema.SHAPE_ID_PREFIX, "shapeid", schema.SHAPE_ID_SCHEME, "hgshapeid4:"),
+        (schema.REPO_FINGERPRINT_PREFIX, "repofp", schema.REPO_FINGERPRINT_SCHEME, "hgrepofp3:"),
+        (schema.SCIP_STABLE_ID_PREFIX, "scipid", schema.SCIP_STABLE_ID_SCHEME, "hgscipid1:"),
+    )
+    for prefix, word, scheme, literal in pairs:
+        assert prefix == schema.value_label(word, scheme) == literal
+    # The number is the constant's: a bumped constant gives a bumped label.
+    assert schema.value_label("stableid", "hypergumbo-stableid-v16") == "hgstableid16:"
+    # The four labels are distinct, so no value reads as another kind.
+    assert len({p for p, *_ in pairs}) == 4
+
+
+def test_value_label_rejects_a_scheme_without_a_version_number() -> None:
+    import pytest
+
+    from hypergumbo_core.schema import value_label
+
+    with pytest.raises(ValueError, match="-v<N>"):
+        value_label("stableid", "hypergumbo-stableid")
+
+
+def test_identity_digest_strips_any_label() -> None:
+    """A consumer comparing digests across the v14 -> v15 relabel gets the
+    same hex from both forms of one value."""
+    from hypergumbo_core.schema import identity_digest
+
+    assert identity_digest("sha256:0123456789abcdef") == "0123456789abcdef"
+    assert identity_digest("hgstableid15:0123456789abcdef") == "0123456789abcdef"
+    assert identity_digest("hgscipid1:0123456789abcdef") == "0123456789abcdef"

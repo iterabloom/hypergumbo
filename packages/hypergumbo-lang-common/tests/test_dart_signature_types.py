@@ -321,19 +321,19 @@ class Widget {
 # before the holes were filled (dev 3da1f85b37, file ``clean.dart`` at the
 # root of the analysed tree).
 PINNED = {
-    ("function", "add"): "sha256:b25ded629f362a02",
-    ("function", "dyn"): "sha256:39de927c48988b68",
-    ("function", "opt"): "sha256:3df1e40f64b5cae0",
-    ("function", "named"): "sha256:724b4ce75e477e92",
-    ("function", "fnTyped"): "sha256:5b29217af303859d",
-    ("function", "fragment"): "sha256:788a1f68d49853d8",
-    ("function", "commented"): "sha256:a980655d150d1db1",
-    ("field", "Widget.count"): "sha256:b9ad19582563bf1f",
-    ("field", "Widget.foo"): "sha256:52b2647c5aac5b99",
-    ("field", "Widget.untyped"): "sha256:67b1c3afbda56fb7",
-    ("field", "Widget.lateInt"): "sha256:fcfa601122856289",
-    ("method", "Widget.build"): "sha256:eec19e02b0716d60",
-    ("method", "Widget.pick"): "sha256:f9b79352893d5d48",
+    ("function", "add"): "hgstableid15:b25ded629f362a02",
+    ("function", "dyn"): "hgstableid15:39de927c48988b68",
+    ("function", "opt"): "hgstableid15:3df1e40f64b5cae0",
+    ("function", "named"): "hgstableid15:724b4ce75e477e92",
+    ("function", "fnTyped"): "hgstableid15:5b29217af303859d",
+    ("function", "fragment"): "hgstableid15:788a1f68d49853d8",
+    ("function", "commented"): "hgstableid15:a980655d150d1db1",
+    ("field", "Widget.count"): "hgstableid15:b9ad19582563bf1f",
+    ("field", "Widget.foo"): "hgstableid15:52b2647c5aac5b99",
+    ("field", "Widget.untyped"): "hgstableid15:67b1c3afbda56fb7",
+    ("field", "Widget.lateInt"): "hgstableid15:fcfa601122856289",
+    ("method", "Widget.build"): "hgstableid15:eec19e02b0716d60",
+    ("method", "Widget.pick"): "hgstableid15:f9b79352893d5d48",
 }
 
 

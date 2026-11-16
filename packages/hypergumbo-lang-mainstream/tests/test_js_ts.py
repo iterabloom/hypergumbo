@@ -3029,7 +3029,7 @@ router.get('/users', handleUsers);
         assert routes[0].name == "GET /users"
         assert routes[0].meta.get("http_method") == "GET"
         assert routes[0].stable_id is not None
-        assert len(routes[0].stable_id) == 23  # sha256 hex digest
+        assert len(routes[0].stable_id) == 29  # hgstableid15:<16hex>
         assert routes[0].meta.get("handler_ref") == "handleUsers"
 
     def test_express_chained_route_syntax(self, tmp_path: Path) -> None:
@@ -3321,7 +3321,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.findAll"
@@ -3346,7 +3346,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.create"
@@ -3378,7 +3378,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3422,7 +3422,7 @@ export class ResourceController {
 
         methods = [s for s in result.symbols if s.kind == "method"]
         # All 5 methods should have sha256-based stable_ids, and all should be unique
-        route_methods = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_methods = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
         assert len(route_methods) == 5
         stable_ids = {m.stable_id for m in route_methods}
         assert len(stable_ids) == 5, "NestJS route stable_ids must be unique per method"
@@ -3450,7 +3450,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3483,7 +3483,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3516,7 +3516,7 @@ export class ApiController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3546,7 +3546,7 @@ class UsersService {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3577,7 +3577,7 @@ class InternalController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 29]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -9135,7 +9135,7 @@ class TestJsTsShapeId:
         result = analyze_javascript(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -9146,7 +9146,7 @@ class TestJsTsShapeId:
         result = analyze_javascript(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 # _analyze_javascript_impl calls emit_module_attribute_refs so that attribute

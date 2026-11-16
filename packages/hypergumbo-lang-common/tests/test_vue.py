@@ -11,7 +11,7 @@ from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import vue as vue_module
 from hypergumbo_lang_common.vue import analyze_vue, find_vue_files, is_vue_tree_sitter_available
 
-_CANONICAL_STABLE_ID_RE = re.compile(r"^sha256:[0-9a-f]{16}$")
+_CANONICAL_STABLE_ID_RE = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
 
 def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Vue file in the temp directory."""
@@ -589,7 +589,7 @@ export default {
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """WI-rijup: every emitted Symbol.stable_id is the canonical sha256
-        form (``sha256:<16hex>``), not the raw composite ``vue:...`` id.
+        form (``hgstableid15:<16hex>``), not the raw composite ``vue:...`` id.
 
         Reuses the complete-component fixture (directives, slots, props, and a
         style block) so the assertion is non-vacuous.

@@ -300,7 +300,7 @@ def test_task_function_and_net_in_a_module_are_symbols(tmp_path):
     for kind, name in (("task", "run"), ("function", "f"), ("signal", "w")):
         sym = _one(result, kind, name, "a")
         assert sym.language == "verilog"
-        assert sym.stable_id and sym.stable_id.startswith("sha256:")
+        assert sym.stable_id and sym.stable_id.startswith("hgstableid15:")
 
 
 def test_same_named_members_of_two_modules_hold_different_ids(tmp_path):

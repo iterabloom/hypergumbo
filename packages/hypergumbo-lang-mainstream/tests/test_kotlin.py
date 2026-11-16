@@ -2412,7 +2412,7 @@ class TestKotlinShapeId:
         result = analyze_kotlin(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
@@ -2423,7 +2423,7 @@ class TestKotlinShapeId:
         result = analyze_kotlin(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestKotlinLinesOfCode:

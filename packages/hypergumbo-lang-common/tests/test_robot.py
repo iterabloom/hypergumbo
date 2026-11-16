@@ -276,7 +276,7 @@ My Test Keyword
         ), keyword.id
         # stable_id is the canonical sha256 form, distinct from the raw id.
         assert keyword.stable_id != keyword.id
-        assert re.match(r"^sha256:[0-9a-f]{16}$", keyword.stable_id)
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", keyword.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # Reuse the complete-file fixture, which yields one symbol of every kind
@@ -313,7 +313,7 @@ Valid Login
         result = analyze_robot(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1  # non-vacuous
-        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), (
                 f"{symbol.kind} {symbol.name!r} has non-canonical "

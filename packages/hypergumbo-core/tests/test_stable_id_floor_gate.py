@@ -1601,14 +1601,14 @@ def test_census_counts_floor_and_null_per_language_and_kind() -> None:
     floor = make_declaration_stable_id("function", "x", "a.x", "f")
     records = [
         _sym("f", "function", floor),
-        _sym("g", "function", "sha256:producer00000000"),
+        _sym("g", "function", "hgstableid15:producer00000000"),
         _sym("h", "method", None),
         _sym("h", "method", None, line=2),
         {"name": "p", "kind": "property", "language": "y", "path": "b.y",
          "stable_id": make_declaration_stable_id("property", "y", "b.y", "p")},
         _sym("C", "class", None),            # a table kind: only a null counts
         _sym("D", "class", make_declaration_stable_id("class", "x", "a.x", "D")),
-        _sym("rule", "target", "sha256:producer00000001"),
+        _sym("rule", "target", "hgstableid15:producer00000001"),
         {"name": "s", "kind": "function", "language": None, "path": "c",
          "stable_id": None},                 # no language: a synthetic stand-in
         {"name": "k", "kind": None, "language": "x", "path": "c",
@@ -1621,7 +1621,7 @@ def test_census_counts_floor_and_null_per_language_and_kind() -> None:
 
 
 def test_census_of_producer_ids_only_is_empty() -> None:
-    assert floor_census([_sym("f", "function", "sha256:producer00000000")]) == {}
+    assert floor_census([_sym("f", "function", "hgstableid15:producer00000000")]) == {}
 
 
 def test_census_breaches_fail_on_growth_new_cells_and_stale_cells() -> None:
@@ -1663,10 +1663,10 @@ def test_case_variants_and_line_mapping() -> None:
 
 
 def test_deletion_that_moves_nothing_reports_nothing() -> None:
-    before = [_sym("f", "function", None, line=2), _sym("f", "function", "sha256:a", line=4),
-              _sym("g", "function", "sha256:b", line=5), _sym("C", "class", "sha256:c", line=1)]
-    after = [_sym("f", "function", "sha256:a", line=2), _sym("g", "function", "sha256:b", line=3),
-             _sym("C", "class", "sha256:c", line=1)]
+    before = [_sym("f", "function", None, line=2), _sym("f", "function", "hgstableid15:a", line=4),
+              _sym("g", "function", "hgstableid15:b", line=5), _sym("C", "class", "hgstableid15:c", line=1)]
+    after = [_sym("f", "function", "hgstableid15:a", line=2), _sym("g", "function", "hgstableid15:b", line=3),
+             _sym("C", "class", "hgstableid15:c", line=1)]
     assert sibling_deletion_moves(_CASE, before, after) == []
 
 
@@ -1676,12 +1676,12 @@ def test_deletion_matches_each_survivor_by_position() -> None:
     def at(sid, line, col):
         return {"kind": "block", "name": "if", "stable_id": sid,
                 "span": {"start_line": line, "start_col": col}}
-    before = [at("sha256:x", 4, 0), at("sha256:y", 4, 9), at("sha256:z", 5, 0),
-              at("sha256:w", 5, 0)]
-    after = [at("sha256:x", 2, 0), at("sha256:y", 2, 9), at("sha256:z", 3, 0),
-             at("sha256:moved", 3, 0), at("sha256:v", 3, 0)]
+    before = [at("hgstableid15:x", 4, 0), at("hgstableid15:y", 4, 9), at("hgstableid15:z", 5, 0),
+              at("hgstableid15:w", 5, 0)]
+    after = [at("hgstableid15:x", 2, 0), at("hgstableid15:y", 2, 9), at("hgstableid15:z", 3, 0),
+             at("hgstableid15:moved", 3, 0), at("hgstableid15:v", 3, 0)]
     assert sibling_deletion_moves(_CASE, before, after) == [
-        "block if (line 3): stable_id sha256:w -> sha256:moved (moved)",
+        "block if (line 3): stable_id hgstableid15:w -> hgstableid15:moved (moved)",
         "block if (line 3): no counterpart before the deletion",
     ]
 
@@ -1690,46 +1690,46 @@ def test_deletion_reports_moved_null_and_unmatched() -> None:
     before = [{"kind": "function", "name": "f", "span": {"start_line": 4},
                "stable_id": None},
               {"kind": "function", "name": "g", "span": {"start_line": 5},
-               "stable_id": "sha256:b"},
+               "stable_id": "hgstableid15:b"},
               {"kind": "method", "name": "m", "span": {"start_line": 1},
-               "stable_id": "sha256:m"}]
+               "stable_id": "hgstableid15:m"}]
     after = [{"kind": "function", "name": "f", "span": {"start_line": 2},
-              "stable_id": "sha256:f"},
+              "stable_id": "hgstableid15:f"},
              {"kind": "function", "name": "g", "span": {"start_line": 3},
-              "stable_id": "sha256:moved"},
+              "stable_id": "hgstableid15:moved"},
              {"kind": "method", "name": "m", "span": {"start_line": 1},
-              "stable_id": "sha256:m"},
+              "stable_id": "hgstableid15:m"},
              {"kind": "function", "name": "h", "span": None, "stable_id": "x"}]
     got = sibling_deletion_moves(_CASE, before, after)
     assert got == [
-        "function f (line 2): stable_id None -> sha256:f (null)",
-        "function g (line 3): stable_id sha256:b -> sha256:moved (moved)",
+        "function f (line 2): stable_id None -> hgstableid15:f (null)",
+        "function g (line 3): stable_id hgstableid15:b -> hgstableid15:moved (moved)",
         "function h (line 0): no counterpart before the deletion",
     ]
 
 
 def test_symbol_without_span_is_line_zero() -> None:
-    sym = _sym("f", "function", "sha256:a")
+    sym = _sym("f", "function", "hgstableid15:a")
     sym.span = None
     assert sibling_deletion_moves(_CASE, [], [sym]) == [
         "function f (line 0): no counterpart before the deletion"]
     assert _start(sym) == (0, 0)
     head_less = SiblingCase("a.x", "", "earlier\n", "later\n")
-    file_node = {"kind": "file", "name": "a.x", "stable_id": "sha256:f",
+    file_node = {"kind": "file", "name": "a.x", "stable_id": "hgstableid15:f",
                  "span": {"start_line": 1, "start_col": 0}}
     assert sibling_deletion_moves(head_less, [file_node], [file_node]) == []
-    assert _start(_sym("f", "function", "sha256:a", line=7)) == (7, 0)
+    assert _start(_sym("f", "function", "hgstableid15:a", line=7)) == (7, 0)
 
 
 def test_location_check_pairs_records_by_position() -> None:
-    here = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:b", line=2)]
-    same = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:b", line=2)]
+    here = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:b", line=2)]
+    same = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:b", line=2)]
     assert location_dependent_ids(here, same) == []
-    moved = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:z", line=2)]
+    moved = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:z", line=2)]
     assert location_dependent_ids(here, moved) == [
-        "a.x function f (line 2): sha256:b here, sha256:z elsewhere"]
+        "a.x function f (line 2): hgstableid15:b here, hgstableid15:z elsewhere"]
     assert location_dependent_ids(here, same[:1]) == [
-        "a.x function f (line 2): sha256:b here, (no counterpart) elsewhere"]
+        "a.x function f (line 2): hgstableid15:b here, (no counterpart) elsewhere"]
 
 
 # -- unit: the two-parent guard ---------------------------------------------------
@@ -1919,7 +1919,7 @@ def test_every_fixture_stable_id_is_canonical(runs) -> None:
     null, and moves nothing when a sibling is deleted, so the census and the
     deletion check both pass it (WI-banod). ``None`` is allowed (the
     census owns nulls); any other value must be the canonical
-    ``sha256:<16hex>`` the validator's stable_id format check requires."""
+    ``hgstableid15:<16hex>`` the validator's stable_id format check requires."""
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
     bad = sorted(

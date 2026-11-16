@@ -247,7 +247,7 @@ class TestAnalyzeHaxe:
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("haxe:Test.hx:")
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", """class Test {

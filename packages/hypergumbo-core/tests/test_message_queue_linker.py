@@ -800,13 +800,13 @@ class TestMessageQueueLinker:
         assert symbol.meta["queue_type"] == "kafka"
         assert symbol.meta["topic"] == "my-topic"
         # Phase 6 PR1 (INV-hunup): stable_id now uses the canonical
-        # ``sha256:<16hex>`` shape from ``make_protocol_stable_id``. The
+        # ``hgstableid15:<16hex>`` shape from ``make_protocol_stable_id``. The
         # queue_type and topic remain in ``meta`` for consumer access.
         from hypergumbo_core.analyze.base import make_protocol_stable_id
         assert symbol.stable_id == make_protocol_stable_id(
             "message_queue", "kafka", "publish", "my-topic"
         )
-        assert symbol.stable_id.startswith("sha256:")
+        assert symbol.stable_id.startswith("hgstableid15:")
 
 
 class TestMessageQueueDataflowAnnotationsPreserved:

@@ -217,12 +217,12 @@ Hello, {{ user.name }}!
         assert _head.startswith("twig:"), block.id
         assert re.match(r"^\d+-\d+$", _span), block.id
         assert _kind == block.kind, block.id
-        assert block.stable_id.startswith("sha256:")
+        assert block.stable_id.startswith("hgstableid15:")
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every emitted symbol's stable_id is the canonical sha256 form.
 
-        WI-rijup: stable_id must be ``sha256:<16hex>`` rather than the raw
+        WI-rijup: stable_id must be ``hgstableid15:<16hex>`` rather than the raw
         composite ``Symbol.id``. Reuses the complete-template fixture so the
         assertion runs over blocks, for_loops, conditionals, and call_sites.
         """
@@ -245,7 +245,7 @@ Hello, {{ user.name }}!
 {% endblock %}""")
         result = analyze_twig(tmp_path)
         assert len(result.symbols) >= 1
-        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        pattern = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for sym in result.symbols:
             assert pattern.match(sym.stable_id), (
                 f"non-canonical stable_id: {sym.stable_id!r} (kind={sym.kind})"

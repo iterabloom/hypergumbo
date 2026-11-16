@@ -1682,7 +1682,7 @@ def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
         assert syms, f"no {kind} symbols emitted"
         for s in syms:
             assert (
-                s.stable_id is not None and s.stable_id.startswith("sha256:")
+                s.stable_id is not None and s.stable_id.startswith("hgstableid15:")
             ), f"{kind} {s.name} has stable_id={s.stable_id!r}"
 
 

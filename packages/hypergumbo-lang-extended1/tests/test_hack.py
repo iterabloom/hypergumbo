@@ -288,7 +288,7 @@ function myFunc(): void {}
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("hack:test.hack:")
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

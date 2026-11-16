@@ -113,8 +113,12 @@ Edge cases intentionally handled by skip rather than raise:
 
 Identity (``stable_id``, INV-kutid):
 
-* ``stable_id = sha256("scip:<Document.relative_path>:<moniker>")``,
-  truncated like every other id (:func:`scip_stable_id`). A moniker alone
+* ``stable_id = SCIP_STABLE_ID_PREFIX + sha256("scip:<Document.relative_path>:<moniker>")``,
+  truncated like every other id (:func:`scip_stable_id`). The label
+  (``hgscipid<N>:``, ``schema.SCIP_STABLE_ID_PREFIX``) is the SCIP arm's own
+  scheme (``scip_stable_id_scheme``), not the tree-sitter arm's ``hgstableid``:
+  the two arms hash different inputs, and a value says which (ADR-0035
+  §"Value labels"). A moniker alone
   is only as scoped as its emitter makes it, and rust-analyzer's names the
   cargo PACKAGE (``rust-analyzer cargo aardvark-dns 2.0.0-dev crate/``),
   not the crate TARGET: a package's lib (``src/lib.rs``), bin
@@ -144,7 +148,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..analyze.base import _short_sha256, make_symbol_id
+from ..analyze.base import make_symbol_id, mint_scip_stable_id
 from ..ir import Span, StableId, Symbol
 from ._generated import scip_pb2
 from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
@@ -287,7 +291,7 @@ def scip_stable_id(relative_path: str, moniker: str) -> StableId:
     string. Both are hashed because the moniker alone does not name the
     crate target (INV-kutid).
     """
-    return _short_sha256(f"scip:{relative_path}:{moniker}")
+    return mint_scip_stable_id(f"scip:{relative_path}:{moniker}")
 
 
 def _span_from_range(range_array: "list[int]") -> Span:

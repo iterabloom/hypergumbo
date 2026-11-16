@@ -355,7 +355,7 @@ $spacing: 16px;
         assert re.match(r"^\d+-\d+$", _span), var.id
         assert _kind == var.kind, var.id
         assert var.stable_id != var.id
-        assert re.match(r"^sha256:[0-9a-f]{16}$", var.stable_id)
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", var.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """WI-rijup: every emitted symbol carries a canonical sha256 stable_id."""
@@ -398,7 +398,7 @@ $font-size: 14px;
         result = analyze_scss(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        pattern = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for sym in result.symbols:
             assert pattern.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
 

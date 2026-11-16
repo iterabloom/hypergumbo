@@ -284,10 +284,9 @@ def _finalize_recompute_run_signature(ctx: FinalizeContext) -> None:
 def _finalize_repo_fingerprint(ctx: FinalizeContext) -> None:
     """Sub-step 4 — stamp the spec-defined repo_fingerprint into every AR (INV-tofur).
 
-    Uses the ``sha256:``-prefixed FIELD rendering (WI-bosog) so the AR-record
-    identity fields (run_signature / config_fingerprint / repo_fingerprint) all
-    carry a uniform scheme prefix; the bare digest stays reserved for the
-    colon-free cache-dir path segment.
+    Uses the labelled FIELD rendering (``hgrepofp<N>:<64hex>``,
+    :func:`compute_repo_fingerprint_field`); the bare digest stays reserved
+    for the colon-free cache-dir path segment.
     """
     repo_fp = compute_repo_fingerprint_field(ctx.repo_root)
     ctx.repo_fingerprint = repo_fp

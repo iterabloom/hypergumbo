@@ -422,14 +422,14 @@ class TestMakeRouteStableId:
         assert id1 == id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``sha256:<16hex>`` shape.
+        """Result uses the canonical ``hgstableid15:<16hex>`` shape.
 
         Every ``make_*_stable_id`` factory returns this shape, so the
         ``id_format`` validator pins a single canonical form (INV-hunup).
         """
         result = make_route_stable_id("GET", "/users")
-        assert result.startswith("sha256:")
-        suffix = result[len("sha256:"):]
+        assert result.startswith("hgstableid15:")
+        suffix = result[len("hgstableid15:"):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -472,8 +472,8 @@ class TestMakeSiteStableId:
 
     def test_canonical_shape(self) -> None:
         result = make_site_stable_id("http", "app.py", "GET:/users")
-        assert result.startswith("sha256:")
-        suffix = result[len("sha256:"):]
+        assert result.startswith("hgstableid15:")
+        suffix = result[len("hgstableid15:"):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -604,14 +604,14 @@ class TestMakeEntryStableId:
         assert id1 != id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``sha256:<16hex>`` shape.
+        """Result uses the canonical ``hgstableid15:<16hex>`` shape.
 
         See ``TestMakeRouteStableId.test_returns_canonical_sha256_prefixed_form``
         for why the factory family shares one shape.
         """
         result = make_entry_stable_id("compute", "dispatch", "shaders/a.wgsl")
-        assert result.startswith("sha256:")
-        suffix = result[len("sha256:"):]
+        assert result.startswith("hgstableid15:")
+        suffix = result[len("hgstableid15:"):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -626,10 +626,10 @@ class TestMakeProtocolStableId:
     """Tests for ``make_protocol_stable_id`` (INV-hunup)."""
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``sha256:<16hex>`` shape."""
+        """Result uses the canonical ``hgstableid15:<16hex>`` shape."""
         result = make_protocol_stable_id("db_query", "SELECT", "users")
-        assert result.startswith("sha256:")
-        suffix = result[len("sha256:"):]
+        assert result.startswith("hgstableid15:")
+        suffix = result[len("hgstableid15:"):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -664,20 +664,20 @@ class TestMakeProtocolStableId:
         category) so the API doesn't blow up on a future caller.
         """
         result = make_protocol_stable_id("category_only")
-        assert result.startswith("sha256:")
-        assert len(result) == len("sha256:") + 16
+        assert result.startswith("hgstableid15:")
+        assert len(result) == len("hgstableid15:") + 16
 
 
 class TestMakeTypedStableId:
     """Tests for make_typed_stable_id — spec §6 typed tier typed-tier identity."""
 
     def test_returns_sha256_format(self) -> None:
-        """Result uses sha256:{16-hex} format."""
+        """Result uses hgstableid15:{16-hex} format."""
         result = make_typed_stable_id(
             "method", "(String,int)User", name="m", qualified_name="m"
         )
-        assert result.startswith("sha256:")
-        assert len(result) == len("sha256:") + 16
+        assert result.startswith("hgstableid15:")
+        assert len(result) == len("hgstableid15:") + 16
 
     def test_deterministic(self) -> None:
         """Same inputs produce same output."""
@@ -708,10 +708,10 @@ class TestMakeTypedStableId:
     def test_different_containing_produces_different_ids(self) -> None:
         """Same signature in different containers produces different hashes."""
         id1 = make_typed_stable_id(
-            "method", "(int)bool", "", "sha256:aaa", name="m", qualified_name="m"
+            "method", "(int)bool", "", "hgstableid15:aaa", name="m", qualified_name="m"
         )
         id2 = make_typed_stable_id(
-            "method", "(int)bool", "", "sha256:bbb", name="m", qualified_name="m"
+            "method", "(int)bool", "", "hgstableid15:bbb", name="m", qualified_name="m"
         )
         assert id1 != id2
 
@@ -720,7 +720,7 @@ class TestMakeTypedStableId:
         result = make_typed_stable_id(
             "function", "(int)bool", "", name="m", qualified_name="m"
         )
-        assert result.startswith("sha256:")
+        assert result.startswith("hgstableid15:")
 
     def test_different_decorators_produce_different_ids(self) -> None:
         """Same signature with different decorators produces different hashes."""
@@ -2561,12 +2561,12 @@ class TestPopulateSyntheticClassBIdentity:
         from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
 
         s = self._class_b(
-            stable_id="sha256:deadbeefdeadbeef",
+            stable_id="hgstableid15:deadbeefdeadbeef",
             display_label="prebuilt-label",
             fingerprint="cafebabecafebabe",
         )
         populate_synthetic_class_b_identity([s])
-        assert s.stable_id == "sha256:deadbeefdeadbeef"
+        assert s.stable_id == "hgstableid15:deadbeefdeadbeef"
         assert s.display_label == "prebuilt-label"
         assert s.fingerprint == "cafebabecafebabe"
 
@@ -2600,7 +2600,7 @@ class TestPopulateSyntheticClassBIdentity:
         gap = self._class_b()
         stamped = self._class_b(
             id="javascript:b.js:1-1:mq:function", name="mq:topic",
-            stable_id="sha256:aaaabbbbccccdddd", display_label="kept",
+            stable_id="hgstableid15:aaaabbbbccccdddd", display_label="kept",
             fingerprint="1111222233334444",
         )
         before = {
@@ -2610,7 +2610,7 @@ class TestPopulateSyntheticClassBIdentity:
         populate_synthetic_class_b_identity([gap, stamped])
         # stamped: all fields byte-identical.
         assert (stamped.stable_id, stamped.fingerprint, stamped.display_label) == (
-            "sha256:aaaabbbbccccdddd", "1111222233334444", "kept",
+            "hgstableid15:aaaabbbbccccdddd", "1111222233334444", "kept",
         )
         # gap: positive half — the null fields actually transitioned to values
         # (a genuine revert detector: fails if the stamping body is neutered).
@@ -2641,7 +2641,7 @@ class TestMakeDocStableId:
     def test_canonical_sha256_shape(self) -> None:
         import re
         sid = make_doc_stable_id("markdown", "README.md", "section", "Intro", 1, 2)
-        assert re.match(r"^sha256:[0-9a-f]{16}$", sid), sid
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", sid), sid
 
     def test_span_is_not_hashed_and_scope_separates(self) -> None:
         # Lines stay out of the hash (ADR-0035 §3; WI-tusad), so deleting a
@@ -2714,7 +2714,7 @@ class TestMakeDocSymbolIds:
     def test_stable_id_is_canonical_and_matches_factory(self) -> None:
         import re
         node_id, stable_id = make_doc_symbol_ids("vue", "src/App.vue", "prop", "title", 10, 12)
-        assert re.match(r"^sha256:[0-9a-f]{16}$", stable_id), stable_id
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", stable_id), stable_id
         assert stable_id == make_doc_stable_id("vue", "src/App.vue", "prop", "title", 10, 12)
         assert node_id != stable_id
 

@@ -94,23 +94,23 @@ FIXTURE_FILES = {
 # A reader-order change to boundary synthesis cannot change any of these (content-derived).
 # Regenerate this frozenset if the fixture changes.
 GOLDEN_FIRSTPARTY_STABLE_IDS = frozenset({
-    "sha256:eabef7c9b0ca629a",  # pkg/app.py setup:function
-    "sha256:43dec3a64c659abd",  # pkg/app.py file
-    "sha256:29e41c02cfe5b84e",  # pkg/service.py Service:class
-    "sha256:70a8e859b1ee3b9c",  # pkg/app.py handler:function
-    "sha256:eb937f52b3e30564",  # pkg/models.py Order.submit:method
-    "sha256:81cf3c740bec2d42",  # pkg/service.py Service.run:method
-    "sha256:13474f4add8dfeb3",  # pkg/models.py Item:class
-    "sha256:d89075745234437a",  # pkg/models.py Item.total:method
-    "sha256:36d8981e5e413f29",  # pkg/models.py Order:class
-    "sha256:4e2034fe2ff7a100",  # pkg/service.py Service.stop:method
+    "hgstableid15:eabef7c9b0ca629a",  # pkg/app.py setup:function
+    "hgstableid15:43dec3a64c659abd",  # pkg/app.py file
+    "hgstableid15:29e41c02cfe5b84e",  # pkg/service.py Service:class
+    "hgstableid15:70a8e859b1ee3b9c",  # pkg/app.py handler:function
+    "hgstableid15:eb937f52b3e30564",  # pkg/models.py Order.submit:method
+    "hgstableid15:81cf3c740bec2d42",  # pkg/service.py Service.run:method
+    "hgstableid15:13474f4add8dfeb3",  # pkg/models.py Item:class
+    "hgstableid15:d89075745234437a",  # pkg/models.py Item.total:method
+    "hgstableid15:36d8981e5e413f29",  # pkg/models.py Order:class
+    "hgstableid15:4e2034fe2ff7a100",  # pkg/service.py Service.stop:method
     # WI-dagif (file-anchor:F1, node-bearing slice): service.py and models.py
     # have content nodes but no imports/calls, so they now get synthesized
     # kind="file" anchors (app.py already had one via its import edges). Proven
     # purely additive — the 10 identities above are UNCHANGED, so the
     # reorder-neutrality invariant still holds.
-    "sha256:11d642e4bc07a11a",  # pkg/service.py file anchor
-    "sha256:68d4dd5cd2cc022f",  # pkg/models.py file anchor
+    "hgstableid15:11d642e4bc07a11a",  # pkg/service.py file anchor
+    "hgstableid15:68d4dd5cd2cc022f",  # pkg/models.py file anchor
 })
 
 # The tier-4 DERIVED file-level symbol that must be filtered out (the defect precondition).

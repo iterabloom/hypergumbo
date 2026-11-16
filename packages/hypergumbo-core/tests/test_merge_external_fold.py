@@ -77,10 +77,10 @@ def _paired_symbols() -> list[Symbol]:
     return [
         Symbol(id=CALLER, name="Counter.increment", kind="method", language="python",
                path="pkg/mod.py", span=Span(14, 17, 0, 0), origin="python",
-               origin_run_id=RUN_PY, stable_id="sha256:incumbent"),
+               origin_run_id=RUN_PY, stable_id="hgstableid15:incumbent"),
         Symbol(id="python:pkg/mod.py:14-14:increment:method", name="increment", kind="method",
                language="python", path="pkg/mod.py", span=Span(14, 14, 11, 20), origin="scip",
-               origin_run_id=RUN_SCIP, stable_id="sha256:moniker"),
+               origin_run_id=RUN_SCIP, stable_id="hgscipid1:moniker"),
     ]
 
 

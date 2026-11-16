@@ -568,7 +568,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -596,7 +596,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -622,7 +622,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users/:id", "method": "GET"}]
             },
@@ -646,7 +646,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -670,7 +670,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -693,7 +693,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -740,7 +740,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/data", "method": ""}]
             },
@@ -874,7 +874,7 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={"concepts": [{"concept": "route", "path": path, "method": "GET"}]},
         )
 
@@ -917,7 +917,7 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1425,7 +1425,7 @@ class TestGoHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1831,7 +1831,7 @@ class TestRubyHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1884,7 +1884,7 @@ class TestJavaHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -2031,7 +2031,7 @@ class TestCreateClientSymbolStableId:
         """stable_id must not be a bare HTTP method string.
 
         Phase 6 PR1 (INV-hunup): the underlying ``make_route_stable_id``
-        now returns the canonical ``sha256:<16hex>`` shape (23 chars
+        now returns the canonical ``hgstableid15:<16hex>`` shape (29 chars
         total) rather than the raw 64-char hexdigest. The test still
         asserts non-bare-method semantics; the length expectation
         migrates.
@@ -2043,9 +2043,9 @@ class TestCreateClientSymbolStableId:
         sym = _create_client_symbol(call, tmp_path)
         assert sym.stable_id != "POST"
         assert sym.stable_id != "post"
-        # Should be the canonical sha256:<16hex> shape (23 chars total).
-        assert sym.stable_id.startswith("sha256:")
-        assert len(sym.stable_id) == len("sha256:") + 16
+        # Should be the canonical hgstableid15:<16hex> shape (29 chars total).
+        assert sym.stable_id.startswith("hgstableid15:")
+        assert len(sym.stable_id) == len("hgstableid15:") + 16
 
     def test_different_methods_same_url_different_stable_ids(self, tmp_path: Path):
         """GET /api/users and POST /api/users are distinct."""
@@ -2921,7 +2921,7 @@ class TestJsTsClientLanguageFollowsFileSuffix:
             path=str(tmp_path / "server.ts"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="typescript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },

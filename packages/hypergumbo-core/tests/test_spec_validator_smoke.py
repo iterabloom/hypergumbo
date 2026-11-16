@@ -719,7 +719,7 @@ def test_cross_field_class_b_coherent_passes() -> None:
         # synthetic:F2).
         display_label="websocket:class-b",
         origin=["websocket-linker"],
-        stable_id="sha256:" + "0" * 16,
+        stable_id="hgstableid15:" + "0" * 16,
         fingerprint="hgfp2:" + "0" * 16,
         qualified_name=None,
         dst_ref=None,
@@ -1324,7 +1324,7 @@ def _make_sym_with_stable_id(idx: int, sid: str, name: str = "f") -> _FakeSym:
 def test_cross_field_stable_id_zero_collisions_pass() -> None:
     """All-distinct stable_ids → no corpus umbrella. The ~0 threshold
     (ADR-0035 §5) does not fire when there is genuinely no collision."""
-    syms = [_make_sym_with_stable_id(i, f"sha256:{i:016x}") for i in range(100)]
+    syms = [_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}") for i in range(100)]
     violations = validate_ir(syms, [], [])
     assert not any(
         v.validator_class == "cross_field"
@@ -1339,8 +1339,8 @@ def test_cross_field_stable_id_any_collision_flags() -> None:
     The stable_id contract is collision-free BY DESIGN, not collision-rare.
     """
     # 100 distinct + one collision group of 2 == 2/101 ≈ 2%.
-    syms = [_make_sym_with_stable_id(i, f"sha256:{i + 1:016x}") for i in range(100)]
-    syms.append(_make_sym_with_stable_id(100, "sha256:0000000000000001", name="dup"))
+    syms = [_make_sym_with_stable_id(i, f"hgstableid15:{i + 1:016x}") for i in range(100)]
+    syms.append(_make_sym_with_stable_id(100, "hgstableid15:0000000000000001", name="dup"))
     violations = validate_ir(syms, [], [])
     matched = [
         v for v in violations
@@ -1357,10 +1357,10 @@ def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
     syms: list[_FakeSym] = []
     # 10 distinct stable_ids + 5 colliding == 5/15 = 33.3% of all Symbols.
     for i in range(10):
-        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+        syms.append(_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
-            100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
+            100 + i, "hgstableid15:cccccccccccccccc", name=f"colliding_{i}",
         ))
     violations = validate_ir(syms, [], [])
     matched = [
@@ -1375,7 +1375,7 @@ def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
     assert v.severity == "warning"
     assert v.record_id is None
     assert "33.3%" in (v.observed or "")  # 5/15 over the all-Symbols denominator
-    assert "sha256:cccccccccccccccc" in (v.message or "")
+    assert "hgstableid15:cccccccccccccccc" in (v.message or "")
     assert "colliding_0" in (v.message or "")
 
 
@@ -1388,10 +1388,10 @@ def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
     syms: list[_FakeSym] = []
     # 10 distinct + 5 colliding + 3 None == 5 collided / 18 population = 27.8%.
     for i in range(10):
-        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+        syms.append(_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
-            100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
+            100 + i, "hgstableid15:cccccccccccccccc", name=f"colliding_{i}",
         ))
     # 3 Symbols with stable_id=None — COUNTED in the denominator.
     for i in range(3):
@@ -1453,15 +1453,15 @@ def test_per_file_stable_id_collision_flags_error() -> None:
     """Two Symbols in ONE file sharing a stable_id is a HARD error (ADR-0035
     §5 per-file uniqueness), one violation per colliding (path, id) group."""
     syms = [
-        _make_sym_pathed(1, "sha256:aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
-        _make_sym_pathed(2, "sha256:aaaaaaaaaaaaaaaa", "a.py", name="beta"),
+        _make_sym_pathed(1, "hgstableid15:aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
+        _make_sym_pathed(2, "hgstableid15:aaaaaaaaaaaaaaaa", "a.py", name="beta"),
     ]
     errors = _per_file_errors(validate_ir(syms, [], []))
     assert len(errors) == 1
     v = errors[0]
     assert v.severity == "error"
     assert "a.py" in (v.observed or "")
-    assert "sha256:aaaaaaaaaaaaaaaa" in (v.observed or "")
+    assert "hgstableid15:aaaaaaaaaaaaaaaa" in (v.observed or "")
     assert "alpha" in (v.observed or "") and "beta" in (v.observed or "")
 
 
@@ -1469,8 +1469,8 @@ def test_per_file_stable_id_same_id_distinct_files_no_error() -> None:
     """The SAME stable_id in DIFFERENT files is NOT a per-file error (the
     corpus umbrella still warns about it, but the hard check is per-file)."""
     syms = [
-        _make_sym_pathed(1, "sha256:bbbbbbbbbbbbbbbb", "a.py"),
-        _make_sym_pathed(1, "sha256:bbbbbbbbbbbbbbbb", "b.py"),
+        _make_sym_pathed(1, "hgstableid15:bbbbbbbbbbbbbbbb", "a.py"),
+        _make_sym_pathed(1, "hgstableid15:bbbbbbbbbbbbbbbb", "b.py"),
     ]
     violations = validate_ir(syms, [], [])
     assert _per_file_errors(violations) == []
@@ -1485,8 +1485,8 @@ def test_per_file_pathless_symbols_skipped() -> None:
     """Pathless symbols are out of scope for the per-file check (no file to
     be 'within'); the corpus umbrella covers them instead."""
     syms = [
-        _make_sym_with_stable_id(1, "sha256:cccccccccccccccc"),
-        _make_sym_with_stable_id(2, "sha256:cccccccccccccccc"),
+        _make_sym_with_stable_id(1, "hgstableid15:cccccccccccccccc"),
+        _make_sym_with_stable_id(2, "hgstableid15:cccccccccccccccc"),
     ]
     # _make_sym_with_stable_id sets no ``path`` attribute.
     assert _per_file_errors(validate_ir(syms, [], [])) == []
@@ -1498,12 +1498,12 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     fixture exercises all three branches: pathed, stable_id-but-no-path, None.
     """
     syms = [
-        _make_sym_pathed(1, "sha256:1111111111111111", "a.py"),
-        _make_sym_pathed(2, "sha256:2222222222222222", "a.py"),
-        # per-file collision in a.py (shares sha256:1111... with sym 1)
-        _make_sym_pathed(3, "sha256:1111111111111111", "a.py", name="dup"),
+        _make_sym_pathed(1, "hgstableid15:1111111111111111", "a.py"),
+        _make_sym_pathed(2, "hgstableid15:2222222222222222", "a.py"),
+        # per-file collision in a.py (shares hgstableid15:1111... with sym 1)
+        _make_sym_pathed(3, "hgstableid15:1111111111111111", "a.py", name="dup"),
         # stable_id but NO path — exercises the `if path` false branch.
-        _make_sym_with_stable_id(4, "sha256:4444444444444444"),
+        _make_sym_with_stable_id(4, "hgstableid15:4444444444444444"),
         # None cohort: no stable_id (and no path).
         _FakeSym(
             id="python:x.py:5-5:n:function", kind="function", language="python",
@@ -1516,7 +1516,7 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     assert stats["total_symbols"] == 5
     assert stats["non_null"] == 4
     assert stats["none_cohort"] == 1
-    assert stats["collision_groups"] == 1  # only sha256:1111... is shared
+    assert stats["collision_groups"] == 1  # only hgstableid15:1111... is shared
     assert stats["collided_symbols"] == 2
     assert stats["per_file_collision_groups"] == 1
     assert stats["none_cohort_pct"] == 20.0  # 1/5
@@ -1555,7 +1555,7 @@ def test_compute_stable_id_stats_discloses_floor_cohort_and_abstentions() -> Non
         # 1. a floor id (equals its recomputed floor key): floor_cohort
         sym(1, "function", "greet/1", "a.erl", "erlang", floor),
         # 2. a producer id on a floor-eligible kind: not floor
-        sym(2, "function", "main/0", "a.erl", "erlang", "sha256:aaaaaaaaaaaaaaaa"),
+        sym(2, "function", "main/0", "a.erl", "erlang", "hgstableid15:aaaaaaaaaaaaaaaa"),
         # 3. a factory-table kind whose table formula has the declaration shape:
         #    a decided key, not the floor
         sym(3, "class", "W", "w.ts", "typescript",
@@ -1583,8 +1583,8 @@ def test_per_file_collision_record_id_is_order_deterministic() -> None:
     symbol-iteration order — it is the lexicographically-smallest id in the
     group, not the first-encountered (which would leak ranked-vs-append order).
     """
-    a = _make_sym_pathed(1, "sha256:dddddddddddddddd", "a.py", name="alpha")
-    b = _make_sym_pathed(2, "sha256:dddddddddddddddd", "a.py", name="beta")
+    a = _make_sym_pathed(1, "hgstableid15:dddddddddddddddd", "a.py", name="alpha")
+    b = _make_sym_pathed(2, "hgstableid15:dddddddddddddddd", "a.py", name="beta")
     rid_ab = _per_file_errors(validate_ir([a, b], [], []))[0].record_id
     rid_ba = _per_file_errors(validate_ir([b, a], [], []))[0].record_id
     assert rid_ab == rid_ba
@@ -1597,10 +1597,10 @@ def test_corpus_umbrella_message_is_order_deterministic() -> None:
     """
     def build() -> list[_FakeSym]:
         return [
-            _make_sym_with_stable_id(1, "sha256:aaaaaaaaaaaaaaaa", name="a1"),
-            _make_sym_with_stable_id(2, "sha256:aaaaaaaaaaaaaaaa", name="a2"),
-            _make_sym_with_stable_id(3, "sha256:bbbbbbbbbbbbbbbb", name="b1"),
-            _make_sym_with_stable_id(4, "sha256:bbbbbbbbbbbbbbbb", name="b2"),
+            _make_sym_with_stable_id(1, "hgstableid15:aaaaaaaaaaaaaaaa", name="a1"),
+            _make_sym_with_stable_id(2, "hgstableid15:aaaaaaaaaaaaaaaa", name="a2"),
+            _make_sym_with_stable_id(3, "hgstableid15:bbbbbbbbbbbbbbbb", name="b1"),
+            _make_sym_with_stable_id(4, "hgstableid15:bbbbbbbbbbbbbbbb", name="b2"),
         ]
 
     def umbrella_msg(syms) -> str:
@@ -1636,7 +1636,7 @@ def _make_sym_with_fingerprint(idx: int, fp: str | None, name: str) -> _FakeSym:
         display_label=None,
         origin=[],
         qualified_name=None,
-        stable_id=f"sha256:{idx:016x}",
+        stable_id=f"hgstableid15:{idx:016x}",
         fingerprint=fp,
         name=name,
         dst_ref=None,
@@ -1768,8 +1768,8 @@ def test_cross_field_stable_id_none_values_skipped() -> None:
     """Symbols whose stable_id is None do not contribute to the
     collision count — only populated ones are scored (INV-hunup)."""
     syms = [
-        _make_sym_with_stable_id(0, "sha256:0000000000000000"),
-        _make_sym_with_stable_id(1, "sha256:1111111111111111"),
+        _make_sym_with_stable_id(0, "hgstableid15:0000000000000000"),
+        _make_sym_with_stable_id(1, "hgstableid15:1111111111111111"),
         # stable_id=None — must not crash the validator
         _FakeSym(
             id="python:test/fake.py:2-2:nosid:function",
@@ -1998,10 +1998,10 @@ def test_stable_id_format_validator_passes_on_canonical_short_sha256() -> None:
 
 
 def test_stable_id_format_validator_flags_raw_64_char_hex_without_prefix() -> None:
-    """A raw 64-char hexdigest (no ``sha256:`` prefix) is flagged.
+    """A raw 64-char hexdigest (no label) is flagged.
 
     This is the shape a stable_id factory produces if it returns the full
-    hexdigest instead of the canonical ``sha256:<16hex>`` form.
+    hexdigest instead of the canonical ``<label><16hex>`` form.
     """
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
@@ -2013,7 +2013,7 @@ def test_stable_id_format_validator_flags_raw_64_char_hex_without_prefix() -> No
     assert v.validator_class == "id_format"
     assert v.field_name == "Symbol.stable_id"
     assert "raw_hex_no_prefix" in v.message
-    assert v.expected == "sha256:<16hex>"
+    assert v.expected == "hgstableid15:<16hex> or hgscipid1:<16hex>"
 
 
 def test_stable_id_format_validator_flags_bare_name_no_prefix() -> None:
@@ -2030,34 +2030,76 @@ def test_stable_id_format_validator_flags_bare_name_no_prefix() -> None:
     assert "bare_name_no_prefix" in violations[0].message
 
 
-def test_stable_id_format_validator_flags_sha256_wrong_length() -> None:
-    """``sha256:`` prefix with the wrong-length hex suffix is flagged."""
+def test_stable_id_format_validator_flags_label_wrong_length() -> None:
+    """A stable-id label with the wrong-length hex suffix is flagged."""
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
     sym = _FakeSym(
         id="python:pkg/foo.py:1-1:bar:function",
-        stable_id="sha256:deadbeef",  # 8 chars, not 16
+        stable_id="hgstableid15:deadbeef",  # 8 chars, not 16
     )
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
-    assert "sha256_prefix_wrong_length" in violations[0].message
+    assert "stable_id_label_wrong_length" in violations[0].message
 
 
-def test_stable_id_format_validator_flags_sha256_non_hex_suffix() -> None:
-    """``sha256:`` prefix with a non-hex suffix is flagged."""
+def test_stable_id_format_validator_flags_label_non_hex_suffix() -> None:
+    """A stable-id label with a non-hex suffix is flagged."""
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
     sym = _FakeSym(
         id="python:pkg/foo.py:1-1:bar:function",
-        stable_id="sha256:not-hex-chars-here",
+        stable_id="hgstableid15:not-hex-chars-here",
     )
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
-    assert "sha256_prefix_with_non_hex_suffix" in violations[0].message
+    assert "stable_id_label_with_non_hex_suffix" in violations[0].message
+
+
+def test_stable_id_format_validator_accepts_the_two_stable_id_labels() -> None:
+    """The tree-sitter label and the SCIP label pass; both are the labels
+    their scheme constants derive (ADR-0035 "Value labels")."""
+    from hypergumbo_core.schema import SCIP_STABLE_ID_PREFIX, STABLE_ID_PREFIX
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    syms = [
+        _FakeSym(id="python:a.py:1-1:f:function", stable_id=STABLE_ID_PREFIX + "0" * 16),
+        _FakeSym(id="rust:a.rs:1-1:f:function", stable_id=SCIP_STABLE_ID_PREFIX + "0" * 16),
+    ]
+    assert _check_stable_id_format(syms) == []
+
+
+def test_stable_id_format_validator_rejects_the_v14_sha256_label() -> None:
+    """``sha256:<16hex>`` -- every stable id through stableid-v14 -- fails,
+    and the violation says it is the superseded form."""
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id="sha256:0123456789abcdef",
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "superseded_label" in violations[0].message
+    assert "'hgstableid15:'" in violations[0].message
+
+
+def test_stable_id_format_validator_rejects_a_shape_id_in_the_stable_id_field() -> None:
+    """A value carrying the shape-id label is a shape id, not a stable id."""
+    from hypergumbo_core.analyze.base import mint_shape_id
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id=mint_shape_id("function:FunctionDef()"),
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "shape_id_label" in violations[0].message
 
 
 def test_stable_id_format_validator_flags_composite_form() -> None:
-    """A composite ``foo:bar``-style stable_id (no sha256: prefix) is flagged.
+    """A composite ``foo:bar``-style stable_id (no hgstableid15: prefix) is flagged.
 
     This is the shape a linker produces if it joins key parts with colons
     instead of hashing them; the message reports the colon count.
@@ -2104,7 +2146,7 @@ def test_stable_id_format_violation_appears_in_validate_ir_report() -> None:
 
 
 def test_make_route_stable_id_emits_canonical_shape() -> None:
-    """``make_route_stable_id`` returns ``sha256:<16hex>``."""
+    """``make_route_stable_id`` returns ``hgstableid15:<16hex>``."""
     from hypergumbo_core.analyze.base import make_route_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
@@ -2113,7 +2155,7 @@ def test_make_route_stable_id_emits_canonical_shape() -> None:
 
 
 def test_make_entry_stable_id_emits_canonical_shape() -> None:
-    """``make_entry_stable_id`` returns ``sha256:<16hex>``."""
+    """``make_entry_stable_id`` returns ``hgstableid15:<16hex>``."""
     from hypergumbo_core.analyze.base import make_entry_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
@@ -2122,7 +2164,7 @@ def test_make_entry_stable_id_emits_canonical_shape() -> None:
 
 
 def test_make_protocol_stable_id_emits_canonical_shape() -> None:
-    """``make_protocol_stable_id`` returns ``sha256:<16hex>``.
+    """``make_protocol_stable_id`` returns ``hgstableid15:<16hex>``.
 
     Sanity check on the factory the four protocol linkers
     (database_query / message_queue / event_sourcing / graphql_resolver)
@@ -2220,7 +2262,7 @@ def test_cross_field_class_b_canary_is_umbrella_not_per_record() -> None:
 def test_cross_field_class_b_fully_stamped_passes_canary() -> None:
     """A fully-stamped Class B stand-in emits no canary violations."""
     sym = _class_b_sym(
-        stable_id="sha256:" + "0" * 16,
+        stable_id="hgstableid15:" + "0" * 16,
         fingerprint="hgfp2:" + "0" * 16,
         discovery_language="python",
         origin=["websocket-linker"],

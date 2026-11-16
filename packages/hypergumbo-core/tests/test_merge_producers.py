@@ -94,13 +94,13 @@ def _edge(src: str, dst: str, edge_type: str = "calls", origin: str = "python") 
 
 def _incumbent_method() -> Symbol:
     return _sym("Counter.increment", "method", 14, 17, run=RUN_PY, origin="python",
-                stable_id="sha256:incumbent", meta={"visibility": "public"},
+                stable_id="hgstableid15:incumbent", meta={"visibility": "public"},
                 signature="def increment(self, by)")
 
 
 def _scip_method() -> Symbol:
     return _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip",
-                stable_id="sha256:moniker", meta={"scip_symbol": "pkg/Counter#increment().", "visibility": "pub"},
+                stable_id="hgscipid1:moniker", meta={"scip_symbol": "pkg/Counter#increment().", "visibility": "pub"},
                 start_col=11, end_col=20)
 
 
@@ -188,11 +188,11 @@ class TestArbitrationAndProvenance:
     def test_stable_id_is_the_incumbents_and_a_missing_one_is_filled(self) -> None:
         symbols = [_incumbent_method(), _scip_method()]
         merge_producer_records(symbols, [], [dict(r) for r in RUNS])
-        assert symbols[0].stable_id == "sha256:incumbent"
+        assert symbols[0].stable_id == "hgstableid15:incumbent"
         bare = _sym("Counter.increment", "method", 14, 17, run=RUN_PY, origin="python")
         symbols = [bare, _scip_method()]
         merge_producer_records(symbols, [], [dict(r) for r in RUNS])
-        assert symbols[0].stable_id == "sha256:moniker"
+        assert symbols[0].stable_id == "hgscipid1:moniker"
         assert symbols[0].signature is None  # neither observed it: stays unset
 
     def test_an_attribute_only_the_other_producer_observed_is_taken(self) -> None:
@@ -239,14 +239,14 @@ class TestThePolicyIsTheOnlyKnob:
         from hypergumbo_core.arbitration import ArbitrationPolicy
 
         incumbent = _sym("parse_configs", "function", 23, 40, run=RUN_PY, origin="python",
-                         stable_id="sha256:incumbent")
-        other = _sym("parse_configs", "method", 23, 23, run=RUN_SCIP, origin="scip", stable_id="sha256:moniker")
+                         stable_id="hgstableid15:incumbent")
+        other = _sym("parse_configs", "method", 23, 23, run=RUN_SCIP, origin="scip", stable_id="hgscipid1:moniker")
         symbols = [incumbent, other]
         merge_producer_records(symbols, [], [dict(r) for r in RUNS],
                                policy=ArbitrationPolicy(prefer_by_attribute={"kind": ("scip",)}))
         [merged] = symbols
         assert merged.kind == "method" and merged.attribution["kind"] == ["pyscip"]
-        assert merged.stable_id == "sha256:incumbent" and merged.attribution["stable_id"] == ["python"]
+        assert merged.stable_id == "hgstableid15:incumbent" and merged.attribution["stable_id"] == ["python"]
         assert merged.origin == ["python", "scip"]
 
     def test_the_corroboration_level_is_the_policys(self) -> None:

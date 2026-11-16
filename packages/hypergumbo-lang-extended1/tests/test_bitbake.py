@@ -233,7 +233,7 @@ SUMMARY = "Test"
         assert var is not None
         # WI-banod (stable_id scheme v10): the stable_id is a hash, not the
         # node id it used to copy; the id stays the location key.
-        assert var.stable_id.startswith("sha256:") and len(var.stable_id) == 23
+        assert var.stable_id.startswith("hgstableid15:") and len(var.stable_id) == 29
         assert var.id != var.stable_id
         assert "bitbake:" in var.id
         assert "test.bb" in var.id

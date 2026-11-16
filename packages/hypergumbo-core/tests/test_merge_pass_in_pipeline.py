@@ -47,12 +47,12 @@ def _pyscip(repo_root: Path) -> AnalysisResult:
         Symbol(
             id="python:a.py:1-1:f:function", name="f", kind="function", language="python",
             path="a.py", span=Span(1, 1, 4, 5), origin="pyscip", origin_run_id=run.execution_id,
-            stable_id="sha256:pyscip-f", meta={"scip_symbol": "scip-python pypi a 0.1 a/f()."},
+            stable_id="hgscipid1:pyscip-f", meta={"scip_symbol": "scip-python pypi a 0.1 a/f()."},
         ),
         Symbol(
             id="python:a.py:5-5:Alias:type_alias", name="Alias", kind="type_alias",
             language="python", path="a.py", span=Span(5, 5, 0, 5), origin="pyscip",
-            origin_run_id=run.execution_id, stable_id="sha256:pyscip-alias",
+            origin_run_id=run.execution_id, stable_id="hgscipid1:pyscip-alias",
             meta={"scip_symbol": "scip-python pypi a 0.1 a/Alias#"},
         ),
         # The module namespace: a record the incumbent never emits (file
@@ -60,7 +60,7 @@ def _pyscip(repo_root: Path) -> AnalysisResult:
         Symbol(
             id="python:a.py:1-5:a:namespace", name="a", kind="namespace",
             language="python", path="a.py", span=Span(1, 5, 0, 0), origin="pyscip",
-            origin_run_id=run.execution_id, stable_id="sha256:pyscip-a",
+            origin_run_id=run.execution_id, stable_id="hgscipid1:pyscip-a",
             meta={"scip_symbol": "scip-python pypi a 0.1 a/"},
         ),
     ]

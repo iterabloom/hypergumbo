@@ -193,12 +193,12 @@ def test_stamp_empty_metadata_pass_version_leaves_empty(tmp_path: Path) -> None:
 
 # --- Sub-step 4: repo_fingerprint -------------------------------------------------------
 def test_repo_fingerprint_stamps_none_only(tmp_path: Path) -> None:
-    runs = [_ar("a", repo_fingerprint=None), _ar("b", repo_fingerprint="sha256:preset")]
+    runs = [_ar("a", repo_fingerprint=None), _ar("b", repo_fingerprint="hgrepofp3:preset")]
     ctx = _ctx(tmp_path, analysis_runs=runs)
     _finalize_repo_fingerprint(ctx)
     assert ctx.repo_fingerprint  # computed and stashed for _freeze
     assert ctx.analysis_runs[0]["repo_fingerprint"] == ctx.repo_fingerprint
-    assert ctx.analysis_runs[1]["repo_fingerprint"] == "sha256:preset"
+    assert ctx.analysis_runs[1]["repo_fingerprint"] == "hgrepofp3:preset"
 
 
 # --- Sub-step 6: skipped_into_limits ----------------------------------------------------

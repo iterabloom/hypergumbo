@@ -234,14 +234,14 @@ def script(String a) { a }
 """
 
 _PINNED = {
-    "Pinned.name": ("(String,List<String>)String", "sha256:58141b54f6dc044f"),
+    "Pinned.name": ("(String,List<String>)String", "hgstableid15:58141b54f6dc044f"),
     "Pinned.table": (
-        "(String[],int[][])Map<String, List<Integer>>", "sha256:bba74ff853e0a9ba",
+        "(String[],int[][])Map<String, List<Integer>>", "hgstableid15:bba74ff853e0a9ba",
     ),
-    "Pinned.dyn": ("(def)def", "sha256:23dc82d5787f8d5f"),
-    "Pinned.run": ("(Closure<String>)", "sha256:6b6efff128fde6e1"),
-    "Pinned.split": ("(String)String[]", "sha256:d4329860e58cd08b"),
-    "script": ("(String)", "sha256:8795b3125f7af9c9"),
+    "Pinned.dyn": ("(def)def", "hgstableid15:23dc82d5787f8d5f"),
+    "Pinned.run": ("(Closure<String>)", "hgstableid15:6b6efff128fde6e1"),
+    "Pinned.split": ("(String)String[]", "hgstableid15:d4329860e58cd08b"),
+    "script": ("(String)", "hgstableid15:8795b3125f7af9c9"),
 }
 
 

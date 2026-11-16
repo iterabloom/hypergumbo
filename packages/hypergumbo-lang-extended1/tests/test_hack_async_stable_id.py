@@ -24,5 +24,5 @@ def _stable_id(tmp: Path, src: str) -> str:
 
 def test_async_changes_the_stable_id(tmp_path: Path) -> None:
     sync = _stable_id(tmp_path / "sync", SYNC)
-    assert sync == "sha256:8c0b3a905068840a"
+    assert sync == "hgstableid15:8c0b3a905068840a"
     assert _stable_id(tmp_path / "async", ASYNC) != sync

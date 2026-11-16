@@ -527,12 +527,15 @@ def _symbol_spec() -> ClassSpec:
                     "Structural identity hash within a (qualified_name, "
                     "module_path) scope (ADR-0035 §1; INV-bazij): survives "
                     "body edits, NOT rename or move. "
-                    "Serialized as sha256:<16hex> and shares this exact "
-                    "surface with shape_id; the two are discriminated by "
-                    "field name (and the top-level stable_id_scheme / "
-                    "shape_id_scheme descriptors), NOT by an in-value prefix, "
-                    "and their value-spaces are disjoint. Do not join on bare "
-                    "hash values across the two axes (WI-tisar)."
+                    "Serialized as <label><16hex>: hgstableid<N>: from the "
+                    "tree-sitter / ast factories (stable_id_scheme "
+                    "hypergumbo-stableid-v<N>), hgscipid<N>: from the "
+                    "rust-analyzer (SCIP) arm (scip_stable_id_scheme). The "
+                    "label names the value and its scheme, so a stable_id "
+                    "never equals a shape_id (hgshapeid<N>:) or an id from "
+                    "the other algorithm; it is a label only, and the digest "
+                    "after it is what stableid-v14 wrote after sha256: "
+                    "(ADR-0035 'Value labels')."
                 ),
             },
             "shape_id": {"description": (
@@ -541,9 +544,10 @@ def _symbol_spec() -> ClassSpec:
                 "STRIPPED (spec §6 shape_id), so same-shape / different-name "
                 "symbols collide. Within-language only. Contrast "
                 "fingerprint, which KEEPS identifiers/literals; shape_id "
-                "is a strict coarsening of it. Serialized as sha256:<16hex>, "
-                "the same surface as stable_id (see WI-tisar). (Currently a "
-                "serialized output-boundary field with no internal consumer.)"
+                "is a strict coarsening of it. Serialized as "
+                "hgshapeid<N>:<16hex> (shape_id_scheme "
+                "hypergumbo-shapeid-v<N>; ADR-0035 'Value labels'). Read by "
+                "repeat-finder, which groups symbols by (language, shape_id)."
             )},
             "fingerprint": {"description": (
                 "Structural content hash of the symbol's parse subtree "
@@ -867,7 +871,11 @@ def _analysis_run_spec() -> ClassSpec:
         decorations={
             "execution_id": {"description": "Unique run identifier (uuid)"},
             "run_signature": {"description": "Deterministic config hash"},
-            "repo_fingerprint": {"description": "Git state hash for cache invalidation"},
+            "repo_fingerprint": {"description": (
+                "Content hash of the analyzed tree, serialized "
+                "hgrepofp<N>:<64hex> (repo_fingerprint_scheme "
+                "hypergumbo-repofp-v<N>)"
+            )},
             "pass": {"description": "Analysis pass identifier"},
             "version": {"description": "Hypergumbo version"},
             "toolchain": {

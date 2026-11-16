@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import pytest
 
-from hypergumbo_core.analyze.base import _short_sha256
+from hypergumbo_core.analyze.base import mint_scip_stable_id
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.index import (
@@ -135,11 +135,11 @@ def test_single_definition_becomes_symbol() -> None:
     assert s.path == "mod.py"
     assert s.span == Span(start_line=6, end_line=9, start_col=0, end_col=0)
     assert s.origin == ["scip"]
-    # INV-hunup: stable_id is a canonical sha256; INV-kutid: of the defining
+    # INV-hunup: stable_id is the SCIP scheme's hgscipid1:<16hex> (ADR-0035 §7); INV-kutid: of the defining
     # Document's path AND the moniker. The raw moniker is preserved in
     # meta["scip_symbol"].
-    assert s.stable_id == _short_sha256(f"scip:mod.py:{sym}")
-    assert s.stable_id.startswith("sha256:")
+    assert s.stable_id == mint_scip_stable_id(f"scip:mod.py:{sym}")
+    assert s.stable_id.startswith("hgscipid1:")
     assert s.meta and s.meta.get("scip_symbol") == sym
 
 
@@ -310,7 +310,7 @@ class TestAMonikerDefinedInTwoDocumentsIsTwoIdentities:
         [lib_alone] = self._roots(("src/lib.rs",))
         lib_with_siblings = self._roots(("build.rs", "src/main.rs", "src/lib.rs"))[2]
         assert lib_alone.stable_id == lib_with_siblings.stable_id
-        assert lib_alone.stable_id == _short_sha256(f"scip:src/lib.rs:{self.ROOT}")
+        assert lib_alone.stable_id == mint_scip_stable_id(f"scip:src/lib.rs:{self.ROOT}")
 
     def test_a_same_named_item_at_two_target_roots_is_two_stable_ids(self) -> None:
         """Not only ``crate/``: a root-level ``fn main`` in build.rs and

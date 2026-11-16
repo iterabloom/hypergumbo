@@ -378,7 +378,7 @@ class TestPerlStableId:
         result = analyze_perl(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
 
 class TestPerlShapeId:
@@ -391,7 +391,7 @@ class TestPerlShapeId:
         result = analyze_perl(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
 
 class TestPerlCyclomaticComplexity:

@@ -258,8 +258,8 @@ def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
     assert syms["a"].id == "tcl:src/n.tcl:1-5:a:namespace"
     assert syms["top"].meta is None
     assert {n: s.stable_id for n, s in syms.items()} == {
-        "a": "sha256:5f8ecf75437ae496", "inner": "sha256:67a662494d8be518",
-        "go": "sha256:5a06c54a2c6ba3bd", "top": "sha256:94b7459b9a4080ad",
+        "a": "hgstableid15:5f8ecf75437ae496", "inner": "hgstableid15:67a662494d8be518",
+        "go": "hgstableid15:5a06c54a2c6ba3bd", "top": "hgstableid15:94b7459b9a4080ad",
     }
 
 

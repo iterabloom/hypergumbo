@@ -138,17 +138,17 @@ _HOLE_FREE = (
     "let top: [String] = []\n"
 )
 _PINNED = {
-    "f": "sha256:5a2f000fa219a85c",
-    "h": "sha256:140fa1de7861b2a7",
-    "S.init": "sha256:3e28183fc36b3c3f",
-    "S.v": "sha256:b97120ecdb3b499a",
-    "S.c": "sha256:9d321b7f3c78b955",
-    "S.subscript(i:)": "sha256:c3190acb35203179",
-    "S.g": "sha256:e5190034f69ef295",
-    "S.deinit": "sha256:1079eea70112982c",
-    "R.m": "sha256:7359f05f4fa047d9",
-    "R.p": "sha256:dc5dc570dda64d74",
-    "top": "sha256:53fd55052be58942",
+    "f": "hgstableid15:5a2f000fa219a85c",
+    "h": "hgstableid15:140fa1de7861b2a7",
+    "S.init": "hgstableid15:3e28183fc36b3c3f",
+    "S.v": "hgstableid15:b97120ecdb3b499a",
+    "S.c": "hgstableid15:9d321b7f3c78b955",
+    "S.subscript(i:)": "hgstableid15:c3190acb35203179",
+    "S.g": "hgstableid15:e5190034f69ef295",
+    "S.deinit": "hgstableid15:1079eea70112982c",
+    "R.m": "hgstableid15:7359f05f4fa047d9",
+    "R.p": "hgstableid15:dc5dc570dda64d74",
+    "top": "hgstableid15:53fd55052be58942",
 }
 
 

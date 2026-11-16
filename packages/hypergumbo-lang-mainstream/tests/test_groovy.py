@@ -1349,7 +1349,7 @@ class TestGroovyShapeId:
         result = analyze_groovy(tmp_path)
         method = next(s for s in result.symbols if s.kind == "method")
         assert method.shape_id is not None
-        assert method.shape_id.startswith("sha256:")
+        assert method.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
@@ -1360,7 +1360,7 @@ class TestGroovyShapeId:
         result = analyze_groovy(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestGroovyCyclomaticComplexity:

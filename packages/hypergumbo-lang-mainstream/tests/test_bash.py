@@ -636,7 +636,7 @@ class TestBashStableId:
         result = analyze_bash(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
 
 class TestBashShapeId:
@@ -649,7 +649,7 @@ class TestBashShapeId:
         result = analyze_bash(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
 
 class TestInvTajapShellScriptConcept:

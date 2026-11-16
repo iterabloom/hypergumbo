@@ -256,7 +256,7 @@ Title
         # which put the kind word where the span belongs.
         assert re.match(r"^rst:test\.rst:\d+-\d+:section_\d+:section$", section.id), section.id
         assert section.stable_id != section.id
-        assert re.compile(r"^sha256:[0-9a-f]{16}$").match(section.stable_id)
+        assert re.compile(r"^hgstableid15:[0-9a-f]{16}$").match(section.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every emitted symbol carries a canonical sha256 stable_id."""
@@ -299,7 +299,7 @@ See :ref:`other-section` and :doc:`other-page`.
 """)
         result = analyze_rst(tmp_path)
         assert len(result.symbols) >= 1
-        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        pattern = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert pattern.match(symbol.stable_id), (
                 f"{symbol.kind} {symbol.name!r} has non-canonical "
