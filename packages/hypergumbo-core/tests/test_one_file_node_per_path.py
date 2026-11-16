@@ -26,10 +26,6 @@ import pytest
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_lang_mainstream.js_ts import analyze_javascript, is_tree_sitter_available
 
-pytestmark = pytest.mark.skipif(
-    not is_tree_sitter_available(), reason="tree-sitter not available",
-)
-
 _FILES = {
     "src/main.ts": (
         'import App from "./App.svelte";\nimport VApp from "./App.vue";\n'
