@@ -91,6 +91,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A method is attributed to its own type, as are the calls in its body, and a bare call inside it resolves within that type**: C# records, Groovy enums, PHP traits and enums, Kotlin classes, Scala classes declared after their companion object.
 - **A Solidity call or emit resolves in its own contract, then its bases**, never in another contract of the file.
 - **Java and Dart constructions reach the constructor**, which now belongs to its class.
+- **A Swift construction reaches the type its scope sees**, not another function's local type.
 - **Java interface methods without `public` count as exported**, as the language makes them.
 - **PHP `private` and `protected` class constants are no longer reported public.**
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
