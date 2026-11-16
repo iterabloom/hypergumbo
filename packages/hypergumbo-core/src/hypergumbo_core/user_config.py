@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps; ADR-0061 ruling 4).
+"""User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps and test_input_dirs; ADR-0061 ruling 4).
 
 WHAT THIS IS FOR, AND WHAT IT DELIBERATELY REFUSES TO HOLD. Two tiers of
 TOML file hold preferences that would otherwise be repeated on every
@@ -37,6 +37,16 @@ returns :func:`trust_only_settings`): ``backends.rust_analyzer`` when the SCIP
 Rust package is installed, empty otherwise. They are kept separate because
 collapsing them would silently widen whichever rule outlived the other.
 
+ONE KEY ONLY THE PROJECT TIER MAY CARRY. ``test_input_dirs`` lists the
+directories of the analysed repository that hold test input (ADR-0004 point
+10): a statement about one repository's layout, meaningless in a file that
+follows the user to every repository, so the user tier refuses it. Each entry
+must be a literal repository-relative directory that exists; the checks and
+how the declaration reaches every test-code predicate are in
+:mod:`.declared_test_inputs`. It loads by default, like the preferences:
+it executes nothing, and every run that applies it says so (stderr, the
+sketch Overview, ``supply_chain_summary.declared_test_inputs``).
+
 UNKNOWN KEYS RAISE. A silently-dropped setting is how someone spends an
 afternoon believing a preference is in effect; the same reasoning ADR-0045
 ruling 2 gives for rejecting a trust key loudly rather than ignoring it. The
@@ -60,6 +70,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, Mapping, Optional, Tuple, Union
 
+from .declared_test_inputs import SETTING as _TEST_INPUT_DIRS
+from .declared_test_inputs import validate_entries as _validate_test_input_dirs
 from .discovery import TraceDeps
 
 # ``tomllib`` is stdlib from Python 3.11. Every package here declares
@@ -143,8 +155,12 @@ def project_forbidden_settings() -> FrozenSet[str]:
 #: (``--trace-deps``): a list of package names or the string ``"all"``. A
 #: preference -- it costs parse time and executes nothing -- so both tiers may
 #: carry it, and the project tier replaces the user tier's value.
+#: ``test_input_dirs`` (ADR-0004 point 10) lists the directories of THIS
+#: repository that hold test input: a fact about one repository's layout,
+#: so the project tier alone may carry it.
 _KNOWN_SETTINGS: Dict[str, Union[type, Tuple[type, ...]]] = {
     "io_primitives": list,
+    "test_input_dirs": list,
     "trace_deps": (str, list),
     "merge.prefer": list,
     "merge.corroborated_confidence": (int, float),
@@ -243,6 +259,9 @@ class LayeredConfig:
     #: ``trace_deps`` (ADR-0004 §"Installed dependency source"); the project
     #: tier replaces the user tier. ``--trace-deps`` outranks both.
     trace_deps: TraceDeps = field(default_factory=TraceDeps)
+    #: ``test_input_dirs`` (ADR-0004 point 10), project tier only: normalised,
+    #: de-duplicated, sorted repository-relative directories.
+    test_input_dirs: "tuple[str, ...]" = ()
 
 
 def user_config_path(
@@ -413,6 +432,21 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
             _validate_merge(setting, value, path)
         if setting == "trace_deps":
             _validate_trace_deps(value, path)
+        if setting == _TEST_INPUT_DIRS:
+            _validate_test_inputs(value, path, is_project=is_project)
+
+
+def _validate_test_inputs(value: "list[Any]", path: Path, *, is_project: bool) -> None:
+    """Project tier only; each entry an existing directory inside the repo."""
+    if not is_project:
+        raise ConfigError(
+            f"{path}: '{_TEST_INPUT_DIRS}' names directories of one repository, "
+            f"so it belongs in that repository's .hypergumbo.toml, not here.",
+        )
+    try:
+        _validate_test_input_dirs(value, path.parent)
+    except ValueError as exc:
+        raise ConfigError(f"{path}: '{_TEST_INPUT_DIRS}' {exc}.") from exc
 
 
 def _validate_trace_deps(value: Any, path: Path) -> None:
@@ -462,6 +496,10 @@ def load_layered_config(
         io_primitives=_paths_from(user_flat, user_path),
         in_repo_io_primitives=_paths_from(proj_flat, proj_path),
     )
+    if _TEST_INPUT_DIRS in proj_flat:
+        merged.test_input_dirs = _validate_test_input_dirs(
+            proj_flat[_TEST_INPUT_DIRS], proj_path.parent,
+        )
     for flat in (user_flat, proj_flat):  # ascending: the project tier wins each key it sets
         _apply_merge_settings(merged, flat)
         if "trace_deps" in flat:

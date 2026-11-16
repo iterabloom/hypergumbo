@@ -765,6 +765,46 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     return find_survey_in_dir(repo_root)
 
 
+_CommandFn = TypeVar("_CommandFn", bound=Callable[..., Any])
+
+
+def _restores_declaration(fn: _CommandFn) -> _CommandFn:
+    """Restore the declared test inputs ``fn`` found, on every exit path.
+
+    ADR-0004 point 10. A command that reads a saved map puts the map's
+    declared test-input directories into effect for the rest of the command
+    (:func:`_load_command_substrate`); this decorator is what takes them out
+    again, whoever called the command -- ``main``, a test, a library. Every
+    function that calls ``_load_command_substrate`` carries it
+    (``test_declared_test_inputs.py`` checks the pairing on this module's
+    source).
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from .declared_test_inputs import active_declaration, install_declaration
+
+        previous = active_declaration()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            install_declaration(previous)
+
+    return cast(_CommandFn, wrapper)
+
+
+def _load_command_substrate(path: "Path | str") -> Dict[str, Any]:
+    """``load_substrate`` for a CLI command, with the map's declared test
+    inputs put into effect for the rest of that command. Call it only from a
+    function decorated with :func:`_restores_declaration`; anything else uses
+    ``survey_io.reading_substrate``."""
+    from .declared_test_inputs import declaration_from_map, install_declaration
+
+    behavior_map = load_substrate(path)
+    install_declaration(declaration_from_map(behavior_map))
+    return behavior_map
+
+
 def _get_or_run_analysis(
     repo_root: Path,
     explicit_input: Optional[str] = None,
@@ -1066,6 +1106,7 @@ def _validate_require_sections(require_sections: "list[str] | None") -> int | No
     return None
 
 
+@_restores_declaration
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -1148,7 +1189,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         if not input_file.exists():
             print(f"Error: Input file not found: {input_path}", file=sys.stderr)
             return 1
-        cached_results = load_substrate(input_file)
+        cached_results = _load_command_substrate(input_file)
 
         # Warn if results file is older than any source files in repo.
         # NOTE: this freshness check intentionally walks the working tree
@@ -1952,6 +1993,7 @@ def _read_view_wants_json(args: argparse.Namespace) -> bool:
     )
 
 
+@_restores_declaration
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -1977,7 +2019,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [Symbol.from_dict(n) for n in behavior_map.get("nodes", [])]
@@ -2320,6 +2362,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     return 0
 
 
+@_restores_declaration
 def cmd_search(args: argparse.Namespace) -> int:
     """Search for symbols by name pattern."""
     repo_root = Path(args.path).resolve()
@@ -2375,7 +2418,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
     # Search pattern (case-insensitive substring match)
@@ -2530,6 +2573,7 @@ def _route_json_record(route: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+@_restores_declaration
 def cmd_routes(args: argparse.Namespace) -> int:
     """Display API routes/endpoints from the behavior map."""
     repo_root = Path(args.path).resolve()
@@ -2546,7 +2590,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
 
@@ -2937,6 +2981,7 @@ def _print_edge_provenance(
     print(f"      Derived from: {', '.join(resolved)}")
 
 
+@_restores_declaration
 def cmd_explain(args: argparse.Namespace) -> int:
     """Explain a symbol with its callers and callees."""
     repo_root = Path(args.path).resolve()
@@ -2953,7 +2998,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -5351,6 +5396,7 @@ def _symbols_column_config(
     return symbol_w, file_w, overflow, no_wrap
 
 
+@_restores_declaration
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
@@ -5382,7 +5428,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_raw = behavior_map.get("edges", [])
 
@@ -5586,6 +5632,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     return 0
 
 
+@_restores_declaration
 def cmd_compact(args: argparse.Namespace) -> int:
     """Convert a behavior map to compact form with coverage-based truncation.
 
@@ -5614,7 +5661,7 @@ def cmd_compact(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_data = behavior_map.get("edges", [])
 
@@ -6105,6 +6152,7 @@ def _warn_community_overlays(paths: "Iterable[Path]") -> "list[Path]":
     return named
 
 
+@_restores_declaration
 def cmd_io_boundaries(args: argparse.Namespace) -> int:
     """Display I/O boundary map for a repository (ADR-0016).
 
@@ -6136,7 +6184,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
     # Build lightweight edge objects for the tagging pass. Carry is_resolved +
@@ -7201,6 +7249,7 @@ def _verify_claims_boundary_vocabulary_help() -> str:
     )
 
 
+@_restores_declaration
 def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
@@ -7311,7 +7360,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # wrong type would reach main's internal-error net instead, which exits 1
     # -- the ``violated`` code (WI-tajup) -- so both are refused here.
     try:
-        behavior_map = load_substrate(input_path)
+        behavior_map = _load_command_substrate(input_path)
     except OSError as exc:
         print(
             f"Error: could not read behavior map {input_path}: "
@@ -8582,6 +8631,7 @@ def _test_coverage_caveats(detected_languages: set[str]) -> dict[str, object]:
     }
 
 
+@_restores_declaration
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -8603,7 +8653,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -9375,6 +9425,7 @@ def _emit_repeat_finder_text(
     return 0
 
 
+@_restores_declaration
 def cmd_repeat_finder(args: argparse.Namespace) -> int:
     """Find structurally-identical implementations — refactoring leads (WI-vogij).
 
@@ -9401,7 +9452,7 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     min_complexity = getattr(args, "min_complexity", 2)
     include_tests = getattr(args, "include_tests", False)
@@ -9443,6 +9494,7 @@ _REACHABILITY_EDGE_TYPES: Final[frozenset[str]] = call_family_edge_types() | fro
 )
 
 
+@_restores_declaration
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     """Find potentially dead code: production callables unreachable from seeds.
 
@@ -9485,7 +9537,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = load_substrate(input_path)
+    behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
     # Identify production callable symbols (exclude test files); docs-prose:F4.
@@ -12448,6 +12500,7 @@ def _compute_supply_chain_summary(
     installed_deps_skipped: Optional[Dict[str, Any]] = None,
     generated_output_skipped: Optional[Dict[str, Any]] = None,
     vcs_ignored_skipped: Optional[Dict[str, Any]] = None,
+    declared_test_inputs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
@@ -12460,7 +12513,10 @@ def _compute_supply_chain_summary(
     ``generated_output_skipped`` (point 7 --
     ``discovery.generated_output_summary``'s ``{dirs, entries}``) and
     ``vcs_ignored_skipped`` (point 9 -- ``discovery.vcs_ignored_summary``'s
-    ``{paths, entries}``). Tier-3
+    ``{paths, entries}``). ``declared_test_inputs`` (point 10 --
+    ``declared_test_inputs.declared_summary``'s ``{config, setting, dirs,
+    files}``) is present only when the repository has a ``.hypergumbo.toml``:
+    absent means no config, ``dirs: []`` a config that declares none. Tier-3
     (external_dep) carries two sub-buckets counting its symbols by ``meta``
     provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
@@ -12520,6 +12576,8 @@ def _compute_supply_chain_summary(
     summary["vcs_ignored_skipped"] = vcs_ignored_skipped or {
         "paths": 0, "entries": [],
     }
+    if declared_test_inputs is not None:
+        summary["declared_test_inputs"] = declared_test_inputs
     # ADR-0004 point 3a (WI-pasan): committed vendored code was analysed but
     # left out of the summaries, so say which directories.
     summary["vendored_analysed"] = vendored_analysed_summary(symbols)
@@ -12855,10 +12913,14 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from hypergumbo_core.declared_test_inputs import (
+            active_declaration, install_declaration,
+        )
         from hypergumbo_core.discovery import (
             TraceDeps, set_active_trace_deps, set_file_index,
         )
 
+        previous_declaration = active_declaration()
         try:
             return fn(*args, **kwargs)
         finally:
@@ -12867,6 +12929,10 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
             # run as the index it shaped (ADR-0004 §"Installed dependency
             # source").
             set_active_trace_deps(TraceDeps(), None)
+            # So are the declared test-input directories (ADR-0004 point 10):
+            # the next analysis in this process, of another repository, must
+            # not classify its files by this one's declaration.
+            install_declaration(previous_declaration)
 
     return cast(_SurveyFn, wrapper)
 
@@ -13001,7 +13067,25 @@ def run_survey(
     # ADR-0045 config tiers. Resolved BEFORE any analysis so a bad `[merge]`
     # key fails fast, with the file and key named (exit 2), not after a run.
     from .arbitration import policy_from_config
-    _arbitration_policy = policy_from_config(_load_config_or_exit(repo_root))
+    _config = _load_config_or_exit(repo_root)
+    _arbitration_policy = policy_from_config(_config)
+    # ADR-0004 point 10: the test-input directories this repository declares
+    # in its .hypergumbo.toml classify as test code for every consumer of the
+    # test predicates in this run. Installed even when empty, so nothing from
+    # an earlier analysis in this process survives into this one; the
+    # decorator restores the previous declaration on every exit path.
+    from .declared_test_inputs import (
+        declaration_for_repo, declared_summary, format_declared_disclosure,
+        install_declaration,
+    )
+    from .user_config import project_config_path
+    _project_config = project_config_path(repo_root)
+    _has_project_config = _project_config.is_file()
+    _declaration = declaration_for_repo(
+        repo_root, _config.test_input_dirs,
+        _project_config.name if _has_project_config else None,
+    )
+    install_declaration(_declaration)
 
     run_status.phase("Indexing files")
     combined_excludes = list(DEFAULT_EXCLUDES)
@@ -13037,6 +13121,17 @@ def run_survey(
     _ignored_disclosure = format_vcs_ignored_disclosure(vcs_ignored_skipped)
     if _ignored_disclosure:
         print(_ignored_disclosure, file=sys.stderr)
+    # ADR-0004 point 10: and what the repository's own config reclassified as
+    # test input. Recorded whenever a .hypergumbo.toml exists (`dirs: []` when
+    # it declares none), so a re-reading command knows the declaration.
+    from .paths import _path_rule_reason
+    declared_test_inputs = (
+        declared_summary(_declaration, file_index.all_files(), _path_rule_reason)
+        if _has_project_config else None
+    )
+    _declared_disclosure = format_declared_disclosure(declared_test_inputs)
+    if _declared_disclosure:
+        print(_declared_disclosure, file=sys.stderr)
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
@@ -13488,6 +13583,7 @@ def run_survey(
         installed_deps_skipped=installed_deps_skipped,
         generated_output_skipped=generated_output_skipped,
         vcs_ignored_skipped=vcs_ignored_skipped,
+        declared_test_inputs=declared_test_inputs,
     )
     _vendored_disclosure = format_vendored_disclosure(
         behavior_map["supply_chain_summary"]["vendored_analysed"],

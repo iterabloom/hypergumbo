@@ -1799,7 +1799,11 @@ class ClaimVerdict:
             count later reads as a mystery regression. Keys are ``migration_sourced`` plus one per rule that
             ``paths.classify_test_file`` can fire: ``test_sourced``,
             ``mock_sourced``, ``fixture_sourced``, ``benchmark_sourced``,
-            ``test_support_sourced``. The split exists because
+            ``test_support_sourced``, and ``declared_test_input_sourced`` for
+            a source in a directory the analysed repository's own
+            ``.hypergumbo.toml`` declares as test input (``test_input_dirs``,
+            ADR-0004 point 10): a repository-supplied exclusion, so it is
+            named apart from the path rules. The split exists because
             ``is_test_file`` is deliberately broad and reporting a ``benches/``
             path as ``test_sourced`` sends the reader looking for a test that
             does not exist. The split changes only the key, not which flows
@@ -6057,7 +6061,12 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
 #: that as ``test_sourced`` would tell the reader something false about, say, a
 #: benchmark directory. So the breadth is KEPT and the rule that fired is
 #: DISCLOSED: the bucket key carries the reason ``paths.classify_test_file``
-#: returned. ``test_sourced`` means genuine test code only.
+#: returned. ``test_sourced`` means genuine test code only, and
+#: ``declared_test_input_sourced`` means the analysed repository's own
+#: ``.hypergumbo.toml`` (``test_input_dirs``) put the source out of scope
+#: (ADR-0004 point 10). A new key in this open-keyed dict is not an envelope
+#: change, for the caveat-kind paragraph's reason, so it does not bump
+#: ``VERIFY_CLAIMS_SCHEMA_VERSION``.
 SOURCE_SCOPE_PRODUCTION = "production"
 SOURCE_SCOPE_TEST = "test_sourced"
 SOURCE_SCOPE_MIGRATION = "migration_sourced"

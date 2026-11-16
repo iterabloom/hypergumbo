@@ -141,8 +141,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
 if TYPE_CHECKING:
+    from .declared_test_inputs import Declaration
     from .discovery import FileIndex
 
+from .declared_test_inputs import declared_dir_of, format_declared_disclosure
 from .discovery import (
     DEFAULT_EXCLUDES, DEPENDENCY_DIR_NAMES, find_files,
     format_generated_output_disclosure, format_installed_deps_disclosure,
@@ -2740,9 +2742,16 @@ def _analyze_test_files(
             frameworks=set(),
         )
 
-    # Detect frameworks: root runner config, then a stratified sample.
+    # Detect frameworks: root runner config, then a stratified sample. A
+    # declared test-input directory (ADR-0004 point 10) is a project the
+    # tests READ, so a test framework its own files use is not this
+    # project's: its files count as test files above but are not sampled.
     frameworks_found = _detect_test_frameworks_from_markers(repo_root)
-    sample = _sample_test_files_for_frameworks(test_file_paths, repo_root)
+    sample = _sample_test_files_for_frameworks(
+        [f for f in test_file_paths
+         if declared_dir_of(f.relative_to(repo_root).as_posix()) is None],
+        repo_root,
+    )
     for test_file in sample:
         try:
             content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
@@ -6895,8 +6904,6 @@ def generate_sketch(
     a warm one. The prior global index is always restored. See :func:`_generate_sketch_impl` for the full
     section-by-section contract and argument docs.
     """
-    from .discovery import get_file_index, set_file_index
-
     def _log(msg: str) -> None:
         if verbose:  # pragma: no cover - verbose diagnostics
             import sys
@@ -6905,17 +6912,52 @@ def generate_sketch(
     repo_root = Path(repo_root).resolve()
     if cached_results is None:
         cached_results = _discover_or_survey(repo_root, progress, _log, extra_excludes)
+    # ADR-0004 point 10: classify test code by the test-input directories the
+    # summarised map records (absolute paths too: some sections re-read files
+    # from disk), and restore whatever was installed before on the way out.
+    from .declared_test_inputs import declaration_from_map, declared
+    declaration = (
+        declaration_from_map(cached_results, repo_root)
+        if cached_results is not None else _declaration_from_config(repo_root)
+    )
+    with declared(declaration):
+        return _generate_sketch_scoped(repo_root, cached_results, {
+            "max_tokens": max_tokens, "exclude_tests": exclude_tests,
+            "first_party_priority": first_party_priority, "extra_excludes": extra_excludes,
+            "config_extraction_mode": config_extraction_mode, "verbose": verbose,
+            "max_config_files": max_config_files, "fleximax_lines": fleximax_lines,
+            "max_chunk_chars": max_chunk_chars,
+            "language_proportional": language_proportional, "progress": progress,
+            "cached_results": cached_results, "with_source": with_source,
+            "stats_out": stats_out, "require_sections": require_sections,
+        })
+
+
+def _declaration_from_config(repo_root: Path) -> "Declaration":
+    """The project config's test-input directories, for the direct-analysis
+    fallback that has no map; an unreadable config declares nothing (the
+    survey that failed before this fallback has already reported it)."""
+    from .declared_test_inputs import declaration_for_repo
+    from .user_config import ConfigError, load_layered_config, project_config_path
+
+    try:
+        dirs = load_layered_config(repo_root=repo_root).test_input_dirs
+    except ConfigError:
+        dirs = ()
+    config = project_config_path(repo_root)
+    return declaration_for_repo(repo_root, dirs, config.name if config.is_file() else None)
+
+
+def _generate_sketch_scoped(
+    repo_root: Path,
+    cached_results: Optional[dict[str, Any]],
+    kwargs: dict[str, Any],
+) -> str:
+    """:func:`generate_sketch` once the declaration is installed: the map-scoped
+    file index around :func:`_generate_sketch_impl`."""
+    from .discovery import get_file_index, set_file_index
+
     map_index = _file_index_from_map(repo_root, cached_results)
-    kwargs = {
-        "max_tokens": max_tokens, "exclude_tests": exclude_tests,
-        "first_party_priority": first_party_priority, "extra_excludes": extra_excludes,
-        "config_extraction_mode": config_extraction_mode, "verbose": verbose,
-        "max_config_files": max_config_files, "fleximax_lines": fleximax_lines,
-        "max_chunk_chars": max_chunk_chars,
-        "language_proportional": language_proportional, "progress": progress,
-        "cached_results": cached_results, "with_source": with_source,
-        "stats_out": stats_out, "require_sections": require_sections,
-    }
     if map_index is None:
         return _generate_sketch_impl(repo_root, **kwargs)
     prev_index = get_file_index()
@@ -7114,6 +7156,11 @@ def _generate_sketch_impl(
     ignored_line = format_vcs_ignored_disclosure(_scs.get("vcs_ignored_skipped"))
     if ignored_line:
         header = f"{header}\n\n{ignored_line}"
+    # ADR-0004 point 10: and what the repository's own .hypergumbo.toml
+    # declared as test input.
+    declared_line = format_declared_disclosure(_scs.get("declared_test_inputs"))
+    if declared_line:
+        header = f"{header}\n\n{declared_line}"
     # ADR-0004 point 3a (WI-pasan): and the vendored code analysed but left out
     # of the language line above.
     vendored_line = format_vendored_disclosure(_scs.get("vendored_analysed"))

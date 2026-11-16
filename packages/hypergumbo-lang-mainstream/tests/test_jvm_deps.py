@@ -8,6 +8,7 @@ create_boundary_nodes can classify unresolved Java/Kotlin imports.
 """
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 import pytest
@@ -437,3 +438,41 @@ class TestSkipTestFixtureSubdirs:
         )
         manifest = parse_gradle_dependencies(tmp_path)
         assert manifest.classify_directness("org.slf4j") == "direct"
+
+
+class TestDeclaredTestInputSubdirs:
+    """ADR-0004 point 10: a top-level directory the repository declares in
+    ``test_input_dirs`` is skipped like ``testdata/``. ``jvm_deps`` asks the
+    predicate about ``child.name``, a bare name, which is the child's
+    repo-relative path; these pin that the declaration reaches that call."""
+
+    _POM = (
+        "<project>\n  <dependencies>\n    <dependency>\n"
+        "      <groupId>com.example.fixture</groupId>\n"
+        "      <artifactId>lib</artifactId>\n"
+        "    </dependency>\n  </dependencies>\n</project>\n"
+    )
+    _GRADLE = "dependencies {\n    implementation 'com.example.fixture:lib:1.0'\n}\n"
+
+    def _declared(self, tmp_path: Path) -> "AbstractContextManager[object]":
+        from hypergumbo_core.declared_test_inputs import declaration_for_repo, declared
+
+        return declared(declaration_for_repo(tmp_path, ["projects"], ".hypergumbo.toml"))
+
+    def test_maven_skips_a_declared_top_level_dir(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.jvm_deps import parse_maven_dependencies
+
+        (tmp_path / "projects").mkdir()
+        (tmp_path / "projects" / "pom.xml").write_text(self._POM)
+        assert parse_maven_dependencies(tmp_path).entries != {}  # control
+        with self._declared(tmp_path):
+            assert parse_maven_dependencies(tmp_path).entries == {}
+
+    def test_gradle_skips_a_declared_top_level_dir(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.jvm_deps import parse_gradle_dependencies
+
+        (tmp_path / "projects").mkdir()
+        (tmp_path / "projects" / "build.gradle").write_text(self._GRADLE)
+        assert parse_gradle_dependencies(tmp_path).entries != {}  # control
+        with self._declared(tmp_path):
+            assert parse_gradle_dependencies(tmp_path).entries == {}

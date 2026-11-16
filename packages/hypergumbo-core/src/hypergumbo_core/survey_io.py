@@ -29,6 +29,10 @@ or empty JSON, a non-object root, a missing ``nodes`` key, or a ``view`` that
 is present and differs from ``expected_view``; it only WARNS to stderr on an
 absent or mismatched ``schema_version`` (and on a legacy survey filename),
 and lets a missing path's ``FileNotFoundError`` propagate.
+:func:`reading_substrate` is the same load as a ``with`` block that also puts
+the map's declared test-input directories into effect (ADR-0004 point 10)
+and takes them out again on exit; ``load_substrate`` itself changes no
+process state for them.
 
 The module also owns the ADR-0042 survey filename registry:
 ``CANONICAL_SURVEY_FILENAME`` (``survey.json``), the read-time aliases in
@@ -42,9 +46,11 @@ from __future__ import annotations
 import gzip
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Iterator, Optional, Union
 
+from .declared_test_inputs import declaration_from_map, declared
 from .module_sets import register_module_sets
 from .schema import SCHEMA_VERSION
 
@@ -133,6 +139,19 @@ def load_substrate(
     Returns the parsed behavior-map dict. Propagates ``FileNotFoundError``
     for a genuinely missing path (consumers check existence and print their
     own message before calling this).
+
+    DECLARED TEST INPUTS (ADR-0004 point 10): this function does NOT install
+    the map's ``supply_chain_summary.declared_test_inputs``, so loading a map
+    leaves the process's test classification exactly as it was. A caller
+    that needs the test predicates to answer as the analysis did uses
+    :func:`reading_substrate` (a library caller, a script, a test), which
+    installs the declaration for its ``with`` block and restores the
+    previous one on exit, exception included. The CLI commands use
+    ``cli._load_command_substrate``, which installs it for the rest of the
+    command; every function calling that is decorated with
+    ``cli._restores_declaration``, which restores the previous declaration
+    when the command returns, whoever called it (``cli.main``, a test, a
+    library). A gate test enforces the pairing.
     """
     try:
         data = load_behavior_map(path)
@@ -175,6 +194,25 @@ def load_substrate(
             file=sys.stderr,
         )
     return data
+
+
+@contextmanager
+def reading_substrate(
+    path: Union[Path, str], *, expected_view: str = "behavior_map",
+) -> Iterator[Dict[str, Any]]:
+    """:func:`load_substrate`, with the map's declared test inputs in effect.
+
+    Inside the block every test predicate (``paths.classify_test_file`` and
+    the three built on it) classifies a file under a directory the map
+    records in ``supply_chain_summary.declared_test_inputs`` as test code,
+    as the analysis that wrote the map did; a map without the field
+    declares nothing. On exit, normal or not, the declaration that was in
+    effect before is restored, so two map loads, or a map load and anything
+    after it, cannot leak into each other.
+    """
+    data = load_substrate(path, expected_view=expected_view)
+    with declared(declaration_from_map(data)):
+        yield data
 
 
 def load_behavior_map(path: Union[Path, str]) -> Any:
