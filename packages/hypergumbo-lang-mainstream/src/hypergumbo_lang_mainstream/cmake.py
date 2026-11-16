@@ -30,7 +30,12 @@ Why This Design
 - Uses tree-sitter-cmake package for grammar
 - Shared target registry across files allows resolution of targets defined
   earlier in iteration order; unresolved names are treated as external library
-  references
+  references. Such a ``links`` edge ends at a stand-in in the id grammar
+  (``edge_target.external_target``): ``cmake:external:0-0:<name>:unresolved``
+  for a bare name, a ``${VAR}`` or a flag, and
+  ``cmake:<Pkg>:0-0:<Lib>:unresolved`` for an imported target ``Pkg::Lib``.
+  It was the four-slot string ``cmake:external:<name>:library``, which is no
+  id, so finalize gave it the path slot ``<unknown>``
 - Build-system-specific: targets, functions, macros are first-class
 
 Function and macro identity (WI-tusad)
@@ -69,10 +74,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_symbol_id, node_text,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -318,12 +326,23 @@ def _process_cmake_tree(
                         if dep.lower() in visibility_keywords:
                             continue
                         # Look up dependency
-                        if dep.lower() in target_registry:
+                        dst_ref: Optional[ExternalRef] = None
+                        resolved = dep.lower() in target_registry
+                        if resolved:
                             dst_id = target_registry[dep.lower()]
                             confidence = 0.90
                         else:
-                            # External library reference
-                            dst_id = f"cmake:external:{dep}:library"
+                            # A library no file read so far defines: a
+                            # stand-in in the id grammar. An imported target
+                            # ``Pkg::Lib`` names its package, which goes in
+                            # the path slot (a colon in the name slot is no
+                            # id); a bare name, a ``${VAR}`` or a flag has no
+                            # known package.
+                            package, scoped, library = dep.rpartition("::")
+                            if scoped and package and library:
+                                dst_id, dst_ref = external_target("cmake", library, package)
+                            else:
+                                dst_id, dst_ref = external_target("cmake", dep)
                             confidence = 0.70
 
                         edge = Edge.create(
@@ -335,6 +354,8 @@ def _process_cmake_tree(
                             origin=PASS_ID,
                             evidence_type="cmake_target_link",
                             origin_run_id=run_id,
+                            is_resolved=resolved,
+                            dst_ref=dst_ref,
                         )
                         edges.append(edge)
 

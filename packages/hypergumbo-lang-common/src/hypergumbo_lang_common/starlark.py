@@ -40,7 +40,7 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
    The label as written stays in ``meta["build_label"]``. It used to be pasted
    into the dst raw, which is no id; on grpc that gave 479 edges to one
    nameless ``<unknown>`` node.
-6. Build a NameResolver from the global symbol registry and run a second pass to resolve function calls into `calls` edges, using load aliases as path hints for cross-file resolution.
+6. Build a NameResolver from the global symbol registry and run a second pass to resolve function calls into `calls` edges, using load aliases as path hints for cross-file resolution. A callee no file here defines (a builtin such as ``print``, a native rule) is the stand-in ``starlark:external:0-0:<name>:unresolved`` (``edge_target.external_target``), at the ``ast_call`` unresolved base as before.
 
 Why This Design
 ---------------
@@ -541,8 +541,10 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                         dst_id = lookup_result.symbol.id
                         resolution_score = lookup_result.confidence
                     else:
-                        # External/builtin function or rule
-                        dst_id = f"starlark:external:{target_name}:function"
+                        # External/builtin function or rule: a stand-in in
+                        # the id grammar (it was the four-slot string
+                        # ``starlark:external:<name>:function``, no id).
+                        dst_id = external_target("starlark", target_name)[0]
 
                     ctx.edges.append(Edge.create(
                         src=caller.id,

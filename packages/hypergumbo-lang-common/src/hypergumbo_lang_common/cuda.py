@@ -7,7 +7,9 @@ This analyzer uses tree-sitter to parse CUDA files and extract:
 - Host/device functions (__host__ __device__)
 - Regular host functions
 - Kernel launches (<<<grid, block>>>)
-- CUDA API calls
+- CUDA API calls: a callee no file of the run defines (``cudaMalloc``,
+  ``sqrtf``) is the ``make_unresolved_edge`` stand-in
+  ``cuda:external:0-0:<name>:unresolved``
 
 If tree-sitter-cuda is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -82,6 +84,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
     symbols_at,
 )
@@ -391,42 +394,30 @@ def _extract_cuda_edges(
                 # ADR-0039 ruling 6: resolver match quality interpolates in the
                 # pathway band; an external target derives the unresolved base
                 # (ADR-0037).
-                resolution_score: float | None = None
+                launch_meta = {
+                    "framework_dispatch": "cuda_kernel_launch",
+                    "mechanism": "kernel_launch",
+                } if is_kernel_launch else None
                 if lookup_result.found and lookup_result.symbol:
-                    dst_id = lookup_result.symbol.id
-                    resolution_score = lookup_result.confidence
-                else:
-                    # Synthetic ID for unknown functions (like CUDA API)
-                    dst_id = f"cuda:external:{called_name}:function"
-
-                if is_kernel_launch:
                     edge = Edge.create(
                         src=caller.id,
-                        dst=dst_id,
+                        dst=lookup_result.symbol.id,
                         edge_type="calls",
                         line=start_line,
-                        resolution_score=resolution_score,
-                        is_resolved=resolution_score is not None,
+                        resolution_score=lookup_result.confidence,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
-                        meta={
-                            "framework_dispatch": "cuda_kernel_launch",
-                            "mechanism": "kernel_launch",
-                        },
+                        meta=launch_meta,
                         origin_run_id=run_id,
                     )
                 else:
-                    edge = Edge.create(
-                        src=caller.id,
-                        dst=dst_id,
-                        edge_type="calls",
-                        line=start_line,
-                        resolution_score=resolution_score,
-                        is_resolved=resolution_score is not None,
-                        origin=PASS_ID,
-                        evidence_type="ast_call_direct",
-                        origin_run_id=run_id,
+                    # A function no file here defines (the CUDA API, libc):
+                    # the fleet's stand-in, not a hand-built four-slot string.
+                    edge = make_unresolved_edge(
+                        "cuda", caller.id, called_name, start_line, PASS_ID, run_id,
                     )
+                    if launch_meta is not None:
+                        edge.meta = {**(edge.meta or {}), **launch_meta}
                 edges.append(edge)
                 if stands_in:
                     mark_stand_in(edges, edges_before, caller.id)

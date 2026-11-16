@@ -6,10 +6,10 @@ This analyzer uses tree-sitter to parse OpenGL Shading Language files and extrac
 - Struct definitions
 - Uniform variable declarations
 - Input/output variable declarations (in/out)
-- Function calls (an unresolved callee such as vec4 or texture becomes a
-  ``glsl:builtin:<name>`` target at the ast_call_direct unresolved base,
-  0.50; resolved callees interpolate 0.50-0.85 by resolver match quality,
-  ADR-0039)
+- Function calls (an unresolved callee such as vec4 or texture is the
+  ``make_unresolved_edge`` stand-in ``glsl:external:0-0:<name>:unresolved``
+  at the ast_call_direct unresolved base, 0.50; resolved callees interpolate
+  0.50-0.85 by resolver match quality, ADR-0039)
 
 If tree-sitter-glsl is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -56,6 +56,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
     symbol_declared_by,
     symbols_at,
@@ -341,24 +342,21 @@ def _extract_glsl_edges(
                 # resolver's match quality interpolated in the ast_call_direct
                 # band; a builtin is an unresolved target (ADR-0037) and
                 # derives the unresolved base.
-                resolution_score: float | None = None
                 if result.symbol is not None:
-                    dst_id = result.symbol.id
-                    resolution_score = result.confidence
+                    edge = Edge.create(
+                        src=caller.id,
+                        dst=result.symbol.id,
+                        edge_type="calls",
+                        line=start_line,
+                        resolution_score=result.confidence,
+                        origin=PASS_ID,
+                        evidence_type="ast_call_direct",
+                        origin_run_id=run_id,
+                    )
                 else:
-                    dst_id = f"glsl:builtin:{func_name}"
-
-                edge = Edge.create(
-                    src=caller.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=start_line,
-                    resolution_score=resolution_score,
-                    is_resolved=resolution_score is not None,
-                    origin=PASS_ID,
-                    evidence_type="ast_call_direct",
-                    origin_run_id=run_id,
-                )
+                    edge = make_unresolved_edge(
+                        "glsl", caller.id, func_name, start_line, PASS_ID, run_id,
+                    )
                 edges.append(edge)
 
 

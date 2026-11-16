@@ -162,7 +162,7 @@ void main() {
         result = analyze_glsl_files(tmp_path)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have edge to builtin
-        builtin_calls = [e for e in call_edges if "builtin" in e.dst]
+        builtin_calls = [e for e in call_edges if e.dst.endswith(":unresolved")]
         assert len(builtin_calls) >= 1
 
 class TestFindGLSLFiles:
