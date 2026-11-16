@@ -35,11 +35,6 @@ from hypergumbo_lang_extended1.solidity import (
     is_solidity_tree_sitter_available,
 )
 
-pytestmark = pytest.mark.skipif(
-    not is_solidity_tree_sitter_available(),
-    reason="solidity tree-sitter grammar not available",
-)
-
 
 class _Graph:
     """One analysed repo, queried by symbol name."""
