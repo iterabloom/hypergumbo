@@ -31,6 +31,8 @@ Analysis proceeds in two passes for cross-file resolution:
   when every call site across the repo agrees on one type
 - Build every class's ``__init__`` field-type map once, keyed by class id, so
   ``obj.field.method()`` binds in files that only import the class
+- Resolve route registrations whose handler another file declares, through
+  the registering file's imports (``_resolve_imported_route_handlers``)
 - For Django trees, build the model-relation index, then admit model
   ``@property`` getters that return a manager or QuerySet
   (``_collect_django_property_managers``, a monotone fixed point, WI-valav),
@@ -190,8 +192,14 @@ The handler reference of a registration (``symbol_ref``, and the marker's
 (``_resolve_local_ref``): the root name is a def or class of an enclosing
 function of the call, else a module-level binding, and a dotted reference
 (``Outer.LoginView``) is walked member by member. A reference rooted at an
-import (``views.LoginView``) is not a declaration of this file and gets no
-``symbol_ref``, whatever local class shares its last segment.
+import (``views.LoginView``, or a bare ``index`` after ``from .views import
+index``) is not a declaration of this file, whatever local class shares its
+last segment: it is resolved between the passes, once every file's symbols
+are registered, by walking the same dotted name from the import that binds
+its root (``_resolve_imported_route_handlers``). Either way the handler's id
+goes on the UsageContext and on the route marker (``handler_ref``), so the
+route-handler linker binds it by id; ``view_name`` stays the fallback for a
+view the tree does not declare.
 
 Both are derived from the same extraction pass (_extract_django_usage_contexts,
 _extract_flask_usage_contexts, _extract_starlette_usage_contexts). Route symbols
@@ -514,6 +522,24 @@ def _local_ref_id(
     """:func:`_resolve_local_ref`, as the symbol id a UsageContext carries."""
     found = _resolve_local_ref(expr, at, symbol_by_name, scopes_at)
     return found.id if found is not None else None
+
+
+#: Route registrations whose handler this file does not declare: the
+#: UsageContext and the handler expression's dotted parts (``("views",
+#: "LoginView")``). Resolved through the file's imports once every file's
+#: symbols are known (``_resolve_imported_route_handlers``).
+_DeferredRefs = list[tuple[UsageContext, tuple[str, ...]]]
+
+
+def _defer_route_ref(
+    deferred: _DeferredRefs | None, ctx: UsageContext, expr: ast.AST | None,
+) -> None:
+    """Queue ``ctx`` for import resolution when its handler is still unknown."""
+    if deferred is None or expr is None or ctx.symbol_ref is not None:
+        return
+    parts = _dotted_parts(expr)
+    if parts is not None:
+        deferred.append((ctx, tuple(parts)))
 
 
 def _emit_module_level_assign_symbols(
@@ -1588,6 +1614,7 @@ def _extract_django_usage_contexts(
     imports: dict[str, tuple[str, str]] | None = None,
     repo_root: Path | None = None,
     scopes_at: _ScopesAt | None = None,
+    deferred: _DeferredRefs | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Django URL patterns.
 
@@ -1648,6 +1675,7 @@ def _extract_django_usage_contexts(
         # Extract view reference from second argument
         view_ref = None
         view_name = None
+        view_expr: ast.expr | None = None
         is_class_based = False
         if len(node.args) >= 2:
             second_arg = node.args[1]
@@ -1655,11 +1683,11 @@ def _extract_django_usage_contexts(
                 # views.user_list -> a view of this file only when the chain
                 # is rooted at one of its classes (Views.user_list)
                 view_name = second_arg.attr
-                view_ref = _local_ref_id(second_arg, node, symbol_by_name, scopes_at)
+                view_expr = second_arg
             elif isinstance(second_arg, ast.Name):
                 # user_list -> check if it's defined locally
                 view_name = second_arg.id
-                view_ref = _local_ref_id(second_arg, node, symbol_by_name, scopes_at)
+                view_expr = second_arg
             elif isinstance(second_arg, ast.Call):
                 # views.LoginView.as_view() -> "LoginView"
                 # TemplateView.as_view(template_name='...') -> "TemplateView"
@@ -1676,9 +1704,9 @@ def _extract_django_usage_contexts(
                         # LoginView.as_view() -> LoginView
                         view_name = call_func.value.id
                     if view_name is not None:
-                        view_ref = _local_ref_id(
-                            call_func.value, node, symbol_by_name, scopes_at,
-                        )
+                        view_expr = call_func.value
+        if view_expr is not None:
+            view_ref = _local_ref_id(view_expr, node, symbol_by_name, scopes_at)
 
         # Build metadata with args info
         args_values = []
@@ -1725,6 +1753,7 @@ def _extract_django_usage_contexts(
             },
         )
         contexts.append(ctx)
+        _defer_route_ref(deferred, ctx, view_expr)
 
     return contexts
 
@@ -1967,6 +1996,7 @@ def _extract_flask_usage_contexts(
     imports: dict[str, tuple[str, str]] | None = None,
     repo_root: Path | None = None,
     scopes_at: _ScopesAt | None = None,
+    deferred: _DeferredRefs | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Flask/FastAPI call-based route registration.
 
@@ -2069,6 +2099,7 @@ def _extract_flask_usage_contexts(
                         },
                     )
                     contexts.append(ctx)
+                    _defer_route_ref(deferred, ctx, resource_arg)
             continue
 
         # Extract the URL pattern from the first argument
@@ -2093,6 +2124,7 @@ def _extract_flask_usage_contexts(
         # 3. view_func keyword arg: add_url_rule('/path', view_func=handler)
         view_ref = None
         view_name = None
+        view_expr: ast.expr | None = None
 
         # Check for view_func in keyword arguments
         for kw in node.keywords:
@@ -2102,9 +2134,7 @@ def _extract_flask_usage_contexts(
                 elif isinstance(kw.value, ast.Attribute):
                     view_name = kw.value.attr
                 if view_name is not None:
-                    view_ref = _local_ref_id(
-                        kw.value, node, symbol_by_name, scopes_at,
-                    )
+                    view_expr = kw.value
                 break
 
         # If not found in kwargs, check positional args.
@@ -2118,9 +2148,9 @@ def _extract_flask_usage_contexts(
             elif isinstance(handler_arg, ast.Attribute):
                 view_name = handler_arg.attr
             if view_name is not None:
-                view_ref = _local_ref_id(
-                    handler_arg, node, symbol_by_name, scopes_at,
-                )
+                view_expr = handler_arg
+        if view_expr is not None:
+            view_ref = _local_ref_id(view_expr, node, symbol_by_name, scopes_at)
 
         # Extract methods if specified
         methods = None
@@ -2188,6 +2218,7 @@ def _extract_flask_usage_contexts(
                 },
             )
             contexts.append(ctx)
+            _defer_route_ref(deferred, ctx, view_expr)
 
     return contexts
 
@@ -2198,6 +2229,7 @@ def _extract_starlette_usage_contexts(
     symbol_by_name: dict[str, Symbol],
     imports: dict[str, tuple[str, str]] | None = None,
     scopes_at: _ScopesAt | None = None,
+    deferred: _DeferredRefs | None = None,
 ) -> list[UsageContext]:
     """Extract UsageContext records for Starlette ``Route`` / ``WebSocketRoute``.
 
@@ -2264,6 +2296,7 @@ def _extract_starlette_usage_contexts(
         # Second arg: handler function.
         view_ref = None
         view_name = None
+        view_expr: ast.expr | None = None
         if len(node.args) >= 2:
             handler_arg = node.args[1]
             if isinstance(handler_arg, ast.Name):
@@ -2271,6 +2304,7 @@ def _extract_starlette_usage_contexts(
             elif isinstance(handler_arg, ast.Attribute):
                 view_name = handler_arg.attr
             if view_name is not None:
+                view_expr = handler_arg
                 view_ref = _local_ref_id(
                     handler_arg, node, symbol_by_name, scopes_at,
                 )
@@ -2333,6 +2367,7 @@ def _extract_starlette_usage_contexts(
                 },
             )
             contexts.append(ctx)
+            _defer_route_ref(deferred, ctx, view_expr)
 
     return contexts
 
@@ -2663,6 +2698,14 @@ class FileAnalysis:
     # bare name inside the function reaches its local class and a bare name
     # anywhere else does not.
     local_classes_by_func_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
+    # Route registrations whose handler this file does not declare: the
+    # UsageContext, the handler expression's dotted parts, and the route
+    # marker minted for it (``None`` for the marker-less Flask / FastAPI
+    # forms). ``_resolve_imported_route_handlers`` walks each through this
+    # file's imports once every file's symbols are registered.
+    deferred_route_refs: list[
+        tuple[UsageContext, tuple[str, ...], "Symbol | None"]
+    ] = field(default_factory=list)
 
 
 _PYTHON_PROJECT_MANIFESTS = frozenset({"pyproject.toml", "setup.py", "setup.cfg"})
@@ -4139,6 +4182,11 @@ def _extract_file_analysis(
     route_local_constants, route_imports = _collect_module_constants(
         tree, repo_root, py_file,
     )
+    # Registrations whose handler this file does not declare, for the
+    # import-resolution pass, and the marker minted for each registration.
+    deferred_refs: _DeferredRefs = []
+    marker_by_ctx_id: dict[int, Symbol] = {}
+
     def _scopes_at(node: ast.AST) -> list[str]:
         """Registry prefixes of the scopes a bare name at ``node`` reaches
         before the module (:data:`_ScopesAt`)."""
@@ -4161,6 +4209,7 @@ def _extract_file_analysis(
         imports=route_imports,
         repo_root=repo_root,
         scopes_at=_scopes_at,
+        deferred=deferred_refs,
     )
     usage_contexts.extend(django_contexts)
     # router_prefixes already computed above (before the symbol extraction loop)
@@ -4170,12 +4219,14 @@ def _extract_file_analysis(
         imports=route_imports,
         repo_root=repo_root,
         scopes_at=_scopes_at,
+        deferred=deferred_refs,
     )
     usage_contexts.extend(flask_contexts)
     starlette_contexts = _extract_starlette_usage_contexts(
         tree, str(py_file), symbol_by_name,
         imports=route_imports,
         scopes_at=_scopes_at,
+        deferred=deferred_refs,
     )
     usage_contexts.extend(starlette_contexts)
 
@@ -4189,6 +4240,9 @@ def _extract_file_analysis(
     # the route stays at "ANY" — better than fabricating a wrong "GET".
     # Function-based views keep "GET" (Django dispatches them for any HTTP
     # verb, but GET is the conventional default for static-analysis output).
+    handler_ids = {
+        s.id for s in symbols if s.kind in _ROUTE_HANDLER_KINDS
+    }
     for ctx in django_contexts:
         route_path = ctx.metadata.get("route_path", "")
         view_name = ctx.metadata.get("view_name")
@@ -4198,9 +4252,12 @@ def _extract_file_analysis(
         if is_cbv:
             extra["is_class_based_view"] = True
         # Minted through the shared chokepoint (WI-zugob): Symbol.name is
-        # "{METHOD} {path}", and the view identity lives in meta["view_name"],
-        # which is what consumers read.
-        symbols.append(make_route_symbol(
+        # "{METHOD} {path}", and the view's NAME lives in meta["view_name"].
+        # When this file declares the view, the marker also carries its id
+        # (``handler_ref``), as the Starlette and flask-restful markers do:
+        # the name alone cannot tell ``LoginView`` from ``Outer.LoginView``
+        # or from a ``LoginView`` of another app.
+        marker = make_route_symbol(
             language="python",
             path=str(py_file),
             span=ctx.span,
@@ -4211,8 +4268,11 @@ def _extract_file_analysis(
             # origin_run_id for every symbol in analyze()
             # (`symbol.origin_run_id = run.execution_id`).
             origin_run_id="",
+            handler_ref=ctx.symbol_ref if ctx.symbol_ref in handler_ids else None,
             extra_meta=extra,
-        ))
+        )
+        symbols.append(marker)
+        marker_by_ctx_id[id(ctx)] = marker
 
     # Create route symbols from Starlette Route/WebSocketRoute usage contexts.
     # Starlette routes are constructor calls, not method calls on app/router,
@@ -4231,7 +4291,7 @@ def _extract_file_analysis(
             # name segment (the same character is the segment separator).
             # The method-disambiguated route name embeds the method and
             # path via ``" "`` so the canonical 5-segment shape holds.
-            symbols.append(make_route_symbol(
+            marker = make_route_symbol(
                 language="python",
                 path=str(py_file),
                 span=ctx.span,
@@ -4248,7 +4308,9 @@ def _extract_file_analysis(
                     "framework": "starlette",
                     "route_class": receiver,
                 },
-            ))
+            )
+            symbols.append(marker)
+            marker_by_ctx_id[id(ctx)] = marker
 
     # Create route symbols from Flask-RESTful add_resource usage contexts.
     # add_resource registers all HTTP methods the Resource class defines,
@@ -4259,7 +4321,7 @@ def _extract_file_analysis(
             continue
         route_path = ctx.metadata.get("route_path", "")
         view_name = ctx.metadata.get("view_name")
-        symbols.append(make_route_symbol(
+        marker = make_route_symbol(
             language="python",
             path=str(py_file),
             span=ctx.span,
@@ -4272,7 +4334,9 @@ def _extract_file_analysis(
             origin_run_id="",
             handler_ref=ctx.symbol_ref,
             extra_meta={"view_name": view_name},
-        ))
+        )
+        symbols.append(marker)
+        marker_by_ctx_id[id(ctx)] = marker
 
     # Compute module name for import resolution
     if repo_root is not None:
@@ -4350,6 +4414,10 @@ def _extract_file_analysis(
         method_to_enclosing_class_id=method_to_enclosing_class_id,
         methods_by_class_id=methods_by_class_id,
         local_classes_by_func_id=local_classes_by_func_id,
+        deferred_route_refs=[
+            (ctx, parts, marker_by_ctx_id.get(id(ctx)))
+            for ctx, parts in deferred_refs
+        ],
     ), None
 
 
@@ -8479,6 +8547,44 @@ def _resolve_dotted_name(
     )
 
 
+#: The kinds a route can dispatch to: a view function, a method, or a class
+#: (a class-based view, a Resource). A module variable holding a view
+#: (``view = V.as_view()``) is not one.
+_ROUTE_HANDLER_KINDS = frozenset({"function", "method", "class"})
+
+
+def _resolve_imported_route_handlers(
+    analysis: FileAnalysis,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+) -> None:
+    """Give each route registration of ``analysis`` whose handler is declared
+    in ANOTHER file that handler: on the UsageContext (``symbol_ref``) and on
+    the route marker (``meta["handler_ref"]``).
+
+    ``path("x/", views.LoginView.as_view())`` after ``from app import views``,
+    ``path("x/", index)`` after ``from .views import index``,
+    ``Route("/", endpoints.home)``: the handler expression is a dotted name,
+    walked from the import that binds its root
+    (:func:`_resolve_dotted_name`). The name alone cannot say which of the
+    project's ``LoginView`` classes is meant; the import does. A root no
+    import of this file binds, a module outside the tree, or a name that
+    walks to no function, method or class leaves the registration as it was,
+    for the name-based resolvers downstream.
+    """
+    for ctx, parts, marker in analysis.deferred_route_refs:
+        found = _resolve_dotted_name(
+            parts, analysis.symbol_by_name, analysis.imports, global_symbols,
+            analysis.module_imports, resolver, sym_by_path_name,
+        )
+        if found is None or found.kind not in _ROUTE_HANDLER_KINDS:
+            continue
+        ctx.symbol_ref = found.id
+        if marker is not None:
+            marker.meta = {**(marker.meta or {}), "handler_ref": found.id}
+
+
 def _returned_class(
     callee: Symbol | None,
     local_symbols: dict[str, Symbol],
@@ -11246,6 +11352,13 @@ def analyze_python(
     _property_getter_by_path_name = _build_property_getter_index(
         [s for a in file_analyses.values() for s in a.symbols]
     )
+
+    # Route registrations naming a handler of another file, through the
+    # registering file's imports.
+    for _rr_analysis in file_analyses.values():
+        _resolve_imported_route_handlers(
+            _rr_analysis, global_symbols, resolver, _sym_by_path_name,
+        )
 
     # Type UNANNOTATED receiver parameters from the call
     # sites that pass them. Runs BETWEEN the symbol pass and the edge pass
