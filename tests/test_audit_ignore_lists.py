@@ -41,9 +41,9 @@ CI_FILES = (
 )
 
 #: No-fix advisories in packages absent from every CI audit env (diskcache via
-#: llama_cpp_python, nltk via safety). Named here so adding a third is a
-#: visible decision, not a silent divergence.
-RELEASE_CHECK_LOCAL_ONLY = frozenset({"CVE-2025-69872", "PYSEC-2026-3740"})
+#: llama_cpp_python). Named here so adding another is a visible decision, not
+#: a silent divergence.
+RELEASE_CHECK_LOCAL_ONLY = frozenset({"CVE-2025-69872"})
 
 _IGNORE = re.compile(r"--ignore-vuln\s+(\S+)")
 
