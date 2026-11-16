@@ -221,8 +221,11 @@ _REVERSED_PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ],
 }
 
-# Extensions to scan (union of both pattern dicts)
-_SOURCE_EXTENSIONS = list(
+# Extensions to scan (union of both pattern dicts). Sorted: this is the order
+# files are scanned in, and ``_create_di_edges`` keeps the FIRST binding of an
+# (interface method, implementation method) pair, so a set's hash-salt order
+# would decide that edge's confidence and ``framework_dispatch``.
+_SOURCE_EXTENSIONS = sorted(
     set(_PATTERNS_BY_EXT.keys()) | set(_REVERSED_PATTERNS_BY_EXT.keys()),
 )
 _SOURCE_GLOBS = [f"*{ext}" for ext in _SOURCE_EXTENSIONS]
