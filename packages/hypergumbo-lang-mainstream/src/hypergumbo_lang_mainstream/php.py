@@ -62,8 +62,11 @@ Why This Design
 
 Population of ``is_exported`` follows PHP's default-public rule: top-level
 functions and classes are exported; class members are exported unless the
-declaration carries ``private`` or ``protected``, except class constants,
-which are always exported (their visibility modifier is not read).
+declaration carries ``private`` or ``protected``. Class constants follow
+the same rule (their modifier is read like a property's); in a constant's
+stable_id only ``private`` / ``protected`` fill the visibility slot, and an
+explicit ``public`` hashes the same empty slot as an unmodified constant
+(``_php_constant_id_visibility``).
 """
 from __future__ import annotations
 
@@ -1050,6 +1053,25 @@ def _extract_modifiers_php(node: "tree_sitter.Node") -> list[str]:
     return modifiers
 
 
+def _php_member_exported(modifiers: list[str]) -> bool:
+    """PHP's default-public rule for a class member (method, property or
+    class constant): exported unless declared ``private`` or ``protected``."""
+    return "private" not in modifiers and "protected" not in modifiers
+
+
+def _php_constant_id_visibility(modifiers: list[str]) -> str:
+    """The stable_id visibility slot of a class constant.
+
+    ``private`` / ``protected`` are hashed; ``public`` and no modifier both
+    hash the empty slot. A constant with no modifier is public, so the explicit
+    keyword adds no information, and before the modifier was read every
+    constant hashed the empty slot: hashing ``public`` would have moved the id
+    of every explicitly public constant for nothing (methods and properties,
+    whose modifiers were always read, keep ``public`` in the slot)."""
+    visibility = visibility_from_modifiers(modifiers)
+    return "" if visibility == "public" else visibility
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1246,7 +1268,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="private" not in modifiers and "protected" not in modifiers,
+                    is_exported=_php_member_exported(modifiers),
                     qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
                 )
@@ -1260,9 +1282,7 @@ def _extract_symbols(
             namespace_name = namespace_of(node)
             if enclosing is not None:
                 modifiers = _extract_modifiers_php(node)
-                exported = (
-                    "private" not in modifiers and "protected" not in modifiers
-                )
+                exported = _php_member_exported(modifiers)
                 for el in node.children:
                     if el.type != "property_element":
                         continue
@@ -1281,10 +1301,15 @@ def _extract_symbols(
                     ))
 
         # Constants: a class/interface/trait/enum constant is a ``field``; a
-        # top-level (global) constant is a ``variable``.
+        # top-level (global) constant is a ``variable``. A class constant's
+        # modifiers (``private`` / ``protected`` / ``public`` / ``final``) are
+        # children of the const_declaration and are read like a property's:
+        # they were not read, so a private constant came out public and
+        # exported (WI-dajur).
         elif node.type == "const_declaration":
             enclosing = _enclosing_type_name(node, source)
             namespace_name = namespace_of(node)
+            modifiers = _extract_modifiers_php(node)
             for el in node.children:
                 if el.type != "const_element":
                     continue
@@ -1295,18 +1320,22 @@ def _extract_symbols(
                     qualified = _make_php_qualified_name(namespace_name, enclosing, cname)
                     symbols.append(_php_member_symbol(
                         file_path, el, f"{enclosing}.{cname}", "field",
-                        qualified, [], True, run,
+                        qualified, modifiers, _php_member_exported(modifiers), run,
                         stable_id=make_typed_stable_id(
-                            "field", "", visibility_from_modifiers([]),
+                            "field", "", _php_constant_id_visibility(modifiers),
                             name=cname, qualified_name=qualified,
                             file_stable_id=file_stable_id,
                         ),
                     ))
                 else:
+                    # A top-level ``const`` has no modifiers, so this is ``[]``
+                    # there; an anonymous class's constant (``new class {
+                    # private const X = 1; }``) has no enclosing type name and
+                    # lands here too, and keeps its declared visibility.
                     symbols.append(_php_member_symbol(
                         file_path, el, cname, "variable",
                         _make_php_qualified_name(namespace_name, None, cname),
-                        [], True, run,
+                        modifiers, _php_member_exported(modifiers), run,
                     ))
 
     # INV-jahiv Phase 4 PR3: post-pass for symbols (e.g. classes) whose
