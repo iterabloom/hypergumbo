@@ -296,7 +296,9 @@ def link_ruby_ffi(
         ):
             c_files.add(sym.path)
 
-    for c_path_str in c_files:
+    # Sorted: the ``("rb_define", name)`` dedup below keeps the first file's
+    # registration, and a set's order follows the per-process hash salt.
+    for c_path_str in sorted(c_files):
         c_path = Path(c_path_str)
         if not c_path.is_absolute():
             c_path = repo_root / c_path

@@ -33,6 +33,25 @@ Tables are extracted from SQL queries using regex patterns:
 - UPDATE table_name
 - DELETE FROM table_name
 
+Table Order
+-----------
+A statement's tables are listed once each, lowercased, in the order the
+statement first mentions them (``FROM file f JOIN block b`` gives
+``["file", "block"]``). That one list is the call site's name
+(``"SELECT file, block"``), a segment of its node id, ``meta["tables"]`` and
+the order of its ``references`` edges, so all four are a function of the
+source text alone. They were once read out of a ``set``, whose order follows
+the per-process str-hash salt: two analyses of one unchanged tree named the
+same site ``"SELECT file, block"`` and ``"SELECT block, file"`` and gave it
+two node ids.
+
+Statement order rather than alphabetical because the name is for a reader,
+and the table a statement leads with (the ``FROM`` table, the ``INTO`` /
+``UPDATE`` target) is the one it is about. The ``stable_id`` hashes the
+SORTED tables and always did: it identifies the site by its table SET, so it
+is unaffected by the order and two spellings of one join in one file share a
+SITE key (split by occurrence downstream, as any repeated query is).
+
 How It Works
 ------------
 1. Scan source files for SQL query patterns
@@ -158,6 +177,11 @@ TABLE_EXTRACTION_PATTERNS = [
 ]
 
 
+# Words the extraction patterns capture in the table slot that are SQL keywords
+# (``INSERT INTO t SELECT ...``, ``UPDATE t SET ...``), never tables.
+_NOT_TABLE_NAMES = frozenset({"select", "set", "values", "where", "and", "or"})
+
+
 def _extract_tables_from_query(query: str) -> list[str]:
     """Extract table names from a SQL query string.
 
@@ -165,18 +189,20 @@ def _extract_tables_from_query(query: str) -> list[str]:
         query: SQL query string.
 
     Returns:
-        List of unique table names found in the query.
+        The distinct lowercased table names, in the order the query first
+        mentions them (module docstring, "Table Order"). The order is a
+        function of ``query`` alone: mentions are ordered by the offset of the
+        table name, never by set iteration and never by the order of
+        ``TABLE_EXTRACTION_PATTERNS``.
     """
-    tables: set[str] = set()
-
-    for pattern in TABLE_EXTRACTION_PATTERNS:
-        for match in pattern.finditer(query):
-            table_name = match.group(1).lower()
-            # Skip common SQL keywords that might be captured
-            if table_name not in ("select", "set", "values", "where", "and", "or"):
-                tables.add(table_name)
-
-    return list(tables)
+    mentions = sorted(
+        (match.start(1), match.group(1).lower())
+        for pattern in TABLE_EXTRACTION_PATTERNS
+        for match in pattern.finditer(query)
+    )
+    return list(dict.fromkeys(
+        name for _offset, name in mentions if name not in _NOT_TABLE_NAMES
+    ))
 
 
 def _detect_query_type(query: str) -> str:
@@ -383,6 +409,10 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
         # — its identity folds the declaring file's repo-relative path so the same
         # query in two files does not collide cross-file. (Pre-v8 this borrowed the
         # LOGICAL make_protocol_stable_id, which is file-blind.)
+        # The target hashes the SORTED tables while the name lists them in
+        # statement order: the id is keyed on the table set (module
+        # docstring, "Table Order"). Do not unsort it; every multi-table
+        # site's stable_id would move.
         stable_id=make_site_stable_id(
             "db_query", str(rel_path),
             f"{pattern.query_type}:{','.join(sorted(pattern.tables))}",
