@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.21.0"
+      "const": "0.21.1"
     },
     "confidence_model": {
       "type": "string",
@@ -250,7 +250,7 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped, generated_output_skipped and vcs_ignored_skipped, and vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape, generated_output_skipped a {dirs, entries} shape and vcs_ignored_skipped a {paths, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped, generated_output_skipped and vcs_ignored_skipped, vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a), and declared_test_inputs (test-input directories the repository's .hypergumbo.toml declares, ADR-0004 point 10; present only when that file exists). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape, generated_output_skipped a {dirs, entries} shape and vcs_ignored_skipped a {paths, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
       "properties": {
         "installed_deps_skipped": {
           "type": "object",
@@ -360,6 +360,50 @@
                 "type": "string",
                 "description": "Repo-relative path."
               }
+            }
+          }
+        },
+        "declared_test_inputs": {
+          "type": "object",
+          "description": "Directories the analysed repository declares as test input in its own .hypergumbo.toml (test_input_dirs, ADR-0004 point 10): every test-code predicate classifies a file under one exactly as a file under tests/, with the reason declared_test_input. Present only when the repository has a .hypergumbo.toml; dirs is [] when it declares none, and an absent field means no declaration. dirs is not capped: commands that re-read the map recover the declaration from it. A directory's files counts the files under it that ONLY the declaration classifies (no path rule already does); files is their sum.",
+          "required": [
+            "config",
+            "setting",
+            "dirs",
+            "files"
+          ],
+          "properties": {
+            "config": {
+              "type": "string",
+              "description": "Basename of the declaring file."
+            },
+            "setting": {
+              "type": "string",
+              "description": "The config key (test_input_dirs)."
+            },
+            "dirs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "files"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Repo-relative directory."
+                  },
+                  "files": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "files": {
+              "type": "integer",
+              "minimum": 0
             }
           }
         },

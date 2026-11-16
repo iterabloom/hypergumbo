@@ -106,6 +106,9 @@ def parse_gradle_dependencies(repo_root: Path) -> DependencyManifest:
         # WI-bukof: skip test-fixture directories (testFixtures/, testdata/,
         # fixtures/, tests/, etc.) — their build.gradle declarations are
         # scaffolding for test fixtures, not real project dependencies.
+        # ``child.name`` is a child of the root, so it IS the repo-relative
+        # path: a top-level directory declared in ``test_input_dirs`` is
+        # skipped too (ADR-0004 point 10).
         if is_test_file(child.name):
             continue
         for name in ("build.gradle", "build.gradle.kts"):
@@ -158,7 +161,9 @@ def parse_maven_dependencies(repo_root: Path) -> DependencyManifest:
     for child in repo_root.iterdir():
         if not child.is_dir():
             continue
-        # WI-bukof: skip test-fixture subdirectories.
+        # WI-bukof: skip test-fixture subdirectories (and a top-level
+        # directory declared in ``test_input_dirs``: ``child.name`` is its
+        # repo-relative path).
         if is_test_file(child.name):
             continue
         sub_pom = child / "pom.xml"

@@ -10,6 +10,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Iterator
+
+import pytest
 
 
 def _find_repo_root() -> Path | None:
@@ -60,6 +63,25 @@ def _repair_wrapper(repo_root: Path) -> bool:
         return result.returncode == 0
     except Exception:
         return False
+
+
+@pytest.fixture(autouse=True)
+def _hg_no_declared_test_inputs_after_test() -> Iterator[None]:
+    """Leave no declared test-input directories behind (ADR-0004 point 10).
+
+    ``declared_test_inputs`` holds ONE process-wide declaration that every
+    test predicate consults. A test that installs one -- by
+    ``install_declaration``, or by a code path that installs and does not
+    restore -- would otherwise reclassify files in every later test this
+    xdist worker runs, and the failure would surface as a random
+    misclassification in an unrelated test.
+    ``test_declared_test_inputs_isolation.py`` proves this fixture is needed
+    and works.
+    """
+    yield
+    from hypergumbo_core.declared_test_inputs import install_declaration
+
+    install_declaration(None)
 
 
 def pytest_configure(config):

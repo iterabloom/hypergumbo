@@ -16,11 +16,18 @@ Key design decisions:
 - Paths use forward slashes (/) regardless of OS
 - Paths are stored relative to repo_root when possible
 - Path comparisons handle mixed formats gracefully
+- The test predicates are path functions with one input that is not the
+  path: the test-input directories the analysed repository declares in
+  ``.hypergumbo.toml`` (``test_input_dirs``), which
+  :mod:`.declared_test_inputs` installs for the run or for the saved map a
+  command reads (ADR-0004 point 10). Nothing is read at import time.
 """
 
 import itertools
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from .declared_test_inputs import declared_dir_of
 
 
 def normalize_path(path: str | Path) -> str:
@@ -278,6 +285,11 @@ TEST_FILE_REASON_MOCK = "mock"
 TEST_FILE_REASON_FIXTURE = "fixture"
 TEST_FILE_REASON_BENCHMARK = "benchmark"
 TEST_FILE_REASON_SUPPORT = "test_support"
+#: Not a path rule: the analysed repository's ``.hypergumbo.toml`` lists the
+#: directory in ``test_input_dirs`` (ADR-0004 point 10). Returned only when no
+#: path rule fires, so every path-classified file keeps its reason and this one
+#: names exactly the files the declaration changed.
+TEST_FILE_REASON_DECLARED = "declared_test_input"
 
 #: Directory-component → reason. Every key here is a member of the population
 #: ``is_test_file`` accepts; splitting the map is what lets a disclosure say
@@ -318,6 +330,14 @@ _TEST_DIR_REASONS = {
 def classify_test_file(path: str) -> Optional[str]:
     """Which rule makes *path* look like test-or-support code, if any.
 
+    The path rules (:func:`_path_rule_reason`) first; when none fires and the
+    path lies under a directory the analysed repository declares as test
+    input (``test_input_dirs`` in its ``.hypergumbo.toml``, installed by
+    :mod:`.declared_test_inputs` for the run or the map being read),
+    :data:`TEST_FILE_REASON_DECLARED`. With nothing declared this is the path
+    rules alone, so every caller of the four predicates gets the declaration
+    without being handed a repository root.
+
     This is the IMPLEMENTATION; :func:`is_test_file` is ``reason is not None``.
     One classifier with two consumers, deliberately — a second predicate that
     re-derived the categories beside the boolean would drift from it on the
@@ -332,15 +352,27 @@ def classify_test_file(path: str) -> Optional[str]:
     stays, and the reason discloses which rule fired.
 
     Returns one of ``test`` / ``mock`` / ``fixture`` / ``benchmark`` /
-    ``test_support``, or ``None`` when the path is production code. Filename
-    rules are checked before directory rules, so ``mocks/db_test.py`` reports
-    ``test``, not ``mock``.
+    ``test_support`` / ``declared_test_input``, or ``None`` when the path is
+    production code. Filename rules are checked before directory rules, so
+    ``mocks/db_test.py`` reports ``test``, not ``mock``.
 
     Args:
         path: File path to check
 
     Returns:
         The matching reason category, or None.
+    """
+    reason = _path_rule_reason(path)
+    if reason is None and declared_dir_of(path) is not None:
+        return TEST_FILE_REASON_DECLARED
+    return reason
+
+
+def _path_rule_reason(path: str) -> Optional[str]:
+    """The path rules of :func:`classify_test_file`, without the declaration.
+
+    Pure: the answer depends on the path string alone. The declaration's
+    disclosure counts the files these rules do NOT already classify.
     """
     filename = get_filename(path)
     filename_lower = filename.lower()
@@ -454,6 +486,8 @@ def is_test_file(path: str) -> bool:
     - Go test files (*_test.go)
     - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
     - Files in tests/, test/, t/, spec/, fakes/, mocks/, fixtures/ directories
+    - Files under a directory the repository declares in ``test_input_dirs``
+      (``.hypergumbo.toml``; ADR-0004 point 10)
 
     Args:
         path: File path to check

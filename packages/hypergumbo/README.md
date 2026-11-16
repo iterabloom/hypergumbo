@@ -131,6 +131,7 @@ Finding the risky calls is mechanical. Deciding which kinds of call count as ris
 
 - `--backend rust-analyzer` **runs the analysed repository's `build.rs` and proc macros as you.** It is off unless you turn it on, and nothing inside the repository can turn it on. Exporting `HYPERGUMBO_RUST_ANALYZER=1` turns it on for every repository.
 - The analysed repository's own `.hypergumbo.toml` *can* switch on the scip-python backend, which analyses statically and executes nothing from the repository.
+- It *can* also declare its own directories as test input (`test_input_dirs`). Code there is then treated as test code: it leaves the entry points, the dead-code candidates and the sources `verify-claims` checks. Every run that applies the declaration names it.
 - hypergumbo has no sandbox of its own: a file crafted to exploit a parser bug would run with your permissions.
 - A sketch quotes the repository's text (its README, docstrings, names and, with source, whole files), and some of that text may be written as instructions to a language model. hypergumbo neither detects nor removes such text; the line under the sketch's title says that quoted text is data from the repository, not instructions to the reader.
 

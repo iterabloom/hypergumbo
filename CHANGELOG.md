@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Declare fixture directories as test input in `.hypergumbo.toml`.**
+
 ## [10.0.0] - 2026-11-16
 
 ### Summary
