@@ -59,7 +59,6 @@ Why This Design
 from __future__ import annotations
 
 import re
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
@@ -261,7 +260,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 before = len(symbols)
                 self._extract_symbols(
                     tree.root_node, path, repo_root, content,
-                    symbols, edges, current_imports,
+                    symbols, edges, current_imports, run.execution_id,
                 )
                 populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
                 files_analyzed += 1
@@ -283,6 +282,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         content: bytes, symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Extract symbols from a syntax tree node.
 
@@ -292,7 +292,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self._extract_script_pass(node, path, repo_root, content, symbols, current_imports)
 
         # Second pass: extract template and style content
-        self._extract_template_style_pass(node, path, repo_root, content, symbols, edges, current_imports)
+        self._extract_template_style_pass(node, path, repo_root, content, symbols, edges, current_imports, execution_id)
 
     def _extract_script_pass(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
@@ -309,15 +309,16 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         content: bytes, symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Second pass: extract template and style content."""
         if node.type == "template_element":
-            self._extract_template_content(node, path, repo_root, symbols, edges, current_imports)
+            self._extract_template_content(node, path, repo_root, symbols, edges, current_imports, execution_id)
         elif node.type == "style_element":
             self._extract_style_info(node, path, repo_root, symbols)
 
         for child in node.children:
-            self._extract_template_style_pass(child, path, repo_root, content, symbols, edges, current_imports)
+            self._extract_template_style_pass(child, path, repo_root, content, symbols, edges, current_imports, execution_id)
 
     def _extract_script_content(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
@@ -487,46 +488,56 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Extract component usage from template element."""
-        self._extract_template_node(node, path, repo_root, symbols, edges, current_imports)
+        self._extract_template_node(node, path, repo_root, symbols, edges, current_imports, execution_id)
 
     def _extract_template_node(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Recursively extract from template nodes."""
         if node.type == "element":
-            self._process_element(node, path, repo_root, symbols, edges, current_imports)
+            self._process_element(node, path, repo_root, symbols, edges, current_imports, execution_id)
             for child in node.children:
                 if child.type not in ("start_tag", "self_closing_tag"):
-                    self._extract_template_node(child, path, repo_root, symbols, edges, current_imports)
+                    self._extract_template_node(child, path, repo_root, symbols, edges, current_imports, execution_id)
             return
 
         for child in node.children:
-            self._extract_template_node(child, path, repo_root, symbols, edges, current_imports)
+            self._extract_template_node(child, path, repo_root, symbols, edges, current_imports, execution_id)
 
     def _process_element(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Process an element node."""
         for child in node.children:
             if child.type == "start_tag":
-                self._process_tag(child, path, repo_root, symbols, edges, current_imports)
+                self._process_tag(child, path, repo_root, symbols, edges, current_imports, execution_id)
                 break
             elif child.type == "self_closing_tag":
-                self._process_tag(child, path, repo_root, symbols, edges, current_imports)
+                self._process_tag(child, path, repo_root, symbols, edges, current_imports, execution_id)
                 break
 
     def _process_tag(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
-        """Process a tag node (start_tag or self_closing_tag)."""
+        """Process a tag node (start_tag or self_closing_tag).
+
+        ``execution_id`` is the pass's one AnalysisRun id, handed down from
+        ``analyze``: an edge that minted an id of its own here joined no run,
+        and the map failed the provenance cross-check on every component
+        reference.
+        """
         tag_name = ""
         directives: list[str] = []
         directive_values: list[str] = []
@@ -584,8 +595,6 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 and tag_name.lower() not in VUE_BUILTINS
             )
         )
-
-        execution_id = f"uuid:{uuid.uuid4()}"
 
         if is_component:
             import_path = current_imports.get(tag_name, "")
