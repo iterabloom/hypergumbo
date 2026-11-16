@@ -247,3 +247,33 @@ def test_a_local_type_is_not_replaced_by_a_nested_one(tmp_path: Path) -> None:
     )})
     calls = _calls(symbols, edges)
     assert all("@" not in t for t in calls[("show", 6)]), calls[("show", 6)]
+
+
+
+def test_a_segment_a_local_types_body_does_not_declare_names_nothing(tmp_path: Path) -> None:
+    """``Outer.Real`` resolves through the local ``Outer``'s body.
+    ``Outer.Missing``, which that body does not declare and which no
+    ``extension`` can add to a local type, names no type: neither a top-level
+    ``Missing``'s init (an owner-suffix match) nor one in its extension, nor
+    ``Outer`` itself, is reached by ``Outer.Missing.init(...)`` or
+    ``Outer.Missing(...)``."""
+    symbols, edges = _run(tmp_path, {"a.swift": (
+        "struct Missing { init(x: Int) {} }\n"
+        "extension Missing { init(y: Int) { self.init(x: y) } }\n"
+        "func f() {\n"
+        "    struct Outer {\n"
+        "        init(x: Int) {}\n"
+        "        struct Real { init(x: Int) {} }\n"
+        "    }\n"
+        "    _ = Outer.Real.init(x: 1)\n"
+        "    _ = Outer.Missing.init(x: 2)\n"
+        "    _ = Outer.Missing.init(y: 3)\n"
+        "    _ = Outer.Missing(x: 4)\n"
+        "}\n"
+    )})
+    calls = _calls(symbols, edges)
+    assert calls[("f", 8)] == ["Real.init@a.swift:6"]
+    for line in (9, 10, 11):
+        assert all("@a.swift" not in t for t in calls.get(("f", line), [])), (
+            line, calls.get(("f", line)),
+        )

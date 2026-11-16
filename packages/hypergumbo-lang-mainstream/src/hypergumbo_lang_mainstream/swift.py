@@ -108,8 +108,9 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    - The type a construction names is found by Swift's lexical scoping
      (WI-kipof): the innermost block, type body or file around the call that
      declares it in this file (``T`` for ``T(...)``, ``T.init`` and a
-     superclass; ``T.U`` through ``T``'s body), before any name-keyed
-     registry, which keeps one ``T`` per name. A LOCAL type -- declared in a
+     superclass; ``T.U`` through ``T``'s body; a ``U`` that a LOCAL ``T``'s
+     body does not declare names no type, since no extension can add one),
+     before any name-keyed registry, which keeps one ``T`` per name. A LOCAL type -- declared in a
      function, closure or accessor -- is visible only inside that body: no
      registry or resolver answer outside it is a local type, and with the
      type unknown no local type's init is a candidate. Not done this way:
@@ -2716,8 +2717,10 @@ def _extract_edges_from_file(
             and segments[0] not in declared_names
         ):
             # WI-kipof: ``T.init`` / ``T.U.init`` names the type its position
-            # sees, when this file declares one there.
-            return spelled, _lexical_type(spelled, call)
+            # sees, when this file declares one there; a ``U`` a local ``T``
+            # does not declare names nothing.
+            built, final_miss = _lexical_walk(spelled, call)
+            return (None, None) if final_miss else (spelled, built)
         return None, None
 
     def _constructed(
@@ -2747,12 +2750,16 @@ def _extract_edges_from_file(
     _types_in: dict[str, dict[_ScopeKey, list[Symbol]]] = {}
     _type_body: dict[str, _ScopeKey] = {}
 
-    def _lexical_type(spelled: str, at: "tree_sitter.Node") -> Symbol | None:
+    def _lexical_walk(spelled: str, at: "tree_sitter.Node") -> tuple[Symbol | None, bool]:
         # WI-kipof: the type ``spelled`` (``T`` or ``T.U``) names at ``at``:
         # the innermost enclosing block, type body or file of THIS file that
         # declares ``T`` (the last of several there, as a redeclaration under
         # ``#if`` leaves one), then each ``U`` declared in the body of the
-        # type before it. ``None`` when this file declares no visible ``T``.
+        # type before it. ``None`` when this file declares no visible ``T``,
+        # or when a ``U`` is not declared in the body before it -- and then
+        # the second value says whether that miss is FINAL: the body was a
+        # LOCAL type's, which no ``extension`` can add a member to, so the
+        # spelling names no type at all.
         head, *rest = spelled.split(".")
         found: Symbol | None = None
         scopes = _types_in.get(head, {})
@@ -2761,11 +2768,18 @@ def _extract_edges_from_file(
             hits = scopes.get((cur.type, cur.start_byte, cur.end_byte))
             found = hits[-1] if hits else None
             cur = cur.parent
+        owner = found
         for seg in rest:
             body = _type_body.get(found.id) if found is not None else None
             hits = _types_in.get(seg, {}).get(body) if body is not None else None
             found = hits[-1] if hits else None
-        return found
+            if found is None:
+                break
+            owner = found
+        return found, found is None and owner is not None and owner.id in local_types
+
+    def _lexical_type(spelled: str, at: "tree_sitter.Node") -> Symbol | None:
+        return _lexical_walk(spelled, at)[0]
 
     def _visible_global_type(sym: Symbol | None, name: str) -> Symbol | None:
         # WI-kipof: a name lookup's answer, unless it is a LOCAL type -- which
