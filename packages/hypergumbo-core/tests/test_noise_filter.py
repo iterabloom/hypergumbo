@@ -52,10 +52,14 @@ def test_every_section_producer_is_classified():
     from hypergumbo_core.noise_filter import _NOISE_SECTION_LANGUAGES
 
     root = Path(__file__).resolve().parents[2]
-    # ``kind="section"`` / ``kind = "section" if ...`` (kdl), and blade's
-    # ``_CLOSES.get(closer, "section")``. HTML tag-name lists (svelte, vue,
-    # astro) and lean's grammar node type mention the word but emit no kind.
-    emits = re.compile(r"""kind\s*=\s*["']section["']|\.get\([^)]*["']section["']\)""")
+    # ``kind="section"`` / ``kind = "section" if ...`` (kdl), and blade, whose
+    # symbols take the directive's own name as their kind (``kind=directive``)
+    # from the set ``_NAMED``, which lists ``"section"``. HTML tag-name lists
+    # (svelte, vue, astro) and lean's grammar node type mention the word but
+    # emit no kind.
+    emits = re.compile(
+        r"""kind\s*=\s*["']section["']"""
+        r"""|_NAMED\s*=\s*frozenset\(\{[^}]*["']section["']""")
     found = {p.stem for p in root.glob("hypergumbo-lang-*/src/*/*.py")
              if emits.search(p.read_text(encoding="utf-8"))}
     assert "cobol" in found, "reach: the scan must see a known producer"
