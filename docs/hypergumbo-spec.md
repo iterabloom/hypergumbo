@@ -2459,9 +2459,8 @@ For the technical contract governing output schema stability, see [Appendix C](#
 ### Semantic versioning
 
 * **Schema versions**: `MAJOR.MINOR.PATCH`
-  - MAJOR: Breaking changes (old outputs unreadable)
-  - MINOR: Backward-compatible additions (new fields, new views)
-  - PATCH: Bug fixes, no schema changes
+  - While MAJOR is 0 (today): a breaking output change bumps MINOR; a backward-compatible addition (a new optional field, a new view, a new pattern type) bumps PATCH. This is the rule `schema.py` and the version history follow ([Appendix C](#appendix-c-schema-compatibility-contract), item 1).
+  - From 1.0: MAJOR for breaking changes (old outputs unreadable), MINOR for backward-compatible additions, PATCH for fixes with no schema change.
 * **Confidence model versions**: `hypergumbo-evidence-vMAJOR.MINOR`
   - MAJOR: Incompatible changes (requires new schema)
   - MINOR: Refinements (new evidence types, score adjustments)
@@ -2469,9 +2468,9 @@ For the technical contract governing output schema stability, see [Appendix C](#
 
 ### Compatibility guarantees
 
-* **v0.1 outputs readable by v0.2+** if v0.2 is backward-compatible (MINOR bump)
+* **Within a 0.MINOR line, an output is readable by every later PATCH** of that line: a PATCH only adds. A 0.MINOR bump may break.
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
-* **Breaking changes only in MAJOR bumps.** See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
+* **From 1.0, breaking changes only in MAJOR bumps.** See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
 ## Appendix B: Telemetry & privacy
 
