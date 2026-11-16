@@ -1,0 +1,10 @@
+Original commit body from 311068ebe53183fb24dd59415fb2e9ee9b1213a7:
+
+release-check for 10.0.0 stopped at its dependency audit: 71 advisories in seven packages of the local environment (authlib, filelock, joserfc, msgpack, nltk, pillow, pyasn1), each with a fixed release. A fresh CI environment resolves the newest release and never saw them; the local environment kept whatever satisfied the old floor.
+
+- scripts/release-check: floors raised for msgpack (1.2.3), pyasn1 (0.6.5), pillow (13.0.0), nltk (3.10.4); the only-when-installed list gains authlib 1.9.1, joserfc 1.7.6, filelock 4.2.1.
+- The msgpack floor in the three CI workflow files moves with it.
+- After the upgrades the same pip-audit command reports no known vulnerabilities (2 ignored, unchanged).
+- safety 3.8.1 declares filelock<4.0, so pip warns about that pair; no script runs safety.
+
+Checks: the 22 test files that read these files pass (434 tests); manifest tests under the CI stubs pass.
