@@ -104,7 +104,7 @@ Total concepts: **320** (live: 45, inert: 275, ghost: 0).
 | `effect` | inert | solid | _(none)_ |
 | `encoder` | inert | http4s | _(none)_ |
 | `entity` | live | cakephp, codeigniter | `datamodels.py` |
-| `entrypoint` | live | akka-http, cli, cli-go, cli-ruby, electron | `entrypoints.py` |
+| `entrypoint` | live | akka-http, cli, cli-go, cli-ruby, electron, verilog.py | `entrypoints.py` |
 | `error` | inert | cli | _(none)_ |
 | `error_handler` | live | adonisjs, akka-http, bottle, fastapi, fastify, feathers, flask, flask-restful, giraffe, grape, hapi, javalin, jax-rs, ktor, laravel, litestar, lumen, micronaut, nuxt, openresty, padrino, plug, pyramid, quart, remix, restify, ring-compojure, sanic, scalatra, scotty, servant, sinatra, slim, spring-boot, sveltekit, tornado, vertx | `entrypoints.py` |
 | `event` | inert | adonisjs, fuelphp, laravel, masonite | _(none)_ |
