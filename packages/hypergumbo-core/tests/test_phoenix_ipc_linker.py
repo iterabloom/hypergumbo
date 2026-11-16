@@ -517,3 +517,56 @@ class TestPhoenixIPCLinkerRegistered:
         assert result is not None
         assert hasattr(result, "symbols")
         assert hasattr(result, "edges")
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. A
+    Phoenix stand-in's id ended in the EVENT name
+    (``phoenix:<file>:<l>-<l>:send:<event>``), and an event with a colon
+    shifted every slot."""
+
+    def _result(self, tmp_path: Path):
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
+
+        (tmp_path / "channel.ex").write_text("""
+defmodule MyApp.RoomChannel do
+  use Phoenix.Channel
+
+  def handle_in("ping", _payload, socket) do
+    broadcast!(socket, "ping", %{})
+    {:noreply, socket}
+  end
+
+  def handle_in("user:joined", _payload, socket) do
+    broadcast!(socket, "user:joined", %{})
+    {:noreply, socket}
+  end
+end
+""")
+        return link_phoenix_ipc(tmp_path)
+
+    def test_the_fixture_reaches_both_roles(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        got = sorted((s.meta["framework_role"], s.meta["event"]) for s in result.symbols)
+        assert got == [
+            ("ipc_receive", "ping"), ("ipc_receive", "user:joined"),
+            ("ipc_send", "ping"), ("ipc_send", "user:joined"),
+        ], got
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_an_event_with_a_colon_keeps_five_slots(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        for sym in result.symbols:
+            span, name, kind = sym.id.rsplit(":", 3)[1:]
+            assert span == f"{sym.span.start_line}-{sym.span.end_line}", sym.id
+            assert ":" not in name and kind == "function", sym.id
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        assert len(result.edges) == 2
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []

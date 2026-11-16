@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
@@ -282,9 +283,14 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     created_symbol_ids: set[str] = set()
 
     def _make_symbol_id(pattern: PhoenixPattern, event: str) -> str:
-        return (
-            f"phoenix:{pattern.file_path}:{pattern.line}-{pattern.line}"
-            f":{pattern.type}:{event}"
+        # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The id used
+        # to end in the EVENT (``phoenix:<file>:<l>-<l>:send:<event>``), so
+        # its kind slot held an event name, and an event with a colon
+        # (``user:joined``) shifted every slot. As in linkers/ipc.py, the
+        # role rides as a name-segment suffix; the factory sanitizes the name.
+        return make_symbol_id(
+            "phoenix", pattern.file_path, pattern.line, pattern.line,
+            f"{event}-{pattern.type}", "function",
         )
 
     def _ensure_symbol(pattern: PhoenixPattern, event: str) -> str:

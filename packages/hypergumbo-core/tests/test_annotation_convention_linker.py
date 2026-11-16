@@ -586,3 +586,56 @@ class TestInvZuhubAnnotationDispatchesFallback:
         result = link_annotations(tmp_path, syms)
         dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert dispatch_edges == []
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. The
+    three stand-ins ended in ``annotated_publisher`` / ``annotated_subscriber``
+    / ``annotated_dispatcher`` on ``kind="function"`` Symbols: a word no symbol
+    kind has, and two validator errors per node."""
+
+    def _result(self, tmp_path: Path):
+        (tmp_path / "pub.js").write_text(
+            "function send() {\n  // @hg:publishes awareness.cursor\n}\n"
+            "function fan() {\n  // @hg:dispatches onCursor\n}\n"
+        )
+        (tmp_path / "sub.js").write_text(
+            "function onCursor() {\n  // @hg:subscribes awareness.cursor\n}\n"
+        )
+        (tmp_path / "api.js").write_text("// @hg:route POST join\nfunction join() {}\n")
+        target = Symbol(
+            id="javascript:sub.js:1-3:onCursor:function", name="onCursor",
+            kind="function", language="javascript", path="sub.js",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="uuid:test",
+        )
+        syms = [_make_sym("pub.js", "javascript"), target, _make_sym("api.js", "javascript")]
+        return link_annotations(tmp_path, syms), {s.id for s in syms}
+
+    def test_the_fixture_reaches_every_role(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        roles = sorted((s.meta or {}).get("hg_annotation", "route") for s in result.symbols)
+        assert roles == ["dispatches", "publishes", "route", "subscribes"], roles
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result, given = self._result(tmp_path)
+        ids = {s.id for s in result.symbols} | given
+        types = sorted(e.edge_type for e in result.edges)
+        assert types == ["dispatches_to", "event_publishes"], types
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+    def test_two_roles_on_one_line_are_two_nodes(self, tmp_path: Path) -> None:
+        """The role left the kind slot for the name slot, not the id: a
+        publisher and a dispatcher of one name on one line stay apart."""
+        from hypergumbo_core.linkers.annotation_convention import _stand_in_id
+
+        site = AnnotationSite("publishes", "x", "a.js", 4)
+        ids = {_stand_in_id("javascript", site, "x", role)
+               for role in ("annotated_publisher", "annotated_subscriber", "annotated_dispatcher")}
+        assert len(ids) == 3
+        assert {i.rsplit(":", 1)[1] for i in ids} == {"function"}

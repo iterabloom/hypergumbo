@@ -415,3 +415,35 @@ class TestTheSyntheticNodeCarriesTheHostFileLanguage:
         assert syn.protocol_origin == "solidity_abi"
         assert result.edges[0].src == syn.id
         assert result.edges[0].src.split(":", 1)[0] == expected
+
+
+class TestCallSiteIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. A
+    call-site stand-in ended in ``abi_call`` on a ``kind="call_site"`` Symbol."""
+
+    def _result(self, tmp_path: Path):
+        from hypergumbo_core.linkers.solidity_abi import link_solidity_abi
+
+        (tmp_path / "client.ts").write_text(
+            "const tx = await token.transfer(to, 5);\n"
+            "const bal = await token.balanceOf(to);\n"
+        )
+        sols = [_make_sol_sym("transfer"), _make_sol_sym("balanceOf", start_line=5)]
+        return link_solidity_abi(tmp_path, [_make_ts_sym("pay", path="client.ts")], sols), sols
+
+    def test_the_fixture_emits_two_call_sites(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        assert sorted(s.name for s in result.symbols) == ["abi_call:balanceOf", "abi_call:transfer"]
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_every_edge_joins_a_call_site_to_a_function(self, tmp_path: Path) -> None:
+        result, sols = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        targets = {s.id for s in sols}
+        assert len(result.edges) == 2
+        assert [(e.src, e.dst) for e in result.edges
+                if e.src not in ids or e.dst not in targets] == []
