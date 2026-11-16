@@ -106,6 +106,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`.
 - **Python `stable_id` reads whole annotations: `Literal[-1]` and `Literal[-2]` no longer collide.**
 - **Groovy `stable_id` reads primitive, qualified and varargs parameter types.**
+- **Kotlin `stable_id` hashes every declared type, `vararg` and extension receiver.**
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`; `stable_id` does not change.
 - **C# `stable_id` reads `ref`/`out`/`params` modifiers and tuple types.**
 - **Scala `stable_id` reads every type, parameter clause and `using` keyword.**
