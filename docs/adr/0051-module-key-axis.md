@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0051: The Module-Key Axis
 
-Status: Accepted
+Status: Implemented
 Date: 2026-09-01
 Related: [ADR-0024](0024-axis-declaration-template.md) (the template this
 instantiates), [ADR-0032](0032-canonical-name-fingerprint-reshape.md) (whose
@@ -51,7 +51,7 @@ names are capitalised the discriminator is constant-true: haskell 100%, swift
 
 ### The cost, as filed history rather than principle
 
-Roughly eighteen tracker items reduce to one conflation — INV-linub, INV-zuvib,
+Twenty tracker items reduce to one conflation — INV-linub, INV-zuvib,
 INV-hahak, INV-fofoj, INV-januj, INV-kotob, INV-mumov, INV-safig, INV-fokik,
 INV-funuf, INV-zimud, INV-papih, INV-dijor, WI-zazul, WI-damir, WI-sugom,
 WI-gudak, WI-papar, WI-kamin, WI-monul. They filed as separate analyzer bugs
@@ -60,15 +60,19 @@ local defect. Two of them turned out to be **one defect in two languages**
 (INV-fofoj's java half *is* INV-januj), which is the signature of a missing axis
 rather than unrelated bugs.
 
-Measured over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8%
-of slots are not a single module identity. The producer surface agrees: 54
+Measured on a 22-repository cold cohort (2026-11-15), 52.0% of the module
+slots on the 138,506 edges that point at an external stand-in are not a single
+module identity: the `external` sentinel 46.5%, a disjunction 5.2%, and
+`<unknown>`, which no notion names, 0.3%. Of the 73,547 such edges that carry a
+structured `dst_ref` (an `external` slot never does), 9.7% hold a disjunction.
+The producer surface agrees: 54
 `ExternalRef` construction sites across 20 analyzers, with the local feeding
 `module_path` variously named `path_hint`, `module_hint`, `module_name`, `mod`,
 `hint`, `ns`, `pkg`, `receiver_name`, `wildcard_module`, and the literal
 `"redirect"`. No two analyzers call it the same thing.
 
-The clearest single piece of evidence is four lines of source, not a percentage
-— `swift.py:1223`:
+The shape the axiom rules out fits in four lines, a fallback chain that fills
+one slot:
 
 ```python
 gate_path_hint = (
@@ -85,8 +89,8 @@ One fallback chain, four notions, one slot, no record of which one produced it.
 
 Declare the **module-key axis** with ADR-0024's four artifacts. Registry:
 `hypergumbo_core.module_key_axis`. Property tests:
-`tests/test_module_key_axis.py`. `module-key` is wired into `_known_axes()`, and
-`ExternalRef.module_path` now declares it.
+`packages/hypergumbo-core/tests/test_module_key_axis.py`. `module-key` is wired
+into `_known_axes()`, and `ExternalRef.module_path` declares it.
 
 ### 1. Axiom
 
@@ -127,18 +131,22 @@ is to tolerate a non-conformant value.
 
 | Notion | Section | |
 |---|---|---|
-| `namespace` | `owner_path` | package / module / import path; C headers and JS relative paths included |
+| `namespace` | `owner_path` | package / module / import path; C headers and JS relative paths included, and bash's `redirect`, the shell's own namespace for its redirection operators (`io_primitives/bash.yaml` keys its `>`, `>|`, `>>` and `<` rows on it) |
 | `type` | `owner_path` | the class owning a method-shaped primitive |
 | `receiver_variable` | `call_site_property` | the receiver's spelling at one call site |
-| `disjunction` | `uncertainty` | cpp's comma-joined `#include` set — a set, not an identity |
-| `sentinel` | `uncertainty` | `external`, bash's `redirect` |
+| `disjunction` | `uncertainty` | the candidate modules a call could come from — a set, not an identity. C and C++: the headers the file can see (and for cpp the namespace the call names or the file's `using namespace`); two or more are written as a `module-set-<16 hex>` handle naming the list stored once in the map's top-level `module_sets`. Java: the receiver's type name under each of the file's wildcard-import packages (and under `java.lang` for a static receiver), written comma-joined into the slot |
+| `sentinel` | `uncertainty` | `external`: no module identity was recovered |
 | `global_object` | `pending_classification` | `process`, `window`, `navigator` — **unruled** |
 
 `uncertainty` values are non-conformant *as identities* while being the honest
-answer to the question. The disjunction is already handled downstream by two
+answer to the question. The disjunction is handled downstream by two
 deliberately different quantifiers — `_module_hint_candidates` asks ANY
-(INV-funuf), `module_hint_disjuncts` asks ALL (INV-zimud) — which is why the
-shape wants its own field rather than removal.
+(INV-funuf), `module_hint_disjuncts` asks ALL (INV-zimud) — and both expand a
+`module-set-` handle back into its list (`module_sets.expand_module_slot`)
+before asking. The `external` sentinel is load-bearing as an admission:
+`io_boundary` and `taint` share `_UNRESOLVED_MODULE_PLACEHOLDERS_IO`
+(`external`, `<external>`) so the two cannot disagree about what "no module"
+looks like.
 
 Axiom-conformance is **derived** from the section, never stored per-notion: a
 stored flag beside the section would be one fact in two homes, the exact shape
@@ -167,7 +175,7 @@ than none: it sends the next reader to a line that now says something else.
 
 ### Positive
 
-- The eighteen-item pile becomes legible: each is an axis violation against a
+- The twenty-item pile becomes legible: each is an axis violation against a
   written sentence rather than a fresh mystery. WI-virav does that sweep.
 - WI-zozun can replace `_module_matches`'s orthographic inference with a
   declared discriminator, which dissolves INV-dijor's arm-3 false positive and
@@ -179,11 +187,12 @@ than none: it sends the next reader to a line that now says something else.
 ### Negative
 
 **Nothing an analyzer emits changes.** `external_symbol` node ids embed the
-module slot (`rust:external:0-0:File::open`), so normalising the slot's content
-changes emitted ids and needs a stable_id scheme bump, which WI-talos DECISION 3
-gates behind v9/v10 and two releases. That is ADR-0024 step 7 and is WI-marok.
-Until it lands, the axiom describes what the field *should* hold while 7.8% of
-shipped slots do not — a documented gap rather than a fixed one.
+module slot (`rust:external:0-0:File::open`), so changing what a producer
+writes into the slot changes emitted ids; moving a producer to a conformant
+value (ADR-0024 step 7) is that producer's own change, not this ADR's. The
+axiom describes what the field *should* hold, and the slots that hold an
+`uncertainty` value instead (51.7% of edges to an external stand-in on the
+cohort measured in Context) are a documented gap rather than a fixed one.
 
 **No drift linter.** ADR-0024 makes enforcement mandatory, and this axis ships
 with a property test only. The AST walker in `axis_drift` checks that a
