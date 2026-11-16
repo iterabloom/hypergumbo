@@ -20,10 +20,26 @@ is wrong about the file existing, so the reconciliation is here, in one
 place, and not in each producer (ADR-0057: two producers of one declaration
 yield one record).
 
-WHERE IT RUNS. :func:`unify_file_pseudo_symbols` runs AFTER the linkers
-(a linker can mint a file node too) and before ``deduplicate_edges``. Where a
-path has several file pseudo-symbols, they are several producers' records of
-one file and become one.
+WHO IS A PRODUCER, AND WHO ONLY REFERS. A producer speaks AS the file: it
+emits the file Symbol, or it anchors an edge's ``src`` on the file id (which
+:func:`~.base.synthesize_file_symbols_for_dangling_edges` turns into a Symbol
+on its behalf). An edge's ``dst`` naming a file id only REFERS to the file.
+The two are treated differently:
+
+* :func:`repoint_file_references` runs BEFORE the synthesis pass. A ``dst``
+  that names a file id no Symbol has, on a path that already has a file
+  Symbol and that no edge anchors a ``src`` on, is re-pointed at the Symbol
+  the path has. A reference therefore never mints a second node for a path:
+  an analyzer may resolve an import to ``make_file_id(<target's language>,
+  <target path>)`` without knowing which producer owns the target's record.
+* :func:`unify_file_pseudo_symbols` runs AFTER the linkers. Where a path
+  still has several file pseudo-symbols, they are several producers' records
+  of one file and become one.
+
+:func:`file_reference_dst` is what such an analyzer calls: it resolves a
+relative import against the importing file's directory and, when the file is
+in the tree, returns its file id, so the edge ends on the file's node and not
+on an ``external_symbol`` stand-in for a file that sits in the repository.
 
 WHICH RECORD SURVIVES. The one in the FILE's own language: the language
 ``taxonomy.get_language`` gives the path, the same reading the orchestrator's
@@ -43,6 +59,19 @@ member's id is rewritten to the survivor's in every edge ``src``, ``dst`` and
 dropped here, and two edges that become identical are folded by the caller's
 ``deduplicate_edges``, which keeps every call site.
 
+WHAT A FOLD MUST NOT LOSE. ``deduplicate_edges`` keeps the first of two
+identical edges and the call sites of the second, nothing else. The rewiring
+here makes a component's two views of one import identical: the template
+analyzer's edge (``App.vue`` uses ``<Kid>``, with the tag's directives in its
+meta) and the js-module linker's (the script's ``import Kid``, whose
+``derived_from`` names the placeholder edge it resolved, which is how that
+placeholder comes to be demoted, ADR-0057 section 14.1). So before the fold
+the edge that will survive takes the other's ``origin``, and its
+``derived_from`` when it states none of its own. One edge then says both
+passes found the relation, and the placeholder is still demoted. It never
+adds a second pass's ``derived_from`` to an edge that has one: which pass
+consumed which placeholder stays readable.
+
 WHAT IT DOES NOT DO. It never CREATES a file Symbol and never changes the
 language slot of a path's only one: a component whose single file node the
 JavaScript analyzer minted stays ``typescript:`` / ``javascript:``. Changing
@@ -51,11 +80,15 @@ the language), which is a stable-id scheme change and not a merge.
 """
 from __future__ import annotations
 
+import os
+import posixpath
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from ..ir import Edge, Span, Symbol, UsageContext
+from ..paths import normalize_path
 from ..taxonomy import get_language
+from .base import make_file_id
 
 _FILE_ID_SUFFIX = ":1-1:file:file"
 
@@ -105,13 +138,13 @@ def rewire_endpoints(
     edges: List[Edge],
     remap: Dict[str, str],
     usage_contexts: Optional[List[UsageContext]] = None,
-) -> int:
+) -> List[Edge]:
     """Rewrite every reference to a remapped Symbol id; return the edges changed.
 
     ``edge_key`` is reset on a changed edge so ``deduplicate_edges`` recomputes
     it from the new endpoints (the merge pass's convention, ADR-0057 §11).
     """
-    changed_edges = 0
+    changed_edges: List[Edge] = []
     for edge in edges:
         changed = False
         if edge.src in remap:
@@ -124,11 +157,33 @@ def rewire_endpoints(
             edge.derived_from = [remap.get(ref, ref) for ref in edge.derived_from]
         if changed:
             edge.edge_key = None
-            changed_edges += 1
+            changed_edges.append(edge)
     for context in usage_contexts or []:
         if context.symbol_ref in remap:
             context.symbol_ref = remap[context.symbol_ref]
     return changed_edges
+
+
+def _carry_provenance_across_folds(edges: List[Edge], rewired: List[Edge]) -> None:
+    """Give each soon-to-survive edge what the fold would drop (module docstring).
+
+    Only relations a rewired edge takes part in are looked at: every other
+    fold is ``deduplicate_edges``' as before.
+    """
+    touched = {(e.src, e.dst, e.edge_type) for e in rewired}
+    first: Dict[tuple[str, str, str], Edge] = {}
+    for edge in edges:
+        key = (edge.src, edge.dst, edge.edge_type)
+        if key not in touched:
+            continue
+        survivor = first.setdefault(key, edge)
+        if survivor is edge:
+            continue
+        origins = _as_list(survivor.origin)
+        origins.extend(o for o in _as_list(edge.origin) if o not in origins)
+        survivor.origin = origins
+        if not survivor.derived_from and edge.derived_from:
+            survivor.derived_from = list(edge.derived_from)
 
 
 def unify_file_pseudo_symbols(
@@ -166,5 +221,97 @@ def unify_file_pseudo_symbols(
         return remap
 
     symbols[:] = [s for s in symbols if not (s.id in remap and is_file_pseudo_symbol(s))]
-    rewire_endpoints(edges, remap, usage_contexts)
+    _carry_provenance_across_folds(edges, rewire_endpoints(edges, remap, usage_contexts))
     return remap
+
+
+def repoint_file_references(
+    symbols: Sequence[Symbol],
+    edges: List[Edge],
+    repo_root: Optional[Path] = None,
+) -> Dict[str, str]:
+    """Land a reference to a file on the file Symbol its path already has.
+
+    For every edge ``dst`` of ``make_file_id`` shape that no Symbol carries
+    and no edge uses as ``src``: when the path it names already has a file
+    pseudo-symbol (in whatever language slot), the ``dst`` is rewritten to
+    that Symbol's id. Returns ``referenced id -> existing id``. See the module
+    docstring for why a ``src`` is left alone.
+
+    Symbol paths and ids may still be absolute here (this runs before the
+    orchestrator's path normalisation), so paths are compared repo-relative.
+    """
+    root_prefix: Optional[str] = None
+    if repo_root is not None:
+        root_prefix = normalize_path(str(repo_root)).rstrip("/") + "/"
+
+    def _relative(path: str) -> str:
+        normed = normalize_path(path)
+        if root_prefix is not None and normed.startswith(root_prefix):
+            return normed[len(root_prefix):]
+        return normed
+
+    existing_ids = {s.id for s in symbols}
+    file_symbol_of: Dict[str, Symbol] = {}
+    for symbol in symbols:
+        if is_file_pseudo_symbol(symbol) and symbol.path:
+            file_symbol_of.setdefault(_relative(symbol.path), symbol)
+    if not file_symbol_of:
+        return {}
+
+    anchored = {edge.src for edge in edges}
+    remap: Dict[str, str] = {}
+    for edge in edges:
+        dst = edge.dst
+        if dst in remap or not dst.endswith(_FILE_ID_SUFFIX):
+            continue
+        if dst in existing_ids or dst in anchored:
+            continue
+        # ``{lang}:{path}:1-1:file:file``; the path slot may hold colons.
+        path = dst[: -len(_FILE_ID_SUFFIX)].partition(":")[2]
+        target = file_symbol_of.get(_relative(path))
+        if target is not None:
+            remap[dst] = target.id
+    if remap:
+        for edge in edges:
+            if edge.dst in remap:
+                edge.dst = remap[edge.dst]
+                edge.edge_key = None
+    return remap
+
+
+def file_reference_dst(
+    importer_lang: str,
+    importer_file: Path,
+    importer_rel_path: str,
+    import_path: str,
+) -> Optional[str]:
+    """The file id a RELATIVE import names, when that file is in the tree.
+
+    ``import_path`` is resolved against the importing file's directory.
+    ``importer_file`` is that file on disk and ``importer_rel_path`` its
+    repo-relative POSIX path, both as the analyzer was handed them: the
+    target's id path is computed from the second, lexically, so no root is
+    re-derived here, and a path that normalizes above the repo root never
+    resolves. Only ``./`` and ``../`` specifiers are relative; a bare or
+    aliased one (``@/components/X.vue``, ``$lib/X.svelte``) is configuration
+    this function does not read, and gets None, as does a path naming no
+    existing file. The caller keeps its placeholder dst for those.
+
+    The id's language is the TARGET's own (``taxonomy.get_language``), else
+    ``importer_lang`` for a format the taxonomy does not list: the analyzers
+    that call this record same-format component imports. Whether the target's
+    node carries that slot is not this function's concern:
+    :func:`repoint_file_references` lands the edge on the node the path has.
+    """
+    if not import_path.startswith(("./", "../")):
+        return None
+    rel = posixpath.normpath(
+        posixpath.join(posixpath.dirname(importer_rel_path), import_path)
+    )
+    if rel == ".." or rel.startswith("../"):
+        return None
+    target = Path(os.path.normpath(importer_file.parent / import_path))
+    if not target.is_file():
+        return None
+    return make_file_id(get_language(target) or importer_lang, rel)

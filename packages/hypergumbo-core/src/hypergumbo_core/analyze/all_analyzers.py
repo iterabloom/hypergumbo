@@ -62,6 +62,7 @@ from .base import (
     synthesize_file_anchors_for_paths,
     synthesize_file_symbols_for_dangling_edges,
 )
+from .file_records import repoint_file_references
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -535,6 +536,10 @@ def run_all_analyzers(
         ),
     )
     _file_synth_clock = PassClock()
+    # A reference to a file lands on the file Symbol its path already has
+    # (INV-movor): it never makes the synthesis below mint a second node for
+    # that path in the referrer's choice of language slot.
+    repoint_file_references(all_symbols, all_edges, repo_root=repo_root)
     _synth_file_symbols = synthesize_file_symbols_for_dangling_edges(
         all_symbols, all_edges, repo_root=repo_root,
         origin_run_id=_file_synth_run.execution_id,

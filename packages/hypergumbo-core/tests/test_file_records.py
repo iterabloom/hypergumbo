@@ -1,16 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """One file pseudo-symbol per path (INV-movor).
 
-Properties of the pass in ``analyze/file_records.py``: producers' file nodes
-for one path become the one in the file's own language with every edge rewired.
+Properties of the two passes in ``analyze/file_records.py``: producers' file
+nodes for one path become the one in the file's own language with every edge
+rewired, and a reference to a file lands on the node its path already has.
 The producer shapes are those a Svelte / Vue / Blade file gets: the script
 analyzer's ``typescript:`` node beside the component's own ``vue:`` node.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from hypergumbo_core.analyze.base import make_file_id
 from hypergumbo_core.analyze.file_records import (
+    file_reference_dst,
     is_file_pseudo_symbol,
+    repoint_file_references,
     rewire_endpoints,
     unify_file_pseudo_symbols,
 )
@@ -155,7 +160,142 @@ class TestUnify:
         assert not is_file_pseudo_symbol(manifest)
 
 
-def test_rewire_endpoints_counts_changed_edges() -> None:
+class TestRepointReferences:
+    def test_a_reference_lands_on_the_node_the_path_has(self, tmp_path: Path) -> None:
+        # The script analyzer's node, absolute as analyzers emit it.
+        kid = _file("javascript", str(tmp_path / "src" / "Kid.vue"))
+        app = _file("vue", "src/App.vue")
+        ref = _edge(app.id, make_file_id("vue", "src/Kid.vue"))
+        twice = _edge(app.id, make_file_id("vue", "src/Kid.vue"), "references")
+        remap = repoint_file_references([kid, app], [ref, twice], repo_root=tmp_path)
+        assert remap == {"vue:src/Kid.vue:1-1:file:file": kid.id}
+        assert ref.dst == kid.id and twice.dst == kid.id
+        assert ref.edge_key is None
+
+    def test_what_is_left_for_the_synthesis_pass(self, tmp_path: Path) -> None:
+        script = _file("typescript", "src/App.vue")
+        util = _file("typescript", "src/util.ts")
+        edges = [
+            # A producer anchoring on the file is no reference: kept, so the
+            # synthesis pass mints the component's own node.
+            _edge("vue:src/App.vue:1-1:file:file", "vue:./Kid.vue:0-0:Kid:component"),
+            _edge(util.id, "vue:src/App.vue:1-1:file:file"),
+            # A path with no file node yet: the synthesis pass mints it.
+            _edge(util.id, "vue:src/New.vue:1-1:file:file"),
+            # An existing id, and a dst that is no file id.
+            _edge(util.id, script.id),
+            _edge(util.id, "typescript:./x:0-0:module:module"),
+        ]
+        before = [(e.src, e.dst) for e in edges]
+        assert repoint_file_references([script, util], edges, repo_root=tmp_path) == {}
+        assert [(e.src, e.dst) for e in edges] == before
+
+    def test_without_file_symbols_or_root(self) -> None:
+        assert repoint_file_references(
+            [_member("python", "a.py", "f")],
+            [_edge("python:a.py:1-1:file:file", "python:b.py:1-1:file:file")],
+        ) == {}
+        kid = _file("javascript", "src/Kid.vue")
+        ref = _edge("x", "vue:src/Kid.vue:1-1:file:file")
+        assert repoint_file_references([kid], [ref]) == {
+            "vue:src/Kid.vue:1-1:file:file": kid.id,
+        }
+        assert ref.dst == kid.id
+
+
+def test_rewire_endpoints_returns_the_changed_edges() -> None:
     edges = [_edge("a", "b"), _edge("c", "d")]
-    assert rewire_endpoints(edges, {"a": "z"}) == 1
+    assert rewire_endpoints(edges, {"a": "z"}) == [edges[0]]
     assert (edges[0].src, edges[1].src) == ("z", "c")
+
+
+class TestFoldKeepsProvenance:
+    """Two views of one import become one edge that says both (ADR-0057 14.1)."""
+
+    def _graph(self) -> tuple[list[Symbol], Symbol, Symbol, Symbol]:
+        script = _file("typescript", "src/App.vue")
+        own = _file("vue", "src/App.vue", origin="orchestrator_file_symbol_synthesis")
+        kid = _file("javascript", "src/Kid.vue")
+        return [script, own, kid], script, own, kid
+
+    def test_the_surviving_edge_takes_the_linkers_origin_and_consumed_stub(self) -> None:
+        symbols, script, own, kid = self._graph()
+        template = Edge.create(
+            src=own.id, dst=kid.id, edge_type="imports", line=1, origin="vue",
+            origin_run_id="run", evidence_type="import", meta={"component_name": "Kid"},
+        )
+        resolved = Edge.create(
+            src=script.id, dst=kid.id, edge_type="imports", line=3,
+            origin="js-module-linker", origin_run_id="run",
+            evidence_type="import_resolution", derived_from=[script.id, "edge:stub"],
+        )
+        other = _edge(script.id, "typescript:src/util.ts:1-1:file:file")
+        other.derived_from = [script.id, "edge:other"]
+        unify_file_pseudo_symbols(symbols, [template, resolved, other])
+        assert (resolved.src, resolved.dst) == (template.src, template.dst)
+        assert template.origin == ["vue", "js-module-linker"]
+        assert template.derived_from == [own.id, "edge:stub"]
+        assert template.meta["component_name"] == "Kid"  # the survivor's own meta
+        # An edge no fold touches is left as it was.
+        assert other.origin == ["test"] and other.derived_from == [own.id, "edge:other"]
+
+    def test_a_stated_consumption_is_never_overwritten(self) -> None:
+        symbols, script, own, kid = self._graph()
+        first = Edge.create(
+            src=script.id, dst=kid.id, edge_type="imports", line=3,
+            origin="js-module-linker", origin_run_id="run",
+            evidence_type="import_resolution", derived_from=[script.id, "edge:js-stub"],
+        )
+        second = Edge.create(
+            src=own.id, dst=kid.id, edge_type="imports", line=1,
+            origin="vue-component-linker", origin_run_id="run",
+            evidence_type="ast_import", derived_from=[own.id, "edge:vue-stub"],
+        )
+        unify_file_pseudo_symbols(symbols, [first, second])
+        assert first.origin == ["js-module-linker", "vue-component-linker"]
+        assert first.derived_from == [own.id, "edge:js-stub"]
+
+
+class TestFileReferenceDst:
+    @staticmethod
+    def _dst(root: Path, lang: str, importer: str, import_path: str) -> str | None:
+        return file_reference_dst(lang, root / importer, importer, import_path)
+
+    def test_a_relative_import_of_a_file_in_the_tree(self, tmp_path: Path) -> None:
+        (tmp_path / "src" / "parts").mkdir(parents=True)
+        (tmp_path / "src" / "parts" / "Kid.vue").write_text("<template/>")
+        (tmp_path / "src" / "Child.svelte").write_text("<p/>")
+        (tmp_path / "src" / "Hero.astro").write_text("<h1/>")
+        (tmp_path / "top.vue").write_text("<template/>")
+        assert self._dst(tmp_path, "vue", "src/App.vue", "./parts/Kid.vue") == (
+            "vue:src/parts/Kid.vue:1-1:file:file"
+        )
+        # The target's own language, not the importer's.
+        assert self._dst(tmp_path, "vue", "src/App.vue", "./Child.svelte") == (
+            "svelte:src/Child.svelte:1-1:file:file"
+        )
+        # A format the taxonomy does not list takes the importer's.
+        assert self._dst(tmp_path, "astro", "src/Page.astro", "./Hero.astro") == (
+            "astro:src/Hero.astro:1-1:file:file"
+        )
+        assert self._dst(tmp_path, "vue", "src/parts/Kid.vue", "../../top.vue") == (
+            "vue:top.vue:1-1:file:file"
+        )
+        assert self._dst(tmp_path, "vue", "top.vue", "./src/parts/Kid.vue") == (
+            "vue:src/parts/Kid.vue:1-1:file:file"
+        )
+
+    def test_what_does_not_resolve(self, tmp_path: Path) -> None:
+        root = tmp_path / "repo"
+        (root / "src").mkdir(parents=True)
+        (root / "src" / "Kid.vue").write_text("<template/>")
+        (tmp_path / "Outside.vue").write_text("<template/>")
+        for import_path in (
+            "./Missing.vue",          # no such file
+            "@/Kid.vue",              # an alias: configuration, not a path
+            "Kid.vue",                # a bare specifier is not relative
+            "../../Outside.vue",      # above the repo root, though it exists
+            "../..",                  # the root's parent
+            "./",                     # a directory
+        ):
+            assert self._dst(root, "vue", "src/App.vue", import_path) is None

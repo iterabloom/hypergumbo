@@ -22,7 +22,10 @@ Symbols Extracted
 Edges Extracted
 ---------------
 - **imports**: One edge per capitalized (component) tag, from the file to
-  the imported component's module; a tag with no matching import is an
+  the imported component. A relative import (``./Child.svelte``) of a file
+  in the tree ends on that file's node (``file_reference_dst``); an aliased
+  or missing one keeps the module-import placeholder
+  ``svelte:<path>:0-0:module:module``; a tag with no matching import is an
   unresolved edge to ``svelte:component:<Tag>:0-0:<Tag>:component``
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
@@ -63,6 +66,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     TreeSitterAnalyzer,
 )
+from hypergumbo_core.analyze.file_records import file_reference_dst
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -276,9 +280,13 @@ def _process_tag(
         # a 5-part dangling component id so the relationship keeps
         # representation in the graph.
         if import_path:
-            # WI-bufar-pokam: the canonical module-import id, not
-            # the bare path (finalize's ``<unknown>`` fallback).
-            edge_dst = make_module_import_dst("svelte", import_path)
+            # A relative import of a file in the tree ends on that file's
+            # node. Anything else (an alias, a missing file) keeps the
+            # canonical module-import id (WI-bufar-pokam), never the bare
+            # path, which finalize would render with ``<unknown>``.
+            edge_dst = file_reference_dst(
+                "svelte", path, rel_path.as_posix(), import_path,
+            ) or make_module_import_dst("svelte", import_path)
         else:
             edge_dst = f"svelte:component:{tag_name}:0-0:{tag_name}:component"
         edge = Edge.create(

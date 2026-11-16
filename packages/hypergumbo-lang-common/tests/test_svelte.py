@@ -484,3 +484,51 @@ class TestAnalyzeSvelte:
         assert "input" in event_names
         assert "change" in event_names
         assert "focus" in event_names
+
+
+class TestComponentImportResolution:
+    """A relative import of a component in the tree ends on that file's node.
+
+    The edge used to end on ``svelte:./Child.svelte:0-0:module:module`` whether
+    or not ``Child.svelte`` existed, which the pipeline turned into an
+    ``external_symbol`` stand-in for a file sitting in the repository.
+    """
+
+    _APP = """<script>
+  import Child from './Child.svelte';
+  import Deep from './parts/Deep.svelte';
+  import Up from '../shared/Up.svelte';
+  import Gone from './Gone.svelte';
+  import Aliased from '$lib/Aliased.svelte';
+</script>
+<Child /><Deep /><Up /><Gone /><Aliased /><Unimported />
+"""
+
+    def _edges(self, tmp_path: Path) -> dict[str, object]:
+        make_svelte_file(tmp_path, "src/App.svelte", self._APP)
+        for rel in ("src/Child.svelte", "src/parts/Deep.svelte", "shared/Up.svelte",
+                    "src/lib/Aliased.svelte"):
+            make_svelte_file(tmp_path, rel, "<p>x</p>")
+        result = analyze_svelte(tmp_path)
+        return {e.meta["component_name"]: e for e in result.edges if e.edge_type == "imports"}
+
+    def test_an_existing_relative_target_is_its_file_node(self, tmp_path: Path) -> None:
+        edges = self._edges(tmp_path)
+        for name, target in (
+            ("Child", "src/Child.svelte"),
+            ("Deep", "src/parts/Deep.svelte"),
+            ("Up", "shared/Up.svelte"),
+        ):
+            edge = edges[name]
+            assert edge.dst == f"svelte:{target}:1-1:file:file"
+            assert edge.src == "svelte:src/App.svelte:1-1:file:file"
+            assert edge.is_resolved is True
+            assert edge.meta["import_path"].endswith(f"{name}.svelte")  # the raw path stays
+
+    def test_a_missing_or_aliased_target_keeps_the_placeholder(self, tmp_path: Path) -> None:
+        edges = self._edges(tmp_path)
+        assert edges["Gone"].dst == "svelte:./Gone.svelte:0-0:module:module"
+        # An alias is configuration the analyzer does not read, even though a
+        # same-named file exists under src/lib.
+        assert edges["Aliased"].dst == "svelte:$lib/Aliased.svelte:0-0:module:module"
+        assert edges["Unimported"].dst == "svelte:component:Unimported:0-0:Unimported:component"
