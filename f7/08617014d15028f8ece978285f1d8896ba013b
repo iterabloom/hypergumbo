@@ -1,0 +1,86 @@
+Original commit body from 18c66795ddf6f13dd66c12fcfe62290461f9d36e:
+
+PR 1 of the stable-id plan (`~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md`): the fixes that move no existing stable id. The scheme stays `hypergumbo-stableid-v14`. One commit per item or per review fix, 41 commits plus the architecture doc and the manifest.
+
+## The constraint, measured on the whole branch
+
+`dev` 2e41d7d686 against this branch, same tree, `PYTHONHASHSEED=0`, compared by stable-id set and symbol by symbol (same path, kind, name and start position):
+
+| repository | nodes | declared ids gone | same position, different stable id | what is gone |
+|---|---|---|---|---|
+| zustand | 1,873 | 0 | 0 | |
+| postal | 3,458 | 0 | 0 | |
+| koel | 19,826 | 219 | 0 (4 reported: Blade paths that had two nodes at one position) | 219 duplicate file nodes |
+| openzeppelin-contracts | 14,274 | 0 | 0 | |
+| whisper.cpp | 35,819 | 1 | 0 | 1 duplicate file node |
+| pretix `src/pretix` | 36,380 | 5 | 0 | 5 duplicate file nodes |
+
+A duplicate file node removed is a removal, not a move: the path keeps one file node. External and unresolved stand-ins come and go wherever a reference resolves differently; no hash input changed. The dead-code report is unchanged on four of the six and improves on openzeppelin (1,102 -> 1,021 candidates).
+
+## What changes
+
+Node ids (ADR-0036):
+- A node id's kind slot is the symbol's kind in BitBake, `package.json` exports, JSX route markers, nine more analyzers (fennel, gleam, hack, haxe, janet, odin, prisma, tcl, v) and nine linkers' stand-ins. `scripts/check-id-construction` now compares the two statically and found 33 sites beyond the four that were filed; the stable-id floor gate asserts it for every language it has a fixture for. Two declared exceptions remain (robot, twig), whose word also feeds the stable id.
+- BitBake ids carry real lines, so two assignments to one variable no longer share an id.
+- Fifteen analyzers end file-level and unresolved edges on real nodes or grammar-conformant stand-ins instead of hand-built strings (`<unknown>` path slots: whisper.cpp 361 -> 0).
+- Every path has one file pseudo-symbol across producers (Svelte, Vue, Astro, Blade), with a validator check at error; component imports end on the imported file's node.
+- A multi-table SQL call site has the same name and id every run.
+- `validation_report` gains `name_slot_stats`: how many node ids' name slot is not the sanitized name, by producer (report schema 0.4 -> 0.5).
+
+Name resolution:
+- Python: the registry keys a declaration by its full scope chain; a dotted name is walked from its root; a nested class and its methods carry the chain in `qualified_name`; route handlers resolve lexically and through the file's imports.
+- Ruby: the registry keys a nested declaration by its full lexical path and follows Ruby's lookup order. Every last-segment fallback is gone: `ActionController::Base` no longer binds a project class named `Base`.
+- Solidity: a call or emit resolves in its own contract, then its linearised bases.
+- The route-handler linker picks a handler among symbols of the route's host language, in a total order. On pretix one Django route bound a JavaScript class in vendored pdf.js in some runs.
+
+New symbols and edges:
+- Verilog tasks, functions and nets; every instantiation form; function calls; a module nothing instantiates is an entrypoint.
+- F# classes, interfaces, structs and members, with calls where the source names the target.
+- Every pyproject dependency table (11) yields dependency nodes, through one list shared with `py_deps`.
+
+Text: ADR-0014 retired to a stub with its rules moved to the spec and ADR-0035; ADR-0051 brought in line with its registry and a 22-repository re-measure; ADR-0032, ADR-0036 corrected; three wrong producer texts for the `export` kind; a lapsed gate text.
+
+## Visible to a user of the output
+
+- Verilog and F# repositories gain symbols; uncalled new functions appear in `dead-code-maybe` as any uncalled function does.
+- `supply_chain_summary` counts dependency declarations, so a Poetry project's `direct` count rises (poetry itself 161 -> 471).
+- Route `dispatches_to` edges on pretix: 504 go from 0.5 flagged to 0.9; 14 change target.
+- JSX route markers are named `GET <path>`; 350 `references` edges on unleash/frontend that pointed at a marker now point at the component.
+
+## Left for the v15 bump (measured or reasoned to move ids)
+
+Robot's and twig's kind word; the stable ids that hash a role word in nine analyzers; re-slotting a component whose only file node is the JavaScript analyzer's into the file's own language; `[project].dependencies` names cut at the first dot.
+
+## Verification
+
+- Whole suite on the final branch: 39,558 passed across the nine test directories; the two failures seen in a worktree are a `PYTHONPATH` artefact of that worktree.
+- Every package was reviewed with a rerun of its tests and one mutation of the reviewer's own. One mutation survived (the Python dotted walk); the test that catches it is the last code commit.
+- Found by review and fixed here: new callables with no call edges were all reported dead (Verilog, F#); two new file lookups asked the disk and minted a node for a git-ignored file; three core gates broke on the edge-endpoint commits; two module-level test skips.
+- No real Verilog repository and only two F# files are cloned on the build machine: those two are measured on fixtures.
+
+Addresses INV-dosoz-famij-bupuf-rumud-gisaj-vobam-hisip-gutig
+Addresses INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil
+Addresses INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah
+Addresses INV-movor-ginol-ropap-kobap-favak-hifiv-gudus-galin
+Addresses WI-bodug-jikot-tuvak-vupum-hifop-kabit-damaj-gamir
+Addresses WI-dakas-dulag-zokis-nopab-tuduh-nigan-monap-rumoz
+Addresses WI-hahud-hidoz-namit-kodov-duruh-zafoj-loput-zosol
+Addresses WI-jiluv-zisas-titud-kubor-nufij-morob-folad-rulih
+Addresses WI-jubah-badaj-rozoj-jajaj-fazit-jabof-vavoj-zizaj
+Addresses WI-kagap-radad-zomuh-ruhal-fipuv-bonid-tibig-vufil
+Addresses WI-mamip-tazoj-mivuk-livip-fisoz-vikaj-zafal-kuful
+Addresses WI-marok-zotov-futuh-vasin-nogub-galih-tozaf-karuv
+Addresses WI-misus-nidob-tubab-hubun-mozuv-pijal-tojam-rufih
+Addresses WI-modan-tizob-bilag-fanas-simip-guzuz-homoj-rimut
+Addresses WI-naviz-volis-fuvid-bipok-magas-julol-totor-hisil
+Addresses WI-rafin-gunoh-nogav-lunuk-pinon-fajot-gapup-jifur
+Addresses WI-rugud-dunar-musag-zozun-borol-pajus-bakug-vizan
+Addresses WI-tahur-bipul-supun-rukal-zazoj-maziv-vojit-vosik
+Addresses WI-tamib-vokug-notik-pasok-zusad-tisol-migod-somos
+Addresses WI-tomul-vamaf-bohum-gijig-vufib-zigar-dipod-kogan
+Addresses WI-tulas-gakah-mikit-biniz-bimod-satis-fulim-zohiz
+Addresses WI-tumus-vikig-girug-lubuz-fomos-baraj-dobup-gilut
+Addresses WI-vinof-hulaj-zoguh-zaruf-nufim-nagog-saliz-fumug
+Addresses WI-zihij-ravas-potib-hikab-vukot-luror-vogij-lajaz
+Addresses WI-joguk-fizil-rimuz-fihih-pilif-monoj-harak-numod
+Addresses INV-lubij-hunon-hosok-fatam-giruh-volak-nivav-bobar
