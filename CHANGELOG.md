@@ -99,7 +99,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Ansible: tasks in role task files are found, and play tasks are no longer reported as handlers.**
 - **Verilog instantiations with one port, positional ports, `.*` or none emit edges.**
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
-- **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`; `stable_id` does not change.
+- **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`.
+- **Python `stable_id` reads whole annotations: `Literal[-1]` and `Literal[-2]` no longer collide.**
 - **A JSX `<Route>` marker is named for its route**, so a reference to the component reaches the component.
 - **A Python nested class and its methods carry their enclosing classes in `qualified_name`** (`Outer.Meta`, not `Meta`).
 - **A Python bare name never binds a nested or function-local class**: a route's handler is the view its name can reach.
