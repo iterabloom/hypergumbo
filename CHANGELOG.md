@@ -152,6 +152,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**
 - **BitBake node ids carry the symbol's own kind and lines**, so two assignments to one variable no longer share an id.
+- **A `package.json` `exports` entry's node id names its own kind.**
 - **The `export` symbol kind's description names its two real producers.**
 
 #### hypergumbo's own files, installs and secret scans
