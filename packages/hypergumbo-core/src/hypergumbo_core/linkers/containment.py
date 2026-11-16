@@ -146,9 +146,15 @@ CONTAINABLE_KINDS = frozenset(
     # constructor, so a construction landing on the class (java/dart
     # ``instantiates``) reaches no initializer in construction.py's hop.
     # (WI-lozop)
+    #
+    # ``const`` (Rust module-level ``const`` items, and the Julia / Thrift /
+    # Cap'n Proto const declarations) is a value binding like ``variable`` and
+    # roots at its file or module the same way. Rust's consts were
+    # ``variable`` until stable-id v15, so leaving ``const`` out would have
+    # orphaned every one of them.
     {
-        "method", "getter", "setter", "message", "function", "variable", "field",
-        "subscript", "constructor",
+        "method", "getter", "setter", "message", "function", "variable", "const",
+        "field", "subscript", "constructor",
     }
 )
 

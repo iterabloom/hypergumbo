@@ -18,7 +18,9 @@ This analyzer uses tree-sitter to parse Rust files and extract:
   another file it does not capture a name that file ``use``-binds to a path
   outside the crate (``use std::fs::write``)
 - Named struct fields and enum variants (``field`` symbols)
-- Module-level ``const`` / ``static`` (``variable`` symbols)
+- Module-level ``const`` items (``const`` symbols) and ``static`` items
+  (``variable`` symbols); associated, trait and function-body consts are
+  not emitted
 - Module-level ``type`` aliases (``type_alias`` symbols; an impl's associated
   ``type`` is not one)
 - Function call relationships
@@ -1661,13 +1663,19 @@ def _extract_symbols_from_file(
                     analysis.node_for_symbol[f_sym.id] = node
                     analysis.symbol_by_name[f_full] = f_sym
 
-        # Module-level const / static: a kind="variable" Symbol for each
-        # top-level or mod-level value binding (WI-jusus, emission parity).
-        # Function-body locals and impl-/trait-associated consts are excluded
-        # (see _is_rust_module_level_const).
+        # Module-level const / static: one Symbol for each top-level or
+        # mod-level value binding (WI-jusus, emission parity). Function-body
+        # locals and impl-/trait-associated consts are excluded (see
+        # _is_rust_module_level_const). A ``const`` item is the registry's
+        # ``const`` kind and a ``static`` (``static mut`` too) stays
+        # ``variable``: a static is a place with an address, a const is a
+        # value inlined at each use. rust-analyzer's SCIP draws the same line
+        # (``Constant`` vs ``StaticVariable``). The kind is a stable_id input,
+        # so the const/variable split is part of identity (stable-id v15).
         elif node.type in ("const_item", "static_item") and _is_rust_module_level_const(node):
             name_node = _find_child_by_field(node, "name")
             if name_node:
+                v_kind = "const" if node.type == "const_item" else "variable"
                 var_name = node_text(name_node, source)
                 type_node = _find_child_by_field(node, "type")
                 var_type = node_text(type_node, source) if type_node is not None else None
@@ -1677,9 +1685,9 @@ def _extract_symbols_from_file(
                 mod_path = _get_rust_mod_path(node, source)
                 v_qualified = _make_rust_qualified_name(mod_path, None, var_name)
                 v_sym = Symbol(
-                    id=make_symbol_id("rust", str(file_path), start_line, end_line, var_name, "variable"),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, var_name, v_kind),
                     name=var_name,
-                    kind="variable",
+                    kind=v_kind,
                     language="rust",
                     path=str(file_path),
                     span=Span(
@@ -1699,7 +1707,7 @@ def _extract_symbols_from_file(
                     ),
                     signature=var_type,
                     stable_id=make_typed_stable_id(
-                        "variable", var_type or "",
+                        v_kind, var_type or "",
                         visibility_from_modifiers(v_modifiers),
                         name=var_name, qualified_name=v_qualified,
                         file_stable_id=file_stable_id,

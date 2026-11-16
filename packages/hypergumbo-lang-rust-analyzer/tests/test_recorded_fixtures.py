@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -135,6 +136,7 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         unpaired: Counter[str] = Counter()
         unpaired_names: list[str] = []
         kinds_agree: Counter[bool] = Counter()
+        const_on_both = 0
         disagreements: Counter[tuple[str, str]] = Counter()
         for symbol in scip_symbols:
             twins = [
@@ -145,6 +147,7 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
                 paired += 1
                 same = symbol.kind == twins[0].kind
                 kinds_agree[same] += 1
+                const_on_both += same and symbol.kind == "const"
                 if not same:
                     disagreements[(symbol.kind, twins[0].kind)] += 1
             elif twins:
@@ -167,17 +170,17 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         # rule; the two `type` aliases pair through their `type_alias` Symbols
         # (WI-bamar).
         assert sorted(unpaired_names) == ["DNSBACKEND"]
-        # The SCIP arm reads the producer's declared kind (WI-gapup), so the
-        # paired records agree on kind except for `const` items, where SCIP's
-        # `constant` is the more precise claim and stays a contest.
+        # The SCIP arm reads the producer's declared kind (WI-gapup), and a
+        # Rust `const` item is `const` on both arms (stable-id v15), so the
+        # paired records agree on kind throughout.
         measured_kind = {
             "paired": paired,
             "agree": kinds_agree[True],
             "disagree": kinds_agree[False],
-            "disagree_constant_vs_variable": disagreements[("constant", "variable")],
+            "const_on_both": const_on_both,
         }
         assert measured_kind == {k: AARDVARK_DNS_AGREEMENT_TALLY[k] for k in measured_kind}
-        assert set(disagreements) == {("constant", "variable")}
+        assert set(disagreements) == set()
 
     def test_the_fixture_is_not_the_incumbents_output_in_disguise(self) -> None:
         """The recorded arm must carry something the incumbent does not, or a
@@ -352,7 +355,8 @@ class TestTheMergePassOnBothArms:
         """Every merged record says who holds each value (WI-binis). On this
         producer pair the span (token vs item) is contested on all but the 2
         unit enum variants, the stable_id (moniker hash vs rust.py's) on all
-        150, and kind on the 15 const items."""
+        150. Kind is contested on none: the 15 const items are ``const`` on
+        both arms (stable-id v15)."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         merged = [s for s in symbols if s.origin == ["rust", "scip"]]
@@ -369,14 +373,10 @@ class TestTheMergePassOnBothArms:
         id_contested = [s for s in merged if "stable_id" in s.alternatives]
         assert len(id_contested) == AARDVARK_DNS_AGREEMENT_TALLY["stable_id_alternatives"]
         assert all(s.attribution["stable_id"] == ["rust"] for s in id_contested)
-        kind_contests = [s for s in merged if "kind" in s.alternatives]
-        assert len(kind_contests) == AARDVARK_DNS_AGREEMENT_TALLY["disagree_constant_vs_variable"]
-        assert all(
-            s.kind == "variable" and s.alternatives["kind"] == [{"value": "constant", "origin": ["rust_analyzer"]}]
-            for s in kind_contests
-        )
-        agreed_kind = [s for s in merged if "kind" not in s.alternatives]
-        assert all(s.attribution["kind"] == ["rust", "rust_analyzer"] for s in agreed_kind)
+        assert [s for s in merged if "kind" in s.alternatives] == []
+        assert all(s.attribution["kind"] == ["rust", "rust_analyzer"] for s in merged)
+        consts = [s for s in merged if s.kind == "const"]
+        assert len(consts) == AARDVARK_DNS_AGREEMENT_TALLY["const_on_both"]
         assert all(s.attribution is None for s in symbols if s.origin == ["scip"])
 
     def test_merged_records_carry_the_item_span_and_the_moniker(self) -> None:
@@ -484,7 +484,7 @@ class TestTheAgreementInstrumentOnBothArms:
         assert report.corroborated_edges == AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
         assert report.superseded_edges == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
         by_attr = {a.attribute: a for a in report.attributes}
-        assert by_attr["kind"].shapes == [("variable", "constant", 15)]
+        assert by_attr["kind"].shapes == []
         # No shapes, because there is no contest. The SCIP arm declares it
         # computes no exportedness, so its dataclass-default False is not a
         # candidate and the attribute is one-sided to the incumbent (INV-huboz).
@@ -492,23 +492,35 @@ class TestTheAgreementInstrumentOnBothArms:
         assert (by_attr["is_exported"].agree, by_attr["is_exported"].disagree) == (0, 0)
         assert by_attr["is_exported"].only == {"rust": 150, "rust_analyzer": 0}
 
-    def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
-        """On the recorded fixture, preferring the SCIP arm for `kind` makes
-        the 15 `const` items carry `constant`; every other attribute row, the
-        pairing and the edge overlap are the built-in numbers (WI-hukuf)."""
+    def test_a_per_attribute_preference_for_scip_moves_only_its_row(self) -> None:
+        """On the recorded fixture, preferring the SCIP arm for one attribute
+        changes which value that attribute carries and nothing else
+        (WI-hukuf). `kind` is uncontested since stable-id v15, so preferring
+        SCIP for it moves nothing at all; `name` is contested on 65 records,
+        so preferring SCIP for it flips exactly that row's shapes. Every
+        count row, the pairing and the edge overlap stay the built-in numbers."""
         from hypergumbo_core.arbitration import ArbitrationPolicy
         from hypergumbo_core.backend_agreement import measure_backend_agreement
 
-        policy = ArbitrationPolicy(prefer_by_attribute={"kind": ("scip",)})
-        [report] = measure_backend_agreement(_two_arm_artifact(policy))
-        rows = {a.attribute: (a.agree, a.disagree, a.only["rust"], a.only["rust_analyzer"]) for a in report.attributes}
-        assert rows == AARDVARK_DNS_ATTRIBUTE_AGREEMENT  # counts do not move: only which value is carried
-        by_attr = {a.attribute: a for a in report.attributes}
-        assert by_attr["kind"].shapes == [("constant", "variable", 15)]
-        assert {k: row["paired"] for k, row in report.pairing.items() if row["paired"]} == {
-            **{k: v for k, v in AARDVARK_DNS_PAIRED_PER_CATEGORY.items() if k != "variable"}, "variable": 2, "constant": 15,
+        def report_for(attribute: str) -> Any:
+            policy = ArbitrationPolicy(prefer_by_attribute={attribute: ("scip",)})
+            [report] = measure_backend_agreement(_two_arm_artifact(policy))
+            rows = {a.attribute: (a.agree, a.disagree, a.only["rust"], a.only["rust_analyzer"]) for a in report.attributes}
+            assert rows == AARDVARK_DNS_ATTRIBUTE_AGREEMENT  # counts do not move: only which value is carried
+            assert {k: row["paired"] for k, row in report.pairing.items() if row["paired"]} == AARDVARK_DNS_PAIRED_PER_CATEGORY
+            assert {(e.edge_type, e.resolved): (e.both, e.only["rust"], e.only["rust_analyzer"]) for e in report.edges} == AARDVARK_DNS_EDGE_OVERLAP
+            return {a.attribute: a.shapes for a in report.attributes}
+
+        [builtin] = measure_backend_agreement(_two_arm_artifact())
+        builtin_shapes = {a.attribute: a.shapes for a in builtin.attributes}
+        assert report_for("kind") == builtin_shapes
+        by_name = report_for("name")
+        assert {k: v for k, v in by_name.items() if k != "name"} == {
+            k: v for k, v in builtin_shapes.items() if k != "name"
         }
-        assert {(e.edge_type, e.resolved): (e.both, e.only["rust"], e.only["rust_analyzer"]) for e in report.edges} == AARDVARK_DNS_EDGE_OVERLAP
+        assert builtin_shapes["name"] and sorted(by_name["name"]) == sorted(
+            (alternative, carried, n) for carried, alternative, n in builtin_shapes["name"]
+        )
 
     def test_the_committed_table_is_what_the_instrument_says(self) -> None:
         import re
