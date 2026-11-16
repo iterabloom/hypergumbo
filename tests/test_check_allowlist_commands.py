@@ -383,3 +383,19 @@ def test_every_tool_the_core_probes_for_has_a_stand_in():
     assert probed, "the probe pattern matched nothing: it is stale"
     assert probed - {"git"} <= set(gate.STAND_IN_TOOLS), (
         f"probed without a stand-in: {sorted(probed - {'git'} - set(gate.STAND_IN_TOOLS))}")
+
+
+def test_verify_claims_counts_as_run_on_its_verdict_codes_not_on_bad_input():
+    """A verify-claims variant that exits 4 (an inconclusive claim) reached an
+    answer; one that exits 2 stopped on bad input before checking anything.
+    Caveated (3) and violated (1) runs were never counted here and still are
+    not. The table is read as strings because the runner reports
+    ``HG_TRACE_RC`` as text."""
+    from hypergumbo_core.verify_claims import (
+        EXIT_BAD_INPUT, EXIT_CONFIRMED, EXIT_CONFIRMED_WITH_CAVEATS,
+        EXIT_INCONCLUSIVE,
+    )
+    assert gate.EXPECTED_RC["verify-claims"] == (
+        str(EXIT_CONFIRMED), str(EXIT_INCONCLUSIVE))
+    assert str(EXIT_BAD_INPUT) not in gate.EXPECTED_RC["verify-claims"]
+    assert str(EXIT_CONFIRMED_WITH_CAVEATS) not in gate.EXPECTED_RC["verify-claims"]

@@ -67,7 +67,7 @@ def test_by_default_the_community_row_finds_the_flow(repo: Path) -> None:
 def test_the_flag_omits_the_community_row_from_the_taint_arm(repo: Path) -> None:
     rc, doc, err = _verify(repo, "--no-default-overlays")
     (verdict,) = doc["verdicts"]
-    assert (rc, verdict["verdict"]) == (2, "inconclusive")
+    assert (rc, verdict["verdict"]) == (4, "inconclusive")
     assert not any(
         "requests.post" in e["sink_primitives"] for e in verdict.get("evidence", [])
     )

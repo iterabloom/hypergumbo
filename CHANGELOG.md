@@ -28,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`stable_id_scheme` v9 → v15**: BitBake, SCIP-only, `@hg:route`, some C/C++ external symbols, every async function, and part of sixteen analyzers' symbols get new digests (spec: "`stable_id_scheme` version history").
 - **`shape_id_scheme` v3 → v4, `repo_fingerprint_scheme` v2 → v3**: the label changed, no digest.
 - **Identity values carry their scheme's label**: `hgstableid15:`, `hgshapeid4:`, `hgrepofp3:`; digests unchanged.
+- **`verify-claims`: bad input exits 2; inconclusive now exits 4, not 2.**
 - **`verify-claims` output 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` become `reached` / `refuted`; command-line arguments are `untrusted_input`, counted only when a claim sets `include_command_line: true`.
 - **io-boundaries schema 2.4 → 2.5**: Unix-domain sockets are IPC, not network (ADR-0050 §1): a server is `ipc_listen`, its reads and writes `ipc_recv` / `ipc_send`.
 - **Files git ignores and does not track are not analysed** (ADR-0004 point 9), ignored generated source included; committed files and `--trace-deps` dependencies are unaffected. The run names what it left out, also in `supply_chain_summary.vcs_ignored_skipped`. There is no opt-out.

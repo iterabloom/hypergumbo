@@ -247,7 +247,7 @@ def test_verify_claims_missing_file(tmp_path: Path) -> None:
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 1
+    assert rc == 2  # bad input, never the violated code (WI-tajup)
 
 
 def test_verify_claims_missing_input(tmp_path: Path) -> None:
@@ -262,7 +262,7 @@ def test_verify_claims_missing_input(tmp_path: Path) -> None:
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 1
+    assert rc == 2  # bad input, never the violated code (WI-tajup)
 
 
 def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
@@ -280,13 +280,13 @@ def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
     assert rc == 0
 
 
-def test_verify_claims_inconclusive_exits_2(tmp_path: Path, capsys) -> None:
+def test_verify_claims_inconclusive_exits_4(tmp_path: Path, capsys) -> None:
     """A claim without a machine-checkable constraint returns
-    ``inconclusive`` and the CLI exits with code 2 (distinguishing it from
-    confirmed=0 / violated=1). See ADR-0033 (WI-rolol).
+    ``inconclusive`` and the CLI exits with code 4 (distinguishing it from
+    confirmed=0 / violated=1 / bad input=2 / caveats=3). See ADR-0033 (WI-rolol).
 
     Exercises the inconclusive icon ("?"), the per-verdict counter, the
-    summary line, and the exit-code-2 path.
+    summary line, and the exit-code-4 path.
     """
     bmap = _make_behavior_map(nodes=[], edges=[])
     input_file = tmp_path / "hg.json"
@@ -311,7 +311,7 @@ def test_verify_claims_inconclusive_exits_2(tmp_path: Path, capsys) -> None:
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 2
+    assert rc == 4
     out = capsys.readouterr().out
     assert "INCONCLUSIVE" in out
     assert "?" in out
@@ -618,7 +618,7 @@ def test_verify_claims_notice_for_unsupported_taint_language(
     # all, this fixture goes inconclusive via the vacuous-analysis rule;
     # test_uncatalogued_language_WITH_code_blocks_confirmation pins the
     # uncatalogued-language rule itself.)
-    assert rc == 2
+    assert rc == 4
     out, err = capsys.readouterr()
     assert "INCONCLUSIVE" in out
     assert "brainfuck" in err
@@ -744,10 +744,10 @@ def test_verify_claims_no_notice_when_no_taint_claims(
 
     rc = cmd_verify_claims(args)
     # WI-kajil: brainfuck has no I/O catalog and produced no call edges, so the
-    # boundary claim is INCONCLUSIVE (rc=2) — the analysis cannot see its I/O.
+    # boundary claim is INCONCLUSIVE (rc=4) — the analysis cannot see its I/O.
     # This test's point is the absence of the *taint-flow* notice (there are no
     # taint claims), which holds regardless of the boundary verdict.
-    assert rc == 2
+    assert rc == 4
     _, err = capsys.readouterr()
     assert "no taint-flow catalog" not in err
 
@@ -958,10 +958,11 @@ def test_verify_claims_bad_taint_source_path_errors(
     tmp_path: Path, capsys,
 ) -> None:
     """A typo in ``--taint-sources`` is caught at load time and returns
-    exit 2 (inconclusive) with a clear error — a silent fallthrough to
+    exit 2 (bad input) with a clear error — a silent fallthrough to
     built-in defaults would be worse than failing loudly. INV-nufob: a
     broken taint config means verification could not proceed, which is
-    inconclusive (exit 2), never a confirmed (0) or violated (1) verdict.
+    bad input (exit 2), never a verdict: not confirmed (0), violated (1),
+    caveated (3) or inconclusive (4).
     """
     bmap = _make_behavior_map(
         nodes=[
@@ -1346,7 +1347,7 @@ def test_verify_claims_skips_language_with_only_sinks(
     # propagation runs for it. The verdict is ``inconclusive`` rather than a
     # vacuous ``confirmed``: shellscript also has no I/O catalogue, so the
     # analysis could not look (INV-dabov).
-    assert rc == 2
+    assert rc == 4
 
 
 def _load_error_args(tmp_path: Path, claims_text: str) -> "FakeArgs":
@@ -1614,7 +1615,7 @@ def test_verify_claims_blind_supported_language_inconclusive(
     tmp_path: Path, capsys,
 ) -> None:
     """WI-kajil P0: a supported language analyzed but producing zero call edges
-    makes a must_not_exist boundary claim INCONCLUSIVE (rc=2), not a silent
+    makes a must_not_exist boundary claim INCONCLUSIVE (rc=4), not a silent
     'confirmed' at rc=0 against an analysis blind to that language's I/O."""
     bmap = _make_behavior_map(
         nodes=[
@@ -1627,7 +1628,7 @@ def test_verify_claims_blind_supported_language_inconclusive(
                 "type": "calls", "confidence": 0.9}],
     )
     rc = cmd_verify_claims(_boundary_claim_args(tmp_path, bmap))
-    assert rc == 2
+    assert rc == 4
     out = capsys.readouterr().out
     assert "INCONCLUSIVE" in out
 
@@ -1669,13 +1670,13 @@ def test_verify_claims_covered_languages_confirm(tmp_path: Path, capsys) -> None
 
 def test_verify_claims_vacuous_analysis_inconclusive(tmp_path: Path, capsys) -> None:
     """INV-bitig P0: an analysis that produced no call edges at all (empty /
-    wrong-cwd) cannot confirm must_not_exist — INCONCLUSIVE (rc=2)."""
+    wrong-cwd) cannot confirm must_not_exist — INCONCLUSIVE (rc=4)."""
     bmap = _make_behavior_map(
         nodes=[_node("python:a.py:1:f:function", "python", "a.py")],
         edges=[],
     )
     rc = cmd_verify_claims(_boundary_claim_args(tmp_path, bmap))
-    assert rc == 2
+    assert rc == 4
     assert "INCONCLUSIVE" in capsys.readouterr().out
 
 
@@ -1838,7 +1839,7 @@ def test_language_with_a_token_call_edge_still_falsely_confirms(
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 2, "a language whose sinks are structurally invisible must " \
+    assert rc == 4, "a language whose sinks are structurally invisible must " \
                     "not produce a confirmed verdict"
 
 
@@ -1892,7 +1893,7 @@ def test_uncatalogued_language_WITH_code_blocks_confirmation(
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 2
+    assert rc == 4
     out = capsys.readouterr().out
     assert "INCONCLUSIVE" in out
     assert "brainfuck" in out, "the verdict must name WHICH language was blind"
@@ -1984,7 +1985,7 @@ def test_include_non_production_sources_puts_the_fixture_back_in_the_census(
     args.include_non_production_sources = True
     rc = cmd_verify_claims(args)
     out = capsys.readouterr().out
-    assert rc == 2 and "brainfuck" in out, (
+    assert rc == 4 and "brainfuck" in out, (
         f"with fixtures counted, the uncatalogued fixture language must block "
         f"again; got rc={rc}, out={out!r}"
     )
@@ -2055,7 +2056,7 @@ def test_the_envelope_records_a_cli_supplied_catalogue(
     a row is not a detection-only grant: a classified call is what
     ``examined`` MEANS (INV-buzab), so a row carrying the wrong boundary buys a
     `confirmed` for the boundary actually claimed — e.g. a five-line overlay
-    filing ``requests.post`` under ``fs_read`` turns ``inconclusive`` rc 2
+    filing ``requests.post`` under ``fs_read`` turns ``inconclusive`` rc 4
     into ``confirmed`` rc 0.
 
     This does not change any verdict. It makes the trust decision visible.
@@ -2081,7 +2082,7 @@ def test_the_envelope_separates_the_claims_file_layer_from_the_cli_layer(
     tree under analysis, the repo is grading itself. For example, a directory
     containing ``main.py``, ``claims.yaml`` and an overlay mislabelling
     ``requests.post`` returns ``confirmed`` rc 0, where the same repo without
-    the ``extra_catalogs:`` line returns ``inconclusive`` rc 2.
+    the ``extra_catalogs:`` line returns ``inconclusive`` rc 4.
 
     Collapsing the two layers into one list would report that a catalogue was
     used while hiding the fact that the subject supplied it.

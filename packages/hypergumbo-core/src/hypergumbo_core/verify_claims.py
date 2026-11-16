@@ -53,12 +53,24 @@ Verdict Types
   A consumer testing ``verdict == "confirmed"`` will not see these; use
   ``CONFIRMING_VERDICTS``.
 - ``violated``: Specific evidence contradicts the claim
-- ``inconclusive``: Verification couldn't proceed or couldn't be trusted —
-  no machine-checkable constraint, broken input, missing catalog, or the
-  I/O analysis was blind to the relevant code (empty analysis, or a
-  supported language that produced no call edges). Kept distinct from
-  ``confirmed`` to close the silent-confirm fall-through (ADR-0033 Phase 3;
-  WI-kajil / INV-bitig).
+- ``inconclusive``: Verification couldn't be trusted — no machine-checkable
+  constraint, a language with no catalogue, or the I/O analysis was blind to
+  the relevant code (empty analysis, or a supported language that produced
+  no call edges). Kept distinct from ``confirmed`` to close the
+  silent-confirm fall-through (ADR-0033 Phase 3; WI-kajil / INV-bitig).
+  Exits **4**. Input the command cannot use is NOT a verdict: it is refused before any
+  verdict exists (exit 2, below).
+
+Exit codes
+----------
+``EXIT_CONFIRMED`` 0, ``EXIT_VIOLATED`` 1, ``EXIT_BAD_INPUT`` 2,
+``EXIT_CONFIRMED_WITH_CAVEATS`` 3 and ``EXIT_INCONCLUSIVE`` 4, no two equal.
+:func:`exit_code_for_verdicts` applies
+``VERDICT_EXIT_PRECEDENCE``: any ``violated`` wins, then ``inconclusive``,
+then ``confirmed_with_caveats``. Bad input -- a claims file that is missing,
+unreadable or invalid, a ``--input`` map that is missing or not a usable
+behavior map, a catalogue that does not load -- exits 2 before any verdict is
+computed, so it never combines with a verdict code.
 
 For taint-flow claims the adjudication travels with the verdict rather than
 being asserted by this module. Structural analysis produces ``approximate``
@@ -76,7 +88,12 @@ Load-time validation
 (the META-jurig gate): malformed YAML, an unexpected root/claim/constraint
 shape, an unknown field name, or a ``constraint.boundary`` outside the
 io-boundaries vocabulary each raise :class:`ClaimsFileError` (→ CLI exit 2)
-rather than tracebacking or silently producing a degraded verdict stream.
+rather than tracebacking or silently producing a degraded verdict stream. So
+does a field of the wrong type (``boundary``, ``source_taint`` and
+``prohibited_sink_zone`` must be strings, ``must_not_exist`` a boolean,
+``max_chains`` an integer): each used to crash past the loader into the CLI's
+internal-error net, which exits 1, the code for ``violated``, or -- for a
+string ``must_not_exist`` -- to be read as a flag.
 ``validate_taint_flow_vocabulary`` extends the same discipline to the taint
 half (INV-todas): an unresolvable ``source_taint`` or ``prohibited_sink_zone``
 raises rather than producing a claim that can never match anything and would
@@ -467,6 +484,48 @@ CONFIRMING_VERDICTS: frozenset[str] = frozenset({
     "confirmed",
     "confirmed_with_caveats",
 })
+
+# The process exit codes of ``hypergumbo verify-claims`` (owner rulings
+# 2026-11-15 and 2026-11-16, WI-tajup). Defined here, beside the verdict
+# vocabulary they encode, so the CLI, its help text and its tests read one
+# table. No two outcomes share a code: a CI gate reads ``$?``, not stdout.
+#
+# ``2`` IS INPUT THE COMMAND COULD NOT USE, and no verdict maps to it, so a
+# gate can tell a typo in the claims file from a regression (1) and from an
+# analysis that could not decide (4).
+#
+# ``3`` IS ``confirmed_with_caveats`` (INV-pojib): every claim held, at least
+# one on something the reader has to see. A gate that accepts 3 accepts
+# caveated verdicts and nothing else.
+#
+# ``4`` IS ``inconclusive``: the analysis could not check a claim. It is not a
+# pass.
+EXIT_CONFIRMED = 0
+EXIT_VIOLATED = 1
+EXIT_BAD_INPUT = 2
+EXIT_CONFIRMED_WITH_CAVEATS = 3
+EXIT_INCONCLUSIVE = 4
+
+#: Verdict -> exit code, in precedence order: the first verdict present in a
+#: run decides its code, and a run with none of them exits
+#: :data:`EXIT_CONFIRMED`. ``violated`` first; then ``inconclusive`` ahead of
+#: ``confirmed_with_caveats`` ("could not look" is worse than "looked, with a
+#: named caveat").
+VERDICT_EXIT_PRECEDENCE: tuple[tuple[str, int], ...] = (
+    ("violated", EXIT_VIOLATED),
+    ("inconclusive", EXIT_INCONCLUSIVE),
+    ("confirmed_with_caveats", EXIT_CONFIRMED_WITH_CAVEATS),
+)
+
+
+def exit_code_for_verdicts(verdicts: Iterable[ClaimVerdict]) -> int:
+    """The exit code a run with these verdicts ends with (see
+    :data:`VERDICT_EXIT_PRECEDENCE`)."""
+    present = {v.verdict for v in verdicts}
+    for verdict, code in VERDICT_EXIT_PRECEDENCE:
+        if verdict in present:
+            return code
+    return EXIT_CONFIRMED
 
 #: Caveat kind: a sanitizer the ANALYSED REPOSITORY supplied is credited with
 #: removing a flow that would otherwise have been reported. The tool cannot
@@ -2054,12 +2113,16 @@ class ClaimsFileError(Exception):
       INV-gobob / WI-ruzib;
     * an unrecognized field name, e.g. the typo ``constrant`` — WI-bopoz.
 
+    It also covers a claims file that cannot be read at all (an ``OSError``
+    such as a permission refusal) and a field of the wrong type.
+
     :func:`hypergumbo_core.cli.cmd_verify_claims` catches it, prints
-    ``Error: <message>`` to stderr, and exits ``2`` — distinct from ``1``
-    (a genuine ``violated`` verdict) so a CI gate keyed on ``rc == 0`` still
-    fails closed on a typo'd claim without misreporting a security
-    regression, and distinct from ``0`` so malformed input can never read
-    as "all confirmed".
+    ``Error: <message>`` to stderr, and exits ``EXIT_BAD_INPUT`` (2) —
+    distinct from ``1`` (a genuine ``violated`` verdict) so a CI gate keyed
+    on ``rc == 0`` still fails closed on a typo'd claim without misreporting
+    a security regression, distinct from ``4`` (an analysis that could not
+    decide), and distinct from ``0`` so malformed input can never read as
+    "all confirmed".
     """
 
 
@@ -2398,6 +2461,8 @@ def _parse_taint_flow(
         _ALLOWED_TAINT_FLOW_KEYS,
         where=f"taint_flow in claim '{claim_id}'",
     )
+    for key in ("source_taint", "prohibited_sink_zone"):
+        _require_field_type(taint_flow_data, key, str, "a string", claim_id)
     include_command_line = taint_flow_data.get("include_command_line", False)
     if not isinstance(include_command_line, bool):
         # A string "false" is truthy; reading it as a flag would count the
@@ -2544,7 +2609,7 @@ def catalog_provenance(
     ``requests.post``, claim "never sends data over the network", the middle
     run being the control that proves the row matched::
 
-        no overlay                            inconclusive   rc 2
+        no overlay                            inconclusive   rc 4
         requests.post declared net_send       violated       rc 1
         requests.post declared fs_read        CONFIRMED      rc 0
 
@@ -2556,7 +2621,7 @@ def catalog_provenance(
     holding ``main.py``, ``claims.yaml`` and an overlay filing
     ``requests.post`` under ``fs_read`` returns ``confirmed`` rc 0, where the
     same repo without the ``extra_catalogs:`` line returns ``inconclusive``
-    rc 2. Collapsing the layers would report THAT a catalogue was used while
+    rc 4. Collapsing the layers would report THAT a catalogue was used while
     hiding WHO supplied it, which is the more decision-relevant half.
 
     THIS CHANGES NO VERDICT. It is disclosure, deliberately chosen over
@@ -2576,7 +2641,7 @@ def catalog_provenance(
     that an unmatched call into that module is an EXAMINED negative. For
     example, a six-line overlay with zero primitive rows and one entry for
     ``telnetlib`` turns the INV-buzab exfiltration fixture from
-    ``inconclusive`` rc 2 to ``confirmed`` rc 0. A reader holding
+    ``inconclusive`` rc 4 to ``confirmed`` rc 0. A reader holding
     ``io_primitives: overlays/deps.yaml [claims-file extra_catalogs]`` cannot
     tell whether that file added a ``requests.post`` row or vouched for the
     whole of ``telnetlib``, and those are not comparable claims. So the grants
@@ -3146,6 +3211,34 @@ def validate_taint_flow_vocabulary(
             )
 
 
+def _require_field_type(
+    mapping: Mapping[str, Any], key: str, expected: type, described: str,
+    claim_id: str,
+) -> None:
+    """Raise :class:`ClaimsFileError` when ``mapping[key]`` is present, not
+    null and not of type ``expected`` (WI-tajup).
+
+    THE SHAPES THIS CATCHES each crashed past the loader -- ``boundary:
+    [net_send]`` and a list ``source_taint`` are unhashable, ``max_chains:
+    five`` fails the ``<=`` -- into the CLI's internal-error net, which exits
+    1, the code for ``violated``; a string ``must_not_exist`` was read as a
+    flag (``"no"`` is truthy). A ``bool`` is refused where an ``int`` is
+    expected even though it is one in Python: ``max_chains: true`` is a typo,
+    not a limit of 1. Null stays "absent", as the loader has always read it.
+    """
+    value = mapping.get(key)
+    if value is None:
+        return
+    if isinstance(value, expected) and not (
+        expected is int and isinstance(value, bool)
+    ):
+        return
+    raise ClaimsFileError(
+        f"'{key}' in claim '{claim_id}' must be {described}, got "
+        f"{type(value).__name__}: {value!r}.",
+    )
+
+
 def _parse_claim(entry: object, index: int) -> Claim:
     """Validate and build one :class:`Claim` from a raw YAML entry.
 
@@ -3184,6 +3277,10 @@ def _parse_claim(entry: object, index: int) -> Claim:
     # ``must_not_exist: net_send`` claim and confirm it. An unknown value
     # here would otherwise make verify_claim's ``boundary_map.entries.get``
     # return None → chain_count 0 → silent "confirmed".
+    _require_field_type(constraint, "boundary", str, "a string", claim_id)
+    _require_field_type(
+        constraint, "must_not_exist", bool, "true or false", claim_id)
+    _require_field_type(constraint, "max_chains", int, "an integer", claim_id)
     boundary = constraint.get("boundary", "") or ""
     if boundary and boundary not in KNOWN_IO_BOUNDARIES:
         raise ClaimsFileError(
@@ -3292,6 +3389,12 @@ def load_claims(path: Path) -> list[Claim]:
     except UnicodeDecodeError as exc:
         raise ClaimsFileError(
             f"claims file is not valid UTF-8 text: {path}",
+        ) from exc
+    except OSError as exc:
+        # A permission refusal reached the CLI's internal-error net, which
+        # exits 1 -- the code for ``violated`` (WI-tajup).
+        raise ClaimsFileError(
+            f"could not read claims file {path}: {exc.strerror or exc}",
         ) from exc
     try:
         data = yaml.safe_load(content)

@@ -315,7 +315,7 @@ _DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = disclosed_only_names()
 # so without the shadow the call counts as an examined negative and
 # ``verify-claims`` returns a green tick over live ingress. The outbound
 # direction has the same hazard: cataloguing ``curl`` as ``net_send`` turns a
-# cron-dropper claim from ``inconclusive`` (rc 2) into ``confirmed`` (rc 0)
+# cron-dropper claim from ``inconclusive`` (rc 4) into ``confirmed`` (rc 0)
 # (ADR-0016).
 # A disclosure boundary without its shadow is a false-all-clear generator and is
 # strictly worse than leaving the false source in place.
@@ -2281,7 +2281,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
     # write here: an overlay with zero primitive rows and one completeness
     # entry for ``telnetlib`` turns the INV-buzab exfiltration fixture — which
     # opens a telnet session and writes ``os.environ["API_KEY"]`` into it —
-    # from ``inconclusive`` rc 2 to ``confirmed`` rc 0, disclosed by nothing
+    # from ``inconclusive`` rc 4 to ``confirmed`` rc 0, disclosed by nothing
     # but a stderr line naming the overlay path.
     #
     # It is permitted anyway: overlays are where third-party goes, the user is

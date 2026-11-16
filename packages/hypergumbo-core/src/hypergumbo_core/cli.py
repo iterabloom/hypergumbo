@@ -7116,6 +7116,52 @@ def _taint_blind_reason(
     return None, []
 
 
+#: The behavior-map record lists ``verify-claims`` walks, and whether a null
+#: value means "absent" or is refused. Only ``request_ingress`` is read with
+#: a fallback (``ingress_candidates``' ``isinstance`` test, an older map's
+#: absent key); ``nodes``, ``edges`` and ``entrypoints`` are iterated as
+#: read, so a null crashed.
+_VERIFY_CLAIMS_MAP_RECORD_LISTS: tuple[tuple[str, bool], ...] = (
+    ("nodes", False),
+    ("edges", False),
+    ("entrypoints", False),
+    ("request_ingress", True),
+)
+
+
+def _verify_claims_map_shape_error(behavior_map: Dict[str, Any]) -> Optional[str]:
+    """Why ``behavior_map``'s record lists cannot be walked, or ``None``.
+
+    ``load_substrate`` checks that a ``--input`` file is a JSON object with a
+    ``nodes`` key; it does not look inside. A record list of the wrong type
+    (``"edges": 5``) or a record that is not an object (``"nodes": [5]``)
+    crashed the first loop that read it, and the crash reached ``main``'s
+    internal-error net, which exits 1 -- the code ``verify-claims`` uses for
+    ``violated`` (WI-tajup). Checked here, for this command only, rather than
+    in ``load_substrate``: every other ``--input`` consumer keeps its current
+    behaviour.
+
+    NOT CHECKED: the fields inside a record (an edge whose ``src`` is a
+    number, a ``meta`` that is a string). A map hypergumbo wrote does not
+    carry them, and checking every field of every record of a 300 MB map is a
+    schema validation, not a shape check.
+    """
+    for key, null_is_absent in _VERIFY_CLAIMS_MAP_RECORD_LISTS:
+        if key not in behavior_map:
+            continue
+        records = behavior_map[key]
+        if records is None and null_is_absent:
+            continue
+        if not isinstance(records, list):
+            return (f"not a usable behavior map: '{key}' must be a list, got "
+                    f"{type(records).__name__}")
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                return (f"not a usable behavior map: '{key}[{index}]' must be "
+                        f"an object, got {type(record).__name__}")
+    return None
+
+
 def _verify_claims_boundary_vocabulary_help() -> str:
     """The ``boundary:`` vocabulary block of ``verify-claims --help``, DERIVED.
 
@@ -7159,9 +7205,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
     Loads claims from a YAML file, computes the I/O boundary map, runs
-    taint-flow analysis if needed, and checks each claim. Returns exit
-    code 1 if any claim is violated. Supports boundary constraints
-    (ADR-0016) and taint-flow constraints (ADR-0017).
+    taint-flow analysis if needed, and checks each claim. Supports boundary
+    constraints (ADR-0016) and taint-flow constraints (ADR-0017).
+
+    Exit codes (WI-tajup; the table lives in ``verify_claims``): 0 every
+    claim confirmed; 1 at least one violated; 2 bad input; 3 at least one
+    ``confirmed_with_caveats`` (and none violated or inconclusive); 4 at least
+    one inconclusive (and none violated). EVERY refusal of input below returns
+    ``EXIT_BAD_INPUT`` before a verdict exists -- the claims file, the
+    ``--input`` map, a catalogue -- so no bad input can read as a verdict.
+    Two paths used to return 1, the ``violated`` code: a missing claims file
+    and a missing ``--input`` map.
 
     Built-in trust zones: the ``AUTO_SINK_ZONE_MAP`` zones in ``taint.py``
     (``host_fs``, ``subprocess``, ``network``, ``host_env``, ``ipc``,
@@ -7206,16 +7260,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     first_party_packages = collect_first_party_package_names(repo_root)
     claims_path = Path(args.claims)
 
-    if not claims_path.exists():
-        print(f"Error: Claims file not found: {claims_path}", file=sys.stderr)
-        return 1
-
-    # Load claims
     from .verify_claims import (
+        EXIT_BAD_INPUT,
         VERIFY_CLAIMS_SCHEMA_VERSION,
         ClaimsFileError,
         ScopedBlindness,
         compute_boundary_coverage,
+        exit_code_for_verdicts,
         ingress_candidates,
         load_claims,
         unseeded_ingress_handlers,
@@ -7223,15 +7274,20 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         verify_claims as _verify,
     )
 
+    if not claims_path.exists():
+        print(f"Error: Claims file not found: {claims_path}", file=sys.stderr)
+        return EXIT_BAD_INPUT
+
     # Load gate (META-jurig): malformed / typo'd / unknown-vocabulary claims
-    # surface as a clean rc=2 error rather than a raw traceback (INV-zurih /
-    # WI-fuhaf) or a silent false "confirmed" (INV-gobob / WI-ruzib / WI-bopoz).
-    # rc=2 (not 1) keeps a bad-input error distinct from a real violation.
+    # surface as a clean bad-input error rather than a raw traceback
+    # (INV-zurih / WI-fuhaf) or a silent false "confirmed" (INV-gobob /
+    # WI-ruzib / WI-bopoz). 2, not 1 (a real violation) nor 4 (an analysis
+    # that could not decide).
     try:
         claims = load_claims(claims_path)
     except ClaimsFileError as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_BAD_INPUT
     if not claims:
         print("No claims found in file.")
         return 0
@@ -7248,9 +7304,25 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             f"Error: Input file not found: {getattr(args, 'input', None)}",
             file=sys.stderr,
         )
-        return 1
+        return EXIT_BAD_INPUT
 
-    behavior_map = load_substrate(input_path)
+    # A JSON or shape failure raises SubstrateError, which ``main`` maps to 2.
+    # An OSError (a directory, a permission refusal) and a record list of the
+    # wrong type would reach main's internal-error net instead, which exits 1
+    # -- the ``violated`` code (WI-tajup) -- so both are refused here.
+    try:
+        behavior_map = load_substrate(input_path)
+    except OSError as exc:
+        print(
+            f"Error: could not read behavior map {input_path}: "
+            f"{exc.strerror or exc}",
+            file=sys.stderr,
+        )
+        return EXIT_BAD_INPUT
+    shape_error = _verify_claims_map_shape_error(behavior_map)
+    if shape_error is not None:
+        print(f"Error: {input_path}: {shape_error}", file=sys.stderr)
+        return EXIT_BAD_INPUT
     raw_edges = behavior_map.get("edges", [])
 
     # The claims file may declare its own denominator (INV-dabuf G1). Applied
@@ -7291,9 +7363,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             )
     except _ScopeError as exc:
         # Same posture as a broken overlay: a broken scope declaration is
-        # never confirmed (0) and never violated (1).
+        # bad input (2), never a verdict.
         print(f"Error: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_BAD_INPUT
 
     # Carry is_resolved + dst_ref so the ADR-0028 receiver gate / dst_ref
     # lookup fire on the verify-claims boundary classification too (WI-kumol).
@@ -7343,10 +7415,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     args, "no_default_overlays", False),
             )
         except IoPrimitiveOverlayError as exc:
-            # Exit 2 = inconclusive, matching the taint arm's posture: a broken
-            # catalog config is never `confirmed` (0) and never `violated` (1).
+            # Bad input (2), matching the taint arm's posture: a broken
+            # catalog config is never a verdict.
             print(f"Error: {exc}", file=sys.stderr)
-            return 2
+            return EXIT_BAD_INPUT
         if catalog.primitives:
             catalogs[lang] = catalog
             if catalog.language != lang:
@@ -7470,8 +7542,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # ``--taint-sources <bad-path>`` with boundary-only claims does not fall
     # through to "all CONFIRMED" (exit 0) and a malformed / wrong-shape taint
     # file does not crash with an uncaught traceback (INV-nufob). A broken
-    # taint config is inconclusive (exit 2), never confirmed (0) or
-    # violated (1).
+    # taint config is bad input (exit 2), never a verdict.
     if has_taint_claims or any_taint_flags:
         try:
             taint_catalog = load_full_taint_catalog(
@@ -7506,7 +7577,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     args, "no_default_overlays", False))
         except (FileNotFoundError, CatalogueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
-            return 2
+            return EXIT_BAD_INPUT
         taint_layers, named_community_taint, omitted_taint = (
             _split_named_taint_files(
                 taint_named,
@@ -7541,7 +7612,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         if any_taint_flags and not has_taint_claims:
             # Flags present but no taint_flow claim to consume them (INV-nufob).
             # The catalog was validated above (a bad path already errored with
-            # exit 2); warn that it is otherwise unused rather than silently
+            # exit 2, bad input); warn that it is otherwise unused rather than silently
             # ignoring the flags.
             print(
                 "Warning: --taint-sources/--taint-sinks/--taint-sanitizers "
@@ -7573,7 +7644,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             )
         except ClaimsFileError as exc:
             print(f"Error: {exc}", file=sys.stderr)
-            return 2
+            return EXIT_BAD_INPUT
         # Build per-language source/sink/sanitizer tables. Running
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python
@@ -7615,7 +7686,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # and a script whose only statement is
                 # ``echo "$API_KEY" > /etc/cron.d/pwned`` would confirm
                 # "host_secret must not reach host_fs" at rc 0 instead of
-                # returning inconclusive (rc 2).
+                # returning inconclusive (rc 4).
                 #
                 # This matches the propagation loop below, which is guarded
                 # by ``if per_lang_sources and per_lang_sinks``. A boundary
@@ -8142,19 +8213,21 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    # Exit codes (ADR-0033 Phase 3, WI-rolol):
+    # Exit codes (ADR-0033 Phase 3, WI-rolol; WI-tajup -- the table is
+    # ``verify_claims.EXIT_*``):
     #   0 = all confirmed (or no claims to check)
     #   1 = at least one violated
-    #   2 = at least one inconclusive (and zero violated) — distinguishes
+    #   2 = bad input; returned above, before any verdict existed
+    #   3 = at least one confirmed_with_caveats (and none violated or
+    #       inconclusive; INV-pojib). The claim held, with a named caveat:
+    #       something the verdict rests on that the analysis did not check.
+    #       Caveat kinds (verify_claims CAVEAT_* plus deferred_crossing)
+    #       include entries the ANALYSED REPOSITORY supplied about itself and,
+    #       mostly, analysis limits (an untyped receiver, an analyzer blind to
+    #       a construct).
+    #   4 = at least one inconclusive (and zero violated) — distinguishes
     #       "machine-checkable claims all passed" from "couldn't actually
     #       check the claim" (INV-bitig).
-    #   3 = at least one confirmed_with_caveats (and none of the above;
-    #       INV-pojib). The claim held, with a named caveat: something the
-    #       verdict rests on that the analysis did not check. Caveat kinds
-    #       (verify_claims CAVEAT_* plus deferred_crossing) include entries
-    #       the ANALYSED REPOSITORY supplied about itself and, mostly,
-    #       analysis limits (an untyped receiver, an analyzer blind to a
-    #       construct).
     #
     # WHY A NEW CODE RATHER THAN PROSE. The verdict text names a
     # repo-supplied sanitizer, but a CI gate reads $?, not stdout. Without
@@ -8169,16 +8242,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # either accept rc 3 or drop the entry. Ordered AFTER inconclusive
     # because "could not look" is a worse state than "looked, with a named
     # caveat".
-    has_violations = any(v.verdict == "violated" for v in verdicts)
-    has_inconclusive = any(v.verdict == "inconclusive" for v in verdicts)
-    has_caveats = any(v.verdict == "confirmed_with_caveats" for v in verdicts)
-    if has_violations:
-        return 1
-    if has_inconclusive:
-        return 2
-    if has_caveats:
-        return 3
-    return 0
+    return exit_code_for_verdicts(verdicts)
 
 
 def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
@@ -11923,12 +11987,18 @@ taint model belongs in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/,
 taint_sinks.d/ and taint_sanitizers.d/; see docs/CATALOGUES.md.
 
 The claims file is validated up front: a malformed YAML, an unexpected
-shape, an unknown field name, or a boundary value outside the vocabulary
-above produces a clear error and exit code 2 (not a silent pass).
+shape, an unknown field name, a field of the wrong type, or a boundary value
+outside the vocabulary above produces a clear error and exit code 2 (not a
+silent pass).
 
-Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one
-inconclusive, or the claims file failed validation; 3 = at least one
-`confirmed_with_caveats` (and none of the above).
+Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = bad input
+(a claims file or --input map that is missing, unreadable or invalid, a
+catalogue that does not load, a bad argument), reported before any verdict;
+3 = at least one `confirmed_with_caveats` (and none violated or
+inconclusive); 4 = at least one inconclusive (and none violated). When
+verdicts differ, violated wins, then inconclusive, then caveats.
+
+Exit 4 is not a pass: the claim was not checked.
 
 Exit 3 means every claim held, but at least one held on something you have to
 see for yourself. FOUR things raise it, in two families.

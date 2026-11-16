@@ -311,9 +311,10 @@ class CatalogueError(Exception):
     """A catalogue file could not be parsed or has the wrong shape.
 
     The message names the file. ``cli.main`` turns any instance into
-    ``Error: <message>`` and exit 2 (inconclusive): a broken catalogue means the
-    command could not do what it was asked, which is never a clean result (0)
-    and never ``violated`` (1).
+    ``Error: <message>`` and exit 2 (bad input): a broken catalogue means the
+    command could not do what it was asked, which is never a clean result (0),
+    never ``violated`` (1) and, for ``verify-claims``, never ``inconclusive``
+    (4).
     """
 
 
