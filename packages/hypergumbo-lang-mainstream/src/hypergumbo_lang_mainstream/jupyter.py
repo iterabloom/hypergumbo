@@ -62,10 +62,10 @@ import warnings
 from pathlib import Path
 from typing import Iterator
 
-from hypergumbo_core.analyze.base import AnalysisResult, make_file_stable_id
+from hypergumbo_core.analyze.base import AnalysisResult, make_file_stable_id, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.paths import normalize_path
 # INV-loguk: notebook code cells are Python, so reuse py.py's language-agnostic
 # Python-AST complexity walkers (the tree-sitter `compute_cyclomatic_complexity`
@@ -179,9 +179,9 @@ def _find_notebook_files(
     yield from find_files(repo_root, ["*.ipynb"], max_files=max_files)
 
 
-def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> NodeId:
     """Generate location-based ID for notebook symbols."""
-    return f"jupyter:{path}:{line}-{end_line}:{name}:{kind}"
+    return make_symbol_id("jupyter", path, line, end_line, name, kind)
 
 
 def _analyze_notebook_file(

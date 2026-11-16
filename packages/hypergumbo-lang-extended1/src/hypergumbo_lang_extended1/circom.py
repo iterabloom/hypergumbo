@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -103,7 +103,7 @@ _CALLABLE_KINDS = frozenset({"class", "function"})
 
 def _definition_symbol_id(
     definition: "tree_sitter.Node", source: bytes, file_path: str,
-) -> Optional[str]:
+) -> Optional[NodeId]:
     """The symbol id pass 1 gave a template or function definition node."""
     name_node = find_child_by_type(definition, "identifier")
     if name_node is None:  # pragma: no cover - the grammar requires a name
@@ -583,7 +583,7 @@ def _extract_edges_from_file(
     anchored: set[tuple[int, int]] = set()
 
     def callable_edge(
-        call: "tree_sitter.Node", src_id: str, line: int, kinds: frozenset[str],
+        call: "tree_sitter.Node", src_id: NodeId, line: int, kinds: frozenset[str],
     ) -> None:
         callee = _callee_name(call, source)
         resolved = scope.resolve_callable(callee, file_path, kinds) if callee else None
@@ -605,7 +605,7 @@ def _extract_edges_from_file(
             string_node = find_child_by_type(node, "string")
             if string_node and file_symbol:
                 raw = _include_text(string_node, source)
-                targets = [
+                targets: list[str] = [
                     make_file_id("circom", path)
                     for path in scope.resolve_include(file_path, raw)
                 ] or [f"circom:{raw}:0-0:file:file"]

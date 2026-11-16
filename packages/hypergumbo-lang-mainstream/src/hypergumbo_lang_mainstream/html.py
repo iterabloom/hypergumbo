@@ -94,7 +94,7 @@ from typing import Iterator
 from urllib.parse import unquote
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -127,9 +127,9 @@ def find_html_files(
     yield from find_files(repo_root, ["*.html", "*.htm"], max_files=max_files)
 
 
-def _make_file_id(path: str) -> str:
+def _make_file_id(path: str) -> NodeId:
     """Generate ID for an HTML file node."""
-    return f"html:{path}:1-1:file:file"
+    return make_file_id("html", path)
 
 
 def _src_path(script_src: str) -> str:
@@ -241,7 +241,7 @@ def analyze_html(
             # into an external_symbol (CDN script, missing build output).
             target = _resolve_script_src(script_src, html_file, repo_root)
             if target is not None:
-                script_ref_id = make_file_id(
+                script_ref_id: str = make_file_id(
                     _get_language_for_file(target), str(target)
                 )
             else:

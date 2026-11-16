@@ -83,9 +83,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_stable_id
+from ..analyze.base import (
+    make_dependency_stable_id, make_file_id, make_file_stable_id, make_symbol_id,
+)
 from ..supply_chain import own_package_name
-from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
+from ..ir import PASS_VERSION, AnalysisRun, Edge, NodeId, Span, Symbol, make_pass_id
 from ..taxonomy import get_language
 from ._text_filters import note_source_read, read_source_text
 from ..js_package_entry import (
@@ -212,7 +214,7 @@ def _extract_import_path(dst: str) -> tuple[str, str] | None:
     return (lang, import_path)
 
 
-def _make_npm_package_id(package_name: str, lang: str) -> str:
+def _make_npm_package_id(package_name: str, lang: str) -> NodeId:
     """Create a stable symbol ID for an npm_package symbol.
 
     The canonical schema (ADR-0034) is
@@ -238,7 +240,7 @@ def _make_npm_package_id(package_name: str, lang: str) -> str:
     safe_name = package_name.replace(":", "_")
     # ADR-0036 Ruling 2: kind slot == Symbol.kind (``package``); the
     # ecosystem lives on meta.package_ecosystem.
-    return f"{lang}:npm:0-0:{safe_name}:package"
+    return make_symbol_id(lang, "npm", 0, 0, safe_name, "package")
 
 
 def _is_relative_import(import_path: str) -> bool:

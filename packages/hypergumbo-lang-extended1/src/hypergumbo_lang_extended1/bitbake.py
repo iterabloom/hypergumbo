@@ -51,7 +51,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -82,7 +82,7 @@ def find_bitbake_files(repo_root: Path) -> list[Path]:
 
 
 
-def _make_symbol_id(path: Path, node: "tree_sitter.Node", name: str, kind: str) -> str:
+def _make_symbol_id(path: Path, node: "tree_sitter.Node", name: str, kind: str) -> NodeId:
     """The node id of the symbol declared by ``node``.
 
     ``kind`` is the Symbol's own kind and the span slot is the declaration's
@@ -428,6 +428,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         for edge_type, name, line in _pending_ref_store.get(rel_path, []):
             target = _run_file_named(edge_type, name)
+            dst: str
             if target is not None:
                 dst, dst_ref = make_file_id("bitbake", target), None
             else:

@@ -51,8 +51,8 @@ from pathlib import Path
 from typing import Iterator, NamedTuple, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import NodeId, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import declared_arity_stable_id
 
@@ -114,8 +114,8 @@ class _Element:
         return f"{base}#{self.element_id}" if self.element_id else base
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"qml:{path}:{line}-{line}:{name}:{kind}"
+def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
+    return make_symbol_id("qml", path, line, line, name, kind)
 
 
 def find_qml_files(

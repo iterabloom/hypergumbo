@@ -58,11 +58,11 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, make_pass_id,
-    sanitize_id_name_segment,
+    AnalysisRun, Edge, NodeId, PASS_VERSION, Span, StableId, Symbol, make_pass_id,
 )
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_file_id,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -72,7 +72,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     import tree_sitter
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
     """Generate a unique symbol ID.
 
     Location-based, in ADR-0036's five-slot grammar, so a reader or a linker
@@ -81,7 +81,7 @@ def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     name slot is sanitized because a css selector may contain a colon
     (``a:hover``) and a colon there shifts every anchor (WI-vodin).
     """
-    return f"css:{path}:{line}-{line}:{sanitize_id_name_segment(name)}:{kind}"
+    return make_symbol_id("css", path, line, line, name, kind)
 
 
 def _local_import_resolver(
@@ -229,7 +229,7 @@ def _process_css_tree(
     edges: list[Edge],
     rel_path: str,
     source: bytes,
-    file_symbol_id: str,
+    file_symbol_id: NodeId,
     *,
     run_id: str,
     local_import_id: Callable[[str], Optional[str]] | None = None,

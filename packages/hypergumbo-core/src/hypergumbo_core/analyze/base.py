@@ -160,7 +160,7 @@ from ..discovery import find_files
 from ..taxonomy import get_language
 from ..paths import normalize_path
 from ..ir import (
-    PASS_VERSION, AnalysisRun, Edge, ExternalRef, ShapeId, Span, StableId,
+    PASS_VERSION, AnalysisRun, Edge, ExternalRef, NodeId, ShapeId, Span, StableId,
     Symbol, UsageContext, compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
 
@@ -597,7 +597,7 @@ def constructed_from_callee(
 
 def make_symbol_id(
     lang: str, path: str, start_line: int, end_line: int, name: str, kind: str
-) -> str:
+) -> NodeId:
     """Generate a location-based symbol ID.
 
     Format: {lang}:{path}:{start}-{end}:{name}:{kind}
@@ -632,13 +632,13 @@ def make_symbol_id(
     id. Those explicit calls are needed regardless: they pin the right *value* into
     the slot, whereas this only guarantees the slot is colon-free.
     """
-    return (
+    return NodeId(
         f"{lang}:{path}:{start_line}-{end_line}"
         f":{sanitize_id_name_segment(name)}:{kind}"
     )
 
 
-def make_file_id(lang: str, path: str) -> str:
+def make_file_id(lang: str, path: str) -> NodeId:
     """Generate an ID for a file node (used as import edge source).
 
     Args:
@@ -648,10 +648,10 @@ def make_file_id(lang: str, path: str) -> str:
     Returns:
         A file-level symbol ID.
     """
-    return f"{lang}:{path}:1-1:file:file"
+    return NodeId(f"{lang}:{path}:1-1:file:file")
 
 
-def make_module_import_dst(importer_lang: str, import_path: str) -> str:
+def make_module_import_dst(importer_lang: str, import_path: str) -> NodeId:
     """The canonical dst of an ``imports`` edge to a module or file by path.
 
     ``<importer_lang>:<import_path>:0-0:module:module`` -- the JS/TS
@@ -662,12 +662,12 @@ def make_module_import_dst(importer_lang: str, import_path: str) -> str:
     in the language slot and ``<unknown>`` in the path slot (INV-dulah,
     WI-bufar-pokam).
     """
-    return f"{importer_lang}:{import_path}:0-0:module:module"
+    return NodeId(f"{importer_lang}:{import_path}:0-0:module:module")
 
 
 def make_manifest_target_dst(
     manifest_path: str, target: str, fallback_lang: str,
-) -> str:
+) -> NodeId:
     """The dst of a manifest's ``defines_target`` edge to its entry file.
 
     A manifest names its entry file relative to its own directory (npm
@@ -1763,7 +1763,7 @@ def make_doc_stable_id(
 def make_doc_symbol_ids(
     language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
     scope: "Sequence[str]" = (),
-) -> tuple[str, StableId]:
+) -> tuple[NodeId, StableId]:
     """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
     together, from one argument set (INV-dulah).
 
