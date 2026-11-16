@@ -8532,6 +8532,95 @@ class TestReactLazyRouteDetection:
         assert "lazy_import" not in route.meta
 
 
+class TestJsxRouteMarkers:
+    """A JSX ``<Route>`` marker is built by the shared route-marker factory,
+    like every other route marker."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_no_ts(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def _jsx_marker_tree(self, tmp_path: Path):
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.jsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "\n"
+            "function Users() {\n"
+            "  return null;\n"
+            "}\n"
+            "\n"
+            "export function App() {\n"
+            "  return (\n"
+            "    <div>\n"
+            '      <Route path="/users" component={Users} />\n'
+            '      <Route path="/home" element={<Home />} />\n'
+            '      <Route path="/bare">\n'
+            "        <span />\n"
+            "      </Route>\n"
+            "    </div>\n"
+            "  );\n"
+            "}\n"
+        )
+        # No import of app.jsx: the only way to reach `Users` is by its name.
+        (tmp_path / "noimport.js").write_text(
+            "function boot() {\n"
+            "  Users();\n"
+            "  register(Users);\n"
+            "}\n"
+        )
+        return analyze_javascript(tmp_path)
+
+    def test_the_marker_fixture_reaches_three_markers_and_the_component(
+        self, tmp_path: Path,
+    ) -> None:
+        result = self._jsx_marker_tree(tmp_path)
+        markers = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
+        assert sorted(m.meta["route_path"] for m in markers) == ["/bare", "/home", "/users"]
+        assert 3 in [s.span.start_line for s in result.symbols
+                     if s.name == "Users" and s.kind == "function"], "the component itself"
+
+    def test_a_jsx_route_marker_is_named_for_its_route(self, tmp_path: Path) -> None:
+        """A JSX marker is a stand-in for the ROUTE, built like every other
+        route marker: named ``GET <path>``, with the component in
+        ``meta['handler_ref']``. It was named after the component, which made
+        it a second ``function`` called ``Users``."""
+        result = self._jsx_marker_tree(tmp_path)
+        markers = {s.meta["route_path"]: s for s in result.symbols
+                   if (s.meta or {}).get("framework_role") == "route"}
+        assert {p: m.name for p, m in markers.items()} == {
+            "/users": "GET /users", "/home": "GET /home", "/bare": "GET /bare"}
+        assert markers["/users"].meta["handler_ref"] == "Users"
+        assert markers["/home"].meta["handler_ref"] == "Home"
+        assert "handler_ref" not in markers["/bare"].meta, "no component was named"
+        for marker in markers.values():
+            assert marker.language is None and marker.discovery_language == "javascript"
+            assert marker.protocol_origin == "http"
+            assert marker.meta["http_method"] == "GET"
+
+    def test_a_jsx_route_markers_id_names_its_own_kind(self, tmp_path: Path) -> None:
+        """ADR-0036 Ruling 2: the kind slot said ``route``, which is not a
+        symbol kind, on a ``kind="function"`` Symbol."""
+        result = self._jsx_marker_tree(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_a_call_by_name_reaches_the_component_not_the_marker(
+        self, tmp_path: Path,
+    ) -> None:
+        """``Users()`` and ``register(Users)`` in a file that imports nothing
+        resolved to the marker on the ``<Route>`` line."""
+        result = self._jsx_marker_tree(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        hits = [(e.edge_type, by_id[e.dst]) for e in result.edges
+                if e.src.endswith(":boot:function") and e.dst in by_id]
+        assert sorted(t for t, _ in hits) == ["calls", "references"], hits
+        for edge_type, target in hits:
+            assert (target.name, target.span.start_line) == ("Users", 3), (edge_type, target.id)
+            assert (target.meta or {}).get("framework_role") is None
+
+
 class TestSpaBootstrapUsageContext:
     """Tests for SPA bootstrap call detection via UsageContext.
 

@@ -95,6 +95,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Verilog instantiations with one port, positional ports, `.*` or none emit edges.**
 - **Smaller fixes** in Rust, Kotlin, Scala, C++, Circom, Yjs, Go and JS/TS call resolution; the final pass keeps each resolver's confidence (ADR-0039 ruling 6).
 - **A Python annotation is displayed whole**: `Callable[[int], None]` no longer reads `Callable[, None]` in signatures and `meta.parameters`; `stable_id` does not change.
+- **A JSX `<Route>` marker is named for its route**, so a reference to the component reaches the component.
 
 #### Request handlers and taint (`verify-claims`)
 

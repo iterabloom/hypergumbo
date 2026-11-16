@@ -241,7 +241,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
@@ -1722,24 +1722,18 @@ def _extract_param_types(
     return param_types
 
 
-def _build_jsx_route_meta(
-    route_path: str,
+def _jsx_route_extra_meta(
     component_name: str | None,
     lazy_import_map: dict[str, str],
-) -> dict[str, object]:
-    """Build metadata dict for a JSX Route symbol.
+) -> dict[str, Any]:
+    """What a JSX Route marker carries beyond the route factory's own keys.
 
-    If the component is a React.lazy() wrapper, adds lazy_import metadata
-    so the route can be traced through to the actual module.
+    If the component is a React.lazy() wrapper, ``lazy_import`` names the
+    module it loads, so the route can be traced through to it.
     """
-    meta: dict[str, object] = {
-        "route_path": route_path,
-        "http_method": "GET",
-        "handler_ref": component_name,
-    }
     if component_name and component_name in lazy_import_map:
-        meta["lazy_import"] = lazy_import_map[component_name]
-    return meta
+        return {"lazy_import": lazy_import_map[component_name]}
+    return {}
 
 
 def _collect_react_lazy_declaration(
@@ -4719,31 +4713,28 @@ def _extract_symbols(
         if node.type in ("jsx_self_closing_element", "jsx_element"):
             route_path, component_name = _detect_jsx_route(node, source)
             if route_path is not None:
-                handler_name = component_name or f"_route{route_path.replace('/', '_').replace(':', '').replace('*', 'splat')}_handler"
                 span = Span(
                     start_line=node.start_point[0] + 1 + line_offset,
                     end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                jsx_route_meta = _build_jsx_route_meta(
-                    route_path, component_name, lazy_import_map,
-                ) or {}
-                jsx_route_meta["framework_role"] = "route"
-                symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
-                    name=handler_name,
-                    kind="function",
+                # Through the shared factory, like the router-config routes
+                # below: the marker is named for the ROUTE and carries the
+                # component in ``handler_ref``. Named after the component it
+                # was a second ``function`` of that name, and a call that
+                # reached the name without an import bound to the marker.
+                symbols.append(make_route_symbol(
                     language=lang,
                     path=str(file_path),
                     span=span,
+                    method="GET",
+                    route_path=route_path,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=make_route_stable_id("GET", route_path),
-                    meta=jsx_route_meta,
-                    line_span=span.end_line - span.start_line + 1,
-                )
-                symbols.append(symbol)
+                    handler_ref=component_name,
+                    extra_meta=_jsx_route_extra_meta(component_name, lazy_import_map),
+                ))
                 # Don't continue — let tree walk also process child nodes
 
         # React Router v6.4+ createBrowserRouter/createHashRouter/createMemoryRouter
