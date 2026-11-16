@@ -1118,6 +1118,12 @@ def find_axis_drift(repo_root: Path) -> list[str]:
             # Symbol.kinds and stay checked, which is what the per-side
             # exclusion is for.
             "_PHP_CONTAINER_KINDS:keys",
+            # ``_KIND_ARGUMENT_OF_FACTORY`` and ``KNOWN_KIND_SLOT_HOLES``
+            # (check_id_construction.py) are the id linter's own tables:
+            # factory name -> the position of its ``kind`` parameter, and
+            # (file, id word, Symbol.kind) -> why a mismatch stands. The
+            # strings a scan reads from them are function names and reasons.
+            "_KIND_ARGUMENT_OF_FACTORY", "KNOWN_KIND_SLOT_HOLES",
             # --- DEBT, NOT A COLLISION (INV-lagot). ``scip/index.py``'s
             # ``_KIND_MAP`` IS a Symbol.kind consumer, not a different
             # axis, so this exclusion is a suppression rather than a

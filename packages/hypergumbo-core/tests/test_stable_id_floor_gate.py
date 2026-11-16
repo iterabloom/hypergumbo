@@ -115,6 +115,15 @@ per-language forms are recorded in the WI-tusad ledger.)
 Languages whose analyzer emits only file nodes (html, yaml) have no fixture:
 there is nothing for them to count.
 
+**The node id's kind slot, over the same corpus.** This is the one gate that
+runs EVERY registered analyzer on a fixture, so it also holds each node id to
+ADR-0036 Ruling 2: the last slot is ``Symbol.kind``, a registered kind
+(:func:`kind_slot_offenders`, :data:`KIND_SLOT_HOLES`). The static check
+(``check_id_construction``) reads a producer's literal words and cannot read a
+computed one; ``test_doc_family_id_parity`` runs fourteen doc-family producers.
+Ten analyzers wrote a role word (``fn``, ``proc``, ``model``, a ``datasource``
+keyword held in a variable) under both for as long as no gate ran them.
+
 **Why the corpus is written at runtime.** As for ``test_doc_family_id_parity``:
 the fixtures deliberately reproduce defects (nulls, moved ids), and committing
 them under the tree would make hypergumbo's own self-tree analysis carry them;
@@ -140,6 +149,7 @@ from hypergumbo_core.analyze.base import floor_stable_id_key, make_declaration_s
 from hypergumbo_core.analyze.registry import ensure_discovered, get_all_analyzers
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
 # Every test here runs on ONE xdist worker, so the module fixture is built
 # once per run (smart-test and CI pass --dist=loadgroup; see
@@ -1794,6 +1804,51 @@ def test_flat_languages_each_carry_a_reason() -> None:
     assert all(reason.strip() for reason in _NO_FIXTURE.values())
 
 
+# -- the node id's kind slot ---------------------------------------------------
+
+#: ``(language, id kind slot, Symbol.kind) -> why it stands``. Exact: a cell the
+#: corpus no longer produces fails the gate as much as a new one.
+KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {
+    ("robot", "test_case", "test"): (
+        "robot.py hands 'test_case' to make_doc_symbol_ids, which mints the "
+        "node id AND the stable id from it, so correcting the word moves every "
+        "robot test's stable id: it goes with the next scheme bump (INV-dulah "
+        "limb 1). The twig function call has the same shape and reason; this "
+        "corpus's twig fixture holds no call, test_doc_family_id_parity's does."
+    ),
+}
+
+
+def kind_slot_offenders(records: Iterable[Any]) -> set[tuple[str, str, str]]:
+    """``(language, id kind slot, kind)`` of every record whose id does not end
+    in its own kind, or ends in a kind the registry does not hold (ADR-0036
+    Ruling 2: both halves, since equality alone would bless an unregistered
+    kind). The language is the id's own first slot, which a linker stand-in
+    with ``language=None`` has too."""
+    known = all_symbol_kind_names()
+    out: set[tuple[str, str, str]] = set()
+    for record in records:
+        node_id, kind = _get(record, "id"), _get(record, "kind")
+        slot = node_id.rsplit(":", 1)[-1]
+        if slot != kind or kind not in known:
+            out.add((node_id.split(":", 1)[0], slot, kind))
+    return out
+
+
+def test_kind_slot_offenders_are_a_mismatch_or_an_unregistered_kind() -> None:
+    agreeing = _sym("f", "function", None)
+    role_word = Symbol(
+        id="x:a.x:1-1:f:fn", name="f", kind="function", language="x", path="a.x",
+        span=Span(1, 1, 0, 1),
+    )
+    unregistered = _sym("g", "no_such_kind_anywhere", None)
+    assert kind_slot_offenders([agreeing]) == set()
+    assert kind_slot_offenders([agreeing, role_word, unregistered]) == {
+        ("x", "fn", "function"),
+        ("x", "no_such_kind_anywhere", "no_such_kind_anywhere"),
+    }
+
+
 # -- live: the ratchet over the fixture corpus ---------------------------------
 
 
@@ -1873,6 +1928,18 @@ def test_every_fixture_stable_id_is_canonical(runs) -> None:
         and not _CANONICAL_STABLE_ID_PATTERN.match(n["stable_id"])
     )
     assert bad == []
+
+
+def test_every_fixture_node_id_names_its_own_kind(runs) -> None:
+    """ADR-0036 Ruling 2 for every analyzer that has a fixture here: each node
+    id ends in its Symbol's own, registered kind. Exact against
+    :data:`KIND_SLOT_HOLES`, so a corrected producer must drop its entry."""
+    live = kind_slot_offenders(_fixture_nodes(runs, "with"))
+    declared = set(KIND_SLOT_HOLES)
+    assert live == declared, (
+        f"id kind slot is not Symbol.kind (language, slot, kind): "
+        f"new {sorted(live - declared)}; declared but gone {sorted(declared - live)}"
+    )
 
 
 def test_floor_census_matches_baseline(runs) -> None:
