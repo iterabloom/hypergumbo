@@ -160,7 +160,7 @@ def _extract_symbols_recursive(
                 signature += f" -> {return_type}"
 
             sym = Symbol(
-                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "proc"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="proc", name=name,
                     qualified_name=nested_qualified_name(_odin_scope(node), name),
@@ -192,7 +192,7 @@ def _extract_symbols_recursive(
             field_count = sum(1 for c in node.children if c.type == "field")
 
             sym = Symbol(
-                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="struct", name=name,
                     qualified_name=nested_qualified_name(_odin_scope(node), name),
@@ -245,7 +245,7 @@ def _extract_symbols_recursive(
         name = _get_identifier(node)
         if name:
             sym = Symbol(
-                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "union"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="union", name=name,
                     qualified_name=nested_qualified_name(_odin_scope(node), name),
@@ -284,7 +284,7 @@ def _find_enclosing_function(
         if current.type == "procedure_declaration":
             name = _get_identifier(current)
             if name:
-                return make_symbol_id("odin", rel_path, current.start_point[0] + 1, current.end_point[0] + 1, name, "proc")
+                return make_symbol_id("odin", rel_path, current.start_point[0] + 1, current.end_point[0] + 1, name, "function")
         current = current.parent
     return None  # pragma: no cover
 

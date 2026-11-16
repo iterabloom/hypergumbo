@@ -138,7 +138,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
             if name:
                 field_count = sum(1 for c in node.children if c.type == "model_field")
                 sym = Symbol(
-                    id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "model"),
+                    id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
                     stable_id=self.compute_stable_id(
                         node, kind="model", name=name,
                         file_stable_id=file_stable_id,
@@ -204,10 +204,11 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                     # the kind="config" specialisation is redundant — the real
                     # construct (``datasource`` / ``generator``) lives in
                     # ``meta["block_type"]``. Emit ``kind="block"`` (canonical
-                    # AXIS_LANGUAGE_CONSTRUCT) instead. The ID component
-                    # retains ``block_type`` for stable_id continuity.
+                    # AXIS_LANGUAGE_CONSTRUCT) instead. The stable id still
+                    # hashes ``block_type``; the node id's kind slot is the
+                    # Symbol's kind (ADR-0036 Ruling 2).
                     sym = Symbol(
-                        id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, block_type),
+                        id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "block"),
                         stable_id=self.compute_stable_id(
                             node, kind=block_type, name=name,
                             file_stable_id=file_stable_id,

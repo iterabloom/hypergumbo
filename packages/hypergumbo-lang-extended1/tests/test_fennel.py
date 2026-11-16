@@ -253,3 +253,46 @@ class TestUnresolvedCalls:
         assert call_edges[0].confidence == 0.50
         assert ":unresolved" in call_edges[0].dst
         assert "unknown-function" in call_edges[0].dst
+
+
+_KIND_SLOT_SOURCE = """\
+(fn greet [name]
+  (print name))
+
+(local limit 5)
+
+(fn main []
+  (greet "a"))
+"""
+
+
+def _kind_slot_result(tmp_path: Path):
+    (tmp_path / "app.fnl").write_text(_KIND_SLOT_SOURCE)
+    return analyze_fennel(tmp_path)
+
+
+def test_the_fennel_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
+    result = _kind_slot_result(tmp_path)
+    got = sorted((s.kind, s.name) for s in result.symbols)
+    assert got == [('function', 'greet'), ('function', 'main'), ('variable', 'limit')], got
+
+
+def test_every_fennel_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
+    The ids said ``fn`` and ``var``, words no symbol kind has: two
+    validator errors per symbol."""
+    result = _kind_slot_result(tmp_path)
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []
+
+
+def test_a_fennel_calls_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
+    """The analyzer builds the edge's source id a second time, from the
+    enclosing declaration. It must be the id the Symbol carries, or the edge
+    starts on no node."""
+    result = _kind_slot_result(tmp_path)
+    ids = {s.id for s in result.symbols}
+    edges = [e for e in result.edges if e.edge_type == "calls"]
+    assert edges
+    assert [e.src for e in edges if e.src not in ids] == []
+    assert any(e.dst in ids for e in edges)

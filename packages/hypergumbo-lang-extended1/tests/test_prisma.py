@@ -338,3 +338,66 @@ def test_same_model_in_two_schemas_keeps_its_relations(tmp_path: Path) -> None:
         ("app1", "User", "Alpha"), ("app1", "Alpha", "User"),
         ("app2", "User", "Beta"), ("app2", "Beta", "User"),
     }
+
+
+_KIND_SLOT_SOURCE = """\
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id    Int    @id
+  role  Role
+  posts Post[]
+}
+
+model Post {
+  id       Int  @id
+  author   User @relation(fields: [authorId], references: [id])
+  authorId Int
+}
+"""
+
+
+def _kind_slot_result(tmp_path: Path):
+    (tmp_path / "schema.prisma").write_text(_KIND_SLOT_SOURCE)
+    return analyze_prisma(tmp_path)
+
+
+def test_the_prisma_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
+    result = _kind_slot_result(tmp_path)
+    got = sorted((s.kind, s.name) for s in result.symbols)
+    assert got == [('block', 'client'), ('block', 'db'), ('class', 'Post'), ('class', 'User'), ('enum', 'Role')], got
+
+
+def test_every_prisma_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
+    The id of a model said ``model``, and the id of a ``datasource`` or
+    ``generator`` block said that keyword, on Symbols of kind ``class`` and
+    ``block``. The keyword is a variable there, which a reader of the source
+    text cannot compare; only a run shows it."""
+    result = _kind_slot_result(tmp_path)
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []
+
+
+def test_a_prisma_references_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
+    """The analyzer builds the edge's source id a second time, from the
+    enclosing declaration. It must be the id the Symbol carries, or the edge
+    starts on no node."""
+    result = _kind_slot_result(tmp_path)
+    ids = {s.id for s in result.symbols}
+    edges = [e for e in result.edges if e.edge_type == "references"]
+    assert edges
+    assert [e.src for e in edges if e.src not in ids] == []
+    assert any(e.dst in ids for e in edges)

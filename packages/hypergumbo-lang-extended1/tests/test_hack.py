@@ -556,3 +556,27 @@ class TestHackCallEndpoints:
                 False,
             ),
         ]
+
+
+def test_every_hack_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. The id
+    of a top-level function said ``fn``; the class, method and namespace sites
+    already agreed."""
+    make_hack_file(tmp_path, "app.hack", """<?hh
+namespace App;
+
+function helper(int $x): int {
+  return $x + 1;
+}
+
+class Greeter {
+  public function greet(string $name): string {
+    return "hi " . $name;
+  }
+}
+""")
+    result = analyze_hack(tmp_path)
+    kinds = sorted(s.kind for s in result.symbols)
+    assert kinds == ["class", "function", "method", "namespace"], kinds
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []

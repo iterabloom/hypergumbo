@@ -124,7 +124,7 @@ def _find_enclosing_function(
             name = _get_function_name(current)
             if name:
                 rel_path = str(path.relative_to(repo_root))
-                return make_symbol_id("janet", rel_path, current.start_point[0] + 1, current.end_point[0] + 1, name, "fn")
+                return make_symbol_id("janet", rel_path, current.start_point[0] + 1, current.end_point[0] + 1, name, "function")
         current = current.parent
     return None  # pragma: no cover
 
@@ -174,7 +174,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                 signature = f"(defn {name} [{' '.join(params)}] ...)"
 
                 sym = Symbol(
-                    id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
+                    id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
                     stable_id=self.compute_stable_id(
                         node, kind="fn", name=name,
                         file_stable_id=file_stable_id,
@@ -209,7 +209,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
             name = _get_variable_name(node)
             if name:
                 sym = Symbol(
-                    id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "var"),
+                    id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "variable"),
                     stable_id=self.compute_stable_id(
                         node, kind="var", name=name,
                         file_stable_id=file_stable_id,

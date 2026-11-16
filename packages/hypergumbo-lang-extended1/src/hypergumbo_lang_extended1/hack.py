@@ -330,7 +330,7 @@ def _extract_symbols_recursive(
                 signature += f": {return_type}"
 
             sym = Symbol(
-                id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
+                id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "function"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="fn", name=qualified_name,
                     file_stable_id=analyzer._file_anchor(rel_path),

@@ -164,7 +164,7 @@ def _find_enclosing_proc(
     if proc_name and proc_node is not None:
         qualified_name = "::".join((*_namespace_path(proc_node), proc_name))
         rel_path = str(path.relative_to(repo_root))
-        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "proc")
+        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "function")
     return None  # pragma: no cover
 
 
@@ -222,7 +222,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 full_name = "::".join((*ns_path, name))
 
                 sym = Symbol(
-                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, full_name, "proc"),
+                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, full_name, "function"),
                     stable_id=self.compute_stable_id(
                         node, kind="proc", name=hashed_name,
                         qualified_name=nested_member_qualified_name(ns_path, hashed_name, "::"),
