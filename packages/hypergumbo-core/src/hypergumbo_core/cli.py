@@ -13168,6 +13168,14 @@ def run_survey(
         if normed.startswith(_root_prefix):
             uc.path = normed[len(_root_prefix):]  # pragma: no cover
 
+    # One file pseudo-symbol per path (INV-movor): two producers' file nodes
+    # for one path (a component's `typescript:` beside its `vue:`) become the
+    # one in the file's own language, every edge rewired. After the linkers,
+    # which can mint a file node too, and before deduplicate_edges below,
+    # which folds the edges the rewiring made identical.
+    from .analyze.file_records import unify_file_pseudo_symbols
+    unify_file_pseudo_symbols(all_symbols, all_edges, all_usage_contexts)
+
     # synthetic:F2 (5a): backstop stable_id / display_label / fingerprint on
     # Class-B synthetic protocol-synth Symbols the linkers left null (post-pass,
     # AFTER linkers extend all_symbols and paths are normalized, BEFORE

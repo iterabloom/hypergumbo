@@ -175,6 +175,10 @@ _REACH: dict[str, Any] = {
     "route_marker_single_home": lambda bm: sum(
         1 for n in bm["nodes"] if _meta(n).get("framework_role") == "route"
     ),
+    "one_file_node_per_path": lambda bm: sum(
+        1 for n in bm["nodes"]
+        if n.get("kind") == "file" and str(n.get("id")).endswith(":1-1:file:file")
+    ),
     "no_harmful_receiver_blind_magnets": _method_call_pool,
 }
 
