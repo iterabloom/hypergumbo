@@ -11,6 +11,7 @@ Philosophy: "Spec Driven Development" - tests are specifications of behavior.
 The JSON Schema is a formal spec that both implementation and tests verify.
 """
 
+import copy
 import json
 import subprocess
 import sys
@@ -604,6 +605,57 @@ class TestSchemaDataclassSync:
         del spec.decorations["docstring"]
         with pytest.raises(gen.SchemaDriftError, match="docstring"):
             gen.build_def(spec)
+
+    def test_generator_maps_a_str_newtype_as_str(self):
+        """A field typed with ``NewType("X", str)`` is a ``str`` on the wire.
+
+        The id NewTypes (``StableId`` and its siblings) change no byte of
+        output, so the generator must give a NewType field exactly the
+        schema it gives a ``str`` field, required-ness and nullability
+        included. Before it unwrapped ``__supertype__`` it raised
+        "no JSON Schema mapping" on the NewType object.
+        """
+        import dataclasses
+        from typing import NewType, Optional
+
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        gen = __import__("generate_schema_lib")
+        Sid = NewType("Sid", str)
+        Outer = NewType("Outer", Sid)
+        Count = NewType("Count", int)
+
+        assert gen.python_type_to_json_schema(Sid) == {"type": "string"}
+        assert gen.python_type_to_json_schema(Outer) == {"type": "string"}
+        assert gen.python_type_to_json_schema(Count) == {"type": "integer"}
+        assert gen.python_type_to_json_schema(Optional[Sid]) == (
+            gen.python_type_to_json_schema(Optional[str])
+        )
+
+        @dataclasses.dataclass
+        class WithStr:
+            a: str
+            b: Optional[str]
+            c: str = ""
+
+        @dataclasses.dataclass
+        class WithNewType:
+            a: Sid
+            b: Optional[Sid]
+            c: Sid = Sid("")
+
+        decorations = {k: {"description": k} for k in ("a", "b", "c")}
+        built = [
+            gen.build_def(
+                gen.ClassSpec(
+                    cls=cls,
+                    description="d",
+                    decorations=copy.deepcopy(decorations),
+                )
+            )
+            for cls in (WithStr, WithNewType)
+        ]
+        assert built[0] == built[1]
+        assert built[1]["required"] == ["a"]
 
     @pytest.mark.skipif(
         not _has_hypergumbo_meta(),

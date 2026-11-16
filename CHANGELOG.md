@@ -268,6 +268,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The Python I/O catalogue classifies `tokenize`** and the `-m` entry points of stdlib modules.
 - **The mypy strict surface shrinks 492 → 477.**
 - **A core dataclass field typed with a `str` NewType needs `# axis:`.**
+- **`generate-schema` maps a `str` NewType field exactly as `str`.**
 
 #### Scripts
 
