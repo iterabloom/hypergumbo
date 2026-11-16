@@ -714,15 +714,25 @@ modules:
     commands:
     - scripts/smart-test
     - scripts/coverage-select
-    purpose: append-only JSONL log of test-selection shadow observations; dev tooling, no
-      hypergumbo subcommand imports it
+    purpose: append-only JSONL logs beside the selection index (selection shadow observations,
+      stale-graph comparisons, the registry of stored graphs, run records) and the gzipped
+      patch of an uncommitted change, stored once under its digest; dev tooling, no hypergumbo
+      subcommand imports it
     sites:
-    - function: append_observation
+    - function: _append
       primitive: '*.mkdir'
       family: fs_write
       count: 1
-    - function: append_observation
+    - function: _append
       primitive: '*.open[w]'
+      family: fs_write
+      count: 1
+    - function: store_snapshot
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: store_snapshot
+      primitive: gzip.open[w]
       family: fs_write
       count: 1
   hypergumbo_core.sketch:
