@@ -105,6 +105,16 @@ does not move another's nested ``Inner``'s id or its members' (INV-fabih). For
 a member of a top-level type, and a top-level type, the chain is the nearest
 owner. Emitted names keep the nearest owner.
 
+The typed tier hashes a ``def``'s signature text (``_extract_scala_signature``,
+normalized by ``normalize_scala_signature``) and a member ``val`` / ``var``'s
+declared type. Every type is written as its source text whatever its node
+kind, one parenthesised group per parameter clause with its ``implicit`` /
+``using`` keyword, an extension method's receiver clauses first, and the return
+type of a ``def`` with no parameter clause; before, a type of a kind the
+renderer had no branch for was dropped, so two ``def``s differing only there
+shared an id. Parameter names, default values, ``inline`` and parameter
+annotations are not hashed, nor are type-parameter clauses and their bounds.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction
 logic, plus a per-run file-to-package map (reset at the start of each
@@ -1006,6 +1016,48 @@ def _scala_property_scope(
     return (None, None)  # pragma: no cover - every node is under compilation_unit
 
 
+#: Named nodes of a ``parameters`` clause that are neither a parameter nor a
+#: type: a comment between two parameters (``(/* c */ a: Int)``).
+_SCALA_COMMENT_NODES: Final = frozenset({"comment", "block_comment"})
+
+#: The clause keywords that change which arguments a clause takes: an
+#: ``implicit`` or ``using`` clause is filled by the compiler, not the caller.
+_SCALA_CLAUSE_KEYWORDS: Final = ("implicit", "using")
+
+
+def _render_scala_param_clause(
+    params: "tree_sitter.Node", source: bytes
+) -> str:
+    """Render one ``parameters`` clause as ``name: Type, ...``, keyword first.
+
+    A parameter's type is its ``type`` field written as its source text,
+    whatever node kind it is: a by-name ``=> T`` (``lazy_parameter_type``), a
+    repeated ``T*`` (``repeated_parameter_type``), a path ``m.T``, a compound
+    ``A with B``, a projection ``A#B``, a singleton ``x.type``, a structural
+    ``{ def g: Int }``, an annotated ``Int @unchecked``, a literal ``1``, a
+    named tuple or a type lambda. (Before, only five kinds had a branch and a
+    parameter of any other kind was dropped whole.) A clause's ``implicit`` or
+    ``using`` keyword is kept in front, and a ``using`` clause's anonymous
+    parameters (``(using Ord[T])``, a bare type with no ``parameter`` node)
+    are written as their types. The name is kept for display; the normalizer
+    drops it. Defaults, ``inline`` and parameter annotations are not written.
+    """
+    keyword = next(
+        (c.type for c in params.children if c.type in _SCALA_CLAUSE_KEYWORDS), None
+    )
+    items: list[str] = []
+    for child in params.named_children:
+        if child.type == "parameter":
+            name = child.child_by_field_name("name")
+            ptype = child.child_by_field_name("type")
+            if name is not None and ptype is not None:
+                items.append(f"{node_text(name, source)}: {node_text(ptype, source)}")
+        elif keyword == "using" and child.type not in _SCALA_COMMENT_NODES:
+            items.append(node_text(child, source))
+    body = ", ".join(items)
+    return f"{keyword} {body}" if keyword else body
+
+
 def _extract_scala_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -1014,46 +1066,86 @@ def _extract_scala_signature(
     Returns signature like:
     - "(x: Int, y: Int): Int" for regular functions
     - "(message: String)" for Unit functions (Unit omitted)
+    - "(a: Int)(implicit ord: Ord[Int]): Int": one parenthesised group per
+      parameter clause, so a curried ``def f(a: Int)(b: Int)`` is not the flat
+      ``def f(a: Int, b: Int)``, and an ``implicit`` / ``using`` clause says so
+    - "(): Int" for a parameterless ``def f: Int`` as for ``def f(): Int`` (the
+      two cannot both be declared in one scope); "()" with no declared return
+    - an extension method's receiver clauses first, as Scala 3 desugars it:
+      ``extension (x: Int) def g(y: Int): Int`` reads "(x: Int)(y: Int): Int"
+
+    Every parameter and the return type are written as their source text
+    (:func:`_render_scala_param_clause`), whatever type node kind they are.
     """
-    params: list[str] = []
-    return_type = None
-    found_params = False
+    clauses = [c for c in node.children if c.type == "parameters"]
+    if node.parent is not None and node.parent.type == "extension_definition":
+        clauses = [c for c in node.parent.children if c.type == "parameters"] + clauses
+    rendered = [_render_scala_param_clause(c, source) for c in clauses] or [""]
+    signature = "".join(f"({c})" for c in rendered)
 
-    for child in node.children:
-        if child.type == "parameters":
-            found_params = True
-            for subchild in child.children:
-                if subchild.type == "parameter":
-                    param_name = None
-                    param_type = None
-                    for pc in subchild.children:
-                        if pc.type == "identifier" and param_name is None:
-                            param_name = node_text(pc, source)
-                        elif pc.type in ("type_identifier", "generic_type", "tuple_type",
-                                         "function_type", "infix_type"):
-                            param_type = node_text(pc, source)
-                    if param_name and param_type:
-                        params.append(f"{param_name}: {param_type}")
-        elif found_params and child.type in ("type_identifier", "generic_type",
-                                              "tuple_type", "function_type", "infix_type"):
-            return_type = node_text(child, source)
-
-    params_str = ", ".join(params)
-    signature = f"({params_str})"
-
+    rt = node.child_by_field_name("return_type")
+    return_type = node_text(rt, source) if rt is not None else None
     if return_type and return_type != "Unit":
         signature += f": {return_type}"
 
     return signature
 
 
+def _split_scala_clauses(signature: str) -> "tuple[list[str], str] | None":
+    """Split ``(a)(b): R`` into its clause bodies ``["a", "b"]`` and ``": R"``.
+
+    Counts round brackets only (a type's ``[`` / ``{`` never holds an
+    unbalanced one). None when a clause does not close.
+    """
+    clauses: list[str] = []
+    i = 0
+    while i < len(signature) and signature[i] == "(":
+        depth = 0
+        for j in range(i, len(signature)):
+            if signature[j] == "(":
+                depth += 1
+            elif signature[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+        if depth != 0:
+            return None
+        clauses.append(signature[i + 1:j])
+        i = j + 1
+    return clauses, signature[i:]
+
+
 def normalize_scala_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Scala signature for typed stable_id (spec §6 typed tier)."""
+    """Normalize a Scala signature for typed stable_id (spec §6 typed tier).
+
+    Each parameter clause is normalized by the shared names-first normalizer
+    and the results are concatenated: ``(a: Int)(using o: Ord): Int`` ->
+    ``(Int)(using Ord)Int``. A clause's ``implicit`` / ``using`` keyword is
+    lifted off before the shared normalizer reads the clause (it would take
+    ``implicit o`` for a name) and put back in front of the clause's types. A
+    one-clause signature without a keyword normalizes exactly as the shared
+    normalizer alone does, so such a ``def``'s id is unchanged.
+    """
     from hypergumbo_core.analyze.base import normalize_signature_names_first
-    return normalize_signature_names_first(signature, type_params, return_sep=":")
+    split = _split_scala_clauses(signature) if signature else None
+    if split is None or not split[0]:
+        return normalize_signature_names_first(signature, type_params, return_sep=":")
+    clauses, rest = split
+    parts: list[str] = []
+    for index, clause in enumerate(clauses):
+        keyword = next(
+            (k for k in _SCALA_CLAUSE_KEYWORDS if clause.startswith(f"{k} ")), "")
+        if keyword:
+            clause = clause[len(keyword) + 1:]
+        tail = rest if index == len(clauses) - 1 else ""
+        normalized = normalize_signature_names_first(
+            f"({clause}){tail}", type_params, return_sep=":")
+        assert normalized is not None  # a "(...)" text always normalizes
+        parts.append(f"({keyword} {normalized[1:]}" if keyword else normalized)
+    return "".join(parts)
 
 
 # Scala modifier keywords extractable from the AST.
@@ -1611,7 +1703,11 @@ def _extract_symbols_from_file(
                 prop_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                type_node = find_child_by_type(node, "type_identifier")
+                # The declared type, whatever its node kind (``List[Int]``,
+                # ``m.T``, ``Int => Int``, ``A with B``): reading only a
+                # ``type_identifier`` child left every other kind out of the
+                # signature and the typed stable_id.
+                type_node = node.child_by_field_name("type")
                 prop_type = (
                     node_text(type_node, source) if type_node is not None else None
                 )
