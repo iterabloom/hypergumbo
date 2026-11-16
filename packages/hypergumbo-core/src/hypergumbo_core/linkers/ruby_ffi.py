@@ -232,7 +232,7 @@ def link_ruby_ffi(
             if src_sym is None:  # pragma: no cover - defensive
                 continue
 
-            dedup_key = (src_sym.id, func_name)
+            dedup_key: tuple[str, str] = (src_sym.id, func_name)
             if dedup_key in seen_edges:
                 continue
             seen_edges.add(dedup_key)

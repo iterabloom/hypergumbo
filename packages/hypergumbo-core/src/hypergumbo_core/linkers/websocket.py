@@ -110,7 +110,7 @@ from typing import Iterator
 
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
@@ -335,7 +335,7 @@ def find_python_files(repo_root: Path) -> Iterator[Path]:
 
 def _make_symbol_id(
     path: str, line: int, event: str, kind: str, language: str = "python"
-) -> str:
+) -> NodeId:
     """Generate ID for a WebSocket-related symbol.
 
     Emits canonical ``make_symbol_id`` output. An ad-hoc
@@ -375,7 +375,7 @@ def _sanitize_event_for_id_segment(event: str) -> str:
     return event.replace(":", "_")
 
 
-def _make_file_id(language: str, path: str) -> str:
+def _make_file_id(language: str, path: str) -> NodeId:
     """Generate ID for a file node using the canonical ``make_file_id`` shape.
 
     The canonical ``{language}:{path}:1-1:file:file`` shape lets
@@ -1016,7 +1016,7 @@ def websocket_linker(ctx: LinkerContext) -> LinkerResult:
     file-Symbol synthesis dedupes against analyzer/orchestrator output via
     canonical ``make_file_id`` shape collision.
     """
-    existing_ids = {s.id for s in ctx.symbols}
+    existing_ids: set[str] = {s.id for s in ctx.symbols}
     result = link_websocket(ctx.repo_root, existing_symbol_ids=existing_ids)
 
     return LinkerResult(

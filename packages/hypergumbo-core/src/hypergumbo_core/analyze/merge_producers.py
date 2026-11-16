@@ -135,6 +135,7 @@ from ..ir import (
     PASS_VERSION,
     AnalysisRun,
     Edge,
+    NodeId,
     Span,
     Symbol,
     UsageContext,
@@ -201,7 +202,7 @@ class MergeReport:
     #: (record id that could not be folded, candidate partner ids)
     ambiguous: List[Tuple[str, List[str]]] = field(default_factory=list)
     #: every folded id -> the merged id (both members, when they differ)
-    id_remap: Dict[str, str] = field(default_factory=dict)
+    id_remap: Dict[str, NodeId] = field(default_factory=dict)
     #: edges removed by the §11 fold (their survivor carries the slot)
     edges_folded: int = 0
     #: folded edges whose two pathways were distinct (§13)

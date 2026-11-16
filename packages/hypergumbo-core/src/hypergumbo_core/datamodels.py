@@ -53,7 +53,7 @@ import re
 from dataclasses import dataclass
 from typing import List
 
-from .ir import Symbol, Edge
+from .ir import Edge, NodeId, Symbol
 
 
 @dataclass
@@ -67,7 +67,7 @@ class DataModel:
         framework: Framework that defined this model (if known).
     """
 
-    symbol_id: str  # axis: identity
+    symbol_id: NodeId  # axis: identity
     confidence: float
     label: str  # axis: free-text — human-readable label for display; consumers render, never branch on the value itself.
     framework: str = ""  # axis: free-text — framework label like "Django", "Pydantic"; consumers display, never branch on the value itself.

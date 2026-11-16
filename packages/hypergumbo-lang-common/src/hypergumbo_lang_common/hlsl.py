@@ -266,7 +266,7 @@ def _extract_hlsl_edges(
             # unresolved base (ADR-0037).
             resolution_score: float | None = None
             if result.symbol is not None:
-                dst_id = result.symbol.id
+                dst_id: str = result.symbol.id
                 resolution_score = result.confidence
             else:
                 dst_id = f"hlsl:external:{target_name}:function"

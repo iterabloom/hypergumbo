@@ -2418,7 +2418,7 @@ def _stamp_shape_ids(
     """
     if not analysis.node_for_symbol:
         return
-    sym_by_id = {s.id: s for s in analysis.symbols}
+    sym_by_id: dict[str, Symbol] = {s.id: s for s in analysis.symbols}
     for sym_id, ts_node in analysis.node_for_symbol.items():
         sym = sym_by_id.get(sym_id)
         if sym is not None and sym.shape_id is None:

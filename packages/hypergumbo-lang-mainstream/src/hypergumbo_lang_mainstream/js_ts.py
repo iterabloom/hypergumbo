@@ -246,7 +246,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, T
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
+    AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
 )
 from hypergumbo_core.paths import normalize_path
@@ -500,7 +500,7 @@ class _ParsedFile:
     module_objects: frozenset[str] = frozenset()
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
+def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> NodeId:
     """Generate a location-based ID via the shared ADR-0036 minter.
 
     Delegates rather than re-implementing the grammar as an f-string: a private

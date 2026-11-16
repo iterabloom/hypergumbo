@@ -201,7 +201,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, T
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
+    AnalysisRun, Edge, ExternalRef, NodeId, Span, Symbol, UsageContext, make_pass_id,
 )
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
@@ -294,12 +294,12 @@ def find_cpp_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> NodeId:
     """Generate location-based ID."""
     return _base_make_symbol_id("cpp", path, start_line, end_line, name, kind)
 
 
-def _make_file_id(path: str) -> str:
+def _make_file_id(path: str) -> NodeId:
     """Generate ID for a C++ file node (used as include edge source)."""
     return _base_make_file_id("cpp", path)
 
@@ -2967,7 +2967,7 @@ def _extract_edges_from_tree(
     dispatch_tables: dict[str, str] = {}  # variable name -> symbol ID
     emitted_tables: set[str] = set()
 
-    def _table_symbol(declaration: "tree_sitter.Node", name: str, table_id: str) -> None:
+    def _table_symbol(declaration: "tree_sitter.Node", name: str, table_id: NodeId) -> None:
         """Emit the table variable once it holds a function (WI-dirij's C++
         twin): every ``dispatches_to`` edge starts at its id, and without the
         symbol the src names no node and finalize drops every edge."""

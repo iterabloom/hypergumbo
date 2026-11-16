@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..analyze.base import make_file_id, make_symbol_id
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_masked_source
 
@@ -46,7 +46,7 @@ class SwiftObjCLinkerResult:
 _ROLE_FOLDS: dict[str, str] = {"objc_bridge": "function", "selector_ref": "reference"}
 
 
-def _make_symbol_id(path: str, line: int, name: str, role: str) -> str:
+def _make_symbol_id(path: str, line: int, name: str, role: str) -> NodeId:
     """The node id of a symbol this linker mints from a Swift file.
 
     ADR-0036 Ruling 2: the kind slot is ``node.kind`` and the language slot
@@ -204,7 +204,7 @@ def _extract_swift_objc_patterns(
 
 def _extract_bridging_header_imports(
     file_path: Path, run: AnalysisRun,
-    file_ids_by_path: dict[str, str] | None = None,
+    file_ids_by_path: dict[str, NodeId] | None = None,
 ) -> tuple[list[Symbol], list[Edge]]:
     """Extract imports from a bridging header file.
 

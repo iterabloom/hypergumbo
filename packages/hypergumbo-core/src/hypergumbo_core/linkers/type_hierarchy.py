@@ -293,7 +293,7 @@ def admitted_inheritance_edges(
     WHICH edge justified each hop (INV-rukor): the maps keep only the class
     ids, and a dispatch edge's ``derived_from`` needs the edge ids.
     """
-    symbol_by_id = {s.id: s for s in symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     for edge in edges:
         # INV-nosoz: the family and its dispatch split come from the registry.
         # This loop used to branch on two string literals, so Solidity's
@@ -552,7 +552,7 @@ def build_method_index(
         class_ids_by_name: Multi-value short-class-name -> [class_id] map.
         class_symbols: Class-id -> Symbol map.
     """
-    symbol_by_id = {s.id: s for s in all_symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in all_symbols}
     methods_by_short_name: dict[str, list[tuple[str, Symbol]]] = {}
     for sym in all_symbols:
         if sym.kind != "method":
@@ -634,7 +634,7 @@ def _find_implementing_methods_scan(
     all_symbols: list[Symbol],
 ) -> list[Symbol]:  # pragma: no cover
     """Legacy linear-scan fallback for finding implementing methods."""
-    symbol_by_id = {s.id: s for s in all_symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in all_symbols}
 
     child_class_names = set()
     for child_id in child_class_ids:
@@ -737,7 +737,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
         if is_inheritance_edge_record(e):
             inheritance_endpoints.add(e.src)
             inheritance_endpoints.add(e.dst)
-    class_symbols = {
+    class_symbols: dict[str, Symbol] = {
         s.id: s for s in ctx.symbols
         if s.kind in type_like_kind_names() or s.id in inheritance_endpoints
     }

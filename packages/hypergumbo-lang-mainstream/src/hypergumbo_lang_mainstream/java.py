@@ -194,7 +194,7 @@ from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, ge
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol,
+    AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, StableId, Symbol,
     make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
@@ -277,7 +277,7 @@ def is_java_tree_sitter_available() -> bool:
     return _java_analyzer._check_grammar_available()
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> NodeId:
     """Generate location-based ID."""
     return _base_make_symbol_id("java", path, start_line, end_line, name, kind)
 
@@ -4167,7 +4167,9 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # class have?": the linker's ``_walk_parents_for_field`` helper reads
     # this meta off the parent class symbols it finds via the ``extends``
     # edges emitted by ``inheritance.py`` (WI-puvil).
-    type_by_id = {s.id: s for s in all_symbols if s.kind in _JAVA_TYPE_SYMBOL_KINDS}
+    type_by_id: dict[str, Symbol] = {
+        s.id: s for s in all_symbols if s.kind in _JAVA_TYPE_SYMBOL_KINDS
+    }
     for cls_id, fields_dict in global_class_fields.items():
         cls_sym = type_by_id.get(cls_id)
         if cls_sym is None:  # pragma: no cover - keyed by a type symbol's id

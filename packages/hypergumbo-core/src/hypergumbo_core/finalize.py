@@ -82,6 +82,7 @@ from .ir import (
     ExternalRef,
     _compute_run_signature,
     _parse_dangling_id,
+    relativize_node_id,
 )
 from .module_sets import module_sets_for
 from .pass_metadata import PassMetadataLookup
@@ -186,7 +187,7 @@ def _relativize_ir_paths(
 
     for sym in symbols:
         if prefix in sym.id:
-            sym.id = sym.id.replace(prefix, "")
+            sym.id = relativize_node_id(sym.id, prefix)
         if sym.path and prefix in sym.path:
             sym.path = sym.path.replace(prefix, "")
         _relativize_meta(sym.meta)
@@ -205,7 +206,7 @@ def _relativize_ir_paths(
                 uc.path, uc.span.start_line, uc.context_name, uc.position,
             )
         if uc.symbol_ref and prefix in uc.symbol_ref:
-            uc.symbol_ref = uc.symbol_ref.replace(prefix, "")
+            uc.symbol_ref = relativize_node_id(uc.symbol_ref, prefix)
 
 
 @dataclass
@@ -426,7 +427,7 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
     an edge cannot be ``is_resolved=True`` at an external placeholder (WI-kukuk), and every
     external edge whose dst id parses carries a ``dst_ref`` (WI-zuhon).
     """
-    node_kind_by_id = {s.id: s.kind for s in ctx.symbols}
+    node_kind_by_id: dict[str, str] = {s.id: s.kind for s in ctx.symbols}
     for edge in ctx.edges:
         dst_kind = node_kind_by_id.get(edge.dst)
         if dst_kind is not None and dst_kind != "external_symbol":
@@ -566,7 +567,7 @@ def demote_superseded_stubs(
 
     demoted = _demote_stubs_named_as_consumed(edges, policy)
 
-    by_id = {s.id: s for s in symbols}
+    by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     languages = {s.language for s in symbols if s.language}
     name_key_of: dict[str, Any] = {}
     tokens_of: dict[str, frozenset[str]] = {}

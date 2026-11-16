@@ -520,7 +520,7 @@ def _local_ref_id(
     at: ast.AST,
     symbol_by_name: dict[str, Symbol],
     scopes_at: _ScopesAt | None,
-) -> str | None:
+) -> NodeId | None:
     """:func:`_resolve_local_ref`, as the symbol id a UsageContext carries."""
     found = _resolve_local_ref(expr, at, symbol_by_name, scopes_at)
     return found.id if found is not None else None

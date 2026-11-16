@@ -70,7 +70,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, format_legacy_dst,
+    AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, Symbol, format_legacy_dst,
     make_pass_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -138,7 +138,7 @@ class _FileContext:
         load_aliases: Optional[dict[str, str]] = None,
         file_anchor: str = "",
         package_targets: Optional[dict[tuple[str, str], str]] = None,
-        pending_deps: Optional[list[tuple[str, str, int, str]]] = None,
+        pending_deps: Optional[list[tuple[NodeId, str, int, str]]] = None,
         pending_loads: Optional[list[tuple[str, str, int, str]]] = None,
     ) -> None:
         self.source = source
@@ -159,7 +159,7 @@ class _FileContext:
         self.package_targets: dict[tuple[str, str], str] = (
             package_targets if package_targets is not None else {}
         )
-        self.pending_deps: list[tuple[str, str, int, str]] = (
+        self.pending_deps: list[tuple[NodeId, str, int, str]] = (
             pending_deps if pending_deps is not None else []
         )
         # Each loaded name as (label, name, line, loading file), resolved once
@@ -404,7 +404,7 @@ def _resolve_load_edges(
 
 
 def _resolve_dependency_edges(
-    pending: list[tuple[str, str, int, str]],
+    pending: list[tuple[NodeId, str, int, str]],
     package_targets: dict[tuple[str, str], str],
     run_id: str,
 ) -> list[Edge]:
@@ -538,7 +538,7 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                     # (ADR-0037).
                     resolution_score: float | None = None
                     if lookup_result.found and lookup_result.symbol:
-                        dst_id = lookup_result.symbol.id
+                        dst_id: str = lookup_result.symbol.id
                         resolution_score = lookup_result.confidence
                     else:
                         # External/builtin function or rule: a stand-in in
@@ -596,7 +596,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
         # Track targets by name for dependency resolution
         target_ids: dict[str, str] = {}
         package_targets: dict[tuple[str, str], str] = {}
-        pending_deps: list[tuple[str, str, int, str]] = []
+        pending_deps: list[tuple[NodeId, str, int, str]] = []
         pending_loads: list[tuple[str, str, int, str]] = []
 
         # Global symbol registry for cross-file resolution

@@ -162,6 +162,7 @@ from ..paths import normalize_path
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, NodeId, ShapeId, Span, StableId,
     Symbol, UsageContext, compute_config_fingerprint, compute_pass_version, make_pass_id,
+    read_node_id,
 )
 
 # EXPLICIT re-export (the ``X as X`` form), not a plain import: ``--strict``
@@ -880,7 +881,7 @@ def synthesize_file_symbols_for_dangling_edges(
                 end_line = _read_file_end_line(repo_root, path)
 
             synthesized[endpoint] = Symbol(
-                id=endpoint,
+                id=read_node_id(endpoint),
                 name=path,
                 kind="file",
                 language=language,
@@ -2210,7 +2211,7 @@ def dedup_logical_synthetic_identities(
             and sym.stable_id is not None
         ):
             groups.setdefault(sym.stable_id, []).append(sym)
-    id_remap: dict[str, str] = {}
+    id_remap: dict[str, NodeId] = {}
     dropped: set[int] = set()
     for group in groups.values():
         if len(group) < 2:
@@ -5001,7 +5002,7 @@ class TreeSitterAnalyzer:
 
             # Auto-compute shape_id and docstring for symbols with nodes (spec §6 shape_id)
             if analysis.node_for_symbol:
-                sym_by_id = {s.id: s for s in analysis.symbols}
+                sym_by_id: dict[str, Symbol] = {s.id: s for s in analysis.symbols}
                 for sym_id, ts_node in analysis.node_for_symbol.items():
                     sym = sym_by_id.get(sym_id)
                     if sym is not None:

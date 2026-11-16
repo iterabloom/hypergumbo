@@ -450,7 +450,7 @@ def apply_tier_weights(
     if tier_weights is None:
         tier_weights = TIER_WEIGHTS
 
-    symbol_tiers = {s.id: s.supply_chain_tier for s in symbols}
+    symbol_tiers: Dict[str, int] = {s.id: s.supply_chain_tier for s in symbols}
     weighted = {}
     for sid, score in centrality.items():
         tier = symbol_tiers.get(sid, 1)
@@ -481,7 +481,7 @@ def apply_test_weights(
     Returns:
         Dictionary mapping symbol ID to test-weighted centrality score.
     """
-    symbol_by_id = {s.id: s for s in symbols}
+    symbol_by_id: Dict[str, Symbol] = {s.id: s for s in symbols}
     weighted = {}
     for sid, score in centrality.items():
         sym = symbol_by_id.get(sid)
@@ -539,7 +539,7 @@ def apply_noise_weights(
     Returns:
         Dictionary mapping symbol ID to noise-weighted centrality score.
     """
-    symbol_paths = {s.id: s.path for s in symbols}
+    symbol_paths: Dict[str, str] = {s.id: s.path for s in symbols}
     weighted = {}
     for sid, score in centrality.items():
         path = symbol_paths.get(sid, "")
@@ -713,7 +713,7 @@ def apply_utility_symbol_weights(
     Returns:
         Dictionary mapping symbol ID to utility-weighted centrality score.
     """
-    symbol_lookup = {s.id: s for s in symbols}
+    symbol_lookup: Dict[str, Symbol] = {s.id: s for s in symbols}
     weighted = {}
     for sid, score in centrality.items():
         sym = symbol_lookup.get(sid)
@@ -1048,7 +1048,7 @@ def filter_edges_for_ranking(
     _STRUCTURAL_EDGE_TYPES = INHERITANCE_EDGE_TYPES
 
     if exclude_test_edges:
-        symbol_by_id = {s.id: s for s in symbols}
+        symbol_by_id: Dict[str, Symbol] = {s.id: s for s in symbols}
 
         def _src_path(edge_src: str) -> str:
             """Get source path from symbol lookup, falling back to ID parsing.

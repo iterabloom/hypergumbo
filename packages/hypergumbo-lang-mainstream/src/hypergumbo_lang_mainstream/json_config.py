@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     claim_declaration_silence,
     AnalysisResult, TreeSitterAnalyzer, make_manifest_target_dst, make_symbol_id,
@@ -102,7 +102,7 @@ def is_json_tree_sitter_available() -> bool:
     return _json_analyzer._check_grammar_available()
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> NodeId:
     """Generate a location-based ID via the shared ADR-0036 minter.
 
     Delegates rather than re-implementing the grammar as an f-string, so
@@ -177,7 +177,7 @@ def _process_dependencies(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
-    project_id: Optional[str],
+    project_id: Optional[NodeId],
     run_id: str,
     dep_type: str = "dependency",
 ) -> None:

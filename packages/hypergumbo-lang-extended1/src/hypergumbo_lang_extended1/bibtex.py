@@ -32,7 +32,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.ir import Span, Symbol, make_pass_id
+from hypergumbo_core.ir import NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -65,9 +65,13 @@ def is_bibtex_tree_sitter_available() -> bool:
 
 
 
-def _make_symbol_id(path: Path, key: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"bibtex:{path}:{line}-{line}:{key}:{kind}"
+def _make_symbol_id(path: Path, key: str, kind: str, line: int) -> NodeId:
+    """Create a stable symbol ID.
+
+    NodeId-wrapped, not routed through make_symbol_id: a citation key may hold
+    a ':' (``knuth:1984``) that the factory would rewrite (test_id_newtypes.py).
+    """
+    return NodeId(f"bibtex:{path}:{line}-{line}:{key}:{kind}")
 
 
 def _extract_entry(

@@ -308,7 +308,7 @@ def match_framework_bases(
     ``derived_from`` (INV-rukor). ``is_fallback`` is INV-zuhub's, unchanged.
     """
     edge_index = build_inheritance_edge_index(edges)
-    symbol_by_id = {sym.id: sym for sym in symbols}
+    symbol_by_id: dict[str, Symbol] = {sym.id: sym for sym in symbols}
     results: list[tuple["Symbol", dict[str, tuple[str, ...]], bool]] = []
     for sym in symbols:
         if sym.kind not in ("class", "struct"):

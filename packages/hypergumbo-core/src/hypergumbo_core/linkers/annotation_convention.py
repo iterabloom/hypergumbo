@@ -67,7 +67,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
 from ..analyze.base import make_route_symbol, make_symbol_id
 from ..taxonomy import get_language
@@ -139,7 +139,7 @@ def scan_file_for_annotations(file_path: Path, rel_path: str) -> list[Annotation
     return sites
 
 
-def _stand_in_id(lang: str, site: AnnotationSite, name: str, role: str) -> str:
+def _stand_in_id(lang: str, site: AnnotationSite, name: str, role: str) -> NodeId:
     """The node id of the stand-in this linker mints for one directive.
 
     ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The

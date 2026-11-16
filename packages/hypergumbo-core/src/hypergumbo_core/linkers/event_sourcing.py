@@ -97,7 +97,7 @@ from typing import Iterator
 
 from ..analyze.base import make_protocol_stable_id
 from ..discovery import find_non_test_files
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs, extension_suffixes
 from ._text_filters import js_ts_language_from_path
@@ -689,7 +689,13 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     return Symbol(
         # ADR-0036 Ruling 2: kind slot == Symbol.kind ("function"); the role
         # lives on meta["framework_role"] (stamped below), not the id-slot.
-        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:function",
+        # NodeId-wrapped, not routed through make_symbol_id: an event name is
+        # a free string literal ("user:created"), and the factory's name-slot
+        # sanitizing would rewrite such an id (test_id_newtypes.py).
+        id=NodeId(
+            f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}"
+            f":{pattern.event_name}:function"
+        ),
         name=f"{pattern.event_name}",
         kind="function",
         path=pattern.file_path,

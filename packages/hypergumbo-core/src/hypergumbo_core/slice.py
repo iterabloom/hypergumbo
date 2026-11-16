@@ -1043,7 +1043,7 @@ def rank_slice_nodes(
         List of node IDs ordered by importance (highest first).
     """
     # Filter to only nodes in the slice
-    node_by_id = {n.id: n for n in nodes}
+    node_by_id: Dict[str, Symbol] = {n.id: n for n in nodes}
     slice_nodes = [node_by_id[nid] for nid in result.node_ids if nid in node_by_id]
 
     if not slice_nodes:

@@ -1598,7 +1598,7 @@ def _heritage_edges(
     for ref in refs:
         target, is_fallback = _pick_supertype(ref, supertypes.lookup(ref.base))
         if target is not None:
-            dst = target.id
+            dst: str = target.id
         elif ref.base in intree_names:
             continue  # an in-tree name: not a supertype, and not an external
         else:

@@ -268,7 +268,7 @@ def find_underrepresented_language_seeds(
         languages are already reachable from current seeds.
     """
     eligible_ids = {s.id for s in symbols}
-    symbol_lang = {s.id: s.language for s in symbols}
+    symbol_lang: dict[str, str | None] = {s.id: s.language for s in symbols}
 
     # Build adjacency (only edges touching eligible symbols)
     adj_out: dict[str, set[str]] = {}

@@ -3531,7 +3531,7 @@ def _collect_important_files(
         add_file(test_files[0])
 
     # 3. Entry point files (highest ranking prominence — ADR-0039 ruling 3)
-    symbol_by_id = {s.id: s for s in symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     if entrypoints:
         sorted_eps = sorted(entrypoints, key=lambda e: -(e.rank_score or 0.0))
         for ep in sorted_eps[:3]:  # Top 3 entry points
@@ -6067,7 +6067,7 @@ def _format_entrypoints(
         return ""
 
     # Build symbol lookup for path info
-    symbol_by_id = {s.id: s for s in symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
 
     # Exclude test functions — the Tests section covers them
     non_test_eps = [
@@ -6235,7 +6235,7 @@ def _format_datamodels(
         return ""
 
     # Build symbol lookup for path info
-    symbol_by_id = {s.id: s for s in symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
 
     # Sort by rank_score (highest first) - already sorted but ensure
     sorted_models = sorted(datamodels, key=lambda m: -m.rank_score)
@@ -7377,7 +7377,7 @@ def _generate_sketch_impl(
         entrypoints = detect_entrypoints(symbols, edges)
         if entrypoints:  # pragma: no cover - requires framework patterns to detect entrypoints
             # Build symbol lookup for extracting file paths
-            symbol_by_id = {s.id: s for s in symbols}
+            symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
 
             # Extract file paths from entrypoints
             for ep in entrypoints:
@@ -7570,8 +7570,8 @@ def _generate_sketch_impl(
             max_symbols = MIN_KEY_SYMBOLS
 
         # Get docstrings and signatures from Symbol fields (all languages)
-        docstrings = {s.id: s.docstring for s in symbols if s.docstring}
-        signatures = {s.id: s.signature for s in symbols if s.signature}
+        docstrings: dict[str, str] = {s.id: s.docstring for s in symbols if s.docstring}
+        signatures: dict[str, str] = {s.id: s.signature for s in symbols if s.signature}
 
         # Track selected symbols for stats
         selected_key_symbols: list[Symbol] = [] if stats_out is not None else None  # type: ignore[assignment]
