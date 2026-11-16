@@ -2682,3 +2682,57 @@ def test_an_unknown_path_slot_is_a_violation() -> None:
         _rt_sym("cmake:<unknown>:0-0:LIB:external_symbol", "external_symbol", "LIB"),
     ])
     assert v.severity == "warning" and "<unknown>" in v.message
+
+
+# --- INV-movor: one file pseudo-symbol per path --------------------------------
+
+
+def _file_sym(lang: str, path: str, **extra):
+    return _FakeSym(id=f"{lang}:{path}:1-1:file:file", kind="file", path=path, **extra)
+
+
+def test_one_file_node_per_path_flags_two_language_slots_for_one_path() -> None:
+    """Two producers' file nodes for one path are one violation, naming both."""
+    from hypergumbo_core.spec_validator import _check_one_file_node_per_path
+
+    script = _file_sym("typescript", "src/App.vue")
+    own = _file_sym("vue", "src/App.vue")
+    violations = _check_one_file_node_per_path([script, own, _file_sym("vue", "src/Kid.vue")])
+    assert len(violations) == 1
+    (violation,) = violations
+    assert (violation.severity, violation.validator_class) == ("error", "cross_field")
+    assert violation.record_id == script.id
+    assert violation.observed == f"{script.id}, {own.id}"
+    assert "src/App.vue" in violation.message
+
+
+def test_one_file_node_per_path_counts_only_file_pseudo_symbols() -> None:
+    """One id twice is one record; a manifest entry of kind ``file`` and a
+    function on line 1 are not file pseudo-symbols; a pathless or idless
+    record is skipped."""
+    from hypergumbo_core.spec_validator import _check_one_file_node_per_path
+
+    anchor = _file_sym("toml", "pyproject.toml")
+    assert _check_one_file_node_per_path([
+        anchor,
+        _file_sym("toml", "pyproject.toml"),
+        _FakeSym(id="toml:pyproject.toml:56-56:htrac:file", kind="file",
+                 path="pyproject.toml", meta={"entry_role": "script"}),
+        _FakeSym(id="python:a.py:1-1:file:function", kind="function", path="a.py"),
+        _FakeSym(id="python:a.py:1-1:file:file", kind="file", path="a.py"),
+        _FakeSym(id="python::1-1:file:file", kind="file", path=""),
+        _FakeSym(id=None, kind="file", path="a.py"),
+    ]) == []
+
+
+def test_one_file_node_per_path_wired_into_validate_ir() -> None:
+    from hypergumbo_core.ir import Span, Symbol
+
+    nodes = [
+        Symbol(id=f"{lang}:src/App.vue:1-1:file:file", name="src/App.vue", kind="file",
+               language=lang, path="src/App.vue", span=Span(1, 1, 0, 0))
+        for lang in ("typescript", "vue")
+    ]
+    flagged = [v for v in validate_ir(nodes, [], []) if "file pseudo-symbols" in v.message]
+    assert len(flagged) == 1
+    assert [v for v in validate_ir(nodes[:1], [], []) if "file pseudo-symbols" in v.message] == []

@@ -45,7 +45,9 @@ CI ratchet holds those counts shrink-only):
    ``cross_field`` class also carries several other wired checks: the
    ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
    dangling-endpoint detection, edge ``confidence`` range, route-marker
-   single-home, the receiver-blind-magnet gate, the ADR-0035 §5 per-file
+   single-home, one file pseudo-symbol per path
+   (``_check_one_file_node_per_path``), the receiver-blind-magnet gate, the
+   ADR-0035 §5 per-file
    ``stable_id`` uniqueness error (``_check_stable_id_per_file_uniqueness``),
    and the Class-B identity-stamp canary (a synthetic stand-in missing
    ``stable_id`` / ``fingerprint`` / ``discovery_language`` / ``origin`` /
@@ -222,6 +224,13 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "carries no redundant path-less concept=route alongside it "
                     "(INV-vokak dual-carry root; the framework belongs on "
                     "route_framework, not orphaned in a second home)."},
+    {"check": "one_file_node_per_path", "validator_class": "cross_field",
+     "description": "A path carries exactly one file pseudo-symbol (kind "
+                    "'file', id <lang>:<path>:1-1:file:file) across every "
+                    "producer (INV-movor): two producers' file nodes for one "
+                    "path, each in its own language slot, split the file's "
+                    "edges between them. Manifest entries of kind 'file' "
+                    "(meta.entry_role) are not file pseudo-symbols."},
     {"check": "no_harmful_receiver_blind_magnets", "validator_class": "cross_field",
      "description": "No un-demoted CLEANLY-harmful receiver-blind method magnet "
                     "survives finalization (INV-fahub): a high-confidence calls "
@@ -290,6 +299,7 @@ def validate_ir(
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
     violations.extend(_check_confidence_range(edges))
     violations.extend(_check_route_marker_single_home(symbols))
+    violations.extend(_check_one_file_node_per_path(symbols))
     violations.extend(_check_no_harmful_receiver_blind_magnets(symbols, edges))
     return violations
 
@@ -339,6 +349,57 @@ def _check_route_marker_single_home(
                 ))
                 break
     return violations
+
+
+def _check_one_file_node_per_path(
+    symbols: Iterable[Any],
+) -> list[ValidationViolation]:
+    """INV-movor: a path carries exactly one file pseudo-symbol.
+
+    The file pseudo-symbol is the ``kind="file"`` Symbol whose id is
+    ``make_file_id(lang, path)`` (``<lang>:<path>:1-1:file:file``, ADR-0036
+    Ruling 3). ``make_file_id`` takes a language and each producer chooses it
+    itself, so two producers of one file (the JavaScript analyzer reading a
+    Vue component's ``<script>``, the Vue analyzer reading its template) mint
+    two ids that id-equality dedup keeps apart, and the file's edges are split
+    between the two nodes. ``analyze.file_records.unify_file_pseudo_symbols``
+    folds them after the linkers; this predicate is the guard that it did, and
+    that no pass after it mints a second one. One id emitted twice is one
+    record, not two. A manifest entry of kind ``file`` with
+    ``meta["entry_role"]`` (an npm script, a pyproject script; audit-findings
+    0005) has another id shape and is not counted. One violation per path.
+    """
+    ids_by_path: dict[str, list[str]] = {}
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        path = getattr(sym, "path", None)
+        if (
+            getattr(sym, "kind", None) != "file"
+            or not isinstance(sym_id, str)
+            or not sym_id.endswith(":1-1:file:file")
+            or not path
+        ):
+            continue
+        ids = ids_by_path.setdefault(path, [])
+        if sym_id not in ids:
+            ids.append(sym_id)
+    return [
+        ValidationViolation(
+            severity="error",
+            validator_class="cross_field",
+            message=(
+                f"path {path!r} carries {len(ids)} file pseudo-symbols; a "
+                "path has exactly one, in the file's own language, with every "
+                "producer's edges on it (INV-movor)"
+            ),
+            field_name="id",
+            record_id=ids[0],
+            observed=", ".join(ids),
+            expected="exactly one <lang>:<path>:1-1:file:file node per path",
+        )
+        for path, ids in ids_by_path.items()
+        if len(ids) > 1
+    ]
 
 
 def _check_no_harmful_receiver_blind_magnets(
