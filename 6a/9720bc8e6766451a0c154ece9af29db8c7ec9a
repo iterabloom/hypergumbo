@@ -1,0 +1,48 @@
+Original commit body from c34212b436c00a920ce736b9691f7dcc6a59d95e:
+
+A repository can now declare which of its directories hold test input, and every command treats files there as test code.
+
+## Why a declaration
+
+A fixture project kept outside a test directory (hypergumbo's own `recorded/aardvark_dns` crate and `recorded/sample_project`) was classified as first-party code: its `main` functions were listed as entry points, its language counted in the stack, and its tests fed the sketch's Tests line. A census of 661 embedded project trees in 44 repositories found no rule computed from repository content that separates such trees from first-party code: "only test code references the tree" finds 6 of 292; "own manifest that no build includes" finds 37 and wrongly demotes 106 first-party trees. So the repository says which they are.
+
+## What changed
+
+- New project-tier key in `.hypergumbo.toml`: `test_input_dirs = ["path/one", "path/two"]`. Literal repository-relative directories; a glob, an absolute path, a path leaving the repository, a missing path and a non-directory are each refused with exit 2, naming the entry.
+- `classify_test_file` applies its path rules first; a file under a declared directory that no path rule classifies gets the reason `declared_test_input`. All four test predicates go through it, so every consumer agrees: entry points, language counts, dead code, test coverage, slices, compact views, the sketch, linkers, `verify-claims`.
+- The declaration is saved in the map (`supply_chain_summary.declared_test_inputs`), so commands that read a saved map classify as the analysis did. `SCHEMA_VERSION` 0.21.0 to 0.21.1 (an added optional field).
+- Disclosure in the same three places as the git-ignored files line: stderr, the sketch Overview, the map field. Example: "Classified as test input because .hypergumbo.toml declares it (test_input_dirs), 4 files: internal/e2e/ (4 files) (ADR-0004)."
+- The declaration is process state for one unit of work and is restored after it: an analysis, each of the 12 commands that read a map, a sketch. A library caller uses `survey_io.reading_substrate(path)`; `load_substrate` installs nothing. The test suites reset it after each test.
+- hypergumbo's own repository does not declare its two recorded trees in this PR. A released hypergumbo refuses a config with a key it does not know, and smart-test selects tests with the installed release, so adding the config now would break local test selection. Tracked separately.
+
+## `verify-claims` (owner ruling 2026-11-16: allowed)
+
+Test code is outside taint-source scope, so a declared directory is too. Measured on a fixture whose only prohibited flow lives in a declared directory: violated (exit 1) without the declaration, confirmed (exit 0) with it, exactly as when the directory is renamed `tests/`. The excluded flow is counted under its own label, `excluded_flows.declared_test_input_sourced`, and `--include-non-production-sources` gives violated again.
+
+## Measured
+
+- fx (Go), declaring `internal/e2e`: entry points from it 2 to 0; Go files counted as tests 72 to 74 of 142.
+- automerge `javascript/`, declaring `packaging_tests`: entry points 42 to 14 (all 28 removed are from that directory); dead-code candidates 134 to 78.
+- No config (fx, automerge): maps identical before and after except `schema_version` and one `pass_version` digest; sketches byte-identical.
+- No stable id moved (fixture 20 of 20; fx 1,652 of 1,652; automerge 2,024 of 2,024 at the same position with the same id). Linker-made symbols inside a declared directory are no longer emitted (fx 1, automerge 5), because linkers skip test files.
+- hypergumbo itself, measured on a branch that also carried its own config (not in this PR): the sketch Overview gains the disclosure line (22 files), the Tests line loses `cargo test`, and the two recorded `main` functions leave the entry points; `check-self-claims`: 23 claims unchanged.
+
+Not changed: the Overview language percentages still include test-only languages; the sketch's Configuration and Additional Files sections can still list files from a declared directory.
+
+## Also in this PR
+
+- `scripts/release-check` drops the nltk audit ignore `PYSEC-2026-3740`: with nltk 3.10.4 the audit reports nothing for it, so the ignore hid nothing.
+- Spec Appendix A states the schema-version rule the code and history follow (while MAJOR is 0, a breaking change bumps MINOR and an addition bumps PATCH).
+
+## Checks
+
+- Whole suite on the pre-rebuild branch (same code plus hypergumbo's own config file): 40,518 tests passed.
+- On this branch, each package directory's manifest tests run alone with numpy, sentence_transformers and torch stubbed out, as CI runs them: core 21,307 passed; lang-mainstream 8,808; lang-common 2,546; lang-extended1 1,836; rust-analyzer 165; scip-python 50; tracker 3,098; hypergumbo 4; tests/ 2,649. No failures.
+- `scripts/check-self-claims`: 23 claims unchanged (23 confirmed_with_caveats).
+- `scripts/check-claims-coverage`: passes.
+- `scripts/check-package-coverage --serial`: core reports three uncovered lines (c_family.py:256, route_handler.py:463, the `_withhold_for_unfollowed_escapes` call in verify_claims.py). The same three statements are uncovered on dev; this branch adds none. The other six packages pass.
+- Test manifest: targeted, 1,468 test files.
+- `docs/ARCHITECTURE.md` regenerated.
+
+Addresses WI-fosuk-mudof-fapol-foron-vibif-kalam-gizap-tajov (the setting; hypergumbo's own config is WI-dahoh-ralop-gilid-gubat-zinul-murob-bufal-dibuk)
+Addresses WI-totak-gamaz-zasob-rarid-niriv-vavin-gizan-vorat
