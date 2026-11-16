@@ -239,11 +239,15 @@ def test_a_bare_read_through_a_from_imported_in_tree_submodule_references_it(
     assert ref.dst.endswith(":CONST:variable"), ref.dst
 
 
-def test_the_recovery_linker_shape_keeps_the_placeholder(tmp_path: Path) -> None:
-    """mlflow's clint: ``rules.Rule.check(n)`` under ``from pkg import rules`` is
-    the ``external`` placeholder beside a class hint on the same caller, which
-    the method-call-recovery linker (WI-gigoz) resolves downstream; a slot
-    under ``pkg.rules.Rule`` took 27 such calls out of its reach."""
+def test_a_static_method_through_a_from_imported_package_binds_the_method(
+    tmp_path: Path,
+) -> None:
+    """mlflow's clint: ``rules.Rule.check(n)`` under ``from pkg import rules``.
+    The dotted name is walked from its root -- the package, the class its
+    ``__init__`` re-exports, the method of that class's own body -- so the
+    call binds ``Rule.check`` itself. It used to be the ``external``
+    placeholder, left to the method-call-recovery linker (WI-gigoz). Never a
+    slot under ``pkg.rules.Rule``, which is no module."""
     _write(tmp_path, {
         **_IN_TREE,
         "app.py": (
@@ -253,18 +257,18 @@ def test_the_recovery_linker_shape_keeps_the_placeholder(tmp_path: Path) -> None
     })
     result = analyze_python(tmp_path)
     calls = _edges_from(result, ":run:function", "calls", "instantiates")
-    assert any(e.dst.startswith("python:external:0-0:check:") for e in calls), [
-        e.dst for e in calls
-    ]
+    assert any(
+        e.is_resolved and e.dst.endswith(":Rule.check:method") for e in calls
+    ), [e.dst for e in calls]
     assert any(e.dst.endswith(":Rule:class") for e in calls), [e.dst for e in calls]
     assert not [e.dst for e in result.edges if "pkg.rules.Rule" in e.dst]
 
 
-def test_a_from_imported_in_tree_submodule_classmethod_chain_keeps_the_placeholder(
+def test_a_classmethod_through_a_from_imported_in_tree_submodule_binds_the_method(
     tmp_path: Path,
 ) -> None:
-    """``loc.Loc.from_id(i)`` under ``from pkg.ents import loc``: the resolution
-    arm cannot bind a classmethod through a module path, and a slot under
+    """``loc.Loc.from_id(i)`` under ``from pkg.ents import loc``: the submodule,
+    its class, the classmethod of that class's body. A slot under
     ``pkg.ents.loc.Loc`` would be a phantom of the project (82 on mlflow)."""
     _write(tmp_path, {
         **_IN_TREE,
@@ -272,7 +276,7 @@ def test_a_from_imported_in_tree_submodule_classmethod_chain_keeps_the_placehold
     })
     result = analyze_python(tmp_path)
     [edge] = _edges_from(result, ":run:function", "calls")
-    assert edge.dst.startswith("python:external:0-0:from_id:"), edge.dst
+    assert edge.is_resolved and edge.dst.endswith(":Loc.from_id:method"), edge.dst
     assert not [e.dst for e in result.edges if "pkg.ents.loc.Loc" in e.dst]
 
 

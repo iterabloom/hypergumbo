@@ -64,6 +64,17 @@ Analysis proceeds in two passes for cross-file resolution:
   the ``inherited_calls`` linker walks the MRO, and an unresolved
   ``self.field.method()`` carries ``inherited_field_receiver`` the same way
 - Detect self.field.method() calls using field type inference from __init__
+- Walk a dotted name from what its ROOT denotes (``_resolve_dotted_name``): a
+  class in scope, a from-import, an imported module; then one member at a
+  time, a class's own body or a module's names. So ``Outer.Inner()``,
+  ``Outer.Inner.make()``, ``Outer.Inner.Deep()`` and ``mod.Outer.Inner()``
+  reach the nested class or its member, in this file or through the import,
+  and never a same-named class under another owner. A call on what a call
+  returns (``Outer.Inner().go()``, ``Client().send()``,
+  ``get_client().send()``) is typed like its assigned form
+  (``_returned_class``). Only a member of the class's OWN body binds; an
+  inherited one keeps its unresolved edge, with the receiver's class as
+  ``receiver_type_hint`` for the ``inherited_calls`` linker
 - Detect ClassName() instantiation patterns as ``instantiates`` edges
   (``ast_new``); a PascalCase external import or ``module.ClassName()`` too,
   unresolved (WI-jubag)
@@ -7181,6 +7192,11 @@ def _extract_edges(
                             inner_scope=stack.immediate_symbols() if stack else None,
                             sym_by_path_name=_sym_by_path_name,
                             var_types=var_types,
+                            shadowed=_value_shadow | (
+                                stack.frames[-1].local_names
+                                if stack is not None and stack.frames
+                                else frozenset()
+                            ),
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
@@ -7191,20 +7207,16 @@ def _extract_edges(
                             # Return type inference: if the function has a
                             # return type annotation pointing to a class,
                             # track the variable's type from that annotation.
-                            ret_name = _declared_return_type_name(
-                                assigned_class
+                            ret_class = _returned_class(
+                                assigned_class, local_symbols, imports,
+                                global_symbols, resolver, _sym_by_path_name,
+                                imports_by_path,
                             )
-                            if ret_name:
-                                ret_class = _resolve_return_type_class(
-                                    ret_name, assigned_class, local_symbols,
-                                    imports, global_symbols, resolver,
-                                    _sym_by_path_name, imports_by_path,
+                            if ret_class:
+                                var_types[target.id] = ret_class
+                                _bind_project_class_fields(
+                                    target.id, ret_class, external_var_types,
                                 )
-                                if ret_class:
-                                    var_types[target.id] = ret_class
-                                    _bind_project_class_fields(
-                                        target.id, ret_class, external_var_types,
-                                    )
                         elif assigned_class is None:
                             # WI-fuvuj: in-repo resolution found no class. If
                             # the RHS is a known I/O constructor (open(...),
@@ -8387,6 +8399,116 @@ def _dotted_receiver_constant(
     return found if found is not None and found.kind == "variable" else None
 
 
+def _walk_dotted_name(
+    current: Symbol | None,
+    module: str | None,
+    attrs: Sequence[str],
+    local_symbols: dict[str, Symbol],
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+) -> Symbol | None:
+    """Walk the segments after a dotted name's root, the way Python evaluates
+    ``root.a.b``: one attribute at a time, from what the root denotes.
+
+    The root is either a declaration (``current``) or an imported module
+    (``module``). A hop on a CLASS is a member of its own body
+    (:func:`_class_member`), so ``A.B.C`` reaches the class nested two deep
+    and ``A.B.go`` its method; a hop on a MODULE is a name the module binds,
+    else its submodule (``pkg.sub.A.B`` under ``import pkg.sub``). Anything
+    else -- a hop on a function or a variable, a member the class's own body
+    does not declare -- is not known here and yields ``None``: there is no
+    fallback to the last segment, which is how ``A.B`` used to be answered by
+    whichever ``B`` was registered last.
+    """
+    for attr in attrs:
+        if current is not None:
+            if current.kind != "class":
+                return None
+            current = _class_member(current, attr, local_symbols, sym_by_path_name)
+            if current is None:
+                return None
+        elif module is not None:
+            current = _lookup_symbol_by_module(
+                global_symbols, module, attr, resolver=resolver,
+            )
+            if current is None:
+                module = f"{module}.{attr}"
+        else:
+            return None
+    return current
+
+
+def _resolve_dotted_name(
+    parts: Sequence[str],
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    module_imports: dict[str, str],
+    resolver: "SymbolResolver | None",
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+    root_def: Symbol | None = None,
+) -> Symbol | None:
+    """The declaration a dotted name (``A.B``, ``A.B.go``, ``m.A.B``) denotes.
+
+    The ROOT is resolved first, then the rest is walked from it
+    (:func:`_walk_dotted_name`). ``root_def`` is what the caller's scope binds
+    the root to by a ``def`` / ``class`` (:func:`_lexical_def`); without one
+    the root is a from-import (the class or function it names, or the
+    submodule ``from pkg import m`` binds) or an imported module. A root
+    nothing binds resolves nothing.
+    """
+    root = parts[0]
+    module: str | None = None
+    current = root_def
+    if current is None:
+        if root in imports:
+            origin_module, original = imports[root]
+            current = _lookup_symbol_by_module(
+                global_symbols, origin_module, original, resolver=resolver,
+            )
+            if current is None:
+                module = f"{origin_module}.{original}"
+        elif root in module_imports:
+            module = module_imports[root]
+        else:
+            return None
+    return _walk_dotted_name(
+        current, module, parts[1:], local_symbols, global_symbols, resolver,
+        sym_by_path_name,
+    )
+
+
+def _returned_class(
+    callee: Symbol | None,
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+    imports_by_path: dict[str, dict[str, tuple[str, str]]] | None,
+) -> Symbol | None:
+    """The project class a call to ``callee`` evaluates to an instance of.
+
+    A class constructs itself; a function or method yields the class its
+    declared return type names (:func:`_declared_return_type_name`, resolved
+    in the defining module first). One answer for the assigned form
+    (``b = A.B()`` then ``b.go()``) and the inline one (``A.B().go()``).
+    """
+    if callee is None:
+        return None
+    if callee.kind == "class":
+        return callee
+    if callee.kind in ("function", "method"):
+        ret_name = _declared_return_type_name(callee)
+        if ret_name:
+            return _resolve_return_type_class(
+                ret_name, callee, local_symbols, imports, global_symbols,
+                resolver, sym_by_path_name, imports_by_path,
+            )
+    return None
+
+
 def _resolve_call_target(
     call_node: ast.Call,
     local_symbols: dict[str, Symbol],
@@ -8397,6 +8519,7 @@ def _resolve_call_target(
     inner_scope: dict[str, Symbol] | None = None,
     sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     var_types: dict[str, Symbol] | None = None,
+    shadowed: frozenset[str] = frozenset(),
 ) -> Symbol | None:
     """Resolve the target of a call expression to a Symbol.
 
@@ -8410,10 +8533,18 @@ def _resolve_call_target(
       declared return type (WI-fihun). The receiver must
       itself be KNOWN -- a local already in ``var_types`` (checked first, as it
       shadows a same-named class) or a class in scope -- or nothing resolves.
+    - Outer.Inner() / Outer.Inner.Deep() / module.Outer.Inner() -> the nested
+      class, walked from what the root denotes (:func:`_resolve_dotted_name`),
+      in this file or through the import that binds the root.
 
     ``inner_scope`` is the enclosing-function scope (INV-mofav): when the
     bare name resolves to a nested function in the caller's body, it wins
     over a same-named top-level Symbol (Python LEGB rule).
+
+    ``shadowed`` holds the names the call site's scope binds to a VALUE (a
+    parameter, an assignment). A RECEIVER root among them is not the
+    module-level class of that name: ``def f(A): A.B()`` constructs whatever
+    the caller passed.
     """
     func = call_node.func
 
@@ -8448,17 +8579,20 @@ def _resolve_call_target(
                 return _lookup_symbol_by_module(
                     global_symbols, module_name, attr_name, resolver=resolver
                 )
-            if sym_by_path_name is not None:
-                owner = _known_receiver_class(
-                    receiver_name, var_types, local_symbols, imports,
-                    global_symbols, resolver,
+            owner = _known_receiver_class(
+                receiver_name, var_types, local_symbols, imports,
+                global_symbols, resolver, inner_scope, shadowed,
+            )
+            if owner is not None:
+                # A method (``Run.create()``, ``f.build()``) or a class nested
+                # in the receiver's class (``Outer.Inner()``).
+                member = _class_member(
+                    owner, attr_name, local_symbols, sym_by_path_name,
                 )
-                if owner is not None:
-                    member = sym_by_path_name.get(
-                        (owner.path, f"{owner.name}.{attr_name}")
-                    )
-                    if member is not None and member.kind in ("method", "function"):
-                        return member
+                if member is not None and member.kind in (
+                    "method", "function", "class",
+                ):
+                    return member
         else:
             # A fully dotted module path, ``pkg.sub.mod.Klass()`` under ``import
             # pkg.sub.mod`` -- the spelling _process_call's Case 2g resolves
@@ -8468,9 +8602,26 @@ def _resolve_call_target(
             # stand-in named by an in-tree module (WI-homih, INV-nuzas).
             dotted_module = _dotted_module_of_call(func, module_imports, imports)
             if dotted_module is not None:
-                return _lookup_symbol_by_module(
+                found = _lookup_symbol_by_module(
                     global_symbols, dotted_module, func.attr, resolver=resolver
                 )
+                if found is not None:
+                    return found
+            # A dotted name through a CLASS: ``Outer.Inner.Deep()``,
+            # ``pkg.mod.Outer.Inner()``, ``Outer.Inner.make()``.
+            parts = _dotted_parts(func)
+            if parts is not None:
+                root_def = (inner_scope or {}).get(parts[0]) or (
+                    None if parts[0] in shadowed else local_symbols.get(parts[0])
+                )
+                found = _resolve_dotted_name(
+                    parts, local_symbols, imports, global_symbols,
+                    module_imports, resolver, sym_by_path_name, root_def,
+                )
+                if found is not None and found.kind in (
+                    "method", "function", "class",
+                ):
+                    return found
 
     return None
 
@@ -8482,16 +8633,22 @@ def _known_receiver_class(
     imports: dict[str, tuple[str, str]],
     global_symbols: dict[tuple[str, str], Symbol],
     resolver: "SymbolResolver | None",
+    inner_scope: dict[str, Symbol] | None = None,
+    shadowed: frozenset[str] = frozenset(),
 ) -> Symbol | None:
     """The class a ``receiver.method()`` receiver is known to be, or None.
 
     A typed local first (``f = Factory()`` then ``f.build()``), since it
-    shadows a same-named class; then the receiver as a class itself, defined
-    here or imported (``Run.create()``).
+    shadows a same-named class; then the receiver as a class itself, declared
+    in the caller's function (``inner_scope``), at module level unless the
+    call site binds the name to a value (``shadowed``), or imported
+    (``Run.create()``).
     """
     if var_types is not None and receiver_name in var_types:
         return var_types[receiver_name]
-    sym = local_symbols.get(receiver_name)
+    sym = (inner_scope or {}).get(receiver_name) or (
+        None if receiver_name in shadowed else local_symbols.get(receiver_name)
+    )
     if sym is not None:
         return sym if sym.kind == "class" else None
     return _imported_class(receiver_name, imports, global_symbols, resolver)
@@ -9661,6 +9818,67 @@ def _process_call(
             call, imports, module_imports, shadowed=_value_shadow,
         )
 
+    def _owner_class_here(receiver: ast.expr) -> Symbol | None:
+        """The project class a call's receiver expression denotes, or ``None``.
+
+        ``A.B`` in ``A.B.make()`` is the class the dotted name walks to
+        (:func:`_resolve_dotted_name`), its root resolved in this call's own
+        scope: the caller's own local class, else the module-level binding
+        unless a parameter, an assignment or an enclosing function's def
+        hides it, else an enclosing function's local class, else an import.
+        ``self.B`` starts from the body of the class ``self`` denotes and a
+        typed local from its class (a nested class is an attribute of the
+        instance too). ``A.B()`` in ``A.B().go()`` is the class the inner
+        call evaluates to (:func:`_returned_class`), the same answer
+        ``b = A.B()`` gives ``b``.
+        """
+        own_locals = (
+            stack.frames[-1].local_names
+            if stack is not None and stack.frames else frozenset()
+        )
+        if isinstance(receiver, ast.Call):
+            return _returned_class(
+                _resolve_call_target(
+                    receiver, local_symbols, imports, global_symbols,
+                    module_imports, resolver,
+                    inner_scope=stack.immediate_symbols() if stack else None,
+                    sym_by_path_name=sym_by_path_name, var_types=var_types,
+                    shadowed=_value_shadow | own_locals,
+                ),
+                local_symbols, imports, global_symbols, resolver,
+                sym_by_path_name, imports_by_path,
+            )
+        parts = _dotted_parts(receiver)
+        if parts is None:
+            return None
+        root = parts[0]
+        if root == "self":
+            found = _walk_dotted_name(
+                self_methods.get(parts[1]) if len(parts) > 1 else None, None,
+                parts[2:], local_symbols, global_symbols, resolver,
+                sym_by_path_name,
+            )
+        elif root in var_types:
+            found = _walk_dotted_name(
+                var_types[root], None, parts[1:], local_symbols,
+                global_symbols, resolver, sym_by_path_name,
+            )
+        else:
+            root_def = stack.lookup_immediate(root) if stack is not None else None
+            if (
+                root_def is None
+                and root not in _value_shadow
+                and root not in own_locals
+            ):
+                root_def = local_symbols.get(root)
+            if root_def is None and stack is not None:
+                root_def = stack.lookup_enclosing(root)
+            found = _resolve_dotted_name(
+                parts, local_symbols, imports, global_symbols, module_imports,
+                resolver, sym_by_path_name, root_def,
+            )
+        return found if found is not None and found.kind == "class" else None
+
     func = call_node.func
     callee_symbol = None
     is_instantiation = False
@@ -9802,6 +10020,33 @@ def _process_call(
                 )
                 if callee_symbol and callee_symbol.kind == "class":
                     is_instantiation = True
+
+        # Case 2h: a member reached THROUGH A CLASS that no case above names --
+        # ``Outer.Inner()``, ``Outer.Inner.Deep()``, ``Outer.Inner.make()``,
+        # ``mod.Outer.Inner()``, and a call on what a call returns:
+        # ``Outer.Inner().go()``, ``Client().send()``, ``get_client().send()``.
+        # The owner is resolved first (the dotted name walked from its root,
+        # or the class the receiver call evaluates to) and the member is then
+        # looked up on that class alone. Only an own-body member answers; an
+        # inherited one stays with the unresolved edge and the linkers.
+        if callee_symbol is None:
+            owner = _owner_class_here(func.value)
+            if owner is not None:
+                member = _class_member(
+                    owner, attr_name, local_symbols, sym_by_path_name,
+                )
+                # ``Local.method()`` on a class named by a bare name keeps its
+                # unresolved edge and receiver hint: the inherited-calls
+                # linker resolves it, own or inherited, in one place.
+                if member is not None and (
+                    member.kind == "class"
+                    or (
+                        member.kind in ("method", "function")
+                        and not isinstance(func.value, ast.Name)
+                    )
+                ):
+                    callee_symbol = member
+                    is_instantiation = member.kind == "class"
 
     # Emit edge if we resolved the callee
     if callee_symbol:
@@ -10470,6 +10715,22 @@ def _process_call(
                 # step (INV-busis). Same placeholder, same stamp; an untyped
                 # placeholder still reaches no catalogue row, so this is walk
                 # coverage, not recall.
+                #
+                # When the receiver is a call whose result's class IS known
+                # (``A.B().inherited()``, Case 2h found no own-body member),
+                # the edge carries that class as its receiver hint, the way
+                # the assigned form ``b = A.B(); b.inherited()`` does, so the
+                # inherited-calls linker walks the MRO from it.
+                _rooted_meta = {"call_construct": "method"}
+                _inline_owner = _owner_class_here(func.value)
+                if _inline_owner is not None:
+                    _rooted_meta["receiver_type_hint"] = _inline_owner.name
+                    if _receiver_type_id_trustworthy(
+                        _inline_owner, class_name_counts, imports,
+                        module_imports, local_symbols,
+                    ):
+                        _rooted_meta["receiver_type_id"] = _inline_owner.id
+                    _rooted_meta["resolution_quality"] = "type_inferred"
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=f"python:external:0-0:{func.attr}:unresolved",
@@ -10477,7 +10738,7 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call_direct",
                     is_resolved=False,
-                    meta={"call_construct": "method"},
+                    meta=_rooted_meta,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -10591,6 +10852,11 @@ def _process_call(
                         if root_name in var_types and len(chain_attrs) >= 2
                         else None
                     )
+                    # ``A.B.inherited()``: the receiver is a class reached
+                    # through its owner, and Case 2h found the member in no
+                    # body of its own.
+                    if chain_cls is None:
+                        chain_cls = _owner_class_here(func.value)
                     if chain_cls is not None:
                         chain_meta["receiver_type_hint"] = chain_cls.name
                         # WI-supat: the concrete id only when it is safe —
