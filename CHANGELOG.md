@@ -167,6 +167,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A `package.json` `exports` entry's node id names its own kind.**
 - **File-level edges in nine smaller-language analyzers join real file nodes.**
 - **Unresolved CMake, Starlark, reStructuredText and shader targets keep their own names.**
+- **Node ids from nine more analyzers and eight linkers name their symbol's own kind**: Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl and V; a linker stand-in keeps its role in the name slot.
 - **The `export` symbol kind's description names its two real producers.**
 - **Multi-table SQL call sites have the same name and id every run**, as do Ruby C-extension and DI edges.
 

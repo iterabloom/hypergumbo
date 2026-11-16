@@ -75,6 +75,7 @@ from pathlib import Path
 
 import hashlib
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -568,6 +569,19 @@ def _scan_ts_js_file_for_listen(file_path: Path) -> list[str]:
     return events
 
 
+def _stand_in_id(lang: str, path: str, name: str, role: str) -> str:
+    """The node id of a stand-in this linker mints for a file.
+
+    ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The
+    role (``ipc_publisher`` / ``ipc_caller`` / ``event_emitter`` /
+    ``event_listener``) used to sit there, a word no symbol kind has. It rides
+    as a name-segment suffix, as in the websocket and grpc linkers: these ids
+    are keyed by file with a ``0-0`` span, so without it a file that invokes
+    command ``sync`` and listens for event ``sync`` would mint one id twice.
+    """
+    return make_symbol_id(lang, path, 0, 0, f"{name}-{role}", "function")
+
+
 def link_tauri_ipc(
     repo_root: Path,
     ts_js_symbols: list[Symbol],
@@ -648,7 +662,7 @@ def link_tauri_ipc(
             # give a .js frontend ids with no typescript node behind them
             # (WI-dovog).
             host_language = js_ts_language_from_path(Path(rel_path))
-            src_id = f"{host_language}:{rel_path}:0-0:{cmd_name}:ipc_publisher"
+            src_id = _stand_in_id(host_language, rel_path, cmd_name, "ipc_publisher")
 
             # Create synthetic Symbol node for the IPC publisher so the
             # slicer's BFS can traverse through it. Without this node,
@@ -775,8 +789,8 @@ def link_tauri_ipc(
                 seen_caller_edges.add(dedup_key)
 
                 caller_language = js_ts_language_from_path(Path(rel_path))
-                caller_id = (
-                    f"{caller_language}:{rel_path}:0-0:{func_name}:ipc_caller"
+                caller_id = _stand_in_id(
+                    caller_language, rel_path, func_name, "ipc_caller",
                 )
 
                 if caller_id not in seen_caller_ids:
@@ -882,9 +896,11 @@ def link_tauri_ipc(
                         continue
                     seen_event_edges.add(dedup)
 
-                    src_id = f"rust:{rust_path}:0-0:{event_name}:event_emitter"
+                    src_id = _stand_in_id("rust", rust_path, event_name, "event_emitter")
                     listener_language = js_ts_language_from_path(Path(ts_path))
-                    dst_id = f"{listener_language}:{ts_path}:0-0:{event_name}:event_listener"
+                    dst_id = _stand_in_id(
+                        listener_language, ts_path, event_name, "event_listener",
+                    )
 
                     # Create synthetic symbols for emitter and listener
                     if src_id not in seen_publisher_ids:

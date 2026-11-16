@@ -102,8 +102,9 @@ class TestReceiveWrapperConnectsTheChain:
         }
         assert _reaches(
             result.edges,
-            lambda n: n.endswith(":bridge_caller") and "app.ts" in n,
-            lambda n: "main/index.ts" in n and ":receive:containerfile:getInfo" in n,
+            lambda n: n.endswith("-bridge_caller:function") and "app.ts" in n,
+            lambda n: "main/index.ts" in n
+            and n.endswith(":containerfile.getInfo-receive:function"),
         ), "renderer -> preload -> main path is disconnected"
 
     def test_forwarding_call_is_no_site(self, tmp_path: Path) -> None:

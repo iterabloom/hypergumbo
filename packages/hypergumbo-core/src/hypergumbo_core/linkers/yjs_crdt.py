@@ -96,6 +96,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -559,13 +560,17 @@ def link_yjs_crdt(
                 pub_name, sub_name = write.channel, read.channel
                 pub_label = f"yjs.write({write.channel})"
                 sub_label = f"yjs.observe({read.channel})"
-            pub_id = (
-                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
-                f":{pub_name}:crdt_publisher"
+            # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The role
+            # used to sit there; it rides as a name-segment suffix (as in the
+            # websocket and grpc linkers), so a write and an observe of one
+            # name on one line keep distinct ids.
+            pub_id = make_symbol_id(
+                pub_lang, write.file_path, write.line, write.line,
+                f"{pub_name}-crdt_publisher", "function",
             )
-            sub_id = (
-                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
-                f":{sub_name}:crdt_subscriber"
+            sub_id = make_symbol_id(
+                sub_lang, read.file_path, read.line, read.line,
+                f"{sub_name}-crdt_subscriber", "function",
             )
 
             if pub_id not in seen_sym_ids:

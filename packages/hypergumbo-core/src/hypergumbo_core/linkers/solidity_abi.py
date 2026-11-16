@@ -48,6 +48,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_symbol_id
 from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from ._text_filters import js_ts_language_from_path, read_source_text
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -222,9 +223,11 @@ def link_solidity_abi(
         host_language = js_ts_language_from_path(Path(rel_path))
         syn_id_input = f"abi_call:{rel_path}:{line_num}:{func_name}"
         syn_hash = hashlib.sha256(syn_id_input.encode()).hexdigest()[:12]
-        syn_id = (
-            f"{host_language}:{rel_path}:{line_num}-{line_num}"
-            f":{func_name}.{syn_hash}:abi_call"
+        # ADR-0036 Ruling 2: the kind slot is the Symbol's kind, not the
+        # folded word ``abi_call`` (which lives on in meta["call_kind"]).
+        syn_id = make_symbol_id(
+            host_language, rel_path, line_num, line_num,
+            f"{func_name}.{syn_hash}", "call_site",
         )
 
         # ADR-0031 Class B: synthetic stand-in for a Solidity ABI call

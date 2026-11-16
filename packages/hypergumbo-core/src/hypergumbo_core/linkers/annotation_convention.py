@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
-from ..analyze.base import make_route_symbol
+from ..analyze.base import make_route_symbol, make_symbol_id
 from ..taxonomy import get_language
 from ._text_filters import read_source_text
 from .registry import (
@@ -137,6 +137,21 @@ def scan_file_for_annotations(file_path: Path, rel_path: str) -> list[Annotation
         ))
 
     return sites
+
+
+def _stand_in_id(lang: str, site: AnnotationSite, name: str, role: str) -> str:
+    """The node id of the stand-in this linker mints for one directive.
+
+    ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The
+    role (``annotated_publisher`` / ``annotated_subscriber`` /
+    ``annotated_dispatcher``) used to sit there, a word no symbol kind has. It
+    rides as a name-segment suffix, as in the websocket and grpc linkers, so
+    two directives of different roles on one line, or a stand-in and a one-line
+    function the analyzer declared under the same name, keep distinct ids.
+    """
+    return make_symbol_id(
+        lang, site.file_path, site.line, site.line, f"{name}-{role}", "function",
+    )
 
 
 def link_annotations(
@@ -207,10 +222,7 @@ def link_annotations(
 
         for pub in pub_sites:
             pub_lang = get_language(Path(pub.file_path)) or "unknown"
-            pub_id = (
-                f"{pub_lang}:{pub.file_path}:{pub.line}-{pub.line}"
-                f":{channel}:annotated_publisher"
-            )
+            pub_id = _stand_in_id(pub_lang, pub, channel, "annotated_publisher")
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
                 result_symbols.append(Symbol(
@@ -247,10 +259,7 @@ def link_annotations(
 
             for sub in sub_sites:
                 sub_lang = get_language(Path(sub.file_path)) or "unknown"
-                sub_id = (
-                    f"{sub_lang}:{sub.file_path}:{sub.line}-{sub.line}"
-                    f":{channel}:annotated_subscriber"
-                )
+                sub_id = _stand_in_id(sub_lang, sub, channel, "annotated_subscriber")
                 if sub_id not in seen_sym_ids:
                     seen_sym_ids.add(sub_id)
                     result_symbols.append(Symbol(
@@ -364,10 +373,7 @@ def link_annotations(
         is_fallback = len(target_syms) > 1
 
         disp_lang = get_language(Path(disp.file_path)) or "unknown"
-        disp_id = (
-            f"{disp_lang}:{disp.file_path}:{disp.line}-{disp.line}"
-            f":{target_name}:annotated_dispatcher"
-        )
+        disp_id = _stand_in_id(disp_lang, disp, target_name, "annotated_dispatcher")
         if disp_id not in seen_sym_ids:
             seen_sym_ids.add(disp_id)
             result_symbols.append(Symbol(

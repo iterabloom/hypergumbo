@@ -137,6 +137,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
@@ -895,9 +896,15 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     created_symbol_ids: set[str] = set()
 
     def _make_symbol_id(pattern: IpcPattern, channel: str) -> str:
-        return (
-            f"ipc:{pattern.file_path}:{pattern.line}-{pattern.line}"
-            f":{pattern.type}:{channel}"
+        # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The id used
+        # to end in the CHANNEL (``ipc:<file>:<l>-<l>:send:<channel>``), so
+        # its kind slot held a channel name, and a channel with a colon
+        # (``user:login``) shifted every slot. The role rides as a
+        # name-segment suffix, as in the websocket and grpc linkers; the
+        # factory sanitizes the name.
+        return make_symbol_id(
+            "ipc", pattern.file_path, pattern.line, pattern.line,
+            f"{channel}-{pattern.type}", "function",
         )
 
     def _ensure_symbol(pattern: IpcPattern, channel: str) -> str:
@@ -1066,9 +1073,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     pass
 
                 # Create synthetic bridge caller symbol
-                caller_id = (
-                    f"ipc:{rel_path}:{call_line}-{call_line}"
-                    f":{namespace}.{method_name}:bridge_caller"
+                caller_id = make_symbol_id(
+                    "ipc", rel_path, call_line, call_line,
+                    f"{namespace}.{method_name}-bridge_caller", "function",
                 )
                 if caller_id not in created_symbol_ids:
                     # The bridge-caller role is carried in
@@ -1153,9 +1160,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 except ValueError:  # pragma: no cover
                     pass
 
-                caller_id = (
-                    f"ipc:{rel_path}:{call_line}-{call_line}"
-                    f":{func_name}:bridge_caller"
+                caller_id = make_symbol_id(
+                    "ipc", rel_path, call_line, call_line,
+                    f"{func_name}-bridge_caller", "function",
                 )
                 if caller_id not in created_symbol_ids:
                     # The bridge-caller role is carried in

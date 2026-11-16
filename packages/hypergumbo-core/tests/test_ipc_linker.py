@@ -709,7 +709,7 @@ ipcMain.on('OPEN_CHANNEL', handler);
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.dst.endswith("main.js:3-3:receive:OPEN_CHANNEL")
+        assert edge.dst.endswith("main.js:3-3:OPEN_CHANNEL-receive:function")
         assert edge.evidence_type == "variable_match"
         assert edge.confidence == 0.65
         assert edge.meta["channel_type"] == "unresolved"
@@ -1497,8 +1497,8 @@ class TestContextBridgeChainConnectivity:
 
         assert self._reaches(
             result.edges,
-            lambda n: n.endswith(":bridge_caller") and renderer_name in n,
-            lambda n: "main.js" in n and ":receive:" in n,
+            lambda n: n.endswith("-bridge_caller:function") and renderer_name in n,
+            lambda n: "main.js" in n and n.endswith("-receive:function"),
         ), "renderer -> preload -> main path is disconnected"
 
     def test_object_bridge_send_connects_to_main(self, tmp_path: Path) -> None:
@@ -1573,3 +1573,74 @@ class TestContextBridgeChainConnectivity:
         assert [s.span.start_line for s in sends] == [2]
         bridge = [e for e in result.edges if e.edge_type == "calls"]
         assert [e.dst for e in bridge] == [sends[0].id]
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
+
+    A bridge caller's id ended in ``bridge_caller``, and a send or receive
+    site's id ended in the CHANNEL (``ipc:<file>:<l>-<l>:send:<channel>``): a
+    channel name in the kind slot, and a channel with a colon shifted every
+    slot. All are ``kind="function"`` Symbols."""
+
+    def _result(self, tmp_path: Path):
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "preload.js").write_text(
+            "const { contextBridge, ipcRenderer } = require('electron');\n"
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  openFile: (...args) => ipcRenderer.invoke('open-file', ...args),\n"
+            "});\n"
+            "contextBridge.exposeInMainWorld('ping', async () => {\n"
+            "  return ipcRenderer.invoke('ping-main');\n"
+            "});\n"
+        )
+        (tmp_path / "main.js").write_text(
+            "ipcMain.handle('open-file', async () => 1);\n"
+            "ipcMain.handle('ping-main', async () => 2);\n"
+            "ipcMain.on('user:login', (event, data) => 3);\n"
+        )
+        (tmp_path / "renderer.js").write_text(
+            "window.api.openFile('a.txt');\n"
+            "window.ping();\n"
+            "ipcRenderer.send('user:login', {});\n"
+        )
+        return link_ipc(tmp_path)
+
+    def test_the_fixture_reaches_every_role(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        roles = sorted(s.meta["framework_role"] for s in result.symbols)
+        assert roles == [
+            "ipc_bridge_caller", "ipc_bridge_caller",
+            "ipc_receive", "ipc_receive", "ipc_receive",
+            "ipc_send", "ipc_send", "ipc_send",
+        ], roles
+        # Both bridge-caller sites: the namespace method and the bare function.
+        assert sorted(s.name for s in result.symbols if s.name.startswith("window.")) == [
+            "window.api.openFile", "window.ping",
+        ]
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_a_channel_with_a_colon_keeps_five_slots(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        login = [s for s in result.symbols if s.meta.get("channel") == "user:login"]
+        assert len(login) == 2
+        for sym in result.symbols:
+            span, name, kind = sym.id.rsplit(":", 3)[1:]
+            assert span == f"{sym.span.start_line}-{sym.span.end_line}", sym.id
+            assert ":" not in name and kind == "function", sym.id
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        types = sorted(e.edge_type for e in result.edges)
+        assert types == ["calls", "calls", "event_publishes", "event_publishes", "event_publishes"], types
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+    def test_no_two_symbols_share_an_id(self, tmp_path: Path) -> None:
+        ids = [s.id for s in self._result(tmp_path).symbols]
+        assert len(ids) == len(set(ids)), sorted(ids)

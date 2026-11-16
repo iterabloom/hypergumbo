@@ -581,3 +581,36 @@ class TestSyntheticIdsCarryEachSiteHostLanguage:
         assert result.edges
         assert result.edges[0].src.split(":", 1)[0] == "javascript"
         assert result.edges[0].dst.split(":", 1)[0] == "typescript"
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. The
+    stand-ins ended in ``crdt_publisher`` / ``crdt_subscriber`` on
+    ``kind="function"`` Symbols."""
+
+    def _result(self, tmp_path: Path):
+        (tmp_path / "writer.ts").write_text(
+            "yMap.set('cursor', pos);\nawareness.setLocalStateField('cursor', pos);\n")
+        (tmp_path / "reader.ts").write_text(
+            "yMap.observe(handler);\nawareness.on('change', handler);\n")
+        syms = [_make_ts_sym("writer.ts"), _make_ts_sym("reader.ts"), _make_yjs_dep_sym()]
+        return link_yjs_crdt(tmp_path, syms)
+
+    def test_the_fixture_reaches_both_roles_on_both_apis(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        got = sorted((s.meta["framework_role"], s.meta["yjs_api"]) for s in result.symbols)
+        assert got == [
+            ("event_publisher", "awareness"), ("event_publisher", "yjs"),
+            ("event_subscriber", "awareness"), ("event_subscriber", "yjs"),
+        ], got
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        assert len(result.edges) == 2
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []

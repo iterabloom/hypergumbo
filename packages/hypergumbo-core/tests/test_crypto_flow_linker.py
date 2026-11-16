@@ -472,3 +472,40 @@ class TestSyntheticIdsCarryEachSiteHostLanguage:
         result = link_crypto_flow(tmp_path, [_make_ts_sym("src/encrypt.ts"), _make_ts_sym("src/decrypt.ts")])
         assert result.edges
         assert result.edges[0].src.split(":", 1)[0] == "typescript"
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. The
+    two stand-ins ended in ``crypto_producer`` / ``crypto_consumer`` on
+    ``kind="function"`` Symbols."""
+
+    def _result(self, tmp_path: Path):
+        (tmp_path / "seal.ts").write_text(
+            "const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);\n")
+        (tmp_path / "open.ts").write_text(
+            "const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);\n")
+        return link_crypto_flow(tmp_path, [_make_ts_sym("seal.ts"), _make_ts_sym("open.ts")])
+
+    def test_the_fixture_reaches_both_roles(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        roles = sorted(s.meta["framework_role"] for s in result.symbols)
+        assert roles == ["crypto_consumer", "crypto_producer"], roles
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        assert len(result.edges) == 1
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+    def test_the_two_roles_keep_two_ids(self, tmp_path: Path) -> None:
+        """The role moved to the name slot, so the producer and the consumer
+        of one channel are two nodes, and neither takes the id a one-line
+        ``encrypt`` function declared on that line would have."""
+        result = self._result(tmp_path)
+        names = sorted(s.id.rsplit(":", 2)[1] for s in result.symbols)
+        assert names == ["decrypt-crypto_consumer", "encrypt-crypto_producer"], names
