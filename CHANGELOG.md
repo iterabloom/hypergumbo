@@ -174,6 +174,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Vue component import names the run that found it**, where it named no run.
 - **Wolfram `.m`-only packages are analysed.**
 - **Handlebars partial calls with whitespace control (`{{~> name}}`) are found.**
+- **Handlebars tilde, multi-line and partial-block openers now scope their contents.**
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**
 - **BitBake node ids carry the symbol's own kind and lines**, so two assignments to one variable no longer share an id.
