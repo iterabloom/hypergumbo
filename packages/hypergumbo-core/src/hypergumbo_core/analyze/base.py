@@ -2948,7 +2948,9 @@ def normalize_signature_go(
 
 
 #: Keywords that open a Go type: a parameter part starting with one has no name.
-_GO_TYPE_KEYWORDS = frozenset({"chan", "func", "map", "struct", "interface"})
+#: A pattern, not a set of strings: these are Go source tokens, and two of them
+#: spell Symbol kinds, which a string collection in this module would be read as.
+_GO_TYPE_KEYWORD_RE = _re.compile(r"chan|func|map|struct|interface")
 _GO_IDENT = r"[^\W\d]\w*"
 #: A type whose head is a package-qualified name: ``pkg.T``, ``pkg.List[int]``.
 _GO_QUALIFIED_HEAD_RE = _re.compile(
@@ -2978,7 +2980,7 @@ def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
     match = pattern.fullmatch(cut)
     if match is None or not _GO_CUT_REST_RE.fullmatch(out):
         return False
-    return match.groupdict().get("name") not in _GO_TYPE_KEYWORDS
+    return _GO_TYPE_KEYWORD_RE.fullmatch(match.groupdict().get("name") or "") is None
 
 
 def _go_strip_one_star(text: str) -> str:
@@ -3005,7 +3007,7 @@ def _go_param_type(part: str, type_params: list[str] | None) -> str:
     """The hashed type of one parameter part (``name Type`` or ``Type``)."""
     part = part.strip()
     head = part.split(None, 1)
-    if len(head) == 2 and head[0].isidentifier() and head[0] not in _GO_TYPE_KEYWORDS:
+    if len(head) == 2 and head[0].isidentifier() and _GO_TYPE_KEYWORD_RE.fullmatch(head[0]) is None:
         typ = head[1]
     else:
         typ = part
