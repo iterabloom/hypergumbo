@@ -9,19 +9,24 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
-- **Select several items in the TUI list and mark them read or unread at once.** Shift+click or Space toggles a row; Esc or a plain click clears the selection.
+- **Select several TUI list items (Shift+click or Space) and mark them read or unread together.**
+
+### Changed
+
+- **The TUI starts in about two thirds of the time**: its footer is rebuilt only when its keys change.
 
 ### Fixed
 
-- **The TUI list keeps its scroll position** when you mark items, toggle a column, reorder or switch edit mode, instead of jumping back to the top.
-- **TUI preferences are per user**, in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`: in the checkout, `git clean` deleted them and two accounts overwrote each other's. An existing file is carried over once.
-- **TUI tests no longer click a stale button region on a slow run**; a click that misses fails the test.
-- **The TUI footer is rebuilt only when its keys change**, not on every focus change; the app starts in about two thirds of the time.
+- **Marking items or changing the TUI view keeps the list's scroll position.**
+- **TUI preferences are per user**, under `$XDG_STATE_HOME/hypergumbo-tracker/`, so `git clean` and other accounts no longer overwrite them.
+
+### Development
+
+- **TUI tests no longer misclick on a slow machine.**
 
 ### Documentation
 
-- The web server's docstrings describe its deny-by-default auth gate and say the login modules are not wired in.
-- Comments and docstrings in the CLI, store, sync, journal, setup and TUI modules and their tests state current rules instead of history; two false claims and the check numbers are corrected.
+- **Comments and docstrings state current rules, not history**; the web server's describe its deny-by-default gate and unwired login modules.
 
 ## [0.11.0] - 2026-10-20
 
