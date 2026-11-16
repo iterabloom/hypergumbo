@@ -364,8 +364,11 @@ def _check_one_file_node_per_path(
     two ids that id-equality dedup keeps apart, and the file's edges are split
     between the two nodes. ``analyze.file_records.unify_file_pseudo_symbols``
     folds them after the linkers; this predicate is the guard that it did, and
-    that no pass after it mints a second one. One id emitted twice is one
-    record, not two. A manifest entry of kind ``file`` with
+    that no pass after it mints a second one. Two records sharing one id
+    count as two: that is the same split under one name (an absolute-path id
+    and a repo-relative one that relativization made equal), and the stable-id
+    split pass gives the pair two ``stable_id`` values. A manifest entry of
+    kind ``file`` with
     ``meta["entry_role"]`` (an npm script, a pyproject script; audit-findings
     0005) has another id shape and is not counted. One violation per path.
     """
@@ -380,9 +383,7 @@ def _check_one_file_node_per_path(
             or not path
         ):
             continue
-        ids = ids_by_path.setdefault(path, [])
-        if sym_id not in ids:
-            ids.append(sym_id)
+        ids_by_path.setdefault(path, []).append(sym_id)
     return [
         ValidationViolation(
             severity="error",
