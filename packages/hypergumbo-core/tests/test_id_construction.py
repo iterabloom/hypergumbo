@@ -494,6 +494,68 @@ class TestTheKindSlotAgainstTheSymbolsKind:
         assert "stale_kind_slot_hole" in drift and "mod.py" in drift
 
 
+class TestTheNodeIdWrapping:
+    """``NodeId(...)`` and ``read_node_id(...)`` hand their argument through
+    unchanged, so the template inside is judged at every hop. Without this,
+    wrapping a hand-built id to satisfy the type checker would also take it
+    out of this check."""
+
+    @pytest.mark.parametrize("wrapper", ["NodeId", "read_node_id", "ir.NodeId"])
+    def test_hop_one_sees_through_the_wrapper(self, tmp_path: Path, wrapper: str) -> None:
+        root = _write(tmp_path, f'''
+            def f(path, line, name):
+                return Symbol(id={wrapper}(f"lang:{{path}}:{{line}}:{{name}}:function"))
+        ''')
+        (drift,) = find_id_construction_drift(root)
+        assert "malformed_span_segment" in drift
+
+    def test_hop_two_sees_through_the_wrapper(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(path, line, name):
+                sym_id = NodeId(f"lang:{path}:{line}:{name}:function")
+                return Symbol(id=sym_id)
+        ''')
+        (drift,) = find_id_construction_drift(root)
+        assert "malformed_span_segment" in drift
+
+    def test_hop_three_sees_through_the_wrapper(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def _make_symbol_id(path, line, name):
+                return NodeId(f"lang:{path}:{line}:{name}:function")
+
+            def f(path, line, name):
+                return Symbol(id=_make_symbol_id(path, line, name))
+        ''')
+        (drift,) = find_id_construction_drift(root)
+        assert "malformed_span_segment" in drift
+
+    def test_the_kind_slot_is_read_through_the_wrapper(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def _make_symbol_id(path, line, name):
+                return NodeId(f"lang:{path}:{line}-{line}:{name}:task")
+
+            def f(path, line, name):
+                return Symbol(id=_make_symbol_id(path, line, name), kind="function")
+        ''')
+        (drift,) = find_id_construction_drift(root)
+        assert "kind_slot_mismatch" in drift
+
+    def test_a_wrapped_conformant_template_passes(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(path, line, name):
+                return Symbol(id=NodeId(f"lang:{path}:{line}-{line}:{name}:function"))
+        ''')
+        assert find_id_construction_drift(root) == []
+
+    def test_any_other_call_is_not_seen_through(self, tmp_path: Path) -> None:
+        """Only the two wrappers: an unknown function may change the text."""
+        root = _write(tmp_path, '''
+            def f(path, line, name):
+                return Symbol(id=str(f"lang:{path}:{line}:{name}:function"))
+        ''')
+        assert find_id_construction_drift(root) == []
+
+
 class TestTheLiveTree:
     def test_live_tree_passes(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
