@@ -2023,6 +2023,57 @@ Not recognized: a Cargo dependency renamed with `package = "..."` (the
 declaration node carries only its key). `go.mod` produces no declaration
 nodes.
 
+**Which `pyproject.toml` tables declare.** Each entry of the tables below is
+one `kind=dependency` node, however the table is spelled (a header, a dotted
+key, an inline table). `meta.dependency_scope` is the role of the table; a
+runtime dependency has none. The list is `py_deps.PYPROJECT_DEPENDENCY_TABLES`.
+
+| Key path (`*` = any one key) | Entries | `dependency_scope` |
+|---|---|---|
+| `project.dependencies` (PEP 621) | PEP 508 strings | none |
+| `project.optional-dependencies.*` (extras) | PEP 508 strings | `optional` |
+| `dependency-groups.*` (PEP 735) | PEP 508 strings | `dev` |
+| `build-system.requires` | PEP 508 strings | `build` |
+| `tool.poetry.dependencies` | table keys | none; `optional` when the entry sets `optional = true` |
+| `tool.poetry.dev-dependencies` | table keys | `dev` |
+| `tool.poetry.group.*.dependencies` | table keys | `dev` |
+| `tool.pdm.dev-dependencies.*` | PEP 508 strings | `dev` |
+| `tool.uv.dev-dependencies` | PEP 508 strings | `dev` |
+| `tool.hatch.envs.*.dependencies` | PEP 508 strings | `dev` |
+| `tool.hatch.envs.*.extra-dependencies` | PEP 508 strings | `dev` |
+
+An entry that names no package yields no node: a PEP 735
+`{include-group = "x"}`, a string that does not start with a distribution name
+(PDM's `-e file:///...`), and Poetry's `python` key. A Poetry entry is named by
+its key whatever its value (`"^1"`, `{version = ..., extras = [...]}`,
+`{git = ...}`, `{path = ...}`, a list of constraints).
+
+A package declared in two tables is two nodes, each with its own span, and two
+identities: the `stable_id` of every table but `project.dependencies` is scoped
+by the table's key path, so adding or deleting a table moves no other node's
+id. `project.dependencies` keeps the unscoped
+`dependency:{language}:{path}:{name}` value. An import links
+(`depends_on_manifest`) to one declaration per manifest: the runtime one, else
+`optional`, `dev`, `build` in that order.
+
+Import `directness` is computed from the same list. The published tables
+(`project.dependencies`, the extras, `tool.poetry.dependencies`) decide whether
+a manifest was read at all; a `dev` or `build` table adds its names only then,
+so a `pyproject.toml` that holds nothing but `[build-system]` stamps no import
+`undeclared`.
+
+Not recognized in a `pyproject.toml`: `tool.uv.sources` and
+`tool.poetry.extras` (they name packages another table declares);
+`tool.setuptools.dynamic` (the names are in the file it points to);
+`tool.uv.constraint-dependencies` / `override-dependencies` and
+`tool.pdm.resolution.overrides` (constraints on packages declared elsewhere);
+`tool.pixi.*`, the pre-PEP 621 `tool.flit.metadata` tables and Hatch build-hook
+dependencies; `optional = true` inside a Poetry list of constraints (the entry
+reads as a runtime dependency). Dependencies in `hatch.toml` or a `Pipfile`
+produce no declaration nodes. A `project.dependencies` name is cut at its
+first `.` (`zope.interface` is named `zope`); the other tables keep the whole
+name.
+
 **Workspace / monorepo detection → tier 1.** Workspace configuration files
 (npm/yarn/pnpm `workspaces`, Cargo `[workspace] members`, Maven `<modules>`,
 Python monorepo path-deps) are read to detect package roots, but their member
