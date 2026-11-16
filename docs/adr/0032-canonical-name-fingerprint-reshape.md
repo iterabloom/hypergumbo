@@ -83,19 +83,21 @@ The `qualified-name` axis is lightweight per ADR-0024 §4. The "catalog" is a pe
 
 | Language | Separator | Example |
 |---|---|---|
-| Python | `.` | `hypergumbo_core.cli.run_behavior_map` |
+| Python | `.` | `OrderSerializer.Meta.validate` |
 | Go | `.` | `main.HelloService.BidiHello` |
-| Rust | `::` | `hypergumbo_core::cli::run_behavior_map` |
+| Rust | `::` | `api::HelloService::bidi_hello` |
 | Java | `.` | `com.example.HelloService.BidiHello` |
 | C# | `.` | `Example.HelloService.BidiHello` |
-| TypeScript | `.` | `module.HelloService.bidiHello` |
-| JavaScript | `.` | `module.HelloService.bidiHello` |
+| TypeScript | `.` | `Api.HelloService.bidiHello` |
+| JavaScript | `.` | `HelloService.bidiHello` |
 | Kotlin | `.` | `com.example.HelloService.bidiHello` |
 | Swift | `.` | `Example.HelloService.bidiHello` |
 | Ruby | `::` | `Example::HelloService::BidiHello` |
 | PHP | `\` | `Example\HelloService::bidiHello` |
 | C++ | `::` | `Example::HelloService::BidiHello` |
 | Elixir | `.` | `Example.HelloService.bidi_hello` |
+
+Every prefix in a value is a scope written in the source text: a package or namespace the file declares, an inline `mod`, an enclosing class or function. A Python nested class is `OrderSerializer.Meta` and its method `OrderSerializer.Meta.validate`; a function-local class is `outer.Local`. No analyzer derives a prefix from the file's path. A module name inferred from the directory layout is not in this field: the module has its own axis (ADR-0051) and the file its own anchor (ADR-0035 §4).
 
 When ADR-0033's Phase 3 PR1 (axis-conformance validator) lands, the validator checks `Symbol.qualified_name` matches the per-language separator policy. Mismatch is an axis-conformance violation.
 

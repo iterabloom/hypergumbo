@@ -7407,6 +7407,79 @@ class TestWiFagabQualifiedNameField:
         assert cls.name == cls.qualified_name
 
 
+class TestNestedClassQualifiedName:
+    """A nested class and its methods carry every enclosing class and function
+    in ``qualified_name``: the in-module chain, with no module path.
+
+    They kept only the nearest class (``Meta``, ``Meta.go``), while a nested
+    function (``outer.inner``) and a class attribute (``A.B.x``) of the same
+    file carried the whole chain, and the stable id hashed it."""
+
+    _SOURCE = (
+        "class A:\n"
+        "    class B:\n"
+        "        x = 1\n"
+        "        def go(self):\n"
+        "            return 1\n"
+        "        class C:\n"
+        "            def deep(self):\n"
+        "                return 2\n"
+        "    def top(self):\n"
+        "        return 3\n"
+        "\n"
+        "def outer():\n"
+        "    class Local:\n"
+        "        def run(self):\n"
+        "            return 4\n"
+        "    return Local\n"
+    )
+
+    def _symbols(self, tmp_path: Path) -> list:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(self._SOURCE)
+        return analyze_python(tmp_path).symbols
+
+    def test_the_fixture_reaches_every_nesting_form(self, tmp_path: Path) -> None:
+        got = sorted((s.kind, s.name) for s in self._symbols(tmp_path)
+                     if s.kind in ("class", "method"))
+        assert got == [
+            ("class", "A"), ("class", "B"), ("class", "C"), ("class", "Local"),
+            ("method", "A.top"), ("method", "B.go"), ("method", "C.deep"),
+            ("method", "Local.run"),
+        ], got
+
+    def test_a_nested_class_carries_its_whole_chain(self, tmp_path: Path) -> None:
+        got = {s.name: s.qualified_name for s in self._symbols(tmp_path) if s.kind == "class"}
+        assert got == {"A": "A", "B": "A.B", "C": "A.B.C", "Local": "outer.Local"}
+
+    def test_a_method_of_a_nested_class_carries_the_chain(self, tmp_path: Path) -> None:
+        got = {s.name: s.qualified_name for s in self._symbols(tmp_path) if s.kind == "method"}
+        assert got == {
+            "A.top": "A.top", "B.go": "A.B.go", "C.deep": "A.B.C.deep",
+            "Local.run": "outer.Local.run",
+        }
+
+    def test_the_field_does_not_enter_the_stable_id(self, tmp_path: Path) -> None:
+        """No scheme bump: a method's stable id still hashes the nearest-class
+        form, under its class's id, which already carries the chain."""
+        import ast
+
+        from hypergumbo_lang_mainstream.py import (
+            _python_visibility_modifiers,
+            python_callable_stable_id,
+        )
+
+        symbols = self._symbols(tmp_path)
+        by_name = {s.name: s for s in symbols if s.kind in ("class", "method")}
+        tree = ast.parse(self._SOURCE)
+        go = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "go")
+        assert by_name["B.go"].stable_id == python_callable_stable_id(
+            go, "method", by_name["B"].stable_id, _python_visibility_modifiers("B.go"),
+            name="go", qualified_name="B.go",
+        )
+
+
 class TestExternalConstructorReceiverTypeInference:
     """WI-fuvuj: infer the receiver type of method calls on local variables
     typed by a known I/O constructor (``open`` / ``socket.socket``), so
