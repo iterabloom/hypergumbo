@@ -29,7 +29,10 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract module, function, method, struct, class, interface, enum,
    field and variable symbols
-2. Pass 2: Extract import edges and call edges using NameResolver.
+2. Pass 2: Extract import edges and call edges using NameResolver. An
+   import starts at the importing file's node (``make_file_id``) and ends at
+   the ``module`` symbol of that name when a file of the run declares it,
+   else at the ``make_module_import_dst`` stand-in for the module name.
    Callables register under both ``<file_stem>.<name>`` and the bare name; a
    bare call prefers symbols from imported modules, a module-qualified call
    through an import alias resolves against that module, and UFCS template
@@ -66,6 +69,8 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     find_child_by_type,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -485,7 +490,7 @@ def _extract_imported_modules(
 
 def _process_import_declaration(
     source: bytes,
-    file_stable_id: str,
+    file_id: str,
     run_id: str,
     node: "tree_sitter.Node",
     module_registry: dict[str, str] | None = None,
@@ -518,12 +523,12 @@ def _process_import_declaration(
         dst = module_registry[import_name]
         resolved = True
     else:
-        dst = f"d:{import_name}:0-0:module:module"
+        dst = make_module_import_dst("d", import_name)
         resolved = False
 
     edges.append(
         Edge.create(
-            src=file_stable_id,
+            src=file_id,
             dst=dst,
             edge_type="imports",
             evidence_type="ast_import",
@@ -916,7 +921,7 @@ class DAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a D file."""
         edges: list[Edge] = []
-        file_stable_id = f"d:{rel_path}:file:"
+        file_id = make_file_id("d", rel_path)
         # Every declaration of this file, by position (INV-midag).
         decl_index = symbols_at(self.file_symbols(local_symbols))
 
@@ -938,7 +943,7 @@ class DAnalyzer(TreeSitterAnalyzer):
             # Process imports
             if node.type == "import_declaration":
                 edges.extend(_process_import_declaration(
-                    source, file_stable_id, run.execution_id, node, module_registry,
+                    source, file_id, run.execution_id, node, module_registry,
                 ))
 
             # Process function calls

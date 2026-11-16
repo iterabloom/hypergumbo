@@ -164,6 +164,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`--max-files` bounds every language analyzer.**
 - **BitBake node ids carry the symbol's own kind and lines**, so two assignments to one variable no longer share an id.
 - **A `package.json` `exports` entry's node id names its own kind.**
+- **File-level edges in nine smaller-language analyzers join real file nodes.**
 - **The `export` symbol kind's description names its two real producers.**
 - **Multi-table SQL call sites have the same name and id every run**, as do Ruby C-extension and DI edges.
 

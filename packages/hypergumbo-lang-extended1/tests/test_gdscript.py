@@ -319,3 +319,65 @@ class TestGdscriptCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestPreloadEdgeEndpoints:
+    """A ``preload`` / ``load`` edge ends at a file node or a stand-in.
+
+    The dst was ``gdscript:<res:// path>:file``, a string no node carries, so
+    finalize made an ``<unknown>`` placeholder of it while the script it named
+    stood beside it with no such edge.
+    """
+
+    def _imports(self, repo: Path) -> list[tuple[str, str, bool]]:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        result = analyze_gdscript(repo)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        return [
+            (e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "imports"
+        ]
+
+    def test_res_path_is_read_from_the_godot_project_root(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        scripts = tmp_path / "game" / "scripts"
+        scripts.mkdir(parents=True)
+        (tmp_path / "game" / "project.godot").write_text("config_version=5\n")
+        (scripts / "a.gd").write_text(
+            "extends Node\n"
+            'const B = preload("res://scripts/b.gd")\n'
+            'const C = preload("b.gd")\n'
+            'const S = preload("res://scenes/main.tscn")\n'
+            'const U = preload("user://save.gd")\n'
+            'const M = preload("res://scripts/missing.gd")\n'
+        )
+        (scripts / "b.gd").write_text("extends Node\n")
+        (tmp_path / "game" / "scenes").mkdir()
+        (tmp_path / "game" / "scenes" / "main.tscn").write_text("[gd_scene]\n")
+
+        here = make_file_id("gdscript", "game/scripts/a.gd")
+        b = make_file_id("gdscript", "game/scripts/b.gd")
+        assert self._imports(tmp_path) == [
+            (here, b, True),   # res:// under the directory holding project.godot
+            (here, b, True),   # no scheme: next to the script
+            # A scene is on disk but no analyzer gives it a node.
+            (here, "gdscript:res://scenes/main.tscn:0-0:module:module", False),
+            (here, "gdscript:user://save.gd:0-0:module:module", False),
+            (here, "gdscript:res://scripts/missing.gd:0-0:module:module", False),
+        ]
+
+    def test_res_path_without_a_project_file_is_read_from_the_root(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "a.gd").write_text(
+            'extends Node\nconst B = preload("res://scripts/b.gd")\n'
+        )
+        (tmp_path / "scripts" / "b.gd").write_text("extends Node\n")
+        assert self._imports(tmp_path) == [(
+            make_file_id("gdscript", "scripts/a.gd"),
+            make_file_id("gdscript", "scripts/b.gd"),
+            True,
+        )]

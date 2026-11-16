@@ -398,3 +398,90 @@ class TestDependencyLabelsResolve:
             assert (symbol_path_slot(dst), symbol_name_slot(dst)) == (module, name), label
         # `//lib:` names no target, so it makes no edge.
         assert "//lib:" not in deps
+
+
+class TestLoadEdgeEndpoints:
+    """A ``load`` edge joins the loading file's node to what it loads.
+
+    Both ends were hand-built strings (``starlark:<path>:file:`` and
+    ``starlark:<label>:<name>``) that named no node, so finalize folded every
+    loading file into one ``<unknown>`` placeholder and every loaded name into
+    a placeholder named after its ``.bzl`` file.
+    """
+
+    def _imports(self, repo: Path) -> list[tuple[str, str, bool]]:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        result = analyze_starlark(repo)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        return [
+            (e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "imports"
+        ]
+
+    def test_load_of_a_file_of_the_run_reaches_its_symbol_or_the_file(
+        self, temp_repo: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        (temp_repo / "tools").mkdir()
+        (temp_repo / "app").mkdir()
+        (temp_repo / "tools" / "defs.bzl").write_text(
+            "def helper_macro(name):\n"
+            "    def nested(x):\n"
+            "        pass\n"
+            "    nested(name)\n"
+            "\n"
+            "LIMIT = 3\n"
+            "my_rule = rule(implementation = helper_macro)\n"
+        )
+        (temp_repo / "app" / "local.bzl").write_text("def local_macro(name):\n    pass\n")
+        (temp_repo / "app" / "BUILD.bazel").write_text(
+            'load("//tools:defs.bzl", "helper_macro", "LIMIT", "my_rule", "nested")\n'
+            'load(":local.bzl", lm = "local_macro")\n'
+            'load("//tools/defs.bzl", "helper_macro")\n'
+        )
+
+        result = analyze_starlark(temp_repo)
+        ids = {(s.path, s.name): s.id for s in result.symbols}
+        here = make_file_id("starlark", "app/BUILD.bazel")
+        defs_file = make_file_id("starlark", "tools/defs.bzl")
+        macro = ids[("tools/defs.bzl", "helper_macro")]
+        assert self._imports(temp_repo) == [
+            (here, macro, True),
+            (here, ids[("tools/defs.bzl", "LIMIT")], True),
+            # ``my_rule = rule(...)`` has no symbol: the edge reaches its file.
+            (here, defs_file, True),
+            # A ``def`` nested in a macro is not loadable: the file again.
+            (here, defs_file, True),
+            (here, ids[("app/local.bzl", "local_macro")], True),
+            # ``//tools/defs.bzl``, the label spelled without a colon.
+            (here, macro, True),
+        ]
+
+    def test_load_of_a_file_outside_the_run_is_a_stand_in(self, temp_repo: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.ir import ExternalRef
+
+        (temp_repo / "BUILD").write_text(
+            'load("@rules_cc//cc:defs.bzl", "cc_binary")\n'
+            'load("//gone:defs.bzl", "x")\n'
+        )
+        result = analyze_starlark(temp_repo)
+        imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert [(e.src, e.dst, e.dst_ref) for e in imports] == [
+            (
+                make_file_id("starlark", "BUILD"),
+                "starlark:@rules_cc//cc:defs.bzl:0-0:cc_binary:unresolved",
+                ExternalRef(
+                    lang="starlark", module_path="@rules_cc//cc:defs.bzl",
+                    name="cc_binary",
+                ),
+            ),
+            (
+                make_file_id("starlark", "BUILD"),
+                "starlark://gone:defs.bzl:0-0:x:unresolved",
+                ExternalRef(lang="starlark", module_path="//gone:defs.bzl", name="x"),
+            ),
+        ]
+        assert [e[2] for e in self._imports(temp_repo)] == [False, False]

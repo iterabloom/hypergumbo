@@ -526,3 +526,55 @@ proc f(x: int): int =
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestImportEdgeEndpoints:
+    """An ``imports`` edge joins the importing file's node to the module.
+
+    It used to start at ``nim:<path>:file:``, a string no node carries, so
+    finalize folded every importing file into one ``<unknown>`` placeholder;
+    and it ended at a stand-in even when the module was a file of the run.
+    """
+
+    def test_import_edges_are_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (tmp_path / "lib").mkdir()
+        (tmp_path / "m.nim").write_text(
+            "import strutils, other\n"
+            "import std/[os, tables]\n"
+            "import lib/util as u\n"
+            "proc hi() =\n  there()\n"
+        )
+        (tmp_path / "other.nim").write_text("proc there*() = discard\n")
+        (tmp_path / "lib" / "util.nim").write_text("proc util*() = discard\n")
+
+        result = analyze_nim(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        imports = [
+            (e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "imports"
+        ]
+        here = make_file_id("nim", "m.nim")
+        assert imports == [
+            (here, "nim:strutils:0-0:module:module", False),
+            (here, make_file_id("nim", "other.nim"), True),
+            (here, "nim:std/os:0-0:module:module", False),
+            (here, "nim:std/tables:0-0:module:module", False),
+            (here, make_file_id("nim", "lib/util.nim"), True),
+        ]
+
+    def test_a_module_two_files_could_be_is_a_stand_in(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        for directory in ("a", "b"):
+            (tmp_path / directory).mkdir()
+            (tmp_path / directory / "util.nim").write_text("proc u*() = discard\n")
+        (tmp_path / "m.nim").write_text("import util\n")
+
+        result = analyze_nim(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        assert [e.dst for e in result.edges if e.edge_type == "imports"] == [
+            "nim:util:0-0:module:module",
+        ]
